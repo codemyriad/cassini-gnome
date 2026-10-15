@@ -1,3 +1,11 @@
+cassini-viewer (0.1.1) unstable; urgency=medium
+
+  * Fix transcript-click crashes and GTK label sizing warnings.
+  * Remove participant hiding and port inline interjection grouping.
+  * Preserve interjections in plain-text exports.
+
+ -- Silvio Tomatis <silviot@gmail.com>  Thu, 15 Oct 2026 13:10:00 +0200
+
 cassini-viewer (0.1.0) unstable; urgency=medium
 
   * First release.

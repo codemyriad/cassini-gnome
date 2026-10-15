@@ -36,6 +36,6 @@ Description: read along with meeting recordings
  speaker names and summary.
  .
  It highlights the spoken word as the recording plays, lets you click any
- word to play from there, filter speakers, search the transcript, read the
+ word to play from there, see participants, search the transcript, read the
  summary, verify that the audio matches its transcript, and export the
  transcript as text or WebVTT subtitles.

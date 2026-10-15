@@ -16,7 +16,7 @@
     <ul>
       <li>Follow the transcript as it plays, with the spoken word highlighted</li>
       <li>Click any word to play from there</li>
-      <li>Show or hide speakers, and switch between transcripts</li>
+      <li>See participants and who is speaking, and switch between transcripts</li>
       <li>Search the transcript</li>
       <li>Read the meeting summary and jump to its topics</li>
       <li>Check that the audio still matches the transcript recorded with it</li>
@@ -69,6 +69,12 @@
   </screenshots>
 
   <releases>
+    <release version="0.1.1" date="2026-10-15">
+      <description>
+        <p>Fix transcript-click crashes and label sizing warnings. Keep participants visible,
+        rejoin interrupted speech with inline interjections, and preserve interjections in exports.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-10-15">
       <description>
         <p>First release.</p>
