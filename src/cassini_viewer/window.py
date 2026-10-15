@@ -102,13 +102,22 @@ class TurnRow(Gtk.Box):
             self.window.seek_and_play(self.turn.start_ms + 1)
 
     def _on_activate_link(self, _label, uri):
+        # Seeking synchronously changes the highlight markup, which destroys
+        # GtkLabel's link controllers while GTK is still dispatching this click.
+        # Keep the URI (not the recycled row's turn) and wait for dispatch to end.
+        GLib.idle_add(self._activate_link_later, uri, self.window._generation)
+        return True
+
+    def _activate_link_later(self, uri, generation):
+        if generation != self.window._generation or not self.window.get_visible():
+            return GLib.SOURCE_REMOVE
         kind, _sep, value = uri.partition(":")
         if kind == "w":
             turn_index, _sep, word = value.partition("/")
             self.window.seek_to_word(int(turn_index), int(word))
         elif kind == "t":
             self.window.seek_and_play(self.window.turns[int(value)].start_ms + 1)
-        return True
+        return GLib.SOURCE_REMOVE
 
 
 class SpeakerRow(Gtk.ListBoxRow):
@@ -1003,7 +1012,11 @@ class CassiniWindow(Adw.ApplicationWindow):
                 engine = " · ".join(str(step[k]) for k in ("engine", "model") if isinstance(step.get(k), str))
                 if engine:
                     group.add(property_row(_("Produced By"), engine))
-            box.append(group)
+            # Group the explanatory note with its section using positive
+            # spacing. A negative label margin makes GTK's measured height
+            # smaller than its minimum and triggers allocation warnings.
+            section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+            section.append(group)
             note = Gtk.Label(
                 label=_(
                     "The transcript and speakers live inside this .opus file, so any audio player can still play it."
@@ -1013,8 +1026,8 @@ class CassiniWindow(Adw.ApplicationWindow):
                 css_classes=["caption", "dimmed"],
             )
             note.set_margin_start(2)
-            note.set_margin_top(-12)
-            box.append(note)
+            section.append(note)
+            box.append(section)
 
         buttons = Gtk.Box(spacing=8, homogeneous=True)
         buttons.append(Gtk.Button(label=_("Show in Files"), action_name="win.show-in-files"))
