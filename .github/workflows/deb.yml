@@ -34,7 +34,7 @@ jobs:
           test -x /usr/bin/cassini-viewer
       - name: Collect
         run: mkdir -p dist && cp ../*.deb dist/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: deb-${{ strategy.job-index }}
           path: dist/*.deb
