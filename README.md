@@ -11,7 +11,7 @@ them. Cassini also shows the transcript.
 
 - The spoken word is highlighted during playback, and the view follows it
 - Click any word or timestamp to play from there
-- Show or hide speakers, and switch between transcripts when a file has several
+- See participants and who is speaking, and switch between transcripts when a file has several
 - Search the transcript
 - Read the summary and jump to its action items and topics
 - Check that the audio still matches the transcript recorded with it

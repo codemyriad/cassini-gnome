@@ -62,6 +62,8 @@ class TurnRow(Gtk.Box):
         header.append(self.dot)
         header.append(self.name)
         header.append(self.time)
+        self.over = Gtk.Label(xalign=0, css_classes=["dimmed", "caption"], ellipsize=Pango.EllipsizeMode.END)
+        header.append(self.over)
 
         self.words = Gtk.Label(
             xalign=0,
@@ -84,6 +86,9 @@ class TurnRow(Gtk.Box):
         self.name.set_label(self.window.speaker_label(turn.speaker))
         self.time.set_label(format_time(turn.start_ms))
         self.time.set_tooltip_text(_("Play from {time}").format(time=format_time(turn.start_ms)))
+        names = ", ".join(self.window.speaker_label(speaker) for speaker in turn.over)
+        self.over.set_label(_("(over {names})").format(names=names) if names else "")
+        self.over.set_tooltip_text(_("Simultaneous speech"))
         self.render()
 
     def render(self):
@@ -123,24 +128,18 @@ class TurnRow(Gtk.Box):
 class SpeakerRow(Gtk.ListBoxRow):
     __gtype_name__ = "CassiniSpeakerRow"
 
-    def __init__(self, window, speaker_id, label, css_class):
+    def __init__(self, speaker_id, label, css_class):
         super().__init__(activatable=False)
         self.speaker_id = speaker_id
         box = Gtk.Box(spacing=10)
-        self.check = Gtk.CheckButton(active=True, hexpand=True)
-        inner = Gtk.Box(spacing=10)
         dot = Gtk.Box(css_classes=["speaker-dot", css_class], valign=Gtk.Align.CENTER)
         dot.set_accessible_role(Gtk.AccessibleRole.PRESENTATION)
-        inner.append(dot)
-        inner.append(Gtk.Label(label=label, xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END))
-        self.check.set_child(inner)
-        self.check.update_property([Gtk.AccessibleProperty.LABEL], [_("Show {name}").format(name=label)])
+        box.append(dot)
+        box.append(Gtk.Label(label=label, xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END))
         self.speaking = Gtk.Image(icon_name="audio-volume-high-symbolic", css_classes=["accent"], opacity=0)
         self.speaking.set_tooltip_text(_("Speaking now"))
-        box.append(self.check)
         box.append(self.speaking)
         self.set_child(box)
-        self.check.connect("toggled", lambda check: window.set_speaker_visible(speaker_id, check.get_active()))
 
     def set_speaking(self, speaking):
         self.speaking.set_opacity(1 if speaking else 0)
@@ -200,7 +199,6 @@ class CassiniWindow(Adw.ApplicationWindow):
         self.transcript_id: str | None = None
         self.transcript_error: str | None = None
         self.turns: list[transcript.Turn] = []
-        self.hidden: set[str] = set()
         self.extra_speakers: dict[str, str] = {}
         self.rows: dict[int, TurnRow] = {}
         self.speaker_rows: dict[str, SpeakerRow] = {}
@@ -396,7 +394,6 @@ class CassiniWindow(Adw.ApplicationWindow):
             return
         self.meeting = meeting
         self.audio_check = None
-        self.hidden = set()
         self.extra_speakers = {}
         self.palette = SpeakerPalette([s.id for s in meeting.speakers])
         self.transcript_id = meeting.default_transcript_id
@@ -518,24 +515,15 @@ class CassiniWindow(Adw.ApplicationWindow):
         self.speaker_rows = {}
         ids = self._speaker_ids()
         for speaker_id in ids:
-            row = SpeakerRow(self, speaker_id, self.speaker_label(speaker_id), self.palette.css_class(speaker_id))
+            row = SpeakerRow(speaker_id, self.speaker_label(speaker_id), self.palette.css_class(speaker_id))
             self.speaker_rows[speaker_id] = row
             self.speakers_list.append(row)
         self.speakers_heading.set_visible(bool(ids))
 
-    def set_speaker_visible(self, speaker_id, visible):
-        if visible:
-            self.hidden.discard(speaker_id)
-        else:
-            self.hidden.add(speaker_id)
-        self._rebuild_store()
-        self._refresh_search()
-        self._update_position(force=True)
-
     # The transcript list
 
     def _rebuild_store(self):
-        visible = transcript.visible_turns(self.turns, self.hidden)
+        visible = transcript.visible_turns(self.turns)
         self.visible_index = {turn.index: i for i, turn in enumerate(visible)}
         self.rows = {}
         self.store.splice(0, self.store.get_n_items(), [TurnItem(t) for t in visible])
@@ -583,10 +571,6 @@ class CassiniWindow(Adw.ApplicationWindow):
                     )
                 )
             )
-        elif self.turns:
-            status.set_icon_name("avatar-default-symbolic")
-            status.set_title(_("No Speakers Selected"))
-            status.set_description(_("Turn a speaker on in the sidebar to see their words."))
         else:
             status.set_icon_name("view-list-symbolic")
             status.set_title(_("Empty Transcript"))
@@ -599,15 +583,31 @@ class CassiniWindow(Adw.ApplicationWindow):
         accent = hex_color(self.style_manager.get_accent_color_rgba())
         current_alpha = "45%" if dark else "25%"
         match_bg, match_alpha = ("#f8e45c", "40%") if dark else ("#f6d32d", "60%")
-        current_word = self.current[1] if self.current and self.current[0] == turn.index else None
-        active = turn.index in self.active_turns
         position = self.player.position
         focused = self.matches[self.match_cursor] if 0 <= self.match_cursor < len(self.matches) else None
 
+        def word_link(owner, i):
+            word = owner.words[i]
+            current = owner.word_at(position) if owner.index in self.active_turns else -1
+            attrs = []
+            key = (owner.index, i)
+            if key == focused:
+                attrs.append('background="#e5a50a" bgalpha="80%"')
+            elif key in self.match_set:
+                attrs.append(f'background="{match_bg}" bgalpha="{match_alpha}"')
+            elif i == current:
+                attrs.append(f'background="{accent}" bgalpha="{current_alpha}"')
+            if current >= 0 and i > current:
+                attrs.append('fgalpha="60%"')
+            if word.low_confidence:
+                attrs.append('style="italic"')
+            text = GLib.markup_escape_text(word.text)
+            inner = f"<span {' '.join(attrs)}>{text}</span>" if attrs else text
+            return f'<a href="w:{owner.index}/{i}">{inner}</a>'
+
         asides = {}
         for after, aside in turn.asides:
-            if aside.speaker not in self.hidden:
-                asides.setdefault(after, []).append(aside)
+            asides.setdefault(after, []).append(aside)
 
         parts, offsets = [], []
         length = 0
@@ -616,35 +616,20 @@ class CassiniWindow(Adw.ApplicationWindow):
                 parts.append(" ")
                 length += 1
             offsets.append(length)
-            text = GLib.markup_escape_text(word.text)
-            attrs = []
-            key = (turn.index, i)
-            if i == current_word:
-                attrs.append(f'background="{accent}" bgalpha="{current_alpha}"')
-            elif key == focused:
-                attrs.append('background="#e5a50a" bgalpha="80%"')
-            elif key in self.match_set:
-                attrs.append(f'background="{match_bg}" bgalpha="{match_alpha}"')
-            if active and current_word is not None and i > current_word:
-                attrs.append('fgalpha="60%"')
-            if word.low_confidence:
-                attrs.append('style="italic"')
-            inner = f"<span {' '.join(attrs)}>{text}</span>" if attrs else text
-            parts.append(f'<a href="w:{turn.index}/{i}">{inner}</a>')
+            parts.append(word_link(turn, i))
             length += len(word.text.encode())
             for aside in asides.get(i, ()):
                 name = self.speaker_label(aside.speaker)
                 on = aside.is_active(position)
                 bg = accent if on else ("#ffffff" if dark else "#000006")
                 alpha = current_alpha if on else ("10%" if dark else "7%")
-                color = self.palette.color(aside.speaker, dark)
                 chip = (
                     f'<span size="small" background="{bg}" bgalpha="{alpha}">'
-                    f' <span foreground="{color}">●</span> <b>{GLib.markup_escape_text(name)}</b> '
-                    f"{GLib.markup_escape_text(aside.text)} </span>"
+                    f" <b>{GLib.markup_escape_text(name)}:</b> "
+                    f"{' '.join(word_link(aside, j) for j in range(len(aside.words)))} </span>"
                 )
-                parts.append(f' <a href="t:{aside.index}" title="{GLib.markup_escape_text(name)}">{chip}</a>')
-                length += 1 + len(f" ● {name} {aside.text} ".encode())
+                parts.append(f" {chip}")
+                length += 1 + len(f" {name}: {aside.text} ".encode())
         return "".join(parts), offsets
 
     def _render_turns(self, indexes):
@@ -652,7 +637,7 @@ class CassiniWindow(Adw.ApplicationWindow):
             turn = self.turns[index] if 0 <= index < len(self.turns) else None
             if turn is None:
                 continue
-            host = turn.host.index if turn.host is not None and turn.host.speaker not in self.hidden else index
+            host = turn.host.index if turn.host is not None else index
             row = self.rows.get(host)
             if row is not None:
                 row.render()
@@ -717,12 +702,13 @@ class CassiniWindow(Adw.ApplicationWindow):
         self.elapsed_label.set_label(format_time(position))
         self.remaining_label.set_label("−" + format_time(max(0, duration - position)))
 
-        active = {t.index for t in self.turns if t.is_active(position) and t.speaker not in self.hidden}
-        turn = transcript.current_turn(self.turns, position, self.hidden)
+        active = {t.index for t in self.turns if t.is_active(position)}
+        turn = transcript.current_turn(self.turns, position)
         current = (turn.index, turn.word_at(position)) if turn else None
-        if current == self.current and active == self.active_turns and not force:
+        asides = {index for index in active if self.turns[index].host is not None}
+        if current == self.current and active == self.active_turns and not force and not asides:
             return
-        changed = active ^ self.active_turns
+        changed = (active ^ self.active_turns) | asides
         if self.current:
             changed.add(self.current[0])
         if current:
@@ -740,7 +726,7 @@ class CassiniWindow(Adw.ApplicationWindow):
 
     def _scroll_to_word(self, turn_index, word_index, center=False):
         turn = self.turns[turn_index]
-        if turn.host is not None and turn.host.speaker not in self.hidden:
+        if turn.host is not None:
             turn_index, word_index = turn.host.index, max(0, turn.host.word_at(turn.start_ms))
         position = self.visible_index.get(turn_index)
         if position is None:
@@ -824,7 +810,7 @@ class CassiniWindow(Adw.ApplicationWindow):
     def _refresh_search(self):
         query = self.search_entry.get_text() if self.search_bar.get_search_mode() else ""
         old = {t for t, _w in self.match_set}
-        self.matches = transcript.find_matches(self.turns, query, self.hidden)
+        self.matches = transcript.find_matches(self.turns, query)
         self.match_set = set(self.matches)
         self.match_cursor = -1
         self._update_match_label(query)
@@ -1147,11 +1133,10 @@ class CassiniWindow(Adw.ApplicationWindow):
             file = dialog.save_finish(result)
         except GLib.Error:
             return
-        visible = transcript.visible_turns(self.turns, set())
         if kind == "vtt":
             text = transcript.export_webvtt(self.turns, self.speaker_label)
         else:
-            text = transcript.export_text(visible, self.speaker_label, self.meeting.title if self.meeting else None)
+            text = transcript.export_text(self.turns, self.speaker_label, self.meeting.title if self.meeting else None)
         bytes_ = GLib.Bytes.new(text.encode("utf-8"))
         file.replace_contents_bytes_async(
             bytes_, None, False, Gio.FileCreateFlags.REPLACE_DESTINATION, None, self._on_export_written
