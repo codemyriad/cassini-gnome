@@ -1,0 +1,12 @@
+Version 0.1.0
+~~~~~~~~~~~~~
+Released: 2026-10-15
+
+First release.
+
+- Play Cassini portable meetings with a transcript that follows playback
+- Click words and timestamps to seek
+- Speaker filter, transcript chooser, search
+- Summary view with action items and topics
+- Audio integrity check (exact-opus-audio-v1)
+- Export as text or WebVTT

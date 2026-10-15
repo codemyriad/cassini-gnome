@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Format questions
+    url: https://github.com/codemyriad/cassini-format/issues
+    about: Questions about the Cassini portable meeting format itself

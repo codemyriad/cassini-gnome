@@ -1,0 +1,35 @@
+#!@PYTHON@
+
+# cassini-viewer.in
+#
+# Copyright 2026 Silvio Tomatis
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+import gettext
+import locale
+import os
+import signal
+import sys
+
+VERSION = "@VERSION@"
+APPLICATION_ID = "@APPLICATION_ID@"
+PROFILE = "@PROFILE@"
+pkgdatadir = "@pkgdatadir@"
+localedir = "@localedir@"
+
+sys.path.insert(1, pkgdatadir)
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+locale.bindtextdomain("cassini-viewer", localedir)
+locale.textdomain("cassini-viewer")
+gettext.install("cassini-viewer", localedir)
+
+if __name__ == "__main__":
+    from gi.repository import Gio
+
+    resource = Gio.Resource.load(os.path.join(pkgdatadir, "cassini-viewer.gresource"))
+    resource._register()
+
+    from cassini_viewer import main
+
+    sys.exit(main.main(APPLICATION_ID, VERSION, PROFILE))

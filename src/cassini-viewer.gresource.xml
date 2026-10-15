@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/com/gocassini/Viewer">
+    <file preprocess="xml-stripblanks">ui/window.ui</file>
+    <file preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
+    <file>style.css</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/skip-backward-15-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/skip-forward-15-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/verified-symbolic.svg</file>
+  </gresource>
+</gresources>

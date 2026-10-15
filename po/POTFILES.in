@@ -1,0 +1,8 @@
+# List of source files containing translatable strings.
+data/com.gocassini.Viewer.desktop.in
+data/com.gocassini.Viewer.metainfo.xml.in
+data/com.gocassini.Viewer.gschema.xml
+src/ui/window.ui
+src/shortcuts-dialog.ui
+src/cassini_viewer/main.py
+src/cassini_viewer/window.py

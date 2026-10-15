@@ -1,0 +1,21 @@
+.TH CASSINI-VIEWER 1 "October 2026" "cassini-viewer 0.1.0" "User Commands"
+.SH NAME
+cassini-viewer \- play meeting recordings and read along with their transcripts
+.SH SYNOPSIS
+.B cassini-viewer
+[\fIOPTION\fR...] [\fIFILE\fR...]
+.SH DESCRIPTION
+.B cassini-viewer
+opens Cassini portable meetings: Ogg Opus recordings that carry their own
+word-timed transcript, speaker names and summary in the Opus comment header.
+The transcript follows playback; clicking a word plays from there.
+Ordinary Opus files play without a transcript.
+.PP
+Each \fIFILE\fR opens in its own window.
+.SH OPTIONS
+Standard GTK and GApplication options are accepted; see
+.B cassini-viewer \-\-help\-all.
+.SH SEE ALSO
+https://format.gocassini.com/ \- the Cassini portable meeting format.
+.SH BUGS
+https://github.com/codemyriad/cassini-gnome/issues

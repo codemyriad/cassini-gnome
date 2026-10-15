@@ -1,0 +1,96 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+
+.transcript {
+  background: none;
+  padding: 18px 12px 40px;
+}
+
+.transcript > row {
+  padding: 0;
+  background: none;
+}
+
+.turn {
+  padding: 10px 14px 12px;
+  margin: 2px 0;
+  border-radius: 12px;
+  transition: background-color 200ms ease-out;
+}
+
+.turn.current {
+  background-color: color-mix(in srgb, var(--accent-bg-color) 8%, transparent);
+}
+
+.turn .timestamp {
+  min-height: 24px;
+  padding: 0 6px;
+  font-size: 0.87em;
+  color: color-mix(in srgb, currentColor 60%, transparent);
+}
+
+.words {
+  font-size: 1.07em;
+  line-height: 1.5;
+}
+
+.words link,
+.words link:visited {
+  color: inherit;
+  text-decoration-line: none;
+}
+
+.speaker-dot {
+  min-width: 10px;
+  min-height: 10px;
+  border-radius: 50%;
+}
+
+.speaker-0 { background-color: #9141ac; }
+.speaker-1 { background-color: #e66100; }
+.speaker-2 { background-color: #1c71d8; }
+.speaker-3 { background-color: #26a269; }
+.speaker-4 { background-color: #c01c28; }
+.speaker-5 { background-color: #2190a4; }
+.speaker-6 { background-color: #c88800; }
+.speaker-7 { background-color: #d56199; }
+.speaker-8 { background-color: #986a44; }
+.speaker-9 { background-color: #6f8396; }
+.speaker-unknown { background-color: #77767b; }
+
+@media (prefers-color-scheme: dark) {
+  .speaker-0 { background-color: #c061cb; }
+  .speaker-1 { background-color: #ffa348; }
+  .speaker-2 { background-color: #62a0ea; }
+  .speaker-3 { background-color: #57e389; }
+  .speaker-4 { background-color: #f66151; }
+  .speaker-5 { background-color: #5bc8af; }
+  .speaker-6 { background-color: #f8e45c; }
+  .speaker-7 { background-color: #f599c2; }
+  .speaker-8 { background-color: #cdab8f; }
+  .speaker-9 { background-color: #a6b5c4; }
+  .speaker-unknown { background-color: #9a9996; }
+}
+
+.player-bar .play {
+  min-width: 48px;
+  min-height: 48px;
+  -gtk-icon-size: 20px;
+}
+
+.player-bar .skip {
+  min-width: 40px;
+  min-height: 40px;
+  -gtk-icon-size: 20px;
+}
+
+.monospace-value .subtitle {
+  font-family: monospace;
+}
+
+.trust-card {
+  padding: 12px 14px;
+}
+
+.summary-paragraph {
+  line-height: 1.5;
+}

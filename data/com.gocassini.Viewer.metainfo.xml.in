@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 Silvio Tomatis -->
+<component type="desktop-application">
+  <id>@APP_ID@</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>Cassini</name>
+  <summary>Read along with meeting recordings</summary>
+  <description>
+    <p>
+      Cassini plays meeting recordings in the Cassini portable meeting format:
+      ordinary Ogg Opus files that carry their own word-by-word transcript,
+      speaker names and summary.
+    </p>
+    <ul>
+      <li>Follow the transcript as it plays, with the spoken word highlighted</li>
+      <li>Click any word to play from there</li>
+      <li>Show or hide speakers, and switch between transcripts</li>
+      <li>Search the transcript</li>
+      <li>Read the meeting summary and jump to its topics</li>
+      <li>Check that the audio still matches the transcript recorded with it</li>
+      <li>Export the transcript as text or WebVTT subtitles</li>
+    </ul>
+    <p>
+      Files without a transcript play like in any other audio player.
+    </p>
+  </description>
+
+  <developer id="com.gocassini">
+    <name>Codemyriad</name>
+  </developer>
+
+  <launchable type="desktop-id">@APP_ID@.desktop</launchable>
+  <translation type="gettext">cassini-viewer</translation>
+
+  <url type="homepage">https://github.com/codemyriad/cassini-gnome</url>
+  <url type="bugtracker">https://github.com/codemyriad/cassini-gnome/issues</url>
+  <url type="vcs-browser">https://github.com/codemyriad/cassini-gnome</url>
+  <url type="contribute">https://github.com/codemyriad/cassini-gnome/blob/main/CONTRIBUTING.md</url>
+
+  <provides>
+    <binary>cassini-viewer</binary>
+    <mediatype>audio/ogg</mediatype>
+    <mediatype>audio/x-opus+ogg</mediatype>
+  </provides>
+
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>touch</control>
+  </supports>
+
+  <content_rating type="oars-1.1"/>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#99c1f1</color>
+    <color type="primary" scheme_preference="dark">#1a5fb4</color>
+  </branding>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/codemyriad/cassini-gnome/main/data/screenshots/transcript.png</image>
+      <caption>A meeting transcript following playback</caption>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="0.1.0" date="2026-10-15">
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

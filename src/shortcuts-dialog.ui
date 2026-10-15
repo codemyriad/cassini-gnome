@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<interface>
+  <requires lib="Adw" version="1.0"/>
+  <object class="AdwShortcutsDialog" id="shortcuts_dialog">
+    <child>
+      <object class="AdwShortcutsSection">
+        <property name="title" translatable="yes">General</property>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Open a Meeting</property>
+            <property name="action-name">app.open</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">New Window</property>
+            <property name="action-name">app.new-window</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Export Transcript</property>
+            <property name="accelerator">&lt;primary&gt;e</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Show Shortcuts</property>
+            <property name="action-name">app.shortcuts</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Close Window</property>
+            <property name="action-name">window.close</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Quit</property>
+            <property name="action-name">app.quit</property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwShortcutsSection">
+        <property name="title" translatable="yes">Playback</property>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Play or Pause</property>
+            <property name="action-name">win.play-pause</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Back 15 Seconds</property>
+            <property name="action-name">win.skip-back</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Forward 15 Seconds</property>
+            <property name="action-name">win.skip-forward</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Back 5 Seconds</property>
+            <property name="action-name">win.nudge-back</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Forward 5 Seconds</property>
+            <property name="action-name">win.nudge-forward</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Follow Along</property>
+            <property name="action-name">win.follow-along</property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwShortcutsSection">
+        <property name="title" translatable="yes">Transcript</property>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Search</property>
+            <property name="action-name">win.search</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Next Match</property>
+            <property name="action-name">win.next-match</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Previous Match</property>
+            <property name="action-name">win.previous-match</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Show Transcript</property>
+            <property name="action-name">win.show-transcript</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Show Summary</property>
+            <property name="action-name">win.show-summary</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Toggle Sidebar</property>
+            <property name="action-name">win.show-sidebar</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Toggle Properties</property>
+            <property name="action-name">win.show-properties</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>

@@ -1,0 +1,30 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: cassini-viewer
+Upstream-Contact: Silvio Tomatis <silviot@gmail.com>
+Source: https://github.com/codemyriad/cassini-gnome
+
+Files: *
+Copyright: 2026 Silvio Tomatis
+License: GPL-3.0-or-later
+
+Files: tests/conformance/*
+Copyright: 2026 Codemyriad
+License: CC0-1.0
+Comment: Conformance vectors vendored from https://github.com/codemyriad/cassini-format
+
+Files: data/com.gocassini.Viewer.metainfo.xml.in
+Copyright: 2026 Silvio Tomatis
+License: CC0-1.0
+
+License: GPL-3.0-or-later
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ version 3 can be found in "/usr/share/common-licenses/GPL-3".
+
+License: CC0-1.0
+ On Debian systems, the complete text of the Creative Commons Zero v1.0
+ Universal license can be found in "/usr/share/common-licenses/CC0-1.0".

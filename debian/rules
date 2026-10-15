@@ -1,0 +1,9 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@ --buildsystem=meson
+
+override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
+	meson test -C obj-$(DEB_HOST_GNU_TYPE) --print-errorlogs
+endif

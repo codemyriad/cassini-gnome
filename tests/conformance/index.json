@@ -1,0 +1,878 @@
+{
+  "suite": "org.cassini.portable-meeting/vectors/1",
+  "covers": [
+    "org.cassini.portable-meeting/1"
+  ],
+  "notCovered": [
+    "the two pre-publication draft formats, which were never public"
+  ],
+  "updated": "2026-09-09",
+  "profiles": {
+    "metadata": "Decodes the tags and the chunk sets and verifies every declared payload SHA-256 and byte count. Does not read the audio. Such a reader reports audioTrust 'not-checked' and never 'verified'.",
+    "full": "Everything a metadata reader does, plus exact-opus-audio-v1 over the compressed audio packets."
+  },
+  "vectors": [
+    {
+      "id": "001-minimal-v1",
+      "file": "opus/001-minimal-v1.opus",
+      "bytes": 2984,
+      "sha256": "d0ad2b147822c9edc39203b1e7ee51ca38c9b41835b857a42cc639ed30743662",
+      "derivedFrom": null,
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "The smallest well-formed file: 60 ms of audio, three words, one transcript.",
+      "rationale": "If a reader opens nothing else in this suite, it must open this.",
+      "spec": [
+        "SPEC.md#file-identification",
+        "SPEC.md#payload-encoding"
+      ],
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "audioTrust": "verified",
+        "formatId": "org.cassini.portable-meeting/1",
+        "manifestVersion": 1,
+        "manifestKind": "cassini-portable-meeting",
+        "transcriptIds": [
+          "raw-asr"
+        ],
+        "defaultTranscriptId": "raw-asr",
+        "wordCounts": {
+          "raw-asr": 3
+        },
+        "speakerIds": [
+          "spk_a",
+          "spk_b"
+        ],
+        "audioOpusSha256": "3504435d6e7c677c862313ffdb0ced1d0678b7bf3b8c33fd903b89a848c076a8",
+        "errors": [],
+        "warnings": [],
+        "state": "ok"
+      }
+    },
+    {
+      "id": "002-plain-audio",
+      "file": "opus/002-plain-audio.opus",
+      "bytes": 37646,
+      "sha256": "4bfc6bd1aafaae826bebbec5a5985e9de7d86db0742954d75e41121101e3f12e",
+      "derivedFrom": null,
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "Ordinary Opus audio carrying ordinary tags and not one CASSINI_ name.",
+      "rationale": "SPEC.md:76 makes this a MUST. It shares its audio essence byte for byte with 003, so a full reader can prove the digest does not depend on the metadata: audioOpusSha256 here equals audioOpusSha256 there.",
+      "spec": [
+        "SPEC.md#file-identification",
+        "SPEC.md#plain-audio"
+      ],
+      "expect": {
+        "classification": "plain-audio",
+        "payloadTrust": "not-applicable",
+        "audioTrust": "not-applicable",
+        "audioOpusSha256": "0925ee8942a13b409a6fd4c2a13056a9ad02b6af3214d383a91eb7dbb2f99aee",
+        "errors": [],
+        "warnings": [],
+        "state": "plain-audio"
+      }
+    },
+    {
+      "id": "003-multichunk-v1",
+      "file": "opus/003-multichunk-v1.opus",
+      "bytes": 50950,
+      "sha256": "cb0f5d3e10edd89a448f2744aa4f06846a7d75b4e4619823e8229e12e0915e71",
+      "derivedFrom": null,
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "900 words over 25 s of audible audio; the transcript body spans three chunk tags.",
+      "rationale": "Chunk reassembly is the one thing every reader must get right and the one thing 001 cannot test. 4096 + 4096 + 2119 characters.",
+      "spec": [
+        "SPEC.md#chunk-sets"
+      ],
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "audioTrust": "verified",
+        "formatId": "org.cassini.portable-meeting/1",
+        "manifestVersion": 1,
+        "transcriptIds": [
+          "raw-asr"
+        ],
+        "defaultTranscriptId": "raw-asr",
+        "wordCounts": {
+          "raw-asr": 900
+        },
+        "audioOpusSha256": "0925ee8942a13b409a6fd4c2a13056a9ad02b6af3214d383a91eb7dbb2f99aee",
+        "errors": [],
+        "warnings": [],
+        "state": "ok"
+      }
+    },
+    {
+      "id": "004-padded-base64url-v1",
+      "file": "opus/004-padded-base64url-v1.opus",
+      "bytes": 2986,
+      "sha256": "4c1fc8630d0e1dc7193459308c96f93be6f51b2d72b2f592d9c04e079c06d617",
+      "derivedFrom": "001-minimal-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "Identical to 001 except that the final chunk of each set carries base64url '=' padding.",
+      "rationale": "Producers write unpadded; most languages emit padded by default. Decides SPEC-D4. The reference Go reader currently REFUSES this file.",
+      "spec": [
+        "SPEC.md#payload-encoding"
+      ],
+      "decides": "base64url-padding",
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "transcriptIds": [
+          "raw-asr"
+        ],
+        "wordCounts": {
+          "raw-asr": 3
+        },
+        "sameContentAs": "001-minimal-v1",
+        "errors": [],
+        "warnings": [],
+        "state": "unverified"
+      }
+    },
+    {
+      "id": "005-duplicate-chunk-tag",
+      "file": "opus/005-duplicate-chunk-tag.opus",
+      "bytes": 55098,
+      "sha256": "1d275da79fc6bab4b357b0fa64b051fff6932a1c11b1c74659eacaf0f4564f7e",
+      "derivedFrom": "003-multichunk-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "CASSINI_TX_RAW_ASR_PAYLOAD_001 appears twice with the same value.",
+      "rationale": "Vorbis permits a repeated field name; Cassini must not. Two identical values still make reassembly order-dependent.",
+      "spec": [
+        "SPEC.md#chunk-sets"
+      ],
+      "decides": "duplicate-field-names",
+      "expect": {
+        "classification": "damaged-metadata",
+        "payloadTrust": "unverified",
+        "errors": [
+          {
+            "code": "duplicate-tag",
+            "tag": "CASSINI_TX_RAW_ASR_PAYLOAD_001"
+          }
+        ],
+        "mustNot": [
+          "emit-transcript"
+        ],
+        "state": "invalid-cassini-metadata"
+      }
+    },
+    {
+      "id": "006-missing-chunk",
+      "file": "opus/006-missing-chunk.opus",
+      "bytes": 46803,
+      "sha256": "2067267d8f40d5f0ebd5ca733a921e442e6e99be9830df4e97665cc7f11a8863",
+      "derivedFrom": "003-multichunk-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "Chunk 001 of a three-chunk transcript set is absent; 000 and 002 are present.",
+      "rationale": "A hole in the middle, not a truncation. The count still says three. The manifest is intact, so the file is readable: this transcript is unavailable and the reader must say so, and must not fill its word count from the manifest's claim.",
+      "spec": [
+        "SPEC.md#chunk-sets",
+        "SPEC.md#resolving-a-transcript"
+      ],
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "transcriptIds": [
+          "raw-asr"
+        ],
+        "wordCounts": {},
+        "errors": [
+          {
+            "code": "chunk-missing",
+            "tag": "CASSINI_TX_RAW_ASR_PAYLOAD_001"
+          }
+        ],
+        "mustNot": [
+          "emit-transcript"
+        ],
+        "state": "ok"
+      }
+    },
+    {
+      "id": "007-chunk-count-too-high",
+      "file": "opus/007-chunk-count-too-high.opus",
+      "bytes": 50950,
+      "sha256": "1bc091b0b6979877e62c2465f86b88ed00d871a04fbe9c51b8dcc5eccd493ac6",
+      "derivedFrom": "003-multichunk-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "CASSINI_TX_RAW_ASR_PAYLOAD_CHUNK_COUNT says 4; payloadRef.chunkCount says 3; three chunks exist.",
+      "rationale": "The manifest is the record and the tag is the copy (SPEC.md:180-182), so the file is readable and the disagreement is a warning.",
+      "spec": [
+        "SPEC.md#cassini-descriptor-tags"
+      ],
+      "decides": "tag-vs-manifest-precedence",
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "wordCounts": {
+          "raw-asr": 900
+        },
+        "sameContentAs": "003-multichunk-v1",
+        "warnings": [
+          {
+            "code": "tag-manifest-disagreement",
+            "tag": "CASSINI_TX_RAW_ASR_PAYLOAD_CHUNK_COUNT"
+          }
+        ],
+        "state": "unverified"
+      }
+    },
+    {
+      "id": "008-chunk-count-too-low",
+      "file": "opus/008-chunk-count-too-low.opus",
+      "bytes": 50950,
+      "sha256": "2b6f9df51cff4a1a1a2eea38cd5f6852d4bad18c0b2cbd8acc41eaa1b2ba2c61",
+      "derivedFrom": "003-multichunk-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "The same disagreement in the other direction: the tag says 2, the manifest says 3.",
+      "rationale": "Proves a reader is not silently truncating to the smaller of the two.",
+      "spec": [
+        "SPEC.md#cassini-descriptor-tags"
+      ],
+      "decides": "tag-vs-manifest-precedence",
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "wordCounts": {
+          "raw-asr": 900
+        },
+        "sameContentAs": "003-multichunk-v1",
+        "warnings": [
+          {
+            "code": "tag-manifest-disagreement",
+            "tag": "CASSINI_TX_RAW_ASR_PAYLOAD_CHUNK_COUNT"
+          }
+        ],
+        "state": "unverified"
+      }
+    },
+    {
+      "id": "009-bad-payload-sha256",
+      "file": "opus/009-bad-payload-sha256.opus",
+      "bytes": 2984,
+      "sha256": "84308e357c97df9fa8bb7371038e490d7f519b6dd3b778d21f4fe74df014dfde",
+      "derivedFrom": "001-minimal-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "CASSINI_PAYLOAD_SHA256 is 64 zeroes. The manifest itself is intact and parses.",
+      "rationale": "SPEC.md:476 makes verifying the payload hash a consumer MUST. A reader that parses on regardless has not implemented it.",
+      "spec": [
+        "SPEC.md#reading-a-file"
+      ],
+      "expect": {
+        "classification": "damaged-metadata",
+        "payloadTrust": "mismatched",
+        "errors": [
+          {
+            "code": "payload-sha256-mismatch",
+            "tag": "CASSINI_PAYLOAD_SHA256"
+          }
+        ],
+        "mustNot": [
+          "report-payload-verified"
+        ],
+        "state": "invalid-cassini-metadata"
+      }
+    },
+    {
+      "id": "010-stale-audio",
+      "file": "opus/010-stale-audio.opus",
+      "bytes": 13656,
+      "sha256": "5b771e32b554214ece95566f26483da5f780613573a16f5de8677d70ac183587",
+      "derivedFrom": null,
+      "profiles": [
+        "full"
+      ],
+      "summary": "Vector 003's complete, self-consistent metadata over vector 001's audio.",
+      "rationale": "The real lifecycle failure: the metadata is internally perfect and describes a different recording. Manifest and tag agree with each other and disagree with the file.",
+      "spec": [
+        "SPEC.md#stale-audio"
+      ],
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "audioTrust": "mismatched",
+        "wordCounts": {
+          "raw-asr": 900
+        },
+        "errors": [],
+        "warnings": [
+          {
+            "code": "audio-digest-mismatch"
+          },
+          {
+            "code": "audio-shape-mismatch"
+          }
+        ],
+        "mustNot": [
+          "report-audio-verified",
+          "discard-transcript"
+        ],
+        "state": "stale-audio"
+      }
+    },
+    {
+      "id": "011-tag-manifest-disagreement",
+      "file": "opus/011-tag-manifest-disagreement.opus",
+      "bytes": 2984,
+      "sha256": "89acf118f5be9a342b39eb93a4a0b70a3f4c7d68bfa9c36cab964ab6fa1ee88c",
+      "derivedFrom": "001-minimal-v1",
+      "profiles": [
+        "full"
+      ],
+      "summary": "CASSINI_AUDIO_OPUS_SHA256 is 64 f's; the manifest's copy is correct; the audio matches the manifest.",
+      "rationale": "Verification cannot run against two different claims, so it must not report success.",
+      "spec": [
+        "SPEC.md#cassini-descriptor-tags",
+        "SPEC.md#audio-integrity"
+      ],
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "audioTrust": "unverified",
+        "warnings": [
+          {
+            "code": "tag-manifest-disagreement",
+            "tag": "CASSINI_AUDIO_OPUS_SHA256"
+          }
+        ],
+        "mustNot": [
+          "report-audio-verified"
+        ],
+        "state": "unverified"
+      }
+    },
+    {
+      "id": "012-lowercase-tag-names",
+      "file": "opus/012-lowercase-tag-names.opus",
+      "bytes": 2984,
+      "sha256": "79d41e7fc097df88999a6456100eb06c89565b548f004dfbfa03753132b63104",
+      "derivedFrom": "001-minimal-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "Vector 001 with every comment name lower-cased. Values untouched.",
+      "rationale": "Vorbis field names are case-insensitive and SPEC.md never says so. The shipped browser viewer fails this file.",
+      "spec": [
+        "SPEC.md#cassini-descriptor-tags"
+      ],
+      "decides": "tag-name-case",
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "sameContentAs": "001-minimal-v1",
+        "errors": [],
+        "warnings": [],
+        "state": "unverified"
+      }
+    },
+    {
+      "id": "013-mixed-case-tag-names",
+      "file": "opus/013-mixed-case-tag-names.opus",
+      "bytes": 2984,
+      "sha256": "9075c1c4dd0ba2a2ba949c487d48bdcc003c61d749f3e160b76c6c603cf6a876",
+      "derivedFrom": "001-minimal-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "Vector 001 with alternating case in every comment name (cAsSiNi_FoRmAt).",
+      "rationale": "Catches a reader that lower-cases or upper-cases only some lookups.",
+      "spec": [
+        "SPEC.md#cassini-descriptor-tags"
+      ],
+      "decides": "tag-name-case",
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "sameContentAs": "001-minimal-v1",
+        "errors": [],
+        "warnings": [],
+        "state": "unverified"
+      }
+    },
+    {
+      "id": "014-unknown-manifest-member",
+      "file": "opus/014-unknown-manifest-member.opus",
+      "bytes": 3056,
+      "sha256": "e03f394847321176c13f9a180fef7e9c7b3ccb494635bff3935180f31d60eb70",
+      "derivedFrom": "001-minimal-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "The manifest carries a top-level cassiniFutureField and a speakers[0].pronouns.",
+      "rationale": "Forward compatibility. Every reader ignores what it does not recognise, and the schemas now say the same: open everywhere except integrity and payloadRef.",
+      "spec": [
+        "SPEC.md#embedded-manifest"
+      ],
+      "decides": "additional-properties",
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "transcriptIds": [
+          "raw-asr"
+        ],
+        "wordCounts": {
+          "raw-asr": 3
+        },
+        "speakerIds": [
+          "spk_a",
+          "spk_b"
+        ],
+        "errors": [],
+        "warnings": [],
+        "state": "unverified"
+      }
+    },
+    {
+      "id": "015-unknown-major-version",
+      "file": "opus/015-unknown-major-version.opus",
+      "bytes": 2985,
+      "sha256": "c251ec856dec2683126cc5365151967a014e87f2385023d2945305557413a113",
+      "derivedFrom": "001-minimal-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "CASSINI_FORMAT=org.cassini.portable-meeting/99 and manifest.version=99.",
+      "rationale": "A reader MUST NOT present a transcript from a version it does not implement, however well the bytes decode. It plays the audio and says the file carries metadata it cannot read.",
+      "spec": [
+        "SPEC.md#file-identification",
+        "SPEC.md#unknown-cassini-format"
+      ],
+      "decides": "unknown-version-behaviour",
+      "expect": {
+        "classification": "unsupported-version",
+        "formatId": "org.cassini.portable-meeting/99",
+        "payloadTrust": "unverified",
+        "mustNot": [
+          "emit-transcript",
+          "present-as-current"
+        ],
+        "state": "unknown-cassini-format"
+      }
+    },
+    {
+      "id": "016-two-transcripts",
+      "file": "opus/016-two-transcripts.opus",
+      "bytes": 3747,
+      "sha256": "70378c87ce08edff20c96ba6e2806e205703a29cc77778ad51bcda66a5b8326a",
+      "derivedFrom": "001-minimal-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "Two raw-asr transcripts, raw-asr (default:true) and second-pass (default:false), three words each.",
+      "rationale": "The format's headline feature and nothing tests it. Also the minimal reproduction of the reference inspector summing word counts across alternative transcripts and reporting six.",
+      "spec": [
+        "SPEC.md#transcripts-and-their-chunk-sets"
+      ],
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "transcriptIds": [
+          "raw-asr",
+          "second-pass"
+        ],
+        "defaultTranscriptId": "raw-asr",
+        "wordCounts": {
+          "raw-asr": 3,
+          "second-pass": 3
+        },
+        "errors": [],
+        "warnings": [],
+        "mustNot": [
+          "sum-word-counts-across-transcripts"
+        ],
+        "state": "unverified"
+      }
+    },
+    {
+      "id": "017-dangling-transcript-id",
+      "file": "opus/017-dangling-transcript-id.opus",
+      "bytes": 2990,
+      "sha256": "ab9ccf61b9404d2b0863dbaf17b37a1435aa4ef2cdff2c66e2fb2de1e7250bf9",
+      "derivedFrom": "001-minimal-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "CASSINI_TRANSCRIPT_IDS=raw-asr,ghost. No manifest entry and no chunk set for ghost.",
+      "rationale": "The tag is a convenience copy. A reader must take its transcript list from the manifest and must not fail over a stale copy.",
+      "spec": [
+        "SPEC.md#cassini-descriptor-tags"
+      ],
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "transcriptIds": [
+          "raw-asr"
+        ],
+        "wordCounts": {
+          "raw-asr": 3
+        },
+        "warnings": [
+          {
+            "code": "tag-manifest-disagreement",
+            "tag": "CASSINI_TRANSCRIPT_IDS"
+          }
+        ],
+        "mustNot": [
+          "fail"
+        ],
+        "state": "unverified"
+      }
+    },
+    {
+      "id": "018-oversize-opustags",
+      "file": "opus/018-oversize-opustags.opus",
+      "bytes": 68450,
+      "sha256": "199e9b964f3aa660e98ffe18301bc63fa3dba9d58511f718c598388670558036",
+      "derivedFrom": "001-minimal-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "A 68,032-octet OpusTags packet: a 48 KB incompressible attachments[] entry pushes the manifest to 16 chunks. In ASCII order 25 of 49 comments fall past octet 61,440, among them CASSINI_PAYLOAD_CHUNK_COUNT and CASSINI_PAYLOAD_SHA256.",
+      "rationale": "RFC 7845 5.2 lets an implementation ignore comments not fully inside the first 61,440 octets. A reader that exercises that MAY sees CASSINI_FORMAT and nothing it needs to act on it.",
+      "spec": [
+        "RFC7845#section-5.2",
+        "SPEC.md#chunk-sets"
+      ],
+      "decides": "comment-header-size",
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "sameContentAs": "001-minimal-v1",
+        "state": "unverified"
+      },
+      "alsoAcceptable": [
+        {
+          "classification": "damaged-metadata",
+          "errors": [
+            {
+              "code": "comment-header-truncated"
+            }
+          ],
+          "state": "invalid-cassini-metadata"
+        }
+      ],
+      "note": "MUST NOT be classified plain-audio: CASSINI_FORMAT is inside the window."
+    },
+    {
+      "id": "019-manifest-chunk-count-too-high",
+      "file": "opus/019-manifest-chunk-count-too-high.opus",
+      "bytes": 2984,
+      "sha256": "f50da6bcd413fd4554e5321301fc07c08c107fc19fe3fe92d93a209e2295185c",
+      "derivedFrom": "001-minimal-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "CASSINI_PAYLOAD_CHUNK_COUNT=2 with one chunk present.",
+      "rationale": "The manifest chunk set is the one set with no payloadRef behind it, so this tag is load-bearing and a reader must act on it.",
+      "spec": [
+        "SPEC.md#chunk-sets"
+      ],
+      "expect": {
+        "classification": "damaged-metadata",
+        "payloadTrust": "unverified",
+        "errors": [
+          {
+            "code": "chunk-missing",
+            "tag": "CASSINI_PAYLOAD_001"
+          }
+        ],
+        "mustNot": [
+          "emit-transcript"
+        ],
+        "state": "invalid-cassini-metadata"
+      }
+    },
+    {
+      "id": "020-duplicate-chunk-differing",
+      "file": "opus/020-duplicate-chunk-differing.opus",
+      "bytes": 51106,
+      "sha256": "4d29f28ded61817a72cf6a7d58a87386a67585521bfa15c59a30ce3809f1c1b6",
+      "derivedFrom": "003-multichunk-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "CASSINI_TX_RAW_ASR_PAYLOAD_001 twice: junk first, the real value second.",
+      "rationale": "Separates 'is a repeat legal' from 'which repeat wins'. Neither question has an answer today.",
+      "spec": [
+        "SPEC.md#chunk-sets"
+      ],
+      "decides": "duplicate-field-names",
+      "expect": {
+        "classification": "damaged-metadata",
+        "payloadTrust": "unverified",
+        "errors": [
+          {
+            "code": "duplicate-tag",
+            "tag": "CASSINI_TX_RAW_ASR_PAYLOAD_001"
+          }
+        ],
+        "mustNot": [
+          "emit-transcript"
+        ],
+        "state": "invalid-cassini-metadata"
+      }
+    },
+    {
+      "id": "021-descriptors-first",
+      "file": "opus/021-descriptors-first.opus",
+      "bytes": 68450,
+      "sha256": "2492e971775756ebe363e743ef7f1e4926ef2585520c4a45693cde097adf15ee",
+      "derivedFrom": "018-oversize-opustags",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "The same 49 comments as 018 in a different write order: CASSINI_FORMAT, then every other non-chunk tag, then the numbered chunks. Same 68,032-octet packet.",
+      "rationale": "The control for 018 and the demonstration of the comment-order recommendation. Comments past octet 61,440: 25 in 018, 11 of them descriptors; 4 here, all numbered chunks, no descriptor.",
+      "spec": [
+        "RFC7845#section-5.2"
+      ],
+      "decides": "comment-header-size",
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "sameContentAs": "001-minimal-v1",
+        "errors": [],
+        "warnings": [],
+        "state": "unverified"
+      }
+    },
+    {
+      "id": "022-duplicate-chunk-junk-last",
+      "file": "opus/022-duplicate-chunk-junk-last.opus",
+      "bytes": 51106,
+      "sha256": "c44a0098e4c9168c5a257b281245dee74611c4681ef71d7dab0ec1fc8ea6755f",
+      "derivedFrom": "003-multichunk-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "CASSINI_TX_RAW_ASR_PAYLOAD_001 twice: the real value first, junk second.",
+      "rationale": "The mirror of 020. A last-wins reader accepts 020 and breaks here; a first-wins reader does the opposite.",
+      "spec": [
+        "SPEC.md#chunk-sets"
+      ],
+      "decides": "duplicate-field-names",
+      "expect": {
+        "classification": "damaged-metadata",
+        "payloadTrust": "unverified",
+        "errors": [
+          {
+            "code": "duplicate-tag",
+            "tag": "CASSINI_TX_RAW_ASR_PAYLOAD_001"
+          }
+        ],
+        "mustNot": [
+          "emit-transcript"
+        ],
+        "state": "invalid-cassini-metadata"
+      }
+    },
+    {
+      "id": "023-no-transcript-role",
+      "file": "opus/023-no-transcript-role.opus",
+      "bytes": 2973,
+      "sha256": "480bd56d3eed1d598cef25fe60bfec050b46c65e46de020fdc4fa51d6d6ef7c5",
+      "derivedFrom": "001-minimal-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "A newly packed transcript with no origin role, using the producer default id words.",
+      "rationale": "Requiring a word origin enum makes a valid transcript unavailable. Exercise the current producer, not a hand-written descriptor.",
+      "spec": [
+        "SPEC.md#transcripts",
+        "SPEC.md#resolving-a-transcript"
+      ],
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "audioTrust": "verified",
+        "formatId": "org.cassini.portable-meeting/1",
+        "manifestVersion": 1,
+        "manifestKind": "cassini-portable-meeting",
+        "transcriptIds": [
+          "words"
+        ],
+        "defaultTranscriptId": "words",
+        "wordCounts": {
+          "words": 3
+        },
+        "speakerIds": [
+          "spk_a",
+          "spk_b"
+        ],
+        "audioOpusSha256": "3504435d6e7c677c862313ffdb0ced1d0678b7bf3b8c33fd903b89a848c076a8",
+        "errors": [],
+        "warnings": [],
+        "state": "ok"
+      }
+    },
+    {
+      "id": "024-no-role-second-default",
+      "file": "opus/024-no-role-second-default.opus",
+      "bytes": 3743,
+      "sha256": "b2dd23c791ceb3b018018269531bdb392aebef66d86459e6b21e2b7626991913",
+      "derivedFrom": "016-two-transcripts",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "Two word transcripts without roles; the second is the default.",
+      "rationale": "Every transcripts[] entry participates in default selection, including entries without a role. A first-entry-only reader must not pass.",
+      "spec": [
+        "SPEC.md#transcripts",
+        "SPEC.md#resolving-a-transcript"
+      ],
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "transcriptIds": [
+          "raw-asr",
+          "second-pass"
+        ],
+        "defaultTranscriptId": "second-pass",
+        "wordCounts": {
+          "raw-asr": 3,
+          "second-pass": 3
+        },
+        "errors": [],
+        "warnings": [],
+        "mustNot": [
+          "sum-word-counts-across-transcripts"
+        ],
+        "state": "unverified"
+      }
+    },
+    {
+      "id": "025-ignored-origin-label",
+      "file": "opus/025-ignored-origin-label.opus",
+      "bytes": 3845,
+      "sha256": "96d7b07e4ef0d04169776677543d6addf049c9d82972b90215a5077ec20b41c3",
+      "derivedFrom": "016-two-transcripts",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "Unknown word origin labels and legacy source links; no flagged default. Includes retired meeting hints and chapters.",
+      "rationale": "Removed word role and sourceTranscriptId members are ignored. Array order remains the fallback; legacy metadata must not reject the file.",
+      "spec": [
+        "SPEC.md#transcripts",
+        "SPEC.md#resolving-a-transcript"
+      ],
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "transcriptIds": [
+          "raw-asr",
+          "second-pass"
+        ],
+        "defaultTranscriptId": "raw-asr",
+        "wordCounts": {
+          "raw-asr": 3,
+          "second-pass": 3
+        },
+        "errors": [],
+        "warnings": [],
+        "mustNot": [
+          "sum-word-counts-across-transcripts"
+        ],
+        "state": "unverified"
+      }
+    },
+    {
+      "id": "026-display-and-withdrawn-cleanup",
+      "file": "opus/026-display-and-withdrawn-cleanup.opus",
+      "bytes": 4514,
+      "sha256": "c91c93a127cd42ea46b43e566ae238aafbb79d1a2ba7e4087ae39950eb67d924",
+      "derivedFrom": "016-two-transcripts",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "Words without roles alongside a native display and an unavailable withdrawn cleanup entry.",
+      "rationale": "Unknown readable roles must be skipped without resolving their source or body, leaving supported words and displays usable.",
+      "spec": [
+        "SPEC.md#resolving-a-transcript"
+      ],
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "transcriptIds": [
+          "raw-asr",
+          "second-pass"
+        ],
+        "defaultTranscriptId": "raw-asr",
+        "wordCounts": {
+          "raw-asr": 3,
+          "second-pass": 3
+        },
+        "errors": [],
+        "warnings": [],
+        "mustNot": [
+          "sum-word-counts-across-transcripts"
+        ],
+        "state": "unverified"
+      }
+    }
+  ],
+  "vocabulary": {
+    "note": "state is the normative name from SPEC.md 'Trust and integrity' and every adapter must report it. The classification/payloadTrust/audioTrust triple is retained because it carries more detail. A failure of a transcript body's chunk set makes that transcript unavailable and leaves the state alone; a repeated load-bearing tag makes the file invalid-cassini-metadata.",
+    "states": [
+      "plain-audio",
+      "unknown-cassini-format",
+      "invalid-cassini-metadata",
+      "unverified",
+      "stale-audio",
+      "ok"
+    ],
+    "mustNot": {
+      "emit-transcript": "no word count for any transcript",
+      "report-payload-verified": "payloadTrust is not 'verified'",
+      "report-audio-verified": "audioTrust is not 'verified'",
+      "fail": "classification is neither 'damaged-metadata' nor 'crash'",
+      "discard-transcript": "a word count is reported",
+      "present-as-current": "classification is not 'cassini' and no word count is reported",
+      "sum-word-counts-across-transcripts": "totalWordCount is not the sum of several transcripts' counts"
+    }
+  }
+}
