@@ -35,9 +35,13 @@ install_data(
   install_dir: moduledir,
 )
 
-test('pytest',
-  python.find_installation('python3', modules: ['pytest'], required: false),
-  args: ['-m', 'pytest', '-q', meson.project_source_root() / 'tests'],
-  env: ['PYTHONPATH=' + meson.current_source_dir()],
-  workdir: meson.project_source_root(),
-)
+# pytest is optional: the Flatpak SDK, for one, does not ship it.
+pytest = python.find_installation('python3', modules: ['pytest'], required: false)
+if pytest.found()
+  test('pytest',
+    pytest,
+    args: ['-m', 'pytest', '-q', meson.project_source_root() / 'tests'],
+    env: ['PYTHONPATH=' + meson.current_source_dir()],
+    workdir: meson.project_source_root(),
+  )
+endif
