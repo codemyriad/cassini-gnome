@@ -22,12 +22,6 @@
         </child>
         <child>
           <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">New Window</property>
-            <property name="action-name">app.new-window</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem">
             <property name="title" translatable="yes">Export Transcript</property>
             <property name="accelerator">&lt;primary&gt;e</property>
           </object>

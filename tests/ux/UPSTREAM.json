@@ -33,7 +33,8 @@
     "library-vectors/assets/onboarding.opus": "ux/library-vectors/assets/onboarding.opus",
     "library-vectors/assets/plain-title.opus": "ux/library-vectors/assets/plain-title.opus",
     "library-vectors/assets/plain-untitled.opus": "ux/library-vectors/assets/plain-untitled.opus",
-    "library-vectors/assets/build.py": "ux/library-vectors/assets/build.py"
+    "library-vectors/assets/build.py": "ux/library-vectors/assets/build.py",
+    "strings.json": "src/cassini_viewer/strings.json"
   },
   "sha256": {
     "format-vectors.json": "ee9c9b9585e76c42f09df54d7a8933e7167527fce2ea185e78b51b1059840e51",
@@ -67,6 +68,13 @@
     "library-vectors/assets/onboarding.opus": "6867bf09f0d3778efdcba1a79b09be815d235143974022a979401cffdafec6d2",
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
-    "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad"
+    "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
+    "strings.json": "d80db05f0c3000eaa509b4fb11f5f6743f0e9da74776bc3a8ddf3443968224bb"
+  },
+  "additionalSources": {
+    "strings.json": {
+      "commit": "3b3697e198673b88bc13a0170016ff603d1bdcd4",
+      "note": "Wave 2 shared catalog; all earlier vectors remain pinned above."
+    }
   }
 }

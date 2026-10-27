@@ -30,7 +30,7 @@ class LibraryMonitor:
         self._closed = False
         self._future = None
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-library")
-        self._sync_watches(())
+        self._roots = {self.scanner.root.absolute()}
 
     @staticmethod
     def _ancestor(path):
@@ -38,15 +38,22 @@ class LibraryMonitor:
             path = path.parent
         return path
 
-    def _sync_watches(self, directories):
-        self._directories = set(directories)
+    def _scan_and_watch_paths(self, activity, changed):
+        snapshot = self.scanner.scan(capture_activity=activity, changed_directories=changed)
         root = self.scanner.root.absolute()
-        targets = {self._ancestor(root)} | self._directories
-        # Both locations matter when a Library link's target is unmounted.
+        roots = {root}
+        targets = {self._ancestor(root)} | set(snapshot.directories)
         with contextlib.suppress(OSError, RuntimeError):
-            targets.add(self._ancestor(root.resolve()))
+            resolved = root.resolve()
+            roots.add(resolved)
+            targets.add(self._ancestor(resolved))
         if root.is_symlink():
             targets.add(root.parent)
+        return snapshot, roots, targets
+
+    def _sync_watches(self, snapshot, roots, targets):
+        self._roots = roots
+        self._directories = set(snapshot.directories)
         for path in self._monitors.keys() - targets:
             self._monitors.pop(path).cancel()
         for path in targets - self._monitors.keys():
@@ -60,11 +67,7 @@ class LibraryMonitor:
     def _changed(self, _monitor, file, other_file, event):
         if self._closed:
             return
-        root = self.scanner.root.absolute()
-        try:
-            roots = {root, root.resolve()}
-        except (OSError, RuntimeError):
-            roots = {root}
+        roots = self._roots
         changed = set()
         for value in (file, other_file):
             name = value.get_path() if value else None
@@ -117,7 +120,7 @@ class LibraryMonitor:
         self._pending_dirs.clear()
         self._first_event = None
         self._ready = False
-        self._future = self._executor.submit(self.scanner.scan, capture_activity=activity, changed_directories=changed)
+        self._future = self._executor.submit(self._scan_and_watch_paths, activity, changed)
         self._future.add_done_callback(lambda future: GLib.idle_add(self._complete, future))
 
     def _complete(self, future):
@@ -125,13 +128,14 @@ class LibraryMonitor:
         if self._closed:
             return GLib.SOURCE_REMOVE
         try:
-            snapshot = future.result()
+            snapshot, roots, targets = future.result()
         except Exception:
             LOG.exception("Library worker scan failed")
             snapshot = LibrarySnapshot(
                 diagnostics=(Diagnostic(self.scanner.root, "library-scan-failed"),), unavailable=True
             )
-        self._sync_watches(snapshot.directories)
+            roots, targets = self._roots, set(self._monitors)
+        self._sync_watches(snapshot, roots, targets)
         self.callback(snapshot)
         if self._ready and not self._closed:
             self._start_scan()

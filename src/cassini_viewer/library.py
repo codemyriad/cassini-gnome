@@ -170,6 +170,7 @@ class Meeting(MeetingState):
     started_at_ms: int | None
     duration_ms: int | None
     speakers: tuple[LibrarySpeaker, ...] = ()
+    words: tuple[portable.Word, ...] = ()
     quote_line: str | None = None
     tracks: tuple[CaptureTrack, ...] = ()
     audio_file: Path | None = None
@@ -316,6 +317,13 @@ class LibraryScanner:
                 except FileNotFoundError:
                     self._forget(name)
                     continue
+                except Exception:
+                    self._forget(name)
+                    self._folder_diagnostics[name] = Diagnostic(directory, "meeting-unreadable")
+                    meeting = _unreadable(directory, identifier, activity.get(identifier))
+                    if meeting is not None:
+                        self._rows[name] = meeting
+                    continue
                 if not stat.S_ISDIR(info.st_mode):
                     self._forget(name)
                     if stat.S_ISLNK(info.st_mode):
@@ -347,22 +355,8 @@ class LibraryScanner:
                             self._row_cache[name] = fingerprint, meeting
                     finally:
                         os.close(fd)
-                except (OSError, ValueError):
-                    meeting = (
-                        None
-                        if name.startswith("Received-")
-                        else Meeting(
-                            id=identifier,
-                            directory=directory,
-                            title="Untitled meeting",
-                            started_at_ms=None,
-                            duration_ms=None,
-                            lifecycle=activity.get(identifier)
-                            if activity.get(identifier) in ("recording", "saving")
-                            else "saved",
-                            diagnostics=(Diagnostic(directory, "meeting-unreadable"),),
-                        )
-                    )
+                except Exception:
+                    meeting = _unreadable(directory, identifier, activity.get(identifier))
                 if meeting is None:
                     self._rows.pop(name, None)
                 else:
@@ -518,6 +512,7 @@ class LibraryScanner:
             title=title,
             started_at_ms=started,
             duration_ms=duration,
+            words=tuple(words),
             speakers=_speakers(words, metadata.get("speakers", []), embedded if origin == "received" else None),
             quote_line=_quote(words, metadata.get("quoteOverride"))
             if transcript in ("done", "queued", "running")
@@ -541,7 +536,16 @@ class LibraryScanner:
         words, readable, present = (), False, False
         try:
             if reference is not None:
-                if origin == "received" and not trusted:
+                if (
+                    origin == "received"
+                    and not trusted
+                    and (
+                        reference["kind"] != "sidecar"
+                        or embedded is None
+                        or embedded.state == portable.State.UNKNOWN_FORMAT
+                        or embedded.is_readable
+                    )
+                ):
                     raise ValueError("received-body-untrusted")
                 if reference["kind"] == "sidecar":
 
@@ -578,10 +582,24 @@ class LibraryScanner:
             return words, "failed", None, error or MeetingError("transcribe-failed", "Try again")
         if status == "damaged" or status == "done" and not readable or status is None and present and not readable:
             actionable = error if error and error.action is not None else MeetingError("transcript-damaged", None)
-            return words if readable else (), "damaged", None, actionable
+            return (), "damaged", None, actionable
         if status is None:
             status = "done" if readable else "none"
         return words, status, None, error
+
+
+def _unreadable(directory, identifier, activity):
+    if directory.name.startswith("Received-"):
+        return None
+    return Meeting(
+        id=identifier,
+        directory=directory,
+        title="Untitled meeting",
+        started_at_ms=None,
+        duration_ms=None,
+        lifecycle=activity if activity in ("recording", "saving") else "saved",
+        diagnostics=(Diagnostic(directory, "meeting-unreadable"),),
+    )
 
 
 def _sidecar_words(body):

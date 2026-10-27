@@ -81,7 +81,7 @@ def dispatch(packet, result, ready):
         elif action == "quit":
             app.quit()
         elif action == "reopen":
-            app.activate()
+            app.activate_action("browser-meetings", None)
             window = next(w for w in app.get_windows() if isinstance(w, BrowserMeetingsWindow))
         elif window is not None:
             if action in ("record", "stop"):
@@ -135,5 +135,7 @@ def requests():
             return
 
 
+# Launch still exercises the Library; enter the retained browser screen explicitly.
+app.connect("activate", lambda application: application.activate_action("browser-meetings", None))
 threading.Thread(target=requests, daemon=True).start()
 sys.exit(app.run([]))

@@ -94,3 +94,35 @@
 .summary-paragraph {
   line-height: 1.5;
 }
+
+/* Shared Library boards, HARMONY §10. */
+.library-window { font-size: 15px; background: #fff; }
+.library-window .small { font-size: 13px; }
+.library-window .library-title { font-size: 24px; font-weight: 700; }
+.library-window .library-header { min-height: 47px; padding: 0 6px; box-shadow: none; border-bottom: 1px solid #dddde2; }
+.library-window .library-sidebar { background: #ebebed; }
+.library-window .library-rows { background: transparent; padding: 0 8px; }
+.library-window .day-heading { padding: 12px 12px 6px; background: transparent; }
+.library-window .meeting-row { padding: 0; border-radius: 10px; margin: 2px 0; color: #202024; }
+.library-window .meeting-row:selected { background: #d4d4da; color: #202024; }
+.library-window .dim-label { color: #62626b; opacity: 1; }
+.library-window .meeting-row:selected .dim-label { color: #4a4a52; }
+.library-window .badge { border-radius: 100px; padding: 1px 8px; font-size: 13px; font-weight: 600; }
+.library-window .badge-red { background: #fbe4e6; color: #c01c28; }
+.library-window .badge-accent { background: #e1edfb; color: #1c71d8; }
+.library-window .badge-amber { background: #fcefc9; color: #7a4d00; }
+.library-window .badge-grey { background: #ececef; color: #62626b; }
+.library-window .speaker-chip { border-radius: 100px; background: #ececef; padding: 5px 12px; }
+.library-window .speaker-name { font-weight: 600; }
+.library-window .speaker-chip .speaker-name { color: #303035; font-weight: 400; }
+.library-window .colour-0 { color: #1c71d8; }
+.library-window .colour-1 { color: #b34700; }
+.library-window .colour-2 { color: #813d9c; }
+.library-window .auto-tag { font-size: 11px; font-weight: 500; color: #62626b; border: 1px solid #bcbcc4; border-radius: 5px; padding: 0 3px; }
+.library-window button { border-radius: 6px; }
+.library-window button.suggested-action { background: #1c71d8; color: white; }
+.library-window .cassini-record { background: #c01c28; color: white; font-weight: 600; min-height: 30px; padding: 0 12px; }
+.library-window .big-record { min-width: 74px; border-radius: 100px; min-height: 44px; padding: 0 22px; }
+.library-window .record-dot { font-size: 12px; }
+.library-window .first-run-icon { background: #ececef; border-radius: 24px; padding: 24px; margin-bottom: 0; }
+.library-window .excerpt { line-height: 1.5; }

@@ -202,3 +202,69 @@ def test_unknown_duration_omits_duration_without_inventing_copy():
     context = dict(now_ms=1793107080000, tz="Europe/Rome")
     assert fmt.preview_subtitle(1793088000000, None, **context) == "Today, 09:00"
     assert fmt.preview_subtitle(None, None, **context) == "Date unknown"
+
+
+@pytest.mark.parametrize(
+    "fixture,status",
+    [
+        ("009-bad-payload-sha256.opus", "done"),
+        ("010-stale-audio.opus", "damaged"),
+        ("015-unknown-major-version.opus", "damaged"),
+    ],
+)
+def test_received_local_sidecar_survives_invalid_metadata_but_not_stale_audio_or_unknown_format(
+    tmp_path, fixture, status
+):
+    directory = received(tmp_path, fixture)
+    metadata = json.loads((directory / "meeting.json").read_text())
+    metadata["transcript"] = dict(status="done", reference=REF)
+    (directory / "meeting.json").write_text(json.dumps(metadata))
+    (directory / "transcript.json").write_text(
+        json.dumps(dict(items=[dict(speaker="a", startMs=0, endMs=50, text="Locally written down.")]))
+    )
+    result = library.scan_library(tmp_path).meetings[0]
+    assert result.transcript == status
+    assert bool(result.words) == (status == "done")
+
+
+def test_stored_damaged_clears_readable_words_and_names(tmp_path):
+    session = capture(tmp_path)
+    write_metadata(session.directory, transcript=dict(status="damaged", reference=REF))
+    (session.directory / "transcript.json").write_text(
+        json.dumps(dict(items=[dict(speaker="a", startMs=0, endMs=50, text="Readable.")]))
+    )
+    result = library.scan_library(tmp_path).meetings[0]
+    assert result.transcript == "damaged"
+    assert result.words == result.speakers == () and result.quote_line is None
+
+
+def test_unexpected_row_failure_keeps_other_meetings(tmp_path, monkeypatch):
+    broken, good = capture(tmp_path), capture(tmp_path)
+    scanner = library.LibraryScanner(tmp_path)
+    original = scanner._read
+
+    def fail_one(fd, directory, *args):
+        if directory == broken.directory:
+            raise RuntimeError("synthetic third-party decoder failure")
+        return original(fd, directory, *args)
+
+    monkeypatch.setattr(scanner, "_read", fail_one)
+    result = scanner.scan()
+    assert not result.unavailable and len(result.meetings) == 2
+    assert next(m for m in result.meetings if m.id == good.manifest["id"]).title == "Capture title"
+    assert next(m for m in result.meetings if m.id == broken.manifest["id"]).diagnostics[0].code == "meeting-unreadable"
+
+
+def test_one_folder_stat_failure_does_not_fail_the_library(tmp_path, monkeypatch):
+    broken, good = capture(tmp_path), capture(tmp_path)
+    original = os.stat
+
+    def stat_one(path, *args, **kwargs):
+        if path == broken.directory.name:
+            raise PermissionError("synthetic inaccessible folder")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", stat_one)
+    result = library.scan_library(tmp_path)
+    assert not result.unavailable and len(result.meetings) == 2
+    assert next(m for m in result.meetings if m.id == good.manifest["id"]).title == "Capture title"

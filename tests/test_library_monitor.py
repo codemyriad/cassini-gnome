@@ -246,3 +246,30 @@ def test_close_during_worker_scan_suppresses_late_delivery(tmp_path, monkeypatch
     finally:
         release.set()
         monitor.close()
+
+
+def test_watch_target_resolution_and_stats_happen_in_worker(tmp_path, monkeypatch):
+    import threading
+    from pathlib import Path
+
+    main = threading.get_ident()
+    original_resolve, original_is_dir = Path.resolve, Path.is_dir
+
+    def resolved(path, *args, **kwargs):
+        assert threading.get_ident() != main, "Library path resolution blocked the UI"
+        return original_resolve(path, *args, **kwargs)
+
+    def is_dir(path):
+        assert threading.get_ident() != main, "Library ancestor stat blocked the UI"
+        return original_is_dir(path)
+
+    snapshots = []
+    monitor = LibraryMonitor(snapshots.append, tmp_path / "absent", debounce_ms=1)
+    monkeypatch.setattr(Path, "resolve", resolved)
+    monkeypatch.setattr(Path, "is_dir", is_dir)
+    try:
+        monitor.refresh()
+        spin_until(lambda: bool(snapshots))
+        monitor._changed(None, Gio.File.new_for_path(str(tmp_path / "unrelated")), None, Gio.FileMonitorEvent.CHANGED)
+    finally:
+        monitor.close()
