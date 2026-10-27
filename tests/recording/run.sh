@@ -25,6 +25,12 @@ runtime=$(mktemp -d /tmp/cassini-audio-XXXXXX)
 container="cassini-audio-$(id -u)-$$"
 cleanup() {
     docker rm -f "$container" >/dev/null 2>&1 || true
+    local helper
+    helper=$(command -v fusermount3 || command -v fusermount || true)
+    if [ -n "$helper" ]; then
+        "$helper" -uz "$runtime/session/doc" >/dev/null 2>&1 || true
+        "$helper" -uz "$runtime/session/gvfs" >/dev/null 2>&1 || true
+    fi
     rm -rf "$runtime"
 }
 trap cleanup EXIT

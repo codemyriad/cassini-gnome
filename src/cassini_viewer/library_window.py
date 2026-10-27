@@ -7,7 +7,9 @@ import time
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
 from . import ux_formats as fmt
+from .folder_player import FolderPlayer
 from .library_monitor import LibraryMonitor
+from .player import Player
 from .strings import text
 from .transcript import build_turns
 
@@ -29,6 +31,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.play_button = None
         self.read_button = None
         self._preview_key = None
+        self._loaded_key = None
         self.snapshot = None
         # These are hidden harness inputs, never separate production fixtures or fake widget data.
         self._fixed_now = (
@@ -37,12 +40,9 @@ class LibraryWindow(Adw.ApplicationWindow):
             else None
         )
         self.tz = fmt.local_timezone(os.environ.get("TZ") or GLib.TimeZone.new_local().get_identifier())
-        from .player import Player
-
         self.player = Player()
         self._playback_failed = False
-        self.player.connect("error", self._playback_error)
-        self.get_application().watch_player(self.player)
+        self._connect_player()
         self._fixture_activity = {}
         if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") == "1" and os.environ.get("CASSINI_SCREENSHOT_ACTIVITY"):
             import json
@@ -59,6 +59,14 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.monitor = LibraryMonitor(self._updated, capture_activity=lambda: self._fixture_activity)
         self.monitor.refresh()
         self.connect("close-request", self._close)
+        for name, callback in (
+            ("play-pause", self._play_selected),
+            ("skip-back", lambda *_: self.player.skip(-10000)),
+            ("skip-forward", lambda *_: self.player.skip(10000)),
+        ):
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", lambda _action, _param, call=callback: call())
+            self.add_action(action)
 
     @property
     def now_ms(self):
@@ -264,6 +272,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._stop_playback()
         elif not row.meeting.has_audio:
             self.player.stop()
+            self._loaded_key = None
         self._preview_key = row.meeting.key
         self.selected = meeting = row.meeting
         child = self.preview.get_first_child()
@@ -294,9 +303,11 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.preview.append(chips)
         actions = Gtk.Box(spacing=10)
         self.play_button = Gtk.Button(
-            label=text("common.play"),
+            label=text("player.pause" if self.player.playing else "common.play"),
             css_classes=["suggested-action"],
-            sensitive=meeting.audio_file is not None and meeting.has_audio and not self._playback_failed,
+            sensitive=meeting.has_audio
+            and not self._playback_failed
+            and (meeting.audio_file is not None or FolderPlayer.can_play(meeting)),
         )
         self.play_button.connect("clicked", lambda *_: self._play_selected())
         actions.append(self.play_button)
@@ -320,20 +331,51 @@ class LibraryWindow(Adw.ApplicationWindow):
             line.append(label(turn.text, "excerpt", xalign=0, yalign=0, wrap=True, hexpand=True))
             self.preview.append(line)
 
+    def _connect_player(self):
+        self.get_application().watch_player(self.player)
+        self.player.connect("error", self._playback_error)
+        self.player.connect(
+            "notify::playing",
+            lambda *_: (
+                self.play_button.set_label(text("player.pause" if self.player.playing else "common.play"))
+                if self.play_button is not None
+                else None
+            ),
+        )
+
     def _playback_error(self, _player, _message):
         self._playback_failed = True
+        self._loaded_key = None
         if self.play_button is not None:
             self.play_button.set_sensitive(False)
 
     def _play_selected(self):
-        if self.selected and self.selected.audio_file is not None and self.play_button.get_sensitive():
-            self._playback_failed = False
-            self.player.load(Gio.File.new_for_path(str(self.selected.audio_file)).get_uri(), self.selected.duration_ms)
-            if not self._playback_failed:
-                self.player.play()
+        meeting = self.selected
+        if meeting is None or not self.play_button.get_sensitive():
+            return
+        if self._loaded_key == meeting.key:
+            self.player.toggle()
+            return
+        desired = FolderPlayer if meeting.origin == "own" else Player
+        if type(self.player) is not desired:
+            self.player.shutdown()
+            self.player = desired()
+            self._connect_player()
+        self._playback_failed = False
+        try:
+            if isinstance(self.player, FolderPlayer):
+                self.player.load_tracks(meeting.tracks, meeting.duration_ms)
+            else:
+                self.player.load(Gio.File.new_for_path(str(meeting.audio_file)).get_uri(), meeting.duration_ms)
+        except (OSError, ValueError, RuntimeError, GLib.Error) as error:
+            self._playback_error(self.player, str(error))
+        if not self._playback_failed:
+            self._loaded_key = meeting.key
+            self.player.play()
 
     def _stop_playback(self, *, clear_selection=False):
         self.player.stop()
+        self._loaded_key = None
         if clear_selection:
             self._preview_key = None
         self._playback_failed = False
