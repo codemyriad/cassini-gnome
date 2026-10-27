@@ -111,7 +111,7 @@ class NativeRecorder(GObject.Object):
             self._start_us = GLib.get_monotonic_time()
             if self.minutes_left < 10:
                 self.line = "errors.diskLow.line"
-            self._disk_timer = GLib.timeout_add_seconds(5, self._check_disk)
+            self._disk_timer = GLib.timeout_add_seconds(1, self._check_disk)
             self.emit("started", str(self.session.directory))
             self.emit("changed")
             if reserve:

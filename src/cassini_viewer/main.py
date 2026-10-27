@@ -54,6 +54,9 @@ class CassiniApplication(Adw.Application):
         self._recording_cookie = 0
         self.recording_error = None
         self.record_first = None
+        self.comfort = None
+        self.global_shortcut = None
+        self._pending_recording = None
         self.set_option_context_parameter_string(_("[FILE…]"))
 
         self._add_action("open", self.on_open, ["<primary>o"])
@@ -61,6 +64,8 @@ class CassiniApplication(Adw.Application):
         self._add_action("quit", self.on_quit, ["<primary>q"])
         self._add_action("record", self.on_record, ["<primary>r"])
         self._add_action("browser-meetings", self.on_browser_meetings)
+        self._add_action("stop-recording", self.on_stop_recording)
+        self._add_action("open-recording", self.on_open_recording)
         self.set_accels_for_action("window.close", ["<primary>w"])
         self.set_accels_for_action("win.play-pause", ["space", "AudioPlay", "AudioPause"])
         self.set_accels_for_action("win.skip-back", ["Left"])
@@ -80,6 +85,13 @@ class CassiniApplication(Adw.Application):
     def do_startup(self):
         Adw.Application.do_startup(self)
         Gst.init(None)
+        from .recording_comfort import RecordingComfort
+
+        self.comfort = RecordingComfort(self, automatic=os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1")
+        if not os.environ.get("CASSINI_SCREENSHOT_ISOLATED") and not os.environ.get("CASSINI_ISOLATED_AUDIO"):
+            from .global_shortcut import GlobalShortcut
+
+            self.global_shortcut = GlobalShortcut(self.on_record)
 
     def _add_action(self, name, callback, accels=None):
         action = Gio.SimpleAction.new(name, None)
@@ -182,6 +194,9 @@ class CassiniApplication(Adw.Application):
         return Gio.Settings.new(self.settings_schema)
 
     def on_record(self, *_args):
+        if self.comfort and any(m.capture_source != "gnome" for m in self.comfort.active().values()):
+            self.stop_browser_recordings()
+            return
         if self.recorder and (self.recorder.pipeline is not None or self.recorder.starting):
             self.stop_native()
             return
@@ -215,7 +230,8 @@ class CassiniApplication(Adw.Application):
         self._native_held = True
         self.recorder.start(library_root(), test=test)
 
-    def _native_started(self, *_args):
+    def _native_started(self, _recorder, path):
+        self._pending_recording = path
         self._recording_cookie = self.inhibit(
             self.get_active_window(), Gtk.ApplicationInhibitFlags.SUSPEND, _("Recording a meeting")
         )
@@ -235,6 +251,7 @@ class CassiniApplication(Adw.Application):
             self.release()
 
     def _native_finished(self, _recorder, _path):
+        self._pending_recording = None
         if (
             self.transcription_enabled
             and not self._quitting
@@ -339,6 +356,21 @@ class CassiniApplication(Adw.Application):
             if isinstance(path, str) and path not in previous:
                 self.write_down(path)
 
+    def on_stop_recording(self, *_):
+        if self.recorder and (self.recorder.pipeline is not None or self.recorder.starting):
+            self.stop_native()
+        self.stop_browser_recordings() if self.comfort and any(
+            m.capture_source != "gnome" for m in self.comfort.active().values()
+        ) else None
+
+    def on_open_recording(self, *_):
+        self.do_activate()
+        window = self.get_active_window()
+        if hasattr(window, "open_live_recording"):
+            window.open_live_recording()
+        if self.comfort:
+            self.comfort.tick()
+
     def begin_exit(self):
         self._quitting = True
         self._transcription_generation += 1
@@ -357,6 +389,10 @@ class CassiniApplication(Adw.Application):
         return getattr(self, "_capture_background", False) and not self._quitting
 
     def do_shutdown(self):
+        if self.global_shortcut:
+            self.global_shortcut.close()
+        if self.comfort:
+            self.comfort.close()
         self.begin_exit()
         Adw.Application.do_shutdown(self)
 
