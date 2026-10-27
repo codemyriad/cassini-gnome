@@ -46,7 +46,8 @@
         "id": {
           "type": "string",
           "minLength": 1,
-          "$comment": "At most 200 UTF-8 bytes"
+          "$comment": "At most 200 UTF-8 bytes",
+          "maxLength": 200
         },
         "kind": {
           "enum": [

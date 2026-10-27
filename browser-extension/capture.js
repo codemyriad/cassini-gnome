@@ -13,8 +13,21 @@ async function bounded(promise, message) {
 }
 
 const clocks = new WeakMap();
+const resuming = new WeakMap();
+function resumeSuspended(context) {
+  if (resuming.has(context)) return resuming.get(context);
+  const began = performance.now(), render = context.currentTime || 0;
+  const task = bounded(Promise.resolve().then(() => context.resume()), "Audio capture did not resume within four seconds.").then(() => {
+    if (context.state !== "running") throw new Error("Audio capture remains suspended.");
+    const gap = Math.max(0, performance.now() - began - ((context.currentTime || 0) - render) * 1000);
+    if (clocks.has(context)) clocks.set(context, clocks.get(context) + gap);
+  });
+  resuming.set(context, task);
+  task.then(() => resuming.delete(context), () => resuming.delete(context));
+  return task;
+}
 
-export async function capture({ stream, id, label, kind, origin, workletURL, send, fail, audible = false, enabled = () => true, channels = 1, sharedContext, warn = () => {} }) {
+async function captureOnce({ stream, id, label, kind, origin, workletURL, send, fail, audible = false, enabled = () => true, channels = 1, sharedContext, warn = () => {} }) {
   const context = sharedContext || new AudioContext({ sampleRate: 48000 });
   let source, node, silent, remotePlayback, ending = false, failure = null;
   let pendingFrames = 0, sequence = 0, flushed, droppedFrames = 0;
@@ -36,14 +49,14 @@ export async function capture({ stream, id, label, kind, origin, workletURL, sen
     fail(error.message);
   }
   try {
-    await bounded(context.audioWorklet.addModule(workletURL), "The meeting page blocked the audio worklet. Use Tab audio instead.");
+    await bounded(context.audioWorklet.addModule(workletURL), "This meeting page blocks separate-track recording. Record the whole tab instead.");
     // Chromium may not decode a receiver for Web Audio until a media renderer exists.
     // Keep a silent renderer alive (crbug.com/40094084), without playing remote audio twice.
     if (kind === "remote") {
       remotePlayback = new Audio();
       remotePlayback.muted = true;
       remotePlayback.srcObject = stream;
-      await bounded(remotePlayback.play(), "The remote audio source did not start. Use Tab audio instead.");
+      await bounded(remotePlayback.play(), "A participant’s audio did not start. Record the whole tab instead.");
     }
     source = context.createMediaStreamSource(stream);
     node = new AudioWorkletNode(context, "cassini-pcm", {
@@ -54,20 +67,23 @@ export async function capture({ stream, id, label, kind, origin, workletURL, sen
     silent.gain.value = 0;
     source.connect(node).connect(silent).connect(context.destination);
     if (audible) source.connect(context.destination);
-    await bounded(context.resume(), "Interact with the meeting page to allow audio, then try again or use Tab audio.");
+    await bounded(context.resume(), "Click somewhere in the meeting page so the browser allows audio, then try again. Or record the whole tab.");
     if (context.state !== "running") throw new Error("Audio capture is suspended. Interact with the meeting page, then try again or use Tab audio.");
     let clockOffset = clocks.get(context);
     await send({ type: "track", id, label, kind, sampleRate: context.sampleRate, channels });
-    node.onprocessorerror = () => abort(new Error("The audio worklet stopped unexpectedly."));
+    node.onprocessorerror = () => abort(new Error("Audio capture stopped unexpectedly."));
     stateChanged = () => {
-      if (!ending && context.state !== "running") abort(new Error("Browser audio capture was suspended. The partial recording was saved."));
+      if (ending || context.state === "running") return;
+      if (["suspended", "interrupted"].includes(context.state)) {
+        void resumeSuspended(context).catch(abort);
+      } else abort(new Error("Browser audio capture closed unexpectedly."));
     };
     context.addEventListener?.("statechange", stateChanged);
     node.port.onmessage = ({ data }) => {
       if (data.stopped) { flushed?.(); return; }
       if (failure) return;
       const frames = data.pcm.byteLength / (channels * 2);
-      clockOffset ??= clocks.get(context);
+      clockOffset = clocks.get(context) ?? clockOffset;
       if (clockOffset === undefined) {
         // resume() can resolve before the device/render clock has started. Calibrate
         // once samples exist, then preserve render-frame timing rather than timing
@@ -79,7 +95,7 @@ export async function capture({ stream, id, label, kind, origin, workletURL, sen
       }
       if (pendingFrames + frames > context.sampleRate * 10) {
         droppedFrames += frames;
-        warn("A source exceeded its ten-second audio buffer. Its timeline contains a gap; other sources continue.");
+        warn("One track fell more than ten seconds behind and has a gap. The other tracks continue.");
         return;
       }
       pendingFrames += frames;
@@ -99,7 +115,7 @@ export async function capture({ stream, id, label, kind, origin, workletURL, sen
         ending = true;
         if (context.state === "running") {
           await new Promise((resolve, reject) => {
-            const timer = setTimeout(() => reject(new Error("Audio worklet did not finish.")), 2000);
+            const timer = setTimeout(() => reject(new Error("Audio capture did not finish in time.")), 2000);
             flushed = () => { clearTimeout(timer); resolve(); };
             node.port.postMessage("stop");
           }).catch(abort);
@@ -120,4 +136,47 @@ export async function capture({ stream, id, label, kind, origin, workletURL, sen
     if (!sharedContext) await context.close();
     throw error;
   }
+}
+
+
+// Keep retry ownership beside capture so page-hook's terminal failed-track suppression can
+// remain terminal. This also serves tab capture; no second discovery pass is performed.
+export async function capture(options) {
+  let current, ending = false, terminal = null, retryTimer, retries = 0, recovering = false, retiredDrops = 0;
+  let restarting = Promise.resolve();
+  const warn = options.warn || (() => {});
+  const schedule = message => {
+    if (ending || terminal || retryTimer) return;
+    recovering = true;
+    warn("A track was interrupted; trying to resume it.");
+    if (retries >= 3) { terminal = new Error(message); options.fail(message); return; }
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      restarting = (async () => {
+        const previous = current; current = null;
+        retiredDrops += previous?.droppedFrames || 0;
+        await previous?.stop().catch(() => {});
+        if (ending) return;
+        retries++;
+        try {
+          current = await captureOnce({ ...options, id: crypto.randomUUID(),
+            label: [...options.label].slice(0, 189).join("") + " (resumed)", fail: schedule });
+          recovering = false;
+        } catch (error) { schedule(error.message); }
+      })();
+    }, options.retryDelayMs ?? 5000);
+  };
+  current = await captureOnce({ ...options, fail: schedule });
+  return {
+    get failed() { return !!terminal; },
+    get state() { return ending ? "stopped" : terminal ? "failed" : recovering ? "retrying" : "recording"; },
+    get droppedFrames() { return retiredDrops + (current?.droppedFrames || 0); },
+    async stop() {
+      if (ending) return;
+      ending = true; clearTimeout(retryTimer);
+      await restarting;
+      try { await current?.stop(); } catch (error) { if (terminal) throw error; warn(error.message); }
+      if (terminal) throw terminal;
+    }
+  };
 }

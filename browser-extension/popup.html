@@ -6,10 +6,10 @@ h1 { font-size: 20px; margin-top: 0; } button { padding: 9px 12px; margin: 4px 4
 p { line-height: 1.5; } #path { overflow-wrap: anywhere; font-size: 12px; } .note { color: #555; font-size: 12px; }
 </style></head><body>
 <h1>Cassini Recorder</h1>
-<p id="status" role="status">Connecting…</p>
-<button id="tracks">Record WebRTC tracks</button><button id="tab">Record tab audio</button>
+<p id="status" role="status">Checking…</p>
+<button id="tracks">Record separate tracks</button><button id="tab">Record the whole tab</button>
 <button id="stop" hidden>Stop and save</button>
 <p id="path"></p>
-<p class="note">WebRTC records accessible incoming and outgoing tracks. Tab audio records the rendered mix, usually without your microphone. Use Cassini’s native recorder when browser capture is unavailable.</p>
-<p class="note">Audio stays on this Mac in Music/Cassini. Track labels are not verified participant identities. Install the Cassini native host before starting.</p>
+<p class="note">Separate tracks records each audio track the meeting page exposes, yours and the other participants’, as its own file. The whole tab records what the tab plays, usually without your microphone. For a complete recording that includes your microphone, use Record Meeting in Cassini.</p>
+<p class="note">Recordings are saved on this computer, in Music/Cassini. Nothing is uploaded. Track names come from the meeting page and are not verified identities. Cassini must be installed and connected to this browser.</p>
 <script src="popup.js"></script></body></html>

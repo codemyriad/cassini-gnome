@@ -38,7 +38,7 @@ def optional_string(value, default, code):
 
 
 def label_text(value):
-    return "".join(c for c in value if not unicodedata.category(c).startswith("C"))[:200]
+    return "".join(c for c in value if unicodedata.category(c) not in ("Cc", "Cf"))[:200]
 
 
 def strict_json(data):

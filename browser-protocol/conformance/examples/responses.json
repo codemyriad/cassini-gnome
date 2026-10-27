@@ -1,0 +1,18 @@
+[
+  {
+    "type": "started",
+    "path": "/example/Recording-9037a57c-c501-44e6-8f1a-56f4c9317695"
+  },
+  {
+    "type": "ack"
+  },
+  {
+    "type": "stopped",
+    "path": "/example/Recording-9037a57c-c501-44e6-8f1a-56f4c9317695"
+  },
+  {
+    "type": "error",
+    "code": "source",
+    "message": "Unknown audio source."
+  }
+]

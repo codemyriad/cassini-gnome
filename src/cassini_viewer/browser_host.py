@@ -33,8 +33,6 @@ def main(
                 except OSError as error:
                     LOG.warning("Recording saved at %s, but the viewer could not start: %s", result["path"], error)
             write_message(outgoing, result)
-            if result["type"] == "stopped":
-                break
         host.close()
         return 0
     except Exception as error:

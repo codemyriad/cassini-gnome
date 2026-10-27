@@ -1,0 +1,33 @@
+name: Shared recording contract
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python3 refresh-hashes.py && git diff --exit-code -- SHA256SUMS
+      - run: python3 verify.py
+      - run: python3 -m pip install -r requirements-test.txt
+      - run: python3 -m unittest discover -s tests -p "test_*.py"
+      - run: python3 conformance/check-native-fixture.py
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Isolated output device for generated tab tone
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pulseaudio
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=cassini_ci
+          pactl set-default-sink cassini_ci
+      - run: npm test
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: topology-results
+          path: artifacts/

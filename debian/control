@@ -12,6 +12,8 @@ Build-Depends: debhelper-compat (= 13),
                libgtk-4-bin,
                appstream,
                python3-pytest <!nocheck>,
+               python3-jsonschema <!nocheck>,
+               python3-rfc3339-validator <!nocheck>,
 Standards-Version: 4.7.0
 Homepage: https://github.com/codemyriad/cassini-gnome
 Vcs-Browser: https://github.com/codemyriad/cassini-gnome

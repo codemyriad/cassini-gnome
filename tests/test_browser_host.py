@@ -44,11 +44,15 @@ def test_canonical_conformance(tmp_path):
         timeout=120,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "36 passed, 0 failed" in result.stdout
+    count = len(json.loads((ROOT / "browser-protocol/conformance/vectors.json").read_text()))
+    assert f"{count} passed, 0 failed" in result.stdout
 
 
 def test_pinned_contract_integrity():
-    subprocess.run([sys.executable, str(ROOT / "build-aux/verify-browser-protocol.py")], check=True)
+    subprocess.run(
+        [sys.executable, str(ROOT / "browser-protocol/verify.py"), "--pinned", str(ROOT / "browser-extension")],
+        check=True,
+    )
 
 
 def test_viewer_failure_preserves_completed_session(tmp_path, caplog):

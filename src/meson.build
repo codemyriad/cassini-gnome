@@ -69,14 +69,17 @@ install_subdir('../browser-extension',
 # The portable contract gate needs only the Python standard library.
 protocol_python = python.find_installation('python3')
 test('browser-protocol-integrity', protocol_python,
-  args: [meson.project_source_root() / 'build-aux/verify-browser-protocol.py'],
+  args: [meson.project_source_root() / 'browser-protocol/verify.py', '--pinned', meson.project_source_root() / 'browser-extension'],
 )
-test('browser-protocol-conformance', protocol_python,
+protocol_tests = python.find_installation('python3', modules: ['jsonschema'], required: false)
+if protocol_tests.found()
+test('browser-protocol-conformance', protocol_tests,
   args: [meson.project_source_root() / 'browser-protocol/conformance/run.py',
          meson.project_source_root() / 'tests/conformance_host.py'],
   env: ['CASSINI_CONFORMANCE_DIR=' + meson.current_build_dir() / 'conformance-recordings'],
   timeout: 120,
 )
+endif
 
 configure_file(
   input: '../browser-extension/install-host.py',

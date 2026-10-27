@@ -1,0 +1,8 @@
+{
+  "type": "track",
+  "id": "remote-1",
+  "label": "Remote audio",
+  "kind": "remote",
+  "sampleRate": 48000,
+  "channels": 1
+}

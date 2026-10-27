@@ -53,7 +53,7 @@
       active = state;
       const send = packet => new Promise((resolve, reject) => {
         const request = ++state.next;
-        const timer = setTimeout(() => { state.pending.delete(request); reject(new Error("Cassini recorder did not acknowledge audio.")); }, 10000);
+        const timer = setTimeout(() => { state.pending.delete(request); reject(new Error("Cassini did not confirm receiving audio.")); }, 10000);
         state.pending.set(request, { resolve, reject, timer });
         emit(state.token, { type: "packet", request, packet });
       });

@@ -14,13 +14,16 @@
       ]
     },
     "path": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^/"
     },
     "problem": {
       "type": "string"
     },
     "message": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "code": {
       "enum": [
@@ -35,5 +38,38 @@
       ]
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "enum": [
+              "started",
+              "stopped"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "error"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "message"
+        ]
+      }
+    }
+  ]
 }

@@ -21,11 +21,11 @@ jobs:
       - name: Install audio and isolated GUI test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-gi python3-pytest gir1.2-gstreamer-1.0 \
+          sudo apt-get install -y python3-gi python3-pytest python3-jsonschema python3-rfc3339-validator gir1.2-gstreamer-1.0 \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good xvfb xauth xdotool dbus-x11 \
             gir1.2-gtk-4.0 gir1.2-adw-1 imagemagick meson ninja-build gettext \
             libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream
-      - run: python3 build-aux/verify-browser-protocol.py
+      - run: python3 browser-protocol/verify.py --pinned browser-extension
       - run: npm ci --prefix tests/recording
       - run: tests/recording/node_modules/.bin/playwright install --with-deps chromium
       - run: /usr/bin/python3 -m pytest -q

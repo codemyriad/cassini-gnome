@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "id": "9037a57c-c501-44e6-8f1a-56f4c9317695",
+  "createdAt": "2026-10-27T10:00:00Z",
+  "title": "Example meeting",
+  "source": "chromium",
+  "state": "completed",
+  "tracks": [
+    {
+      "id": "remote-1",
+      "label": "Remote audio",
+      "kind": "remote",
+      "file": "track-remote-1.wav",
+      "sampleRate": 48000,
+      "channels": 1,
+      "startOffsetMs": 125,
+      "frames": 2,
+      "endOffsetMs": 125.04166666666667,
+      "ended": true,
+      "labelSource": "browser"
+    }
+  ]
+}

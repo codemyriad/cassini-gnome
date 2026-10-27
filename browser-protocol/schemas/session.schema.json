@@ -23,7 +23,8 @@
       "format": "date-time"
     },
     "title": {
-      "type": "string"
+      "type": "string",
+      "maxLength": 500
     },
     "source": {
       "enum": [
@@ -73,7 +74,8 @@
           "id": {
             "type": "string",
             "minLength": 1,
-            "$comment": "At most 200 UTF-8 bytes"
+            "$comment": "At most 200 UTF-8 bytes",
+            "maxLength": 200
           },
           "kind": {
             "enum": [
@@ -99,7 +101,8 @@
             "$comment": "Raw JSON must use an integer literal: schema alone cannot distinguish 48000.0."
           },
           "label": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 200
           },
           "file": {
             "type": "string",
@@ -108,8 +111,8 @@
           "frames": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 9007199254740991,
-            "$comment": "Raw JSON must use an integer literal: schema alone cannot distinguish 48000.0."
+            "maximum": 2147483629,
+            "$comment": "Maximum mono PCM16 frames = floor((2^32-1-36)/2); the byte bound is stricter for stereo."
           },
           "startOffsetMs": {
             "type": [
@@ -124,7 +127,8 @@
               "number",
               "null"
             ],
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 86460000
           },
           "ended": {
             "type": [
@@ -146,5 +150,46 @@
       }
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "completed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "problem": {
+            "type": "null"
+          },
+          "problemKind": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "interrupted"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "problem"
+        ],
+        "properties": {
+          "problem": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  ]
 }

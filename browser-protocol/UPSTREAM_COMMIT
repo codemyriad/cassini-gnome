@@ -1,12 +1,26 @@
-tree d4d126185c7af3f56130942bd96a9a9cd41eee9e
-author Silvio Tomatis <silviot@gmail.com> 1793099216 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793099216 +0100
+tree e35de636eb516b9bbff8cb298acbd9cab5f2018f
+parent 4985d6ef7e9f1f36494d08528024dabad978390b
+parent 1af28cf019a277b0e69b5e4c87805a341c88a206
+author DrMeyers <drmeyers@codemyriad.io> 1793109065 +0100
+committer GitHub <noreply@github.com> 1793109065 +0100
+gpgsig -----BEGIN PGP SIGNATURE-----
+ 
+ wsFcBAABCAAQBQJq4KxJCRC1aQ7uu5UhlAAAR6YQAAaMw1R87DS4nO+VhqUfwMmR
+ ZBiUG/Z173F4IcbPEkQf5/C13mJm+xzd1hxgZ/gBYNp4jZo7pvuMKGxfM4YW/fCd
+ poqKZr21ddZwLjPN54HH210uL2pHZLjYmjuFic5Wuo/YTioyxJw2CpAsPhJ79bYI
+ ySx7GIqjf4JI9aSLTgmoTX3UH8zx4dd8TNzSzHa4nqwb+iuFeR6EasCC/eF7OW8e
+ yw8Q/SBQfTeTsFzSwTy8ZUy8V2725fPa8SmE0bOh8RoHgTE740OXX8xSj0QzCYtd
+ xxqnTCRsh7701e4J8WUrnyeCLou981FxR/bDJpLEdlRquvrVXQASOrPganNx1oDg
+ 6LSHAhTDWd9z5y9BgoCU6rkIFeFZuM/jaLd3H3ZmHsAeUb+B2plJAzAunboaSB4b
+ SfnUyBASpqdIVESrJK8amEQwXtLiY1cp7FiyD46FjtMDZlbqOLHOULsXH86YtS4A
+ UsqpBJ62+GYZpBI3lXaOHzyr+ywubQRyBflZGCX9l1k95P2WGVaakin0oWAdNaZh
+ /DYIlAb6pqg1+dgRD3Nm1Cvg94oY2fmB4PFecdjIlYxqiOKwl96uTyASnAo04p8z
+ 8Y6mEoTS4fccXmozz+r0Fe1vWW2ZqGCzsOZgbUoZNKHDklCS31bEDeeCKZ0SYvM7
+ VUrPAuT+OvflfrcXrJs9
+ =Icwh
+ -----END PGP SIGNATURE-----
+ 
 
-Import browser-protocol snapshot mac-review-1
+Merge pull request #5 from codemyriad/audit-products
 
-Shared contract between Cassini for GNOME and Cassini for Mac: SPEC.md, JSON
-Schemas, conformance vectors and stdio runner, tone helpers, and the exact
-Chromium extension snapshot with SHA256SUMS. Imported verbatim from the Mac
-agent's browser-protocol-mac-review-1.tar.gz (sha256 d5f5305a...).
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+M3: make product runs reproducible and capture their evidence
