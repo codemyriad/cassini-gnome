@@ -33,6 +33,8 @@ class WhistleClient:
         if not 1 <= threads <= 32:
             raise ValueError("CASSINI_WHISTLE_THREADS must be between 1 and 32")
         env["CASSINI_WHISTLE_THREADS"] = str(threads)
+        env["OPENBLAS_NUM_THREADS"] = "1"
+        env["OMP_NUM_THREADS"] = "1"
         env["LD_PRELOAD"] = str(self.bundle / "libcassini_whistle_cpu.so")
         self.process = subprocess.Popen(
             [sys.executable, str(Path(__file__).with_name("whistle_worker.py")), str(self.bundle)],
@@ -50,7 +52,7 @@ class WhistleClient:
             raise
         return self
 
-    def _receive(self, expected):
+    def _receive(self, expected=None):
         deadline = time.monotonic() + self.timeout
         while b"\n" not in self._buffer:
             remaining = max(0, deadline - time.monotonic())
@@ -63,7 +65,7 @@ class WhistleClient:
             self._buffer += data
         line, self._buffer = self._buffer.split(b"\n", 1)
         result = json.loads(line)
-        if result.get("type") != expected:
+        if expected is not None and result.get("type") != expected:
             raise RuntimeError("Whistle worker failed: " + str(result.get("message", "invalid reply")))
         return result
 
@@ -78,6 +80,25 @@ class WhistleClient:
         except OSError as error:
             raise RuntimeError("Whistle worker stopped accepting requests") from error
         return self._receive("result")
+
+    def process_tracks(self, tracks, progress):
+        if self.process is None or self.process.poll() is not None:
+            raise RuntimeError("Whistle worker is not running")
+        packet = json.dumps(dict(type="pipeline", tracks=tracks)).encode() + b"\n"
+        if len(packet) > 512 * 1024:
+            raise ValueError("Worker request exceeds limit")
+        try:
+            self.process.stdin.write(packet)
+            self.process.stdin.flush()
+        except OSError as error:
+            raise RuntimeError("Whistle worker stopped accepting requests") from error
+        while True:
+            value = self._receive()
+            if value.get("type") == "complete":
+                return value
+            if value.get("type") not in ("planning", "planned", "progress"):
+                raise RuntimeError("Whistle worker failed: " + str(value.get("message", "invalid reply")))
+            progress(value)
 
     def close(self):
         if self.selector is not None:

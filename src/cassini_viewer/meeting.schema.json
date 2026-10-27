@@ -73,7 +73,8 @@
       "enum": [
        "user",
        "recognised",
-       "unnamed"
+       "unnamed",
+       "source"
       ]
      },
      "colourIndex": {
@@ -329,7 +330,7 @@
  "additionalProperties": true,
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "title": "Cassini app-owned meeting metadata, v1",
- "$comment": "Folder prefix and matching UUID, safe nonescaping paths, unique speaker IDs, preservation of unknown members, and cross-process revision/lock rules are additional reader/writer checks in LIBRARY.md. D6.1: etaMinutes may be null while queued/running (shown as 'Transcribing…'). Folder context (not expressible here): a Received-<uuid> folder requires a non-null received object; a Recording-<uuid> folder requires received null.",
+ "$comment": "Folder prefix and matching UUID, safe nonescaping paths, unique speaker IDs, preservation of unknown members, and cross-process revision/lock rules are additional reader/writer checks in LIBRARY.md. D6.1: etaMinutes may be null while queued/running (shown as 'Transcribing…'). Folder context (not expressible here): a Received-<uuid> folder requires a non-null received object; a Recording-<uuid> folder requires received null. D11.2: provenance 'source' = a name that comes from the capture source (Me, The others); the name is required and non-null, like 'user'.",
  "allOf": [
   {
    "if": {

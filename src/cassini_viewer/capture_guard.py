@@ -56,12 +56,19 @@ def confirm_capture_close(app, window, *, quitting=False):
         def stopped(result):
             executor.shutdown(wait=False)
             try:
-                result.result()
+                paths = result.result()
             except (OSError, ValueError):
                 # Keep the controller/window available if stopping failed.
                 GLib.idle_add(window.present)
             else:
-                GLib.idle_add(close_windows)
+
+                def finish():
+                    if getattr(app, "transcription_enabled", False):
+                        for path in paths:
+                            app.write_down(path)
+                    return close_windows()
+
+                GLib.idle_add(finish)
 
         future.add_done_callback(stopped)
 
@@ -92,6 +99,9 @@ def stop_browser_captures():
     from . import browser_service
 
     state = browser_service.request()
+    paths = [s["path"] for s in state.get("statuses", []) if s.get("recording") and isinstance(s.get("path"), str)]
     for meeting in state.get("meetings", []):
         if meeting.get("recording"):
             browser_service.request("stop", id=meeting["id"])
+
+    return paths

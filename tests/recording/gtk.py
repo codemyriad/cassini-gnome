@@ -59,6 +59,7 @@ def painted(window):
 artifacts = Path(os.environ.get("CASSINI_TEST_ARTIFACTS", str(Path(__file__).parent / "artifacts/gtk")))
 artifacts.mkdir(parents=True, exist_ok=True)
 app = CassiniApplication("com.gocassini.RecordingTest", "test", "development")
+app.transcription_enabled = False  # Audio/permission harness; real ML is proved by the offline pipeline job.
 evidence = {"passed": False}
 callback_errors = []
 

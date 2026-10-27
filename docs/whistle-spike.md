@@ -68,3 +68,8 @@ network-disabled build phase. Ship `NOTICE.md`, the Apache licence and the bridg
 source with the bundle. Enable shipping only for glibc x86_64 until another
 pinned engine is independently tested. No package dependency or launcher change
 is necessary merely to run this spike; app integration remains UX13.
+
+The full UX13 implementation and updated packaging handoff are now described in
+[transcription.md](transcription.md), including bundled Silero and NumPy/ORT CPU
+runtime dependencies. The worker also accepts whole-meeting pipeline requests;
+the 30-second limit above applies only to the original file-smoke-test request.

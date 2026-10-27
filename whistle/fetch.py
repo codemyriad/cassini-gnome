@@ -51,20 +51,20 @@ def fetch(out, cache):
                 raise ValueError("Existing bundle hashes differ")
         for name, expected in manifest.items():
             verify(out / name, expected)
-        for name in ("cpu_limit.c", "NOTICE.md", "LICENSE-Apache-2.0.txt"):
+        for name in ("cpu_limit.c", "NOTICE.md", "LICENSE-Apache-2.0.txt", "LICENSE-Silero-MIT.txt"):
             if (out / name).read_bytes() != (HERE / name).read_bytes():
                 raise ValueError(f"Existing bundle source/license differs: {name}")
         return
     out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=out.parent) as stage:
         stage = Path(stage)
-        for name in ("whistle.cact", "wrapper.whl"):
+        for name in ("whistle.cact", "wrapper.whl", "silero_vad.onnx"):
             shutil.copyfile(cache / name, stage / name)
         with zipfile.ZipFile(cache / "engine.whl") as archive:
             (stage / "libneedle3.so").write_bytes(archive.read("needle/libneedle3.so"))
         for name, expected in pins["installed"].items():
             verify(stage / name, expected)
-        for name in ("pins.json", "NOTICE.md", "LICENSE-Apache-2.0.txt"):
+        for name in ("pins.json", "NOTICE.md", "LICENSE-Apache-2.0.txt", "LICENSE-Silero-MIT.txt"):
             shutil.copyfile(HERE / name, stage / name)
         subprocess.run(
             shlex.split(os.environ.get("CC", "cc"))
