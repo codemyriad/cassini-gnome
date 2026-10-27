@@ -3,7 +3,6 @@
 
 import logging
 import os
-import tempfile
 import threading
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
@@ -68,41 +67,6 @@ def prepare_tracks(meeting):
         tracks.append(dict(id=raw["id"], path=str(track.path), offsetMs=track.start_offset_ms, speaker=speaker))
         speakers[speaker] = dict(id=speaker, name=name, provenance=provenance, colourIndex=index)
     return tracks, speakers
-
-
-def decode_received(path, destination, *, cancelled=lambda: False):
-    # Opus decodes natively to 48 kHz PCM. Conversion here preserves the native
-    # rate/channels; only the shared FIR ever changes 48 kHz to 16 kHz.
-    import gi
-
-    gi.require_version("Gst", "1.0")
-    from gi.repository import Gst
-
-    Gst.init(None)
-    pipeline = Gst.parse_launch(
-        "uridecodebin name=source ! audioconvert ! audio/x-raw,format=S16LE,rate=48000 ! wavenc ! filesink name=output"
-    )
-    pipeline.get_by_name("source").set_property("uri", Path(path).as_uri())
-    pipeline.get_by_name("output").set_property("location", str(destination))
-    try:
-        if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
-            raise RuntimeError("Could not decode received audio")
-        import time
-
-        deadline = time.monotonic() + 120
-        message = None
-        while message is None:
-            if cancelled():
-                raise CancelledError()
-            if time.monotonic() > deadline:
-                raise RuntimeError("Received audio decode timed out")
-            message = pipeline.get_bus().timed_pop_filtered(
-                Gst.SECOND // 5, Gst.MessageType.ERROR | Gst.MessageType.EOS
-            )
-        if message.type == Gst.MessageType.ERROR:
-            raise RuntimeError(message.parse_error()[0].message)
-    finally:
-        pipeline.set_state(Gst.State.NULL)
 
 
 class TranscriptionQueue:
@@ -210,68 +174,67 @@ class TranscriptionQueue:
         directory = meeting.directory
         update_metadata(directory, transcript=dict(status="running", reference=REFERENCE), etaMinutes=None, error=None)
         self.changed(directory)
-        with tempfile.TemporaryDirectory(prefix="cassini-transcribe-") as temporary:
-            if meeting.origin == "received":
-                decoded = Path(temporary) / "received.wav"
-                decode_received(meeting.audio_file, decoded, cancelled=lambda: self.closed)
-                tracks = [dict(id="received", path=str(decoded), offsetMs=0, speaker="track-original")]
-                speakers = {"track-original": dict(id="track-original", name=None, provenance="unnamed", colourIndex=0)}
-            else:
-                tracks, speakers = prepare_tracks(meeting)
-            if not tracks:
-                raise ValueError("Meeting has no complete audio frames")
-            existing = {s["id"]: s for s in metadata.get("speakers", [])}
-            for speaker in speakers:
-                if speaker in existing and existing[speaker]["provenance"] in ("user", "recognised"):
-                    speakers[speaker] = existing[speaker]
-            by_track = {track["id"]: track for track in tracks}
-            words = []
+        if meeting.origin == "received":
+            tracks = [
+                dict(id="received", path=str(meeting.audio_file), format="opus", offsetMs=0, speaker="track-original")
+            ]
+            speakers = {"track-original": dict(id="track-original", name=None, provenance="unnamed", colourIndex=0)}
+        else:
+            tracks, speakers = prepare_tracks(meeting)
+        if not tracks:
+            raise ValueError("Meeting has no complete audio frames")
+        existing = {s["id"]: s for s in metadata.get("speakers", [])}
+        for speaker in speakers:
+            if speaker in existing and existing[speaker]["provenance"] in ("user", "recognised"):
+                speakers[speaker] = existing[speaker]
+        by_track = {track["id"]: track for track in tracks}
+        words = []
 
-            def progress(value):
-                if self.closed:
-                    raise CancelledError()
-                if value["type"] == "planning":
-                    return
-                if value["type"] == "progress":
-                    track = by_track[value["trackId"]]
-                    for word in value["words"]:
-                        if (
-                            type(word["startMs"]) is not int
-                            or type(word["endMs"]) is not int
-                            or not 0 <= word["startMs"] <= word["endMs"]
-                            or not word["text"]
-                        ):
-                            raise ValueError("Invalid timed recognition item")
-                        words.append(dict(word, speaker=track["speaker"], _order=value["trackOrder"]))
-                    words.sort(key=lambda w: (w["startMs"], w["_order"]))
-                    body = [{k: v for k, v in word.items() if k != "_order"} for word in words]
-                    atomic_json(
-                        directory / "transcript.json",
-                        dict(format="cassini.words.v1", language=value["language"], items=body),
-                    )
-                update_metadata(directory, etaMinutes=value["etaMinutes"], speakers=list(speakers.values()))
-                self.changed(directory)
-
-            if self.client is None:
-                client = self.client_factory(self.bundle, timeout=120)
-                with self.lock:
-                    if self.closed:
-                        raise CancelledError()
-                    self.client = client
-                self.client.start()
-            complete = self.client.process_tracks(tracks, progress)
+        def progress(value):
             if self.closed:
                 raise CancelledError()
-            for diagnostic in complete.get("diagnostics", []):
-                LOG.warning("Transcription diagnostic: %s", diagnostic)
-            update_metadata(
-                directory,
-                transcript=dict(status="done", reference=REFERENCE),
-                etaMinutes=None,
-                error=None,
-                speakers=list(speakers.values()),
-            )
+            if value["type"] == "planning":
+                return
+            if value["type"] == "progress":
+                track = by_track[value["trackId"]]
+                for word in value["words"]:
+                    if (
+                        type(word["startMs"]) is not int
+                        or type(word["endMs"]) is not int
+                        or not 0 <= word["startMs"] <= word["endMs"]
+                        or not word["text"]
+                    ):
+                        raise ValueError("Invalid timed recognition item")
+                    words.append(dict(word, speaker=track["speaker"], _order=value["trackOrder"]))
+                words.sort(key=lambda w: (w["startMs"], w["_order"]))
+                body = [{k: v for k, v in word.items() if k != "_order"} for word in words]
+                atomic_json(
+                    directory / "transcript.json",
+                    dict(format="cassini.words.v1", language=value["language"], items=body),
+                )
+            update_metadata(directory, etaMinutes=value["etaMinutes"], speakers=list(speakers.values()))
             self.changed(directory)
+
+        if self.client is None:
+            client = self.client_factory(self.bundle, timeout=120)
+            with self.lock:
+                if self.closed:
+                    raise CancelledError()
+                self.client = client
+            self.client.start()
+        complete = self.client.process_tracks(tracks, progress)
+        if self.closed:
+            raise CancelledError()
+        for diagnostic in complete.get("diagnostics", []):
+            LOG.warning("Transcription diagnostic: %s", diagnostic)
+        update_metadata(
+            directory,
+            transcript=dict(status="done", reference=REFERENCE),
+            etaMinutes=None,
+            error=None,
+            speakers=list(speakers.values()),
+        )
+        self.changed(directory)
 
     def close(self):
         """Cancel promptly; callbacks/IO teardown finish off the GTK thread."""

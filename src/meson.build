@@ -60,6 +60,7 @@ install_data(
   'cassini_viewer/whistle_client.py',
   'cassini_viewer/whistle_worker.py',
   'cassini_viewer/speech_pipeline.py',
+  'cassini_viewer/opus_input.py',
   'cassini_viewer/fir-48k-16k.json',
   'cassini_viewer/inline_line.py',
   'cassini_viewer/open_meeting.py',

@@ -113,3 +113,39 @@ def test_automatic_language_and_unknown_offset_zero_with_diagnostic(tmp_path, mo
     )
     assert result["diagnostics"] == [dict(code="unknown-offset-display-zero", track="one")]
     assert events[-1]["words"] == [dict(startMs=33, endMs=100, text="word")]
+
+
+def test_streamed_fir_matches_immutable_reference_and_arbitrary_input_boundaries():
+    import wave
+    from pathlib import Path
+
+    from cassini_viewer.speech_pipeline import TAPS, resampled_stream
+
+    root = Path(__file__).parent / "whistle/pipeline"
+    with wave.open(str(root / "pipeline-input-48k.wav")) as audio:
+        pcm = np.frombuffer(audio.readframes(audio.getnframes()), dtype="<i2").astype(np.float32) / np.float32(32768)
+
+    # Deliberately split before/after the centred FIR context and at nonmultiples of three.
+    def chunks(values):
+        sizes = (1, 2, 47, 49, 997, 48000, 31)
+        offset = index = 0
+        while offset < len(values):
+            length = sizes[index % len(sizes)]
+            yield values[offset : offset + length]
+            offset += length
+            index += 1
+
+    result = np.concatenate(list(resampled_stream(chunks(pcm))))
+    expected = np.fromfile(root / "pipeline-resampled-16k.f32", dtype="<f4")
+    assert np.array_equal(result, expected)
+    for length in (1, 2, 47, 48, 49, 48000, 48017):
+        small = pcm[:length]
+        result = np.concatenate(list(resampled_stream(chunks(small))))
+        reference = np.array(
+            [
+                sum(float(h) * float(small[3 * k + 48 - n]) for n, h in enumerate(TAPS) if 0 <= 3 * k + 48 - n < length)
+                for k in range((length + 2) // 3)
+            ],
+            dtype="<f4",
+        )
+        assert np.array_equal(result, reference), length

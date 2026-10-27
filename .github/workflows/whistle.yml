@@ -5,6 +5,7 @@ on:
       - 'whistle/**'
       - 'src/cassini_viewer/whistle_*.py'
       - 'src/cassini_viewer/speech_pipeline.py'
+      - 'src/cassini_viewer/opus_input.py'
       - 'src/cassini_viewer/fir-48k-16k.json'
       - 'src/cassini_viewer/transcription.py'
       - 'src/cassini_viewer/meeting_store.py'
