@@ -14,6 +14,10 @@ Build-Depends: debhelper-compat (= 13),
                python3-pytest <!nocheck>,
                python3-jsonschema <!nocheck>,
                python3-rfc3339-validator <!nocheck>,
+               python3-gi <!nocheck>,
+               gir1.2-gstreamer-1.0 <!nocheck>,
+               gstreamer1.0-plugins-base <!nocheck>,
+               gstreamer1.0-plugins-good <!nocheck>,
 Standards-Version: 4.7.0
 Homepage: https://github.com/codemyriad/cassini-gnome
 Vcs-Browser: https://github.com/codemyriad/cassini-gnome
@@ -23,7 +27,6 @@ Rules-Requires-Root: no
 Package: cassini-viewer
 Architecture: all
 Depends: ${misc:Depends},
-         ${python3:Depends},
          python3 (>= 3.11),
          python3-gi,
          gir1.2-gtk-4.0 (>= 4.18),
@@ -31,8 +34,8 @@ Depends: ${misc:Depends},
          gir1.2-gstreamer-1.0,
          gstreamer1.0-plugins-base,
          gstreamer1.0-plugins-good,
-Recommends: gstreamer1.0-pipewire | gstreamer1.0-pulseaudio,
-Description: read along with meeting recordings
+Recommends: pipewire-pulse | pulseaudio,
+Description: play and record meetings, and read along with their transcripts
  Cassini plays meeting recordings in the Cassini portable meeting format:
  ordinary Ogg Opus files that carry their own word-by-word transcript,
  speaker names and summary.
@@ -41,3 +44,9 @@ Description: read along with meeting recordings
  word to play from there, see participants, search the transcript, read the
  summary, verify that the audio matches its transcript, and export the
  transcript as text or WebVTT subtitles.
+ .
+ Cassini also records meetings. It captures the microphone and desktop audio
+ into an Opus file through a PulseAudio-compatible sound server such as
+ PipeWire. With its companion extension for Chromium-based browsers, which
+ this package includes together with the extension's native messaging
+ hosts, it records each audio source of a WebRTC meeting on its own track.

@@ -7,6 +7,11 @@ on:
 permissions:
   contents: read
 
+# The runners have both; build.sh would pick podman, but rootful docker is
+# what it is tested with.
+env:
+  CONTAINER_ENGINE: docker
+
 jobs:
   build:
     name: Build .deb (${{ matrix.base }})
@@ -19,26 +24,11 @@ jobs:
       fail-fast: false
       matrix:
         base: ["ubuntu:26.04", "debian:testing"]
-    container: ${{ matrix.base }}
     steps:
       - uses: actions/checkout@v5
-      - name: Install build dependencies
-        run: |
-          echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80retries
-          apt-get update
-          apt-get install -y --no-install-recommends build-essential devscripts equivs lintian
-          mk-build-deps -i -r -t "apt-get -y --no-install-recommends" debian/control
-      - name: Build
-        run: dpkg-buildpackage -us -uc -b
-      - name: Lintian
-        run: lintian --info --fail-on error ../*.deb
-      - name: Install and smoke-test
-        run: |
-          apt-get install -y --no-install-recommends ../*.deb
-          python3 -c "import sys; sys.path.insert(0, '/usr/share/cassini-viewer'); import cassini_viewer.portable"
-          test -x /usr/bin/cassini-viewer
-      - name: Collect
-        run: mkdir -p dist && cp ../*.deb dist/
+      # The same script as `make deb`: checks the version, builds, runs
+      # lintian, installs the package and smoke-tests it in a container.
+      - run: build-aux/deb/build.sh "${{ matrix.base }}"
       # Both bases produce the same file name; release the Ubuntu build.
       - if: matrix.base == 'ubuntu:26.04'
         uses: actions/upload-artifact@v4

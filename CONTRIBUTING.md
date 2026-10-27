@@ -73,7 +73,7 @@ msginit -i po/cassini-viewer.pot -o po/<code>.po -l <code>
    - `Version:` and a `%changelog` entry in `build-aux/rpm/cassini-viewer.spec`
    - `pkgver` in `build-aux/arch/PKGBUILD`
 
-   The RPM and Arch build scripts refuse to build when their version differs
+   The deb, RPM and Arch build scripts refuse to build when their version differs
    from `meson.build`.
 2. Tag `vX.Y.Z` and push the tag. The release workflow builds the .deb, the
    Fedora and openSUSE RPMs, the Arch package and the Flatpak bundle, and

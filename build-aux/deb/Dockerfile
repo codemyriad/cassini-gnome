@@ -3,6 +3,8 @@
 ARG BASE=ubuntu:26.04
 FROM ${BASE}
 ENV DEBIAN_FRONTEND=noninteractive
+# Mirrors occasionally time out, in CI especially.
+RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80retries
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential devscripts equivs lintian && rm -rf /var/lib/apt/lists/*
 COPY control /tmp/control
