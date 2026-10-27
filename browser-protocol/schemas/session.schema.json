@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "version",
+    "id",
+    "createdAt",
+    "title",
+    "source",
+    "state",
+    "tracks"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "title": {
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "chromium",
+        "macos",
+        "gnome",
+        "recovered"
+      ]
+    },
+    "state": {
+      "enum": [
+        "recording",
+        "completed",
+        "interrupted"
+      ]
+    },
+    "problem": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "problemKind": {
+      "enum": [
+        "empty",
+        "capture",
+        "io",
+        "recovery",
+        null
+      ]
+    },
+    "tracks": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "kind",
+          "file",
+          "sampleRate",
+          "channels",
+          "frames"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "$comment": "At most 200 UTF-8 bytes"
+          },
+          "kind": {
+            "enum": [
+              "local",
+              "remote",
+              "media",
+              "tab",
+              "microphone",
+              "application",
+              "system"
+            ]
+          },
+          "sampleRate": {
+            "type": "integer",
+            "minimum": 8000,
+            "maximum": 192000,
+            "$comment": "Raw JSON must use an integer literal: schema alone cannot distinguish 48000.0."
+          },
+          "channels": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2,
+            "$comment": "Raw JSON must use an integer literal: schema alone cannot distinguish 48000.0."
+          },
+          "label": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string",
+            "pattern": "^track-[^/\\\\]+\\.wav$"
+          },
+          "frames": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "$comment": "Raw JSON must use an integer literal: schema alone cannot distinguish 48000.0."
+          },
+          "startOffsetMs": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 86400000
+          },
+          "endOffsetMs": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "ended": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "labelSource": {
+            "enum": [
+              "browser",
+              "device",
+              "user",
+              "recovered",
+              null
+            ]
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

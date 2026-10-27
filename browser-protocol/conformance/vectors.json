@@ -1,0 +1,704 @@
+[
+  {
+    "name": "roundtrip",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"AQACAA==\"}",
+      "{\"type\":\"stop\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "stopped"
+      }
+    ],
+    "state": "completed",
+    "frames": [
+      2
+    ]
+  },
+  {
+    "name": "null-title",
+    "requests": [
+      "{\"type\":\"start\",\"title\":null}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"AQACAA==\"}",
+      "{\"type\":\"stop\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "stopped"
+      }
+    ],
+    "state": "completed"
+  },
+  {
+    "name": "null-version",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\",\"version\":null}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"AQACAA==\"}",
+      "{\"type\":\"stop\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "stopped"
+      }
+    ],
+    "state": "completed"
+  },
+  {
+    "name": "empty-problem-",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"AQACAA==\"}",
+      "{\"type\":\"stop\",\"problem\":\"\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "stopped"
+      }
+    ],
+    "state": "completed"
+  },
+  {
+    "name": "empty-problem-None",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"AQACAA==\"}",
+      "{\"type\":\"stop\",\"problem\":null}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "stopped"
+      }
+    ],
+    "state": "completed"
+  },
+  {
+    "name": "null-label",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1,\"label\":null}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"AQACAA==\"}",
+      "{\"type\":\"stop\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "stopped"
+      }
+    ],
+    "state": "completed"
+  },
+  {
+    "name": "extra-fields",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\",\"extra\":{\"hello\":true}}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"AQACAA==\"}",
+      "{\"type\":\"stop\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "stopped"
+      }
+    ],
+    "state": "completed"
+  },
+  {
+    "name": "rate-48000",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\": \"track\", \"id\": \"x\", \"kind\": \"local\", \"sampleRate\": 48000, \"channels\": 1}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"AQACAA==\"}",
+      "{\"type\":\"stop\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "stopped"
+      }
+    ]
+  },
+  {
+    "name": "rate-48000.0",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\": \"track\", \"id\": \"x\", \"kind\": \"local\", \"sampleRate\": 48000.0, \"channels\": 1}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "error",
+        "code": "source"
+      }
+    ]
+  },
+  {
+    "name": "rate-4.8e4",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\": \"track\", \"id\": \"x\", \"kind\": \"local\", \"sampleRate\": 4.8e4, \"channels\": 1}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "error",
+        "code": "source"
+      }
+    ]
+  },
+  {
+    "name": "rate-true",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\": \"track\", \"id\": \"x\", \"kind\": \"local\", \"sampleRate\": true, \"channels\": 1}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "error",
+        "code": "source"
+      }
+    ]
+  },
+  {
+    "name": "rate-\"48000\"",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\": \"track\", \"id\": \"x\", \"kind\": \"local\", \"sampleRate\": \"48000\", \"channels\": 1}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "error",
+        "code": "source"
+      }
+    ]
+  },
+  {
+    "name": "invalid-track-label",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1,\"label\":3}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "error",
+        "code": "source"
+      }
+    ]
+  },
+  {
+    "name": "invalid-track-channels",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":true}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "error",
+        "code": "source"
+      }
+    ]
+  },
+  {
+    "name": "invalid-track-id",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":null,\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "error",
+        "code": "source"
+      }
+    ]
+  },
+  {
+    "name": "invalid-track-kind",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"person\",\"sampleRate\":48000,\"channels\":1}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "error",
+        "code": "source"
+      }
+    ]
+  },
+  {
+    "name": "offset-true",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\": \"audio\", \"id\": \"x\", \"sequence\": 0, \"offsetMs\": true, \"pcm\": \"AQACAA==\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "error",
+        "code": "chunk"
+      }
+    ]
+  },
+  {
+    "name": "offset-NaN",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\": \"audio\", \"id\": \"x\", \"sequence\": 0, \"offsetMs\": NaN, \"pcm\": \"AQACAA==\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "error",
+        "code": "framing"
+      }
+    ]
+  },
+  {
+    "name": "offset-Infinity",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\": \"audio\", \"id\": \"x\", \"sequence\": 0, \"offsetMs\": Infinity, \"pcm\": \"AQACAA==\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "error",
+        "code": "framing"
+      }
+    ]
+  },
+  {
+    "name": "offset-1e999",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\": \"audio\", \"id\": \"x\", \"sequence\": 0, \"offsetMs\": 1e999, \"pcm\": \"AQACAA==\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "error",
+        "code": "chunk"
+      }
+    ]
+  },
+  {
+    "name": "offset-\"250\"",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\": \"audio\", \"id\": \"x\", \"sequence\": 0, \"offsetMs\": \"250\", \"pcm\": \"AQACAA==\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "error",
+        "code": "chunk"
+      }
+    ]
+  },
+  {
+    "name": "invalid-audio-pcm-",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "error",
+        "code": "chunk"
+      }
+    ]
+  },
+  {
+    "name": "invalid-audio-pcm-!!!",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"!!!\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "error",
+        "code": "chunk"
+      }
+    ]
+  },
+  {
+    "name": "invalid-audio-pcm-AQ==",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"AQ==\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "error",
+        "code": "chunk"
+      }
+    ]
+  },
+  {
+    "name": "invalid-audio-sequence-1",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":1,\"offsetMs\":250,\"pcm\":\"AQACAA==\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "error",
+        "code": "sequence"
+      }
+    ]
+  },
+  {
+    "name": "invalid-audio-sequence-True",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":true,\"offsetMs\":250,\"pcm\":\"AQACAA==\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "error",
+        "code": "sequence"
+      }
+    ]
+  },
+  {
+    "name": "invalid-audio-id-absent",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\":\"audio\",\"id\":\"absent\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"AQACAA==\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "error",
+        "code": "source"
+      }
+    ]
+  },
+  {
+    "name": "empty-session",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"stop\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "stopped"
+      }
+    ],
+    "state": "interrupted"
+  },
+  {
+    "name": "unknown-type",
+    "requests": [
+      "{\"type\":\"other\"}"
+    ],
+    "expect": [
+      {
+        "type": "error",
+        "code": "version"
+      }
+    ]
+  },
+  {
+    "name": "string-version",
+    "requests": [
+      "{\"type\":\"start\",\"version\":\"1\"}"
+    ],
+    "expect": [
+      {
+        "type": "error",
+        "code": "version"
+      }
+    ]
+  },
+  {
+    "name": "duplicate-json",
+    "requests": [
+      "{\"type\":\"start\",\"type\":\"stop\"}"
+    ],
+    "expect": [
+      {
+        "type": "error",
+        "code": "framing"
+      }
+    ]
+  },
+  {
+    "name": "audio-before-start",
+    "requests": [
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"AQACAA==\"}"
+    ],
+    "expect": [
+      {
+        "type": "error",
+        "code": "state"
+      }
+    ]
+  },
+  {
+    "name": "double-start",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "error",
+        "code": "state"
+      }
+    ],
+    "state": "interrupted"
+  },
+  {
+    "name": "disconnect",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"AQACAA==\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "ack"
+      }
+    ],
+    "state": "interrupted",
+    "frames": [
+      2
+    ]
+  },
+  {
+    "name": "gap-preserved",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"AQACAA==\"}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":1,\"offsetMs\":350,\"pcm\":\"AQACAA==\"}",
+      "{\"type\":\"stop\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "stopped"
+      }
+    ],
+    "state": "completed",
+    "frames": [
+      4802
+    ]
+  },
+  {
+    "name": "overlap-rejected",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Cassini protocol conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"local\",\"sampleRate\":48000,\"channels\":1}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"AQACAA==\"}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":1,\"offsetMs\":0,\"pcm\":\"AQACAA==\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "error",
+        "code": "chunk"
+      }
+    ],
+    "state": "interrupted"
+  }
+]

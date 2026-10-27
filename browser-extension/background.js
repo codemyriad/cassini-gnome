@@ -1,3 +1,7 @@
+async function hasOffscreenDocument() {
+  return (await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] })).length > 0;
+}
+
 const frames = new Set();
 let active = null;
 let lastStatus = { recording: false, message: "Ready. Choose WebRTC tracks or Tab audio." };
@@ -23,7 +27,7 @@ class NativeHost {
   }
   send(packet) {
     if (this.closed) return Promise.reject(new Error("Recording host is closed."));
-    if (this.pending.length >= 128) return Promise.reject(new Error("The recording host cannot keep up with audio."));
+    if (this.pending.length >= 512) return Promise.reject(new Error("The recording host cannot keep up with audio."));
     return new Promise((resolve, reject) => {
       const request = { resolve, reject, timer: setTimeout(() => {
         reject(new Error("The recording host stopped responding."));
@@ -43,7 +47,7 @@ class NativeHost {
 
 function status() {
   return active ? { recording: true, stopping: active.stopping, tracks: active.tracks,
-    message: `${active.stopping ? "Saving" : "Recording"}: ${active.mode === "tracks" ? "WebRTC tracks" : "tab audio"} · ${active.tracks} sources`, path: active.path } : lastStatus;
+    message: active.warning || (!active.tracks ? "Waiting for audio sources. Join the call or choose Tab audio." : `${active.stopping ? "Saving" : "Recording"}: ${active.mode === "tracks" ? "WebRTC tracks" : "tab audio"} · ${active.tracks} sources`), path: active.path } : lastStatus;
 }
 
 function failure(message) {
@@ -63,7 +67,7 @@ async function stop() {
         try { frame.port.postMessage({ type: "stop", token: session.token }); }
         catch { frame.finished(); }
       })));
-    } else if (await chrome.offscreen.hasDocument()) {
+    } else if (await hasOffscreenDocument()) {
       const response = await chrome.runtime.sendMessage({ target: "offscreen", type: "stop" });
       if (response?.error) session.problem ??= response.error;
     }
@@ -74,7 +78,7 @@ async function stop() {
     lastStatus = { recording: false, path: session.path, message: session.problem || error.message };
   } finally {
     session.host?.close();
-    if (session.mode === "tab" && await chrome.offscreen.hasDocument()) await chrome.offscreen.closeDocument();
+    if (session.mode === "tab" && await hasOffscreenDocument()) await chrome.offscreen.closeDocument();
     if (active === session) active = null;
     await chrome.action.setBadgeText({ text: "" });
   }
@@ -94,17 +98,18 @@ async function start(mode) {
     session.path = result.path;
     if (session.stopping) throw new Error("Recording could not start.");
     if (mode === "tracks") {
+      // Idle MV3 workers lose ports. Wake every existing isolated relay on demand.
+      await chrome.tabs.sendMessage(tab.id, { type: "cassini-connect" }).catch(() => {});
+      await new Promise(resolve => setTimeout(resolve, 100));
       for (const frame of frames) {
-        if (frame.tabId !== tab.id) continue;
+        if (frame.tabId !== tab.id || session.frames.has(frame)) continue;
         session.frames.add(frame);
         frame.port.postMessage({ type: "start", token: session.token, origin: session.origin });
       }
       if (!session.frames.size) throw new Error("Reload the meeting tab after installing the extension, then try again.");
-      session.discoveryTimer = setTimeout(() => {
-        if (active === session && !session.tracks) failure("No accessible audio tracks were found. Join the call or use Tab audio instead.");
-      }, 8000);
+
     } else {
-      if (await chrome.offscreen.hasDocument()) await chrome.offscreen.closeDocument();
+      if (await hasOffscreenDocument()) await chrome.offscreen.closeDocument();
       await chrome.offscreen.createDocument({ url: "offscreen.html", reasons: ["USER_MEDIA"], justification: "Record the selected tab audio locally while the popup is closed." });
       const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
       const response = await chrome.runtime.sendMessage({ target: "offscreen", type: "start", streamId, origin: session.origin });
@@ -131,8 +136,15 @@ chrome.runtime.onConnect.addListener(port => {
   port.onMessage.addListener(async message => {
     const session = active;
     if (!session?.frames.has(frame)) return;
-    if (message.type === "stopped") { frame.finished?.(); return; }
-    if (message.type === "error") { failure(message.message || "Browser capture failed."); return; }
+    if (message.type === "stopped") {
+      if (!session.stopping) failure("A meeting frame stopped capture unexpectedly. The partial recording was saved.");
+      frame.finished?.(); return;
+    }
+    if (message.type === "warning") {
+      session.warning = "One audio source was interrupted or lost samples. Other sources continue.";
+      session.problem ??= session.warning; return;
+    }
+    if (message.type === "error") { failure("The meeting frame could not capture audio. Try Tab audio. The partial recording was saved."); return; }
     if (message.type !== "packet" || !["track", "audio"].includes(message.packet?.type)) return;
     try {
       if (JSON.stringify(message.packet).length > 400000) throw new Error("Audio message exceeds the size limit.");
@@ -160,6 +172,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   const offscreen = sender.url === chrome.runtime.getURL("offscreen.html");
   (async () => {
     if (offscreen) {
+      if (message.type === "warning" && active) { active.problem ??= "Tab audio lost samples during a recording stall."; active.warning = active.problem; return {}; }
       if (message.type === "error") { failure(message.message); return {}; }
       if (message.type === "packet" && active?.mode === "tab" && ["track", "audio"].includes(message.packet?.type)) {
         await active.host.send(message.packet);

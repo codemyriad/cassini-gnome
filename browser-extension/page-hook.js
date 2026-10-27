@@ -30,6 +30,9 @@
   window.RTCPeerConnection = new Proxy(original, {
     construct(target, args, newTarget) { const pc = Reflect.construct(target, args, newTarget); remember(pc); return pc; }
   });
+  if (window.webkitRTCPeerConnection === original) window.webkitRTCPeerConnection = window.RTCPeerConnection;
+  const close = original.prototype.close;
+  original.prototype.close = function (...args) { peers.delete(this); return Reflect.apply(close, this, args); };
   // Recovery for connections created by a cached constructor or before the extension loaded.
   for (const name of ["getStats", "createOffer", "createAnswer", "setLocalDescription", "setRemoteDescription", "addTrack", "addTransceiver"]) {
     const method = original.prototype[name];
@@ -46,7 +49,7 @@
       return;
     }
     if (message.type === "start" && !active) {
-      const state = { token: message.token, pending: new Map(), tracks: new Map(), next: 0, stopping: false, scanning: false };
+      const state = { token: message.token, pending: new Map(), tracks: new Map(), failedTracks: new WeakSet(), localMetadata: new Map(), next: 0, stopping: false, scanning: false };
       active = state;
       const send = packet => new Promise((resolve, reject) => {
         const request = ++state.next;
@@ -55,6 +58,7 @@
         emit(state.token, { type: "packet", request, packet });
       });
       const fail = message => emit(state.token, { type: "error", message });
+      const warn = () => emit(state.token, { type: "warning" });
       try {
         const { capture } = await import(message.moduleURL);
         if (state.stopping) return;
@@ -72,8 +76,15 @@
               }
               for (const sender of pc.getSenders()) if (sender.track) {
                 knownLocalTracks.add(sender.track);
-                sources.set(sender.track, { kind: "local", sender, pc });
+                const metadata = { kind: "local", sender, pc };
+                sources.set(sender.track, metadata);
+                state.localMetadata.set(sender.track, metadata);
               }
+            }
+            // Preserve the same source across replaceTrack(null)/restore mute cycles.
+            for (const [track, metadata] of state.localMetadata) {
+              if (track.readyState === "ended" || metadata.pc.signalingState === "closed" || (metadata.sender.track && metadata.sender.track !== track)) state.localMetadata.delete(track);
+              else if (!sources.has(track)) sources.set(track, metadata);
             }
             for (const media of document.querySelectorAll("audio,video")) {
               if (media.srcObject instanceof MediaStream) {
@@ -86,11 +97,11 @@
               }
             }
             for (const [track, recorder] of state.tracks) {
-              if (track.readyState === "ended" || !sources.has(track)) { await recorder.stop(); state.tracks.delete(track); }
+              if (track.readyState === "ended" || !sources.has(track) || recorder.failed) { await recorder.stop().catch(warn); state.tracks.delete(track); }
             }
             for (const [track, metadata] of sources) {
               if (state.stopping) break;
-              if (track.kind !== "audio" || track.readyState !== "live" || state.tracks.has(track)) continue;
+              if (track.kind !== "audio" || track.readyState !== "live" || state.tracks.has(track) || state.failedTracks.has(track)) continue;
               const enabled = () => {
                 if (!track.enabled || track.muted) return false;
                 if (!metadata.sender) return true;
@@ -100,10 +111,14 @@
                 const encodings = metadata.sender.getParameters().encodings;
                 return !encodings?.length || encodings.some(e => e.active !== false);
               };
+              state.context ??= new AudioContext({ sampleRate: 48000 });
+              try {
               const recorder = await capture({ stream: new MediaStream([track]), id: crypto.randomUUID(),
                 label: `${metadata.kind}: ${track.label || track.id}`, kind: metadata.kind, enabled,
-                origin: message.origin, workletURL: message.workletURL, send, fail });
+                origin: message.origin, workletURL: message.workletURL, send, sharedContext: state.context, warn,
+                fail: () => { state.failedTracks.add(track); warn(); } });
               state.tracks.set(track, recorder);
+              } catch { state.failedTracks.add(track); warn(); }
             }
           } catch (error) { fail(error.message); }
           finally { state.scanning = false; }
@@ -121,6 +136,7 @@
       const results = await Promise.allSettled([...state.tracks.values()].map(recorder => recorder.stop()));
       const error = results.find(result => result.status === "rejected");
       if (error) emit(state.token, { type: "error", message: error.reason.message });
+      await state.context?.close();
       emit(state.token, { type: "stopped" });
       active = null;
     }

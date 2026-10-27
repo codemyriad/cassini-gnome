@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cassini native request v1",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "start"
+        },
+        "version": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "enum": [
+            1,
+            null
+          ]
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "id",
+        "kind",
+        "sampleRate",
+        "channels"
+      ],
+      "properties": {
+        "type": {
+          "const": "track"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "$comment": "At most 200 UTF-8 bytes"
+        },
+        "kind": {
+          "enum": [
+            "local",
+            "remote",
+            "media",
+            "tab",
+            "microphone",
+            "application",
+            "system"
+          ]
+        },
+        "sampleRate": {
+          "type": "integer",
+          "minimum": 8000,
+          "maximum": 192000,
+          "$comment": "Raw JSON must use an integer literal: schema alone cannot distinguish 48000.0."
+        },
+        "channels": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2,
+          "$comment": "Raw JSON must use an integer literal: schema alone cannot distinguish 48000.0."
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "id",
+        "sequence",
+        "offsetMs",
+        "pcm"
+      ],
+      "properties": {
+        "type": {
+          "const": "audio"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "$comment": "At most 200 UTF-8 bytes"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "$comment": "Raw JSON must use an integer literal: schema alone cannot distinguish 48000.0."
+        },
+        "offsetMs": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 86400000
+        },
+        "pcm": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 349528,
+          "contentEncoding": "base64"
+        }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "stop"
+        },
+        "problem": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
+    }
+  ]
+}

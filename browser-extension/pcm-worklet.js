@@ -3,7 +3,7 @@ class CassiniPCM extends AudioWorkletProcessor {
   constructor(options) {
     super();
     this.channels = options.processorOptions.channels;
-    this.samples = new Int16Array(2048 * this.channels);
+    this.samples = new Int16Array(8192 * this.channels);
     this.used = 0;
     this.firstFrame = 0;
     this.stopped = false;

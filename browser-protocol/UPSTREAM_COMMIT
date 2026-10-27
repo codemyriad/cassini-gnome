@@ -1,0 +1,12 @@
+tree d4d126185c7af3f56130942bd96a9a9cd41eee9e
+author Silvio Tomatis <silviot@gmail.com> 1793099216 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793099216 +0100
+
+Import browser-protocol snapshot mac-review-1
+
+Shared contract between Cassini for GNOME and Cassini for Mac: SPEC.md, JSON
+Schemas, conformance vectors and stdio runner, tone helpers, and the exact
+Chromium extension snapshot with SHA256SUMS. Imported verbatim from the Mac
+agent's browser-protocol-mac-review-1.tar.gz (sha256 d5f5305a...).
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

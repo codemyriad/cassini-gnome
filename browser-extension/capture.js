@@ -12,10 +12,29 @@ async function bounded(promise, message) {
   } finally { clearTimeout(timer); }
 }
 
-export async function capture({ stream, id, label, kind, origin, workletURL, send, fail, audible = false, enabled = () => true, channels = 1 }) {
-  const context = new AudioContext({ sampleRate: 48000 });
+const clocks = new WeakMap();
+
+export async function capture({ stream, id, label, kind, origin, workletURL, send, fail, audible = false, enabled = () => true, channels = 1, sharedContext, warn = () => {} }) {
+  const context = sharedContext || new AudioContext({ sampleRate: 48000 });
   let source, node, silent, remotePlayback, ending = false, failure = null;
-  let queued = 0, chain = Promise.resolve(), sequence = 0, flushed;
+  let pendingFrames = 0, sequence = 0, flushed, droppedFrames = 0;
+  const waiting = [], inFlight = new Set();
+  let stateChanged;
+  function pump() {
+    while (waiting.length && inFlight.size < 4 && !failure) {
+      const { message, frames } = waiting.shift();
+      const task = Promise.resolve().then(() => send(message)).catch(abort).finally(() => {
+        pendingFrames -= frames; inFlight.delete(task); pump();
+      });
+      inFlight.add(task);
+    }
+  }
+  function abort(error) {
+    if (failure) return;
+    failure = error;
+    waiting.length = 0;
+    fail(error.message);
+  }
   try {
     await bounded(context.audioWorklet.addModule(workletURL), "The meeting page blocked the audio worklet. Use Tab audio instead.");
     // Chromium may not decode a receiver for Web Audio until a media renderer exists.
@@ -37,38 +56,44 @@ export async function capture({ stream, id, label, kind, origin, workletURL, sen
     if (audible) source.connect(context.destination);
     await bounded(context.resume(), "Interact with the meeting page to allow audio, then try again or use Tab audio.");
     if (context.state !== "running") throw new Error("Audio capture is suspended. Interact with the meeting page, then try again or use Tab audio.");
-    let clockOffset;
+    let clockOffset = clocks.get(context);
     await send({ type: "track", id, label, kind, sampleRate: context.sampleRate, channels });
-    function abort(error) {
-      if (failure) return;
-      failure = error;
-      fail(error.message);
-    }
     node.onprocessorerror = () => abort(new Error("The audio worklet stopped unexpectedly."));
-    context.onstatechange = () => {
+    stateChanged = () => {
       if (!ending && context.state !== "running") abort(new Error("Browser audio capture was suspended. The partial recording was saved."));
     };
+    context.addEventListener?.("statechange", stateChanged);
     node.port.onmessage = ({ data }) => {
       if (data.stopped) { flushed?.(); return; }
       if (failure) return;
+      const frames = data.pcm.byteLength / (channels * 2);
+      clockOffset ??= clocks.get(context);
       if (clockOffset === undefined) {
         // resume() can resolve before the device/render clock has started. Calibrate
         // once samples exist, then preserve render-frame timing rather than timing
         // packets by their arrival on the main thread.
         const stamp = context.getOutputTimestamp?.();
-        const frames = data.pcm.byteLength / (channels * 2);
         clockOffset = stamp?.contextTime > 0 && stamp?.performanceTime > 0
           ? performance.timeOrigin + stamp.performanceTime - origin - stamp.contextTime * 1000
           : performance.timeOrigin + performance.now() - origin - (data.frame + frames) / context.sampleRate * 1000;
       }
-      if (++queued > 32) { abort(new Error("Recording cannot keep up with browser audio. The partial recording was saved.")); return; }
+      if (pendingFrames + frames > context.sampleRate * 10) {
+        droppedFrames += frames;
+        warn("A source exceeded its ten-second audio buffer. Its timeline contains a gap; other sources continue.");
+        return;
+      }
+      pendingFrames += frames;
+      clocks.set(context, clockOffset);
       // For sender tracks, respect track enabled/muted state and sender suspension.
       if (!enabled()) new Uint8Array(data.pcm).fill(0);
       const message = { type: "audio", id, sequence: sequence++,
         offsetMs: Math.max(0, clockOffset + data.frame / context.sampleRate * 1000), pcm: base64(data.pcm) };
-      chain = chain.then(() => send(message)).catch(abort).finally(() => queued--);
+      waiting.push({ message, frames });
+      pump();
     };
     return {
+      get failed() { return !!failure; },
+      get droppedFrames() { return droppedFrames; },
       async stop() {
         if (ending) return;
         ending = true;
@@ -81,8 +106,9 @@ export async function capture({ stream, id, label, kind, origin, workletURL, sen
         }
         source.disconnect(); node.disconnect(); silent.disconnect();
         if (remotePlayback) { remotePlayback.pause(); remotePlayback.srcObject = null; }
-        await chain;
-        await context.close();
+        while (inFlight.size) await Promise.allSettled([...inFlight]);
+        context.removeEventListener?.("statechange", stateChanged);
+        if (!sharedContext) await context.close();
         if (failure) throw failure;
       }
     };
@@ -90,7 +116,8 @@ export async function capture({ stream, id, label, kind, origin, workletURL, sen
     ending = true;
     source?.disconnect(); node?.disconnect(); silent?.disconnect();
     if (remotePlayback) { remotePlayback.pause(); remotePlayback.srcObject = null; }
-    await context.close();
+    context.removeEventListener?.("statechange", stateChanged);
+    if (!sharedContext) await context.close();
     throw error;
   }
 }

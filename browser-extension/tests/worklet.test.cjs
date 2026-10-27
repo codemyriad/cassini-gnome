@@ -15,11 +15,11 @@ function processor(channels) {
 
 test('worklet batches interleaved PCM, clips samples and retains render timestamps', () => {
   const { node, packets } = processor(2);
-  node.process([[new Float32Array(2048).fill(2), new Float32Array(2048).fill(-2)]]);
+  node.process([[new Float32Array(8192).fill(2), new Float32Array(8192).fill(-2)]]);
   assert.equal(packets.length, 1);
   assert.equal(packets[0].frame, 96000);
   const pcm = new Int16Array(packets[0].pcm);
-  assert.equal(pcm.length, 4096);
+  assert.equal(pcm.length, 16384);
   assert.deepEqual([...pcm.slice(0, 4)], [32767, -32767, 32767, -32767]);
 });
 test('stop flushes a partial block before acknowledging completion', () => {

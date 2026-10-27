@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   capture:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -23,6 +23,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y python3-gi python3-pytest gir1.2-gstreamer-1.0 \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good xvfb xauth xdotool dbus-x11
+      - run: python3 build-aux/verify-browser-protocol.py
       - run: npm ci --prefix tests/recording
       - run: tests/recording/node_modules/.bin/playwright install --with-deps chromium
       - run: /usr/bin/python3 -m pytest -q
