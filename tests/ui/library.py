@@ -25,8 +25,10 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-viewer.gresource")))
+from cassini_viewer.folder_player import FolderPlayer  # noqa: E402
 from cassini_viewer.library_window import LibraryWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
+from cassini_viewer.player import Player  # noqa: E402
 from cassini_viewer.recording_window import RecordingWindow  # noqa: E402
 from cassini_viewer.strings import text  # noqa: E402
 
@@ -79,7 +81,19 @@ with tempfile.TemporaryDirectory() as tmp:
     assert "47 min · the audio is ready to play" in labels
     assert not any(value.startswith("47 min · Marta") for value in labels)
     assert not any(value.startswith("colour-") for w in walk(window.preview) for value in w.get_css_classes())
-    assert not window.play_button.get_sensitive(), "Folder playback waits for UX-play"
+    assert window.play_button.get_sensitive(), "Saved folders with known offsets can play"
+    window.player.shutdown()
+    sink = Gst.ElementFactory.make("fakesink", None)
+    sink.set_property("sync", True)
+    window.player = FolderPlayer(audio_sink=sink)
+    window._connect_player()
+    window.play_button.emit("clicked")
+    until(lambda: window.player.playing and window.player.position > 0)
+    assert window.player.duration == 3120000
+    window.activate_action("win.play-pause", None)
+    assert not window.player.playing
+    window.play_button.emit("clicked")
+    until(lambda: window.player.playing)
     assert "Marta" in [w.get_label() for w in walk(window.preview) if isinstance(w, Gtk.Label)]
     auto = [w for w in walk(window.preview) if isinstance(w, Gtk.Label) and w.get_label() == "auto"]
     assert auto and auto[0].get_tooltip_text() == text("common.autoTag.tooltip")
@@ -106,6 +120,9 @@ with tempfile.TemporaryDirectory() as tmp:
     window.rows.select_row(received)
     assert window.selected.origin == "received" and window.play_button.get_sensitive()
     # Decode the real received Opus into a fakesink, with no audio device access.
+    window.player.shutdown()
+    window.player = Player()
+    window._connect_player()
     sink = Gst.ElementFactory.make("fakesink", None)
     sink.set_property("sync", True)
     window.player._pipeline.set_property("audio-sink", sink)
@@ -137,6 +154,7 @@ with tempfile.TemporaryDirectory() as tmp:
     find = Gst.ElementFactory.find
     Gst.ElementFactory.find = lambda name: None if name == "opusdec" else find(name)
     try:
+        window._loaded_key = None
         window.play_button.emit("clicked")
         assert not window.player.playing, "A rejected load must not play the previous URI"
         assert not window.play_button.get_sensitive()

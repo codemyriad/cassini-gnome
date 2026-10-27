@@ -146,6 +146,7 @@ class CaptureTrack:
     sample_rate: int
     start_offset_ms: int | float | None
     ended: bool | None
+    channels: int = 1
 
     @property
     def display_end_ms(self):
@@ -461,7 +462,7 @@ class LibraryScanner:
                 if type(offset) not in (int, float) or not 0 <= offset <= 86400000 or not math.isfinite(offset):
                     offset = None
                     diagnostics.append(Diagnostic(directory / name, "start-offset-unknown-display-zero"))
-                tracks.append(CaptureTrack(directory / name, frames, rate, offset, value.get("ended")))
+                tracks.append(CaptureTrack(directory / name, frames, rate, offset, value.get("ended"), channels))
             except (OSError, ValueError, TypeError):
                 diagnostics.append(Diagnostic(directory, "capture-track-unreadable"))
         return capture, tuple(tracks), salvaged

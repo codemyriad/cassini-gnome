@@ -64,6 +64,7 @@ install_data(
   'cassini_viewer/ux_formats.py',
   'cassini_viewer/screenshot.py',
   'cassini_viewer/player.py',
+  'cassini_viewer/folder_player.py',
   'cassini_viewer/recorder.py',
   'cassini_viewer/recording_session.py',
   'cassini_viewer/browser_host.py',
