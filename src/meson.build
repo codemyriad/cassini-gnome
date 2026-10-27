@@ -79,6 +79,10 @@ if pytest.found()
     args: ['-m', 'pytest', '-q', meson.project_source_root() / 'tests'],
     env: ['PYTHONPATH=' + meson.current_source_dir()],
     workdir: meson.project_source_root(),
+    # The suite re-runs both conformance suites as subprocesses, alongside
+    # Meson's own conformance tests: 11-21 s in a package build container,
+    # over Meson's 30 s default on a loaded builder.
+    timeout: 120,
   )
 endif
 
