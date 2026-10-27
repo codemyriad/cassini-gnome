@@ -77,6 +77,21 @@ class CassiniApplication(Adw.Application):
         if accels:
             self.set_accels_for_action(f"app.{name}", accels)
 
+    def watch_player(self, player):
+        """Only one viewer plays at a time; recording devices are independent."""
+        if getattr(player, "_cassini_watched", False):
+            return
+        player._cassini_watched = True
+
+        def playing_changed(active, _property):
+            if active.playing:
+                for window in self.get_windows():
+                    other = getattr(window, "player", None)
+                    if other is not None and other is not active and other.playing:
+                        other.pause()
+
+        player.connect("notify::playing", playing_changed)
+
     def new_window(self):
         window = CassiniWindow(application=self)
         if self.profile == "development":

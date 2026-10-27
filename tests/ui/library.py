@@ -4,6 +4,7 @@
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,7 +22,7 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
-from gi.repository import Gio, GLib, Gst, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-viewer.gresource")))
 from cassini_viewer.library_window import LibraryWindow  # noqa: E402
@@ -63,6 +64,13 @@ with tempfile.TemporaryDirectory() as tmp:
     until(lambda: not window._pending)
     assert len(window.snapshot.meetings) == 9
     assert window.selected.title == "Budget review"
+    assert window.selected.words and not window.read_button.get_sensitive()
+    opened = []
+    original_open = app.open_in_new_window
+    app.open_in_new_window = lambda file: opened.append(file)
+    window._open_selected()
+    assert not opened, "Folder sidecars must never route to SessionWindow"
+    app.open_in_new_window = original_open
     assert window.root_box.get_visible_child_name() == "library"
     assert window.capture_header.get_visible_child_name() == "live"
     assert window.live_timer.get_label() == "12:48" and not window.live_stop.get_sensitive()
@@ -104,6 +112,27 @@ with tempfile.TemporaryDirectory() as tmp:
     window.play_button.emit("clicked")
     until(lambda: window.player.playing and window.player.position > 0)
     assert window.player.duration == 2040000
+    other = Adw.ApplicationWindow(application=app)
+    other.player = type(window.player)()
+    app.watch_player(other.player)
+    sink = Gst.ElementFactory.make("fakesink", None)
+    sink.set_property("sync", True)
+    other.player._pipeline.set_property("audio-sink", sink)
+    other.player.load(window.selected.audio_file.as_uri(), window.selected.duration_ms)
+    other.player.play()
+    until(lambda: other.player.playing and not window.player.playing)
+    window.play_button.emit("clicked")
+    until(lambda: window.player.playing and not other.player.playing)
+    other.player.shutdown()
+    other.close()
+    assert window.read_button.get_sensitive()
+    original_open = app.open_in_new_window
+    app.open_in_new_window = lambda file: opened.append(file)
+    window.read_button.emit("clicked")
+    assert opened[-1].get_path() == str(window.selected.audio_file) and not window.player.playing
+    app.open_in_new_window = original_open
+    window.play_button.emit("clicked")
+    until(lambda: window.player.playing)
     # #8's load() can reject synchronously; the Library must honour that error.
     find = Gst.ElementFactory.find
     Gst.ElementFactory.find = lambda name: None if name == "opusdec" else find(name)
@@ -113,12 +142,58 @@ with tempfile.TemporaryDirectory() as tmp:
         assert not window.play_button.get_sensitive()
     finally:
         Gst.ElementFactory.find = find
+    value = json.loads((window.selected.directory / "meeting.json").read_text())
+    value["title"] = "Received title changed after playback error"
+    (window.selected.directory / "meeting.json").write_text(json.dumps(value))
+    until(lambda: window.selected.title == value["title"])
+    assert not window.play_button.get_sensitive(), "A monitor refresh must preserve playback failure state"
+    received = next(w for w in walk(window.rows) if hasattr(w, "meeting") and w.meeting.origin == "received")
     window.rows.select_row(window.rows.get_row_at_index(1))
     window.rows.select_row(received)
     window.play_button.emit("clicked")
     until(lambda: window.player.playing and window.player.position > 0)
+    audio_path = window.selected.audio_file
+    original_audio = audio_path.read_bytes()
+    audio_path.unlink()
+    until(lambda: not window.selected.has_audio)
+    assert not window.player.playing and not window.play_button.get_sensitive()
+    audio_path.write_bytes(original_audio)
+    until(lambda: window.selected.has_audio)
     window.close()
     assert not window.player.playing
+    os.environ["CASSINI_LIBRARY_DIR"] = str(fixtures / "received-only/root")
+    os.environ["CASSINI_SCREENSHOT_ACTIVITY"] = str(fixtures / "received-only/activity.json")
+    app.activate()
+    single = next(w for w in app.get_windows() if isinstance(w, LibraryWindow))
+    until(lambda: not single._pending)
+    sink = Gst.ElementFactory.make("fakesink", None)
+    sink.set_property("sync", True)
+    single.player._pipeline.set_property("audio-sink", sink)
+    single.play_button.emit("clicked")
+    until(lambda: single.player.playing)
+    shutil.rmtree(single.selected.directory)
+    until(lambda: single.root_box.get_visible_child_name() == "empty")
+    assert not single.player.playing and single._preview_key is None
+    single.close()
+    offline_root = Path(tmp) / "mounted-library"
+    offline_root.mkdir()
+    source = next((fixtures / "main/root").glob("Received-*"))
+    shutil.copytree(source, offline_root / source.name)
+    link = Path(tmp) / "library-link"
+    link.symlink_to(offline_root, target_is_directory=True)
+    os.environ["CASSINI_LIBRARY_DIR"] = str(link)
+    app.activate()
+    offline = next(w for w in app.get_windows() if isinstance(w, LibraryWindow))
+    until(lambda: not offline._pending)
+    sink = Gst.ElementFactory.make("fakesink", None)
+    sink.set_property("sync", True)
+    offline.player._pipeline.set_property("audio-sink", sink)
+    offline.play_button.emit("clicked")
+    until(lambda: offline.player.playing)
+    offline_root.rename(offline_root.with_name("disconnected-library"))
+    until(lambda: offline.root_box.get_visible_child_name() == "offline")
+    assert not offline.player.playing and offline._preview_key is None
+    offline.close()
     os.environ["CASSINI_LIBRARY_DIR"] = str(fixtures / "empty/root")
     os.environ["CASSINI_SCREENSHOT_ACTIVITY"] = str(fixtures / "empty/activity.json")
     app.activate()

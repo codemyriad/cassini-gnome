@@ -192,6 +192,7 @@ class CassiniWindow(Adw.ApplicationWindow):
         self.style_manager = Adw.StyleManager.get_default()
 
         self.player = Player()
+        self.get_application().watch_player(self.player)
         self.palette = SpeakerPalette()
         self.file: Gio.File | None = None
         self.meeting: portable.Meeting | None = None
