@@ -1,0 +1,8 @@
+{
+  "source": "drmeyers:~/dev/cassini-coordination/ux-draft",
+  "commit": "677f48689ab1339803fece0c03d7beaa566aeb7f",
+  "sha256": {
+    "format-vectors.json": "681735202ef2898fd0367fc7b1a7a251224ef4751dd50917ca79190fb9d4f306",
+    "states-vectors.json": "1f5cc52920abb8148942d0484e9c67cc734f613d7e90c07968ecf3622cb19702"
+  }
+}
