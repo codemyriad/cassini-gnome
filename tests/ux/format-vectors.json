@@ -1,5 +1,5 @@
 {
- "version": 1,
+ "version": 2,
  "note": "Binding golden vectors for both apps (HARMONY.md section 6). Times are epoch ms; format in the given tz with fixed en-GB patterns, 24 h clock. Both apps must pass all of them as unit tests; add vectors only via the coordinator.",
  "tz": "Europe/Rome",
  "nowMs": 1793107080000,
@@ -302,7 +302,7 @@
  ],
  "size": [
   {
-   "bytes": 24117248,
+   "bytes": 25165824,
    "approx": true,
    "out": "about 24 MB"
   },
@@ -322,5 +322,8 @@
    "out": "1.2 GB"
   }
  ],
- "sizeRule": "MB = 1048576 bytes, rounded half up to an integer below 1000 MB; from 1000 MB show GB with one decimal (1073741824 bytes per GB)."
+ "sizeRule": "MB = 1048576 bytes, rounded half up to an integer below 1000 MB; from 1000 MB show GB with one decimal (1073741824 bytes per GB).",
+ "changelog": [
+  "v2: size[0] bytes 24117248 -> 25165824 (24 MiB); the old value was exactly 23 MiB and contradicted sizeRule (GNOME R1)."
+ ]
 }
