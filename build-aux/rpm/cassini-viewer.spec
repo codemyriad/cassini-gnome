@@ -19,12 +19,22 @@ BuildRequires:  python3-jsonschema
 BuildRequires:  python3-rfc3339-validator
 # glib-compile-resources and glib-compile-schemas
 BuildRequires:  glib2-devel
+# The player, recorder and library monitor tests need PyGObject and the
+# GStreamer elements; without them %%check skips those tests silently.
+BuildRequires:  python3-gobject
 %if 0%{?suse_version}
 BuildRequires:  AppStream
 BuildRequires:  glib2-tools
 BuildRequires:  hicolor-icon-theme
+BuildRequires:  typelib-1_0-Gst-1_0
+BuildRequires:  gstreamer-plugins-base
+BuildRequires:  gstreamer-plugins-good
 %else
 BuildRequires:  appstream
+BuildRequires:  gobject-introspection
+BuildRequires:  gstreamer1
+BuildRequires:  gstreamer1-plugins-base
+BuildRequires:  gstreamer1-plugins-good
 %endif
 
 Requires:       python3 >= 3.11

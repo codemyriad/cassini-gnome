@@ -93,3 +93,12 @@ def test_check_passes_or_exits_with_message(capsys):
     except SystemExit as exc:
         assert exc.code == 1
         assert capsys.readouterr().err.startswith("Cassini cannot start: ")
+
+
+def test_all_elements_covers_playback_and_recording_once():
+    names = runtime.all_elements()
+    assert names[0] == "playbin"
+    assert len(names) == len(set(names))
+    for wanted in runtime.PLAYBACK_ELEMENTS.values():
+        assert set(wanted) <= set(names)
+    assert set(runtime.RECORDING_ELEMENTS) <= set(names)

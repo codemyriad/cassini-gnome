@@ -5,8 +5,8 @@
 # Default images: see DEFAULT_IMAGES below. Example, a single distribution:
 #   build-aux/check-distros.sh fedora:latest
 # Each image: install deps, meson setup/test/install, then check that GTK
-# >= 4.18, libadwaita >= 1.8 and the GStreamer Ogg/Opus elements load from
-# the installed tree. Prints a PASS/FAIL table; exits 1 if any image failed.
+# >= 4.18, libadwaita >= 1.8 and all playback and recording GStreamer elements
+# load from the installed tree. Prints a PASS/FAIL table; exits 1 if any failed.
 # Logs go to a temporary directory (printed at the end), not the source tree.
 set -eu
 case ${1:-} in -h|--help) sed -n '2,10s/^# \{0,1\}//p' "$0"; exit 0 ;; esac
@@ -87,9 +87,9 @@ print("@@versions", info)
 problems = []
 if gtk < (4, 18, 0): problems.append("GTK %s < 4.18" % fmt(gtk))
 if adw < (1, 8, 0): problems.append("libadwaita %s < 1.8" % fmt(adw))
-for el in ("oggdemux", "opusdec", "playbin"):
-    if Gst.ElementFactory.find(el) is None:
-        problems.append("GStreamer element %s missing" % el)
+# Every playback and recording element: the app only warns about these.
+for el in runtime.missing_gst_elements(Gst.ElementFactory.find, runtime.all_elements()):
+    problems.append("GStreamer element %s missing" % el)
 if problems:
     print("@@problems", "; ".join(problems))
     sys.exit(1)
