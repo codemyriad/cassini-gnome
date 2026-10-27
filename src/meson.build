@@ -32,6 +32,10 @@ install_data(
   'cassini_viewer/recorder.py',
   'cassini_viewer/recording_session.py',
   'cassini_viewer/browser_host.py',
+  'cassini_viewer/browser_control_host.py',
+  'cassini_viewer/browser_service.py',
+  'cassini_viewer/browser_window.py',
+  'cassini_viewer/browser_notifications.py',
   'cassini_viewer/session_window.py',
   'cassini_viewer/recording_window.py',
   'cassini_viewer/portable.py',
@@ -63,7 +67,7 @@ configure_file(
 install_subdir('../browser-extension',
   install_dir: pkgdatadir,
   exclude_directories: ['tests', '__pycache__'],
-  exclude_files: ['native_host.py', 'install-host.py'],
+  exclude_files: ['native_host.py', 'control_host.py', 'install-host.py'],
 )
 
 # The portable contract gate needs only the Python standard library.
@@ -109,3 +113,12 @@ foreach scenario : ['browser', 'native', 'gtk']
   )
 endforeach
 endif
+
+configure_file(
+  input: 'cassini-browser-control-host.in',
+  output: 'cassini-browser-control-host',
+  configuration: conf,
+  install: true,
+  install_dir: get_option('bindir'),
+  install_mode: 'r-xr-xr-x',
+)

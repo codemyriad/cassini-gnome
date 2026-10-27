@@ -50,6 +50,7 @@ class CassiniApplication(Adw.Application):
         self._add_action("about", self.on_about)
         self._add_action("quit", self.on_quit, ["<primary>q"])
         self._add_action("record", self.on_record, ["<primary>r"])
+        self._add_action("browser-meetings", self.on_browser_meetings, ["<primary><shift>r"])
         self.set_accels_for_action("window.close", ["<primary>w"])
         self.set_accels_for_action("win.play-pause", ["space", "AudioPlay", "AudioPause"])
         self.set_accels_for_action("win.skip-back", ["<primary>Left"])
@@ -86,7 +87,8 @@ class CassiniApplication(Adw.Application):
     def do_activate(self):
         window = self.get_active_window()
         if window is None:
-            window = self.new_window()
+            self.on_browser_meetings()
+            return
         window.present()
 
     def do_open(self, files, _n_files, _hint):
@@ -142,6 +144,14 @@ class CassiniApplication(Adw.Application):
             if hasattr(window, "open_result"):
                 window.open_result = False
             window.close()
+
+    def on_browser_meetings(self, *_args):
+        from .browser_window import BrowserMeetingsWindow
+
+        window = next((w for w in self.get_windows() if isinstance(w, BrowserMeetingsWindow)), None)
+        if window is None:
+            window = BrowserMeetingsWindow(self)
+        window.present()
 
     def on_record(self, *_args):
         from .recording_window import RecordingWindow

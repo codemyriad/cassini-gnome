@@ -31,19 +31,32 @@ if not host.is_file():
 if not os.access(host, os.X_OK):
     host.chmod(0o755)
 config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-destination = config / args.browser / "NativeMessagingHosts" / "com.codemyriad.cassini.json"
-destination.parent.mkdir(parents=True, exist_ok=True)
-destination.write_text(
-    json.dumps(
-        {
-            "name": "com.codemyriad.cassini",
-            "description": "Cassini local meeting recorder",
-            "path": str(host),
-            "type": "stdio",
-            "allowed_origins": [f"chrome-extension://{args.extension_id}/"],
-        },
-        indent=2,
+
+
+def register(name, executable):
+    destination = config / args.browser / "NativeMessagingHosts" / f"{name}.json"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(
+            {
+                "name": name,
+                "description": "Cassini local meeting recorder",
+                "path": str(executable),
+                "type": "stdio",
+                "allowed_origins": [f"chrome-extension://{args.extension_id}/"],
+            },
+            indent=2,
+        )
+        + "\n"
     )
-    + "\n"
-)
-print(destination)
+    print(destination)
+
+
+register("com.codemyriad.cassini", host)
+control = host.with_name("cassini-browser-control-host")
+if not control.is_file():
+    control = Path(__file__).resolve().with_name("control_host.py")
+if control.is_file():
+    register("com.codemyriad.cassini.control", control)
+else:
+    print("Control host not installed; browser recordings can only be started from the popup")

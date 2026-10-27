@@ -11,12 +11,20 @@ import locale
 import os
 import signal
 import sys
+from pathlib import Path
 
 VERSION = "@VERSION@"
 APPLICATION_ID = "@APPLICATION_ID@"
 PROFILE = "@PROFILE@"
 pkgdatadir = "@pkgdatadir@"
 localedir = "@localedir@"
+
+# Local installations must also work when launched directly or by the browser.
+share = Path(pkgdatadir).parent
+schemas = share / "glib-2.0" / "schemas"
+if (schemas / "gschemas.compiled").is_file():
+    os.environ.setdefault("GSETTINGS_SCHEMA_DIR", str(schemas))
+os.environ["XDG_DATA_DIRS"] = str(share) + ":" + os.environ.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share")
 
 sys.path.insert(1, pkgdatadir)
 signal.signal(signal.SIGINT, signal.SIG_DFL)
