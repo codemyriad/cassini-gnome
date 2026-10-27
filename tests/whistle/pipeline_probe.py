@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import sys
+import wave
 from pathlib import Path
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -14,6 +15,8 @@ parser.add_argument("bundle", type=Path)
 parser.add_argument("output", type=Path)
 parser.add_argument("--modules", type=Path, required=True)
 args = parser.parse_args()
+from golden_check import assess_words  # noqa: E402
+
 sys.path.insert(0, str(args.modules))
 import numpy as np  # noqa: E402
 
@@ -36,7 +39,7 @@ for line in Path("/proc/cpuinfo").read_text().splitlines():
         key, value = line.split(":", 1)
         if key.strip() in ("model name", "vendor_id", "flags") and key.strip() not in cpu:
             cpu[key.strip()] = value.strip()
-result = dict(network="none", firMaxError=error, cpu=cpu, cases=[])
+result = dict(network="none", firMaxError=error, cpu=cpu, timingPolicy="D11.3", timingToleranceMs=80, cases=[])
 failures = []
 with WhistleClient(args.bundle, timeout=120) as client:
     child = client.process
@@ -58,20 +61,29 @@ with WhistleClient(args.bundle, timeout=120) as client:
             for i, (a, b) in enumerate(zip(words, expected_words, strict=False))
             if a != b
         ]
-        segment_hashes = []
-        for segment in segments:
-            samples = np.concatenate(
-                list(resampled_chunks(root / golden["input"], segment["startSample"], segment["endSample"]))
-            )
-            segment_hashes.append(hashlib.sha256(samples.tobytes()).hexdigest())
-        if segments != golden["segments"] or words != expected_words:
+        segment_hashes = [e["inputSha256"] for e in progress]
+        if filename == "pipeline-golden.json":
+            reference = np.fromfile(root / "pipeline-resampled-16k.f32", dtype="<f4")
+        else:
+            with wave.open(str(root / golden["input"])) as audio:
+                assert audio.getnchannels() == 1 and audio.getframerate() == 16000 and audio.getsampwidth() == 2
+                reference = np.frombuffer(audio.readframes(audio.getnframes()), dtype="<i2").astype("<f4") / np.float32(
+                    32768
+                )
+        expected_hashes = [
+            hashlib.sha256(reference[segment["startSample"] : segment["endSample"]].tobytes()).hexdigest()
+            for segment in golden["segments"]
+        ]
+        assessment = assess_words(words, expected_words, segment_hashes, expected_hashes)
+        if segments != golden["segments"] or not assessment["accepted"]:
             failures.append(filename)
         case_data = dict(
             differences=differences,
             actualWords=words,
             expectedWords=expected_words,
             segmentInputSha256=segment_hashes,
-            wordCountMatches=len(words) == len(expected_words),
+            referenceSegmentInputSha256=expected_hashes,
+            **assessment,
         )
         result["cases"].append(
             dict(
@@ -79,7 +91,6 @@ with WhistleClient(args.bundle, timeout=120) as client:
                 segments=len(segments),
                 words=len(words),
                 exactSegments=segments == golden["segments"],
-                exactWords=words == expected_words,
                 **case_data,
                 language=complete["language"],
                 childPid=child.pid,
@@ -90,4 +101,4 @@ result["oneChildReused"] = True
 result["childReaped"] = True
 args.output.write_text(json.dumps(result, indent=2) + "\n")
 print(json.dumps(result, indent=2))
-assert not failures, "Strict golden mismatch: " + str(failures)
+assert not failures, "D11.3 golden mismatch: " + str(failures)

@@ -6,6 +6,7 @@ Audio and inference live only in the recognition child. Planning retains ranges;
 recognition rereads at most one bounded segment, including FIR edge context.
 """
 
+import hashlib
 import json
 import math
 import os
@@ -221,6 +222,7 @@ def segment_ranges(path, detector, heartbeat=None):
 
 def recognise_segment(model, path, segment, offset_ms=0):
     samples = np.concatenate(list(resampled_chunks(path, segment["startSample"], segment["endSample"])))
+    input_hash = hashlib.sha256(samples.tobytes()).hexdigest()
     result = model.transcribe(samples, language=None, word_timestamps=True)
     base = math.floor(offset_ms) + segment["startSample"] * 1000 // 16000
     words = []
@@ -232,7 +234,7 @@ def recognise_segment(model, path, segment, offset_ms=0):
                 text=word.get("word", word.get("text", "")),
             )
         )
-    return dict(segment, text=result["text"]), words, result.get("language") or "und"
+    return dict(segment, text=result["text"]), words, result.get("language") or "und", input_hash
 
 
 def process_tracks(model, tracks, vad_model, notify):
@@ -258,7 +260,7 @@ def process_tracks(model, tracks, vad_model, notify):
     language = "und"
     for order, track, segment, offset in plan:
         started = time.monotonic()
-        value, words, language = recognise_segment(model, track["path"], segment, offset)
+        value, words, language, input_hash = recognise_segment(model, track["path"], segment, offset)
         elapsed += time.monotonic() - started
         seconds = (segment["endSample"] - segment["startSample"]) / RATE
         processed += seconds
@@ -266,6 +268,7 @@ def process_tracks(model, tracks, vad_model, notify):
         factor = elapsed / processed if processed else 0.15
         notify(
             "progress",
+            inputSha256=input_hash,
             trackId=track["id"],
             trackOrder=order,
             segment=value,

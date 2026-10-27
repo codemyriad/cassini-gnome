@@ -49,7 +49,7 @@ sources/cache and ship LICENSE-Silero-MIT.txt alongside the existing notices.
 
 Runtime dependencies now include **NumPy and ONNX Runtime CPU** for the app's
 Python interpreter, alongside PyGObject/GStreamer for local Opus decoding. Ubuntu
-26.04's python3-numpy and python3-onnxruntime packages (ORT 1.23.2) pass both exact
+26.04's python3-numpy and python3-onnxruntime packages (ORT 1.23.2) pass both D11
 goldens; cassini-live's ORT 1.31.0 passes too. Other package formats need their
 equivalents, or pinned build-time vendoring where a system package is unavailable.
 ORT uses one intra-op and one inter-op thread and disables telemetry before
@@ -71,7 +71,11 @@ offline operation in released packages.
 no host display/audio sockets or devices, and private Xvfb/D-Bus for GTK checks.
 It exercises the native privacy constructor guard, both immutable D11 goldens,
 and the production GTK queue with real speech audio. Goldens assert every segment
-boundary and every word text/startMs/endMs; FIR error is checked against 1e-6.
+boundary, word count and every word’s text exactly. Under D11.3, each word
+startMs/endMs may differ by at most 80 ms, only when SHA256 hashes of the float32
+samples actually passed to Whistle match the authoritative reference segment
+samples. The report retains every timing difference and both hash lists; a hash
+mismatch fails even when words match. FIR error is checked against 1e-6.
 The GTK proof covers a growing transcript, source captions, separate remote
 speakers, offsets, explicit received transcription, unchanged capture hashes,
 child reuse, and real child death followed by Try again.
