@@ -21,6 +21,26 @@ them. Cassini also shows the transcript.
 It is a GTK 4 and libadwaita application written in Python, with GStreamer
 for playback.
 
+## Record a meeting
+
+Choose **Record Meeting…** from the app menu (Ctrl+R), select microphone,
+desktop audio, or both, then choose an `.opus` file. **Stop and Save** finishes
+the file and opens it in Cassini. Closing the recording window also saves it.
+With both sources enabled, microphone is the left channel and desktop audio
+the right, captured on one timeline. Recording prevents automatic suspend.
+
+This uses PulseAudio or PipeWire's PulseAudio compatibility service and the
+default input/output devices. Desktop capture includes notifications and other
+applications. The microphone records independently of the meeting's mute
+button; use headphones to avoid capturing the speakers twice. Recordings do
+not yet include transcripts or speaker names.
+
+The [Chromium extension](browser-extension/README.md) captures separate WebRTC
+sources or the meeting tab's rendered audio through a local native messaging
+bridge. Cassini opens its recording sessions and plays their individual sources.
+The browser protocol and WAV/session format are shared with Cassini for Mac.
+See the [isolated recording tests](tests/recording/README.md) for validation.
+
 ## Install
 
 Builds of every commit are attached to the

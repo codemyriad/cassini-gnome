@@ -1,0 +1,6 @@
+#!@PYTHON@
+# SPDX-License-Identifier: GPL-3.0-or-later
+import sys
+sys.path.insert(0, '@pkgdatadir@')
+from cassini_viewer.browser_host import main
+sys.exit(main())

@@ -48,7 +48,8 @@ class CassiniApplication(Adw.Application):
         self._add_action("open", self.on_open, ["<primary>o"])
         self._add_action("new-window", lambda *_: self.new_window().present(), ["<primary>n"])
         self._add_action("about", self.on_about)
-        self._add_action("quit", lambda *_: self.quit(), ["<primary>q"])
+        self._add_action("quit", self.on_quit, ["<primary>q"])
+        self._add_action("record", self.on_record, ["<primary>r"])
         self.set_accels_for_action("window.close", ["<primary>w"])
         self.set_accels_for_action("win.play-pause", ["space", "AudioPlay", "AudioPause"])
         self.set_accels_for_action("win.skip-back", ["<primary>Left"])
@@ -94,6 +95,12 @@ class CassiniApplication(Adw.Application):
 
     def open_in_new_window(self, file):
         """Open *file* in an empty window if there is one, else in a new window."""
+        if file.get_basename() == "session.json":
+            from .session_window import SessionWindow
+
+            window = SessionWindow(self, file)
+            window.present()
+            return
         window = next((w for w in self.get_windows() if isinstance(w, CassiniWindow) and not w.has_meeting), None)
         if window is None:
             window = self.new_window()
@@ -109,6 +116,10 @@ class CassiniApplication(Adw.Application):
         meetings.add_suffix("opus")
         filters = Gio.ListStore.new(Gtk.FileFilter)
         filters.append(meetings)
+        sessions = Gtk.FileFilter()
+        sessions.set_name(_("Recording Session"))
+        sessions.add_pattern("session.json")
+        filters.append(sessions)
         dialog.set_filters(filters)
         dialog.set_default_filter(meetings)
         dialog.open_multiple(self.get_active_window(), None, self._on_open_chosen)
@@ -121,10 +132,24 @@ class CassiniApplication(Adw.Application):
         active = self.get_active_window()
         for i in range(files.get_n_items()):
             file = files.get_item(i)
-            if i == 0 and isinstance(active, CassiniWindow):
+            if i == 0 and isinstance(active, CassiniWindow) and file.get_basename() != "session.json":
                 active.open_file(file)
             else:
                 self.open_in_new_window(file)
+
+    def on_quit(self, *_args):
+        for window in self.get_windows():
+            if hasattr(window, "open_result"):
+                window.open_result = False
+            window.close()
+
+    def on_record(self, *_args):
+        from .recording_window import RecordingWindow
+
+        window = next((w for w in self.get_windows() if isinstance(w, RecordingWindow)), None)
+        if window is None:
+            window = RecordingWindow(self)
+        window.present()
 
     def on_about(self, *_args):
         about = Adw.AboutDialog(

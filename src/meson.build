@@ -28,6 +28,11 @@ install_data(
   'cassini_viewer/colors.py',
   'cassini_viewer/main.py',
   'cassini_viewer/player.py',
+  'cassini_viewer/recorder.py',
+  'cassini_viewer/recording_session.py',
+  'cassini_viewer/browser_host.py',
+  'cassini_viewer/session_window.py',
+  'cassini_viewer/recording_window.py',
   'cassini_viewer/portable.py',
   'cassini_viewer/summary.py',
   'cassini_viewer/transcript.py',
@@ -45,3 +50,17 @@ if pytest.found()
     workdir: meson.project_source_root(),
   )
 endif
+
+configure_file(
+  input: 'cassini-browser-host.in',
+  output: 'cassini-browser-host',
+  configuration: conf,
+  install: true,
+  install_dir: get_option('bindir'),
+  install_mode: 'r-xr-xr-x',
+)
+install_subdir('../browser-extension',
+  install_dir: pkgdatadir,
+  exclude_directories: ['tests', '__pycache__'],
+  exclude_files: ['native_host.py'],
+)
