@@ -13,6 +13,9 @@ if [ "$VERSION" != "$SPEC_VERSION" ]; then
   echo "error: meson.build says $VERSION but the spec says $SPEC_VERSION" >&2
   exit 1
 fi
+# The pinned writing-down artifacts, the spec's Source1-4. rpmbuild itself
+# never downloads them.
+build-aux/whistle-cache.sh
 mkdir -p dist
 # Per base image, so parallel builds (make -j packages) do not swap names.
 name_file=.rpm-name-$(image_slug "$BASE")
@@ -23,9 +26,10 @@ container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z
   install -m 644 /in/build-aux/rpm/cassini-viewer.spec "$spec"
   if command -v dnf >/dev/null 2>&1; then
     dnf -y install rpm-build tar xz "dnf-command(builddep)"
-    dnf -y builddep "$spec"
+    # sympy, which onnxruntime needs, would pull TeX Live in as weak deps.
+    dnf -y --setopt=install_weak_deps=False builddep "$spec"
     dnf -y install rpmlint || true
-    install_rpm() { dnf -y install "$@"; }
+    install_rpm() { dnf -y --setopt=install_weak_deps=False install "$@"; }
   elif command -v zypper >/dev/null 2>&1; then
     zypper -n install rpm-build tar xz
     rpmspec -q --buildrequires "$spec" | tr -d " " | xargs zypper -n install
@@ -35,9 +39,15 @@ container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z
     echo "error: no dnf or zypper in this image" >&2; exit 1
   fi
 
+  # Source1-4, named after their pinned URLs, from .whistle-cache.
+  python3 -c "
+import json, shutil
+for name, info in json.load(open(\"/in/whistle/pins.json\"))[\"artifacts\"].items():
+    shutil.copyfile(\"/in/.whistle-cache/\" + name, \"$top/SOURCES/\" + info[\"url\"].rsplit(\"/\", 1)[1])
+"
   cp -a /in/. "$src"
   cd "$src"
-  rm -rf .git _build* _install _flatpak build builddir dist repo .flatpak-builder .venv obj-* \
+  rm -rf .whistle-cache .git _build* _install _flatpak build builddir dist repo .flatpak-builder .venv obj-* \
     .pytest_cache .ruff_cache debian/.debhelper debian/cassini-viewer \
     tests/recording/node_modules tests/recording/artifacts *.flatpak
   find . -name __pycache__ -prune -exec rm -rf {} +
@@ -53,31 +63,33 @@ container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z
   fi
   rpmbuild -ba --define "_topdir $top" --define "dist $dist" "$spec"
   if command -v rpmlint >/dev/null 2>&1; then
-    rpmlint $top/RPMS/noarch/*.rpm $top/SRPMS/*.rpm || true
+    rpmlint -r /in/build-aux/rpm/cassini-viewer-rpmlintrc $top/RPMS/x86_64/*.rpm $top/SRPMS/*.rpm || true
   fi
 
-  install_rpm $top/RPMS/noarch/*.rpm
+  install_rpm $top/RPMS/x86_64/*.rpm
   test -x /usr/bin/cassini-viewer
   head -n1 /usr/bin/cassini-viewer | grep -qx "#!/usr/bin/python3"
   python3 -I /in/build-aux/smoke-installed.py
 
-  cp $top/RPMS/noarch/*.rpm $top/SRPMS/*.rpm /out/
+  cp $top/RPMS/x86_64/*.rpm $top/SRPMS/*.rpm /out/
   chown "$(stat -c %u:%g /out)" /out/*.rpm 2>/dev/null || true
   # Tell the clean-install step below which file this build produced.
-  basename $top/RPMS/noarch/*.rpm > "/out/$NAME_FILE"
+  basename $top/RPMS/x86_64/*.rpm > "/out/$NAME_FILE"
 '
 rpm_name=$(cat "dist/$name_file") && rm -f "dist/$name_file"
 
 # The build container has every BuildRequires installed, which can hide a
-# missing Requires; install the package in a fresh container and start it.
-container_run -v "$PWD/dist":/d:ro$Z -v "$PWD/build-aux":/aux:ro$Z -e RPM="$rpm_name" "$BASE" sh -ec '
+# missing Requires; install the package in a fresh container, then check it
+# there with no network, writing the D11 goldens down offline.
+container_offline_smoke "$BASE" '
   if command -v dnf >/dev/null 2>&1; then
-    dnf -y -q install "/d/$RPM"
+    # Without weak deps: this checks that Requires alone are enough (and
+    # skips the TeX Live that sympy recommends).
+    dnf -y -q --setopt=install_weak_deps=False install "/d/$RPM"
+    dnf clean all >/dev/null
   else
     zypper -n -q install --allow-unsigned-rpm "/d/$RPM"
+    zypper -n clean -a >/dev/null
   fi
-  cassini-viewer --help >/dev/null
-  python3 -I /aux/smoke-installed.py
-  echo "clean install smoke test passed"
-'
+' -v "$PWD/dist":/d:ro$Z -e RPM="$rpm_name"
 ls -l dist/*.rpm
