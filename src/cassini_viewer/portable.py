@@ -478,13 +478,16 @@ def interpret(head: bytes, comments: list[tuple[str, str]], vendor: str | None =
         meeting.warnings.append(Notice("duplicate-tag", f"{name} appears more than once", name))
 
     try:
+        # SPEC "Cassini descriptor tags" / "Which declaration wins": these
+        # manifest tags are the record, not optional copies of manifest fields.
+        for suffix in ("ENCODING", "CHUNK_COUNT", "SHA256", "RAW_BYTES", "GZIP_BYTES", "MIME", "SCHEMA"):
+            tag = MANIFEST_PREFIX + suffix
+            if not tags.get(tag):
+                raise CassiniError(f"{tag} is missing or empty", "payload-descriptor-incomplete", tag)
         encoding = tags.get("CASSINI_PAYLOAD_ENCODING")
-        if encoding is None:
-            raise CassiniError("CASSINI_PAYLOAD_ENCODING is missing", "missing-tag", "CASSINI_PAYLOAD_ENCODING")
         count = parse_decimal(tags.get("CASSINI_PAYLOAD_CHUNK_COUNT"), "CASSINI_PAYLOAD_CHUNK_COUNT")
         raw_bytes = parse_decimal(tags.get("CASSINI_PAYLOAD_RAW_BYTES"), "CASSINI_PAYLOAD_RAW_BYTES")
-        gzip_tag = tags.get("CASSINI_PAYLOAD_GZIP_BYTES")
-        gzip_bytes = parse_decimal(gzip_tag, "CASSINI_PAYLOAD_GZIP_BYTES") if gzip_tag is not None else None
+        gzip_bytes = parse_decimal(tags.get("CASSINI_PAYLOAD_GZIP_BYTES"), "CASSINI_PAYLOAD_GZIP_BYTES")
         manifest = decode_chunk_set(
             tags,
             MANIFEST_PREFIX,

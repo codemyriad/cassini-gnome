@@ -1,0 +1,49 @@
+{
+  "scan": "ok",
+  "groups": [
+    {
+      "title": "Today",
+      "meetings": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000001",
+          "origin": "received",
+          "lifecycle": "saved",
+          "interruptedAtMs": null,
+          "transcript": "none",
+          "etaMinutes": null,
+          "error": null,
+          "badge": "Received",
+          "title": "Vorbis title",
+          "startMs": 1793107079000,
+          "durationMs": 60,
+          "names": [],
+          "quote": null,
+          "canWriteDown": true,
+          "speakers": []
+        }
+      ]
+    },
+    {
+      "title": "Tuesday 1 September",
+      "meetings": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000002",
+          "origin": "received",
+          "lifecycle": "saved",
+          "interruptedAtMs": null,
+          "transcript": "none",
+          "etaMinutes": null,
+          "error": null,
+          "badge": "Received",
+          "title": "Conformance vector 001",
+          "startMs": 1788220800000,
+          "durationMs": 60,
+          "names": [],
+          "quote": null,
+          "canWriteDown": true,
+          "speakers": []
+        }
+      ]
+    }
+  ]
+}

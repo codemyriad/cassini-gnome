@@ -1,0 +1,35 @@
+{
+  "scan": "ok",
+  "groups": [
+    {
+      "title": "Today",
+      "meetings": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000001",
+          "origin": "own",
+          "lifecycle": "saved",
+          "interruptedAtMs": null,
+          "transcript": "done",
+          "etaMinutes": null,
+          "error": null,
+          "badge": null,
+          "title": "Capture title",
+          "startMs": 1793107079000,
+          "durationMs": 1000,
+          "names": [
+            "Speaker 1"
+          ],
+          "quote": "“Fallback transcript.”",
+          "canWriteDown": false,
+          "speakers": [
+            {
+              "id": "a",
+              "name": "Speaker 1",
+              "colourIndex": 0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

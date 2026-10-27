@@ -1,0 +1,310 @@
+{
+ "version": 2,
+ "note": "Binding state vectors (HARMONY.md section 3). badge: null means no badge. liveMs is the elapsed recording time for the Recording badge. canWriteDown says whether a 'write it down' action is offered.",
+ "precedence": [
+  "recording",
+  "saving",
+  "transcribing",
+  "needsAttention",
+  "interrupted",
+  "received",
+  "none"
+ ],
+ "vectors": [
+  {
+   "id": "recording",
+   "fields": {
+    "lifecycle": "recording",
+    "origin": "own",
+    "interruptedAtMs": null,
+    "transcript": "none",
+    "etaMinutes": null,
+    "error": null,
+    "liveMs": 768000
+   },
+   "badge": {
+    "kind": "recording",
+    "text": "Recording 12:48",
+    "tint": "red",
+    "dot": true
+   }
+  },
+  {
+   "id": "saving",
+   "fields": {
+    "lifecycle": "saving",
+    "origin": "own",
+    "interruptedAtMs": null,
+    "transcript": "none",
+    "etaMinutes": null,
+    "error": null
+   },
+   "badge": {
+    "kind": "saving",
+    "text": "Saving…",
+    "tint": "grey"
+   }
+  },
+  {
+   "id": "transcribing",
+   "fields": {
+    "lifecycle": "saved",
+    "origin": "own",
+    "interruptedAtMs": null,
+    "transcript": "running",
+    "etaMinutes": 4,
+    "error": null
+   },
+   "badge": {
+    "kind": "transcribing",
+    "text": "Transcribing, about 4 minutes left",
+    "tint": "accent"
+   }
+  },
+  {
+   "id": "queued-counts-as-transcribing",
+   "fields": {
+    "lifecycle": "saved",
+    "origin": "own",
+    "interruptedAtMs": null,
+    "transcript": "queued",
+    "etaMinutes": 1,
+    "error": null
+   },
+   "badge": {
+    "kind": "transcribing",
+    "text": "Transcribing, about 1 minute left",
+    "tint": "accent"
+   }
+  },
+  {
+   "id": "ready",
+   "fields": {
+    "lifecycle": "saved",
+    "origin": "own",
+    "interruptedAtMs": null,
+    "transcript": "done",
+    "etaMinutes": null,
+    "error": null
+   },
+   "badge": null,
+   "canWriteDown": false
+  },
+  {
+   "id": "own-not-yet-written-down",
+   "fields": {
+    "lifecycle": "saved",
+    "origin": "own",
+    "interruptedAtMs": null,
+    "transcript": "none",
+    "etaMinutes": null,
+    "error": null
+   },
+   "badge": null,
+   "canWriteDown": true
+  },
+  {
+   "id": "interrupted",
+   "fields": {
+    "lifecycle": "saved",
+    "origin": "own",
+    "interruptedAtMs": 2472000,
+    "transcript": "done",
+    "etaMinutes": null,
+    "error": null
+   },
+   "badge": {
+    "kind": "interrupted",
+    "text": "Interrupted at 00:41:12",
+    "tint": "amber"
+   }
+  },
+  {
+   "id": "interrupted-and-transcribing",
+   "fields": {
+    "lifecycle": "saved",
+    "origin": "own",
+    "interruptedAtMs": 2472000,
+    "transcript": "running",
+    "etaMinutes": 4,
+    "error": null
+   },
+   "badge": {
+    "kind": "transcribing",
+    "text": "Transcribing, about 4 minutes left",
+    "tint": "accent"
+   }
+  },
+  {
+   "id": "interrupted-and-failed",
+   "fields": {
+    "lifecycle": "saved",
+    "origin": "own",
+    "interruptedAtMs": 2472000,
+    "transcript": "failed",
+    "etaMinutes": null,
+    "error": {
+     "id": "transcribe-failed",
+     "action": "Try again"
+    }
+   },
+   "badge": {
+    "kind": "needsAttention",
+    "text": "Needs attention",
+    "tint": "amber"
+   }
+  },
+  {
+   "id": "received",
+   "fields": {
+    "lifecycle": "saved",
+    "origin": "received",
+    "interruptedAtMs": null,
+    "transcript": "done",
+    "etaMinutes": null,
+    "error": null
+   },
+   "badge": {
+    "kind": "received",
+    "text": "Received",
+    "tint": "grey"
+   },
+   "canWriteDown": false
+  },
+  {
+   "id": "received-without-transcript",
+   "fields": {
+    "lifecycle": "saved",
+    "origin": "received",
+    "interruptedAtMs": null,
+    "transcript": "none",
+    "etaMinutes": null,
+    "error": null
+   },
+   "badge": {
+    "kind": "received",
+    "text": "Received",
+    "tint": "grey"
+   },
+   "canWriteDown": true
+  },
+  {
+   "id": "received-being-written-down-once",
+   "fields": {
+    "lifecycle": "saved",
+    "origin": "received",
+    "interruptedAtMs": null,
+    "transcript": "running",
+    "etaMinutes": 4,
+    "error": null
+   },
+   "badge": {
+    "kind": "transcribing",
+    "text": "Transcribing, about 4 minutes left",
+    "tint": "accent"
+   }
+  },
+  {
+   "id": "received-damaged",
+   "fields": {
+    "lifecycle": "saved",
+    "origin": "received",
+    "interruptedAtMs": null,
+    "transcript": "damaged",
+    "etaMinutes": null,
+    "error": {
+     "id": "transcript-damaged",
+     "action": null
+    }
+   },
+   "badge": {
+    "kind": "received",
+    "text": "Received",
+    "tint": "grey"
+   },
+   "canWriteDown": false,
+   "note": "An error without an action never raises Needs attention; its line is still shown under the headline."
+  },
+  {
+   "id": "needs-attention",
+   "fields": {
+    "lifecycle": "saved",
+    "origin": "own",
+    "interruptedAtMs": null,
+    "transcript": "failed",
+    "etaMinutes": null,
+    "error": {
+     "id": "transcribe-failed",
+     "action": "Try again"
+    }
+   },
+   "badge": {
+    "kind": "needsAttention",
+    "text": "Needs attention",
+    "tint": "amber"
+   }
+  },
+  {
+   "id": "recording-beats-error",
+   "fields": {
+    "lifecycle": "recording",
+    "origin": "own",
+    "interruptedAtMs": null,
+    "transcript": "none",
+    "etaMinutes": null,
+    "error": {
+     "id": "mic-silent",
+     "action": "Check sound settings"
+    },
+    "liveMs": 3768000
+   },
+   "badge": {
+    "kind": "recording",
+    "text": "Recording 1:02:48",
+    "tint": "red",
+    "dot": true
+   }
+  },
+  {
+   "id": "transcribing-without-eta",
+   "fields": {
+    "lifecycle": "saved",
+    "origin": "own",
+    "interruptedAtMs": null,
+    "transcript": "running",
+    "etaMinutes": null,
+    "error": null
+   },
+   "badge": {
+    "kind": "transcribing",
+    "text": "Transcribing…",
+    "tint": "accent"
+   },
+   "note": "D6 R3"
+  },
+  {
+   "id": "failed-can-write-down",
+   "fields": {
+    "lifecycle": "saved",
+    "origin": "own",
+    "interruptedAtMs": null,
+    "transcript": "failed",
+    "etaMinutes": null,
+    "error": {
+     "id": "transcribe-failed",
+     "action": "Try again"
+    }
+   },
+   "badge": {
+    "kind": "needsAttention",
+    "text": "Needs attention",
+    "tint": "amber"
+   },
+   "canWriteDown": true,
+   "note": "D6 R9 (own meeting with counted tracks)"
+  }
+ ],
+ "changelog": [
+  "v2 (D6): transcribing-without-eta, failed-can-write-down"
+ ]
+}

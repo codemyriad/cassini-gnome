@@ -1,0 +1,2037 @@
+{
+  "version": 1,
+  "nowMs": 1793107080000,
+  "nowLocal": "2026-10-27T14:18:00",
+  "tz": "Europe/Rome",
+  "cases": [
+    {
+      "id": "r1-discovery",
+      "rules": [
+        "R1"
+      ],
+      "description": "Canonical regular recording, ignored names/link and Received import without publication.",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "source": "gnome",
+            "title": "Capture title",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-A0000000-0000-4000-8000-000000000002",
+          "type": "directory"
+        },
+        {
+          "path": "root/Recording-a0000000000040008000000000000002",
+          "type": "directory"
+        },
+        {
+          "path": "root/Recording-{a0000000-0000-4000-8000-000000000002}",
+          "type": "directory"
+        },
+        {
+          "path": "root/Recording-urn:uuid:a0000000-0000-4000-8000-000000000002",
+          "type": "directory"
+        },
+        {
+          "path": "external",
+          "type": "directory"
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000003",
+          "type": "symlink",
+          "target": "../external"
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000004/original.opus",
+          "type": "asset",
+          "name": "001-minimal-v1.opus"
+        }
+      ]
+    },
+    {
+      "id": "r2-whole-document",
+      "rules": [
+        "R2"
+      ],
+      "description": "Schema-invalid metadata ignored whole; sidecar fallback is done.",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "source": "gnome",
+            "title": "Capture title",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": "Must be ignored",
+            "titleSource": "user",
+            "notes": "invalid",
+            "speakers": [],
+            "transcript": {
+              "status": "none",
+              "reference": null
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "a",
+                "startMs": 100,
+                "endMs": 500,
+                "text": "Fallback transcript."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "r3-transcript-precedence",
+      "rules": [
+        "R3"
+      ],
+      "description": "In-progress missing bodies, failed retry, done damage, selected second transcript and stale audio.",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "source": "gnome",
+            "title": "Capture title",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "queued",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              }
+            },
+            "etaMinutes": 4,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000002/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000002",
+            "source": "gnome",
+            "title": "Capture title",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000002/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000002/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000002",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "running",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              }
+            },
+            "etaMinutes": 4,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000002/transcript.json",
+          "type": "text",
+          "value": "{unfinished"
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000003/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000003",
+            "source": "gnome",
+            "title": "Capture title",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000003/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000003/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000003",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "failed",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              }
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000004/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000004",
+            "source": "gnome",
+            "title": "Capture title",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000004/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000004/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000004",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              }
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000005/original.opus",
+          "type": "asset",
+          "name": "016-two-transcripts.opus"
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000005/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000005",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "embedded",
+                "file": "original.opus",
+                "transcriptId": "second-pass"
+              }
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": {
+              "originalName": "original.opus",
+              "originalFolderName": "Downloads",
+              "sha256": "70378c87ce08edff20c96ba6e2806e205703a29cc77778ad51bcda66a5b8326a",
+              "importedAtMs": 1793107079000
+            }
+          }
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000006/original.opus",
+          "type": "asset",
+          "name": "010-stale-audio.opus"
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000006/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000006",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "embedded",
+                "file": "original.opus"
+              }
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": {
+              "originalName": "original.opus",
+              "originalFolderName": "Downloads",
+              "sha256": "5b771e32b554214ece95566f26483da5f780613573a16f5de8677d70ac183587",
+              "importedAtMs": 1793107079000
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "r4-capture-history",
+      "rules": [
+        "R4"
+      ],
+      "description": "Completed session trusted despite missing WAV; injected live state, abandoned capture, counted gap.",
+      "root": "directory",
+      "activity": {
+        "A0000000-0000-4000-8000-000000000003": "recording"
+      },
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "source": "gnome",
+            "title": "Capture title",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              },
+              {
+                "id": "missing",
+                "file": "track-missing.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000002/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000002",
+            "source": "gnome",
+            "title": "Capture title",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "state": "recording",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": false,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000002/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000003/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000003",
+            "source": "gnome",
+            "title": "Capture title",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "state": "recording",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": false,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000003/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000004/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000004",
+            "source": "gnome",
+            "title": "Capture title",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000,
+                "gapFrames": 80
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000004/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        }
+      ]
+    },
+    {
+      "id": "r5-display-duration",
+      "rules": [
+        "R5"
+      ],
+      "description": "Unknown offset still counts physical PCM; no listed tracks gives unknown duration.",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "source": "gnome",
+            "title": "Capture title",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": null,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000002/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000002",
+            "source": "gnome",
+            "title": "Capture title",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "state": "completed",
+            "tracks": []
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000002/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 0,
+          "tone": true
+        }
+      ]
+    },
+    {
+      "id": "r6-title-start-order",
+      "rules": [
+        "R6"
+      ],
+      "description": "Trim title fallbacks and sort unknown-date group by folded/exact title.",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "source": "gnome",
+            "title": "  Session fallback  ",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": "   ",
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "none",
+              "reference": null
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000002/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000002",
+            "source": "gnome",
+            "title": " alpha ",
+            "createdAt": null,
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000002/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000003/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000003",
+            "source": "gnome",
+            "title": "Alpha",
+            "createdAt": null,
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000003/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000004/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000004",
+            "source": "gnome",
+            "title": "  ",
+            "createdAt": null,
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000004/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        }
+      ]
+    },
+    {
+      "id": "r7-speaking-order",
+      "rules": [
+        "R7"
+      ],
+      "description": "Silent metadata speaker omitted; unnamed speaker speaks first despite stored colour.",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "source": "gnome",
+            "title": "Capture title",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [
+              {
+                "id": "a",
+                "name": "Marta",
+                "provenance": "user",
+                "colourIndex": 99
+              },
+              {
+                "id": "b",
+                "name": null,
+                "provenance": "unnamed",
+                "colourIndex": 55
+              },
+              {
+                "id": "never",
+                "name": "Zoe",
+                "provenance": "user",
+                "colourIndex": 0
+              }
+            ],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              }
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "a",
+                "startMs": 2000,
+                "endMs": 2300,
+                "text": "Marta."
+              },
+              {
+                "speaker": "b",
+                "startMs": 1000,
+                "endMs": 1500,
+                "text": "First voice."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "r8-consecutive-quote",
+      "rules": [
+        "R8"
+      ],
+      "description": "No seam joining, exclusive ten-minute boundary, whitespace collapsed and straight quotes kept.",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "source": "gnome",
+            "title": "Capture title",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              }
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "a",
+                "startMs": 0,
+                "endMs": 5000,
+                "text": "first half"
+              },
+              {
+                "speaker": "b",
+                "startMs": 4990,
+                "endMs": 5360,
+                "text": "yeah"
+              },
+              {
+                "speaker": "a",
+                "startMs": 5350,
+                "endMs": 9000,
+                "text": "second half"
+              },
+              {
+                "speaker": "c",
+                "startMs": 9100,
+                "endMs": 15000,
+                "text": "  He\t said   \"no\".\nLong turn.  "
+              },
+              {
+                "speaker": "d",
+                "startMs": 600000,
+                "endMs": 999999,
+                "text": "Excluded at the boundary."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "r9-received-once",
+      "rules": [
+        "R9"
+      ],
+      "description": "Both plain and explicitly untranscribed received audio allow one write-down.",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000001/original.opus",
+          "type": "asset",
+          "name": "plain-title.opus"
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "none",
+              "reference": null
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": {
+              "originalName": "original.opus",
+              "originalFolderName": "Downloads",
+              "sha256": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
+              "importedAtMs": 1793107079000
+            }
+          }
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000002/original.opus",
+          "type": "asset",
+          "name": "001-minimal-v1.opus"
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000002/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000002",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "none",
+              "reference": null
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": {
+              "originalName": "original.opus",
+              "originalFolderName": "Downloads",
+              "sha256": "d0ad2b147822c9edc39203b1e7ee51ca38c9b41835b857a42cc639ed30743662",
+              "importedAtMs": 1793107079000
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "main",
+      "rules": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ],
+      "description": "Nine board-derived meetings; exact sample times/text and real frame/granule durations.",
+      "root": "directory",
+      "activity": {
+        "a0000000-0000-4000-8000-000000000003": "recording"
+      },
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "source": "gnome",
+            "title": "Budget review",
+            "createdAt": "2026-10-27T08:00:00Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 24960000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 24960000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": "Budget review",
+            "titleSource": "user",
+            "notes": [],
+            "speakers": [
+              {
+                "id": "marta",
+                "name": "Marta",
+                "provenance": "user",
+                "colourIndex": 0
+              },
+              {
+                "id": "dario",
+                "name": "Dario",
+                "provenance": "recognised",
+                "colourIndex": 1
+              },
+              {
+                "id": "guest",
+                "name": null,
+                "provenance": "unnamed",
+                "colourIndex": 2
+              }
+            ],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              }
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": {
+              "atMs": 872000,
+              "text": "We keep travel at twelve thousand and look again in January."
+            },
+            "received": null
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "marta",
+                "startMs": 4000,
+                "endMs": 10000,
+                "text": "Let’s start with the budget, since that is the one decision we need today."
+              },
+              {
+                "speaker": "dario",
+                "startMs": 11000,
+                "endMs": 18000,
+                "text": "I sent the numbers on Friday. Travel is the line that moved."
+              },
+              {
+                "speaker": "guest",
+                "startMs": 19000,
+                "endMs": 26000,
+                "text": "Do we know why it moved? Was it the two client visits in September?"
+              },
+              {
+                "speaker": "dario",
+                "startMs": 865000,
+                "endMs": 871000,
+                "text": "So the client visits explain most of it. Two trips, both late in the quarter."
+              },
+              {
+                "speaker": "marta",
+                "startMs": 872000,
+                "endMs": 878000,
+                "text": "Then we keep travel at twelve thousand in the budget and look again in January."
+              },
+              {
+                "speaker": "guest",
+                "startMs": 879000,
+                "endMs": 884000,
+                "text": "Agreed. I will write that down as the decision."
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000002/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000002",
+            "source": "gnome",
+            "title": "Client call, Rossi & Partners",
+            "createdAt": "2026-10-27T10:30:00Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 22600000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000002/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 22600000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000002/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000002",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [
+              {
+                "id": "marta",
+                "name": "Marta",
+                "provenance": "user",
+                "colourIndex": 0
+              },
+              {
+                "id": "giulia",
+                "name": "Giulia Rossi",
+                "provenance": "recognised",
+                "colourIndex": 1
+              },
+              {
+                "id": "guest",
+                "name": null,
+                "provenance": "unnamed",
+                "colourIndex": 2
+              }
+            ],
+            "transcript": {
+              "status": "running",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              }
+            },
+            "etaMinutes": 4,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000002/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "marta",
+                "startMs": 161000,
+                "endMs": 174000,
+                "text": "Thanks for making the time. We wanted to go through the delivery dates before the end of the month."
+              },
+              {
+                "speaker": "giulia",
+                "startMs": 175000,
+                "endMs": 187000,
+                "text": "Of course. On our side the main worry is the second phase, the data migration. We need it done before the audit in December."
+              },
+              {
+                "speaker": "guest",
+                "startMs": 188000,
+                "endMs": 199000,
+                "text": "And we have only two people who can sign off on it, so any slip there moves everything."
+              },
+              {
+                "speaker": "marta",
+                "startMs": 200000,
+                "endMs": 210000,
+                "text": "Understood. Then let us fix the migration first and move the reporting work to January."
+              },
+              {
+                "speaker": "giulia",
+                "startMs": 211000,
+                "endMs": 218000,
+                "text": "That works for us if we see a test run by the twentieth."
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000003/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000003",
+            "source": "gnome",
+            "title": "Weekly sync, product team",
+            "createdAt": "2026-10-27T13:05:12Z",
+            "state": "recording",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 6144000,
+                "ended": false,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000003/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 6144000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000003/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000003",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [
+              {
+                "atMs": 700000,
+                "text": "Decision on the travel budget around here"
+              }
+            ],
+            "speakers": [],
+            "transcript": {
+              "status": "none",
+              "reference": null
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000004/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000004",
+            "source": "gnome",
+            "title": "Interview 14",
+            "createdAt": "2026-10-26T15:00:00Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 30240000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000004/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 30240000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000004/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000004",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [
+              {
+                "id": "lea",
+                "name": "Lea",
+                "provenance": "user",
+                "colourIndex": 0
+              },
+              {
+                "id": "guest",
+                "name": null,
+                "provenance": "unnamed",
+                "colourIndex": 1
+              }
+            ],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              }
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000004/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "lea",
+                "startMs": 1000,
+                "endMs": 8000,
+                "text": "The first time I used it I did not trust the names at all."
+              },
+              {
+                "speaker": "guest",
+                "startMs": 9000,
+                "endMs": 10000,
+                "text": "Tell me more."
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000005/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000005",
+            "source": "gnome",
+            "title": "Design crit",
+            "createdAt": "2026-10-26T09:15:00Z",
+            "state": "interrupted",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 19776000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000005/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 19776000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000005/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000005",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              }
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000005/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "a",
+                "startMs": 1000,
+                "endMs": 8000,
+                "text": "Let us keep the sidebar and lose the second toolbar."
+              },
+              {
+                "speaker": "b",
+                "startMs": 9000,
+                "endMs": 10000,
+                "text": "Agreed."
+              },
+              {
+                "speaker": "c",
+                "startMs": 11000,
+                "endMs": 12000,
+                "text": "Yes."
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000006/original.opus",
+          "type": "asset",
+          "name": "onboarding.opus"
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000006/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000006",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "embedded",
+                "file": "original.opus"
+              }
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": {
+              "atMs": 2000,
+              "text": "This is where every meeting you record ends up."
+            },
+            "received": {
+              "originalName": "original.opus",
+              "originalFolderName": "Downloads",
+              "sha256": "6867bf09f0d3778efdcba1a79b09be815d235143974022a979401cffdafec6d2",
+              "importedAtMs": 1793107079000
+            }
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000007/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000007",
+            "source": "gnome",
+            "title": "Interview 15",
+            "createdAt": "2026-10-22T13:00:00Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 480000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000007/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 480000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000007/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000007",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "failed",
+              "reference": null
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000008/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000008",
+            "source": "gnome",
+            "title": "Weekly sync, product team",
+            "createdAt": "2026-10-20T07:00:00Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 19200000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000008/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 19200000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000008/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000008",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [
+              {
+                "id": "marta",
+                "name": "Marta",
+                "provenance": "user",
+                "colourIndex": 0
+              }
+            ],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              }
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000008/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "marta",
+                "startMs": 1870000,
+                "endMs": 1878000,
+                "text": "I will bring the budget numbers next week once Dario sends them."
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000009/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000009",
+            "source": "gnome",
+            "title": "Planning, Q4",
+            "createdAt": "2026-10-02T07:00:00Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 14400000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000009/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 14400000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000009/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000009",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [
+              {
+                "id": "marta",
+                "name": "Marta",
+                "provenance": "user",
+                "colourIndex": 0
+              }
+            ],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              }
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000009/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "marta",
+                "startMs": 527000,
+                "endMs": 535000,
+                "text": "If the budget holds we hire in December, not before."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "empty",
+      "rules": [
+        "R1"
+      ],
+      "description": "First-run Library.",
+      "root": "directory",
+      "activity": {},
+      "entries": []
+    },
+    {
+      "id": "first-record",
+      "rules": [
+        "R1"
+      ],
+      "description": "Empty Library for RecordFirst; no UI preference state is fabricated.",
+      "root": "directory",
+      "activity": {},
+      "entries": []
+    },
+    {
+      "id": "received-only",
+      "rules": [
+        "R3",
+        "R5",
+        "R7",
+        "R8",
+        "R9"
+      ],
+      "description": "Single received Onboarding meeting for boards 05/06.",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000006/original.opus",
+          "type": "asset",
+          "name": "onboarding.opus"
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000006/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000006",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "embedded",
+                "file": "original.opus"
+              }
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": {
+              "atMs": 2000,
+              "text": "This is where every meeting you record ends up."
+            },
+            "received": {
+              "originalName": "original.opus",
+              "originalFolderName": "Downloads",
+              "sha256": "6867bf09f0d3778efdcba1a79b09be815d235143974022a979401cffdafec6d2",
+              "importedAtMs": 1793107079000
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

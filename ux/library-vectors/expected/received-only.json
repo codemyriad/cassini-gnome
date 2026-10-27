@@ -1,0 +1,41 @@
+{
+  "scan": "ok",
+  "groups": [
+    {
+      "title": "Friday 23 October",
+      "meetings": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000006",
+          "origin": "received",
+          "lifecycle": "saved",
+          "interruptedAtMs": null,
+          "transcript": "done",
+          "etaMinutes": null,
+          "error": null,
+          "badge": "Received",
+          "title": "Onboarding walkthrough",
+          "startMs": 1792760400000,
+          "durationMs": 2040000,
+          "names": [
+            "Silvio",
+            "Speaker 2"
+          ],
+          "quote": "“This is where every meeting you record ends up.”",
+          "canWriteDown": false,
+          "speakers": [
+            {
+              "id": "silvio",
+              "name": "Silvio",
+              "colourIndex": 0
+            },
+            {
+              "id": "guest",
+              "name": "Speaker 2",
+              "colourIndex": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

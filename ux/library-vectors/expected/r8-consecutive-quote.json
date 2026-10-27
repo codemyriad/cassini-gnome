@@ -1,0 +1,53 @@
+{
+  "scan": "ok",
+  "groups": [
+    {
+      "title": "Today",
+      "meetings": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000001",
+          "origin": "own",
+          "lifecycle": "saved",
+          "interruptedAtMs": null,
+          "transcript": "done",
+          "etaMinutes": null,
+          "error": null,
+          "badge": null,
+          "title": "Capture title",
+          "startMs": 1793107079000,
+          "durationMs": 1000,
+          "names": [
+            "Speaker 1",
+            "Speaker 2",
+            "Speaker 3",
+            "Speaker 4"
+          ],
+          "quote": "“He said \"no\". Long turn.”",
+          "canWriteDown": false,
+          "speakers": [
+            {
+              "id": "a",
+              "name": "Speaker 1",
+              "colourIndex": 0
+            },
+            {
+              "id": "b",
+              "name": "Speaker 2",
+              "colourIndex": 1
+            },
+            {
+              "id": "c",
+              "name": "Speaker 3",
+              "colourIndex": 2
+            },
+            {
+              "id": "d",
+              "name": "Speaker 4",
+              "colourIndex": 3
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
