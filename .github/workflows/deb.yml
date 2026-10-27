@@ -27,8 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       # The same script as `make deb`: checks the version, builds, runs
-      # lintian, installs the package and smoke-tests it in a container.
-      - run: build-aux/deb/build.sh "${{ matrix.base }}"
+      # lintian, installs the package and smoke-tests it in containers.
+      # Retried once because distribution mirrors occasionally time out.
+      - run: build-aux/deb/build.sh "${{ matrix.base }}" || build-aux/deb/build.sh "${{ matrix.base }}"
       # Both bases produce the same file name; release the Ubuntu build.
       - if: matrix.base == 'ubuntu:26.04'
         uses: actions/upload-artifact@v4

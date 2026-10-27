@@ -4,7 +4,8 @@ ARG BASE=ubuntu:26.04
 FROM ${BASE}
 ENV DEBIAN_FRONTEND=noninteractive
 # Mirrors occasionally time out, in CI especially.
-RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80retries
+# A stalled connection fails after 15 s and is retried instead of hanging.
+RUN printf 'Acquire::Retries "3";\nAcquire::http::Timeout "15";\n' > /etc/apt/apt.conf.d/80retries
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential devscripts equivs lintian && rm -rf /var/lib/apt/lists/*
 COPY control /tmp/control
