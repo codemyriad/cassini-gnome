@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import socket
 import sys
 import wave
 from pathlib import Path
@@ -24,7 +25,9 @@ from cassini_viewer.speech_pipeline import resampled_chunks  # noqa: E402
 from cassini_viewer.whistle_client import WhistleClient  # noqa: E402
 
 assert os.environ.get("CASSINI_WHISTLE_NETWORK_NONE") == "1"
-assert set(os.listdir("/sys/class/net")) == {"lo"}
+# The interfaces of this process's own network namespace: /sys/class/net can
+# show the host's in a Flatpak sandbox started with --unshare=network.
+assert {name for _, name in socket.if_nameindex()} == {"lo"}
 root = Path(__file__).with_name("pipeline")
 for line in (root / "SHA256SUMS").read_text().splitlines():
     expected, name = line.split()
