@@ -84,6 +84,15 @@ def playback_elements(uri):
     return GST_ELEMENTS
 
 
+def all_elements():
+    """Every GStreamer element Cassini uses: playbin, each file type's decoders and Record Meeting's."""
+    names = ["playbin"]
+    for name in [name for names in PLAYBACK_ELEMENTS.values() for name in names] + list(RECORDING_ELEMENTS):
+        if name not in names:
+            names.append(name)
+    return tuple(names)
+
+
 def plugins_for(missing):
     """What to install for the *missing* GStreamer elements."""
     if "pulsesrc" in missing:

@@ -50,16 +50,7 @@ container_run -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z "$BASE" sh -ec '
   pacman -U --noconfirm "$pkg"
   test -x /usr/bin/cassini-viewer
   cassini-viewer --help >/dev/null   # runs the installed launcher headless
-  python3 -c "import sys; sys.path.insert(0, \"/usr/share/cassini-viewer\"); import cassini_viewer.portable"
-  python3 -c "
-import gi
-gi.require_version(\"Gtk\", \"4.0\"); gi.require_version(\"Adw\", \"1\"); gi.require_version(\"Gst\", \"1.0\")
-from gi.repository import Gtk, Adw, Gst
-print(\"GTK %d.%d.%d\" % (Gtk.get_major_version(), Gtk.get_minor_version(), Gtk.get_micro_version()))
-print(\"libadwaita %d.%d.%d\" % (Adw.get_major_version(), Adw.get_minor_version(), Adw.get_micro_version()))
-print(Gst.version_string())
-"
-  for el in oggdemux opusdec playbin; do gst-inspect-1.0 --exists "$el" || { echo "missing GStreamer element $el" >&2; exit 1; }; done
+  python3 -I /in/build-aux/smoke-installed.py
 
   cp "$pkg" /out/
   chown "$(stat -c %u:%g /out)" "/out/${pkg##*/}" 2>/dev/null || true
@@ -70,11 +61,11 @@ pkg_name=$(cat dist/.pkg-name) && rm -f dist/.pkg-name
 
 # The build container has makedepends and checkdepends installed, which can
 # hide a missing dependency; install the package in a fresh container.
-container_run -v "$PWD/dist":/d:ro$Z -e PKG="$pkg_name" "$BASE" sh -ec '
+container_run -v "$PWD/dist":/d:ro$Z -v "$PWD/build-aux":/aux:ro$Z -e PKG="$pkg_name" "$BASE" sh -ec '
   pacman -Syu --noconfirm --noprogressbar -q >/dev/null
   pacman -U --noconfirm --noprogressbar "/d/$PKG" >/dev/null
   cassini-viewer --help >/dev/null
-  python3 -c "import sys; sys.path.insert(0, \"/usr/share/cassini-viewer\"); from cassini_viewer import runtime; runtime.check()"
+  python3 -I /aux/smoke-installed.py
   echo "clean install smoke test passed"
 '
 ls -l "dist/$pkg_name"

@@ -16,10 +16,12 @@ if [ "$VERSION" != "${DEB_VERSION%%-*}" ]; then
   echo "error: meson.build says $VERSION but debian/changelog says $DEB_VERSION" >&2
   exit 1
 fi
+# dpkg-buildpackage names the package after debian/changelog.
+DEB=cassini-viewer_${DEB_VERSION}_all.deb
 TAG=cassini-viewer-deb:$(image_slug "$BASE")
 container_build -q -f build-aux/deb/Dockerfile --build-arg BASE="$BASE" -t "$TAG" debian
 mkdir -p dist
-container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" "$TAG" sh -ec '
+container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" -e DEB="$DEB" "$TAG" sh -ec '
   mkdir -p /build/src && cd /build/src
   # Copy the tree without build output, caches and VCS data.
   tar -C /in -cf - --exclude=./.git --exclude=./.venv --exclude="./_build*" --exclude=./_install \
@@ -29,22 +31,27 @@ container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" "$TAG" sh -ec '
     --exclude=./tests/recording/artifacts --exclude=./.pytest_cache --exclude=./.ruff_cache \
     --exclude=__pycache__ . | tar -xf -
   dpkg-buildpackage -us -uc -b
-  lintian --info --fail-on error ../*.deb
+  test -f "../$DEB"
+  lintian --info --fail-on error "../$DEB"
   apt-get update -qq
-  apt-get install -y --no-install-recommends ../*.deb
-  # The same startup check the launcher runs: Python, GTK, libadwaita, GStreamer.
-  python3 -c "import sys; sys.path.insert(0, \"/usr/share/cassini-viewer\")
-from cassini_viewer import runtime
-problems = runtime._problems()
-if not problems:
-    from gi.repository import Gst
-    problems = runtime.missing_gst_elements(Gst.ElementFactory.find)
-sys.exit(\"smoke test failed: %s\" % problems if problems else 0)"
+  apt-get install -y --no-install-recommends "../$DEB"
   cassini-viewer --help >/dev/null
-  echo "smoke test passed"
-  cp ../*.deb /out/
+  python3 -I /in/build-aux/smoke-installed.py
+  cp "../$DEB" /out/
   # Docker writes as root; hand the file back to the owner of dist/.
   # Rootless podman already maps root to the caller, so this is a no-op there.
-  chown "$(stat -c %u:%g /out)" /out/*.deb 2>/dev/null || true
+  chown "$(stat -c %u:%g /out)" "/out/$DEB" 2>/dev/null || true
 '
-ls -l dist/*.deb
+
+# The build container has every Build-Depends installed, which can hide a
+# missing Depends; install the package in a fresh container and check it.
+container_run -v "$PWD/dist:/d:ro$Z" -v "$PWD/build-aux:/aux:ro$Z" -e DEB="$DEB" \
+  -e DEBIAN_FRONTEND=noninteractive "$BASE" sh -ec '
+  printf "Acquire::Retries \"3\";\nAcquire::http::Timeout \"15\";\n" > /etc/apt/apt.conf.d/80retries
+  apt-get update -qq
+  apt-get install -y -qq --no-install-recommends "/d/$DEB" >/dev/null
+  cassini-viewer --help >/dev/null
+  python3 -I /aux/smoke-installed.py
+  echo "clean install smoke test passed"
+'
+ls -l "dist/$DEB"

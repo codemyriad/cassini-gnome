@@ -57,18 +57,7 @@ container_run -e VERSION="$VERSION" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z 
   install_rpm $top/RPMS/noarch/*.rpm
   test -x /usr/bin/cassini-viewer
   head -n1 /usr/bin/cassini-viewer | grep -qx "#!/usr/bin/python3"
-  python3 -c "import sys; sys.path.insert(0, \"/usr/share/cassini-viewer\"); import cassini_viewer.portable"
-  python3 -c "
-import gi
-gi.require_version(\"Gtk\", \"4.0\"); gi.require_version(\"Adw\", \"1\"); gi.require_version(\"Gst\", \"1.0\")
-from gi.repository import Adw, Gst, Gtk
-Gst.init(None)
-missing = [e for e in (\"oggdemux\", \"opusdec\", \"playbin\") if not Gst.ElementFactory.find(e)]
-print(\"GTK %d.%d, libadwaita %d.%d, %s\" % (Gtk.get_major_version(), Gtk.get_minor_version(),
-      Adw.get_major_version(), Adw.get_minor_version(), Gst.version_string()))
-assert not missing, \"missing GStreamer elements: %s\" % missing
-"
-  echo "smoke test passed"
+  python3 -I /in/build-aux/smoke-installed.py
 
   cp $top/RPMS/noarch/*.rpm $top/SRPMS/*.rpm /out/
   chown "$(stat -c %u:%g /out)" /out/*.rpm 2>/dev/null || true
@@ -79,14 +68,14 @@ rpm_name=$(cat dist/.rpm-name) && rm -f dist/.rpm-name
 
 # The build container has every BuildRequires installed, which can hide a
 # missing Requires; install the package in a fresh container and start it.
-container_run -v "$PWD/dist":/d:ro$Z -e RPM="$rpm_name" "$BASE" sh -ec '
+container_run -v "$PWD/dist":/d:ro$Z -v "$PWD/build-aux":/aux:ro$Z -e RPM="$rpm_name" "$BASE" sh -ec '
   if command -v dnf >/dev/null 2>&1; then
     dnf -y -q install "/d/$RPM"
   else
     zypper -n -q install --allow-unsigned-rpm "/d/$RPM"
   fi
   cassini-viewer --help >/dev/null
-  python3 -c "import sys; sys.path.insert(0, \"/usr/share/cassini-viewer\"); from cassini_viewer import runtime; runtime.check()"
+  python3 -I /aux/smoke-installed.py
   echo "clean install smoke test passed"
 '
 ls -l dist/*.rpm
