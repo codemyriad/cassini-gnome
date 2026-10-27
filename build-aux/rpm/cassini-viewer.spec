@@ -1,9 +1,9 @@
 # RPM spec for Fedora and openSUSE. Build it with build-aux/rpm/build.sh,
 # which makes the source tarball from the working tree.
 Name:           cassini-viewer
-Version:        0.1.1
+Version:        0.2.0
 Release:        1%{?dist}
-Summary:        Read along with meeting recordings
+Summary:        Record meetings and read along with their transcripts
 License:        GPL-3.0-or-later
 URL:            https://github.com/codemyriad/cassini-gnome
 Source0:        %{name}-%{version}.tar.xz
@@ -55,6 +55,12 @@ Cassini plays meeting recordings in the Cassini portable meeting format:
 ordinary Ogg Opus files that carry their own word-by-word transcript,
 speaker names and summary.
 
+Cassini also records meetings: the microphone and desktop audio through a
+PulseAudio-compatible sound server such as PipeWire, and, with its companion
+extension for Chromium-based browsers, each audio source of a WebRTC meeting
+on its own track. The extension's native messaging hosts are included; they
+are registered per user, never system-wide.
+
 It highlights the spoken word as the recording plays, lets you click any
 word to play from there, see participants, search the transcript, read the
 summary, verify that the audio matches its transcript, and export the
@@ -99,6 +105,12 @@ echo "%%dir %{_datadir}/%{name}" >> %{name}.lang
 %{_mandir}/man1/%{name}.1*
 
 %changelog
+* Tue Oct 27 2026 Silvio Tomatis <silviot@gmail.com> - 0.2.0-1
+- Record meetings: microphone and desktop audio, and browser meetings
+  per source through the companion extension and its native hosts.
+- Name missing libraries and GStreamer plugins at startup instead of failing.
+- Package for Fedora, openSUSE, Arch Linux and Alpine as well as Debian.
+
 * Thu Oct 15 2026 Silvio Tomatis <silviot@gmail.com> - 0.1.1-1
 - Fix transcript-click crashes and GTK label sizing warnings.
 - Remove participant hiding and port inline interjection grouping.

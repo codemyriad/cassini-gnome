@@ -34,6 +34,10 @@ For the separate development browser, run `build-aux/run-browser-test.sh` and
 native hosts automatically. See [browser setup](browser-extension/README.md) for
 normal profiles, capture limits and the whole-tab fallback.
 
+The companion is set up per user: each person registers the native messaging
+hosts for their own browser profile. Packages install the host programs but
+never register them system-wide.
+
 Recording from the browser needs a native installation; the Flatpak does not
 support the companion yet (see [Install](#install)).
 

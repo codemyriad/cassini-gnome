@@ -10,9 +10,9 @@
 #   _srcdir=cassini-gnome-$pkgver      # GitHub names the top directory after the repo
 
 pkgname=cassini-viewer
-pkgver=0.1.1
+pkgver=0.2.0
 pkgrel=1
-pkgdesc='Read along with meeting recordings in the Cassini portable meeting format'
+pkgdesc='Record meetings and read along with their transcripts in the Cassini portable meeting format'
 arch=(any)
 url='https://github.com/codemyriad/cassini-gnome'
 license=(GPL-3.0-or-later)
