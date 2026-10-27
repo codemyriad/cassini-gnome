@@ -28,6 +28,7 @@ install_data(
   'cassini_viewer/__init__.py',
   'cassini_viewer/colors.py',
   'cassini_viewer/main.py',
+  'cassini_viewer/screenshot.py',
   'cassini_viewer/player.py',
   'cassini_viewer/recorder.py',
   'cassini_viewer/recording_session.py',

@@ -38,6 +38,9 @@ if __name__ == "__main__":
     resource = Gio.Resource.load(os.path.join(pkgdatadir, "cassini-viewer.gresource"))
     resource._register()
 
+    if os.environ.get("CASSINI_SCREENSHOT_OUT"):
+        from cassini_viewer.screenshot import capture
+        sys.exit(capture(APPLICATION_ID, VERSION, PROFILE))
     from cassini_viewer import main
 
     sys.exit(main.main(APPLICATION_ID, VERSION, PROFILE))
