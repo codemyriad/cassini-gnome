@@ -28,7 +28,7 @@ def capture(application_id, version, profile):
     app.register(None)
     app.activate()
     window = app.get_active_window()
-    window.set_default_size(1120, 720)
+    window.set_default_size(1130, 730)
     context = GLib.MainContext.default()
     deadline = time.monotonic() + 10
     paintable = Gtk.WidgetPaintable.new(window)
@@ -56,12 +56,16 @@ def capture(application_id, version, profile):
         )
     viewport = node.get_bounds()
     texture = window.get_renderer().render_texture(node, viewport)
+    if (texture.get_width(), texture.get_height()) != (1120, 720):
+        raise RuntimeError(f"Expected 1120x720, got {texture.get_width()}x{texture.get_height()}")
     if not texture.save_to_png(str(target)):
         raise RuntimeError("GDK could not write screenshot PNG")
     target.with_suffix(".json").write_text(
         json.dumps(
             dict(
-                surface="current-main",
+                surface=os.environ.get("CASSINI_SCREENSHOT_BOARD", "current-main"),
+                defaultSize=[1130, 730],
+                allocation=[window.get_width(), window.get_height()],
                 width=texture.get_width(),
                 height=texture.get_height(),
                 renderer=os.environ.get("GSK_RENDERER"),
@@ -71,8 +75,7 @@ def capture(application_id, version, profile):
                 accent=Adw.StyleManager.get_default().get_accent_color().value_nick,
                 light=not Adw.StyleManager.get_default().get_dark(),
                 limitations=[
-                    "Current BrowserMeetingsWindow; no Library shell or design-board fidelity is claimed.",
-                    "Fixture and fixed-clock rendering are deferred to the coordinator screenshot contract.",
+                    "Recording controls still open the existing recording window until UX5.",
                 ],
             ),
             indent=2,

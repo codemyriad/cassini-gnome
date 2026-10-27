@@ -1,0 +1,4483 @@
+{
+ "version": 3,
+ "note": "Shared UX strings catalog (S-2). Coordinator-owned. Each entry has en (shared, or the GNOME text when platforms differ) and an optional mac. status: drawn = on a board; harmony = required by HARMONY.md, not drawn; format = reference to a format-vectors formatter; vectors = only required by the vectors; galleryOnly = only on the hidden states-gallery debug board, never shipped; legacy = temporary, has an end milestone; pending = copy awaiting Silvio. Placeholders are {name}. Typographic ’ “ ” are part of the strings. Only ship entries whose milestone you are implementing.",
+ "source": "canvas version 1793116956-b00e",
+ "entries": [
+  {
+   "id": "common.autoTag",
+   "en": "auto",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "badge",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "Meeting",
+    "Meeting-mac",
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX1b",
+   "note": "Lowercase outlined tag after a name that was recognised from a saved voice. It appears on preview speaker chips, the transcript name column and the search context. Style: 11 px, weight 500, dim, 1 px border, radius 5. The tooltip is common.autoTag.tooltip.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.autoTag.tooltip",
+   "en": "Recognised from your saved voices",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "tooltip",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "Meeting",
+    "Meeting-mac",
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX1b",
+   "note": "Tooltip of the 'auto' tag (title= / Mac .help). Also use it as the tag's accessible description. en-GB 'Recognised'. Deliberately different from meeting.speakerCaption.recognised, which has no 'your'.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.backToLibrary",
+   "en": "Back to Library",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Meeting",
+    "Meeting-mac",
+    "Recording",
+    "Recording-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Accessible label (and tooltip) of the icon-only back chevron at the leading edge of the header. On the Mac it comes after the traffic lights. Shortcut Alt+← / ⌘[ (HARMONY 8). Used by the Meeting page (UX3) and the Recording page (UX6).",
+   "status": "drawn"
+  },
+  {
+   "id": "common.cancel",
+   "en": "Cancel",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "States",
+    "States-mac",
+    "Export",
+    "Export-mac",
+    "Settings",
+    "Settings-mac",
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Secondary grey button (Esc). Uses: confirmations 2 and 3 (UX2 gallery), the Export dialog (UX7a), the Speakers dialog footer (UX16) and a running model download (UX8b). On a download it cancels and the row goes back to Not downloaded. GNOME dialogs: equal width. Mac: natural width. Speakers footer: trailing, natural width on both platforms. Settings download row: small 32 px grey row button.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.choose",
+   "en": "Choose…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Export",
+    "Export-mac"
+   ],
+   "milestone": "UX7a",
+   "note": "Small grey button that trails the 'Save to' row and opens the platform folder chooser. Uses the single ellipsis U+2026. Different from errors.libraryOffline.action 'Choose folder'.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.close",
+   "en": "Close",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Settings",
+    "SavedVoices"
+   ],
+   "milestone": "UX8a",
+   "note": "Round close button at the trailing end of the GNOME Preferences dialog header, including the Saved voices subpage. This is the AdwDialog close button. Not 'Close window', which the main window uses. Mac: traffic lights.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.closeWindow",
+   "en": "Close window",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "a11y",
+   "boards": [
+    "LibraryEmpty",
+    "LibraryReceived",
+    "Main",
+    "Meeting",
+    "Recording",
+    "Search"
+   ],
+   "milestone": "UX1b",
+   "note": "Round grey close button at the trailing end of the main-window content header. AdwHeaderBar window controls supply it, and libadwaita may already give it this name, so do not override it. It is listed so tests can check the text. Mac uses the traffic lights. While recording, closing shows confirmation 1 (HARMONY 7). Different from common.close, which belongs to the Preferences dialog.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.done",
+   "en": "Done",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac",
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX10",
+   "note": "Suggested/accent button that closes the dialog. CompanionSetup GNOME: equal width with Not now; Mac: trailing, natural width, default button. CompanionSetup draws it disabled grey while step 2 is pending; the enabled accent look is inferred, not drawn. WhatIsRecorded: UX11.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.exportEllipsis",
+   "en": "Export…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Grey Meeting header button. The menu item 'Export…' uses the same string (HARMONY 9). Shortcut Ctrl+Shift+E / ⇧⌘E. U+2026, not three dots. Different from export.exportButton 'Export' (no ellipsis).",
+   "status": "drawn"
+  },
+  {
+   "id": "common.legacy.browserMeetings",
+   "en": "Browser meetings…",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "menuitem",
+   "boards": [],
+   "milestone": "UX1b",
+   "note": "Temporary legacy item in the GNOME primary menu. It opens the existing \"Meetings in your browser\" window until UX10 deletes it. This is an approved, time-boxed exception to HARMONY 2; delete it in G-UX10.",
+   "status": "legacy"
+  },
+  {
+   "id": "common.listeningInsideBrowser",
+   "en": "Listening inside your browser",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "Recording",
+    "Recording-mac",
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX5",
+   "note": "HARMONY 6 row meta while lifecycle = recording (Library row, UX5). Also the status under 'The others' on the Recording page (UX6), after a check glyph. Until Q2 is decided, show it alone, without the drawn '· 4 voices' (see recording.others.browserVoices). Also the bold title of the WhatIsRecorded capture-path card (UX11). Variants for other capture paths are not drawn (HARMONY 11), so ask and do not invent.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.mainMenu",
+   "en": "Main menu",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "a11y",
+   "boards": [
+    "LibraryEmpty",
+    "LibraryReceived",
+    "Main"
+   ],
+   "milestone": "UX1b",
+   "note": "Icon-only hamburger button in the GNOME content header. The menu contents are not drawn (HARMONY 11). Keep 'Browser meetings…' in it until UX10 and drop New Window (ROADMAP UX1b).",
+   "status": "drawn"
+  },
+  {
+   "id": "common.notNow",
+   "en": "Not now",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Meeting",
+    "Meeting-mac",
+    "RecordFirst",
+    "RecordFirst-mac",
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Meeting companion card: flat accent-text button, and the dismissal persists (UX3). RecordFirst (UX5) and CompanionSetup (UX10): secondary grey dialog button. CompanionSetup draws it as a link; implement it as a button.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.play",
+   "en": "Play",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "LibraryReceived",
+    "LibraryReceived-mac"
+   ],
+   "milestone": "UX1b",
+   "note": "Library preview: suggested-action button with accent fill (#1c71d8 / #0063d1), white semibold text, a decorative play glyph before the text and 36 px height. Meeting player: accessible label of the play/pause button in the paused state. Meeting 17/18 does not draw that state; it draws player.pause. Playback of session folders depends on UX-play.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.quote",
+   "en": "“{quote}”",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX1b",
+   "placeholders": {
+    "quote": "turn text. Library row: the turn last played or searched from, else the longest turn in the first 10 minutes (HARMONY 6). Search result: the turn that contains the hit."
+   },
+   "note": "Typographic quotes U+201C/U+201D are part of the string. Single line, ellipsised at the end. Search (UX12) highlights the matched words (mark, semibold): #fbe7a1 on GNOME, #fde68a on Mac, rgba(255,255,255,0.28) on the selected row.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.record",
+   "en": "Record",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "LibraryEmpty",
+    "LibraryEmpty-mac",
+    "LibraryReceived",
+    "LibraryReceived-mac",
+    "RecordFirst",
+    "RecordFirst-mac",
+    "Meeting",
+    "Meeting-mac",
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX1b",
+   "note": "Toolbar Record button (sidebar header or first-run header) and the big red first-run pill. GNOME toolbar: red fill #c01c28, white dot, white text. Mac toolbar: grey fill #e8e8ed, red dot #d70015, dark text. First run: big red pill on both (HARMONY 10). The dot is decorative (aria-hidden). Shortcut Ctrl+R / ⌘R. The live pill replaces it while recording (UX5). On LibraryReceived and LibraryEmpty it leads to RecordFirst. Never 'New Recording…' or 'Record Meeting'.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.retry",
+   "en": "Retry",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Action of errors.modelDownloadFailed.line (HARMONY 5). Live from UX8b.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.savedVoices",
+   "en": "Saved voices",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "Settings",
+    "Settings-mac",
+    "SavedVoices",
+    "SavedVoices-mac"
+   ],
+   "milestone": "UX17",
+   "note": "Uses: title of the last row in the Settings Speakers card, with a trailing chevron, and the header title of the pushed Saved voices page (GNOME AdwPreferencesDialog subpage, Mac navigationTitle in a NavigationStack). Sentence case, lowercase v.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.search",
+   "en": "Search",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Main",
+    "LibraryReceived",
+    "Search"
+   ],
+   "milestone": "UX12",
+   "note": "Accessible label of the icon-only GNOME search toggle at the end of the sidebar header. On the Search board it is pressed (aria-pressed=true, #d4d4da fill). It reveals the entry with search.field.placeholder. It is drawn on 01 and 05, but search only works from UX12, so the coordinator decides whether it shows earlier (no dead buttons). Mac has no toggle. The Mac placeholder 'Search' is search.field.placeholder, and the 'Search' heading is search.title.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.shortcut.record",
+   "en": "Ctrl+R",
+   "mac": "⌘R",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "LibraryEmpty",
+    "LibraryEmpty-mac"
+   ],
+   "milestone": "UX1b",
+   "note": "In-app Record/Stop shortcut (HARMONY 8). It is the {shortcut} value in firstRun.shortcutHint, drawn as its own span. It is NOT the global shortcut common.shortcut.recordAnywhere.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.shortcut.recordAnywhere",
+   "en": "Ctrl+Alt+R",
+   "mac": "⌥⌘R",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "RecordHidden-mac"
+   ],
+   "milestone": "UX9",
+   "note": "Default global Record/Stop shortcut (HARMONY 8; GNOME uses the GlobalShortcuts portal). Visible on the Mac as the trailing glyph of 'Stop Recording'. The system renders that glyph from the bound shortcut, so show the configured binding and never hard-code it. GNOME shows it only in a designer note on this board. Settings › Recording (UX8a, copy not drawn) also shows it, with 'Change…'.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.speaker.unnamed",
+   "en": "Speaker {n}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "LibraryReceived",
+    "LibraryReceived-mac",
+    "Meeting",
+    "Meeting-mac",
+    "Search",
+    "Search-mac",
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX1a",
+   "placeholders": {
+    "n": "1-based speaker number in order of first speaking (HARMONY 6 row meta)"
+   },
+   "note": "Unnamed-speaker label. Used in the row meta (formatter, UX1a), speaker chips, transcript name column, Meeting sidebar rows and search results. It is also the Speakers dialog title (h2, 19 px bold) and that dialog's accessible name. Not drawn: the dialog title for an already named speaker (presumably the name; ask). Never 'Unknown Speaker'.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.speakers",
+   "en": "Speakers",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "Meeting",
+    "Meeting-mac",
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Meeting sidebar: small bold dim section heading. Settings: full-size bold group title in the foreground colour (AdwPreferencesGroup title / Section header).",
+   "status": "drawn"
+  },
+  {
+   "id": "common.stop",
+   "en": "Stop",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "Recording",
+    "Recording-mac",
+    "RecordHidden"
+   ],
+   "milestone": "UX5",
+   "note": "Red (destructive) fill, white semibold text. Uses: (1) the small Stop inside the live header pill, 26 px (UX5); (2) the big red pill with a white square glyph beside the Recording page timer (UX6); (3) GNOME only, the first, destructive GNotification action on RecordHidden (UX9). The Mac menu uses hidden.menu.stopRecording instead. Never 'Stop and Save'. 'Stop Recording' is only the Mac menu-bar item.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.theOthers",
+   "en": "The others",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Recording",
+    "Recording-mac",
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac",
+    "RecordHidden-mac"
+   ],
+   "milestone": "UX6",
+   "note": "HARMONY 2 term for the remote side. Uses: Recording sources card row title (browser-window icon); WhatIsRecorded radio row title (UX11); second level row in the Mac menu bar (UX9). Never 'Desktop audio', 'System output'.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.tryAgain",
+   "en": "Try again",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Action of errors.transcribeFailed.line (HARMONY 5). Live from UX13.",
+   "status": "drawn"
+  },
+  {
+   "id": "common.yourMicrophone",
+   "en": "Your microphone",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "RecordFirst",
+    "RecordFirst-mac",
+    "Recording",
+    "Recording-mac",
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac",
+    "RecordHidden-mac"
+   ],
+   "milestone": "UX5",
+   "note": "HARMONY 2 vocabulary. Uses: RecordFirst source row title (semibold, UX5); Recording sources card row title (UX6); caption under 'Me' on WhatIsRecorded (UX11); Mac menu-bar level row label (fixed 120 px column, drawn amber because the sample mic is silent, UX9). Never 'Microphone input'.",
+   "status": "drawn"
+  },
+  {
+   "id": "companion.addStep.done",
+   "en": "Done. Cassini is in {browser}.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "placeholders": {
+    "browser": "display name of the browser where the extension was detected (sample: Chrome)"
+   },
+   "note": "Step 1 caption once the extension is installed. Not drawn: the several-browsers and not-yet-added wording (HARMONY 11). Ask.",
+   "status": "drawn"
+  },
+  {
+   "id": "companion.addStep.title",
+   "en": "Add Cassini to your browser",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "note": "Step 1 row title, semibold. Only the done state of step 1 is drawn, with a green check circle.",
+   "status": "drawn"
+  },
+  {
+   "id": "companion.body",
+   "en": "With the browser companion, Cassini hears each person in your browser meeting separately, so speakers are told apart exactly. Works with Chrome, Chromium, Edge and Brave.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-body",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "note": "The browser list is fixed copy, not a template. It must match the browsers that one-click Connect supports. GNOME: centred. Mac: leading.",
+   "status": "drawn"
+  },
+  {
+   "id": "companion.connect",
+   "en": "Connect",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "note": "Accent-filled suggested button at the trailing edge of step 2. 'Connect failed' has no copy yet (HARMONY 5); keep the existing behaviour until strings.json has it.",
+   "status": "drawn"
+  },
+  {
+   "id": "companion.connectStep.caption",
+   "en": "One click for every supported browser on this computer.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "status": "drawn"
+  },
+  {
+   "id": "companion.connectStep.title",
+   "en": "Let the browser talk to Cassini",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "note": "Step 2 row title, semibold. Pending steps show their number in an outlined accent circle; the number is not catalog text. Never 'native host' or 'control host' (HARMONY 2).",
+   "status": "drawn"
+  },
+  {
+   "id": "companion.privacy",
+   "en": "Recordings are still saved on this computer, in Music/Cassini. Nothing is uploaded.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "note": "Small dim footer next to a 14 px lock icon (aria-hidden). 'Music/Cassini' is literal (HARMONY 4). Different from firstRun.footer.",
+   "status": "drawn"
+  },
+  {
+   "id": "companion.title",
+   "en": "Hear each person on their own",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-title",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "note": "h2 of the setup dialog and the dialog's accessible name. The board's HTML title 'Set up the browser companion' names the board and is not drawn copy.",
+   "status": "drawn"
+  },
+  {
+   "id": "confirm.deleteVoiceProfile.body",
+   "en": "Cassini will no longer recognise {name} in new meetings. Names already in transcripts stay.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-body",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "placeholders": {
+    "name": "same name as in the title"
+   },
+   "note": "en-GB 'recognise'. The secondary button is common.cancel.",
+   "status": "drawn"
+  },
+  {
+   "id": "confirm.deleteVoiceProfile.primary",
+   "en": "Delete",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Destructive primary: red fill (GNOME destructive-action, Mac role .destructive); Return.",
+   "status": "drawn"
+  },
+  {
+   "id": "confirm.deleteVoiceProfile.title",
+   "en": "Delete {name}’s voice profile?",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-title",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "placeholders": {
+    "name": "saved voice's person name (sample: Marta)"
+   },
+   "note": "Confirmation 2 (HARMONY 7), the only place 'voice profile' is allowed. Opened by savedVoices.row.forget (UX17). savedVoices.forgetEveryone reuses this shape with copy still to come.",
+   "status": "drawn"
+  },
+  {
+   "id": "confirm.moveLibrary.body",
+   "en": "The meeting being recorded moves to the new folder when you press Stop.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-body",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "status": "drawn"
+  },
+  {
+   "id": "confirm.moveLibrary.primary",
+   "en": "Move Library",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Primary (accent); Return. The secondary button is common.cancel.",
+   "status": "drawn"
+  },
+  {
+   "id": "confirm.moveLibrary.title",
+   "en": "Move the Library while recording?",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-title",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Confirmation 3 (HARMONY 7). Gallery-only in UX2; live after S-10.",
+   "status": "drawn"
+  },
+  {
+   "id": "confirm.recordingRunning.body",
+   "en": "Stop and keep it, or keep recording in the background?",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-body",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "status": "drawn"
+  },
+  {
+   "id": "confirm.recordingRunning.primary",
+   "en": "Stop and keep it",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Primary (accent / suggested); Return.",
+   "status": "drawn"
+  },
+  {
+   "id": "confirm.recordingRunning.secondary",
+   "en": "Keep recording",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Secondary, grey; Esc.",
+   "status": "drawn"
+  },
+  {
+   "id": "confirm.recordingRunning.title",
+   "en": "A recording is running",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-title",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Confirmation 1 (HARMONY 7). Shown on close window or quit while recording. It replaces auto-stop on close.",
+   "status": "drawn"
+  },
+  {
+   "id": "errors.diskLow.action",
+   "en": "Choose another folder",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "Q5",
+   "note": "D7 Q5: dropped. The production line has no action; only the states-gallery reproduces the board.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "errors.diskLow.line",
+   "en": "Only {n} minutes of space left.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "placeholders": {
+    "n": "estimated minutes of recording that fit in the free space"
+   },
+   "plural": {
+    "one": "Only 1 minute of space left.",
+    "other": "Only {n} minutes of space left."
+   },
+   "note": "HARMONY 5 disk-low, amber. The 'one' form is derived, not drawn; the coordinator confirms it. D7 Q5: shown below 30 minutes left (free minus reserve, at the current write rate); no action button.",
+   "status": "drawn"
+  },
+  {
+   "id": "errors.diskLow.when",
+   "en": "Disk nearly full while recording",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "The \"when\" subline of the States board (HARMONY 5): the trigger condition. Shown only in the states-gallery debug board and used as the test name; never shown to a person.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "errors.diskStopped.line",
+   "en": "Cassini stopped recording to keep some space free on this computer. Everything up to now is saved.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "UX6",
+   "status": "pending",
+   "note": "D7 Q5: Cassini stopped on its own at the disk reserve. Coordinator draft; Silvio may reword."
+  },
+  {
+   "id": "errors.libraryOffline.action",
+   "en": "Choose folder",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Gallery-only in UX2; live after S-10. Different from common.choose and errors.diskLow.action.",
+   "status": "drawn"
+  },
+  {
+   "id": "errors.libraryOffline.line",
+   "en": "Your Library is on a drive that is not connected.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "HARMONY 5 library-offline. A banner at launch, the one banner exception. Gallery-only in UX2; live after S-10.",
+   "status": "drawn"
+  },
+  {
+   "id": "errors.libraryOffline.when",
+   "en": "Library banner, at launch",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "The \"when\" subline of the States board (HARMONY 5): the trigger condition. Shown only in the states-gallery debug board and used as the test name; never shown to a person.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "errors.micSilent.action",
+   "en": "Check sound settings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Opens the system sound settings: GNOME Settings › Sound, macOS System Settings › Sound.",
+   "status": "drawn"
+  },
+  {
+   "id": "errors.micSilent.line",
+   "en": "No sound from your microphone.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "HARMONY 5 mic-silent. Amber warn line under the Meeting headline or Library preview H1. Live from UX6, after 20 s of silence.",
+   "status": "drawn"
+  },
+  {
+   "id": "errors.micSilent.when",
+   "en": "Silent for 20 seconds while recording",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "The \"when\" subline of the States board (HARMONY 5): the trigger condition. Shown only in the states-gallery debug board and used as the test name; never shown to a person.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "errors.micSilentRow.action",
+   "en": "Check",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Recording",
+    "Recording-mac"
+   ],
+   "milestone": "UX6",
+   "note": "White button with amber bold text, trailing the amber mic row. Opens the system sound settings.",
+   "status": "drawn"
+  },
+  {
+   "id": "errors.micSilentRow.line",
+   "en": "No sound from your microphone. Check your sound settings.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "Recording",
+    "Recording-mac"
+   ],
+   "milestone": "UX6",
+   "note": "HARMONY 5 mic-silent (Recording page row). Small amber bold text in place of the mic row's subtitle, and the whole row gets the amber tint. Shown after 20 s of silence.",
+   "status": "drawn"
+  },
+  {
+   "id": "errors.modelDownloadFailed.line",
+   "en": "Could not download {model}. Whistle keeps writing down your meetings.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "placeholders": {
+    "model": "speech model display label from models.json (sample: Parakeet Ultra)"
+   },
+   "note": "HARMONY 5 model-download-failed, amber. Its action is common.retry. 'Whistle' is literal, as in HARMONY 5; if S-8/Q7 changes the fallback model it becomes a placeholder. Live from UX8b.",
+   "status": "drawn"
+  },
+  {
+   "id": "errors.modelDownloadFailed.when",
+   "en": "Speech model download failed",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "The \"when\" subline of the States board (HARMONY 5): the trigger condition. Shown only in the states-gallery debug board and used as the test name; never shown to a person.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "errors.othersFallback.action",
+   "en": "Why?",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "What it opens is not drawn (HARMONY 11); do not invent the explanation.",
+   "status": "drawn"
+  },
+  {
+   "id": "errors.othersFallback.line",
+   "en": "Recording the others from this computer’s sound.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "HARMONY 5 others-fallback. An INFO line: accent tint and an info icon, not amber. Live from UX11 (Q4 fallback).",
+   "status": "drawn"
+  },
+  {
+   "id": "errors.othersFallback.when",
+   "en": "The browser meeting could not be reached",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "The \"when\" subline of the States board (HARMONY 5): the trigger condition. Shown only in the states-gallery debug board and used as the test name; never shown to a person.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "errors.othersPermission.action",
+   "en": "Open System Settings",
+   "platforms": [
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Mac only. Opens Privacy & Security › Screen & System Audio Recording. Board 29 (GNOME) draws this line only because the States source is not platform-switched; the GNOME states-gallery omits it, and that is an expected difference.",
+   "status": "drawn"
+  },
+  {
+   "id": "errors.othersPermission.line",
+   "en": "The others are not being recorded. Allow Cassini to record this computer’s sound.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Mac only (HARMONY 5 and 10). The GNOME board 29 also draws it because its source is not platform-switched. GNOME must not ship it. Board 29 (GNOME) draws this line only because the States source is not platform-switched; the GNOME states-gallery omits it, and that is an expected difference.",
+   "status": "drawn"
+  },
+  {
+   "id": "errors.othersPermission.when",
+   "en": "macOS, permission declined",
+   "platforms": [
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "The \"when\" subline of the States board (HARMONY 5): the trigger condition. Shown only in the states-gallery debug board and used as the test name; never shown to a person.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "errors.transcribeFailed.line",
+   "en": "Could not write this meeting down. The audio is fine.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "HARMONY 5 transcribe-failed, amber. Its action is common.tryAgain. Live from UX13.",
+   "status": "drawn"
+  },
+  {
+   "id": "errors.transcribeFailed.when",
+   "en": "Transcription failed",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "The \"when\" subline of the States board (HARMONY 5): the trigger condition. Shown only in the states-gallery debug board and used as the test name; never shown to a person.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "errors.transcriptDamaged.line",
+   "en": "This file’s transcript is damaged. The audio plays.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "HARMONY 5 transcript-damaged. Amber, with NO action, so it never produces the Needs attention badge. Live from UX4 (received files).",
+   "status": "drawn"
+  },
+  {
+   "id": "errors.transcriptDamaged.when",
+   "en": "A received file",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "The \"when\" subline of the States board (HARMONY 5): the trigger condition. Shown only in the states-gallery debug board and used as the test name; never shown to a person.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "export.cassiniFile.description",
+   "en": "Audio with the transcript inside. Plays in any audio player.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Export",
+    "Export-mac"
+   ],
+   "milestone": "UX7a",
+   "note": "Small dim text under 'Cassini file'. Two lines on GNOME, one on Mac.",
+   "status": "drawn"
+  },
+  {
+   "id": "export.cassiniFile.label",
+   "en": "Cassini file",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Export",
+    "Export-mac"
+   ],
+   "milestone": "UX7a",
+   "note": "Never call a meeting a \"file\" in the UI, except \"Cassini file\". The HARMONY-exact strings errors.transcriptDamaged.line and export.speakerNames.body, and \"file\" for export outputs or model downloads, are allowed.",
+   "status": "drawn"
+  },
+  {
+   "id": "export.exportButton",
+   "en": "Export",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Export",
+    "Export-mac"
+   ],
+   "milestone": "UX7a",
+   "note": "Primary (suggested) action: accent fill, white text. No ellipsis, unlike the entry point common.exportEllipsis.",
+   "status": "drawn"
+  },
+  {
+   "id": "export.formatGroup.a11y",
+   "en": "What to export",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Export",
+    "Export-mac"
+   ],
+   "milestone": "UX7a",
+   "note": "Visually hidden legend. Use it as the accessible label of the radio group (GNOME: the list box/group; Mac: the Picker). Never show it as a visible heading.",
+   "status": "drawn"
+  },
+  {
+   "id": "export.markdown.description",
+   "en": "The transcript as a text file, with speakers and times.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Export",
+    "Export-mac"
+   ],
+   "milestone": "UX7a",
+   "status": "drawn"
+  },
+  {
+   "id": "export.markdown.label",
+   "en": "Markdown",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Export",
+    "Export-mac"
+   ],
+   "milestone": "UX7a",
+   "note": "Radio option 2, semibold. No size is shown.",
+   "status": "drawn"
+  },
+  {
+   "id": "export.saveTo",
+   "en": "Save to {folder}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Export",
+    "Export-mac"
+   ],
+   "milestone": "UX7a",
+   "placeholders": {
+    "folder": "display name of the destination folder, semibold (600). Default: the person's Documents folder (XDG documents dir / ~/Documents)"
+   },
+   "note": "The raw text is 'Save to ' plus <strong>Documents</strong>; join them as one template. A decorative folder icon comes first. Followed by common.choose.",
+   "status": "drawn"
+  },
+  {
+   "id": "export.speakerNames.body",
+   "en": "The file carries the names in this meeting, including {name}, who was recognised automatically. Voiceprints are never exported.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Export",
+    "Export-mac"
+   ],
+   "milestone": "UX7a",
+   "placeholders": {
+    "name": "display name of the speaker recognised automatically from a saved voice, shown semibold (600) inline (sample: Dario)"
+   },
+   "note": "The raw text is three runs around <strong>; join them as one template. Only the one-name variant is drawn. The zero and several-name variants come in strings.json (HARMONY 9); do not invent them.",
+   "status": "drawn"
+  },
+  {
+   "id": "export.speakerNames.heading",
+   "en": "Speaker names",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "Export",
+    "Export-mac"
+   ],
+   "milestone": "UX7a",
+   "note": "Small bold (700) dim section heading.",
+   "status": "drawn"
+  },
+  {
+   "id": "export.subtitle",
+   "en": "Export is the only way a meeting leaves this computer.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Export",
+    "Export-mac"
+   ],
+   "milestone": "UX7a",
+   "note": "Dim text under the title.",
+   "status": "drawn"
+  },
+  {
+   "id": "export.title",
+   "en": "Export “{title}”",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-title",
+   "boards": [
+    "Export",
+    "Export-mac"
+   ],
+   "milestone": "UX7a",
+   "placeholders": {
+    "title": "meeting title as shown in the Meeting header (user-editable plain text; escape it for Pango markup on GNOME)"
+   },
+   "note": "HARMONY 9. The typographic quotes are part of the string. Also the dialog's accessible name. GNOME: centred. Mac: leading.",
+   "status": "drawn"
+  },
+  {
+   "id": "firstRun.body",
+   "en": "Press Record before the meeting and Stop after. Cassini writes it down and keeps it here.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "LibraryEmpty",
+    "LibraryEmpty-mac"
+   ],
+   "milestone": "UX1b",
+   "note": "Dim paragraph under the H1. 'Record' and 'Stop' are inline words, not separate strings. Follows the 'writes it down' vocabulary.",
+   "status": "drawn"
+  },
+  {
+   "id": "firstRun.footer",
+   "en": "Recordings and transcripts stay on this computer, in Music/Cassini.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "LibraryEmpty",
+    "LibraryEmpty-mac"
+   ],
+   "milestone": "UX1b",
+   "note": "Exact footer from HARMONY 4, after a decorative lock icon. 'Music/Cassini' is literal on both platforms. Never use the localised XDG music directory name.",
+   "status": "drawn"
+  },
+  {
+   "id": "firstRun.shortcutHint",
+   "en": "{shortcut} records from anywhere in Cassini",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "LibraryEmpty",
+    "LibraryEmpty-mac"
+   ],
+   "milestone": "UX1b",
+   "placeholders": {
+    "shortcut": "common.shortcut.record: Ctrl+R (GNOME) / ⌘R (Mac). Not the global shortcut."
+   },
+   "note": "Small dim caption under the big Record pill. No final full stop, as drawn. Renders as 'Ctrl+R records from anywhere in Cassini' or '⌘R records from anywhere in Cassini'.",
+   "status": "drawn"
+  },
+  {
+   "id": "firstRun.title",
+   "en": "Your recorded meetings will appear here.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "LibraryEmpty",
+    "LibraryEmpty-mac",
+    "RecordFirst",
+    "RecordFirst-mac"
+   ],
+   "milestone": "UX1b",
+   "note": "H1 of the first-run empty state. RecordFirst shows it dimmed behind its scrim and reuses this id.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.confirmedSpeech",
+   "en": "{duration} confirmed speech",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "SavedVoices",
+    "SavedVoices-mac"
+   ],
+   "milestone": "UX17",
+   "placeholders": {
+    "duration": "duration in meetingDuration style ('4 h 12 min', '41 min', '1 min')"
+   },
+   "note": "REFERENCE ONLY (HARMONY 6, format-vectors confirmedSpeech).",
+   "status": "drawn"
+  },
+  {
+   "id": "format.dayGroup",
+   "en": "{weekday} {dayOfMonth} {month}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "LibraryReceived",
+    "LibraryReceived-mac"
+   ],
+   "milestone": "UX1a",
+   "placeholders": {
+    "weekday": "full English weekday",
+    "dayOfMonth": "day of month, unpadded",
+    "month": "full English month"
+   },
+   "note": "REFERENCE ONLY (HARMONY 6, format-vectors dayGroup): 'Friday 23 October'. ' {year}' is appended when the year is not this year ('Thursday 23 October 2025'). Today/Yesterday come from format.today and format.yesterday. Shown as a small, bold, dim day header.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.liveBadge",
+   "en": "{liveBadge}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "Recording",
+    "Recording-mac",
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac",
+    "RecordHidden-mac"
+   ],
+   "milestone": "UX5",
+   "note": "Reference only: format-vectors.json liveBadge (12:48, 1:02:48). Header pill, Mac menu-bar extra, inside states.badge.recording.",
+   "status": "format"
+  },
+  {
+   "id": "format.liveBig",
+   "en": "{liveBig}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "Recording",
+    "Recording-mac",
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac",
+    "RecordHidden",
+    "RecordHidden-mac"
+   ],
+   "milestone": "UX6",
+   "note": "Reference only: format-vectors.json liveBig (00:12:48). Recording page timer, notification, menu-bar header.",
+   "status": "format"
+  },
+  {
+   "id": "format.meetingDuration.hours",
+   "en": "{h} h {mm} min",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Main",
+    "Library-mac"
+   ],
+   "milestone": "UX1a",
+   "placeholders": {
+    "h": "hours",
+    "mm": "minutes, zero-padded to 2"
+   },
+   "note": "REFERENCE ONLY (HARMONY 6). Sample: '1 h 03 min'.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.meetingDuration.minutes",
+   "en": "{m} min",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Library-mac",
+    "LibraryReceived",
+    "LibraryReceived-mac",
+    "Main",
+    "Meeting",
+    "Meeting-mac",
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX1a",
+   "placeholders": {
+    "m": "whole minutes, floored"
+   },
+   "note": "REFERENCE ONLY (HARMONY 6, format-vectors meetingDuration). Sample: '52 min'.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.meetingDuration.underMinute",
+   "en": "under 1 min",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Main",
+    "Library-mac"
+   ],
+   "milestone": "UX1a",
+   "note": "REFERENCE ONLY (HARMONY 6). Not drawn.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.playbackRate",
+   "en": "{rate}×",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "placeholders": {
+    "rate": "current playback rate, e.g. 1"
+   },
+   "note": "REFERENCE ONLY (HARMONY 6: rate shows '1×'). U+00D7, not the letter x. No accessible label is drawn and the rate choices are not drawn; ask.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.position",
+   "en": "{hh}:{mm}:{ss}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Library-mac",
+    "LibraryReceived",
+    "LibraryReceived-mac",
+    "Main",
+    "Meeting",
+    "Meeting-mac",
+    "Recording",
+    "Recording-mac",
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX1a",
+   "placeholders": {
+    "hh": "hours, zero-padded",
+    "mm": "minutes, zero-padded",
+    "ss": "seconds, zero-padded, floored"
+   },
+   "note": "REFERENCE ONLY (HARMONY 6, format-vectors position). Sample: 00:14:32. Uses: turn start times under speaker names, player elapsed/total, result metas, and inside 'Play from {position}', 'Interrupted at {position}' and the notes. Replaces GNOME m:ss and the Mac's formatClock.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.previewSubtitle",
+   "en": "{day}, {time} · {duration}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX1a",
+   "placeholders": {
+    "day": "format.today / format.yesterday / format.dayGroup output",
+    "time": "24 h HH:MM start time (format-vectors rowTime)",
+    "duration": "format.meetingDuration output"
+   },
+   "note": "REFERENCE ONLY (HARMONY 6 previewSubtitle). Sample: 'Today, 09:00 · 52 min'. Dim, under the preview H1. Also the Meeting header subtitle.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.previewSubtitle.received",
+   "en": "{day}, {time} · {duration} · Received",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "LibraryReceived",
+    "LibraryReceived-mac",
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX1a",
+   "placeholders": {
+    "day": "day label as in format.previewSubtitle",
+    "time": "24 h HH:MM",
+    "duration": "format.meetingDuration output"
+   },
+   "note": "REFERENCE ONLY (HARMONY 6). Sample: 'Friday 23 October, 15:00 · 34 min · Received'. The trailing word must equal states.badge.received.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.rowMeta",
+   "en": "{duration} · {names}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "LibraryReceived",
+    "LibraryReceived-mac"
+   ],
+   "milestone": "UX1a",
+   "placeholders": {
+    "duration": "format.meetingDuration output",
+    "names": "speaker names in order of first speaking, joined with ', '; unnamed = common.speaker.unnamed; more than 3 uses format.rowMeta.overflow"
+   },
+   "note": "REFERENCE ONLY (HARMONY 6, format-vectors rowMeta). With no names the output is just '{duration}' ('34 min'). The board's '3 speakers' and '2 speakers' are normalised to names. On a received row it follows the Received badge on the same line.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.rowMeta.overflow",
+   "en": "{names} +{k}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Main",
+    "Library-mac"
+   ],
+   "milestone": "UX1a",
+   "placeholders": {
+    "names": "first 3 names",
+    "k": "number of further speakers"
+   },
+   "note": "REFERENCE ONLY (HARMONY 6; vector 'Speaker 1, Speaker 2, Speaker 3 +2'). Not drawn.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.rowTime",
+   "en": "{time}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "LibraryReceived",
+    "LibraryReceived-mac",
+    "Recording",
+    "Recording-mac"
+   ],
+   "milestone": "UX1a",
+   "note": "Reference only: format-vectors.json rowTime (24 h HH:MM). Trailing time on Library rows; {time} in recording.since, previewSubtitle, searchContext.",
+   "status": "format"
+  },
+  {
+   "id": "format.searchContext",
+   "en": "{day}, {time} · {duration} · at {position}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "placeholders": {
+    "day": "day label as in format.previewSubtitle",
+    "time": "24 h HH:MM",
+    "duration": "format.meetingDuration output",
+    "position": "format.position"
+   },
+   "note": "REFERENCE ONLY (HARMONY 6, format-vectors searchContext). Sample: 'Today, 09:00 · 52 min · at 00:14:32'. Dim subtitle under the context H1.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.searchCount",
+   "en": "{n} places in {m} meetings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "placeholders": {
+    "n": "number of matching places (hits)",
+    "m": "number of meetings containing hits"
+   },
+   "plural": {
+    "one": "1 place in 1 meeting",
+    "other": "{n} places in {m} meetings"
+   },
+   "note": "REFERENCE ONLY (HARMONY 6, format-vectors searchCount). 'places' and 'meetings' take their plural forms separately ('2 places in 1 meeting'), so one/other does not cover every case; the vectors decide. Small dim text under the chips.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.searchDate",
+   "en": "{dayOfMonth} {month}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "placeholders": {
+    "dayOfMonth": "day of month, unpadded",
+    "month": "full English month"
+   },
+   "note": "REFERENCE ONLY (HARMONY 6, format-vectors searchDate): Today / Yesterday / '20 October' / '2 October 2025' (year appended when not this year). It is the trailing date on each result row.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.size",
+   "en": "{n} MB",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Settings",
+    "Settings-mac",
+    "Export",
+    "Export-mac"
+   ],
+   "milestone": "UX7a",
+   "placeholders": {
+    "n": "size in MB per sizeRule"
+   },
+   "note": "REFERENCE ONLY (HARMONY 6, format-vectors size and sizeRule). From 1000 MB it shows '{n} GB' with one decimal ('1.2 GB'). Sample: '17 MB' (Whistle row).",
+   "status": "drawn"
+  },
+  {
+   "id": "format.size.approx",
+   "en": "about {size}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Export",
+    "Export-mac"
+   ],
+   "milestone": "UX7a",
+   "placeholders": {
+    "size": "format.size output"
+   },
+   "note": "REFERENCE ONLY (format-vectors size approx:true): 'about 24 MB'. Trails the Cassini file row in Export.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.size.download",
+   "en": "{size} download",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "placeholders": {
+    "size": "format.size output"
+   },
+   "note": "REFERENCE: HARMONY 6 Sizes lists '640 MB download'. The format-vectors size vectors cover only the '640 MB' part, so the coordinator should add a vector. Used on the Parakeet Ultra and Recognise saved voices rows, and inside models.sizeWithEngine. D4: the value is the compressed download size from the dist.gocassini.com manifest (sum of the model's artifact sizes), never typed by hand.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.talkTime",
+   "en": "{m} min {s} s",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX16",
+   "placeholders": {
+    "m": "minutes",
+    "s": "seconds"
+   },
+   "note": "REFERENCE ONLY (HARMONY 6, format-vectors talkTime): '9 min 40 s', '45 s', '1 min 0 s', '1 h 02 min'. The vectors decide every form.",
+   "status": "drawn"
+  },
+  {
+   "id": "format.today",
+   "en": "Today",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX1a",
+   "note": "Reference word used by the formatters: day group header, first part of previewSubtitle and searchContext, and search result date (HARMONY 6; format-vectors dayGroup, previewSubtitle, searchDate).",
+   "status": "drawn"
+  },
+  {
+   "id": "format.yesterday",
+   "en": "Yesterday",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "Main",
+    "Library-mac"
+   ],
+   "milestone": "UX1a",
+   "note": "Reference word (HARMONY 6; format-vectors dayGroup, previewSubtitle, searchDate).",
+   "status": "drawn"
+  },
+  {
+   "id": "hidden.menu.a11y",
+   "en": "Cassini",
+   "platforms": [
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "RecordHidden-mac"
+   ],
+   "milestone": "UX9",
+   "note": "Accessibility label and title of the MenuBarExtra menu. It is the app name, never translated. The 'Cassini' on the GNOME notification header and in the Mac app menu is drawn by the OS (mock chrome).",
+   "status": "drawn"
+  },
+  {
+   "id": "hidden.menu.addNote",
+   "en": "Add a Note…",
+   "platforms": [
+    "mac"
+   ],
+   "role": "menuitem",
+   "boards": [
+    "RecordHidden-mac"
+   ],
+   "milestone": "UX9",
+   "note": "Title Case, the macOS menu convention, with the single ellipsis U+2026. Needs the UX6 notes.",
+   "status": "drawn"
+  },
+  {
+   "id": "hidden.menu.noSleep",
+   "en": "Your Mac will not sleep while Cassini records.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "RecordHidden-mac"
+   ],
+   "milestone": "UX9",
+   "note": "Last line of the menu, after a separator: secondary colour, 11.5 px, not interactive. It says 'Your Mac…' on purpose; the Recording pill tooltip recording.pill.noSleep says 'Your computer…' (HARMONY 10).",
+   "status": "drawn"
+  },
+  {
+   "id": "hidden.menu.stopRecording",
+   "en": "Stop Recording",
+   "platforms": [
+    "mac"
+   ],
+   "role": "menuitem",
+   "boards": [
+    "RecordHidden-mac"
+   ],
+   "milestone": "UX9",
+   "note": "The only place 'Stop Recording' is allowed (HARMONY 2). The system draws the trailing shortcut glyph from common.shortcut.recordAnywhere.",
+   "status": "drawn"
+  },
+  {
+   "id": "hidden.notification.body",
+   "en": "{title}. Your microphone and the meeting in your browser.",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "description",
+   "boards": [
+    "RecordHidden"
+   ],
+   "milestone": "UX9",
+   "placeholders": {
+    "title": "meeting title, verbatim (sample: Weekly sync, product team)"
+   },
+   "note": "GNotification body. Exact template from HARMONY 10. Its second sentence is library.row.recording.line plus a full stop, kept whole for translators. Capture-path variants are pending (HARMONY 11). The Mac shows the title alone (sample data) and the sources as level rows.",
+   "status": "drawn"
+  },
+  {
+   "id": "hidden.openCassini",
+   "en": "Open Cassini",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "RecordHidden",
+    "RecordHidden-mac"
+   ],
+   "milestone": "UX9",
+   "note": "GNOME: second, neutral notification action. Mac: menu item. It presents the main window on the Recording page of the running meeting.",
+   "status": "drawn"
+  },
+  {
+   "id": "hidden.status",
+   "en": "Recording, {liveBig}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "RecordHidden",
+    "RecordHidden-mac"
+   ],
+   "milestone": "UX9",
+   "placeholders": {
+    "liveBig": "live elapsed time, HARMONY 6 big-timer format (format-vectors liveBig), e.g. 00:12:48; updated every second"
+   },
+   "note": "GNOME: GNotification title. Mac: the first, bold, non-interactive line of the MenuBarExtra menu. The Mac menu-bar label is a dot plus format liveBadge ('12:48'); that is a format, not catalog text. Proposed, not drawn: also use this as the VoiceOver label of the menu bar extra.",
+   "status": "drawn"
+  },
+  {
+   "id": "library.group.unknownDate",
+   "en": "Date unknown",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "UX1b",
+   "status": "harmony",
+   "note": "D6 R6.3: last day group, for meetings whose start is unknown. Coordinator normalisation."
+  },
+  {
+   "id": "library.listPane.a11y",
+   "en": "Library",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "LibraryReceived",
+    "LibraryReceived-mac"
+   ],
+   "milestone": "UX1b",
+   "note": "Accessible name of the meeting list pane (section aria-label). It has the same text as library.title but its own id, so it can change separately.",
+   "status": "drawn"
+  },
+  {
+   "id": "library.preview.readTranscript",
+   "en": "Read the transcript",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "LibraryReceived",
+    "LibraryReceived-mac"
+   ],
+   "milestone": "UX1b",
+   "note": "Secondary grey button (#e3e3e7 / #e8e8ed), semibold, 36 px. It pushes the Meeting view (UX3).",
+   "status": "drawn"
+  },
+  {
+   "id": "library.preview.transcriptHeading",
+   "en": "Transcript",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "LibraryReceived",
+    "LibraryReceived-mac"
+   ],
+   "milestone": "UX1b",
+   "note": "Small bold dim heading above the 3-turn excerpt in the preview, below a 1 px divider.",
+   "status": "drawn"
+  },
+  {
+   "id": "library.previewPane.a11y",
+   "en": "Preview",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "LibraryReceived",
+    "LibraryReceived-mac"
+   ],
+   "milestone": "UX1b",
+   "note": "Accessible name of the preview/detail pane. It is never visible.",
+   "status": "drawn"
+  },
+  {
+   "id": "library.row.recording.line",
+   "en": "Your microphone and the meeting in your browser",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "Main",
+    "Library-mac"
+   ],
+   "milestone": "UX5",
+   "note": "Second line of a row while it is recording (HARMONY 6). No final full stop. The same words, with a full stop, end hidden.notification.body; that template is kept whole for translators. Capture-path variants are pending (HARMONY 11).",
+   "status": "drawn"
+  },
+  {
+   "id": "library.row.transcribing.line",
+   "en": "{duration} · the audio is ready to play",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "Main",
+    "Library-mac"
+   ],
+   "milestone": "UX2",
+   "placeholders": {
+    "duration": "meeting duration, format.meetingDuration (e.g. 47 min)"
+   },
+   "note": "Line of a row whose transcript is queued or running. The board leaves the meta empty and puts the duration here instead. The separator is ' · ' (U+00B7 with spaces). 'the' is lowercase.",
+   "status": "drawn"
+  },
+  {
+   "id": "library.title",
+   "en": "Library",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "LibraryEmpty",
+    "LibraryEmpty-mac",
+    "LibraryReceived",
+    "LibraryReceived-mac",
+    "RecordFirst",
+    "RecordFirst-mac"
+   ],
+   "milestone": "UX1b",
+   "note": "Main window title and content/detail header title. GNOME: centred, bold, in the content AdwHeaderBar. Mac: Window(\"Library\"), bold leading toolbar title at 15 px. The first run and RecordFirst draw it centred on both platforms. Never 'Meetings window' or 'Documents'. The Settings tab 'Library' is a separate id (settings.tab.library).",
+   "status": "drawn"
+  },
+  {
+   "id": "library.untitled",
+   "en": "Untitled meeting",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "UX1b",
+   "status": "harmony",
+   "note": "D6 R6.1: final title fallback. Coordinator normalisation of an undrawn state."
+  },
+  {
+   "id": "meeting.companionCard.a11y",
+   "en": "Suggestion",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Accessible name of the accent-tinted companion suggestion card.",
+   "status": "drawn"
+  },
+  {
+   "id": "meeting.companionCard.body",
+   "en": "When Cassini listens inside the browser, each person’s voice arrives separately, so names are right more often. Setup takes two clicks.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "note": "The canvas has \"person's\", normalised to ’.",
+   "status": "drawn"
+  },
+  {
+   "id": "meeting.companionCard.setUp",
+   "en": "Set up",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Accent-filled suggested button. It opens the companion setup (23/24, UX10). Dismiss is common.notNow.",
+   "status": "drawn"
+  },
+  {
+   "id": "meeting.companionCard.title",
+   "en": "Meet in your browser? Cassini can tell the speakers apart better.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Bold first line of the card. Shown only while the browser companion is not connected and the card has not been dismissed.",
+   "status": "drawn"
+  },
+  {
+   "id": "meeting.moreActions",
+   "en": "More actions",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Accessible label and tooltip of the icon-only '…' header button. The menu contents are not drawn (HARMONY 11).",
+   "status": "drawn"
+  },
+  {
+   "id": "meeting.nameSpeakers",
+   "en": "Name the speakers",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Full-width grey button under the speaker list. It opens the Speakers dialog (19/20, UX16). Dead buttons are not allowed, so the coordinator decides whether it stays hidden until UX16.",
+   "status": "drawn"
+  },
+  {
+   "id": "meeting.speakerCaption.namedByYou",
+   "en": "Named by you",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Speaker row caption when the name's provenance in meeting.json is 'user'.",
+   "status": "drawn"
+  },
+  {
+   "id": "meeting.speakerCaption.notNamed",
+   "en": "Not named yet",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Speaker row caption for an unnamed speaker shown as common.speaker.unnamed.",
+   "status": "drawn"
+  },
+  {
+   "id": "meeting.speakerCaption.recognised",
+   "en": "Recognised from saved voices",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Speaker row caption when the name came from a saved voice (provenance 'auto'). en-GB spelling. The wording differs on purpose from common.autoTag.tooltip, which says 'your saved voices'. Both are drawn, so both are kept.",
+   "status": "drawn"
+  },
+  {
+   "id": "meeting.speakerShare",
+   "en": "{percent}%",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "placeholders": {
+    "percent": "integer share of talk time in this meeting, rounded; the drawn values sum to 100"
+   },
+   "note": "Small dim tabular figure that trails each speaker row. HARMONY 6 does not define this format yet; the coordinator should add the rounding and sum-to-100 rule there.",
+   "status": "drawn"
+  },
+  {
+   "id": "meeting.speakersPane.a11y",
+   "en": "Speakers",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Accessible name of the sidebar pane (aside). Same text as the visible heading common.speakers.",
+   "status": "drawn"
+  },
+  {
+   "id": "models.download",
+   "en": "Download",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "Accent (suggested) button that trails the row of a model that is not downloaded. On the Recognise saved voices row it stays insensitive until Tell speakers apart is downloaded.",
+   "status": "drawn"
+  },
+  {
+   "id": "models.downloading.a11y",
+   "en": "Downloading {model}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "placeholders": {
+    "model": "the row title, e.g. Recognise saved voices or Parakeet Ultra (not the engine name)"
+   },
+   "note": "Accessible label of the download progress bar (progressbar, value 0–100).",
+   "status": "drawn"
+  },
+  {
+   "id": "models.included",
+   "en": "Included",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "Dim text at the trailing end of the bundled model's row (Whistle), in place of a button. The bundled model has no Download or Remove.",
+   "status": "drawn"
+  },
+  {
+   "id": "models.nemotron.name",
+   "en": "Nemotron",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX15",
+   "note": "Engine name in the Tell speakers apart row caption (models.sizeWithEngine). Comes from models.json (S-8); Q7 may change it.",
+   "status": "drawn"
+  },
+  {
+   "id": "models.parakeetUltra.description",
+   "en": "Larger and slower. 25 European languages.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "The language count must match models.json (S-8). The size is format.size.download (real value per D4: '443 MB download'; the canvas's 640 MB is the size on disk).",
+   "status": "drawn"
+  },
+  {
+   "id": "models.parakeetUltra.name",
+   "en": "Parakeet Ultra",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "Bold model row title. It is also the {model} sample in errors.modelDownloadFailed.line.",
+   "status": "drawn"
+  },
+  {
+   "id": "models.recogniseVoices.description",
+   "en": "Names the people you saved, in new meetings, as soon as they speak.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX17",
+   "status": "drawn"
+  },
+  {
+   "id": "models.recogniseVoices.name",
+   "en": "Recognise saved voices",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX17",
+   "note": "Row title, en-GB 'Recognise'. Also the {model} value of models.downloading.a11y on this board. Size: format.size.download (real value per D4: '26 MB download').",
+   "status": "drawn"
+  },
+  {
+   "id": "models.remove",
+   "en": "Remove",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "Neutral grey button on a downloaded model that is not bundled. No confirmation (HARMONY 7). Removing the speech model in use falls back to Whistle.",
+   "status": "drawn"
+  },
+  {
+   "id": "models.sizeWithEngine",
+   "en": "{model} · {size}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX15",
+   "placeholders": {
+    "model": "engine name, e.g. models.nemotron.name",
+    "size": "format.size.download output, e.g. 62 MB download"
+   },
+   "note": "Dim caption after the row title, drawn as 'Nemotron · 62 MB download'. Middle dot U+00B7 with spaces.",
+   "status": "drawn"
+  },
+  {
+   "id": "models.status.downloaded",
+   "en": "Downloaded",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "Computed in renderVals and not visible in the PNGs. Dim status of a speech model that is downloaded but not selected. Shown with models.remove.",
+   "status": "drawn"
+  },
+  {
+   "id": "models.status.downloading",
+   "en": "Downloading, {percent}%",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "placeholders": {
+    "percent": "integer 0–100 download progress, no padding, tabular numerals"
+   },
+   "note": "Shown to the right of the progress bar while a download runs. The comma follows the 'Transcribing, …' pattern. common.cancel trails the row.",
+   "status": "drawn"
+  },
+  {
+   "id": "models.status.inUse",
+   "en": "In use for new meetings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "Semibold green status on the selected speech model. That row also gets an accent tint and a checked radio.",
+   "status": "drawn"
+  },
+  {
+   "id": "models.status.needsTellApart",
+   "en": "Needs “Tell speakers apart” first",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX17",
+   "note": "Computed in renderVals and not visible in the PNGs. Shown when Recognise saved voices is not downloaded and Tell speakers apart is not ready. Dim; models.download is insensitive.",
+   "status": "drawn"
+  },
+  {
+   "id": "models.status.notDownloaded",
+   "en": "Not downloaded",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "Semibold dim status. The radio is disabled and models.download trails the row. The Speakers rows use it too (UX15/UX17).",
+   "status": "drawn"
+  },
+  {
+   "id": "models.status.offUntilTellApart",
+   "en": "Off until “Tell speakers apart” is downloaded",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX17",
+   "note": "Computed in renderVals and not visible in the PNGs. Shown when Recognise saved voices is downloaded but Tell speakers apart is not. Dim. The quoted text must equal models.tellSpeakersApart.name.",
+   "status": "drawn"
+  },
+  {
+   "id": "models.status.on",
+   "en": "On",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX15",
+   "note": "Semibold green status on a downloaded speakers model that can be used. It is not a switch. models.remove trails the row.",
+   "status": "drawn"
+  },
+  {
+   "id": "models.tellSpeakersApart.description",
+   "en": "Labels each voice in a meeting: Speaker 1, Speaker 2 and so on.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX15",
+   "note": "'Speaker 1' and 'Speaker 2' are literal; they match common.speaker.unnamed.",
+   "status": "drawn"
+  },
+  {
+   "id": "models.tellSpeakersApart.name",
+   "en": "Tell speakers apart",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX15",
+   "note": "Row title of the diarization model, the HARMONY 2 term. Quoted inside models.status.offUntilTellApart and models.status.needsTellApart; the text must match.",
+   "status": "drawn"
+  },
+  {
+   "id": "models.whistle.description",
+   "en": "Tiny and fast. English, German, French, Spanish, Italian, Dutch and Polish.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "The language list must match models.json (S-8). Q7 may change it. The trailing size is format.size ('17 MB').",
+   "status": "drawn"
+  },
+  {
+   "id": "models.whistle.name",
+   "en": "Whistle",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "Bold model row title. models.json (S-8) becomes the source and must match. 'Whistle' is also literal inside errors.modelDownloadFailed.line.",
+   "status": "drawn"
+  },
+  {
+   "id": "player.a11y",
+   "en": "Player",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Accessible name of the bottom player bar. Elapsed and total use format.position; the rate uses format.playbackRate.",
+   "status": "drawn"
+  },
+  {
+   "id": "player.back10",
+   "en": "Back 10 seconds",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Icon-only button. HARMONY 6: skips are 10 seconds. Shortcut ←.",
+   "status": "drawn"
+  },
+  {
+   "id": "player.forward10",
+   "en": "Forward 10 seconds",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Icon-only button. HARMONY 6. Shortcut →.",
+   "status": "drawn"
+  },
+  {
+   "id": "player.pause",
+   "en": "Pause",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX3",
+   "note": "Accessible label of the 44 px accent play/pause button while playing, as drawn. The paused state uses common.play. Shortcut Space.",
+   "status": "drawn"
+  },
+  {
+   "id": "received.folderCard",
+   "en": "Opened from your {folder} folder. A copy is kept in your Library, so it stays here if the original moves.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "LibraryReceived",
+    "LibraryReceived-mac"
+   ],
+   "milestone": "UX4",
+   "placeholders": {
+    "folder": "display name of the folder the file was opened from, meeting.json received.originalFolderName (sample: Downloads)"
+   },
+   "note": "Neutral info card under the preview subtitle of a received meeting. It has a chip background, a folder icon (aria-hidden) and card radius. Not drawn: the variant with no originalFolderName (optional in HARMONY 4) and whether the card stays for ever. Ask; the coordinator adds the copy to strings.json.",
+   "status": "drawn"
+  },
+  {
+   "id": "received.libraryHint",
+   "en": "Record your own meetings with the button above.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "LibraryReceived",
+    "LibraryReceived-mac"
+   ],
+   "milestone": "UX4",
+   "note": "Small dim caption under the meeting list (line-height 1.5) when the Library holds only received meetings. The exact show/hide rule is not drawn; the proposal is to show it while there are no own meetings. 'The button above' is common.record.",
+   "status": "drawn"
+  },
+  {
+   "id": "recordFirst.dontShowAgain",
+   "en": "Don’t show again",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "RecordFirst",
+    "RecordFirst-mac"
+   ],
+   "milestone": "UX5",
+   "note": "Checkbox label (GtkCheckButton / Toggle .checkbox), small dim text, unchecked by default. The canvas has \"Don't\", normalised to ’.",
+   "status": "drawn"
+  },
+  {
+   "id": "recordFirst.mic.caption",
+   "en": "Your desktop may ask you to allow this next.",
+   "mac": "macOS asks you to allow this next.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "RecordFirst",
+    "RecordFirst-mac"
+   ],
+   "milestone": "UX5",
+   "note": "An allowed platform difference (HARMONY 10). renderVals calls it micAsk.",
+   "status": "drawn"
+  },
+  {
+   "id": "recordFirst.mic.description",
+   "en": "Cassini needs your microphone to record what you say.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "RecordFirst",
+    "RecordFirst-mac"
+   ],
+   "milestone": "UX5",
+   "status": "drawn"
+  },
+  {
+   "id": "recordFirst.responsibility",
+   "en": "You are responsible for telling the people you record. In many places this is required by law.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-body",
+   "boards": [
+    "RecordFirst",
+    "RecordFirst-mac"
+   ],
+   "milestone": "UX5",
+   "note": "Body text in the tinted card.",
+   "status": "drawn"
+  },
+  {
+   "id": "recordFirst.sound.caption",
+   "en": "Nothing to allow on this computer.",
+   "mac": "macOS asks once more, for Screen & System Audio Recording.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "RecordFirst",
+    "RecordFirst-mac"
+   ],
+   "milestone": "UX5",
+   "note": "An allowed platform difference (HARMONY 10). renderVals calls it soundAsk. 'Screen & System Audio Recording' is the macOS privacy pane name, so keep it verbatim.",
+   "status": "drawn"
+  },
+  {
+   "id": "recordFirst.sound.description",
+   "en": "Cassini also records the sound of your meeting apps so the other participants are on the recording.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "RecordFirst",
+    "RecordFirst-mac"
+   ],
+   "milestone": "UX5",
+   "status": "drawn"
+  },
+  {
+   "id": "recordFirst.sound.title",
+   "en": "This computer’s sound",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "RecordFirst",
+    "RecordFirst-mac"
+   ],
+   "milestone": "UX5",
+   "note": "Source row title (semibold). HARMONY 2 vocabulary. The canvas has \"computer's\", normalised to ’.",
+   "status": "drawn"
+  },
+  {
+   "id": "recordFirst.start",
+   "en": "Start recording",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "RecordFirst",
+    "RecordFirst-mac"
+   ],
+   "milestone": "UX5",
+   "note": "Primary button: red fill (#c01c28 / #d70015) with a white 9 px dot before white semibold text. The board draws it as a link; implement it as a button that starts the recording.",
+   "status": "drawn"
+  },
+  {
+   "id": "recordFirst.title",
+   "en": "Before your first recording",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-title",
+   "boards": [
+    "RecordFirst",
+    "RecordFirst-mac"
+   ],
+   "milestone": "UX5",
+   "note": "Also the dialog's accessible name (aria-labelledby). GNOME: centred AdwDialog title. Mac: leading sheet title. 20 px bold.",
+   "status": "drawn"
+  },
+  {
+   "id": "recordFirst.willRecord",
+   "en": "Cassini will record",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "RecordFirst",
+    "RecordFirst-mac"
+   ],
+   "milestone": "UX5",
+   "note": "Small bold dim heading above the two source rows. The first row's title is common.yourMicrophone.",
+   "status": "drawn"
+  },
+  {
+   "id": "recording.changeWhatIsRecorded",
+   "en": "Change what is recorded",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Recording",
+    "Recording-mac"
+   ],
+   "milestone": "UX6",
+   "note": "Accent link-style button in the bottom row of the sources card. It is shown but insensitive until UX11, when it opens WhatIsRecorded (13/14).",
+   "status": "drawn"
+  },
+  {
+   "id": "recording.notes.caption",
+   "en": "Each note is pinned to the moment you type it.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Recording",
+    "Recording-mac"
+   ],
+   "milestone": "UX6",
+   "note": "Small dim caption under the notes area. Notes are stored with their position in the app-owned meeting.json (HARMONY 4).",
+   "status": "drawn"
+  },
+  {
+   "id": "recording.notes.entry",
+   "en": "{position}  {text}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "Recording",
+    "Recording-mac"
+   ],
+   "milestone": "UX6",
+   "placeholders": {
+    "position": "format.position when typing started (e.g. 00:11:40)",
+    "text": "what the person typed"
+   },
+   "note": "A structural template, not prose: the position, TWO spaces, then the text, one note per line. Not drawn: the separator between notes and how the position is inserted while typing. Keep both apps identical.",
+   "status": "drawn"
+  },
+  {
+   "id": "recording.notes.label",
+   "en": "Notes",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Recording",
+    "Recording-mac"
+   ],
+   "milestone": "UX6",
+   "note": "Small bold dim label above the notes text area. Notes in the Meeting view are not drawn (HARMONY 11).",
+   "status": "drawn"
+  },
+  {
+   "id": "recording.others.browserVoices",
+   "en": "Listening inside your browser · {n} voices",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "Recording",
+    "Recording-mac"
+   ],
+   "milestone": "UX6",
+   "placeholders": {
+    "n": "number of separate voices (audio streams) the browser delivers"
+   },
+   "plural": {
+    "one": "Listening inside your browser · 1 voice",
+    "other": "Listening inside your browser · {n} voices"
+   },
+   "note": "D7 Q2: keep the count. n = remote voices the browser currently delivers. Use common.listeningInsideBrowser alone only when n is unknown.",
+   "status": "drawn"
+  },
+  {
+   "id": "recording.pill.noSleep",
+   "en": "Your computer will not sleep while Cassini records.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "tooltip",
+   "boards": [
+    "Recording",
+    "Recording-mac"
+   ],
+   "milestone": "UX5",
+   "note": "Tooltip on the live header pill. Same text on both platforms (HARMONY 10). Do not reuse the Mac menu-bar line hidden.menu.noSleep. Drawn only on the Recording page pill. Decision: the Library sidebar live pill carries the same tooltip, so both apps behave the same.",
+   "status": "drawn"
+  },
+  {
+   "id": "recording.since",
+   "en": "Recording since {time} · saved as it records",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Recording",
+    "Recording-mac"
+   ],
+   "milestone": "UX6",
+   "placeholders": {
+    "time": "wall-clock start time, 24 h HH:MM, system time zone (format-vectors rowTime, e.g. 14:05)"
+   },
+   "note": "Dim line under the big timer, which uses format liveBig. 'saved' is lowercase after the middle dot (U+00B7 with spaces).",
+   "status": "drawn"
+  },
+  {
+   "id": "recording.title.caption",
+   "en": "Named from the meeting window. Rename it any time.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Recording",
+    "Recording-mac"
+   ],
+   "milestone": "UX6",
+   "note": "Shown under the title entry when the title came from the browser meeting window. No caption is drawn for other titles; ask before showing one.",
+   "status": "drawn"
+  },
+  {
+   "id": "recording.title.label",
+   "en": "Title",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Recording",
+    "Recording-mac"
+   ],
+   "milestone": "UX6",
+   "note": "Small bold dim label above the editable title entry. The entry's value is the meeting title (sample data).",
+   "status": "drawn"
+  },
+  {
+   "id": "savedVoices.back",
+   "en": "Back to Transcription settings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "SavedVoices",
+    "SavedVoices-mac"
+   ],
+   "milestone": "UX17",
+   "note": "Accessible label of the back chevron, which returns to the Transcription tab. An allowed vocabulary exception (HARMONY 2). GNOME: override the AdwNavigationView default 'Back'. Mac: label the NavigationStack back button.",
+   "status": "drawn"
+  },
+  {
+   "id": "savedVoices.forgetEveryone",
+   "en": "Forget everyone…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "SavedVoices",
+    "SavedVoices-mac"
+   ],
+   "milestone": "UX17",
+   "note": "Destructive outline button pinned bottom-leading: red text, pink 1 px border, white fill (not filled red). Single ellipsis U+2026. It opens a confirmation shaped like confirmation 2, whose copy is pending in strings.json (HARMONY 7).",
+   "status": "drawn"
+  },
+  {
+   "id": "savedVoices.howToAdd",
+   "en": "To add someone, name a speaker in any meeting and keep “Remember this voice” on. After you forget a voice, the names already in your meetings stay.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "SavedVoices",
+    "SavedVoices-mac"
+   ],
+   "milestone": "UX17",
+   "note": "Small dim footnote under the list card. The quoted toggle name differs from speakers.rememberVoice. Kept verbatim until the coordinator decides.",
+   "status": "drawn"
+  },
+  {
+   "id": "savedVoices.privacy",
+   "en": "Voiceprints stay on this computer. They are never uploaded or written into exported files. Only the names you choose are.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "SavedVoices",
+    "SavedVoices-mac"
+   ],
+   "milestone": "UX17",
+   "note": "Dim lead line after a green shield icon (aria-hidden).",
+   "status": "drawn"
+  },
+  {
+   "id": "savedVoices.row.forget",
+   "en": "Forget",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "SavedVoices",
+    "SavedVoices-mac"
+   ],
+   "milestone": "UX17",
+   "note": "Small grey semibold button that trails each row. Not destructive-styled. It opens confirmation 2 (confirm.deleteVoiceProfile.*).",
+   "status": "drawn"
+  },
+  {
+   "id": "savedVoices.row.meetingCount",
+   "en": "{n} meetings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "SavedVoices",
+    "SavedVoices-mac"
+   ],
+   "milestone": "UX17",
+   "placeholders": {
+    "n": "number of meetings in which this voice was confirmed"
+   },
+   "plural": {
+    "one": "1 meeting",
+    "other": "{n} meetings"
+   },
+   "note": "Only plural forms are drawn (2, 6, 9, 14, 31). The singular follows the HARMONY 6 pattern. This plural is new; the coordinator should add it to HARMONY 6.",
+   "status": "drawn"
+  },
+  {
+   "id": "savedVoices.row.meta",
+   "en": "{meetingCount} · {confirmedSpeech}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "SavedVoices",
+    "SavedVoices-mac"
+   ],
+   "milestone": "UX17",
+   "placeholders": {
+    "meetingCount": "savedVoices.row.meetingCount output (plural)",
+    "confirmedSpeech": "format.confirmedSpeech output, e.g. 4 h 12 min confirmed speech"
+   },
+   "note": "Small dim line under the name. Separator ' · ' (U+00B7 with spaces). Sample: '31 meetings · 4 h 12 min confirmed speech'. The avatar initial is taken from the name and is not catalog text.",
+   "status": "drawn"
+  },
+  {
+   "id": "savedVoices.row.play",
+   "en": "Play a sample of {name}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "SavedVoices",
+    "SavedVoices-mac"
+   ],
+   "milestone": "UX17",
+   "placeholders": {
+    "name": "the saved voice's name as chosen by the person (sample: Giulia Rossi)"
+   },
+   "note": "Accessible label and tooltip of the round grey 34 px icon-only play button. The playing/pause state is not drawn.",
+   "status": "drawn"
+  },
+  {
+   "id": "savedVoices.row.stale",
+   "en": "Name them again in a meeting to keep recognising them.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "SavedVoices",
+    "SavedVoices-mac"
+   ],
+   "milestone": "UX17",
+   "note": "Optional third line in amber text (#7a4d00, no tint), with no action. Shown for a weak or stale voiceprint (Luca in the fixture). The trigger condition is not specified; ask. en-GB 'recognising'.",
+   "status": "drawn"
+  },
+  {
+   "id": "search.context.a11y",
+   "en": "Meeting at this point",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "note": "Accessible label of the trailing content/detail pane that previews the selected result.",
+   "status": "drawn"
+  },
+  {
+   "id": "search.context.openMeeting",
+   "en": "Open the meeting here",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "note": "Neutral grey button (#e3e3e7 / #e8e8ed). Opens the Meeting view scrolled to the hit (HARMONY 8). The board draws it as a link; implement it as a button.",
+   "status": "drawn"
+  },
+  {
+   "id": "search.context.playFrom",
+   "en": "Play from {position}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "placeholders": {
+    "position": "format.position of the hit turn, HH:MM:SS"
+   },
+   "note": "Suggested accent button with a decorative play glyph before the text. Plays the meeting from that point.",
+   "status": "drawn"
+  },
+  {
+   "id": "search.field.a11y",
+   "en": "Search every meeting",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Library-mac",
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "note": "Accessible label of the search entry on both platforms (visually hidden label on the Search board). HARMONY 10 overrides Library-mac's hidden 'Search' label. It is also the Ctrl+F / ⌘F action name in HARMONY 8.",
+   "status": "drawn"
+  },
+  {
+   "id": "search.field.placeholder",
+   "en": "Search every meeting",
+   "mac": "Search",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "placeholder",
+   "boards": [
+    "Library-mac",
+    "LibraryReceived",
+    "LibraryReceived-mac",
+    "Main",
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "note": "HARMONY 10. GNOME: placeholder of the entry that the sidebar toggle reveals (not visible on Main). Mac: 220 px toolbar search field, trailing in the detail toolbar, as drawn on Library-mac. Board quirk: Library-mac draws the field trailing in the detail toolbar, Search-mac moves the active field to the sidebar, and LibraryReceived-mac omits it. Decision: Mac keeps one field in the toolbar on every Library screen (HARMONY 10).",
+   "status": "drawn"
+  },
+  {
+   "id": "search.filter.anyDate",
+   "en": "Any date",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "note": "Filter chip, inactive (outlined pill). The date choices it opens are not drawn.",
+   "status": "drawn"
+  },
+  {
+   "id": "search.filter.hasSummary",
+   "en": "Has summary",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "note": "Filter chip, inactive. Summaries are not drawn anywhere (HARMONY 11). The coordinator decides whether this chip ships in UX12.",
+   "status": "drawn"
+  },
+  {
+   "id": "search.filter.recordedByMe",
+   "en": "Recorded by me",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "note": "Filter chip, inactive. It means origin = own, which excludes Received meetings.",
+   "status": "drawn"
+  },
+  {
+   "id": "search.filter.speaker",
+   "en": "Speaker: {name}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "placeholders": {
+    "name": "speaker display name (a named speaker or common.speaker.unnamed)"
+   },
+   "note": "Filter chip, drawn active (accent fill, white semibold). Not drawn: the text when no speaker is set, and how to pick or clear one. Ask.",
+   "status": "drawn"
+  },
+  {
+   "id": "search.result.meta",
+   "en": "{name} · {position}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "placeholders": {
+    "name": "speaker of the matching turn (a named speaker or common.speaker.unnamed)",
+    "position": "format.position of the turn start, HH:MM:SS"
+   },
+   "note": "The line is \"{name} · {position}\". The date (format.searchDate) trails the meeting title on the first line of the result, not this line.",
+   "status": "drawn"
+  },
+  {
+   "id": "search.results.a11y",
+   "en": "Search results",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "note": "Accessible label of the leading pane (sidebar) while searching. Not visible.",
+   "status": "drawn"
+  },
+  {
+   "id": "search.title",
+   "en": "Search",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "note": "Content header title while searching. GNOME: centred and bold. Mac: bold leading toolbar title, 15 px. Same word as common.search (a11y) and the Mac search.field.placeholder, but each has its own id.",
+   "status": "drawn"
+  },
+  {
+   "id": "settings.pages.a11y",
+   "en": "Settings pages",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Accessible label of the tab bar. It reads 'Settings' on GNOME too, as drawn, even though that window is titled Preferences. Coordinator to confirm.",
+   "status": "drawn"
+  },
+  {
+   "id": "settings.recording.autoRecord.subtitle",
+   "en": "Cassini records meetings you join later, even when this window is closed. Recordings stay on this computer. You can stop any recording. One meeting at a time per browser.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "UX8a",
+   "status": "harmony",
+   "note": "D7 Q6: existing GNOME string, verbatim."
+  },
+  {
+   "id": "settings.recording.autoRecord.title",
+   "en": "Record every browser meeting automatically",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "UX8a",
+   "status": "harmony",
+   "note": "D7 Q6: existing GNOME string (browser_window.py). Off by default."
+  },
+  {
+   "id": "settings.recording.changeShortcut",
+   "en": "Change…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "UX8a",
+   "note": "Not drawn; required by HARMONY 8. It sits next to the global shortcut in Settings › Recording. GNOME opens the portal ConfigureShortcuts; Mac opens an in-app recorder.",
+   "status": "harmony"
+  },
+  {
+   "id": "settings.tab.browserCompanion",
+   "en": "Browser companion",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Tab label with a window icon above it. The tab contents are not drawn (HARMONY 11).",
+   "status": "drawn"
+  },
+  {
+   "id": "settings.tab.library",
+   "en": "Library",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Tab label with a folder icon above it. The tab contents are not drawn (HARMONY 11). Separate from library.title.",
+   "status": "drawn"
+  },
+  {
+   "id": "settings.tab.recording",
+   "en": "Recording",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Tab label with a microphone icon above it. The tab contents are not drawn (HARMONY 11).",
+   "status": "drawn"
+  },
+  {
+   "id": "settings.tab.transcription",
+   "en": "Transcription",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Tab label with a text-lines icon above it. Selected on this board. An allowed vocabulary exception (HARMONY 2).",
+   "status": "drawn"
+  },
+  {
+   "id": "settings.title",
+   "en": "Preferences",
+   "mac": "Settings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Window title, centred in the header. GNOME: AdwPreferencesDialog title. Mac: Settings scene title. An allowed platform difference (HARMONY 10). Shortcut Ctrl+, / ⌘,.",
+   "status": "drawn"
+  },
+  {
+   "id": "settings.transcription.network.download",
+   "en": "To download a model, only when you ask. Each file is checked before it is used.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "First bullet, dim. 'Checked' means the sha256 check against models.json. Never say SHA-256 (HARMONY 2).",
+   "status": "drawn"
+  },
+  {
+   "id": "settings.transcription.network.heading",
+   "en": "When Cassini uses the network",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "Title of the closing group. No card, only a bulleted list.",
+   "status": "drawn"
+  },
+  {
+   "id": "settings.transcription.network.updates",
+   "en": "To check for updates. No meeting data is sent.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "Second bullet, dim. Open question: the GNOME app may not check for updates.",
+   "status": "drawn"
+  },
+  {
+   "id": "settings.transcription.privacy",
+   "en": "Cassini writes meetings down on this computer. Audio, transcripts and voiceprints never leave it.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "Intro line at the top of the Transcription tab, after a green shield icon.",
+   "status": "drawn"
+  },
+  {
+   "id": "settings.transcription.savedVoices.summary",
+   "en": "{n} people. Voiceprints stay on this computer.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX17",
+   "placeholders": {
+    "n": "number of saved voices"
+   },
+   "plural": {
+    "one": "1 person. Voiceprints stay on this computer.",
+    "other": "{n} people. Voiceprints stay on this computer."
+   },
+   "note": "Subtitle of the common.savedVoices row. It uses the HARMONY 6 plural '1 person.' / '{n} people.' Drawn with n = 5. The zero case is not drawn; do not invent it.",
+   "status": "drawn"
+  },
+  {
+   "id": "settings.transcription.speakers.description",
+   "en": "Without these, a meeting has two speakers: you, and the others.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX15",
+   "note": "Description of the Speakers group; the group title is common.speakers. The two-speaker labels are not drawn yet (HARMONY 11).",
+   "status": "drawn"
+  },
+  {
+   "id": "settings.transcription.speech.a11y",
+   "en": "Speech model for new meetings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "Accessible label of the radio group that holds the speech model rows.",
+   "status": "drawn"
+  },
+  {
+   "id": "settings.transcription.speech.description",
+   "en": "Choose the model for new meetings. Meetings already written down keep their transcript.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "status": "drawn"
+  },
+  {
+   "id": "settings.transcription.speech.heading",
+   "en": "Writing down what was said",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "Title of the speech model group.",
+   "status": "drawn"
+  },
+  {
+   "id": "speakers.duplicate.question",
+   "en": "Is this the same person?",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX17",
+   "note": "Regular-weight run after speakers.duplicate.title.",
+   "status": "drawn"
+  },
+  {
+   "id": "speakers.duplicate.samePerson",
+   "en": "Same person",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX17",
+   "note": "Dark (fg colour) fill, white text, 32 px, small text.",
+   "status": "drawn"
+  },
+  {
+   "id": "speakers.duplicate.someoneElse",
+   "en": "Someone else",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX17",
+   "note": "White fill with a border, 32 px, small text.",
+   "status": "drawn"
+  },
+  {
+   "id": "speakers.duplicate.title",
+   "en": "“{name}” is already a saved voice.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX17",
+   "placeholders": {
+    "name": "full name of the existing saved voice that matches the typed name (sample: Giulia Rossi)"
+   },
+   "note": "Bold run at the start of the amber card paragraph. A space and speakers.duplicate.question follow in the same paragraph, at regular weight. Typographic quotes, as drawn.",
+   "status": "drawn"
+  },
+  {
+   "id": "speakers.mergeInto",
+   "en": "Merge into…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX16",
+   "note": "Flat accent-text button at the leading edge of the footer, with the single ellipsis. What it opens is not drawn; ask.",
+   "status": "drawn"
+  },
+  {
+   "id": "speakers.nameLabel",
+   "en": "Name",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX16",
+   "note": "Label of the name text field and also its accessible label. No placeholder is drawn.",
+   "status": "drawn"
+  },
+  {
+   "id": "speakers.playSample",
+   "en": "Play a sample of this voice",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX16",
+   "note": "Accessible label of the round icon-only play button at the trailing edge of the header row. No tooltip is drawn; using the same text as a tooltip is the coordinator's call. Different from savedVoices.row.play.",
+   "status": "drawn"
+  },
+  {
+   "id": "speakers.rememberVoice",
+   "en": "Remember this voice on this computer",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX17",
+   "note": "Semibold checkbox label, checked in the drawing. savedVoices.howToAdd quotes this toggle as “Remember this voice”. Both are kept verbatim as drawn until the coordinator decides.",
+   "status": "drawn"
+  },
+  {
+   "id": "speakers.rememberVoice.description",
+   "en": "Future meetings will name {name} automatically. The voiceprint never leaves this computer.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX17",
+   "placeholders": {
+    "name": "the name currently typed in the Name field (sample: Giulia)"
+   },
+   "note": "Small dim line under the checkbox. It updates live as the Name field changes.",
+   "status": "drawn"
+  },
+  {
+   "id": "speakers.saveName",
+   "en": "Save name",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX16",
+   "note": "Accent-filled default (suggested) button, trailing in the footer. The secondary button is common.cancel.",
+   "status": "drawn"
+  },
+  {
+   "id": "speakers.savedVoices.heading",
+   "en": "Saved voices, closest first",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX17",
+   "note": "h3 above the list of saved voices, ordered by similarity.",
+   "status": "drawn"
+  },
+  {
+   "id": "speakers.savedVoices.likely",
+   "en": "Likely",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "badge",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX17",
+   "note": "White pill with accent text on the closest saved-voice row, which has an accentTint fill.",
+   "status": "drawn"
+  },
+  {
+   "id": "speakers.talkTime",
+   "en": "Speaks for {talkTime} in this meeting",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX16",
+   "placeholders": {
+    "talkTime": "format.talkTime, e.g. 9 min 40 s"
+   },
+   "note": "Small dim line under the dialog title. The title is common.speaker.unnamed or the name. The '3' in the avatar is the speaker number, not catalog text.",
+   "status": "drawn"
+  },
+  {
+   "id": "states.badge.interrupted",
+   "en": "Interrupted at {position}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "badge",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "placeholders": {
+    "position": "format.position of interruptedAtMs, HH:MM:SS (e.g. 00:41:12)"
+   },
+   "note": "HARMONY 3 row 5. Amber tint (amber text on amberTint). This is history, not an error.",
+   "status": "drawn"
+  },
+  {
+   "id": "states.badge.needsAttention",
+   "en": "Needs attention",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "badge",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "HARMONY 3 row 4: only when error != null and error.action != null. Amber tint.",
+   "status": "drawn"
+  },
+  {
+   "id": "states.badge.received",
+   "en": "Received",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "badge",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "LibraryReceived",
+    "LibraryReceived-mac",
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "HARMONY 3 row 6 (origin = received). Grey chip (chip background, dim text). On a selected row: pill with an rgba(255,255,255,0.22) fill and selFg text on both platforms. The same word ends format.previewSubtitle.received and must stay identical. Live from UX4.",
+   "status": "drawn"
+  },
+  {
+   "id": "states.badge.recording",
+   "en": "Recording {liveBadge}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "badge",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "placeholders": {
+    "liveBadge": "HARMONY 6 badge/header-pill live timer (format-vectors liveBadge): 12:48, 1:02:48 from one hour on"
+   },
+   "note": "HARMONY 3 row 1 (lifecycle = recording). Red tint with a decorative 7 px red dot before the text. Live from UX5.",
+   "status": "drawn"
+  },
+  {
+   "id": "states.badge.saving",
+   "en": "Saving…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "badge",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "HARMONY 3 row 2 (lifecycle = saving). Grey chip. U+2026. Live from UX5.",
+   "status": "drawn"
+  },
+  {
+   "id": "states.badge.transcribing",
+   "en": "Transcribing, about {n} minutes left",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "badge",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "placeholders": {
+    "n": "etaMinutes (integer, only while transcript is queued or running); format-vectors eta"
+   },
+   "plural": {
+    "one": "Transcribing, about 1 minute left",
+    "other": "Transcribing, about {n} minutes left"
+   },
+   "note": "HARMONY 3 row 3. Accent tint. Kept as one sentence for translators; the ETA part follows the HARMONY 6 plural. 'Transcribing' is the allowed badge exception. n = 0 uses states.badge.transcribing.underMinute. Live from UX13. n = 0 uses states.badge.transcribing.underMinute.",
+   "status": "drawn"
+  },
+  {
+   "id": "states.badge.transcribing.noEta",
+   "en": "Transcribing…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "badge",
+   "boards": [],
+   "milestone": "UX2",
+   "status": "harmony",
+   "note": "D6 R3: queued/running with no valid etaMinutes. Same tint as states.badge.transcribing."
+  },
+  {
+   "id": "states.badge.transcribing.underMinute",
+   "en": "Transcribing, less than a minute left",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "badge",
+   "boards": [],
+   "milestone": "UX2",
+   "note": "Not drawn. Required by format-vectors.json eta {minutes:0}; HARMONY 6 lists it.",
+   "status": "vectors"
+  },
+  {
+   "id": "states.gallery.can.interrupted",
+   "en": "Everything on what was captured. History, not an error.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Designer annotation on the States board. Only the hidden states-gallery debug board shows it; never in the product.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "states.gallery.can.needsAttention",
+   "en": "The one action named in its line.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Designer annotation on the States board. Only the hidden states-gallery debug board shows it; never in the product.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "states.gallery.can.ready",
+   "en": "Ready: everything. No badge.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Designer annotation on the States board. Only the hidden states-gallery debug board shows it; never in the product.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "states.gallery.can.received",
+   "en": "Everything except writing it down again.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Designer annotation on the States board. Only the hidden states-gallery debug board shows it; never in the product.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "states.gallery.can.recording",
+   "en": "Rename, add a note, Stop.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Designer annotation on the States board. Only the hidden states-gallery debug board shows it; never in the product.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "states.gallery.can.saving",
+   "en": "Nothing to do. The audio is already safe.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Designer annotation on the States board. Only the hidden states-gallery debug board shows it; never in the product.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "states.gallery.can.transcribing",
+   "en": "Play, rename, read the transcript as it grows.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Designer annotation on the States board. Only the hidden states-gallery debug board shows it; never in the product.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "states.gallery.confirmations.heading",
+   "en": "Only three confirmations",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Designer annotation on the States board. Only the hidden states-gallery debug board shows it; never in the product.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "states.gallery.errors.description",
+   "en": "Shown under the headline of the Meeting view, never as a dialog.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Designer annotation on the States board. Only the hidden states-gallery debug board shows it; never in the product.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "states.gallery.errors.heading",
+   "en": "Errors are lines with one action",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Designer annotation on the States board. Only the hidden states-gallery debug board shows it; never in the product.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "states.gallery.states.description",
+   "en": "The badge on the Library row, and what the person can do in it.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Designer annotation on the States board. Only the hidden states-gallery debug board shows it; never in the product.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "states.gallery.states.heading",
+   "en": "One state per meeting",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX2",
+   "note": "Designer annotation on the States board. Only the hidden states-gallery debug board shows it; never in the product.",
+   "status": "galleryOnly"
+  },
+  {
+   "id": "whatIsRecorded.both",
+   "en": "Both",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX11",
+   "note": "Radio row title. Selected in the fixture.",
+   "status": "drawn"
+  },
+  {
+   "id": "whatIsRecorded.both.caption",
+   "en": "You and the people you meet with",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX11",
+   "status": "drawn"
+  },
+  {
+   "id": "whatIsRecorded.choices.a11y",
+   "en": "Record",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX11",
+   "note": "Visually hidden legend that names the radio group. Same text as common.record, but it labels a group, not an action, so it keeps its own id.",
+   "status": "drawn"
+  },
+  {
+   "id": "whatIsRecorded.me",
+   "en": "Me",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX11",
+   "note": "Bold radio row title. HARMONY 2 'Your microphone / Me'. Its caption is common.yourMicrophone.",
+   "status": "drawn"
+  },
+  {
+   "id": "whatIsRecorded.othersHeard.browser.description",
+   "en": "Your meeting in the browser is open, so each person is heard on their own. If that stops, Cassini records the others from this computer’s sound.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX11",
+   "note": "For the browser companion capture path only. Other path variants are not drawn (HARMONY 11). The canvas has \"computer's\", normalised to ’.",
+   "status": "drawn"
+  },
+  {
+   "id": "whatIsRecorded.othersHeard.browserMixed.description",
+   "en": "Your meeting in the browser is open, so the others are recorded from it. If that stops, Cassini records the others from this computer’s sound.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "UX11",
+   "status": "pending",
+   "note": "D7 Q3: variant for a single mixed remote stream (for example Teams on the web). Coordinator draft."
+  },
+  {
+   "id": "whatIsRecorded.othersHeard.heading",
+   "en": "How the others are heard",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX11",
+   "note": "Small bold dim heading above the capture-path card. The card title is common.listeningInsideBrowser.",
+   "status": "drawn"
+  },
+  {
+   "id": "whatIsRecorded.subtitle",
+   "en": "Changes apply from now on. What is already recorded stays.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-body",
+   "boards": [
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX11",
+   "note": "Dim body under the title. Two lines on GNOME, one on Mac.",
+   "status": "drawn"
+  },
+  {
+   "id": "whatIsRecorded.theOthers.caption",
+   "en": "The people you meet with",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX11",
+   "note": "Dim caption under the radio row common.theOthers.",
+   "status": "drawn"
+  },
+  {
+   "id": "whatIsRecorded.title",
+   "en": "What is recorded",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-title",
+   "boards": [
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX11",
+   "note": "h2 that labels the dialog (aria-labelledby). GNOME: centred. Mac: leading. The entry point is recording.changeWhatIsRecorded.",
+   "status": "drawn"
+  }
+ ]
+}

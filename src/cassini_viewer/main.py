@@ -46,11 +46,10 @@ class CassiniApplication(Adw.Application):
         self.set_option_context_parameter_string(_("[FILE…]"))
 
         self._add_action("open", self.on_open, ["<primary>o"])
-        self._add_action("new-window", lambda *_: self.new_window().present(), ["<primary>n"])
         self._add_action("about", self.on_about)
         self._add_action("quit", self.on_quit, ["<primary>q"])
         self._add_action("record", self.on_record, ["<primary>r"])
-        self._add_action("browser-meetings", self.on_browser_meetings, ["<primary><shift>r"])
+        self._add_action("browser-meetings", self.on_browser_meetings)
         self.set_accels_for_action("window.close", ["<primary>w"])
         self.set_accels_for_action("win.play-pause", ["space", "AudioPlay", "AudioPause"])
         self.set_accels_for_action("win.skip-back", ["<primary>Left"])
@@ -85,10 +84,11 @@ class CassiniApplication(Adw.Application):
         return window
 
     def do_activate(self):
-        window = self.get_active_window()
+        from .library_window import LibraryWindow
+
+        window = next((w for w in self.get_windows() if isinstance(w, LibraryWindow)), None)
         if window is None:
-            self.on_browser_meetings()
-            return
+            window = LibraryWindow(self)
         window.present()
 
     def do_open(self, files, _n_files, _hint):

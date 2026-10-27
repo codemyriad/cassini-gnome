@@ -12,6 +12,7 @@ export HOME="$runtime/home" XDG_RUNTIME_DIR="$runtime/run"
 export XDG_CONFIG_HOME="$runtime/config" XDG_CACHE_HOME="$runtime/cache" XDG_DATA_HOME="$runtime/data"
 export GSK_RENDERER=cairo GDK_BACKEND=x11 GSETTINGS_BACKEND=memory
 export ADW_DISABLE_PORTAL=1 ADW_DEBUG_ACCENT_COLOR=blue
+export GIO_USE_VFS=local GTK_USE_PORTAL=0
 export TZ=Europe/Rome LANG=en_GB.UTF-8 LC_ALL=en_GB.UTF-8 LANGUAGE=en_GB
 export PULSE_SERVER="unix:$runtime/no-audio.sock" PIPEWIRE_REMOTE=cassini-ux-no-audio
 fonts=${CASSINI_SCREENSHOT_FONT_DIR:-/usr/share/fonts/opentype}

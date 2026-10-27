@@ -1,4 +1,4 @@
-name: UX screenshot spike
+name: UX boards and Library interaction
 on:
   push:
     branches: ['ux/shot-spike']
@@ -6,6 +6,9 @@ on:
     paths:
       - 'src/**'
       - 'build-aux/ux-screenshot.sh'
+      - 'build-aux/ux-boards.sh'
+      - 'ux/library-vectors/**'
+      - 'tests/ui/**'
       - '.github/workflows/ux-shot.yml'
   workflow_dispatch:
 permissions:
@@ -31,15 +34,17 @@ jobs:
       - name: Render the real current window in private Xvfb
         run: |
           mkdir -p ux-artifacts
-          build-aux/ux-screenshot.sh _install-shot/bin/cassini-viewer ux-artifacts/current-main.png
+          build-aux/ux-boards.sh _install-shot/bin/cassini-viewer ux-artifacts
+          CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/library.py ux-artifacts/gui.png
           python3 - <<'PY'
           import json,struct
           from pathlib import Path
-          root=Path('ux-artifacts/current-main')
+          root=Path('ux-artifacts/library')
           data=root.with_suffix('.png').read_bytes()
           assert data[:8] == b'\x89PNG\r\n\x1a\n'
           width,height=struct.unpack('>II',data[16:24])
-          assert width > 0 and height > 0
+          assert (width,height) == (1120,720)
+          assert struct.unpack('>II',Path('ux-artifacts/first-run.png').read_bytes()[16:24]) == (1120,720)
           info=json.loads(root.with_suffix('.json').read_text())
           assert info['renderer']=='cairo' and info['accent']=='blue' and info['light']
           assert info['tz']=='Europe/Rome' and info['lang']=='en_GB.UTF-8'
@@ -50,6 +55,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: gnome-ux-current-main
+          name: ux-boards
           path: ux-artifacts/
           retention-days: 14
