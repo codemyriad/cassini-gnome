@@ -43,7 +43,7 @@ Layout:
 CI runs all of these on every pull request:
 
 ```sh
-make lint                   # ruff check and ruff format --check
+make lint                   # browser-protocol/verify.py, ruff check and ruff format --check
 pytest
 make test                   # meson test: also validates the desktop, AppStream and schema files
 make check-distros          # build and test on six distributions, in containers

@@ -34,6 +34,9 @@ For the separate development browser, run `build-aux/run-browser-test.sh` and
 native hosts automatically. See [browser setup](browser-extension/README.md) for
 normal profiles, capture limits and the whole-tab fallback.
 
+Recording from the browser needs a native installation; the Flatpak does not
+support the companion yet (see [Install](#install)).
+
 ## Record a meeting
 
 Choose **Record Meeting…** from the app menu (Ctrl+R), select microphone,
@@ -59,7 +62,8 @@ See the [isolated recording tests](tests/recording/README.md) for validation.
 Cassini needs GTK 4.18 and libadwaita 1.8 or newer. These distributions have
 them: Debian testing, Ubuntu 26.04, Fedora 43 and later, openSUSE Tumbleweed,
 Arch Linux and Alpine edge. On older ones (Debian 13, Ubuntu 24.04, openSUSE
-Leap, RHEL and its rebuilds) use the Flatpak, which bundles everything.
+Leap, RHEL and its rebuilds) use the Flatpak, which bundles these libraries but
+does not support recording from the browser yet.
 
 Builds of every commit are attached to the
 [CI runs](https://github.com/codemyriad/cassini-gnome/actions), and tagged
@@ -68,7 +72,10 @@ versions to the [releases](https://github.com/codemyriad/cassini-gnome/releases)
 - **Flatpak**, any distribution: `flatpak install --user cassini-viewer.flatpak`.
   Uses the GNOME 50 runtime from Flathub. CI runs build the development app
   instead (`cassini-viewer-devel.flatpak`, ID `com.gocassini.Viewer.Devel`),
-  which installs next to a release.
+  which installs next to a release. The browser companion does not work with
+  the Flatpak yet: the browser's native messaging hosts run outside the
+  sandbox and cannot reach the app, and the app cannot read the recordings
+  they save under `~/Music/Cassini`. Use a native package for that.
 - **Debian and Ubuntu**: `sudo apt install ./cassini-viewer_*_all.deb`
 - **Fedora**: `sudo dnf install ./cassini-viewer-*.fc*.noarch.rpm`
 - **openSUSE Tumbleweed**: `sudo zypper install ./cassini-viewer-*.opensuse_tumbleweed.noarch.rpm`
@@ -124,7 +131,7 @@ Meson warns when it cannot import `gi`.
 
 All of these write to `dist/`. The deb, rpm and arch targets build the
 package in a clean container with podman or docker (set `CONTAINER_ENGINE` to
-choose), install it there and smoke-test it. The Flatpak is built on the host:
+choose), install it there and smoke-test it:
 
 | Command | Builds |
 |---|---|
@@ -136,8 +143,9 @@ choose), install it there and smoke-test it. The Flatpak is built on the host:
 | `make packages` | all of them |
 
 The Flatpak is built on the host. It needs `flatpak` and either `flatpak-builder`
-or the `org.flatpak.Builder` app, and the first build downloads the GNOME 50
-SDK. You can also build it with GNOME Builder.
+or the `org.flatpak.Builder` app. The script adds the Flathub remote to your
+user installation if needed; the first build downloads the GNOME 50 SDK, and
+later builds update it. You can also build it with GNOME Builder.
 
 `make check-distros` builds and tests Cassini on Debian testing, Ubuntu 26.04,
 Fedora, openSUSE Tumbleweed, Arch Linux and Alpine edge, each in a fresh

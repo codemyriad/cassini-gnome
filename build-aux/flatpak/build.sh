@@ -29,9 +29,11 @@ fi
 if command -v flatpak-builder >/dev/null 2>&1; then
   set -- flatpak-builder
 elif flatpak info org.flatpak.Builder >/dev/null 2>&1; then
-  # The builder has host filesystem access; skipping the document portal
-  # lets it run on headless hosts where the portal is not mounted.
-  set -- flatpak run --no-documents-portal org.flatpak.Builder
+  # Skipping the document portal lets it run on headless hosts where the
+  # portal is not mounted. The app's host access does not cover every path
+  # (/tmp, for one), and where it cannot see the working directory it starts
+  # in $HOME instead, so grant the checkout explicitly and start there.
+  set -- flatpak run --no-documents-portal --filesystem="$PWD" --cwd="$PWD" org.flatpak.Builder
 else
   cat >&2 <<'EOF'
 error: flatpak-builder not found. Install it from your distribution
@@ -53,7 +55,7 @@ flatpak remote-add --user --if-not-exists flathub \
 
 mkdir -p dist
 flatpak build-bundle \
-  --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+  --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
   repo "dist/$BUNDLE.flatpak" "$APP_ID"
 ls -l "dist/$BUNDLE.flatpak"
 

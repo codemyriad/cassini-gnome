@@ -29,7 +29,29 @@
             "sources": [
                 {
                     "type": "dir",
-                    "path": "../.."
+                    "path": "../..",
+                    "skip": [
+                        ".git",
+                        ".venv",
+                        ".flatpak-builder",
+                        "_flatpak",
+                        "repo",
+                        "dist",
+                        "build",
+                        "builddir",
+                        "_build",
+                        "_build-system",
+                        "_build-shot",
+                        "_install",
+                        "_install-shot",
+                        "ux-artifacts",
+                        ".pytest_cache",
+                        ".ruff_cache",
+                        "debian/.debhelper",
+                        "debian/cassini-viewer",
+                        "tests/recording/node_modules",
+                        "tests/recording/artifacts"
+                    ]
                 }
             ]
         }
