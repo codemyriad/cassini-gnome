@@ -69,6 +69,13 @@
   </screenshots>
 
   <releases>
+    <release version="0.2.0" date="2026-10-27">
+      <description>
+        <p>Record meetings: the microphone and desktop audio, and browser meetings source by source
+        through the Cassini companion extension. Cassini now names missing libraries and plugins
+        at startup instead of failing.</p>
+      </description>
+    </release>
     <release version="0.1.1" date="2026-10-15">
       <description>
         <p>Fix transcript-click crashes and label sizing warnings. Keep participants visible,

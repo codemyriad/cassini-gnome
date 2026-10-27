@@ -5,6 +5,7 @@ data/com.gocassini.Viewer.gschema.xml
 src/ui/window.ui
 src/shortcuts-dialog.ui
 src/cassini_viewer/main.py
+src/cassini_viewer/player.py
 src/cassini_viewer/window.py
 src/cassini_viewer/recorder.py
 src/cassini_viewer/recording_window.py

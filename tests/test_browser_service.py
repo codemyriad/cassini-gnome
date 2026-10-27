@@ -232,6 +232,9 @@ def test_control_host_relays_commands_over_native_framing(service):
 
 
 def test_shared_control_host_vectors():
+    # The runner validates against the JSON schemas; meson treats these as optional too.
+    pytest.importorskip("jsonschema")
+    pytest.importorskip("rfc3339_validator")
     import json
     import os
     import subprocess

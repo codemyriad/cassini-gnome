@@ -1,0 +1,4 @@
+# Native messaging hosts: the browser starts them and talks to them over
+# stdin/stdout, so there is nothing for a user to read in a manual page.
+no-manual-page [usr/bin/cassini-browser-host]
+no-manual-page [usr/bin/cassini-browser-control-host]

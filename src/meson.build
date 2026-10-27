@@ -6,8 +6,32 @@ viewer_resources = gnome.compile_resources('cassini-viewer',
   install_dir: pkgdatadir,
 )
 
+# The launcher's shebang points at this interpreter, so it must be the one
+# that has PyGObject: a python3 from a virtualenv usually does not. Missing gi
+# is only a warning because packagers often build without runtime deps.
+py = python.find_installation('python3')
+if not py.language_version().version_compare('>= 3.11')
+  warning('Python @0@ found; cassini-viewer needs Python 3.11 or newer at run time.'.format(py.language_version()))
+endif
+if not python.find_installation('python3', modules: ['gi'], required: false).found()
+  warning('The python3 at @0@ cannot import gi (PyGObject), and the launcher will run with it. Install PyGObject for it, or point Meson at the system Python with a native file whose [binaries] section sets python = \'/usr/bin/python3\'.'.format(py.full_path()))
+endif
+
+# On merged-/usr systems PATH may list /usr/sbin first (Arch, Fedora), which
+# would give the launcher a #!/usr/sbin/python3 shebang. Prefer /usr/bin when
+# it is the same file.
+python_path = py.full_path()
+foreach sbin : ['/usr/sbin/', '/sbin/']
+  if python_path.startswith(sbin)
+    candidate = python_path.replace(sbin, '/usr/bin/')
+    if fs.is_samepath(candidate, python_path)
+      python_path = candidate
+    endif
+  endif
+endforeach
+
 conf = configuration_data()
-conf.set('PYTHON', python.find_installation('python3').full_path())
+conf.set('PYTHON', python_path)
 conf.set('VERSION', meson.project_version())
 conf.set('APPLICATION_ID', application_id)
 conf.set('PROFILE', get_option('profile'))
@@ -47,6 +71,7 @@ install_data(
   'cassini_viewer/session_window.py',
   'cassini_viewer/recording_window.py',
   'cassini_viewer/portable.py',
+  'cassini_viewer/runtime.py',
   'cassini_viewer/summary.py',
   'cassini_viewer/transcript.py',
   'cassini_viewer/window.py',
@@ -61,6 +86,10 @@ if pytest.found()
     args: ['-m', 'pytest', '-q', meson.project_source_root() / 'tests'],
     env: ['PYTHONPATH=' + meson.current_source_dir()],
     workdir: meson.project_source_root(),
+    # The suite re-runs both conformance suites as subprocesses, alongside
+    # Meson's own conformance tests: 11-21 s in a package build container,
+    # over Meson's 30 s default on a loaded builder.
+    timeout: 120,
   )
 endif
 

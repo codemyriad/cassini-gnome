@@ -7,34 +7,31 @@ on:
 permissions:
   contents: read
 
+# The runners have both; build.sh would pick podman, but rootful docker is
+# what it is tested with.
+env:
+  CONTAINER_ENGINE: docker
+
 jobs:
   build:
     name: Build .deb (${{ matrix.base }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Only the Ubuntu build is released; a Debian testing breakage should
+    # show up in CI without blocking a release.
+    continue-on-error: ${{ matrix.base != 'ubuntu:26.04' }}
     strategy:
       fail-fast: false
       matrix:
-        base: ["ubuntu:26.04"]
-    container: ${{ matrix.base }}
+        base: ["ubuntu:26.04", "debian:testing"]
     steps:
       - uses: actions/checkout@v5
-      - name: Install build dependencies
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends build-essential devscripts equivs lintian
-          mk-build-deps -i -r -t "apt-get -y --no-install-recommends" debian/control
-      - name: Build
-        run: dpkg-buildpackage -us -uc -b
-      - name: Lintian
-        run: lintian --info --fail-on error ../*.deb
-      - name: Install and smoke-test
-        run: |
-          apt-get install -y --no-install-recommends ../*.deb
-          python3 -c "import sys; sys.path.insert(0, '/usr/share/cassini-viewer'); import cassini_viewer.portable"
-          test -x /usr/bin/cassini-viewer
-      - name: Collect
-        run: mkdir -p dist && cp ../*.deb dist/
-      - uses: actions/upload-artifact@v4
+      # The same script as `make deb`: checks the version, builds, runs
+      # lintian, installs the package and smoke-tests it in a container.
+      - run: build-aux/deb/build.sh "${{ matrix.base }}"
+      # Both bases produce the same file name; release the Ubuntu build.
+      - if: matrix.base == 'ubuntu:26.04'
+        uses: actions/upload-artifact@v4
         with:
           name: deb-${{ strategy.job-index }}
           path: dist/*.deb

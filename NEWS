@@ -1,3 +1,23 @@
+Version 0.2.0
+~~~~~~~~~~~~~
+Released: 2026-10-27
+
+- Record meetings: microphone and desktop audio into an Opus file
+- Record browser meetings source by source with the companion extension for
+  Chromium-based browsers; its native messaging hosts are registered per user
+- Optionally record every browser meeting automatically, with a Stop notification
+- Name missing libraries and GStreamer plugins at startup
+- Packages for Debian/Ubuntu, Fedora, openSUSE, Arch Linux and Alpine, built and
+  tested with the same scripts locally and in CI
+
+Version 0.1.1
+~~~~~~~~~~~~~
+Released: 2026-10-15
+
+- Fix transcript-click crashes and GTK label sizing warnings
+- Keep participants visible and rejoin interrupted speech with inline interjections
+- Preserve interjections in exports
+
 Version 0.1.0
 ~~~~~~~~~~~~~
 Released: 2026-10-15

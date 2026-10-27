@@ -34,6 +34,13 @@ For the separate development browser, run `build-aux/run-browser-test.sh` and
 native hosts automatically. See [browser setup](browser-extension/README.md) for
 normal profiles, capture limits and the whole-tab fallback.
 
+The companion is set up per user: each person registers the native messaging
+hosts for their own browser profile. Packages install the host programs but
+never register them system-wide.
+
+Recording from the browser needs a native installation; the Flatpak does not
+support the companion yet (see [Install](#install)).
+
 ## Record a meeting
 
 Choose **Record Meeting…** from the app menu (Ctrl+R), select microphone,
@@ -56,19 +63,54 @@ See the [isolated recording tests](tests/recording/README.md) for validation.
 
 ## Install
 
+Cassini needs GTK 4.18 and libadwaita 1.8 or newer. These distributions have
+them: Debian testing, Ubuntu 26.04, Fedora 43 and later, openSUSE Tumbleweed,
+Arch Linux and Alpine edge. On older ones (Debian 13, Ubuntu 24.04, openSUSE
+Leap, RHEL and its rebuilds) use the Flatpak, which bundles these libraries but
+does not support recording from the browser yet.
+
 Builds of every commit are attached to the
 [CI runs](https://github.com/codemyriad/cassini-gnome/actions), and tagged
 versions to the [releases](https://github.com/codemyriad/cassini-gnome/releases):
 
-- **Debian and Ubuntu**: `sudo apt install ./cassini-viewer_*_all.deb`.
-  Needs libadwaita 1.8 or newer: Ubuntu 26.04, Debian forky.
-- **Flatpak**: `flatpak install --user cassini-viewer.flatpak`. Uses the
-  GNOME 50 runtime from Flathub.
+- **Flatpak**, any distribution: `flatpak install --user cassini-viewer.flatpak`.
+  Uses the GNOME 50 runtime from Flathub. CI runs build the development app
+  instead (`cassini-viewer-devel.flatpak`, ID `com.gocassini.Viewer.Devel`),
+  which installs next to a release. The browser companion does not work with
+  the Flatpak yet: the browser's native messaging hosts run outside the
+  sandbox and cannot reach the app, and the app cannot read the recordings
+  they save under `~/Music/Cassini`. Use a native package for that.
+- **Debian and Ubuntu**: `sudo apt install ./cassini-viewer_*_all.deb`
+- **Fedora**: `sudo dnf install ./cassini-viewer-*.fc*.noarch.rpm`
+- **openSUSE Tumbleweed**: `sudo zypper install ./cassini-viewer-*.opensuse_tumbleweed.noarch.rpm`
+- **Arch Linux**: `sudo pacman -U cassini-viewer-*-any.pkg.tar.zst`
+
+If Python, PyGObject, GTK, libadwaita or GStreamer is missing or too old,
+Cassini says which one and exits, rather than crashing; run `cassini-viewer`
+in a terminal to see the message. If a GStreamer plugin is missing, it starts
+anyway, warns on the terminal, and names the packages to install where the
+plugin is needed: Ogg and Opus for `.opus` files, WAV for browser recording
+tracks, and PulseAudio (`pulsesrc`), `audiointerleave`, `opusenc` and `oggmux`
+for **Record Meeting**.
 
 ## Build from source
 
 You need Meson, Python 3.11+, PyGObject, GTK 4.18+, libadwaita 1.8+ and
-GStreamer with the base and good plugins.
+GStreamer with the base and good plugins. To install them with your
+distribution's package manager (apt, dnf, zypper, pacman or apk):
+
+```sh
+build-aux/install-deps.sh            # --dry-run to only print the command
+```
+
+Then build, test and run from a local prefix:
+
+```sh
+make run                             # or: make run FILE=recording.opus
+make test
+```
+
+`make` only wraps Meson; by hand that is:
 
 ```sh
 meson setup _build --prefix="$PWD/_install" -Dprofile=development
@@ -77,14 +119,42 @@ meson test -C _build
 GSETTINGS_SCHEMA_DIR=_install/share/glib-2.0/schemas _install/bin/cassini-viewer recording.opus
 ```
 
-Or build the Flatpak with GNOME Builder, or:
+To install system-wide, use a separate build directory, so that root does not
+take over the development one:
 
 ```sh
-flatpak-builder --user --install --force-clean _flatpak build-aux/flatpak/com.gocassini.Viewer.Devel.json
+make build BUILDDIR=_build-system PREFIX=/usr/local PROFILE=default
+sudo meson install -C _build-system
 ```
 
-To build the Debian package in a container: `build-aux/deb/build.sh`. The
-package lands in `dist/`.
+Build Meson with the system Python, not one from a virtualenv: the launcher
+runs with the interpreter Meson found, and that interpreter needs PyGObject.
+Meson warns when it cannot import `gi`.
+
+### Packages
+
+All of these write to `dist/`. The deb, rpm and arch targets build the
+package in a clean container with podman or docker (set `CONTAINER_ENGINE` to
+choose), install it there and smoke-test it:
+
+| Command | Builds |
+|---|---|
+| `make deb` | `.deb`, in Ubuntu 26.04 (`build-aux/deb/build.sh debian:testing` for Debian) |
+| `make rpm` | `.rpm` and `.src.rpm`, in Fedora |
+| `make rpm-opensuse` | `.rpm` and `.src.rpm`, in openSUSE Tumbleweed |
+| `make arch` | `.pkg.tar.zst`, in Arch Linux |
+| `make flatpak` | `cassini-viewer.flatpak` (`make flatpak-devel` for the development app) |
+| `make packages` | all of them |
+
+The Flatpak is built on the host. It needs `flatpak` and either `flatpak-builder`
+or the `org.flatpak.Builder` app. The script adds the Flathub remote to your
+user installation if needed; the first build downloads the GNOME 50 SDK, and
+later builds update it. You can also build it with GNOME Builder.
+
+`make check-distros` builds and tests Cassini on Debian testing, Ubuntu 26.04,
+Fedora, openSUSE Tumbleweed, Arch Linux and Alpine edge, each in a fresh
+container, and prints a table of the results. Pass images to
+`build-aux/check-distros.sh` to try others.
 
 ## The format
 

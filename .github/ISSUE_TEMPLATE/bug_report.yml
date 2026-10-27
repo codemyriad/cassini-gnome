@@ -16,7 +16,7 @@ body:
     id: version
     attributes:
       label: Cassini version and how it was installed
-      placeholder: 0.1.0, Flatpak / .deb / source
+      placeholder: 0.2.0, Flatpak / .deb / .rpm / Arch package / source
     validations:
       required: true
   - type: input
