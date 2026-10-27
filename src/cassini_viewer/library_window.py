@@ -38,6 +38,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._list_signature = None
         self._preview_signature_value = None
         self._live_badges = {}
+        self._capture_headers = []
         self._activity_source = None
         self._activity_timer = 0
         # These are hidden harness inputs, never separate production fixtures or fake widget data.
@@ -109,7 +110,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
         header.set_title_widget(label(text("library.title"), "heading"))
         if record:
-            header.pack_start(self._record())
+            header.pack_start(self.capture_controls())
         if close:
             menu = Gio.Menu()
             menu.append(text("common.legacy.browserMeetings"), "app.browser-meetings")
@@ -148,6 +149,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         body = label(text("firstRun.body"), "dim-label", justify=Gtk.Justification.CENTER, wrap=True, width_request=460)
         body.set_max_width_chars(50)
         center.append(body)
+        self.first_recording_lines = vertical(visible=False)
+        center.append(self.first_recording_lines)
         center.append(self._record(big=True))
         center.append(
             label(
@@ -173,6 +176,26 @@ class LibraryWindow(Adw.ApplicationWindow):
         offline_view.add_top_bar(self._header(record=True))
         self.root_box.add_named(offline_view, "offline")
 
+    def capture_controls(self):
+        stack = Gtk.Stack(hhomogeneous=False, vhomogeneous=False)
+        stack.add_named(self._record(), "record")
+        live = Gtk.Box(spacing=8, css_classes=["live-pill"], valign=Gtk.Align.CENTER)
+        live.append(Gtk.Box(width_request=10, height_request=10, valign=Gtk.Align.CENTER, css_classes=["live-dot"]))
+        timer = label("", "live-timer")
+        live.append(timer)
+        bars = vertical(3, valign=Gtk.Align.CENTER, css_classes=["live-levels"])
+        levels = [Gtk.ProgressBar(fraction=fraction, width_request=30) for fraction in (0.64, 0.38)]
+        for bar in levels:
+            bars.append(bar)
+        live.append(bars)
+        stop = Gtk.Button(label=text("common.stop"), sensitive=False, css_classes=["static-stop"])
+        stop.connect("clicked", self._stop_live)
+        live.append(stop)
+        stack.add_named(live, "live")
+        stack._controls = dict(stack=stack, timer=timer, levels=levels, stop=stop)
+        self._capture_headers.append(stack._controls)
+        return stack
+
     def _build_library(self):
         self.split = Adw.NavigationSplitView(min_sidebar_width=400, max_sidebar_width=400, sidebar_width_fraction=0.36)
         self.split.set_min_sidebar_width(400)
@@ -183,19 +206,9 @@ class LibraryWindow(Adw.ApplicationWindow):
             show_start_title_buttons=False, show_end_title_buttons=False, css_classes=["library-header"]
         )
         header.set_title_widget(Gtk.Box())
-        self.capture_header = Gtk.Stack()
-        self.capture_header.add_named(self._record(), "record")
-        live = Gtk.Box(spacing=8, css_classes=["live-pill"], valign=Gtk.Align.CENTER)
-        live.append(Gtk.Box(width_request=10, height_request=10, valign=Gtk.Align.CENTER, css_classes=["live-dot"]))
-        self.live_timer = label("", "live-timer")
-        live.append(self.live_timer)
-        levels = vertical(3, valign=Gtk.Align.CENTER, css_classes=["live-levels"])
-        for fraction in (0.64, 0.38):
-            levels.append(Gtk.ProgressBar(fraction=fraction, width_request=30))
-        live.append(levels)
-        self.live_stop = Gtk.Button(label=text("common.stop"), sensitive=False, css_classes=["static-stop"])
-        live.append(self.live_stop)
-        self.capture_header.add_named(live, "live")
+        self.capture_header = self.capture_controls()
+        controls = self.capture_header._controls
+        self.live_timer, self.live_levels, self.live_stop = controls["timer"], controls["levels"], controls["stop"]
         header.pack_start(self.capture_header)
         sidebar.add_top_bar(header)
         self.rows = Gtk.ListBox(selection_mode=Gtk.SelectionMode.BROWSE, css_classes=["library-rows"])
@@ -211,10 +224,10 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def _activity_tick(self):
         activity = dict(self._activity_source.snapshot) if self._activity_source else {}
-        activity.update(recorder_activity(self.get_application().get_windows()))
+        activity.update(recorder_activity(self.get_application().get_windows() + [self.get_application()]))
         if activity != self._activity:
             self._activity = activity
-            self.monitor.refresh()
+            self.monitor.refresh_now()
         self._update_live()
         if self.meeting_page and self._activity_source:
             self.meeting_page.set_connected(self._activity_source.connected)
@@ -227,14 +240,53 @@ class LibraryWindow(Adw.ApplicationWindow):
         if self.snapshot is None:
             return
         live = next((m for m in self.snapshot.meetings if m.lifecycle == "recording"), None)
-        self.capture_header.set_visible_child_name("live" if live else "record")
+        native = getattr(self.get_application(), "recorder", None)
+        real_native = native is not None and native.pipeline is not None
+        real_browser = bool(self._activity_source and self._activity_source.snapshot)
+        if real_native:
+            elapsed = max(0, (GLib.get_monotonic_time() - native._start_us) // 1000)
+        else:
+            elapsed = max(0, self.now_ms - live.started_at_ms) if live and live.started_at_ms else 0
+        for controls in self._capture_headers:
+            controls["stack"].set_visible_child_name("live" if live or real_native else "record")
+            controls["timer"].set_label(fmt.live_badge(elapsed))
+            controls["stop"].set_sensitive((real_native and not native.stopping) or real_browser)
+            if self._fixed_now is None:
+                for bar, fraction in zip(controls["levels"], native.levels if real_native else (0.0, 0.0), strict=True):
+                    bar.set_fraction(fraction)
+        self._recording_line(native)
         for meeting in self.snapshot.meetings:
-            if meeting.lifecycle == "recording":
-                elapsed = max(0, self.now_ms - meeting.started_at_ms) if meeting.started_at_ms is not None else 0
-                if meeting is live:
-                    self.live_timer.set_label(fmt.live_badge(elapsed))
-                if meeting.key in self._live_badges:
-                    self._live_badges[meeting.key].set_label(meeting.badge(live_ms=elapsed).text)
+            if meeting.lifecycle == "recording" and meeting.key in self._live_badges:
+                ms = max(0, self.now_ms - meeting.started_at_ms) if meeting.started_at_ms else 0
+                self._live_badges[meeting.key].set_label(meeting.badge(live_ms=ms).text)
+
+    def _stop_live(self, *_):
+        app = self.get_application()
+        if app.recorder and app.recorder.pipeline is not None:
+            app.stop_native()
+        elif self._activity_source and self._activity_source.snapshot:
+            # The existing browser controls retain their real Stop route.
+            app.stop_browser_recordings()
+
+    def _recording_line(self, recorder):
+        from .inline_line import InlineLine
+
+        signature = (recorder.line, recorder.minutes_left) if recorder else (None, 0)
+        message = getattr(self.get_application(), "recording_error", None)
+        signature += (message,)
+        if signature == getattr(self, "_recording_line_signature", None):
+            return
+        self._recording_line_signature = signature
+        for lines in (getattr(self, "recording_lines", None), self.first_recording_lines):
+            if lines is None:
+                continue
+            lines.set_visible(bool(signature[0] or message))
+            while child := lines.get_first_child():
+                lines.remove(child)
+            if signature[0]:
+                lines.append(InlineLine(signature[0], n=signature[1]))
+            if message:
+                lines.append(label(message, wrap=True, xalign=0))
 
     def _preview_signature(self, meeting):
         return (
@@ -412,6 +464,10 @@ class LibraryWindow(Adw.ApplicationWindow):
             )
         )
         self.preview.append(headline)
+        self.recording_lines = vertical(visible=False)
+        self._recording_line_signature = None
+        self.preview.append(self.recording_lines)
+        self._recording_line(getattr(self.get_application(), "recorder", None))
         chips = Gtk.Box(spacing=8)
         for speaker in meeting.speakers:
             chips.append(self._speaker(speaker, chip=True))

@@ -58,7 +58,8 @@ class MeetingPage(Adw.NavigationPage):
             action_name="win.back-library",
         )
         header.pack_start(back)
-        header.pack_end(window._record())
+        self.capture = window.capture_controls()
+        header.pack_end(self.capture)
         sidebar.add_top_bar(header)
         self.speakers = box(20, margin_start=20, margin_end=20, margin_top=18)
         self.speakers.update_property([Gtk.AccessibleProperty.LABEL], [text("meeting.speakersPane.a11y")])
@@ -315,6 +316,8 @@ class MeetingPage(Adw.NavigationPage):
         self.play.set_sensitive(False)
 
     def close(self):
+        if self.capture._controls in self.window._capture_headers:
+            self.window._capture_headers.remove(self.capture._controls)
         for handler in self._signals:
             self.player.disconnect(handler)
         self._signals.clear()

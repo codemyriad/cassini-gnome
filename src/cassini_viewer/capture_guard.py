@@ -12,6 +12,8 @@ def confirm_capture_close(app, window, *, quitting=False):
     if getattr(app, "_capture_close_allowed", False):
         return False
     native = [w for w in app.get_windows() if getattr(w, "recorder", None) and w.recorder.pipeline is not None]
+    if getattr(app, "recorder", None) and (app.recorder.pipeline is not None or app.recorder.starting):
+        native.append(app)
     browser = any(getattr(w, "_activity_source", None) and w._activity_source.snapshot for w in app.get_windows())
     browser = browser or any(
         any(s.get("recording") for s in getattr(w, "_browser_snapshot", {}).get("statuses", []))
@@ -48,16 +50,8 @@ def confirm_capture_close(app, window, *, quitting=False):
             GLib.idle_add(close_windows)
             return
 
-        def stop_browser():
-            from . import browser_service
-
-            state = browser_service.request()
-            for meeting in state.get("meetings", []):
-                if meeting.get("recording"):
-                    browser_service.request("stop", id=meeting["id"])
-
         executor = ThreadPoolExecutor(max_workers=1)
-        future = executor.submit(stop_browser)
+        future = executor.submit(stop_browser_captures)
 
         def stopped(result):
             executor.shutdown(wait=False)
@@ -92,3 +86,12 @@ def finish_close(app, windows):
     if getattr(app, "_capture_background", False):
         app._capture_background = False
         app.release()
+
+
+def stop_browser_captures():
+    from . import browser_service
+
+    state = browser_service.request()
+    for meeting in state.get("meetings", []):
+        if meeting.get("recording"):
+            browser_service.request("stop", id=meeting["id"])

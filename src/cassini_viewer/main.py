@@ -43,6 +43,11 @@ class CassiniApplication(Adw.Application):
         self.version = version
         self.profile = profile
         self.settings_schema = "com.gocassini.Viewer"
+        self.recorder = None
+        self._native_held = False
+        self._recording_cookie = 0
+        self.recording_error = None
+        self.record_first = None
         self.set_option_context_parameter_string(_("[FILE…]"))
 
         self._add_action("open", self.on_open, ["<primary>o"])
@@ -163,13 +168,95 @@ class CassiniApplication(Adw.Application):
             window = BrowserMeetingsWindow(self)
         window.present()
 
-    def on_record(self, *_args):
-        from .recording_window import RecordingWindow
+    @property
+    def recording_settings(self):
+        return Gio.Settings.new(self.settings_schema)
 
-        window = next((w for w in self.get_windows() if isinstance(w, RecordingWindow)), None)
-        if window is None:
-            window = RecordingWindow(self)
-        window.present()
+    def on_record(self, *_args):
+        if self.recorder and (self.recorder.pipeline is not None or self.recorder.starting):
+            self.stop_native()
+            return
+        self.do_activate()
+        if self.recording_settings.get_boolean("skip-record-first"):
+            self.start_native()
+        elif not self.record_first:
+            from .record_first import RecordFirst
+
+            self.record_first = RecordFirst(self, self.get_active_window())
+            self.record_first.connect("closed", lambda *_: setattr(self, "record_first", None))
+
+    def start_native(self, *, test=False):
+        from .library import library_root
+        from .native_recorder import NativeRecorder
+
+        if self.recorder is None:
+            self.recorder = NativeRecorder()
+            self.recorder.connect("started", self._native_started)
+            self.recorder.connect("finished", self._native_finished)
+            self.recorder.connect("error", self._native_error)
+            self.recorder.connect("changed", self._native_changed)
+        if self.recorder.pipeline is not None or self.recorder.starting:
+            return
+        self.recording_error = None
+        self.hold()
+        self._native_held = True
+        self.recorder.start(library_root(), test=test)
+
+    def _native_started(self, *_args):
+        self._recording_cookie = self.inhibit(
+            self.get_active_window(), Gtk.ApplicationInhibitFlags.SUSPEND, _("Recording a meeting")
+        )
+        self._native_changed()
+
+    def _native_changed(self, *_):
+        for window in self.get_windows():
+            if hasattr(window, "_activity_tick"):
+                window._activity_tick()
+
+    def _release_native(self):
+        if self._recording_cookie:
+            self.uninhibit(self._recording_cookie)
+            self._recording_cookie = 0
+        if self._native_held:
+            self._native_held = False
+            self.release()
+
+    def _native_finished(self, _recorder, _path):
+        self._release_native()
+        self._native_changed()
+
+    def _native_error(self, _recorder, message):
+        self.recording_error = message
+        if not self.recorder.pipeline and not self.recorder.starting:
+            self._release_native()
+        self._native_changed()
+
+    def stop_native(self, *_):
+        if self.recorder:
+            self.recorder.stop()
+
+    def stop_browser_recordings(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        from .capture_guard import stop_browser_captures
+
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(stop_browser_captures)
+
+        def done(result):
+            executor.shutdown(wait=False)
+
+            def delivered():
+                try:
+                    result.result()
+                except (OSError, ValueError) as error:
+                    self.recording_error = str(error)
+                self._native_changed()
+                return False
+
+            GLib.idle_add(delivered)
+
+        future.add_done_callback(done)
 
     def on_about(self, *_args):
         about = Adw.AboutDialog(

@@ -29,7 +29,6 @@ from cassini_viewer.folder_player import FolderPlayer  # noqa: E402
 from cassini_viewer.library_window import LibraryWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
 from cassini_viewer.player import Player  # noqa: E402
-from cassini_viewer.recording_window import RecordingWindow  # noqa: E402
 from cassini_viewer.strings import text  # noqa: E402
 
 
@@ -232,8 +231,7 @@ with tempfile.TemporaryDirectory() as tmp:
     labels = [w.get_label() for w in walk(empty) if isinstance(w, Gtk.Label)]
     assert text("firstRun.title") in labels and text("firstRun.footer") in labels
     app.activate_action("record", None)
-    recording = next(w for w in app.get_windows() if isinstance(w, RecordingWindow))
-    assert recording.recorder.pipeline is None, "Opening Record must not start devices"
-    recording.close()
+    assert app.record_first is not None and app.recorder is None, "Opening Record must not start devices"
+    app.record_first.close()
     empty.close()
 print("Library GUI passed: fixtures, selection, singleton, menu, first-run and Record routing")

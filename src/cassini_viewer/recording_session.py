@@ -206,7 +206,7 @@ class RecordingSession:
             os.close(descriptor)
         self._last_checkpoint = self.clock()
 
-    def add_track(self, identifier, label, kind, rate, channels):
+    def add_track(self, identifier, label, kind, rate, channels, *, filename=None):
         if (
             self.finished
             or not isinstance(identifier, str)
@@ -224,7 +224,9 @@ class RecordingSession:
         label = label_text(optional_string(label, kind, "source"))
         if len(self.writers) >= 64:
             raise ProtocolError("limit", "A session supports at most 64 sources")
-        filename = f"track-{uuid4()}.wav"
+        if filename is not None and filename not in ("track-microphone.wav", "track-system.wav"):
+            raise ProtocolError("source", "Invalid native track filename")
+        filename = filename or f"track-{uuid4()}.wav"
         self.writers[identifier] = self.writer_factory(self.directory / filename, rate, channels)
         self.manifest["tracks"].append(
             {

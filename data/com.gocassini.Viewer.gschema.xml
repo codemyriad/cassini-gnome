@@ -2,6 +2,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <schemalist gettext-domain="cassini-viewer">
   <schema id="com.gocassini.Viewer" path="/com/gocassini/Viewer/">
+    <key name="skip-record-first" type="b"><default>false</default><summary>Skip recording introduction</summary></key>
     <key name="companion-card-dismissed" type="b"><default>false</default><summary>Companion card dismissed</summary></key>
     <key name="window-width" type="i">
       <default>1200</default>
