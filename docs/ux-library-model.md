@@ -24,7 +24,9 @@ transcript.json. Unknown fields in supported metadata are retained.
 
 The stored status wins: pending jobs survive missing bodies, failed jobs retain
 or derive Try again, done bodies must be readable, none is never promoted.
-Actionable errors survive damage. Explicit embedded IDs/file names are honoured;
+Actionable errors survive damage. Required manifest descriptors (including MIME, schema and compressed length)
+are checked before decoding; an incomplete descriptor is damaged metadata while
+audio remains available. Explicit embedded IDs/file names are honoured;
 missing IDs never select a different transcript. Received audio integrity is
 checked once per changed file; stale/unknown-format bodies are withheld while
 actual audio duration is read independently from the final EOS granule/pre-skip.

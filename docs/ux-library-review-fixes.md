@@ -38,3 +38,21 @@ The lighter suite does not attempt exhaustive cross-platform parity for every
 malformed/rare input. No UI surface or new user-facing copy was added. All new
 copy comes from D6/catalog or the existing vectors. Mac independently reviews
 S-3a expected files; corrections must go through the shared source before copying.
+
+## Portable descriptor correction after the production-reader review
+
+The original generated Onboarding asset omitted required descriptor tags, and
+GNOME's reader failed to require the complete manifest descriptor. The shared
+builder now writes every required producer descriptor (manifest/schema, identity,
+transcript index/chunk MIME, audio fields and decode hint). The corrected asset,
+pins and both received full-file hashes are published at coordination 72862aa;
+all expected board JSON files remain byte-identical.
+
+The reader now requires nonempty manifest encoding/count/hash/raw/compressed
+length/MIME/schema descriptors, matching Mac's manifest-descriptor validation.
+Copies and optional summary tags do not become requirements for decoding a
+valid manifest. Regression tests remove or empty each required descriptor;
+actual Received Opus tests show damaged transcript, preserved audio/duration,
+import-date fallback, no quote/names and no source-file writes. Published format
+conformance vectors still pass unchanged. S-3a's independent verifier now checks
+all required producer descriptors, without relying on either app reader.

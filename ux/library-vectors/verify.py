@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -31,7 +32,44 @@ def tree(root):
     return entries
 
 
+def check_onboarding_descriptors():
+    # Check the producer against the SPEC table independently of either app.
+    packets, partial = [], bytearray()
+    with (HERE/'assets/onboarding.opus').open('rb') as stream:
+        while len(packets) < 2:
+            header = stream.read(27)
+            assert len(header)==27 and header[:4]==b'OggS'
+            lacing = stream.read(header[26])
+            payload = stream.read(sum(lacing));offset = 0
+            for length in lacing:
+                partial.extend(payload[offset:offset+length]);offset += length
+                if length < 255:
+                    packets.append(bytes(partial));partial.clear()
+    packet = packets[1];assert packet[:8]==b'OpusTags'
+    vendor_length, = struct.unpack_from('<I',packet,8)
+    offset = 12+vendor_length
+    count, = struct.unpack_from('<I',packet,offset);offset += 4
+    tags = {}
+    for _ in range(count):
+        size, = struct.unpack_from('<I',packet,offset);offset += 4
+        key, value = packet[offset:offset+size].decode().split('=',1);offset += size
+        assert key not in tags,'Duplicate producer tag: '+key
+        tags[key] = value
+    required = ['CASSINI_FORMAT','CASSINI_PROFILE','CASSINI_PAYLOAD_SCHEMA',
+                'CASSINI_TRANSCRIPT_IDS','CASSINI_TRANSCRIPT_DEFAULT',
+                'CASSINI_AUDIO_SAMPLE_RATE','CASSINI_AUDIO_CHANNELS','CASSINI_AUDIO_SAMPLE_COUNT',
+                'CASSINI_AUDIO_DURATION_MS','CASSINI_AUDIO_MATCH_POLICY','CASSINI_AUDIO_OPUS_SHA256',
+                'CASSINI_DECODE_HINT']
+    for prefix in ('CASSINI_PAYLOAD_','CASSINI_TX_MAIN_PAYLOAD_'):
+        required.extend(prefix+suffix for suffix in ('MIME','ENCODING','CHUNK_COUNT','SHA256','RAW_BYTES','GZIP_BYTES','000'))
+    assert all(tags.get(name) for name in required),'Required producer descriptor missing/empty'
+    assert tags['CASSINI_PAYLOAD_MIME']=='application/vnd.cassini.portable-meeting+json'
+    assert tags['CASSINI_PAYLOAD_SCHEMA']=='https://format.gocassini.com/schema/cassini-portable-meeting-manifest-v1.schema.json'
+    assert tags['CASSINI_TX_MAIN_PAYLOAD_MIME']=='application/vnd.cassini.transcript-words+json'
+
+
 def main():
+    check_onboarding_descriptors()
     cases=json.loads((HERE/'cases.json').read_text())['cases']
     names={case['id'] for case in cases}
     assert len(names)==len(cases)

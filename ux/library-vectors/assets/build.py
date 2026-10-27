@@ -41,7 +41,8 @@ def chunk(prefix, body):
     compressed = gzip.compress(raw, mtime=0)
     compressed = compressed[:9] + b"\xff" + compressed[10:]
     encoded = base64.urlsafe_b64encode(compressed).rstrip(b'=').decode()
-    return {prefix+'ENCODING':'base64url+gzip+utf8json',prefix+'CHUNK_COUNT':'1',prefix+'SHA256':hashlib.sha256(raw).hexdigest(),prefix+'RAW_BYTES':str(len(raw)),prefix+'GZIP_BYTES':str(len(compressed)),prefix+'000':encoded}
+    mime = 'application/vnd.cassini.portable-meeting+json' if prefix == 'CASSINI_PAYLOAD_' else 'application/vnd.cassini.transcript-words+json'
+    return {prefix+'MIME':mime,prefix+'ENCODING':'base64url+gzip+utf8json',prefix+'CHUNK_COUNT':'1',prefix+'SHA256':hashlib.sha256(raw).hexdigest(),prefix+'RAW_BYTES':str(len(raw)),prefix+'GZIP_BYTES':str(len(compressed)),prefix+'000':encoded}
 
 
 def build(name, duration_ms, *, title=None, portable=False):
@@ -68,7 +69,20 @@ def build(name, duration_ms, *, title=None, portable=False):
             'integrity':{'matchPolicy':'exact-opus-audio-v1','opusAudioSha256':digest.hexdigest(),'sampleRate':48000,'channels':1,'sampleCount':samples,'durationMs':duration_ms},
             'speakers':[{'id':'silvio','label':'Silvio'},{'id':'guest','label':'Speaker 2'}],
             'transcripts':[{'id':'main','role':'raw-asr','default':True,'format':'cassini.words.v1','wordCount':2,'payloadRef':ref}]}
-        tags.update({'CASSINI_FORMAT':'org.cassini.portable-meeting/1',**chunk('CASSINI_PAYLOAD_',manifest),**word_tags})
+        tags.update({
+            'CASSINI_FORMAT':'org.cassini.portable-meeting/1',
+            'CASSINI_PROFILE':'ogg-opus',
+            'CASSINI_PAYLOAD_SCHEMA':'https://format.gocassini.com/schema/cassini-portable-meeting-manifest-v1.schema.json',
+            'CASSINI_TRANSCRIPT_IDS':'main',
+            'CASSINI_TRANSCRIPT_DEFAULT':'main',
+            'CASSINI_AUDIO_SAMPLE_RATE':'48000',
+            'CASSINI_AUDIO_CHANNELS':'1',
+            'CASSINI_AUDIO_SAMPLE_COUNT':str(samples),
+            'CASSINI_AUDIO_DURATION_MS':str(duration_ms),
+            'CASSINI_AUDIO_MATCH_POLICY':'exact-opus-audio-v1',
+            'CASSINI_AUDIO_OPUS_SHA256':digest.hexdigest(),
+            'CASSINI_DECODE_HINT':'Concatenate CASSINI_PAYLOAD_000..N for the manifest; for a transcript body concatenate CASSINI_TX_<ID>_PAYLOAD_000..N. Each chunk set: base64url decode, gzip decompress, parse UTF-8 JSON.',
+            **chunk('CASSINI_PAYLOAD_',manifest),**word_tags})
     comments = [(key+'='+value).encode() for key,value in tags.items()]
     vendor = b'Cassini S-3a CC0 reference'
     opus_tags = b'OpusTags'+struct.pack('<I',len(vendor))+vendor+struct.pack('<I',len(comments))+b''.join(struct.pack('<I',len(c))+c for c in comments)
