@@ -43,7 +43,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         from .player import Player
 
         self.player = Player()
-        self.player.connect("error", lambda _p, _message: self.play_button.set_sensitive(False))
+        self._playback_failed = False
+        self.player.connect("error", self._playback_error)
         self._fixture_activity = {}
         if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") == "1" and os.environ.get("CASSINI_SCREENSHOT_ACTIVITY"):
             import json
@@ -290,10 +291,16 @@ class LibraryWindow(Adw.ApplicationWindow):
             line.append(label(turn.text, "excerpt", xalign=0, yalign=0, wrap=True, hexpand=True))
             self.preview.append(line)
 
+    def _playback_error(self, _player, _message):
+        self._playback_failed = True
+        self.play_button.set_sensitive(False)
+
     def _play_selected(self):
         if self.selected and self.selected.audio_file is not None:
+            self._playback_failed = False
             self.player.load(Gio.File.new_for_path(str(self.selected.audio_file)).get_uri(), self.selected.duration_ms)
-            self.player.play()
+            if not self._playback_failed:
+                self.player.play()
 
     def _open_selected(self):
         if self.selected:

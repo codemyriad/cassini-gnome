@@ -97,6 +97,19 @@ with tempfile.TemporaryDirectory() as tmp:
     window.play_button.emit("clicked")
     until(lambda: window.player.playing and window.player.position > 0)
     assert window.player.duration == 2040000
+    # #8's load() can reject synchronously; the Library must honour that error.
+    find = Gst.ElementFactory.find
+    Gst.ElementFactory.find = lambda name: None if name == "opusdec" else find(name)
+    try:
+        window.play_button.emit("clicked")
+        assert not window.player.playing, "A rejected load must not play the previous URI"
+        assert not window.play_button.get_sensitive()
+    finally:
+        Gst.ElementFactory.find = find
+    window.rows.select_row(window.rows.get_row_at_index(1))
+    window.rows.select_row(received)
+    window.play_button.emit("clicked")
+    until(lambda: window.player.playing and window.player.position > 0)
     window.close()
     assert not window.player.playing
     os.environ["CASSINI_LIBRARY_DIR"] = str(fixtures / "empty/root")
