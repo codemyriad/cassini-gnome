@@ -15,7 +15,9 @@ if [ "$meson_ver" != "$pkg_ver" ]; then
 fi
 
 mkdir -p dist
-container_run -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z "$BASE" sh -ec '
+# Per base image, so parallel builds do not swap names.
+name_file=.pkg-name-$(image_slug "$BASE")
+container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z "$BASE" sh -ec '
   pacman -Syu --noconfirm --needed base-devel
   useradd -m builder
   echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
@@ -55,9 +57,9 @@ container_run -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z "$BASE" sh -ec '
   cp "$pkg" /out/
   chown "$(stat -c %u:%g /out)" "/out/${pkg##*/}" 2>/dev/null || true
   # Tell the clean-install step below which file this build produced.
-  echo "${pkg##*/}" > /out/.pkg-name
+  echo "${pkg##*/}" > "/out/$NAME_FILE"
 ' sh "$pkg_ver"
-pkg_name=$(cat dist/.pkg-name) && rm -f dist/.pkg-name
+pkg_name=$(cat "dist/$name_file") && rm -f "dist/$name_file"
 
 # The build container has makedepends and checkdepends installed, which can
 # hide a missing dependency; install the package in a fresh container.

@@ -14,7 +14,9 @@ if [ "$VERSION" != "$SPEC_VERSION" ]; then
   exit 1
 fi
 mkdir -p dist
-container_run -e VERSION="$VERSION" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z "$BASE" sh -ec '
+# Per base image, so parallel builds (make -j packages) do not swap names.
+name_file=.rpm-name-$(image_slug "$BASE")
+container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z "$BASE" sh -ec '
   top=/build/rpmbuild src=/build/cassini-viewer-$VERSION
   mkdir -p $top/SOURCES $top/SPECS "$src"
   spec=$top/SPECS/cassini-viewer.spec
@@ -62,9 +64,9 @@ container_run -e VERSION="$VERSION" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z 
   cp $top/RPMS/noarch/*.rpm $top/SRPMS/*.rpm /out/
   chown "$(stat -c %u:%g /out)" /out/*.rpm 2>/dev/null || true
   # Tell the clean-install step below which file this build produced.
-  basename $top/RPMS/noarch/*.rpm > /out/.rpm-name
+  basename $top/RPMS/noarch/*.rpm > "/out/$NAME_FILE"
 '
-rpm_name=$(cat dist/.rpm-name) && rm -f dist/.rpm-name
+rpm_name=$(cat "dist/$name_file") && rm -f "dist/$name_file"
 
 # The build container has every BuildRequires installed, which can hide a
 # missing Requires; install the package in a fresh container and start it.
