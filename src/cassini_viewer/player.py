@@ -50,34 +50,54 @@ class Player(GObject.Object):
         self._prerolled = False
         self._pending_seek: int | None = None
         self._at_end = False
+        # Why play() cannot start, or None once a file is loaded.
+        self._load_error: str | None = _("No recording is loaded.")
+
+    @property
+    def loaded(self) -> bool:
+        return self._load_error is None
 
     def load(self, uri: str, duration_ms: int | None = None):
         self.stop()
         self._prerolled = False
+        self._pending_seek = None
         self._at_end = False
-        self.duration = duration_ms or 0
         self.position = 0
         missing = runtime.missing_gst_elements(Gst.ElementFactory.find, runtime.playback_elements(uri))
         if missing:
             # playbin would only say "missing plug-in"; name what to install.
-            self.emit(
-                "error",
-                _("Missing GStreamer elements: {elements}. Install {plugins}.").format(
-                    elements=", ".join(missing), plugins=runtime.GST_PLUGINS
-                ),
+            # Forget the previous file too, so play() cannot fall back to it.
+            self._load_error = _("Missing GStreamer elements: {elements}. Install {plugins}.").format(
+                elements=", ".join(missing), plugins=runtime.GST_PLUGINS
             )
+            self._pipeline.set_property("uri", "")
+            self.duration = 0
+            self.emit("error", self._load_error)
             return
+        self._load_error = None
+        self.duration = duration_ms or 0
         self._pipeline.set_property("uri", uri)
         self._pipeline.set_state(Gst.State.PAUSED)
 
     def play(self):
+        if not self.loaded:
+            self.emit("error", self._load_error)
+            return
         if self._at_end:
             self.seek(0)
-        self._pipeline.set_state(Gst.State.PLAYING)
+        if self._pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
+            # The bus usually holds the reason; take it so it is reported once.
+            message = self._pipeline.get_bus().pop_filtered(Gst.MessageType.ERROR)
+            text = message.parse_error()[0].message if message else _("The audio could not be played.")
+            self.stop()
+            self.emit("error", text)
+            return
         self.playing = True
         self._start_tick()
 
     def pause(self):
+        if not self.loaded:
+            return
         self._pipeline.set_state(Gst.State.PAUSED)
         self.playing = False
         self._stop_tick()
