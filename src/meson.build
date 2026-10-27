@@ -86,3 +86,22 @@ configure_file(
   install_dir: pkgdatadir / 'browser-extension',
   install_mode: 'r-xr-xr-x',
 )
+
+# Audio and GUI integration is opt-in and always uses the private harness.
+if get_option('recording_tests')
+foreach scenario : ['browser', 'native', 'gtk']
+  scenario_args = ['/usr/bin/python3', 'tests/recording/' + scenario + '.py']
+  if scenario == 'browser'
+    scenario_args = ['node', 'tests/recording/browser.mjs']
+  elif scenario == 'gtk'
+    scenario_args += ['--build', meson.project_build_root()]
+  endif
+  test('recording-' + scenario,
+    find_program('../tests/recording/run.sh'),
+    args: scenario_args,
+    suite: 'recording',
+    timeout: 300,
+    workdir: meson.project_source_root(),
+  )
+endforeach
+endif

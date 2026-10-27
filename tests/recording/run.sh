@@ -2,8 +2,25 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-command -v docker >/dev/null
-command -v xvfb-run >/dev/null
+for tool in docker xvfb-run xauth xdotool dbus-run-session; do
+    command -v "$tool" >/dev/null || { echo "Missing $tool: install the recording harness prerequisites in tests/recording/README.md" >&2; exit 1; }
+done
+if [[ " $* " == *" tests/recording/gtk.py "* ]]; then
+    command -v import >/dev/null || { echo "Missing ImageMagick import: install imagemagick for GTK screenshots" >&2; exit 1; }
+fi
+[ "$#" -gt 0 ] || { echo "Usage: $0 command [args...]" >&2; exit 1; }
+# Resolve mise's interpreter before giving the child private XDG directories.
+if [ "$1" = node ]; then
+    interpreter=$(node -p 'process.execPath')
+    shift
+    set -- "$interpreter" "$@"
+fi
+artifact_root="$PWD/tests/recording/artifacts"
+mkdir -p "$artifact_root"
+export CASSINI_TEST_ARTIFACTS=$(mktemp -d "$artifact_root/run-XXXXXXXX")
+ln -sfn "$(basename "$CASSINI_TEST_ARTIFACTS")" "$artifact_root/latest"
+echo "Recording evidence: $CASSINI_TEST_ARTIFACTS"
+export LANGUAGE=C
 runtime=$(mktemp -d /tmp/cassini-audio-XXXXXX)
 container="cassini-audio-$(id -u)-$$"
 cleanup() {

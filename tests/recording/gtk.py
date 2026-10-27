@@ -49,7 +49,7 @@ def spin(seconds, until=lambda: False):
         time.sleep(0.01)
 
 
-artifacts = Path(__file__).parent / "artifacts/gtk"
+artifacts = Path(os.environ.get("CASSINI_TEST_ARTIFACTS", str(Path(__file__).parent / "artifacts/gtk")))
 artifacts.mkdir(parents=True, exist_ok=True)
 app = CassiniApplication("com.gocassini.RecordingTest", "test", "development")
 app.register(None)

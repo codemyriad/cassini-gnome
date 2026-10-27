@@ -5,3 +5,6 @@ option('profile',
   value: 'default',
   description: 'Build profile; development uses a separate application ID',
 )
+
+option('recording_tests', type: 'boolean', value: false,
+  description: 'Enable isolated Docker/Xvfb recording integration tests')

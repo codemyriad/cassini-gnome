@@ -16,7 +16,7 @@ concurrency:
 jobs:
   lint-and-test:
     name: Lint and test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -25,11 +25,15 @@ jobs:
       - run: pip install ruff pytest
       - run: ruff check src tests
       - run: ruff format --check src tests
-      - run: pytest -q
+      - name: Install system Python audio test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pytest python3-gi gir1.2-gstreamer-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+      - run: /usr/bin/python3 -m pytest -q
 
   meson:
     name: Meson build and validate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container: ubuntu:26.04
     steps:
       - uses: actions/checkout@v5
@@ -49,7 +53,7 @@ jobs:
 
   flatpak:
     name: Flatpak
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
       options: --privileged

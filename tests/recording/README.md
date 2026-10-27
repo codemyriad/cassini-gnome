@@ -70,3 +70,22 @@ CASSINI_TALK_ONLY=1 TALK_CALL_URL=http://127.0.0.1:28880/call/ROOM_TOKEN \
 Talk runs separately because Chromium's fake-media-device flag interferes with
 `tabCapture`; the deterministic tab test uses generated Web Audio instead.
 Use the harness's project-scoped teardown when finished.
+
+## Shared contract adoption
+
+The canonical Git snapshot is pinned in `browser-protocol/PINNED_COMMIT`.
+Run `python3 build-aux/verify-browser-protocol.py` to check its Git object/tree,
+upstream hashes and byte-identical extension. `pytest` and `meson test` run the
+36-vector stdio conformance runner with isolated output and no viewer launch.
+Enable the opt-in suite with `meson configure _build -Drecording_tests=true`,
+then run `meson test -C _build --suite recording`.
+
+Each `run.sh` invocation writes to a unique `artifacts/run-*` directory;
+`artifacts/latest` points at the most recently started run. Browser evidence
+includes host stderr, page/worker console output, and manifest/RMS diagnostics
+on failure. The script resolves Node before changing XDG directories; the tested
+Node version is pinned in `.node-version`. WAV header sizes are checked after
+Stop, since an active writer can update the header during a polling read.
+Continuity checks use an independent millisecond wall clock, never the manifest's
+whole-second creation timestamp. The original sender's asynchronous retirement
+is distinct from the continuously active remote/replacement source timelines.

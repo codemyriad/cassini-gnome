@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from cassini_viewer.recorder import Recorder  # noqa: E402
 
 Gst.init(None)
-artifacts = Path(__file__).parent / "artifacts" / "native"
+artifacts = Path(os.environ.get("CASSINI_TEST_ARTIFACTS", str(Path(__file__).parent / "artifacts" / "native")))
 artifacts.mkdir(parents=True, exist_ok=True)
 context = GLib.MainContext.default()
 

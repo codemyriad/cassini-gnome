@@ -93,3 +93,49 @@ def test_capture_error_keeps_recoverable_audio(tmp_path):
         assert str(recovered[0]) in errors[0]
     finally:
         recorder._cleanup()
+
+
+def test_bus_error_cleans_pipeline_and_reports_once(tmp_path):
+    recorder = Recorder()
+    errors = []
+    recorder.connect("error", lambda _r, message: errors.append(message))
+    recorder.start(tmp_path / "failed.opus", test=True)
+    try:
+        message = Gst.Message.new_error(
+            recorder.pipeline, GLib.Error("synthetic source failure"), "injected device error"
+        )
+        recorder.pipeline.get_bus().post(message)
+        spin_until(lambda: bool(errors))
+        assert len(errors) == 1 and "synthetic source failure" in errors[0]
+        assert recorder.pipeline is None and not recorder.stopping
+    finally:
+        recorder._cleanup()
+
+
+def test_stop_timeout_reports_error_without_waiting_ten_seconds(tmp_path, monkeypatch):
+    recorder = Recorder()
+    errors, callbacks = [], []
+    recorder.connect("error", lambda _r, message: errors.append(message))
+    monkeypatch.setattr(GLib, "timeout_add_seconds", lambda seconds, callback: callbacks.append(callback) or 0)
+    recorder.start(tmp_path / "timeout.opus", test=True)
+    try:
+        recorder.stop()
+        assert len(callbacks) == 1
+        callbacks[0]()  # Exercise the timeout before dispatching any EOS bus message.
+        assert len(errors) == 1 and "Timed out" in errors[0]
+        assert recorder.pipeline is None and recorder._timeout == 0
+    finally:
+        recorder._cleanup()
+
+
+def test_pipeline_construction_failure_leaves_no_partial_output(tmp_path, monkeypatch):
+    recorder = Recorder()
+
+    def fail(_description):
+        raise GLib.Error("missing capture plugin")
+
+    monkeypatch.setattr(Gst, "parse_launch", fail)
+    with pytest.raises(GLib.Error, match="missing capture plugin"):
+        recorder.start(tmp_path / "failure.opus", test=True)
+    assert recorder.pipeline is None
+    assert not list(tmp_path.iterdir())
