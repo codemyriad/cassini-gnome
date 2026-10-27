@@ -20,3 +20,7 @@ __pycache__/
 
 /tests/recording/node_modules/
 /tests/recording/artifacts/
+
+/_build-shot/
+/_install-shot/
+/ux-artifacts/

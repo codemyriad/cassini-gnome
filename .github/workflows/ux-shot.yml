@@ -1,0 +1,55 @@
+name: UX screenshot spike
+on:
+  push:
+    branches: ['ux/shot-spike']
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'build-aux/ux-screenshot.sh'
+      - '.github/workflows/ux-shot.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  current-window:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install GTK and pinned screenshot fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0 \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good meson ninja-build gettext \
+            libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream xvfb xauth dbus-x11 \
+            locales fontconfig fonts-cantarell=0.303.1-4 fonts-inter=4.1+ds-1
+          sudo locale-gen en_GB.UTF-8
+      - name: Build a local installation
+        run: |
+          meson setup _build-shot --prefix="$PWD/_install-shot" -Dprofile=development
+          meson install -C _build-shot
+      - name: Render the real current window in private Xvfb
+        run: |
+          mkdir -p ux-artifacts
+          build-aux/ux-screenshot.sh _install-shot/bin/cassini-viewer ux-artifacts/current-main.png
+          python3 - <<'PY'
+          import json,struct
+          from pathlib import Path
+          root=Path('ux-artifacts/current-main')
+          data=root.with_suffix('.png').read_bytes()
+          assert data[:8] == b'\x89PNG\r\n\x1a\n'
+          width,height=struct.unpack('>II',data[16:24])
+          assert width > 0 and height > 0
+          info=json.loads(root.with_suffix('.json').read_text())
+          assert info['renderer']=='cairo' and info['accent']=='blue' and info['light']
+          assert info['tz']=='Europe/Rome' and info['lang']=='en_GB.UTF-8'
+          assert info['font']=='Cantarell 11'
+          PY
+          dpkg-query -W fonts-cantarell fonts-inter > ux-artifacts/fonts.txt
+          for font in Cantarell Inter; do fc-match -f '%{file}\n' "$font"; done | sort -u | xargs sha256sum > ux-artifacts/font-sha256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gnome-ux-current-main
+          path: ux-artifacts/
+          retention-days: 14

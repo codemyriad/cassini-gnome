@@ -32,6 +32,7 @@ install_data(
   'cassini_viewer/library_monitor.py',
   'cassini_viewer/meeting_state.py',
   'cassini_viewer/ux_formats.py',
+  'cassini_viewer/screenshot.py',
   'cassini_viewer/player.py',
   'cassini_viewer/recorder.py',
   'cassini_viewer/recording_session.py',
