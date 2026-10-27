@@ -75,12 +75,17 @@ protocol_python = python.find_installation('python3')
 test('browser-protocol-integrity', protocol_python,
   args: [meson.project_source_root() / 'browser-protocol/verify.py', '--pinned', meson.project_source_root() / 'browser-extension'],
 )
-protocol_tests = python.find_installation('python3', modules: ['jsonschema'], required: false)
+protocol_tests = python.find_installation('python3', modules: ['jsonschema', 'rfc3339_validator'], required: false)
 if protocol_tests.found()
 test('browser-protocol-conformance', protocol_tests,
   args: [meson.project_source_root() / 'browser-protocol/conformance/run.py',
          meson.project_source_root() / 'tests/conformance_host.py'],
   env: ['CASSINI_CONFORMANCE_DIR=' + meson.current_build_dir() / 'conformance-recordings'],
+  timeout: 120,
+)
+test('browser-control-conformance', protocol_tests,
+  args: [meson.project_source_root() / 'browser-protocol/conformance/control/run.py',
+         meson.project_source_root() / 'browser-extension/control_host.py'],
   timeout: 120,
 )
 endif
