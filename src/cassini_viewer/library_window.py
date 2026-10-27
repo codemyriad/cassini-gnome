@@ -338,10 +338,6 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.get_application().observe_library(snapshot, self._observed_phases)
         self._observed_phases = {m.key: (m.lifecycle, m.capture_state) for m in snapshot.meetings}
         self.snapshot = snapshot
-        if self.meeting_page and self._external_meeting:
-            self._update_live()
-            self._pending = False
-            return
         if self.meeting_page and not self._external_meeting:
             current = next((m for m in snapshot.meetings if m.key == self.meeting_page.meeting.key), None)
             if current is None:
@@ -616,14 +612,15 @@ class LibraryWindow(Adw.ApplicationWindow):
     def open_file(self, file):
         from .open_meeting import load_open_meeting
 
-        future = self.monitor._executor.submit(load_open_meeting, file.get_path())
+        future = self.monitor._executor.submit(load_open_meeting, file.get_path(), self.monitor.scanner.root)
         future.add_done_callback(lambda f: GLib.idle_add(self._opened_file, f, file))
 
     def _opened_file(self, future, file):
         if self.monitor._closed:
             return False
         try:
-            self.open_meeting(future.result(), external=True)
+            meeting = future.result()
+            self.open_meeting(meeting, external=meeting.directory.parent != self.monitor.scanner.root.resolve())
         except (OSError, ValueError):
             # Keep the existing failed-open presentation until its copy is drawn.
             window = self.get_application().new_window()

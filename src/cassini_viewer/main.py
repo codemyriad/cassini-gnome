@@ -238,6 +238,7 @@ class CassiniApplication(Adw.Application):
         if (
             self.transcription_enabled
             and not self._quitting
+            and _recorder.session is not None
             and any(track["frames"] > 0 for track in _recorder.session.manifest["tracks"])
         ):
             self.write_down(_path)

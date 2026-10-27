@@ -7,8 +7,8 @@ import threading
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
 
-from .library import LibraryScanner
-from .meeting_store import atomic_json, read_metadata, update_metadata
+from .library import LibraryScanner, library_root, meeting_id
+from .meeting_store import LOCK, atomic_json, read_metadata, update_metadata
 from .strings import text
 from .whistle_client import WhistleClient
 
@@ -23,7 +23,7 @@ def bundle_path():
 def track_speaker(track):
     if track["kind"] in ("microphone", "local"):
         return "me", text("common.me"), "source"
-    if track["kind"] in ("remote", "unknown"):
+    if track["kind"] != "system":
         return "track-" + track["id"], None, "unnamed"
     return "others", text("common.theOthers"), "source"
 
@@ -43,36 +43,43 @@ def should_auto_write(meeting, previous):
 
 
 def prepare_tracks(meeting):
-    # Capture manifests are never modified. The scanner has validated/salvaged
-    # actual PCM headers, including unknown-offset diagnostics.
-    import json
+    # Identity/kind come only from the scanner's validated or recovered model.
+    from uuid import NAMESPACE_URL, uuid5
 
-    try:
-        manifest = json.loads((meeting.directory / "session.json").read_text())
-        source = {t["file"]: t for t in manifest.get("tracks", []) if isinstance(t, dict) and "file" in t}
-    except (OSError, ValueError, TypeError):
-        source = {}
     tracks = []
     speakers = {}
     for index, track in enumerate(meeting.tracks):
         if not track.frames:
             continue
-        raw = source.get(track.path.name, {})
-        # Salvaged named native tracks retain their physical source kind.
-        fallback = {"track-microphone.wav": "microphone", "track-system.wav": "system"}.get(track.path.name, "unknown")
-        raw = dict(id=raw.get("id", track.path.stem.removeprefix("track-")), kind=raw.get("kind", fallback))
-        speaker, name, provenance = track_speaker(raw)
+        identity = track.id or "recovered-" + str(uuid5(NAMESPACE_URL, track.path.name))
+        if len(identity) > 194:
+            identity = str(uuid5(NAMESPACE_URL, identity))
+        speaker, name, provenance = track_speaker(dict(id=identity, kind=track.kind))
         if len(speaker) > 200:
             raise ValueError("Capture speaker identifier exceeds metadata limit")
-        tracks.append(dict(id=raw["id"], path=str(track.path), offsetMs=track.start_offset_ms, speaker=speaker))
+        tracks.append(dict(id=track.path.name, path=str(track.path), offsetMs=track.start_offset_ms, speaker=speaker))
         speakers[speaker] = dict(id=speaker, name=name, provenance=provenance, colourIndex=index)
     return tracks, speakers
 
 
+def update_progress_metadata(directory, speakers, **changes):
+    with LOCK:
+        current = read_metadata(directory)
+        existing = {speaker["id"]: speaker for speaker in current["speakers"]}
+        merged = dict(existing)
+        for identifier, planned in speakers.items():
+            previous = existing.get(identifier, {})
+            merged[identifier] = dict(previous, **planned)
+            if previous.get("provenance") in ("user", "recognised"):
+                merged[identifier] = previous
+        return update_metadata(directory, speakers=list(merged.values()), **changes)
+
+
 class TranscriptionQueue:
-    def __init__(self, changed, finished, *, bundle=None, client_factory=WhistleClient):
+    def __init__(self, changed, finished, *, bundle=None, client_factory=WhistleClient, root=None):
         self.changed, self.finished = changed, finished
         self.bundle = Path(bundle) if bundle else bundle_path()
+        self.root = library_root(root).absolute()
         self.client_factory = client_factory
         self.client = None
         self.preparer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-queue-metadata")
@@ -91,8 +98,14 @@ class TranscriptionQueue:
         future.add_done_callback(lambda f: self._prepared(directory, f))
         return True
 
-    def _mark_queued(self, directory, resume):
+    def _owned(self, directory):
         canonical = directory.resolve()
+        if directory.is_symlink() or canonical.parent != self.root.resolve() or not meeting_id(canonical):
+            raise ValueError("Transcription may only write inside the configured Library")
+        return canonical
+
+    def _mark_queued(self, directory, resume):
+        canonical = self._owned(directory)
         meeting = next(
             m
             for m in LibraryScanner(canonical.parent).scan(changed_directories={canonical}).meetings
@@ -146,6 +159,7 @@ class TranscriptionQueue:
             return
         LOG.warning("Meeting transcription failed: %s", error)
         try:
+            self._owned(directory)
             update_metadata(
                 directory,
                 transcript=dict(status="failed", reference=REFERENCE),
@@ -183,10 +197,6 @@ class TranscriptionQueue:
             tracks, speakers = prepare_tracks(meeting)
         if not tracks:
             raise ValueError("Meeting has no complete audio frames")
-        existing = {s["id"]: s for s in metadata.get("speakers", [])}
-        for speaker in speakers:
-            if speaker in existing and existing[speaker]["provenance"] in ("user", "recognised"):
-                speakers[speaker] = existing[speaker]
         by_track = {track["id"]: track for track in tracks}
         words = []
 
@@ -212,7 +222,7 @@ class TranscriptionQueue:
                     directory / "transcript.json",
                     dict(format="cassini.words.v1", language=value["language"], items=body),
                 )
-            update_metadata(directory, etaMinutes=value["etaMinutes"], speakers=list(speakers.values()))
+            update_progress_metadata(directory, speakers, etaMinutes=value["etaMinutes"])
             self.changed(directory)
 
         if self.client is None:
@@ -227,12 +237,8 @@ class TranscriptionQueue:
             raise CancelledError()
         for diagnostic in complete.get("diagnostics", []):
             LOG.warning("Transcription diagnostic: %s", diagnostic)
-        update_metadata(
-            directory,
-            transcript=dict(status="done", reference=REFERENCE),
-            etaMinutes=None,
-            error=None,
-            speakers=list(speakers.values()),
+        update_progress_metadata(
+            directory, speakers, transcript=dict(status="done", reference=REFERENCE), etaMinutes=None, error=None
         )
         self.changed(directory)
 

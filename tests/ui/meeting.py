@@ -117,6 +117,34 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: window.meeting_page is not None)
     assert window.meeting_page.meeting.words
     assert len(app.get_windows()) == 1, "File opens belong to the pushed reading page"
+    # Library files opened via Open/CLI remain attached to live model updates.
+    own = next(m for m in window.snapshot.meetings if m.title == "Client call, Rossi & Partners")
+    app.open_in_new_window(Gio.File.new_for_path(str(own.directory / "session.json")))
+    until(lambda: window.meeting_page and window.meeting_page.meeting.key == own.key)
+    assert not window._external_meeting
+    changed = json.loads((own.directory / "meeting.json").read_text())
+    changed.update(title="Live Library rename", titleSource="user")
+    (own.directory / "meeting.json").write_text(json.dumps(changed))
+    until(lambda: window.meeting_page.meeting.title == "Live Library rename")
+    # An outside folder is read-only; the underlying Library keeps refreshing.
+    from cassini_viewer.recording_session import RecordingSession
+
+    outside = Path(temporary) / "outside"
+    outside.mkdir()
+    session = RecordingSession(outside)
+    session.add_track("local", "Mic", "local", 48000, 1)
+    session.append("local", bytes(9600), 0)
+    session.finish()
+    app.open_in_new_window(Gio.File.new_for_path(str(session.directory / "session.json")))
+    until(lambda: window.meeting_page and window.meeting_page.meeting.directory == session.directory)
+    assert window._external_meeting and not window.meeting_page.meeting.metadata_editable
+    assert not window.meeting_page.write_button.get_visible()
+    changed["title"] = "Updated underneath external reading"
+    (own.directory / "meeting.json").write_text(json.dumps(changed))
+    until(lambda: any(m.title == changed["title"] for m in window.snapshot.meetings))
+    assert window.meeting_page.meeting.directory == session.directory
+    window.back_to_library()
+    assert any(m.title == changed["title"] for m in window.snapshot.meetings)
     # Real confirmation widgets, deterministic controller double; no device access.
     recording = Adw.ApplicationWindow(application=app)
 

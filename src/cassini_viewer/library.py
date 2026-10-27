@@ -11,14 +11,14 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from . import portable, ux_formats
 from .library_files import FileCache, basename, key
 from .library_schema import valid
 from .meeting_state import MeetingError, MeetingState
 from .meeting_text import reading_turns
-from .recording_session import strict_json
+from .recording_session import KINDS, strict_json
 from .strings import text
 from .transcript import build_turns, visible_turns
 
@@ -149,6 +149,8 @@ class CaptureTrack:
     start_offset_ms: int | float | None
     ended: bool | None
     channels: int = 1
+    id: str | None = None
+    kind: str = "unknown"
 
     @property
     def display_end_ms(self):
@@ -467,6 +469,11 @@ class LibraryScanner:
             ]
             diagnostics.append(Diagnostic(directory / "session.json", "capture-recovered"))
         tracks = []
+        identifiers = [
+            value.get("id") for value in values if isinstance(value, dict) and isinstance(value.get("id"), str)
+        ]
+        used = set(identifiers)
+        files = set()
         for value in values:
             try:
                 if not isinstance(value, dict):
@@ -483,7 +490,29 @@ class LibraryScanner:
                 if type(offset) not in (int, float) or not 0 <= offset <= 86400000 or not math.isfinite(offset):
                     offset = None
                     diagnostics.append(Diagnostic(directory / name, "start-offset-unknown-display-zero"))
-                tracks.append(CaptureTrack(directory / name, frames, rate, offset, value.get("ended"), channels))
+                if name in files:
+                    raise ValueError("duplicate-track-file")
+                files.add(name)
+                identity = value.get("id")
+                if (
+                    not isinstance(identity, str)
+                    or not identity
+                    or len(identity.encode()) > 200
+                    or identifiers.count(identity) != 1
+                ):
+                    nonce = 0
+                    identity = "recovered-" + str(uuid5(NAMESPACE_URL, name))
+                    while identity in used:
+                        nonce += 1
+                        identity = "recovered-" + str(uuid5(NAMESPACE_URL, name + str(nonce)))
+                    diagnostics.append(Diagnostic(directory / name, "track-identity-recovered"))
+                used.add(identity)
+                kind = value.get("kind")
+                if not isinstance(kind, str) or kind not in KINDS:
+                    kind = {"track-microphone.wav": "microphone", "track-system.wav": "system"}.get(name, "unknown")
+                tracks.append(
+                    CaptureTrack(directory / name, frames, rate, offset, value.get("ended"), channels, identity, kind)
+                )
             except (OSError, ValueError, TypeError):
                 diagnostics.append(Diagnostic(directory, "capture-track-unreadable"))
         return capture, tuple(tracks), salvaged

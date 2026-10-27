@@ -15,7 +15,7 @@ if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLA
     raise SystemExit("Use build-aux/ux-screenshot.sh")
 ROOT = Path(__file__).resolve().parents[2]
 if len(sys.argv) == 1:
-    for mode in ("quit-writing", "close-writing", "stop-save", "stop-starting"):
+    for mode in ("quit-writing", "close-writing", "stop-save", "stop-starting", "prepare-failed"):
         subprocess.run([sys.executable, __file__, mode], check=True, timeout=12)
     print("PASS real process exits: resumable busy writing, close, finalized stop/save and canceled start")
     raise SystemExit()
@@ -112,9 +112,16 @@ with tempfile.TemporaryDirectory() as tmp:
                 app.on_quit() if mode == "quit-writing" else window.close()
                 return False
         elif phase == 0:
+            if mode == "prepare-failed":
+                from cassini_viewer.native_recorder import NativeRecorder
+
+                def fail(_parent):
+                    raise OSError("Synthetic preparation failure")
+
+                NativeRecorder._prepare = staticmethod(fail)
             app.start_native(test=True)
             phase = 1
-            if mode == "stop-starting":
+            if mode in ("stop-starting", "prepare-failed"):
                 closing_at = time.monotonic()
                 app.on_quit()
                 app._capture_confirmation.emit("response", "stop")
@@ -143,6 +150,8 @@ with tempfile.TemporaryDirectory() as tmp:
         assert all(t["frames"] >= 9600 for t in app.recorder.session.manifest["tracks"])
         assert read_metadata(app.recorder.session.directory)["transcript"]["status"] == "queued"
         assert app.transcriber is None, "Quit started hidden inference"
+    elif mode == "prepare-failed":
+        assert app.recorder.pipeline is None and app.recorder.session is None
     else:
         assert app.recorder.pipeline is None
         assert all(t["frames"] == 0 for t in app.recorder.session.manifest["tracks"])

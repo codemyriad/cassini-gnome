@@ -168,6 +168,8 @@ def queue_saved_for_later(path):
     from .library import library_root, meeting_id
     from .meeting_store import read_metadata, update_metadata
 
+    if not path:
+        return
     directory = Path(path).resolve()
     if directory.parent != library_root().resolve() or not meeting_id(directory):
         return

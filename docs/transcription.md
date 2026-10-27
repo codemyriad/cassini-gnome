@@ -116,3 +116,20 @@ The offline CI proof streams a real two-hour stereo Opus in a read-only containe
 with /tmp limited to 64 MiB, checks sample counts and block size, measures peak
 RSS, and verifies selected segment samples across both passes. The normal real
 GTK proof also transcribes received speech, preserving the original Opus bytes.
+
+## Library write boundary and source identity
+
+Only direct canonical meeting folders in the configured Library can be queued
+for writing down. The queue checks that boundary before publishing anything and
+again before marking a preparation failure. Opening an outside recording remains
+read-only; opening a Library file through Open/CLI uses its watched Library model
+so progress keeps updating. A damaged embedded body stays on the reading path
+with its audio available.
+
+Capture IDs/kinds travel from the scanner's validated/recovered track model to
+the worker; recognition never reparses raw session.json. Duplicate/invalid IDs get
+separate stable recovery identities without dropping their audio, and worker RPC
+IDs use distinct audio filenames. Source labels are assigned only to known mic
+and system sources. Mixed/unknown browser streams stay unnamed. Progress rereads
+app-owned speaker metadata and preserves user/recognised names changed while the
+job was queued or running, including unknown speaker fields.
