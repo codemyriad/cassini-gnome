@@ -85,3 +85,18 @@ The ordinary suite separately covers FIFO queued state, source-byte preservation
 metadata edits during recognition, failed/newer/unsafe metadata, vote/cap/FIR edge
 conditions and broker-lag prevention. Recording integration continues to validate
 actual private Pulse sources and source-separation thresholds.
+
+## Closing Cassini
+
+Closing the last window or quitting cancels inference without changing a running
+job into a failed job. Cancellation signals the child immediately; its IO thread
+owns pipe/selector cleanup and reaping. Both queue executors shut down, completion
+callbacks are balanced once, and app holds are released. Queued/running work and
+already published partial words remain available for the next launch. Re-queuing
+does not clear an existing sidecar.
+
+Stop and keep it during close/quit waits for the capture's finished signal and
+final checkpoint before closing the windows. Saved audio is marked queued for
+the next launch instead of starting hidden inference. Keep recording remains the
+explicit choice for background capture. Stop during asynchronous preparation
+never transitions the audio pipeline to PLAYING.

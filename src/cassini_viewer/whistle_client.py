@@ -7,7 +7,9 @@ import os
 import selectors
 import subprocess
 import sys
+import threading
 import time
+from concurrent.futures import CancelledError
 from pathlib import Path
 
 from .whistle_worker import PRIVACY, verify_bundle
@@ -21,8 +23,12 @@ class WhistleClient:
         self.selector = None
         self.ready = None
         self._buffer = b""
+        self.cancelled = threading.Event()
+        self._process_lock = threading.Lock()
 
     def start(self):
+        if self.cancelled.is_set():
+            raise CancelledError()
         if self.process is not None:
             raise RuntimeError("Whistle worker is already started")
         self._buffer = b""
@@ -36,13 +42,16 @@ class WhistleClient:
         env["OPENBLAS_NUM_THREADS"] = "1"
         env["OMP_NUM_THREADS"] = "1"
         env["LD_PRELOAD"] = str(self.bundle / "libcassini_whistle_cpu.so")
-        self.process = subprocess.Popen(
-            [sys.executable, str(Path(__file__).with_name("whistle_worker.py")), str(self.bundle)],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            env=env,
-        )
+        with self._process_lock:
+            if self.cancelled.is_set():
+                raise CancelledError()
+            self.process = subprocess.Popen(
+                [sys.executable, str(Path(__file__).with_name("whistle_worker.py")), str(self.bundle)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                env=env,
+            )
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.process.stdout, selectors.EVENT_READ)
         try:
@@ -56,7 +65,12 @@ class WhistleClient:
         deadline = time.monotonic() + self.timeout
         while b"\n" not in self._buffer:
             remaining = max(0, deadline - time.monotonic())
-            if not self.selector.select(remaining):
+            if self.cancelled.is_set():
+                raise CancelledError()
+            if not self.selector.select(min(remaining, 0.2)):
+                if time.monotonic() < deadline:
+                    continue
+                self.cancel()
                 self.close()
                 raise RuntimeError("Whistle worker timed out")
             data = os.read(self.process.stdout.fileno(), 65536)
@@ -64,6 +78,8 @@ class WhistleClient:
                 raise RuntimeError("Whistle worker exited or exceeded the reply limit")
             self._buffer += data
         line, self._buffer = self._buffer.split(b"\n", 1)
+        if self.cancelled.is_set():
+            raise CancelledError()
         result = json.loads(line)
         if expected is not None and result.get("type") != expected:
             raise RuntimeError("Whistle worker failed: " + str(result.get("message", "invalid reply")))
@@ -100,6 +116,15 @@ class WhistleClient:
                 raise RuntimeError("Whistle worker failed: " + str(value.get("message", "invalid reply")))
             progress(value)
 
+    def cancel(self):
+        """Main-thread safe: signal only; the owning IO thread reaps/closes."""
+        self.cancelled.set()
+        with self._process_lock:
+            process = self.process
+            if process is not None and process.poll() is None:
+                with contextlib.suppress(ProcessLookupError):
+                    process.kill()
+
     def close(self):
         if self.selector is not None:
             self.selector.close()
@@ -116,7 +141,8 @@ class WhistleClient:
             with contextlib.suppress(OSError):
                 self.process.stdin.close()
             self.process.stdout.close()
-            self.process = None
+            with self._process_lock:
+                self.process = None
 
     def __enter__(self):
         return self.start()

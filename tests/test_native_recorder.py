@@ -30,3 +30,35 @@ def test_native_named_tracks_remain_protocol_compatible_and_checkpointed(tmp_pat
     with pytest.raises(ProtocolError):
         other = RecordingSession(tmp_path, source="gnome")
         other.add_track("system", None, "system", 48000, 1, filename="../outside.wav")
+
+
+def test_stop_during_preparation_never_starts_audio_capture(tmp_path, monkeypatch):
+    import time
+    from concurrent.futures import Future
+
+    from gi.repository import GLib
+
+    from cassini_viewer.native_recorder import NativeRecorder
+
+    recorder = NativeRecorder()
+    session, space = recorder._prepare(tmp_path)
+    prepared = Future()
+    prepared.set_result((session, space))
+    recorder.starting = True
+    recorder._stop_requested = False
+    events = []
+    recorder.connect("started", lambda *_: events.append("started"))
+    recorder.connect("finished", lambda *_: events.append("finished"))
+    recorder.stop()
+    monkeypatch.setattr(
+        "cassini_viewer.native_recorder.Gst.parse_launch", lambda _: pytest.fail("Capture started after Stop")
+    )
+    recorder._prepared(prepared, True)
+    deadline = time.monotonic() + 3
+    while "finished" not in events and time.monotonic() < deadline:
+        while GLib.MainContext.default().pending():
+            GLib.MainContext.default().iteration(False)
+        time.sleep(0.005)
+    assert events == ["finished"]
+    assert recorder.pipeline is None and all(t["frames"] == 0 for t in session.manifest["tracks"])
+    recorder._executor.shutdown()

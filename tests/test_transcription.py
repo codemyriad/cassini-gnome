@@ -186,3 +186,53 @@ def test_salvaged_untyped_tracks_do_not_invent_capture_source_names(tmp_path):
     assert len(speakers) == len(tracks) == 2
     assert all(s["name"] is None and s["provenance"] == "unnamed" for s in speakers.values())
     assert all(t["offsetMs"] is None for t in tracks)
+
+
+def test_close_cancels_real_busy_child_without_blocking_or_failing_partial_work(tmp_path, monkeypatch):
+    from test_whistle_spike import child_client
+
+    sessions = [capture(tmp_path) for _ in range(3)]
+    children, finished = [], []
+
+    def factory(bundle, **kwargs):
+        client = child_client(
+            tmp_path,
+            monkeypatch,
+            """import json,sys,time
+print(json.dumps(dict(type='ready')),flush=True)
+request=json.loads(sys.stdin.readline())
+track=request['tracks'][0]
+print(json.dumps(dict(type='progress',trackId=track['id'],trackOrder=0,language='en',etaMinutes=1,
+words=[dict(text='Preserved',startMs=100,endMs=200)])),flush=True)
+time.sleep(30)
+""",
+        )
+        children.append(client)
+        return client
+
+    queue = TranscriptionQueue(lambda _: None, finished.append, client_factory=factory, bundle=tmp_path)
+    for session in sessions:
+        assert queue.enqueue(session.directory)
+    first = sessions[0].directory
+    until(lambda: (first / "transcript.json").exists() and b"Preserved" in (first / "transcript.json").read_bytes())
+    until(lambda: all((s.directory / "meeting.json").exists() for s in sessions))
+    partial = (first / "transcript.json").read_bytes()
+    child = children[0].process
+    start = time.monotonic()
+    queue.close()
+    assert time.monotonic() - start < 0.5, "close waited for child inference on the calling thread"
+    until(lambda: len(finished) == 3)
+    until(lambda: child.poll() is not None)
+    assert len(set(finished)) == 3 and not queue.pending
+    assert read_metadata(first)["transcript"]["status"] == "running"
+    assert (first / "transcript.json").read_bytes() == partial
+    assert all(read_metadata(s.directory)["transcript"]["status"] == "queued" for s in sessions[1:])
+    assert not queue.enqueue(first)
+    # A queued resume must not erase already published words while it waits.
+    resumed = TranscriptionQueue(lambda _: None, lambda _: None, bundle=tmp_path)
+    try:
+        assert resumed._mark_queued(first, True)
+        assert (first / "transcript.json").read_bytes() == partial
+        assert read_metadata(first)["transcript"]["status"] == "queued"
+    finally:
+        resumed.close()

@@ -192,6 +192,7 @@ class BrowserMeetingsWindow(Adw.ApplicationWindow):
     def _close(self, *_args):
         if self.get_application().confirm_capture_close(self):
             return True
+        self.get_application().window_closing(self)
         self._closed = True
         if self._timer:
             GLib.source_remove(self._timer)
