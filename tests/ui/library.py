@@ -64,6 +64,13 @@ with tempfile.TemporaryDirectory() as tmp:
     assert len(window.snapshot.meetings) == 9
     assert window.selected.title == "Budget review"
     assert window.root_box.get_visible_child_name() == "library"
+    assert window.capture_header.get_visible_child_name() == "live"
+    assert window.live_timer.get_label() == "12:48" and not window.live_stop.get_sensitive()
+    labels = [w.get_label() for w in walk(window.rows) if isinstance(w, Gtk.Label)]
+    assert "Listening inside your browser" in labels
+    assert "47 min · the audio is ready to play" in labels
+    assert not any(value.startswith("47 min · Marta") for value in labels)
+    assert not any(value.startswith("colour-") for w in walk(window.preview) for value in w.get_css_classes())
     assert not window.play_button.get_sensitive(), "Folder playback waits for UX-play"
     assert "Marta" in [w.get_label() for w in walk(window.preview) if isinstance(w, Gtk.Label)]
     auto = [w for w in walk(window.preview) if isinstance(w, Gtk.Label) and w.get_label() == "auto"]

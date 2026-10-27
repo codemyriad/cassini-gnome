@@ -194,3 +194,23 @@ A received meeting whose transcript is `none` can be written down once (HARMONY 
 - **Received metadata (R1.4).** A `Received-` folder needs a valid meeting.json **with a non-null `received`
   object**, otherwise it is not listed. A `Recording-` meeting.json with a non-null `received` is invalid (R2: ignore
   the whole file).
+
+## R11. Row texts by state (D9, from the wave-2 screenshot comparison), 2026-10-27
+
+A Library row has a title line (title + time), a **meta** line that sits after the badge, and a **second line**.
+
+| Badge state | Meta (after the badge) | Second line |
+|---|---|---|
+| recording, browser capture (session source `chromium` or any browser host) | `common.listeningInsideBrowser` | `library.row.recording.line` |
+| recording, other capture | *(none, until the variants exist)* | *(none)* |
+| saving | *(none)* | *(none)* |
+| transcribing | *(none)* | `library.row.transcribing.line` ("{duration} · the audio is ready to play"); none if the duration is unknown |
+| everything else (needs attention, interrupted, received, no badge) | `{duration} · {names}` per format-vectors `rowMeta` and R5/R7 | the quote (R8), or none |
+
+**Sidebar header:**
+- While any meeting has `lifecycle = recording`, the toolbar Record button is replaced by the **live pill**: dot, live
+  timer, two level bars, Stop.
+- Before UX5 it may be a static rendering, but both apps show it for the same fixture.
+
+**Preview transcript excerpt:** speaker names are in the normal text colour, with no speaker colours. Speaker colours
+belong to the Meeting view (UX3).

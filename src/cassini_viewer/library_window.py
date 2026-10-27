@@ -155,7 +155,20 @@ class LibraryWindow(Adw.ApplicationWindow):
             show_start_title_buttons=False, show_end_title_buttons=False, css_classes=["library-header"]
         )
         header.set_title_widget(Gtk.Box())
-        header.pack_start(self._record())
+        self.capture_header = Gtk.Stack()
+        self.capture_header.add_named(self._record(), "record")
+        live = Gtk.Box(spacing=8, css_classes=["live-pill"], valign=Gtk.Align.CENTER)
+        live.append(Gtk.Box(width_request=10, height_request=10, valign=Gtk.Align.CENTER, css_classes=["live-dot"]))
+        self.live_timer = label("", "live-timer")
+        live.append(self.live_timer)
+        levels = vertical(3, valign=Gtk.Align.CENTER, css_classes=["live-levels"])
+        for fraction in (0.64, 0.38):
+            levels.append(Gtk.ProgressBar(fraction=fraction, width_request=30))
+        live.append(levels)
+        self.live_stop = Gtk.Button(label=text("common.stop"), sensitive=False, css_classes=["static-stop"])
+        live.append(self.live_stop)
+        self.capture_header.add_named(live, "live")
+        header.pack_start(self.capture_header)
         sidebar.add_top_bar(header)
         self.rows = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE, css_classes=["library-rows"])
         self.rows.connect("row-selected", self._selected)
@@ -170,6 +183,11 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def _updated(self, snapshot):
         self.snapshot = snapshot
+        live = next((m for m in snapshot.meetings if m.lifecycle == "recording"), None)
+        self.capture_header.set_visible_child_name("live" if live else "record")
+        if live:
+            elapsed = max(0, self.now_ms - live.started_at_ms) if live.started_at_ms is not None else 0
+            self.live_timer.set_label(fmt.live_badge(elapsed))
         old = self.selected.key if self.selected else None
         self.rows.remove_all()
         self.selected = None
@@ -211,15 +229,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         badge = meeting.badge(live_ms=elapsed)
         if badge:
             meta.append(label(badge.text, "badge", "badge-" + badge.tint))
-        value = fmt.row_meta(meeting.duration_ms, meeting.speaker_names)
+        value, line = meeting.row_texts()
         if value:
             meta.append(label(value, "small", "dim-label", xalign=0, ellipsize=Pango.EllipsizeMode.END, hexpand=True))
         box.append(meta)
-        line = meeting.quote_line
-        if meeting.lifecycle == "recording":
-            line = text("library.row.recording.line")
-        elif meeting.transcript in ("queued", "running") and meeting.duration_ms is not None:
-            line = text("library.row.transcribing.line", duration=fmt.meeting_duration(meeting.duration_ms))
         if line:
             box.append(label(line, "small", "dim-label", xalign=0, ellipsize=Pango.EllipsizeMode.END))
         row.set_child(box)
@@ -227,7 +240,7 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def _speaker(self, speaker, *, chip=False):
         box = Gtk.Box(spacing=6, css_classes=["speaker-chip"] if chip else [])
-        box.append(label(speaker.name, "speaker-name", "colour-" + str(speaker.colour_index % 3)))
+        box.append(label(speaker.name, "speaker-name"))
         if speaker.provenance == "recognised":
             box.append(label(text("common.autoTag"), "auto-tag", tooltip_text=text("common.autoTag.tooltip")))
         return box

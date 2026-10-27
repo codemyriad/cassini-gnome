@@ -18,6 +18,7 @@ from .library_files import FileCache, basename, key
 from .library_schema import valid
 from .meeting_state import MeetingError, MeetingState
 from .recording_session import strict_json
+from .strings import text
 
 MAX_JSON = 1024 * 1024
 
@@ -173,6 +174,7 @@ class Meeting(MeetingState):
     words: tuple[portable.Word, ...] = ()
     quote_line: str | None = None
     tracks: tuple[CaptureTrack, ...] = ()
+    capture_source: str | None = None
     audio_file: Path | None = None
     has_audio: bool = False
     metadata_editable: bool = True
@@ -186,6 +188,20 @@ class Meeting(MeetingState):
     @property
     def speaker_names(self):
         return tuple(s.name for s in self.speakers)
+
+    def row_texts(self):
+        """R11 state-specific meta and second line; no capture labels become names."""
+        if self.lifecycle == "recording":
+            if self.capture_source in ("chromium", "chrome", "firefox", "browser", "browser-host"):
+                return text("common.listeningInsideBrowser"), text("library.row.recording.line")
+            return None, None
+        if self.lifecycle == "saving":
+            return None, None
+        if self.transcript in ("queued", "running"):
+            return None, text(
+                "library.row.transcribing.line", duration=ux_formats.meeting_duration(self.duration_ms)
+            ) if self.duration_ms is not None else None
+        return ux_formats.row_meta(self.duration_ms, self.speaker_names), self.quote_line
 
     @property
     def can_write_down(self):
@@ -518,6 +534,7 @@ class LibraryScanner:
             if transcript in ("done", "queued", "running")
             else None,
             tracks=tracks,
+            capture_source=capture.get("source") if origin == "own" else None,
             audio_file=audio_file,
             has_audio=bool(tracks) if origin == "own" else duration is not None,
             metadata_editable=not unsupported,

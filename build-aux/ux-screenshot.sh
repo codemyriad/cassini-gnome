@@ -6,7 +6,20 @@ set -euo pipefail
 app=$(realpath "$1")
 output=$(realpath -m "$2")
 runtime=$(mktemp -d /tmp/cassini-ux-shot-XXXXXXXX)
-trap 'rm -rf "$runtime"' EXIT
+cleanup() {
+  local result=$?
+  # Portals activated on the private bus can outlive the app briefly. Detach
+  # only mounts under this run's mktemp directory before removing it.
+  local helper
+  helper=$(command -v fusermount3 || command -v fusermount || true)
+  if [ -n "$helper" ]; then
+    "$helper" -uz "$runtime/run/doc" >/dev/null 2>&1 || true
+    "$helper" -uz "$runtime/run/gvfs" >/dev/null 2>&1 || true
+  fi
+  rm -rf "$runtime"
+  return "$result"
+}
+trap cleanup EXIT
 mkdir -m 700 "$runtime/run" "$runtime/home"
 export HOME="$runtime/home" XDG_RUNTIME_DIR="$runtime/run"
 export XDG_CONFIG_HOME="$runtime/config" XDG_CACHE_HOME="$runtime/cache" XDG_DATA_HOME="$runtime/data"

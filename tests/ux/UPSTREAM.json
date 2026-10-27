@@ -1,6 +1,6 @@
 {
   "source": "drmeyers:~/dev/cassini-coordination/ux-draft",
-  "commit": "72862aab50772ecda3998e72a13a424630b1d784",
+  "commit": "0bf0a4b8f862ea3d40e31140907489942fd10d1d",
   "paths": {
     "format-vectors.json": "tests/ux/format-vectors.json",
     "states-vectors.json": "tests/ux/states-vectors.json",
@@ -39,11 +39,11 @@
   "sha256": {
     "format-vectors.json": "ee9c9b9585e76c42f09df54d7a8933e7167527fce2ea185e78b51b1059840e51",
     "states-vectors.json": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
-    "LIBRARY-RULES.md": "3b0296cf1defff713c7b1046f3d0d46a271e61c181bbcc9477b6a036b181643a",
+    "LIBRARY-RULES.md": "85f52e4ccf4b2681dfc95f4d6f93211954a4b0522edad6924658233fd9d46680",
     "meeting.schema.json": "567c20b2a81bdc7bf4e1a5ab18f66e0f2c3ee93dd9cced2d04e973d51853a211",
     "library-vectors/verify.py": "2011c3a7fc8d6fd5c58a4f06b16e8397f081755f743725f2732e332e4d1767da",
     "library-vectors/README.md": "8e8cbbe91ab72bbf9f404a94ab3b83822f4e137cca8cbbb25afd493b78394b54",
-    "library-vectors/cases.json": "03bdf6112f7c264e27b0fe2c4dc4a671d9b778981098d7e5edd707bd6522c012",
+    "library-vectors/cases.json": "80723c1274ac44d8b23d0a154daa7b6fc5e559a1fceb6491b8e52558c4a6ce2b",
     "library-vectors/make.py": "8a5fe5ecc1fd2c2bab3d1264b6137035b8f67b16fe9bacfe73af36d8b2a7eafb",
     "library-vectors/expected/received-only.json": "85cfce2282d4cc0113dc4c9113f8db32eaac7555788671838be6f0fb0a8e2709",
     "library-vectors/expected/first-record.json": "0c7dfde7b4bdd114c0758ca55b269edd6ee1cda636a0b4d1d2d077a35b7dd178",
@@ -75,6 +75,10 @@
     "strings.json": {
       "commit": "3b3697e198673b88bc13a0170016ff603d1bdcd4",
       "note": "Wave 2 shared catalog; all earlier vectors remain pinned above."
+    },
+    "LIBRARY-RULES.md": {
+      "commit": "2f64b93142bcd84912c90dec63ba52df2a04b99f",
+      "note": "R11 presentation rules from screenshot comparison"
     }
   }
 }

@@ -126,3 +126,10 @@
 .library-window .record-dot { font-size: 12px; }
 .library-window .first-run-icon { background: #ececef; border-radius: 24px; padding: 24px; margin-bottom: 0; }
 .library-window .excerpt { line-height: 1.5; }
+
+.library-window .live-pill { background: #fbe4e6; border-radius: 6px; padding: 4px 8px; min-height: 26px; }
+.library-window .live-dot { background: #c01c28; border-radius: 100px; }
+.library-window .live-timer { color: #c01c28; font-weight: 600; font-feature-settings: "tnum"; }
+.library-window .live-levels progressbar trough { min-height: 4px; background: #eab8bd; border-radius: 2px; }
+.library-window .live-levels progressbar progress { min-height: 4px; background: #c01c28; border-radius: 2px; }
+.library-window .static-stop:disabled { background: #c01c28; color: white; opacity: 1; min-height: 26px; padding: 0 9px; }
