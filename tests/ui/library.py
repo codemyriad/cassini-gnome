@@ -59,6 +59,11 @@ with tempfile.TemporaryDirectory() as tmp:
     os.environ["CASSINI_LIBRARY_DIR"] = str(fixtures / "main/root")
     os.environ["CASSINI_SCREENSHOT_ACTIVITY"] = str(fixtures / "main/activity.json")
     os.environ["CASSINI_SCREENSHOT_NOW"] = "1793107080000"
+    schema_dir = Path(tmp) / "schemas"
+    schema_dir.mkdir()
+    shutil.copyfile(ROOT / "data/com.gocassini.Viewer.gschema.xml", schema_dir / "com.gocassini.Viewer.gschema.xml")
+    subprocess.run(["glib-compile-schemas", str(schema_dir)], check=True)
+    os.environ["GSETTINGS_SCHEMA_DIR"] = str(schema_dir)
     app = CassiniApplication("com.gocassini.LibraryTest", "test", "development")
     app.register(None)
     app.activate()
@@ -66,13 +71,8 @@ with tempfile.TemporaryDirectory() as tmp:
     until(lambda: not window._pending)
     assert len(window.snapshot.meetings) == 9
     assert window.selected.title == "Budget review"
-    assert window.selected.words and not window.read_button.get_sensitive()
-    opened = []
-    original_open = app.open_in_new_window
-    app.open_in_new_window = lambda file: opened.append(file)
-    window._open_selected()
-    assert not opened, "Folder sidecars must never route to SessionWindow"
-    app.open_in_new_window = original_open
+    assert window.selected.words and window.read_button.get_sensitive()
+    assert window.read_button.get_sensitive(), "Folders have a real Meeting page"
     assert window.root_box.get_visible_child_name() == "library"
     assert window.capture_header.get_visible_child_name() == "live"
     assert window.live_timer.get_label() == "12:48" and not window.live_stop.get_sensitive()
@@ -155,11 +155,10 @@ with tempfile.TemporaryDirectory() as tmp:
     other.player.shutdown()
     other.close()
     assert window.read_button.get_sensitive()
-    original_open = app.open_in_new_window
-    app.open_in_new_window = lambda file: opened.append(file)
     window.read_button.emit("clicked")
-    assert opened[-1].get_path() == str(window.selected.audio_file) and not window.player.playing
-    app.open_in_new_window = original_open
+    assert window.meeting_page and not window.player.playing
+    window.back_to_library()
+    until(lambda: window.meeting_page is None)
     window.play_button.emit("clicked")
     until(lambda: window.player.playing)
     # #8's load() can reject synchronously; the Library must honour that error.

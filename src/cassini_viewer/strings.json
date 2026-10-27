@@ -1,5 +1,5 @@
 {
- "version": 3,
+ "version": 4,
  "note": "Shared UX strings catalog (S-2). Coordinator-owned. Each entry has en (shared, or the GNOME text when platforms differ) and an optional mac. status: drawn = on a board; harmony = required by HARMONY.md, not drawn; format = reference to a format-vectors formatter; vectors = only required by the vectors; galleryOnly = only on the hidden states-gallery debug board, never shipped; legacy = temporary, has an end milestone; pending = copy awaiting Silvio. Placeholders are {name}. Typographic ’ “ ” are part of the strings. Only ship entries whose milestone you are implementing.",
  "source": "canvas version 1793116956-b00e",
  "entries": [
@@ -214,6 +214,22 @@
    "milestone": "UX1b",
    "note": "Icon-only hamburger button in the GNOME content header. The menu contents are not drawn (HARMONY 11). Keep 'Browser meetings…' in it until UX10 and drop New Window (ROADMAP UX1b).",
    "status": "drawn"
+  },
+  {
+   "id": "common.me",
+   "en": "Me",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX13",
+   "status": "harmony",
+   "note": "D11: speaker name for the microphone track until speakers are told apart. Same word as whatIsRecorded.me."
   },
   {
    "id": "common.notNow",

@@ -8,7 +8,7 @@ fixture=$(mktemp -d /tmp/cassini-library-boards-XXXXXXXX)
 trap 'rm -rf "$fixture"' EXIT
 python3 ux/library-vectors/make.py "$fixture"
 mkdir -p "$out"
-for board in library first-run; do
+for board in library first-run meeting; do
   case_name=main
   [ "$board" != first-run ] || case_name=empty
   CASSINI_LIBRARY_DIR="$fixture/$case_name/root" \

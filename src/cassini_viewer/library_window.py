@@ -33,6 +33,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._preview_key = None
         self._loaded_key = None
         self.snapshot = None
+        self.meeting_page = None
+        self._external_meeting = False
         self._list_signature = None
         self._preview_signature_value = None
         self._live_badges = {}
@@ -55,7 +57,10 @@ class LibraryWindow(Adw.ApplicationWindow):
 
             self._fixture_activity = json.loads(Path(os.environ["CASSINI_SCREENSHOT_ACTIVITY"]).read_text())
         self.root_box = Gtk.Stack()
-        self.set_content(self.root_box)
+        self.navigation = Adw.NavigationView()
+        self.navigation.add(Adw.NavigationPage.new(self.root_box, text("library.title")))
+        self.navigation.connect("popped", self._page_popped)
+        self.set_content(self.navigation)
         self._build_empty()
         self._build_library()
         self.loading = Gtk.Spinner(spinning=True, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
@@ -69,6 +74,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.monitor.refresh()
         self.connect("close-request", self._close)
         for name, callback in (
+            ("back-library", self.back_to_library),
             ("play-pause", self._play_selected),
             ("skip-back", lambda *_: self.player.skip(-10000)),
             ("skip-forward", lambda *_: self.player.skip(10000)),
@@ -210,6 +216,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._activity = activity
             self.monitor.refresh()
         self._update_live()
+        if self.meeting_page and self._activity_source:
+            self.meeting_page.set_connected(self._activity_source.connected)
         # Re-group at local midnight without touching the filesystem.
         if self.snapshot is not None:
             self._updated(self.snapshot)
@@ -273,6 +281,19 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def _updated(self, snapshot):
         self.snapshot = snapshot
+        if self.meeting_page and self._external_meeting:
+            self._update_live()
+            self._pending = False
+            return
+        if self.meeting_page and not self._external_meeting:
+            current = next((m for m in snapshot.meetings if m.key == self.meeting_page.meeting.key), None)
+            if current is None:
+                self.back_to_library()
+                self._stop_playback(clear_selection=True)
+            else:
+                if not current.has_audio:
+                    self._stop_playback()
+                self.meeting_page.update(current)
         self._update_live()
         if self._signature(snapshot) == self._list_signature:
             current = {m.key: m for m in snapshot.meetings}
@@ -406,7 +427,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.play_button.connect("clicked", lambda *_: self._play_selected())
         actions.append(self.play_button)
         self.read_button = Gtk.Button(
-            label=text("library.preview.readTranscript"), sensitive=meeting.legacy_transcript_file is not None
+            label=text("library.preview.readTranscript"),
+            sensitive=bool(meeting.words) or meeting.transcript in ("queued", "running", "failed", "damaged"),
         )
         self.read_button.connect("clicked", lambda *_: self._open_selected())
         actions.append(self.read_button)
@@ -442,12 +464,17 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.play_button.set_sensitive(False)
 
     def _play_selected(self):
-        meeting = self.selected
-        if meeting is None or not self.play_button.get_sensitive():
+        meeting = self.meeting_page.meeting if self.meeting_page else self.selected
+        if meeting is None or not meeting.has_audio:
             return
-        if self._loaded_key == meeting.key:
+        if self._ensure_player(meeting):
             self.player.toggle()
-            return
+
+    def _ensure_player(self, meeting):
+        if self._loaded_key == meeting.key:
+            return not self._playback_failed
+        if not meeting.has_audio or (meeting.origin == "own" and not FolderPlayer.can_play(meeting)):
+            return False
         desired = FolderPlayer if meeting.origin == "own" else Player
         if type(self.player) is not desired:
             self.player.shutdown()
@@ -458,12 +485,12 @@ class LibraryWindow(Adw.ApplicationWindow):
             if isinstance(self.player, FolderPlayer):
                 self.player.load_tracks(meeting.tracks, meeting.duration_ms)
             else:
-                self.player.load(Gio.File.new_for_path(str(meeting.audio_file)).get_uri(), meeting.duration_ms)
+                self.player.load(meeting.audio_file.as_uri(), meeting.duration_ms)
         except (OSError, ValueError, RuntimeError, GLib.Error) as error:
             self._playback_error(self.player, str(error))
         if not self._playback_failed:
             self._loaded_key = meeting.key
-            self.player.play()
+        return not self._playback_failed
 
     def _stop_playback(self, *, clear_selection=False):
         self.player.stop()
@@ -474,11 +501,61 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._playback_failed = False
 
     def _open_selected(self):
-        if self.selected and self.selected.legacy_transcript_file is not None:
+        if self.selected:
+            self.open_meeting(self.selected)
+
+    def open_meeting(self, meeting, *, external=False):
+        from .meeting_page import MeetingPage
+
+        if self.meeting_page:
+            self.back_to_library()
+        self._stop_playback()
+        self._external_meeting = external
+        self._ensure_player(meeting)
+        self.meeting_page = MeetingPage(self, meeting)
+        self.navigation.push(self.meeting_page)
+
+    def back_to_library(self, *_):
+        if self.meeting_page:
+            self.meeting_page.close()
+            self.meeting_page = None
+            self._external_meeting = False
             self._stop_playback()
-            self.get_application().open_in_new_window(Gio.File.new_for_path(str(self.selected.legacy_transcript_file)))
+            self.monitor.refresh()
+        self.navigation.pop()
+
+    def _page_popped(self, _navigation, page):
+        if page is self.meeting_page:
+            page.close()
+            self.meeting_page = None
+            self._external_meeting = False
+            self._stop_playback()
+            self.monitor.refresh()
+
+    def open_file(self, file):
+        from .open_meeting import load_open_meeting
+
+        future = self.monitor._executor.submit(load_open_meeting, file.get_path())
+        future.add_done_callback(lambda f: GLib.idle_add(self._opened_file, f, file))
+
+    def _opened_file(self, future, file):
+        if self.monitor._closed:
+            return False
+        try:
+            self.open_meeting(future.result(), external=True)
+        except (OSError, ValueError):
+            # Keep the existing failed-open presentation until its copy is drawn.
+            window = self.get_application().new_window()
+            window.open_file(file)
+            window.present()
+        return False
 
     def _close(self, *_args):
+        if self.get_application().confirm_capture_close(self):
+            return True
+        if self.meeting_page:
+            self.meeting_page.close()
+            self.meeting_page = None
         if self._activity_timer:
             GLib.source_remove(self._activity_timer)
             self._activity_timer = 0

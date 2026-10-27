@@ -11,7 +11,8 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gsk", "4.0")
-from gi.repository import Adw, GLib, Gtk  # noqa: E402
+gi.require_version("Gst", "1.0")
+from gi.repository import Adw, GLib, Gst, Gtk  # noqa: E402
 
 
 def capture(application_id, version, profile):
@@ -40,9 +41,24 @@ def capture(application_id, version, profile):
     frames = [0]
     settled_frame = None
     window.add_tick_callback(lambda *_args: (frames.__setitem__(0, frames[0] + 1), True)[1])
+    opened_meeting = False
     while time.monotonic() < deadline:
         while context.pending():
             context.iteration(False)
+        if os.environ.get("CASSINI_SCREENSHOT_BOARD") == "meeting" and not window._pending and not opened_meeting:
+            from .folder_player import FolderPlayer
+
+            window.player.shutdown()
+            sink = Gst.ElementFactory.make("fakesink", None)
+            sink.set_property("sync", True)
+            window.player = FolderPlayer(audio_sink=sink)
+            window._connect_player()
+            meeting = next(m for m in window.snapshot.meetings if m.title == "Client call, Rossi & Partners")
+            window.open_meeting(meeting)
+            window.player.seek(192000)
+            window.player.play()
+            opened_meeting = True
+            settled_frame = None
         if getattr(window, "_pending", False):
             settled_frame = None
         elif settled_frame is None:

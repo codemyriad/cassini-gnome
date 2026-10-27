@@ -17,6 +17,7 @@ from . import portable, ux_formats
 from .library_files import FileCache, basename, key
 from .library_schema import valid
 from .meeting_state import MeetingError, MeetingState
+from .meeting_text import reading_turns
 from .recording_session import strict_json
 from .strings import text
 from .transcript import build_turns, visible_turns
@@ -182,6 +183,7 @@ class Meeting(MeetingState):
     speakers: tuple[LibrarySpeaker, ...] = ()
     words: tuple[portable.Word, ...] = ()
     preview_turns: tuple[PreviewTurn, ...] = ()
+    turns: tuple = field(default=(), compare=False, repr=False)
     quote_line: str | None = None
     tracks: tuple[CaptureTrack, ...] = ()
     capture_source: str | None = None
@@ -564,6 +566,7 @@ class LibraryScanner:
             duration_ms=duration,
             words=tuple(words),
             preview_turns=self._preview(directory.name, words),
+            turns=self._preview_cache.get(directory.name, (None, None, ()))[2],
             speakers=_speakers(words, metadata.get("speakers", []), embedded if origin == "received" else None),
             quote_line=_quote(words, metadata.get("quoteOverride"))
             if transcript in ("done", "queued", "running")
@@ -588,8 +591,9 @@ class LibraryScanner:
         # Reader tuples are stat-keyed and immutable to consumers. Group once in
         # the scanner worker; retain only three visible turns for the GTK pane.
         ordered = sorted(words, key=lambda word: word.start_ms)
-        result = tuple(PreviewTurn(t.speaker, t.start_ms, t.text) for t in visible_turns(build_turns(ordered))[:3])
-        self._preview_cache[name] = words, result
+        turns = tuple(build_turns(ordered))
+        result = tuple(PreviewTurn(t.speaker, t.start_ms, t.text) for t in visible_turns(turns)[:3])
+        self._preview_cache[name] = words, result, reading_turns(ordered)
         return result
 
     def _transcript(self, fd, directory, metadata, origin, embedded, trusted, embedded_words, diagnostics):

@@ -142,6 +142,8 @@ class RecordingWindow(Adw.ApplicationWindow):
         self.status.set_label(message)
 
     def _close(self, *_args):
+        if self.get_application().confirm_capture_close(self):
+            return True
         if self.recorder.pipeline is not None:
             if not self.recorder.stopping:
                 self._clicked()

@@ -82,7 +82,7 @@ def dispatch(packet, result, ready):
             if library and library.snapshot
             else []
         )
-        window = next((w for w in app.get_windows() if isinstance(w, BrowserMeetingsWindow)), None)
+        window = next((w for w in app.get_windows() if isinstance(w, BrowserMeetingsWindow) and w.get_visible()), None)
         action = packet.get("action", "status")
         if action == "notification-stop":
             identifier = int(packet["id"])
@@ -107,6 +107,8 @@ def dispatch(packet, result, ready):
                 window.automatic.set_active(packet["enabled"])
             elif action == "close-window":
                 window.close()
+                if getattr(app, "_capture_confirmation", None):
+                    app._capture_confirmation.emit("response", "keep")
                 window = None
         if window is None:
             result.update(dict(status="Window closed", rows=[], notifications=notifications))
