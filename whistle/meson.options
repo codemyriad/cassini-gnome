@@ -1,0 +1,1 @@
+option('bundle', type: 'string', value: '', description: 'Absolute verified build-time bundle from fetch.py')

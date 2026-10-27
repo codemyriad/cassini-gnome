@@ -1,0 +1,38 @@
+name: Whistle bundling spike
+on:
+  pull_request:
+    paths:
+      - 'whistle/**'
+      - 'src/cassini_viewer/whistle_*.py'
+      - 'tests/whistle/**'
+      - 'tests/test_whistle_spike.py'
+      - '.github/workflows/whistle.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pinned-offline-recognition:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install build-only dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 meson ninja-build gcc libc6-dev
+      - name: Fetch and verify exact build-time artifacts
+        run: |
+          python3 whistle/fetch.py /tmp/whistle-bundle --cache /tmp/whistle-cache
+          python3 whistle/fetch.py /tmp/whistle-bundle --cache /tmp/whistle-cache
+      - name: Stage with separate Meson integration
+        run: |
+          meson setup _whistle-build whistle -Dbundle=/tmp/whistle-bundle --prefix=/usr
+          DESTDIR=$PWD/_whistle-stage meson install -C _whistle-build
+      - name: Native constructor guard and repeated real recognition without network
+        run: tests/whistle/run.sh "$PWD/_whistle-stage/usr/share/cassini-viewer/whistle" "$PWD/whistle-artifacts"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: whistle-linux-x86_64
+          path: whistle-artifacts/
+          retention-days: 14
