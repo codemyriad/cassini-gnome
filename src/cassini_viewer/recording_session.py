@@ -246,8 +246,8 @@ class RecordingSession:
             or not isinstance(identifier, str)
             or identifier not in self.writers
             or type(offset) not in (int, float)
-            or not math.isfinite(offset)
             or not 0 <= offset <= 86400000
+            or not math.isfinite(offset)
             or not data
             or len(data) > 262144
         ):
@@ -457,7 +457,7 @@ def load_session(path):
         track.update(info)
         offset = track.get("startOffsetMs")
         if offset is not None and (
-            type(offset) not in (int, float) or not math.isfinite(offset) or not 0 <= offset <= 86400000
+            type(offset) not in (int, float) or not 0 <= offset <= 86400000 or not math.isfinite(offset)
         ):
             raise ValueError("Invalid recording track offset")
     return manifest

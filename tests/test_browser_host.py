@@ -148,3 +148,8 @@ def test_append_failure_retains_io_reason(tmp_path, monkeypatch):
     assert code == 1 and replies[-1]["code"] == "io"
     manifest = json.loads((Path(replies[0]["path"]) / "session.json").read_text())
     assert manifest["state"] == "interrupted" and manifest["problemKind"] == "io"
+
+
+def test_huge_json_integer_offset_has_chunk_error(tmp_path):
+    code, replies = invoke(tmp_path, [START, TRACK, {**AUDIO, "offsetMs": 10**400}], open_completed=False)
+    assert code == 1 and replies[-1]["code"] == "chunk"
