@@ -115,6 +115,7 @@ class BrowserMeetingsWindow(Adw.ApplicationWindow):
                 self._request(queued[0], **queued[1])
             return GLib.SOURCE_REMOVE
         self.error.set_visible(False)
+        self._browser_snapshot = snapshot
         self._updating = True
         self.automatic.set_active(snapshot["autoRecord"])
         self._updating = False
@@ -186,7 +187,11 @@ class BrowserMeetingsWindow(Adw.ApplicationWindow):
             self._request("configure", autoRecord=self.automatic.get_active())
 
     def _close(self, *_args):
+        if self.get_application().confirm_capture_close(self):
+            return True
         self._closed = True
-        GLib.source_remove(self._timer)
+        if self._timer:
+            GLib.source_remove(self._timer)
+            self._timer = 0
         self._executor.shutdown(wait=False, cancel_futures=True)
         return False

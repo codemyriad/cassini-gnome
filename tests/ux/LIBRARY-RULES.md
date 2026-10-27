@@ -214,3 +214,17 @@ A Library row has a title line (title + time), a **meta** line that sits after t
 
 **Preview transcript excerpt:** speaker names are in the normal text colour, with no speaker colours. Speaker colours
 belong to the Meeting view (UX3).
+
+## R12. Meeting view: speaking share and current item (D12), 2026-10-27
+
+- **Speaking share** per speaking speaker = the sum of `endMs − startMs` over that speaker's transcript items,
+  divided by the total over all speakers.
+  - Shown as whole percents that add up to 100, using largest remainder: floor every share, then give the leftover
+    points to the largest fractional parts, ties to earlier speaking order.
+  - With a single speaker, 100%.
+- **Current position highlight:** the item containing the playback position (`startMs ≤ pos < endMs`) is
+  highlighted, and items after it are dimmed.
+  - Word-level highlighting applies when items are single words (Whistle output, D11). Sentence-level items, as in
+    the current fixture, highlight the whole item.
+  - The `meeting` screenshot board uses the fixture's real timings and the computed shares. A visible difference
+    from board 17/18's drawn 41/38/21 % and the single highlighted word is expected.

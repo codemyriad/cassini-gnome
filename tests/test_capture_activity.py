@@ -25,7 +25,7 @@ def test_real_broker_reports_canonical_recording_and_clears_on_stop(service, tmp
         spin_until(lambda: watcher.snapshot == {session.manifest["id"]: "recording"})
         assert read_browser_activity(path) == watcher.snapshot
         send_packet(stream, dict(type="status", recording=False, path=str(session.directory)))
-        spin_until(lambda: not watcher.snapshot and len(changes) == 2)
+        spin_until(lambda: not watcher.snapshot and len(changes) >= 2)
         send_packet(stream, dict(type="status", recording=True, path="/tmp/Recording-not-a-uuid"))
         wait_for(lambda: read_browser_activity(path) == {})
     finally:

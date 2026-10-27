@@ -39,7 +39,7 @@
   "sha256": {
     "format-vectors.json": "ee9c9b9585e76c42f09df54d7a8933e7167527fce2ea185e78b51b1059840e51",
     "states-vectors.json": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
-    "LIBRARY-RULES.md": "85f52e4ccf4b2681dfc95f4d6f93211954a4b0522edad6924658233fd9d46680",
+    "LIBRARY-RULES.md": "47b1d46457a1430e69e5a4f10ca079ec7bf2dda8b39c0e8939541fdbb2599595",
     "meeting.schema.json": "567c20b2a81bdc7bf4e1a5ab18f66e0f2c3ee93dd9cced2d04e973d51853a211",
     "library-vectors/verify.py": "2011c3a7fc8d6fd5c58a4f06b16e8397f081755f743725f2732e332e4d1767da",
     "library-vectors/README.md": "8e8cbbe91ab72bbf9f404a94ab3b83822f4e137cca8cbbb25afd493b78394b54",
@@ -69,16 +69,16 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "d80db05f0c3000eaa509b4fb11f5f6743f0e9da74776bc3a8ddf3443968224bb"
+    "strings.json": "f38b27d7437cd891c948afaf114792d25e699dffbdb136364f1b840a6a2c14be"
   },
   "additionalSources": {
     "strings.json": {
-      "commit": "3b3697e198673b88bc13a0170016ff603d1bdcd4",
-      "note": "Wave 2 shared catalog; all earlier vectors remain pinned above."
+      "commit": "815fa89dcd4cb100d66d6d374f2d6569311265fd",
+      "note": "Wave 3 published R12 / D11 catalog"
     },
     "LIBRARY-RULES.md": {
-      "commit": "2f64b93142bcd84912c90dec63ba52df2a04b99f",
-      "note": "R11 presentation rules from screenshot comparison"
+      "commit": "28c14388b7ea4a2c133ee23e9149ed7696cffa3e",
+      "note": "Wave 3 published R12 / D11 catalog"
     }
   }
 }

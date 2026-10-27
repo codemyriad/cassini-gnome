@@ -35,10 +35,10 @@ from readiness import PCMProgress, wait_until  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-viewer.gresource")))
+from cassini_viewer.library_window import LibraryWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
 from cassini_viewer.recording_session import RecordingSession  # noqa: E402
 from cassini_viewer.recording_window import RecordingWindow  # noqa: E402
-from cassini_viewer.session_window import SessionWindow  # noqa: E402
 
 
 def painted(window):
@@ -95,6 +95,8 @@ try:
         wait_until(lambda: progress.reached(0.4), "quit test captures actual PCM", diagnostics=diagnostics)
         progress.close()
         app.on_quit()
+        assert app._capture_confirmation
+        app._capture_confirmation.emit("response", "stop")
         wait_until(
             lambda: not app.get_windows(), "quit flushes and closes windows", timeout=12, diagnostics=diagnostics
         )
@@ -105,16 +107,26 @@ try:
         session.append("a", bytes(96000), 250)
         session.finish()
         app.open_in_new_window(Gio.File.new_for_path(str(session.directory / "session.json")))
-        viewer = next(w for w in app.get_windows() if isinstance(w, SessionWindow))
+        wait_until(
+            lambda: any(isinstance(w, LibraryWindow) and w.meeting_page for w in app.get_windows()),
+            "recording folder opens the pushed Meeting page",
+            diagnostics=diagnostics,
+        )
+        viewer = next(w for w in app.get_windows() if isinstance(w, LibraryWindow))
         painted(viewer)
-        assert viewer.play.get_sensitive()
-        assert viewer.player.duration == 1000
-        viewer.play.emit("clicked")
-        wait_until(lambda: viewer.player.position > 0, "session playback advances", timeout=3, diagnostics=diagnostics)
-        assert viewer.player.position > 0
-        assert viewer.play.get_label() == "Pause"
-        viewer.play.emit("clicked")
-        assert not viewer.player.playing
+        assert viewer.meeting_page.play.get_sensitive()
+        assert viewer.meeting_page.player.duration == 1250  # 250 ms source offset + 1 second PCM
+        viewer.meeting_page.play.emit("clicked")
+        wait_until(
+            lambda: viewer.meeting_page.player.position > 0,
+            "session playback advances",
+            timeout=3,
+            diagnostics=diagnostics,
+        )
+        assert viewer.meeting_page.player.position > 0
+        assert viewer.meeting_page.play.get_tooltip_text() == "Pause"
+        viewer.meeting_page.play.emit("clicked")
+        assert not viewer.meeting_page.player.playing
         subprocess.run(["import", "-window", "root", str(artifacts / "session.png")], check=True)
         viewer.close()
     print("PASS GTK recording controls, quit finalization, session opening and playback")

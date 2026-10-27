@@ -52,9 +52,9 @@ class CassiniApplication(Adw.Application):
         self._add_action("browser-meetings", self.on_browser_meetings)
         self.set_accels_for_action("window.close", ["<primary>w"])
         self.set_accels_for_action("win.play-pause", ["space", "AudioPlay", "AudioPause"])
-        self.set_accels_for_action("win.skip-back", ["<primary>Left"])
-        self.set_accels_for_action("win.skip-forward", ["<primary>Right"])
-        self.set_accels_for_action("win.nudge-back", ["<alt>Left"])
+        self.set_accels_for_action("win.skip-back", ["Left"])
+        self.set_accels_for_action("win.skip-forward", ["Right"])
+        self.set_accels_for_action("win.back-library", ["<alt>Left"])
         self.set_accels_for_action("win.nudge-forward", ["<alt>Right"])
         self.set_accels_for_action("win.search", ["<primary>f"])
         self.set_accels_for_action("win.next-match", ["<primary>g"])
@@ -112,17 +112,11 @@ class CassiniApplication(Adw.Application):
 
     def open_in_new_window(self, file):
         """Open *file* in an empty window if there is one, else in a new window."""
-        if file.get_basename() == "session.json":
-            from .session_window import SessionWindow
+        self.do_activate()
+        from .library_window import LibraryWindow
 
-            window = SessionWindow(self, file)
-            window.present()
-            return
-        window = next((w for w in self.get_windows() if isinstance(w, CassiniWindow) and not w.has_meeting), None)
-        if window is None:
-            window = self.new_window()
+        window = next(w for w in self.get_windows() if isinstance(w, LibraryWindow))
         window.open_file(file)
-        window.present()
 
     def on_open(self, *_args):
         dialog = Gtk.FileDialog(title=_("Open Meeting"))
@@ -146,19 +140,20 @@ class CassiniApplication(Adw.Application):
             files = dialog.open_multiple_finish(result)
         except GLib.Error:
             return
-        active = self.get_active_window()
         for i in range(files.get_n_items()):
-            file = files.get_item(i)
-            if i == 0 and isinstance(active, CassiniWindow) and file.get_basename() != "session.json":
-                active.open_file(file)
-            else:
-                self.open_in_new_window(file)
+            self.open_in_new_window(files.get_item(i))
+
+    def confirm_capture_close(self, window, *, quitting=False):
+        from .capture_guard import confirm_capture_close
+
+        return confirm_capture_close(self, window, quitting=quitting)
 
     def on_quit(self, *_args):
-        for window in self.get_windows():
-            if hasattr(window, "open_result"):
-                window.open_result = False
-            window.close()
+        if self.confirm_capture_close(self.get_active_window(), quitting=True):
+            return
+        from .capture_guard import finish_close
+
+        finish_close(self, list(self.get_windows()))
 
     def on_browser_meetings(self, *_args):
         from .browser_window import BrowserMeetingsWindow

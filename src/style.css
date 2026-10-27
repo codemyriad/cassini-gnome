@@ -133,3 +133,16 @@
 .library-window .live-levels progressbar trough { min-width: 30px; min-height: 4px; background: #eab8bd; border-radius: 2px; }
 .library-window .live-levels progressbar progress { min-height: 4px; background: #c01c28; border-radius: 2px; }
 .library-window .static-stop:disabled { background: #c01c28; color: white; opacity: 1; min-height: 26px; padding: 0 9px; }
+
+/* UX3: native colours, with speaker colours confined to the reading page. */
+.meeting-transcript { background: @view_bg_color; color: @view_fg_color; padding: 22px 48px; }
+.meeting-transcript row { padding: 0; background: transparent; }
+.companion-card { background: alpha(@accent_bg_color, 0.13); border-radius: 10px; padding: 16px; margin-bottom: 22px; }
+.companion-card image { color: @accent_bg_color; }
+.meeting-player { border-top: 1px solid alpha(@view_fg_color, 0.12); min-height: 64px; padding: 0 20px; background: @headerbar_bg_color; }
+.meeting-player button.suggested-action { border-radius: 50%; min-width: 40px; min-height: 40px; padding: 0; }
+.meeting-player scale { padding: 0; }
+.inline-line { border-radius: 10px; padding: 12px; margin-bottom: 8px; }
+.warn-line { background: alpha(#e5a50a, 0.18); }
+.info-line { background: alpha(@accent_bg_color, 0.13); }
+.meeting-transcript .words { font-size: 15px; line-height: 1.5; }
