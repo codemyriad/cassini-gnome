@@ -1,0 +1,26 @@
+{
+  "weightsRevision": "ca5287601bef25af26dcf2e1b2bdc0843a7c19e5",
+  "engineRevision": "93e88ede867e4311c39151285e74df513e4b835b",
+  "engineVersion": "3.3.0",
+  "wrapperVersion": "3.2.0",
+  "platform": "manylinux2014_x86_64",
+  "artifacts": {
+    "whistle.cact": {
+      "url": "https://huggingface.co/Cactus-Compute/whistle/resolve/ca5287601bef25af26dcf2e1b2bdc0843a7c19e5/whistle.cact",
+      "sha256": "b6e02f048568ac5d01a2042556c658061e699acbc0aa2a1439f52f3d461dffeb"
+    },
+    "engine.whl": {
+      "url": "https://huggingface.co/Cactus-Compute/needle3/resolve/93e88ede867e4311c39151285e74df513e4b835b/python/cactus_needle-3.3.0-py3-none-manylinux2014_x86_64.whl",
+      "sha256": "33717a889ecc8d8bb59a1ba3982635176a66479cac61297242b86b9a1c94dc5b"
+    },
+    "wrapper.whl": {
+      "url": "https://files.pythonhosted.org/packages/e7/13/5f3a1c20b6643e83cd3f55c866217a0d539c343aaaf7de5253ce08ac16bf/cactus_needle-3.2.0-py3-none-any.whl",
+      "sha256": "613b3401ad4e78b738b1bfb8fa1548ed5dd61abafe218fe0dc2cb7bf534e6b9a"
+    }
+  },
+  "installed": {
+    "whistle.cact": "b6e02f048568ac5d01a2042556c658061e699acbc0aa2a1439f52f3d461dffeb",
+    "libneedle3.so": "cc0dac6c27546a3a715fb704e068f9eac134fcb83cabcb07c5a6bb7975241675",
+    "wrapper.whl": "613b3401ad4e78b738b1bfb8fa1548ed5dd61abafe218fe0dc2cb7bf534e6b9a"
+  }
+}

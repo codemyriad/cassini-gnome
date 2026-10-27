@@ -1,0 +1,17 @@
+{
+  "architecture": "arm64",
+  "engineVersion": "3.3.0",
+  "text": "And so, my fellow Americans, ask not what your country can do for you, ask what you can do for your country.",
+  "reference": "And so, my fellow Americans, ask not what your country can do for you. Ask what you can do for your country.",
+  "exactReferenceMatch": false,
+  "wordReferenceMatch": true,
+  "twoRequestsIdentical": true,
+  "constructorPrivacyGuard": true,
+  "telemetry": {
+    "NEEDLE_TELEMETRY": "0",
+    "DO_NOT_TRACK": "1",
+    "ORT_DISABLE_TELEMETRY": "1"
+  },
+  "source": "https://github.com/codemyriad/cassini-mac/actions/runs/40568637999/artifacts/12763772438",
+  "sourceSha256": "ab2d593f8b3e3fcaf0eb93baea23563d60abf00e2f35c00c048df754fe84cb64"
+}
