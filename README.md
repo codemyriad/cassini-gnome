@@ -20,7 +20,7 @@ Cassini is a GNOME desktop app for Linux that records your meetings and lets you
 
 ### Install
 
-Download a package from the [latest release](https://github.com/codemyriad/cassini-gnome/releases) (current version: 0.2.0), or grab a test build from the latest [CI run](https://github.com/codemyriad/cassini-gnome/actions).
+Download a package from the [latest release](https://github.com/codemyriad/cassini-gnome/releases), or grab a test build from the latest [CI run](https://github.com/codemyriad/cassini-gnome/actions).
 
 Native packages need GTK 4.18 and libadwaita 1.8 or newer (available in Debian testing, Ubuntu 26.04, Fedora 43 and later, openSUSE Tumbleweed, Arch Linux, and Alpine edge). On older distributions (such as Debian 13, Ubuntu 24.04, openSUSE Leap, or RHEL), install the Flatpak.
 
