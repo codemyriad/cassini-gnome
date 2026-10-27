@@ -50,6 +50,8 @@ mkdir -m 700 "$runtime/session"
 export XDG_RUNTIME_DIR="$runtime/session"
 export XDG_SESSION_TYPE=x11
 export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
+mkdir -m 700 "$runtime/home"
+export HOME="$runtime/home"
 export XDG_CONFIG_HOME="$runtime/config" XDG_CACHE_HOME="$runtime/cache" XDG_DATA_HOME="$runtime/data"
 export GSETTINGS_BACKEND=memory
 export GDK_BACKEND=x11
