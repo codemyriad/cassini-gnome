@@ -8,6 +8,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {chromium} from 'playwright';
+import {energy} from './signal.mjs';
 if (!process.env.CASSINI_ISOLATED_AUDIO || process.env.WAYLAND_DISPLAY) throw new Error('Run through tests/recording/run.sh to isolate desktop and audio.');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const artifacts = path.resolve(process.env.CASSINI_TEST_ARTIFACTS || path.join(root, 'tests/recording/artifacts/browser'));
@@ -23,16 +24,6 @@ function wav(buffer, finalized) {
   assert.equal(buffer.toString('ascii', 0, 4), 'RIFF');
   if(finalized) assert.equal(buffer.readUInt32LE(40), buffer.length - 44);
   return {rate:buffer.readUInt32LE(24), channels:buffer.readUInt16LE(22), bytes:buffer.subarray(44)};
-}
-function energy(audio, start, end, hz) {
-  const first = Math.max(0,Math.round(start * audio.rate));
-  const last = Math.min(audio.bytes.length / (2*audio.channels), Math.round(end * audio.rate));
-  let re=0,im=0,power=0;
-  for(let n=first;n<last;n++) {
-    const v=audio.bytes.readInt16LE(n*2*audio.channels)/32768;
-    power+=v*v; re+=v*Math.cos(2*Math.PI*hz*n/audio.rate); im+=v*Math.sin(2*Math.PI*hz*n/audio.rate);
-  }
-  return {rms:Math.sqrt(power/Math.max(1,last-first)), tone:2*Math.hypot(re,im)/Math.max(1,last-first)};
 }
 async function poll(check, description, timeout=15000) {
   const deadline=Date.now()+timeout;
