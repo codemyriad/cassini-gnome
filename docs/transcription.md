@@ -99,7 +99,9 @@ Stop and keep it during close/quit waits for the capture's finished signal and
 final checkpoint before closing the windows. Saved audio is marked queued for
 the next launch instead of starting hidden inference. Keep recording remains the
 explicit choice for background capture. Stop during asynchronous preparation
-never transitions the audio pipeline to PLAYING.
+never transitions the audio pipeline to PLAYING. If capture finishes while the
+confirmation remains open, Stop and keep it uses that finalized result and does
+not wait for an already-delivered finished signal.
 
 ## Received audio streams
 

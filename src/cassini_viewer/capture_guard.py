@@ -45,9 +45,20 @@ def confirm_capture_close(app, window, *, quitting=False):
             app.begin_exit()
         # Keep windows and a guard hold until every capture has finished writing.
         app.hold()
-        waiting = {id(target.recorder) for target in native}
+        # A capture can finish (for example at the disk reserve) while the
+        # confirmation is open. Never wait for its already-delivered signal.
+        active_native = [
+            target
+            for target in native
+            if target.recorder.pipeline is not None or getattr(target.recorder, "starting", False)
+        ]
+        waiting = {id(target.recorder) for target in active_native}
         browser_done = not browser
-        paths = []
+        paths = [
+            str(target.recorder.session.directory)
+            for target in native
+            if target not in active_native and getattr(target.recorder, "session", None)
+        ]
         completing = False
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-close-save")
 
@@ -85,7 +96,7 @@ def confirm_capture_close(app, window, *, quitting=False):
 
             future.add_done_callback(saved)
 
-        for target in native:
+        for target in active_native:
             recorder = target.recorder
             target.open_result = False
 
@@ -96,7 +107,7 @@ def confirm_capture_close(app, window, *, quitting=False):
                 ready()
 
             handlers[id(recorder)] = recorder.connect("finished", finished)
-        for target in native:
+        for target in active_native:
             target.recorder.stop()
         if browser:
             future = executor.submit(stop_browser_captures)

@@ -15,7 +15,7 @@ if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLA
     raise SystemExit("Use build-aux/ux-screenshot.sh")
 ROOT = Path(__file__).resolve().parents[2]
 if len(sys.argv) == 1:
-    for mode in ("quit-writing", "close-writing", "stop-save", "stop-starting", "prepare-failed"):
+    for mode in ("quit-writing", "close-writing", "stop-save", "stop-starting", "prepare-failed", "stop-after-finish"):
         subprocess.run([sys.executable, __file__, mode], check=True, timeout=12)
     print("PASS real process exits: resumable busy writing, close, finalized stop/save and canceled start")
     raise SystemExit()
@@ -81,7 +81,7 @@ time.sleep(30)
 with tempfile.TemporaryDirectory() as tmp:
     os.environ["CASSINI_LIBRARY_DIR"] = tmp
     app = CassiniApplication("com.gocassini.QuitTest" + mode.replace("-", ""), "test", "development")
-    app.transcription_enabled = True
+    app.transcription_enabled = mode != "stop-after-finish"
     session = None
     if mode.endswith("writing"):
         session = RecordingSession(tmp, source="gnome")
@@ -126,9 +126,22 @@ with tempfile.TemporaryDirectory() as tmp:
                 app.on_quit()
                 app._capture_confirmation.emit("response", "stop")
                 return False
-        elif app.recorder.session and all(t["frames"] >= 9600 for t in app.recorder.session.manifest["tracks"]):
-            closing_at = time.monotonic()
+        elif phase == 2 and mode == "stop-after-finish":
+            if app.recorder.pipeline is None:
+                closing_at = time.monotonic()
+                app._capture_confirmation.emit("response", "stop")
+                return False
+        elif (
+            phase == 1
+            and app.recorder.session
+            and all(t["frames"] >= 9600 for t in app.recorder.session.manifest["tracks"])
+        ):
             app.on_quit()
+            if mode == "stop-after-finish":
+                app.stop_native()
+                phase = 2
+                return True
+            closing_at = time.monotonic()
             app._capture_confirmation.emit("response", "stop")
             return False
         return True
@@ -144,9 +157,9 @@ with tempfile.TemporaryDirectory() as tmp:
         while child.poll() is None and time.monotonic() < deadline:
             time.sleep(0.005)
         assert child.poll() is not None
-    elif mode == "stop-save":
+    elif mode in ("stop-save", "stop-after-finish"):
         assert app.recorder.pipeline is None
-        assert app.recorder.session.manifest["state"] == "completed"
+        assert app.recorder.session.manifest["state"] == "completed", app.recorder.session.manifest
         assert all(t["frames"] >= 9600 for t in app.recorder.session.manifest["tracks"])
         assert read_metadata(app.recorder.session.directory)["transcript"]["status"] == "queued"
         assert app.transcriber is None, "Quit started hidden inference"
