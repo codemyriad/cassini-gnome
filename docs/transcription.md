@@ -48,7 +48,7 @@ dist or downloads at runtime. Add this immutable artifact to each package's buil
 sources/cache and ship LICENSE-Silero-MIT.txt alongside the existing notices.
 
 Runtime dependencies now include **NumPy and ONNX Runtime CPU** for the app's
-Python interpreter, alongside PyGObject/GStreamer for local Opus decoding. Ubuntu
+Python interpreter, alongside PyGObject/GStreamer for child-process Opus decoding. Ubuntu
 26.04's python3-numpy and python3-onnxruntime packages (ORT 1.23.2) pass both D11
 goldens; cassini-live's ORT 1.31.0 passes too. Other package formats need their
 equivalents, or pinned build-time vendoring where a system package is unavailable.
@@ -100,3 +100,19 @@ final checkpoint before closing the windows. Saved audio is marked queued for
 the next launch instead of starting hidden inference. Keep recording remains the
 explicit choice for background capture. Stop during asynchronous preparation
 never transitions the audio pipeline to PLAYING.
+
+## Received audio streams
+
+Received Opus is decoded in the inference child through a back-pressured appsink
+(two buffers). PCM blocks hold at most one second; stereo averages in float32
+before the same centred FIR used for captures. Dithering/noise shaping are off so
+repeated passes feed identical samples to Whistle. The first sequential pass plans
+speech; the second sequential pass skips quiet spans and retains at most one
+bounded speech segment. No whole-file WAV or other expanded temporary file is
+created, so neither a RAM-backed /tmp nor a RIFF 32-bit size limit bounds meetings.
+The decoder has a no-progress timeout, not an overall meeting-duration timeout.
+
+The offline CI proof streams a real two-hour stereo Opus in a read-only container
+with /tmp limited to 64 MiB, checks sample counts and block size, measures peak
+RSS, and verifies selected segment samples across both passes. The normal real
+GTK proof also transcribes received speech, preserving the original Opus bytes.
