@@ -19,6 +19,7 @@ from .library_schema import valid
 from .meeting_state import MeetingError, MeetingState
 from .recording_session import strict_json
 from .strings import text
+from .transcript import build_turns, visible_turns
 
 MAX_JSON = 1024 * 1024
 
@@ -164,6 +165,13 @@ class LibrarySpeaker:
     colour_index: int
 
 
+@dataclass(frozen=True)
+class PreviewTurn:
+    speaker: str
+    start_ms: int
+    text: str
+
+
 @dataclass(frozen=True, kw_only=True)
 class Meeting(MeetingState):
     id: str
@@ -173,6 +181,7 @@ class Meeting(MeetingState):
     duration_ms: int | None
     speakers: tuple[LibrarySpeaker, ...] = ()
     words: tuple[portable.Word, ...] = ()
+    preview_turns: tuple[PreviewTurn, ...] = ()
     quote_line: str | None = None
     tracks: tuple[CaptureTrack, ...] = ()
     capture_source: str | None = None
@@ -291,6 +300,7 @@ class LibraryScanner:
         self._row_cache = {}
         self._folder_diagnostics = {}
         self._directories = {}
+        self._preview_cache = {}
 
     def scan(self, *, capture_activity=None, changed_directories=None):
         with self._lock:
@@ -310,6 +320,9 @@ class LibraryScanner:
                         self._forget(name)
                     self._rows.clear()
                     self._directories.clear()
+                    self._folder_diagnostics.clear()
+                    self._files.entries.clear()
+                    self._preview_cache.clear()
                     return LibrarySnapshot()
                 raise OSError("dangling-root") from None
             resolved = self.root.resolve()
@@ -374,6 +387,9 @@ class LibraryScanner:
                     finally:
                         os.close(fd)
                 except Exception:
+                    self._row_cache.pop(name, None)
+                    self._files.forget(directory)
+                    self._preview_cache.pop(name, None)
                     meeting = _unreadable(directory, identifier, activity.get(identifier))
                 if meeting is None:
                     self._rows.pop(name, None)
@@ -392,8 +408,10 @@ class LibraryScanner:
 
     def _forget(self, name):
         old = self._rows.pop(name, None) or self._row_cache.get(name, (None, None))[1]
-        if old:
-            self._files.forget(old.directory)
+        directory = old.directory if old else self._directories.get(name)
+        if directory is not None:
+            self._files.forget(directory)
+        self._preview_cache.pop(name, None)
         self._row_cache.pop(name, None)
         self._folder_diagnostics.pop(name, None)
         self._directories.pop(name, None)
@@ -545,6 +563,7 @@ class LibraryScanner:
             started_at_ms=started,
             duration_ms=duration,
             words=tuple(words),
+            preview_turns=self._preview(directory.name, words),
             speakers=_speakers(words, metadata.get("speakers", []), embedded if origin == "received" else None),
             quote_line=_quote(words, metadata.get("quoteOverride"))
             if transcript in ("done", "queued", "running")
@@ -559,6 +578,20 @@ class LibraryScanner:
             metadata=raw,
         )
 
+    def _preview(self, name, words):
+        if not words:
+            self._preview_cache.pop(name, None)
+            return ()
+        cached = self._preview_cache.get(name)
+        if cached is not None and cached[0] is words:
+            return cached[1]
+        # Reader tuples are stat-keyed and immutable to consumers. Group once in
+        # the scanner worker; retain only three visible turns for the GTK pane.
+        ordered = sorted(words, key=lambda word: word.start_ms)
+        result = tuple(PreviewTurn(t.speaker, t.start_ms, t.text) for t in visible_turns(build_turns(ordered))[:3])
+        self._preview_cache[name] = words, result
+        return result
+
     def _transcript(self, fd, directory, metadata, origin, embedded, trusted, embedded_words, diagnostics):
         value = metadata.get("transcript")
         status = value["status"] if value else None
@@ -569,7 +602,7 @@ class LibraryScanner:
         error = MeetingError(stored["id"], stored["action"]) if stored else None
         words, readable, present = (), False, False
         try:
-            if reference is not None:
+            if reference is not None and status not in ("none", "failed", "damaged"):
                 if (
                     origin == "received"
                     and not trusted
@@ -613,13 +646,13 @@ class LibraryScanner:
             eta = metadata.get("etaMinutes")
             return words, status, eta if _integer(eta) else None, error
         if status == "failed":
-            return words, "failed", None, error or MeetingError("transcribe-failed", "Try again")
+            return (), "failed", None, error or MeetingError("transcribe-failed", "Try again")
         if status == "damaged" or status == "done" and not readable or status is None and present and not readable:
             actionable = error if error and error.action is not None else MeetingError("transcript-damaged", None)
             return (), "damaged", None, actionable
         if status is None:
             status = "done" if readable else "none"
-        return words, status, None, error
+        return (() if status == "none" else words), status, None, error
 
 
 def _unreadable(directory, identifier, activity):

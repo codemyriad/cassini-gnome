@@ -7,11 +7,11 @@ import time
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
 from . import ux_formats as fmt
+from .capture_activity import BrowserActivity, recorder_activity
 from .folder_player import FolderPlayer
 from .library_monitor import LibraryMonitor
 from .player import Player
 from .strings import text
-from .transcript import build_turns
 
 
 def label(value, *classes, **kwargs):
@@ -33,6 +33,11 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._preview_key = None
         self._loaded_key = None
         self.snapshot = None
+        self._list_signature = None
+        self._preview_signature_value = None
+        self._live_badges = {}
+        self._activity_source = None
+        self._activity_timer = 0
         # These are hidden harness inputs, never separate production fixtures or fake widget data.
         self._fixed_now = (
             int(os.environ["CASSINI_SCREENSHOT_NOW"])
@@ -56,7 +61,11 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.loading = Gtk.Spinner(spinning=True, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
         self.root_box.add_named(self.loading, "loading")
         self.root_box.set_visible_child_name("loading")
-        self.monitor = LibraryMonitor(self._updated, capture_activity=lambda: self._fixture_activity)
+        self._activity = dict(self._fixture_activity)
+        self.monitor = LibraryMonitor(self._updated, capture_activity=lambda: self._activity)
+        if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
+            self._activity_source = BrowserActivity(self._activity_tick)
+            self._activity_timer = GLib.timeout_add_seconds(1, self._activity_tick)
         self.monitor.refresh()
         self.connect("close-request", self._close)
         for name, callback in (
@@ -194,16 +203,92 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.split.set_content(Adw.NavigationPage.new(content, text("library.previewPane.a11y")))
         self.root_box.add_named(self.split, "library")
 
+    def _activity_tick(self):
+        activity = dict(self._activity_source.snapshot) if self._activity_source else {}
+        activity.update(recorder_activity(self.get_application().get_windows()))
+        if activity != self._activity:
+            self._activity = activity
+            self.monitor.refresh()
+        self._update_live()
+        # Re-group at local midnight without touching the filesystem.
+        if self.snapshot is not None:
+            self._updated(self.snapshot)
+        return GLib.SOURCE_CONTINUE
+
+    def _update_live(self):
+        if self.snapshot is None:
+            return
+        live = next((m for m in self.snapshot.meetings if m.lifecycle == "recording"), None)
+        self.capture_header.set_visible_child_name("live" if live else "record")
+        for meeting in self.snapshot.meetings:
+            if meeting.lifecycle == "recording":
+                elapsed = max(0, self.now_ms - meeting.started_at_ms) if meeting.started_at_ms is not None else 0
+                if meeting is live:
+                    self.live_timer.set_label(fmt.live_badge(elapsed))
+                if meeting.key in self._live_badges:
+                    self._live_badges[meeting.key].set_label(meeting.badge(live_ms=elapsed).text)
+
+    def _preview_signature(self, meeting):
+        return (
+            meeting.key,
+            meeting.title,
+            fmt.preview_subtitle(
+                meeting.started_at_ms,
+                meeting.duration_ms,
+                now_ms=self.now_ms,
+                tz=self.tz,
+                received=meeting.origin == "received",
+            ),
+            meeting.speakers,
+            meeting.preview_turns,
+            meeting.has_audio,
+            meeting.legacy_transcript_file,
+            meeting.lifecycle,
+            tuple(t.start_offset_ms for t in meeting.tracks),
+        )
+
+    def _signature(self, snapshot):
+        selected = self.selected.key if self.selected else None
+        return (
+            snapshot.unavailable,
+            tuple(
+                (
+                    group.title,
+                    tuple(
+                        (
+                            m.key,
+                            m.title,
+                            fmt.row_time(m.started_at_ms, tz=self.tz),
+                            m.badge().kind if m.badge() else None,
+                            m.badge().text if m.badge() and m.lifecycle != "recording" else None,
+                            m.row_texts(),
+                            self._preview_signature(m) if m.key == selected else None,
+                        )
+                        for m in group.meetings
+                    ),
+                )
+                for group in snapshot.groups(now_ms=self.now_ms, tz=self.tz)
+            ),
+        )
+
     def _updated(self, snapshot):
         self.snapshot = snapshot
-        live = next((m for m in snapshot.meetings if m.lifecycle == "recording"), None)
-        self.capture_header.set_visible_child_name("live" if live else "record")
-        if live:
-            elapsed = max(0, self.now_ms - live.started_at_ms) if live.started_at_ms is not None else 0
-            self.live_timer.set_label(fmt.live_badge(elapsed))
+        self._update_live()
+        if self._signature(snapshot) == self._list_signature:
+            current = {m.key: m for m in snapshot.meetings}
+            row = self.rows.get_first_child()
+            while row:
+                if hasattr(row, "meeting"):
+                    row.meeting = current[row.meeting.key]
+                row = row.get_next_sibling()
+            if self.selected:
+                self.selected = current.get(self.selected.key)
+            self._pending = False
+            return
         old = self.selected.key if self.selected else None
         self.rows.handler_block(self._selection_handler)
         self.rows.remove_all()
+        self._live_badges = {}
         self.selected = None
         if snapshot.unavailable:
             self._stop_playback(clear_selection=True)
@@ -231,6 +316,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.rows.select_row(selected or self.rows.get_row_at_index(1))
         self.rows.handler_unblock(self._selection_handler)
         self._selected(self.rows, self.rows.get_selected_row())
+        self._list_signature = self._signature(snapshot)
         self.loading.set_spinning(False)
         self._pending = False
 
@@ -246,7 +332,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         elapsed = max(0, self.now_ms - meeting.started_at_ms) if meeting.started_at_ms is not None else 0
         badge = meeting.badge(live_ms=elapsed)
         if badge:
-            meta.append(label(badge.text, "badge", "badge-" + badge.tint))
+            badge_label = label(badge.text, "badge", "badge-" + badge.tint)
+            meta.append(badge_label)
+            if meeting.lifecycle == "recording":
+                self._live_badges[meeting.key] = badge_label
         value, line = meeting.row_texts()
         if value:
             meta.append(label(value, "small", "dim-label", xalign=0, ellipsize=Pango.EllipsizeMode.END, hexpand=True))
@@ -275,6 +364,11 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._loaded_key = None
         self._preview_key = row.meeting.key
         self.selected = meeting = row.meeting
+        self._list_signature = self._signature(self.snapshot)
+        signature = self._preview_signature(meeting)
+        if signature == self._preview_signature_value:
+            return
+        self._preview_signature_value = signature
         child = self.preview.get_first_child()
         while child:
             following = child.get_next_sibling()
@@ -320,9 +414,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.preview.append(Gtk.Separator(margin_top=4))
         self.preview.append(label(text("library.preview.transcriptHeading"), "small", "heading", "dim-label", xalign=0))
         speakers = {s.id: s for s in meeting.speakers}
-        for turn in build_turns(list(meeting.words))[:3]:
-            if turn.host is not None:
-                continue
+        for turn in meeting.preview_turns:
             line = Gtk.Box(spacing=16)
             name = vertical(3, width_request=110, valign=Gtk.Align.START)
             name.append(self._speaker(speakers[turn.speaker]))
@@ -378,6 +470,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._loaded_key = None
         if clear_selection:
             self._preview_key = None
+            self._preview_signature_value = None
         self._playback_failed = False
 
     def _open_selected(self):
@@ -386,6 +479,11 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.get_application().open_in_new_window(Gio.File.new_for_path(str(self.selected.legacy_transcript_file)))
 
     def _close(self, *_args):
+        if self._activity_timer:
+            GLib.source_remove(self._activity_timer)
+            self._activity_timer = 0
+        if self._activity_source is not None:
+            self._activity_source.close()
         self.player.shutdown()
         self.monitor.close()
         return False

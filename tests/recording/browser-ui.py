@@ -33,6 +33,7 @@ from gi.repository import Gio, GLib  # noqa: E402
 sys.path.insert(0, str(root / "src"))
 Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-viewer.gresource")))
 from cassini_viewer.browser_window import BrowserMeetingsWindow  # noqa: E402
+from cassini_viewer.library_window import LibraryWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
 
 app = CassiniApplication("com.gocassini.Viewer.BrowserTest", "test", "development")
@@ -67,6 +68,20 @@ Gio.bus_own_name_on_connection(bus, "org.freedesktop.Notifications", Gio.BusName
 
 def dispatch(packet, result, ready):
     try:
+        library = next((w for w in app.get_windows() if isinstance(w, LibraryWindow)), None)
+        result["library"] = (
+            [
+                dict(
+                    path=str(m.directory),
+                    lifecycle=m.lifecycle,
+                    interruptedAtMs=m.interrupted_at_ms,
+                    header=library.capture_header.get_visible_child_name(),
+                )
+                for m in library.snapshot.meetings
+            ]
+            if library and library.snapshot
+            else []
+        )
         window = next((w for w in app.get_windows() if isinstance(w, BrowserMeetingsWindow)), None)
         action = packet.get("action", "status")
         if action == "notification-stop":

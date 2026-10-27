@@ -107,6 +107,18 @@ with tempfile.TemporaryDirectory() as tmp:
         for m in menus
         if m
     )
+    # Idle/live-clock ticks and equivalent snapshots retain widget identity,
+    # selection, focus and scroll rather than tearing down the Library.
+    first_row = window.rows.get_selected_row()
+    preview = window.preview.get_first_child()
+    first_row.grab_focus()
+    focus = window.get_focus()
+    for _ in range(3):
+        window._updated(window.snapshot)
+        window._update_live()
+    assert window.rows.get_selected_row() is first_row
+    assert window.preview.get_first_child() is preview
+    assert window.get_focus() is focus
     selected_dir = window.selected.directory
     metadata = selected_dir / "meeting.json"
     value = json.loads(metadata.read_text())

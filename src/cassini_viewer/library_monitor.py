@@ -3,6 +3,7 @@
 
 import contextlib
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -38,36 +39,85 @@ class LibraryMonitor:
             path = path.parent
         return path
 
-    def _scan_and_watch_paths(self, activity, changed):
-        snapshot = self.scanner.scan(capture_activity=activity, changed_directories=changed)
+    def _watch_roots(self):
         root = self.scanner.root.absolute()
         roots = {root}
-        targets = {self._ancestor(root)} | set(snapshot.directories)
+        targets = {self._ancestor(root), self._ancestor(root.parent)}
+        resolved = root
         with contextlib.suppress(OSError, RuntimeError):
             resolved = root.resolve()
             roots.add(resolved)
-            targets.add(self._ancestor(resolved))
-        if root.is_symlink():
-            targets.add(root.parent)
-        return snapshot, roots, targets
+            targets.update((self._ancestor(resolved), self._ancestor(resolved.parent)))
+        return roots, targets, resolved
 
-    def _sync_watches(self, snapshot, roots, targets):
-        self._roots = roots
-        self._directories = set(snapshot.directories)
-        for path in self._monitors.keys() - targets:
-            self._monitors.pop(path).cancel()
-        for path in targets - self._monitors.keys():
+    def _add_watches(self, paths, roots, existing, created):
+        # Called on the scan worker before reads. Deliver events explicitly on
+        # the main context, even if GIO chooses another context for the monitor.
+        added = set()
+        for path in paths - existing.keys() - created.keys():
             try:
                 monitor = Gio.File.new_for_path(str(path)).monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, None)
             except GLib.Error:
                 continue
-            monitor.connect("changed", self._changed)
-            self._monitors[path] = monitor
 
-    def _changed(self, _monitor, file, other_file, event):
+            def changed(watch, file, other, event, active_roots=frozenset(roots), directory=path):
+                GLib.idle_add(self._changed, watch, file, other, event, active_roots, frozenset((directory,)))
+
+            monitor.connect("changed", changed)
+            created[path] = monitor
+            added.add(path)
+        return added
+
+    def _scan_and_watch_paths(self, activity, changed, existing, directories):
+        roots, targets = self._roots, set(existing)
+        created, late = {}, set()
+        try:
+            roots, targets, resolved = self._watch_roots()
+            self._add_watches(targets, roots, existing, created)
+            # Install child watches before the scanner can read those children.
+            # Root watches already cover children created during this discovery.
+            if changed is None:
+                directories = set()
+                try:
+                    with os.scandir(resolved) as entries:
+                        directories = {
+                            Path(entry.path)
+                            for entry in entries
+                            if meeting_id(Path(entry.name)) and entry.is_dir(follow_symlinks=False)
+                        }
+                except OSError:
+                    pass
+            self._add_watches(directories, roots, existing, created)
+            snapshot = self.scanner.scan(capture_activity=activity, changed_directories=changed)
+            new_roots, new_targets, _resolved = self._watch_roots()
+            roots = new_roots
+            # If an absent root appeared during bootstrap, verify its contents
+            # after its new root watch is attached. The usual path needs no rescan.
+            late_root = self._add_watches(new_targets, roots, existing, created)
+            late = None if late_root else self._add_watches(set(snapshot.directories), roots, existing, created)
+            targets |= new_targets | set(snapshot.directories)
+        except Exception:
+            LOG.exception("Library worker scan failed")
+            snapshot = LibrarySnapshot(
+                diagnostics=(Diagnostic(self.scanner.root, "library-scan-failed"),),
+                unavailable=True,
+                directories=tuple(directories),
+            )
+            targets |= set(directories)
+        return snapshot, roots, targets, created, late
+
+    def _sync_watches(self, snapshot, roots, targets, created):
+        self._roots = roots
+        self._directories = set(snapshot.directories)
+        self._monitors.update(created)
+        for path in self._monitors.keys() - targets:
+            self._monitors.pop(path).cancel()
+
+    def _changed(self, _monitor, file, other_file, event, roots=None, directories=None):
         if self._closed:
             return
-        roots = self._roots
+        roots = self._roots if roots is None else roots
+        directories = self._directories if directories is None else directories
         changed = set()
         for value in (file, other_file):
             name = value.get_path() if value else None
@@ -77,7 +127,7 @@ class LibraryMonitor:
             if any(path == r or path in r.parents or path.parent == r and meeting_id(path) for r in roots):
                 self.refresh()
                 return
-            if path.parent in self._directories and (
+            if path.parent in directories and (
                 path.name in ("session.json", "meeting.json", "transcript.json")
                 or path.suffix == ".opus"
                 and event != Gio.FileMonitorEvent.CHANGED
@@ -120,22 +170,30 @@ class LibraryMonitor:
         self._pending_dirs.clear()
         self._first_event = None
         self._ready = False
-        self._future = self._executor.submit(self._scan_and_watch_paths, activity, changed)
+        self._future = self._executor.submit(
+            self._scan_and_watch_paths, activity, changed, dict(self._monitors), set(self._directories)
+        )
         self._future.add_done_callback(lambda future: GLib.idle_add(self._complete, future))
 
     def _complete(self, future):
         self._future = None
-        if self._closed:
-            return GLib.SOURCE_REMOVE
         try:
-            snapshot, roots, targets = future.result()
+            snapshot, roots, targets, created, late = future.result()
         except Exception:
-            LOG.exception("Library worker scan failed")
+            if self._closed:
+                return GLib.SOURCE_REMOVE
+            LOG.exception("Library watch preparation failed")
             snapshot = LibrarySnapshot(
                 diagnostics=(Diagnostic(self.scanner.root, "library-scan-failed"),), unavailable=True
             )
-            roots, targets = self._roots, set(self._monitors)
-        self._sync_watches(snapshot, roots, targets)
+            roots, targets, created, late = self._roots, set(self._monitors), {}, set()
+        if self._closed:
+            for monitor in created.values():
+                monitor.cancel()
+            return GLib.SOURCE_REMOVE
+        self._sync_watches(snapshot, roots, targets, created)
+        if late is None or late:
+            self.refresh(late)
         self.callback(snapshot)
         if self._ready and not self._closed:
             self._start_scan()
