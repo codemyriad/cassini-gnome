@@ -1,15 +1,18 @@
+import { AppControl } from "./app-control.js";
+
 async function hasOffscreenDocument() {
   return (await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] })).length > 0;
 }
 
 const frames = new Set();
 let active = null;
+let pendingStart = null;
 let lastStatus = { recording: false, message: "Ready. Choose Separate tracks or Whole tab." };
 
 const recovery = (async () => {
   const { cassiniActive } = await chrome.storage.session.get("cassiniActive");
   if (cassiniActive) {
-    lastStatus = { recording: false, path: cassiniActive.path,
+    lastStatus = { recording: false, tabId: cassiniActive.tabId ?? null, path: cassiniActive.path,
       message: "Recording was interrupted. Audio recorded so far was saved." };
     if (cassiniActive.mode === "tab" && await hasOffscreenDocument()) await chrome.offscreen.closeDocument();
     await chrome.storage.session.remove("cassiniActive");
@@ -60,18 +63,19 @@ class NativeHost {
 }
 
 function status() {
-  return active ? { recording: true, stopping: active.stopping, tracks: active.tracks,
+  return active ? { recording: true, stopping: active.stopping, tracks: active.tracks, tabId: active.tabId, mode: active.mode,
     message: active.warning || (!active.tracks ? "Waiting for audio. Join the call, or record the whole tab instead." : `${active.stopping ? "Saving" : "Recording"} ${active.mode === "tracks" ? "separate tracks" : "the whole tab"} · ${active.tracks} ${active.tracks === 1 ? "recorded track" : "recorded tracks"}`), path: active.path } : lastStatus;
 }
 
 function failure(message) {
-  if (active) { active.problem ??= message; void stop(); }
+  if (active) { active.problem ??= message; notifyControl(); void stop(); }
 }
 
 async function stop(session = active) {
-  if (!session) return;
+  if (!session) { if (pendingStart) pendingStart.cancelled = true; return; }
   if (session.stopPromise) return session.stopPromise;
   session.stopping = true;
+  notifyControl();
   session.stopPromise = (async () => {
   // Let a cancelled start settle before closing resources or clearing stored state.
   // The start operation never waits for stop, so a failure during discovery/host ACK
@@ -91,9 +95,9 @@ async function stop(session = active) {
     }
     // Native messages are processed in order, so the stop acknowledgement follows all audio writes.
     const result = session.host ? await session.host.send({ type: "stop", problem: session.problem }) : {};
-    lastStatus = { recording: false, path: result.path, message: session.problem || result.problem || "Saved on this computer." };
+    lastStatus = { recording: false, tabId: session.tabId, path: result.path, message: session.problem || result.problem || "Saved on this computer." };
   } catch (error) {
-    lastStatus = { recording: false, path: session.path, message: session.problem || error.message };
+    lastStatus = { recording: false, tabId: session.tabId, path: session.path, message: session.problem || error.message };
   } finally {
     session.host?.close();
     await chrome.storage.session.remove("cassiniActive").catch(() => {
@@ -102,79 +106,101 @@ async function stop(session = active) {
     if (session.mode === "tab" && await hasOffscreenDocument()) await chrome.offscreen.closeDocument();
     if (active === session) active = null;
     await chrome.action.setBadgeText({ text: "" });
+    notifyControl();
   }
   })();
   return session.stopPromise;
 }
 
-async function start(mode) {
+async function start(mode, tabId = null) {
   await recovery;
-  if (active) throw new Error("A recording is already running.");
+  if (active || pendingStart) throw new Error("A recording is already running. Stop it before starting another.");
   if (!["tracks", "tab"].includes(mode)) throw new Error("Unknown recording mode.");
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id || !/^https?:/.test(tab.url || "")) throw new Error("Open the meeting tab first. Recording works on web pages only.");
-  const session = { mode, tabId: tab.id, token: crypto.randomUUID(), origin: Date.now(),
-    frames: new Set(), tracks: 0, stopping: false, problem: null };
-  active = session;
-  const checkStarting = () => {
-    if (session.stopping || active !== session) throw new Error("Recording could not start.");
-  };
-  session.starting = (async () => {
-    let streamId;
-    if (mode === "tracks") {
-      await chrome.tabs.sendMessage(tab.id, { type: "cassini-connect" }).catch(() => {});
-      const deadline = Date.now() + 500;
-      while (!session.stopping && ![...frames].some(frame => frame.tabId === tab.id) && Date.now() < deadline) {
-        await new Promise(resolve => setTimeout(resolve, 50));
+  const request = { cancelled: false };
+  pendingStart = request;
+  try {
+    let tab;
+    if (tabId !== null) {
+      if (!Number.isSafeInteger(tabId) || tabId < 0) throw new Error("Choose a meeting to record.");
+      try { tab = await chrome.tabs.get(tabId); }
+      catch { throw new Error("That meeting is no longer available."); }
+    } else [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (request.cancelled) throw new Error("Recording could not start.");
+    if (!Number.isSafeInteger(tab?.id) || tab.id < 0 || !/^https?:/.test(tab.url || "")) throw new Error("Open the meeting tab first. Recording works on web pages only.");
+    const session = { mode, tabId: tab.id, token: crypto.randomUUID(), origin: Date.now(),
+      frames: new Set(), tracks: 0, stopping: false, problem: null };
+    active = session;
+    notifyControl();
+    const checkStarting = () => {
+      if (session.stopping || active !== session) throw new Error("Recording could not start.");
+    };
+    session.starting = (async () => {
+      let streamId;
+      if (mode === "tracks") {
+        await chrome.tabs.sendMessage(tab.id, { type: "cassini-connect" }).catch(() => {});
+        const deadline = Date.now() + 500;
+        while (!session.stopping && ![...frames].some(frame => frame.tabId === tab.id) && Date.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        if (![...frames].some(frame => frame.tabId === tab.id)) throw new Error("Cassini cannot reach this page yet. Reload the meeting tab, then try again.");
+      } else {
+        streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
       }
-      if (![...frames].some(frame => frame.tabId === tab.id)) throw new Error("Cassini cannot reach this page yet. Reload the meeting tab, then try again.");
-    } else {
-      streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
-    }
-    // No output folder exists until discovery or the invocation grant has succeeded.
-    checkStarting();
-    session.host = new NativeHost(failure);
-    const result = await session.host.send({ type: "start", version: 1, title: tab.title || "Browser meeting" });
-    session.path = result.path;
-    checkStarting();
-    await chrome.storage.session.set({ cassiniActive: { recording: true, mode, path: session.path, tabId: tab.id, startedAt: session.origin } });
-    checkStarting();
-    session.ready = true;
-    if (mode === "tracks") {
-      for (const frame of frames) {
-        if (frame.tabId !== tab.id || session.frames.has(frame)) continue;
-        session.frames.add(frame);
-        frame.port.postMessage({ type: "start", token: session.token, origin: session.origin });
+      // No output folder exists until discovery or the invocation grant has succeeded.
+      checkStarting();
+      session.host = new NativeHost(failure);
+      const result = await session.host.send({ type: "start", version: 1, title: tab.title || "Browser meeting" });
+      session.path = result.path;
+      notifyControl();
+      checkStarting();
+      await chrome.storage.session.set({ cassiniActive: { recording: true, mode, path: session.path, tabId: tab.id, startedAt: session.origin } });
+      checkStarting();
+      session.ready = true;
+      if (mode === "tracks") {
+        for (const frame of frames) {
+          if (frame.tabId !== tab.id || session.frames.has(frame)) continue;
+          session.frames.add(frame);
+          frame.port.postMessage({ type: "start", token: session.token, origin: session.origin });
+        }
+      } else {
+        if (await hasOffscreenDocument()) await chrome.offscreen.closeDocument();
+        checkStarting();
+        await chrome.offscreen.createDocument({ url: "offscreen.html", reasons: ["USER_MEDIA"], justification: "Record the selected tab audio locally while the popup is closed." });
+        checkStarting();
+        const response = await chrome.runtime.sendMessage({ target: "offscreen", type: "start", streamId, origin: session.origin });
+        if (response?.error) throw new Error(response.error);
       }
-    } else {
-      if (await hasOffscreenDocument()) await chrome.offscreen.closeDocument();
       checkStarting();
-      await chrome.offscreen.createDocument({ url: "offscreen.html", reasons: ["USER_MEDIA"], justification: "Record the selected tab audio locally while the popup is closed." });
-      checkStarting();
-      const response = await chrome.runtime.sendMessage({ target: "offscreen", type: "start", streamId, origin: session.origin });
-      if (response?.error) throw new Error(response.error);
+      await chrome.action.setBadgeBackgroundColor({ color: "#C62828" });
+      await chrome.action.setBadgeText({ text: "REC" });
+      notifyControl();
+    })();
+    try { await session.starting; } catch (error) {
+      session.problem ??= error.message;
+      await stop(session);
+      throw error;
     }
-    checkStarting();
-    await chrome.action.setBadgeBackgroundColor({ color: "#C62828" });
-    await chrome.action.setBadgeText({ text: "REC" });
-  })();
-  try { await session.starting; } catch (error) {
-    session.problem ??= error.message;
-    await stop(session);
-    throw error;
-  }
+  } finally { if (pendingStart === request) pendingStart = null; }
 }
 
 chrome.runtime.onConnect.addListener(port => {
   if (port.name !== "cassini-frame" || port.sender?.id !== chrome.runtime.id || !port.sender.tab) return;
-  const frame = { port, tabId: port.sender.tab.id };
+  const frame = { port, tabId: port.sender.tab.id, sourceCount: 0 };
   frames.add(frame);
+  port.postMessage({ type: "discover" });
   // Newly inserted frames may carry meeting tracks; they share the original session clock.
   if (active?.ready && active.mode === "tracks" && !active.stopping && active.tabId === frame.tabId) {
     active.frames.add(frame);
     port.postMessage({ type: "start", token: active.token, origin: active.origin });
   }
   port.onMessage.addListener(async message => {
+    if (message.type === "discovery") {
+      if (Number.isInteger(message.sourceCount) && message.sourceCount >= 0 && message.sourceCount <= 64 && frame.sourceCount !== message.sourceCount) {
+        frame.sourceCount = message.sourceCount;
+        notifyControl();
+      }
+      return;
+    }
     const session = active;
     if (!session?.frames.has(frame)) return;
     if (message.type === "stopped") {
@@ -183,14 +209,14 @@ chrome.runtime.onConnect.addListener(port => {
     }
     if (message.type === "warning") {
       session.warning = "One track was interrupted and has a gap. The other tracks continue.";
-      session.problem ??= session.warning; return;
+      session.problem ??= session.warning; notifyControl(); return;
     }
     if (message.type === "error") { failure("The meeting page could not record separate tracks. Record the whole tab instead. Audio recorded so far was saved."); return; }
     if (message.type !== "packet" || !["track", "audio"].includes(message.packet?.type)) return;
     try {
       if (JSON.stringify(message.packet).length > 400000) throw new Error("The meeting page sent an oversized audio chunk.");
       await session.host.send(message.packet);
-      if (message.packet.type === "track") { session.tracks++; session.warning = null; }
+      if (message.packet.type === "track") { session.tracks++; session.warning = null; notifyControl(); }
       port.postMessage({ type: "ack", token: session.token, request: message.request });
     } catch (error) {
       try { port.postMessage({ type: "ack", token: session.token, request: message.request, error: error.message }); } catch {}
@@ -199,6 +225,7 @@ chrome.runtime.onConnect.addListener(port => {
   });
   port.onDisconnect.addListener(() => {
     frames.delete(frame);
+    notifyControl();
     frame.finished?.();
     if (active?.frames.has(frame)) {
       active.frames.delete(frame);
@@ -218,7 +245,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       if (message.type === "error") { failure(message.message); return {}; }
       if (message.type === "packet" && active?.mode === "tab" && ["track", "audio"].includes(message.packet?.type)) {
         await active.host.send(message.packet);
-        if (message.packet.type === "track" && active) active.tracks++;
+        if (message.packet.type === "track" && active) { active.tracks++; notifyControl(); }
         return {};
       }
       throw new Error("No active tab recording.");
@@ -231,4 +258,56 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   })().then(respond, error => respond({ error: error.message }));
   return true;
 });
-chrome.tabs.onRemoved.addListener(id => { if (active?.tabId === id) failure("The meeting tab was closed. The recording so far was saved."); });
+chrome.tabs.onRemoved.addListener(id => {
+  for (const frame of frames) if (frame.tabId === id) frame.sourceCount = 0;
+  if (active?.tabId === id) failure("The meeting tab was closed. The recording so far was saved.");
+  notifyControl();
+});
+chrome.tabs.onUpdated.addListener((id, change) => {
+  if (change.status === "loading") for (const frame of frames) if (frame.tabId === id) frame.sourceCount = 0;
+  if (change.status || change.title !== undefined || change.url !== undefined) notifyControl();
+});
+
+function controlStatus() {
+  const value = status();
+  return { type: "status", recording: value.recording, tabId: value.tabId ?? null,
+    path: value.path ?? null, message: value.message, tracks: value.tracks ?? 0, stopping: !!value.stopping };
+}
+async function meetings() {
+  const counts = new Map();
+  for (const frame of frames) if (frame.sourceCount > 0) counts.set(frame.tabId, Math.min(4096, (counts.get(frame.tabId) || 0) + frame.sourceCount));
+  if (active && !counts.has(active.tabId)) counts.set(active.tabId, 0);
+  const found = await Promise.all([...counts].sort(([a], [b]) => a === active?.tabId ? -1 : b === active?.tabId ? 1 : a - b).slice(0, 100).map(async ([tabId, sourceCount]) => {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (!/^https?:/.test(tab.url || "")) return null;
+      return { tabId, title: [...(tab.title || "Meeting")].slice(0, 200).join(""), url: new URL(tab.url).href.slice(0, 2048), sourceCount };
+    } catch { return null; }
+  }));
+  return { type: "meetings", meetings: found.filter(Boolean) };
+}
+async function controlCommand(command) {
+  await recovery;
+  if (command.action === "start") {
+    if (active || pendingStart) throw new Error("A recording is already running. Stop it before starting another.");
+    if (![...frames].some(frame => frame.tabId === command.tabId && frame.sourceCount > 0))
+      throw new Error("No audio is available from that meeting yet.");
+    await start("tracks", command.tabId);
+  } else {
+    if (active && active.tabId !== command.tabId) throw new Error("A recording is already running. Stop it before starting another.");
+    await stop();
+  }
+  return controlStatus();
+}
+function notifyControl() { appControl.publish(); }
+const appControl = new AppControl({
+  runtime: chrome.runtime, alarms: chrome.alarms,
+  connected: async () => {
+    await recovery;
+    const tabs = await chrome.tabs.query({});
+    await Promise.all(tabs.filter(tab => /^https?:/.test(tab.url || "")).map(tab => chrome.tabs.sendMessage(tab.id, { type: "cassini-connect" }).catch(() => {})));
+  },
+  snapshot: async () => { await recovery; return [await meetings(), controlStatus()]; },
+  command: controlCommand
+});
+appControl.start();

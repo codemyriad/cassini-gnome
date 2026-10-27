@@ -39,6 +39,8 @@ jobs:
           meson setup _recording-build
           meson compile -C _recording-build
           tests/recording/run.sh /usr/bin/python3 tests/recording/gtk.py --build _recording-build
+      - name: GNOME meeting list, app recording and automatic-recording Stop notification
+        run: CASSINI_TEST_BUILD="$PWD/_recording-build" tests/recording/run.sh node tests/recording/app-control.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

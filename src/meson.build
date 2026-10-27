@@ -122,3 +122,12 @@ configure_file(
   install_dir: get_option('bindir'),
   install_mode: 'r-xr-xr-x',
 )
+
+if get_option('recording_tests')
+  test('recording-app-control', find_program('../tests/recording/run.sh'),
+    args: ['node', 'tests/recording/app-control.mjs'],
+    env: ['CASSINI_TEST_BUILD=' + meson.project_build_root()],
+    suite: 'recording', depends: viewer_resources,
+    timeout: 300, workdir: meson.project_source_root(),
+  )
+endif

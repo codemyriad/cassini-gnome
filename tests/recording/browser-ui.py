@@ -36,6 +36,7 @@ from cassini_viewer.browser_window import BrowserMeetingsWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
 
 app = CassiniApplication("com.gocassini.Viewer.BrowserTest", "test", "development")
+app.hold()  # Keep only the private notification test server alive after a window closes.
 notifications = {}
 next_notification = 0
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
@@ -67,16 +68,8 @@ Gio.bus_own_name_on_connection(bus, "org.freedesktop.Notifications", Gio.BusName
 def dispatch(packet, result, ready):
     try:
         window = next((w for w in app.get_windows() if isinstance(w, BrowserMeetingsWindow)), None)
-        if window is None:
-            raise ValueError("Meeting window unavailable")
         action = packet.get("action", "status")
-        if action in ("record", "stop"):
-            row = window.rows[packet["id"]]
-            assert row.button.get_sensitive(), "Recording button is disabled"
-            row.button.emit("clicked")
-        elif action == "auto":
-            window.automatic.set_active(packet["enabled"])
-        elif action == "notification-stop":
+        if action == "notification-stop":
             identifier = int(packet["id"])
             bus.emit_signal(
                 None,
@@ -87,6 +80,22 @@ def dispatch(packet, result, ready):
             )
         elif action == "quit":
             app.quit()
+        elif action == "reopen":
+            app.activate()
+            window = next(w for w in app.get_windows() if isinstance(w, BrowserMeetingsWindow))
+        elif window is not None:
+            if action in ("record", "stop"):
+                row = window.rows[packet["id"]]
+                assert row.button.get_sensitive(), "Recording button is disabled"
+                row.button.emit("clicked")
+            elif action == "auto":
+                window.automatic.set_active(packet["enabled"])
+            elif action == "close-window":
+                window.close()
+                window = None
+        if window is None:
+            result.update(dict(status="Window closed", rows=[], notifications=notifications))
+            return GLib.SOURCE_REMOVE
         result.update(
             dict(
                 status=window.status.get_label(),
@@ -115,12 +124,15 @@ def requests():
     for line in sys.stdin:
         result, ready = {}, threading.Event()
         try:
-            GLib.idle_add(dispatch, json.loads(line), result, ready)
+            packet = json.loads(line)
+            GLib.idle_add(dispatch, packet, result, ready)
             if not ready.wait(10):
                 result["error"] = "GNOME main loop did not answer"
         except Exception as error:
             result["error"] = str(error)
         print(json.dumps(result), flush=True)
+        if packet.get("action") == "quit":
+            return
 
 
 threading.Thread(target=requests, daemon=True).start()

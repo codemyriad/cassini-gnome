@@ -132,3 +132,10 @@ Either app runs the same adapter against its real host with
 `CASSINI_WORKER_TEST_MODES=tracks` runs the device-independent portion; Whole tab needs an
 output device and stays on DrMeyers rather than hosted macOS. The Mac loaded-extension and
 tab adapters also call `scenarios/worker-recovery.mjs`; GNOME adopts this adapter with its pin.
+
+App/browser management is a separate persistent host, `com.codemyriad.cassini.control`;
+see [SPEC-CONTROL.md](SPEC-CONTROL.md). Its desktop-free VM corpus is
+`node conformance/control/run-extension.cjs`; a real control-host test launcher can run
+`python3 conformance/control/run.py /absolute/host-launcher` against isolated test IPC.
+The audio protocol/corpus remain unchanged. App-side discovery uses counts without recording;
+GNOME owns page discovery, while background/relay and management transport are shared.

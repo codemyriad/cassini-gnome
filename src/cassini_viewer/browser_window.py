@@ -20,6 +20,7 @@ class BrowserMeetingsWindow(Adw.ApplicationWindow):
         self.service_path = service_path
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-meetings-ui")
         self._pending = False
+        self._queued = None
         self._closed = False
         self._updating = False
         self._signature = None
@@ -52,7 +53,9 @@ class BrowserMeetingsWindow(Adw.ApplicationWindow):
         content.append(preferences)
         self.error = Gtk.Label(wrap=True, xalign=0, css_classes=["error"], visible=False)
         content.append(self.error)
-        self.list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"])
+        self.list = Gtk.ListBox(
+            selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"], valign=Gtk.Align.START
+        )
         self.empty = Adw.StatusPage(
             title=_("No meetings found"),
             icon_name="audio-input-microphone-symbolic",
@@ -78,7 +81,12 @@ class BrowserMeetingsWindow(Adw.ApplicationWindow):
         return GLib.SOURCE_CONTINUE
 
     def _request(self, action, **values):
-        if self._closed or self._pending:
+        if self._closed:
+            return
+        if self._pending:
+            if action != "status":
+                self._queued = (action, values)
+                self._set_controls(False)
             return
         self._pending = True
         if action != "status":
@@ -95,6 +103,7 @@ class BrowserMeetingsWindow(Adw.ApplicationWindow):
         self._pending = False
         if self._closed:
             return GLib.SOURCE_REMOVE
+        queued, self._queued = self._queued, None
         self._set_controls(True)
         try:
             snapshot = future.result()
@@ -102,6 +111,8 @@ class BrowserMeetingsWindow(Adw.ApplicationWindow):
             self.error.set_label(str(error))
             self.error.set_visible(True)
             self.status.set_label(_("Browser connection unavailable"))
+            if queued:
+                self._request(queued[0], **queued[1])
             return GLib.SOURCE_REMOVE
         self.error.set_visible(False)
         self._updating = True
@@ -115,6 +126,8 @@ class BrowserMeetingsWindow(Adw.ApplicationWindow):
         if signature != self._signature:
             self._signature = signature
             self._render(snapshot)
+        if queued:
+            self._request(queued[0], **queued[1])
         return GLib.SOURCE_REMOVE
 
     def _set_controls(self, enabled):

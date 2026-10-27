@@ -21,6 +21,19 @@ them. Cassini also shows the transcript.
 It is a GTK 4 and libadwaita application written in Python, with GStreamer
 for playback.
 
+## Record from your browser
+
+Cassini opens **Meetings in your browser**. With the companion connected, join a
+WebRTC meeting and choose **Record** on its row. **Stop and save** finishes the
+recording; **Open recording** plays it. The optional **Record every browser meeting
+automatically** switch is off by default and posts a notification with **Stop**
+for each automatic recording, including when the app window is closed.
+
+For the separate development browser, run `build-aux/run-browser-test.sh` and
+`_install/bin/cassini-viewer`. The helper loads the extension and registers both
+native hosts automatically. See [browser setup](browser-extension/README.md) for
+normal profiles, capture limits and the whole-tab fallback.
+
 ## Record a meeting
 
 Choose **Record Meeting…** from the app menu (Ctrl+R), select microphone,

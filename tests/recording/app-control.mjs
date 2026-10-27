@@ -37,6 +37,12 @@ async function hostManifest(name,script,id) {
  const file=path.join(profile,name+'.py');await writeFile(file,script);await chmod(file,0o700);
  await writeFile(path.join(profile,'NativeMessagingHosts',name+'.json'),JSON.stringify({name,description:'Isolated app control test',path:file,type:'stdio',allowed_origins:[`chrome-extension://${id}/`]}));
 }
+async function broker() {
+ return JSON.parse(await new Promise((resolve,reject)=>{
+  const p=spawn('/usr/bin/python3',['-c',`import sys,json;sys.path.insert(0,${JSON.stringify(root+'/src')});from cassini_viewer.browser_service import request;print(json.dumps(request()))`]);
+  let out='';p.stdout.on('data',d=>out+=d);p.on('exit',code=>code?reject(new Error('Broker query failed')):resolve(out));
+ }));
+}
 async function samples(directory) {
  const manifest=JSON.parse(await readFile(path.join(directory,'session.json')));
  const tracks=[];
@@ -81,10 +87,7 @@ try {
  await poll(async()=> (await call()).rows.some(r=>r.id===row.id && r.button==='Stop and save' && r.enabled),'recording indicator');
  let state;
  await poll(async()=>{
-  state=JSON.parse(await new Promise((resolve,reject)=>{
-   const p=spawn('/usr/bin/python3',['-c',`import sys,json;sys.path.insert(0,${JSON.stringify(root+'/src')});from cassini_viewer.browser_service import request;print(json.dumps(request()))`]);
-   let out='';p.stdout.on('data',d=>out+=d);p.on('exit',code=>code?reject(new Error('Broker query failed')):resolve(out));
-  }));
+  state=await broker();
   const directory=state.statuses.find(s=>s.recording)?.path;
   return directory && (await samples(directory)).tracks.some(t=>t.frames>=t.sampleRate);
  },'one second recorded through app controls');
@@ -101,17 +104,33 @@ try {
  const automatic=await poll(async()=>{const value=await call();return Object.keys(value.notifications).length && value;},'automatic notification with Stop');
  const notification=Object.entries(automatic.notifications)[0];
  assert.ok(notification[1].actions.includes('stop'));
+ await call({action:'close-window'});
+ assert.equal((await call()).status,'Window closed');
  await call({action:'notification-stop',id:notification[0]});
- await poll(async()=>{const value=await call();return value.rows.some(r=>r.id===row.id && r.button==='Record' && r.enabled) && !Object.keys(value.notifications).length;},'notification Stop reaches extension and withdraws notification');
+ await poll(async()=> !Object.keys((await call()).notifications).length,'Stop works with meeting window closed');
+ await meeting.evaluate(()=>meeting.pc.close());await remote.evaluate(()=>meeting.pc.close());
+ await poll(async()=> !(await broker()).meetings.length,'first meeting ended while app window closed');
+ await meeting.evaluate(()=>join(550));await remote.evaluate(()=>join(990));
+ const nextOffer=await meeting.evaluate(async()=>{await meeting.pc.setLocalDescription(await meeting.pc.createOffer());return meeting.description();});
+ const nextAnswer=await remote.evaluate(async offer=>{await meeting.pc.setRemoteDescription(offer);await meeting.pc.setLocalDescription(await meeting.pc.createAnswer());return meeting.description();},nextOffer);
+ await meeting.evaluate(answer=>meeting.pc.setRemoteDescription(answer),nextAnswer);
+ const nextAutomatic=await poll(async()=>{const value=await call();return Object.keys(value.notifications).length && value;},'new meeting automatically records while app window closed');
+ await call({action:'notification-stop',id:Object.keys(nextAutomatic.notifications)[0]});
+ await poll(async()=> !Object.keys((await call()).notifications).length,'new automatic recording stopped');
+ await call({action:'reopen'});
+ await poll(async()=> (await call()).rows.some(r=>r.button==='Record' && r.enabled),'reopened app reconciles stopped recording');
  await call({action:'auto',enabled:false});
  await meeting.evaluate(()=>meeting.pc.close());
  await poll(async()=> !(await call()).rows.length,'meeting removed after call ends');
- evidence.scenarios.push({name:'opt-in-auto-record-notification-stop-discovery-teardown'});
+ evidence.scenarios.push({name:'opt-in-auto-record-new-meeting-with-window-closed-notification-stop-teardown'});
  evidence.uiStderr=stderr;
  console.log('PASS real extension discovery -> GNOME list -> Record/Stop -> saved source WAVs; auto-record notification Stop and teardown');
 } catch(error) {evidence.failure=error.stack;throw error;}
 finally {
- if(ui && ui.exitCode===null) {try{await call({action:'quit'});}catch{}ui.kill();}
+ if(ui && ui.exitCode===null) {
+  try {await call({action:'quit'});ui.stdin.end();await Promise.race([new Promise(resolve=>ui.once('exit',resolve)),new Promise(resolve=>setTimeout(resolve,2000))]);} catch {}
+  if(ui.exitCode===null) ui.kill();
+ }
  await context?.close();await remoteBrowser?.close();server.close();
  await writeFile(path.join(artifacts,'app-control-results.json'),JSON.stringify(evidence,null,2));
  await rm(profile,{recursive:true,force:true});

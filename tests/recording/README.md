@@ -76,7 +76,7 @@ Use the harness's project-scoped teardown when finished.
 The canonical Git snapshot is pinned in `browser-protocol/PINNED_COMMIT`.
 Run `python3 build-aux/verify-browser-protocol.py` to check its Git object/tree,
 upstream hashes and byte-identical extension. `pytest` and `meson test` run the
-36-vector stdio conformance runner with isolated output and no viewer launch.
+shared stdio conformance runner with isolated output and no viewer launch.
 Enable the opt-in suite with `meson configure _build -Drecording_tests=true`,
 then run `meson test -C _build --suite recording`.
 
@@ -89,3 +89,15 @@ Stop, since an active writer can update the header during a polling read.
 Continuity checks use an independent millisecond wall clock, never the manifest's
 whole-second creation timestamp. The original sender's asynchronous retirement
 is distinct from the continuously active remote/replacement source timelines.
+
+## App-driven browser recording
+
+`CASSINI_TEST_BUILD=$PWD/_build tests/recording/run.sh node tests/recording/app-control.mjs`
+runs the real extension, production native audio/control hosts, private broker and actual
+GNOME meeting window. It discovers a generated WebRTC call, clicks the app's Record
+button while another browser tab is active, validates saved local/remote audio, and stops
+from the app. It then enables automatic recording, checks the desktop notification, sends
+its Stop action over private D-Bus, verifies notification withdrawal and meeting teardown.
+Only the notification server is a private test implementation; capture, native messaging,
+service IPC, app widgets and the returning Stop command are production code.
+`CASSINI_TEST_EXTENSION` can select an exact upstream checkout for cross-app PR review.

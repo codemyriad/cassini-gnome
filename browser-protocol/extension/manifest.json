@@ -9,7 +9,9 @@
     "nativeMessaging",
     "offscreen",
     "tabCapture",
-    "storage"
+    "storage",
+    "tabs",
+    "alarms"
   ],
   "background": {
     "service_worker": "background.js",

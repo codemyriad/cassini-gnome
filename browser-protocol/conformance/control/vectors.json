@@ -1,0 +1,284 @@
+[
+  {
+    "name": "hello-snapshot",
+    "kind": "connect"
+  },
+  {
+    "name": "start-by-tab-id",
+    "commands": [
+      {
+        "type": "command",
+        "requestId": "record",
+        "action": "start",
+        "tabId": 2,
+        "mode": "tracks"
+      }
+    ],
+    "expect": [
+      {
+        "ok": true,
+        "recording": true,
+        "tabId": 2
+      }
+    ]
+  },
+  {
+    "name": "stop-scoped-to-tab",
+    "commands": [
+      {
+        "type": "command",
+        "requestId": "record",
+        "action": "start",
+        "tabId": 2,
+        "mode": "tracks"
+      },
+      {
+        "type": "command",
+        "requestId": "wrong-stop",
+        "action": "stop",
+        "tabId": 99
+      },
+      {
+        "type": "command",
+        "requestId": "stop",
+        "action": "stop",
+        "tabId": 2
+      }
+    ],
+    "expect": [
+      {
+        "ok": true,
+        "recording": true,
+        "tabId": 2
+      },
+      {
+        "ok": false,
+        "error": "A recording is already running. Stop it before starting another."
+      },
+      {
+        "ok": true,
+        "recording": false,
+        "tabId": 2
+      }
+    ]
+  },
+  {
+    "name": "duplicate-request-id",
+    "commands": [
+      {
+        "type": "command",
+        "requestId": "record",
+        "action": "start",
+        "tabId": 2,
+        "mode": "tracks"
+      },
+      {
+        "type": "command",
+        "requestId": "record",
+        "action": "start",
+        "tabId": 2,
+        "mode": "tracks"
+      }
+    ],
+    "expect": [
+      {
+        "ok": true,
+        "recording": true,
+        "tabId": 2
+      },
+      {
+        "ok": true,
+        "recording": true,
+        "tabId": 2
+      }
+    ],
+    "audioStarts": 1
+  },
+  {
+    "name": "second-start-refused",
+    "commands": [
+      {
+        "type": "command",
+        "requestId": "record",
+        "action": "start",
+        "tabId": 2,
+        "mode": "tracks"
+      },
+      {
+        "type": "command",
+        "requestId": "again",
+        "action": "start",
+        "tabId": 2,
+        "mode": "tracks"
+      }
+    ],
+    "expect": [
+      {
+        "ok": true,
+        "recording": true,
+        "tabId": 2
+      },
+      {
+        "ok": false,
+        "error": "A recording is already running. Stop it before starting another."
+      }
+    ]
+  },
+  {
+    "name": "whole-tab-needs-browser-click",
+    "commands": [
+      {
+        "type": "command",
+        "requestId": "tab",
+        "action": "start",
+        "tabId": 2,
+        "mode": "tab"
+      }
+    ],
+    "expect": [
+      {
+        "ok": false,
+        "error": "To record the whole tab, click Record the whole tab in the browser."
+      }
+    ],
+    "audioStarts": 0
+  },
+  {
+    "name": "invalid-action",
+    "commands": [
+      {
+        "type": "command",
+        "requestId": "invalid",
+        "action": "erase",
+        "tabId": 2
+      }
+    ],
+    "expect": [
+      {
+        "ok": false,
+        "error": "Choose a meeting to record."
+      }
+    ],
+    "audioStarts": 0
+  },
+  {
+    "name": "invalid-tab-id",
+    "commands": [
+      {
+        "type": "command",
+        "requestId": "negative",
+        "action": "start",
+        "tabId": -1,
+        "mode": "tracks"
+      }
+    ],
+    "expect": [
+      {
+        "ok": false,
+        "error": "Choose a meeting to record."
+      }
+    ],
+    "audioStarts": 0
+  },
+  {
+    "name": "missing-mode",
+    "commands": [
+      {
+        "type": "command",
+        "requestId": "no-mode",
+        "action": "start",
+        "tabId": 2
+      }
+    ],
+    "expect": [
+      {
+        "ok": false,
+        "error": "To record the whole tab, click Record the whole tab in the browser."
+      }
+    ],
+    "audioStarts": 0
+  },
+  {
+    "name": "no-sources",
+    "sourceCount": 0,
+    "commands": [
+      {
+        "type": "command",
+        "requestId": "record",
+        "action": "start",
+        "tabId": 2,
+        "mode": "tracks"
+      }
+    ],
+    "expect": [
+      {
+        "ok": false,
+        "error": "No audio is available from that meeting yet."
+      }
+    ],
+    "audioStarts": 0
+  },
+  {
+    "name": "disconnect-preserves-recording",
+    "kind": "disconnect",
+    "commands": [
+      {
+        "type": "command",
+        "requestId": "record",
+        "action": "start",
+        "tabId": 2,
+        "mode": "tracks"
+      }
+    ],
+    "expect": [
+      {
+        "ok": true,
+        "recording": true,
+        "tabId": 2
+      }
+    ]
+  },
+  {
+    "name": "reconnect-snapshot",
+    "kind": "reconnect",
+    "commands": [
+      {
+        "type": "command",
+        "requestId": "record",
+        "action": "start",
+        "tabId": 2,
+        "mode": "tracks"
+      }
+    ],
+    "expect": [
+      {
+        "ok": true,
+        "recording": true,
+        "tabId": 2
+      }
+    ]
+  },
+  {
+    "name": "idle-stop",
+    "commands": [
+      {
+        "type": "command",
+        "requestId": "idle-stop",
+        "action": "stop",
+        "tabId": 2
+      }
+    ],
+    "expect": [
+      {
+        "ok": true,
+        "recording": false,
+        "tabId": null
+      }
+    ],
+    "audioStarts": 0
+  },
+  {
+    "name": "page-counts-only",
+    "kind": "discovery"
+  }
+]

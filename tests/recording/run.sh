@@ -5,7 +5,7 @@ cd "$(dirname "$0")/../.."
 for tool in docker xvfb-run xauth xdotool dbus-run-session; do
     command -v "$tool" >/dev/null || { echo "Missing $tool: install the recording harness prerequisites in tests/recording/README.md" >&2; exit 1; }
 done
-if [[ " $* " == *" tests/recording/gtk.py "* ]]; then
+if [[ " $* " == *" tests/recording/gtk.py "* || " $* " == *" tests/recording/app-control.mjs "* ]]; then
     command -v import >/dev/null || { echo "Missing ImageMagick import: install imagemagick for GTK screenshots" >&2; exit 1; }
 fi
 [ "$#" -gt 0 ] || { echo "Usage: $0 command [args...]" >&2; exit 1; }

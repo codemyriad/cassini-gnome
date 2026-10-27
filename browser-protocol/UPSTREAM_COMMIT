@@ -1,26 +1,26 @@
-tree e35de636eb516b9bbff8cb298acbd9cab5f2018f
-parent 4985d6ef7e9f1f36494d08528024dabad978390b
-parent 1af28cf019a277b0e69b5e4c87805a341c88a206
-author DrMeyers <drmeyers@codemyriad.io> 1793109065 +0100
-committer GitHub <noreply@github.com> 1793109065 +0100
+tree b6168407b37a8f2e9e5caf257517597e8ca6a671
+parent 38bd12a6dfa3e4e618db6c77f950f5497186b042
+parent 335152c47220d5bd7cf0a2a3dffeda5b53d43503
+author DrMeyers <drmeyers@codemyriad.io> 1793114888 +0100
+committer GitHub <noreply@github.com> 1793114888 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq4KxJCRC1aQ7uu5UhlAAAR6YQAAaMw1R87DS4nO+VhqUfwMmR
- ZBiUG/Z173F4IcbPEkQf5/C13mJm+xzd1hxgZ/gBYNp4jZo7pvuMKGxfM4YW/fCd
- poqKZr21ddZwLjPN54HH210uL2pHZLjYmjuFic5Wuo/YTioyxJw2CpAsPhJ79bYI
- ySx7GIqjf4JI9aSLTgmoTX3UH8zx4dd8TNzSzHa4nqwb+iuFeR6EasCC/eF7OW8e
- yw8Q/SBQfTeTsFzSwTy8ZUy8V2725fPa8SmE0bOh8RoHgTE740OXX8xSj0QzCYtd
- xxqnTCRsh7701e4J8WUrnyeCLou981FxR/bDJpLEdlRquvrVXQASOrPganNx1oDg
- 6LSHAhTDWd9z5y9BgoCU6rkIFeFZuM/jaLd3H3ZmHsAeUb+B2plJAzAunboaSB4b
- SfnUyBASpqdIVESrJK8amEQwXtLiY1cp7FiyD46FjtMDZlbqOLHOULsXH86YtS4A
- UsqpBJ62+GYZpBI3lXaOHzyr+ywubQRyBflZGCX9l1k95P2WGVaakin0oWAdNaZh
- /DYIlAb6pqg1+dgRD3Nm1Cvg94oY2fmB4PFecdjIlYxqiOKwl96uTyASnAo04p8z
- 8Y6mEoTS4fccXmozz+r0Fe1vWW2ZqGCzsOZgbUoZNKHDklCS31bEDeeCKZ0SYvM7
- VUrPAuT+OvflfrcXrJs9
- =Icwh
+ wsFcBAABCAAQBQJq4MMICRC1aQ7uu5UhlAAAbMMQADFdCdMlNdi9c+8x43Yb3s9v
+ 9SlNshc6x5SbNE+30617YbwBouEB2acbFFtS9/mgzGwYYEBc52B49bj99dxKsyxJ
+ mPApqIijxtFjDGWXWGN8qBaE5TMn5rVkIqN+nJ8IMvAnkalPMsKFE6W/JRldl2Kq
+ 1R0xMKHTiQXB52bboShAyPvfi5rS6FkI2o8xGRui/P30Pb+aX/WHTRXKr4fdmMaT
+ xGgfMZI5bt3pj6jXoopYX9nf2dmDjkMVQ4Df8kkhEPEY+BML26498Zoo8qTPlev4
+ Mvqxe2Q0pnrAokZYgNP64eu25hf18kOLvQEeekIGn/4y0A9HNRacjLtQEr/yeLQJ
+ DVaHEN+xq2pnzyOf3M4cUTxVrQ4fhXl3Z1Jl2p3jGE7z/8NG7SxTLPrNvMrnRwla
+ F4OyRqmEjMEio0aHzJJsbhbsYQd24HTBJK8cA4DXtFJZBk7NR8XQMWL6lu2ykKxD
+ 2B3bZ+wJSPVnOctH8lnH6hicYieNYWKiB4GZ7RFfPLixFofDDORR4mVLYpF+L1U/
+ VgRLwwDirZ8b5y0dYBvdpMc8nF8bskKnPkxfikIlC1j3yUrCiaLysVgkOrMXhkXI
+ 9aCeBkQRDNkUCzzUlYaOMXr0r4+vSbO3yWJdll90BCPsRJup9nRzV3RW6+fRBBKk
+ tRyrHZBXXI6918E1lJ3T
+ =RhXr
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #5 from codemyriad/audit-products
+Merge pull request #9 from codemyriad/app-control-v1
 
-M3: make product runs reproducible and capture their evidence
+Control browser meeting recording from the app

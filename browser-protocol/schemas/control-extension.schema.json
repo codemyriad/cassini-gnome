@@ -1,0 +1,236 @@
+{
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "hello"
+        },
+        "version": {
+          "const": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type",
+        "version"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "meetings"
+        },
+        "meetings": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "properties": {
+              "tabId": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "url": {
+                "type": "string",
+                "maxLength": 2048,
+                "pattern": "^https?://"
+              },
+              "sourceCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4096
+              }
+            },
+            "required": [
+              "tabId",
+              "title",
+              "url",
+              "sourceCount"
+            ],
+            "additionalProperties": true
+          }
+        }
+      },
+      "required": [
+        "type",
+        "meetings"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "status"
+        },
+        "recording": {
+          "type": "boolean"
+        },
+        "tabId": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "tracks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "stopping": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "recording",
+        "tabId",
+        "path",
+        "message"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "result"
+        },
+        "requestId": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          ]
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        }
+      },
+      "required": [
+        "type",
+        "requestId",
+        "ok"
+      ],
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "status"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "error"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "status": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "status"
+        },
+        "recording": {
+          "type": "boolean"
+        },
+        "tabId": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "tracks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "stopping": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "recording",
+        "tabId",
+        "path",
+        "message"
+      ],
+      "additionalProperties": true
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

@@ -2,6 +2,7 @@
 """Desktop notification with a Stop action for each automatic recording."""
 
 import threading
+from gettext import gettext as _
 
 _loop = None
 _lock = threading.Lock()
@@ -27,9 +28,9 @@ def notify_recording(title, stop):
                 "Cassini",
                 0,
                 "media-record-symbolic",
-                "Recording browser meeting",
+                _("Recording browser meeting"),
                 GLib.markup_escape_text(title),
-                ["stop", "Stop"],
+                ["stop", _("Stop")],
                 {"suppress-sound": GLib.Variant("b", True)},
                 0,
             ),

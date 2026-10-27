@@ -6,6 +6,38 @@ rendered mix. The extension uses the same browser code and
 [v1 protocol](../docs/browser-recording-protocol.md) as
 [Cassini for Mac](https://github.com/codemyriad/cassini-mac).
 
+## Record from the GNOME app
+
+The app opens **Meetings in your browser**. Join a WebRTC meeting in a browser
+with the companion loaded; the meeting appears automatically. Choose **Record**
+on its row, then **Stop and save**. You can select a meeting while another tab
+is active. Finished recordings can be opened from the app.
+
+**Record every browser meeting automatically** is off by default. Turning it on
+records newly detected meetings locally, including while the app window is closed.
+Each automatic recording posts a notification with **Stop**. Stopping a meeting
+prevents automatic restart until it ends and a new meeting is detected. One meeting
+can record at a time per browser profile. The app starts separate-track capture;
+whole-tab capture still requires a click in the extension popup.
+
+For this checkout's separate development browser, no manual extension installation
+is needed:
+
+```sh
+build-aux/run-browser-test.sh
+_install/bin/cassini-viewer
+```
+
+The helper prepares both native hosts and loads the extension into
+`~/cassini-ext-test/profile`. Restart that test browser after extension updates.
+It writes recordings under `~/cassini-ext-test/recordings`. Normal Chrome profiles
+use the installation instructions below and save under `~/Music/Cassini`.
+
+Detection currently follows connected WebRTC audio. Sites which hide audio behind
+a mixed receiver remain mixed; purely non-WebRTC meetings may require whole-tab
+capture from the popup or the app's explicit **Record this computer…** control.
+Audio counts are not participant identities.
+
 ## Install on Linux
 
 1. Install Cassini natively. The build installs `cassini-browser-host` and the

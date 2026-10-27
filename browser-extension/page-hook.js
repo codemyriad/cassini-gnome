@@ -38,11 +38,36 @@
     const method = original.prototype[name];
     original.prototype[name] = function (...args) { remember(this); return Reflect.apply(method, this, args); };
   }
+  // Discovery is independent of capture: no AudioContext, cloned stream or PCM
+  // is created until an explicit recording command arrives.
+  let lastSourceCount = -1;
+  function discover(force = false) {
+    const sources = new Set();
+    for (const pc of peers) {
+      if (pc.signalingState === "closed") { peers.delete(pc); continue; }
+      if (pc.connectionState !== "connected" && !["connected", "completed"].includes(pc.iceConnectionState)) continue;
+      for (const transceiver of pc.getTransceivers()) {
+        const track = transceiver.receiver?.track;
+        if (["recvonly", "sendrecv"].includes(transceiver.currentDirection) && track?.kind === "audio" && track.readyState === "live") sources.add(track);
+      }
+      for (const sender of pc.getSenders()) {
+        const track = sender.track;
+        if (track?.kind === "audio" && track.readyState === "live") sources.add(track);
+      }
+    }
+    const sourceCount = Math.min(64, sources.size);
+    if (force || sourceCount !== lastSourceCount) {
+      lastSourceCount = sourceCount;
+      window.postMessage({ channel: "cassini-page", type: "discovery", sourceCount }, "*");
+    }
+  }
+  setInterval(discover, 1000);
   let active = null;
   const emit = (token, value) => window.postMessage({ channel: "cassini-page", token, ...value }, "*");
   window.addEventListener("message", async event => {
     if (event.source !== window || event.data?.channel !== "cassini-control") return;
     const message = event.data;
+    if (message.type === "discover") { discover(true); return; }
     if (message.type === "ack" && active?.token === message.token) {
       const pending = active.pending.get(message.request);
       if (pending) { clearTimeout(pending.timer); active.pending.delete(message.request); message.error ? pending.reject(new Error(message.error)) : pending.resolve(); }

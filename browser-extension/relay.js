@@ -1,9 +1,11 @@
 (() => {
   let port = null, token = null, drainingToken = null, pendingStart = null;
   const pending = new Set();
+  let sourceCount;
   const control = message => window.postMessage({ channel: "cassini-control", ...message,
     moduleURL: chrome.runtime.getURL("capture.js"), workletURL: chrome.runtime.getURL("pcm-worklet.js") }, "*");
   function receive(message) {
+    if (message.type === "discover") { control({ type: "discover" }); return; }
     if (message.type === "start") {
       if (drainingToken) { pendingStart = message; return; }
       token = message.token;
@@ -20,6 +22,8 @@
     const connected = chrome.runtime.connect({ name: "cassini-frame" });
     port = connected;
     connected.onMessage.addListener(receive);
+    if (sourceCount !== undefined) connected.postMessage({ type: "discovery", sourceCount });
+    control({ type: "discover" });
     connected.onDisconnect.addListener(() => {
       if (port !== connected) return;
       if (token) {
@@ -32,12 +36,22 @@
   }
   chrome.runtime.onMessage.addListener((message, _sender, respond) => {
     if (message.type !== "cassini-connect") return;
-    connect(); respond({ connected: true });
+    connect(); control({ type: "discover" }); respond({ connected: true });
   });
   connect();
+  window.addEventListener("pagehide", () => { try { port?.postMessage({ type: "discovery", sourceCount: 0 }); } catch {} });
+  window.addEventListener("pageshow", () => { connect(); control({ type: "discover" }); });
   window.addEventListener("message", event => {
     if (event.source !== window || event.data?.channel !== "cassini-page") return;
     const { type, packet, request } = event.data;
+    if (type === "discovery") {
+      const count = event.data.sourceCount;
+      if (Number.isInteger(count) && count >= 0 && count <= 64) {
+        sourceCount = count;
+        try { port?.postMessage({ type, sourceCount }); } catch {}
+      }
+      return;
+    }
     if (drainingToken && event.data.token === drainingToken && type === "packet") {
       control({ type: "ack", token: drainingToken, request, error: "Cassini disconnected. Audio recorded so far was saved." });
       return;

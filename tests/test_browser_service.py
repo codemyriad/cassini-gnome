@@ -229,3 +229,24 @@ def test_control_host_relays_commands_over_native_framing(service):
         if process.poll() is None:
             process.kill()
             process.wait()
+
+
+def test_shared_control_host_vectors():
+    import json
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    runner = root / "browser-protocol/conformance/control/run.py"
+    result = subprocess.run(
+        [sys.executable, str(runner), str(root / "browser-extension/control_host.py")],
+        env=os.environ.copy(),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    count = len(json.loads(runner.with_name("vectors.json").read_text()))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"{count} passed, 0 failed" in result.stdout
