@@ -28,7 +28,8 @@ step "copy source"
 mkdir -p /build/src
 cp -a /in/. /build/src
 cd /build/src
-rm -rf _build* _install _flatpak dist obj-* .flatpak-builder debian/.debhelper debian/cassini-viewer
+rm -rf _build* _install _flatpak dist obj-* .flatpak-builder debian/.debhelper debian/cassini-viewer \
+  .git .venv tests/recording/node_modules tests/recording/artifacts
 rm -rf src/cassini_viewer/__pycache__ tests/__pycache__
 
 step "install-deps"
@@ -40,14 +41,15 @@ meson setup /build/b --prefix=/usr
 step "meson test"
 meson test -C /build/b --list > /build/tests.txt
 cat /build/tests.txt
-for t in pytest "Validate desktop file" "Validate appstream file" "Validate schema file"; do
+for t in pytest browser-protocol-conformance browser-control-conformance "Validate desktop file" "Validate appstream file" "Validate schema file"; do
   grep -q "$t" /build/tests.txt || { echo "missing test (tool not installed?): $t"; exit 1; }
 done
 meson test -C /build/b --print-errorlogs
 
 step "meson install"
 DESTDIR=/build/dest meson install -C /build/b --quiet
-for f in usr/bin/cassini-viewer usr/share/cassini-viewer/cassini-viewer.gresource \
+for f in usr/bin/cassini-viewer usr/bin/cassini-browser-host usr/bin/cassini-browser-control-host \
+         usr/share/cassini-viewer/browser-extension/manifest.json usr/share/cassini-viewer/cassini-viewer.gresource \
          usr/share/applications/com.gocassini.Viewer.desktop \
          usr/share/metainfo/com.gocassini.Viewer.metainfo.xml \
          usr/share/glib-2.0/schemas/com.gocassini.Viewer.gschema.xml \

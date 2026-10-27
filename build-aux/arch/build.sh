@@ -26,7 +26,8 @@ container_run -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z "$BASE" sh -ec '
   cp -a /in/. "/build/$name"
   cd "/build/$name"
   rm -rf .git _build* _install _flatpak ./*.flatpak build builddir dist obj-* .flatpak-builder repo .venv \
-         .ruff_cache .pytest_cache debian/.debhelper debian/cassini-viewer
+         .ruff_cache .pytest_cache debian/.debhelper debian/cassini-viewer \
+    tests/recording/node_modules tests/recording/artifacts
   find . -name __pycache__ -prune -exec rm -rf {} +
   cd /build
   tar -czf "pkg/$name.tar.gz" "$name"
@@ -60,5 +61,15 @@ print(Gst.version_string())
 
   cp "$pkg" /out/
   chown "$(stat -c %u:%g /out)" "/out/${pkg##*/}" 2>/dev/null || true
+' sh "$pkg_ver"
+
+# The build container has makedepends and checkdepends installed, which can
+# hide a missing dependency; install the package in a fresh container.
+container_run -v "$PWD/dist":/d:ro$Z "$BASE" sh -ec '
+  pacman -Syu --noconfirm --noprogressbar -q >/dev/null
+  pacman -U --noconfirm --noprogressbar "/d/cassini-viewer-$1-"*-any.pkg.tar.zst >/dev/null
+  cassini-viewer --help >/dev/null
+  python3 -c "import sys; sys.path.insert(0, \"/usr/share/cassini-viewer\"); from cassini_viewer import runtime; runtime.check()"
+  echo "clean install smoke test passed"
 ' sh "$pkg_ver"
 ls -l dist/*.pkg.tar.zst

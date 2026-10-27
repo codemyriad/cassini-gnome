@@ -36,7 +36,8 @@ container_run -e VERSION="$VERSION" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z 
   cp -a /in/. "$src"
   cd "$src"
   rm -rf .git _build* _install _flatpak build builddir dist repo .flatpak-builder .venv obj-* \
-    .pytest_cache .ruff_cache debian/.debhelper debian/cassini-viewer *.flatpak
+    .pytest_cache .ruff_cache debian/.debhelper debian/cassini-viewer \
+    tests/recording/node_modules tests/recording/artifacts *.flatpak
   find . -name __pycache__ -prune -exec rm -rf {} +
   cd /build
   tar -cJf $top/SOURCES/cassini-viewer-$VERSION.tar.xz cassini-viewer-$VERSION
@@ -71,5 +72,21 @@ assert not missing, \"missing GStreamer elements: %s\" % missing
 
   cp $top/RPMS/noarch/*.rpm $top/SRPMS/*.rpm /out/
   chown "$(stat -c %u:%g /out)" /out/*.rpm 2>/dev/null || true
+  # Tell the clean-install step below which file this build produced.
+  basename $top/RPMS/noarch/*.rpm > /out/.rpm-name
+'
+rpm_name=$(cat dist/.rpm-name) && rm -f dist/.rpm-name
+
+# The build container has every BuildRequires installed, which can hide a
+# missing Requires; install the package in a fresh container and start it.
+container_run -v "$PWD/dist":/d:ro$Z -e RPM="$rpm_name" "$BASE" sh -ec '
+  if command -v dnf >/dev/null 2>&1; then
+    dnf -y -q install "/d/$RPM"
+  else
+    zypper -n -q install --allow-unsigned-rpm "/d/$RPM"
+  fi
+  cassini-viewer --help >/dev/null
+  python3 -c "import sys; sys.path.insert(0, \"/usr/share/cassini-viewer\"); from cassini_viewer import runtime; runtime.check()"
+  echo "clean install smoke test passed"
 '
 ls -l dist/*.rpm

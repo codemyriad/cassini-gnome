@@ -26,7 +26,7 @@ depends=(
   gst-plugins-good
 )
 makedepends=(meson)
-checkdepends=(python-pytest appstream desktop-file-utils)
+checkdepends=(python-pytest python-jsonschema python-rfc3339-validator appstream desktop-file-utils)
 # The PulseAudio sink (pulsesink) ships in gst-plugins-good, already a dependency.
 optdepends=('gst-plugin-pipewire: audio output through PipeWire')
 source=("$pkgname-$pkgver.tar.gz")

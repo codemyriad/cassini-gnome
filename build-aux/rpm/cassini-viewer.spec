@@ -14,6 +14,9 @@ BuildRequires:  python3 >= 3.11
 BuildRequires:  desktop-file-utils
 BuildRequires:  gettext
 BuildRequires:  python3-pytest
+# The browser-protocol conformance runners used by the test suite
+BuildRequires:  python3-jsonschema
+BuildRequires:  python3-rfc3339-validator
 # glib-compile-resources and glib-compile-schemas
 BuildRequires:  glib2-devel
 %if 0%{?suse_version}
@@ -38,6 +41,9 @@ Recommends:     gstreamer-plugin-pipewire
 Requires:       hicolor-icon-theme
 Requires:       gtk4 >= 4.18
 Requires:       libadwaita >= 1.8
+# GTK's typelib needs cairo-1.0.typelib, which only this package ships;
+# without it Gtk fails to import on a minimal install.
+Requires:       gobject-introspection
 Requires:       gstreamer1
 Requires:       gstreamer1-plugins-base
 Requires:       gstreamer1-plugins-good
@@ -63,8 +69,10 @@ transcript as text or WebVTT subtitles.
 
 %install
 %meson_install
-# Meson installs the launcher 0555; packaging policy wants 0755.
-chmod 0755 %{buildroot}%{_bindir}/%{name}
+# Meson installs the launchers 0555; packaging policy wants 0755.
+chmod 0755 %{buildroot}%{_bindir}/%{name} %{buildroot}%{_bindir}/cassini-browser-host \
+  %{buildroot}%{_bindir}/cassini-browser-control-host \
+  %{buildroot}%{_datadir}/%{name}/browser-extension/install-host.py
 # po/LINGUAS may list no languages yet; an empty list is fine.
 %find_lang %{name} || : > %{name}.lang
 # rpm rejects an empty -f list, so the package's data directory goes in it.
@@ -77,6 +85,8 @@ echo "%%dir %{_datadir}/%{name}" >> %{name}.lang
 %license COPYING
 %doc README.md NEWS
 %{_bindir}/%{name}
+%{_bindir}/cassini-browser-host
+%{_bindir}/cassini-browser-control-host
 %{_datadir}/%{name}/*
 %{_datadir}/applications/com.gocassini.Viewer.desktop
 %{_datadir}/metainfo/com.gocassini.Viewer.metainfo.xml

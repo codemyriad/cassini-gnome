@@ -8,15 +8,16 @@ BUILDDIR = _build
 PREFIX = $(CURDIR)/_install
 PROFILE = development
 
-.PHONY: help deps build test lint format run install uninstall pot \
+.PHONY: help deps build test test-recording lint format run install uninstall pot \
 	deb rpm rpm-opensuse arch flatpak flatpak-devel packages check-distros clean
 
 help:
 	@echo "Development:"
 	@echo "  make deps            install build and runtime dependencies (sudo)"
 	@echo "  make build           configure and build into $(BUILDDIR)"
-	@echo "  make test            meson test (validators and pytest)"
-	@echo "  make lint            ruff check and format check"
+	@echo "  make test            meson test (validators, conformance vectors, pytest)"
+	@echo "  make test-recording  end-to-end recording tests (docker, xvfb; see tests/recording)"
+	@echo "  make lint            browser-protocol integrity, ruff check and format check"
 	@echo "  make run [FILE=x]    install into $(PREFIX) and run from there"
 	@echo "  make pot             regenerate po/cassini-viewer.pot"
 	@echo "Packages (written to dist/):"
@@ -93,7 +94,6 @@ check-distros:
 clean:
 	rm -rf $(BUILDDIR) _build-system _install _flatpak .flatpak-builder repo
 
-.PHONY: test-recording
 test-recording: build
 	tests/recording/run.sh /usr/bin/python3 tests/recording/native.py
 	tests/recording/run.sh node tests/recording/browser.mjs
