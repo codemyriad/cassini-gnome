@@ -20,7 +20,8 @@ import gi  # noqa: E402
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gio, GLib, Gtk  # noqa: E402
+gi.require_version("Gst", "1.0")
+from gi.repository import Gio, GLib, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-viewer.gresource")))
 from cassini_viewer.library_window import LibraryWindow  # noqa: E402
@@ -89,7 +90,15 @@ with tempfile.TemporaryDirectory() as tmp:
     received = next(w for w in walk(window.rows) if hasattr(w, "meeting") and w.meeting.origin == "received")
     window.rows.select_row(received)
     assert window.selected.origin == "received" and window.play_button.get_sensitive()
+    # Decode the real received Opus into a fakesink, with no audio device access.
+    sink = Gst.ElementFactory.make("fakesink", None)
+    sink.set_property("sync", True)
+    window.player._pipeline.set_property("audio-sink", sink)
+    window.play_button.emit("clicked")
+    until(lambda: window.player.playing and window.player.position > 0)
+    assert window.player.duration == 2040000
     window.close()
+    assert not window.player.playing
     os.environ["CASSINI_LIBRARY_DIR"] = str(fixtures / "empty/root")
     os.environ["CASSINI_SCREENSHOT_ACTIVITY"] = str(fixtures / "empty/activity.json")
     app.activate()
