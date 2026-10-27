@@ -1,0 +1,295 @@
+{
+  "scan": "ok",
+  "groups": [
+    {
+      "title": "Today",
+      "meetings": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000003",
+          "origin": "own",
+          "lifecycle": "recording",
+          "interruptedAtMs": null,
+          "transcript": "none",
+          "etaMinutes": null,
+          "error": null,
+          "badge": "Recording 12:48",
+          "title": "Weekly sync, product team",
+          "startMs": 1793106312000,
+          "durationMs": 768000,
+          "names": [],
+          "quote": null,
+          "canWriteDown": false,
+          "speakers": []
+        },
+        {
+          "id": "a0000000-0000-4000-8000-000000000002",
+          "origin": "own",
+          "lifecycle": "saved",
+          "interruptedAtMs": null,
+          "transcript": "running",
+          "etaMinutes": 4,
+          "error": null,
+          "badge": "Transcribing, about 4 minutes left",
+          "title": "Client call, Rossi & Partners",
+          "startMs": 1793097000000,
+          "durationMs": 2825000,
+          "names": [
+            "Marta",
+            "Giulia Rossi",
+            "Speaker 3"
+          ],
+          "quote": "“Thanks for making the time. We wanted to go through the delivery dates before the end of the month.”",
+          "canWriteDown": false,
+          "speakers": [
+            {
+              "id": "marta",
+              "name": "Marta",
+              "colourIndex": 0
+            },
+            {
+              "id": "giulia",
+              "name": "Giulia Rossi",
+              "colourIndex": 1
+            },
+            {
+              "id": "guest",
+              "name": "Speaker 3",
+              "colourIndex": 2
+            }
+          ]
+        },
+        {
+          "id": "a0000000-0000-4000-8000-000000000001",
+          "origin": "own",
+          "lifecycle": "saved",
+          "interruptedAtMs": null,
+          "transcript": "done",
+          "etaMinutes": null,
+          "error": null,
+          "badge": null,
+          "title": "Budget review",
+          "startMs": 1793088000000,
+          "durationMs": 3120000,
+          "names": [
+            "Marta",
+            "Dario",
+            "Speaker 3"
+          ],
+          "quote": "“We keep travel at twelve thousand and look again in January.”",
+          "canWriteDown": false,
+          "speakers": [
+            {
+              "id": "marta",
+              "name": "Marta",
+              "colourIndex": 0
+            },
+            {
+              "id": "dario",
+              "name": "Dario",
+              "colourIndex": 1
+            },
+            {
+              "id": "guest",
+              "name": "Speaker 3",
+              "colourIndex": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Yesterday",
+      "meetings": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000004",
+          "origin": "own",
+          "lifecycle": "saved",
+          "interruptedAtMs": null,
+          "transcript": "done",
+          "etaMinutes": null,
+          "error": null,
+          "badge": null,
+          "title": "Interview 14",
+          "startMs": 1793026800000,
+          "durationMs": 3780000,
+          "names": [
+            "Lea",
+            "Speaker 2"
+          ],
+          "quote": "“The first time I used it I did not trust the names at all.”",
+          "canWriteDown": false,
+          "speakers": [
+            {
+              "id": "lea",
+              "name": "Lea",
+              "colourIndex": 0
+            },
+            {
+              "id": "guest",
+              "name": "Speaker 2",
+              "colourIndex": 1
+            }
+          ]
+        },
+        {
+          "id": "a0000000-0000-4000-8000-000000000005",
+          "origin": "own",
+          "lifecycle": "saved",
+          "interruptedAtMs": 2472000,
+          "transcript": "done",
+          "etaMinutes": null,
+          "error": null,
+          "badge": "Interrupted at 00:41:12",
+          "title": "Design crit",
+          "startMs": 1793006100000,
+          "durationMs": 2472000,
+          "names": [
+            "Speaker 1",
+            "Speaker 2",
+            "Speaker 3"
+          ],
+          "quote": "“Let us keep the sidebar and lose the second toolbar.”",
+          "canWriteDown": false,
+          "speakers": [
+            {
+              "id": "a",
+              "name": "Speaker 1",
+              "colourIndex": 0
+            },
+            {
+              "id": "b",
+              "name": "Speaker 2",
+              "colourIndex": 1
+            },
+            {
+              "id": "c",
+              "name": "Speaker 3",
+              "colourIndex": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Friday 23 October",
+      "meetings": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000006",
+          "origin": "received",
+          "lifecycle": "saved",
+          "interruptedAtMs": null,
+          "transcript": "done",
+          "etaMinutes": null,
+          "error": null,
+          "badge": "Received",
+          "title": "Onboarding walkthrough",
+          "startMs": 1792760400000,
+          "durationMs": 2040000,
+          "names": [
+            "Silvio",
+            "Speaker 2"
+          ],
+          "quote": "“This is where every meeting you record ends up.”",
+          "canWriteDown": false,
+          "speakers": [
+            {
+              "id": "silvio",
+              "name": "Silvio",
+              "colourIndex": 0
+            },
+            {
+              "id": "guest",
+              "name": "Speaker 2",
+              "colourIndex": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Thursday 22 October",
+      "meetings": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000007",
+          "origin": "own",
+          "lifecycle": "saved",
+          "interruptedAtMs": null,
+          "transcript": "failed",
+          "etaMinutes": null,
+          "error": {
+            "id": "transcribe-failed",
+            "action": "Try again"
+          },
+          "badge": "Needs attention",
+          "title": "Interview 15",
+          "startMs": 1792674000000,
+          "durationMs": 60000,
+          "names": [],
+          "quote": null,
+          "canWriteDown": true,
+          "speakers": []
+        }
+      ]
+    },
+    {
+      "title": "Tuesday 20 October",
+      "meetings": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000008",
+          "origin": "own",
+          "lifecycle": "saved",
+          "interruptedAtMs": null,
+          "transcript": "done",
+          "etaMinutes": null,
+          "error": null,
+          "badge": null,
+          "title": "Weekly sync, product team",
+          "startMs": 1792479600000,
+          "durationMs": 2400000,
+          "names": [
+            "Marta"
+          ],
+          "quote": null,
+          "canWriteDown": false,
+          "speakers": [
+            {
+              "id": "marta",
+              "name": "Marta",
+              "colourIndex": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Friday 2 October",
+      "meetings": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000009",
+          "origin": "own",
+          "lifecycle": "saved",
+          "interruptedAtMs": null,
+          "transcript": "done",
+          "etaMinutes": null,
+          "error": null,
+          "badge": null,
+          "title": "Planning, Q4",
+          "startMs": 1790924400000,
+          "durationMs": 1800000,
+          "names": [
+            "Marta"
+          ],
+          "quote": "“If the budget holds we hire in December, not before.”",
+          "canWriteDown": false,
+          "speakers": [
+            {
+              "id": "marta",
+              "name": "Marta",
+              "colourIndex": 0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

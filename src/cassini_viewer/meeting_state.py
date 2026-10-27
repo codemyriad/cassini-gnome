@@ -48,8 +48,6 @@ class MeetingState:
             raise ValueError("Invalid interrupted position")
         if self.eta_minutes is not None and (type(self.eta_minutes) is not int or self.eta_minutes < 0):
             raise ValueError("Invalid transcript ETA")
-        if self.transcript in ("queued", "running") and self.eta_minutes is None:
-            raise ValueError("A queued or running transcript requires an ETA")
         if self.transcript not in ("queued", "running") and self.eta_minutes is not None:
             raise ValueError("Only a queued or running transcript has an ETA")
 
@@ -67,7 +65,7 @@ class MeetingState:
 
     @property
     def can_write_down(self):
-        return self.lifecycle == "saved" and self.transcript == "none"
+        return self.lifecycle == "saved" and self.transcript in ("none", "failed")
 
     def badge(self, *, live_ms=0):
         if self.lifecycle == "recording":

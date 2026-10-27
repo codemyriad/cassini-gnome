@@ -1,5 +1,5 @@
 {
- "version": 2,
+ "version": 3,
  "note": "Binding golden vectors for both apps (HARMONY.md section 6). Times are epoch ms; format in the given tz with fixed en-GB patterns, 24 h clock. Both apps must pass all of them as unit tests; add vectors only via the coordinator.",
  "tz": "Europe/Rome",
  "nowMs": 1793107080000,
@@ -320,10 +320,36 @@
    "bytes": 1288490189,
    "approx": false,
    "out": "1.2 GB"
+  },
+  {
+   "bytes": 24641536,
+   "approx": true,
+   "out": "about 24 MB"
+  },
+  {
+   "bytes": 1047527424,
+   "approx": false,
+   "out": "999 MB"
+  },
+  {
+   "bytes": 1048051712,
+   "approx": false,
+   "out": "1.0 GB"
+  },
+  {
+   "bytes": 1342177280,
+   "approx": false,
+   "out": "1.3 GB"
+  },
+  {
+   "bytes": 464519168,
+   "approx": false,
+   "out": "443 MB"
   }
  ],
- "sizeRule": "MB = 1048576 bytes, rounded half up to an integer below 1000 MB; from 1000 MB show GB with one decimal (1073741824 bytes per GB).",
+ "sizeRule": "MB = bytes / 1048576 rounded half up (decimal, not binary float: 23.5 -> 24). If that rounded MB value is >= 1000, show GB instead: bytes / 1073741824 rounded half up to one decimal (1.25 -> 1.3), always with one decimal. 'approx' prefixes 'about '.",
  "changelog": [
-  "v2: size[0] bytes 24117248 -> 25165824 (24 MiB); the old value was exactly 23 MiB and contradicted sizeRule (GNOME R1)."
+  "v2: size[0] bytes 24117248 -> 25165824 (24 MiB); the old value was exactly 23 MiB and contradicted sizeRule (GNOME R1).",
+  "v3 (D6): sizeRule pinned (half up, decimal; switch to GB on the rounded MB value); five size vectors added at 23.5 MiB, 999.0 MiB, 999.5 MiB, 1.25 GiB, 443 MiB."
  ]
 }

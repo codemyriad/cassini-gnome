@@ -83,6 +83,8 @@ def _relative_date(at_ms, now_ms, tz):
 
 
 def day_group(at_ms, *, now_ms, tz):
+    if at_ms is None:
+        return "Date unknown"
     at, now, relative = _relative_date(at_ms, now_ms, tz)
     if relative:
         return relative
@@ -91,12 +93,18 @@ def day_group(at_ms, *, now_ms, tz):
 
 
 def row_time(at_ms, *, tz):
+    if at_ms is None:
+        return ""
     at = _local(at_ms, tz)
     return f"{at.hour:02d}:{at.minute:02d}"
 
 
 def preview_subtitle(at_ms, duration_ms, *, now_ms, tz, received=False):
-    value = f"{day_group(at_ms, now_ms=now_ms, tz=tz)}, {row_time(at_ms, tz=tz)} · {meeting_duration(duration_ms)}"
+    value = day_group(at_ms, now_ms=now_ms, tz=tz)
+    if at_ms is not None:
+        value += f", {row_time(at_ms, tz=tz)}"
+    if duration_ms is not None:
+        value += f" · {meeting_duration(duration_ms)}"
     return value + (" · Received" if received else "")
 
 
@@ -114,15 +122,17 @@ def search_context(at_ms, duration_ms, position_ms, *, now_ms, tz):
 
 def row_meta(duration_ms, names):
     names = tuple(names)
-    value = meeting_duration(duration_ms)
+    value = meeting_duration(duration_ms) if duration_ms is not None else ""
     if names:
-        value += " · " + ", ".join(names[:3])
+        value += (" · " if value else "") + ", ".join(names[:3])
         if len(names) > 3:
             value += f" +{len(names) - 3}"
-    return value
+    return value or None
 
 
 def eta(minutes):
+    if minutes is None:
+        return "Transcribing…"
     if type(minutes) is not int or minutes < 0:
         raise ValueError("Expected nonnegative integer minutes")
     if minutes == 0:
@@ -142,8 +152,8 @@ def search_count(places, meetings):
 def size(byte_count, *, approx=False):
     if type(byte_count) is not int or byte_count < 0:
         raise ValueError("Expected nonnegative integer bytes")
-    if byte_count < 1000 * 1048576:
-        count = (Decimal(byte_count) / 1048576).quantize(Decimal(1), rounding=ROUND_HALF_UP)
+    count = (Decimal(byte_count) / 1048576).quantize(Decimal(1), rounding=ROUND_HALF_UP)
+    if count < 1000:
         value = f"{count} MB"
     else:
         count = (Decimal(byte_count) / 1073741824).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)

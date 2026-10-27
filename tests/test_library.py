@@ -148,6 +148,9 @@ def received(root, fixture="001-minimal-v1.opus"):
     original.write_bytes((ROOT / "tests/conformance/opus" / fixture).read_bytes())
     write_metadata(
         directory,
+        transcript=dict(status="none", reference=None)
+        if fixture == "002-plain-audio.opus"
+        else dict(status="done", reference=dict(kind="embedded", file=original.name)),
         received=dict(
             originalName=original.name,
             sha256=hashlib.sha256(original.read_bytes()).hexdigest(),
@@ -185,7 +188,7 @@ def test_missing_received_transcript_can_be_written_down_once(tmp_path):
     assert meeting.transcript == "none" and meeting.can_write_down
 
 
-def test_unknown_audio_duration_preserves_readable_embedded_transcript(tmp_path, monkeypatch):
+def test_failed_audio_integrity_keeps_granule_duration_but_withholds_transcript(tmp_path, monkeypatch):
     from cassini_viewer import portable
 
     directory = received(tmp_path)
@@ -196,18 +199,18 @@ def test_unknown_audio_duration_preserves_readable_embedded_transcript(tmp_path,
 
     monkeypatch.setattr(portable, "compute_audio_digest", incomplete_audio)
     meeting = scan_library(tmp_path).meetings[0]
-    assert meeting.duration_ms is None and meeting.transcript == "done"
-    assert meeting.quote_line and meeting.speakers and not meeting.can_write_down
-    assert any(d.code == "received-audio-duration-unknown" for d in meeting.diagnostics)
+    assert meeting.duration_ms == 60 and meeting.transcript == "damaged"
+    assert meeting.quote_line is None and not meeting.speakers and not meeting.can_write_down
+    assert any(d.code == "transcript-unreadable" for d in meeting.diagnostics)
     assert fingerprint(directory) == before
 
 
-def test_missing_transcription_eta_is_diagnosed_without_inventing_progress(tmp_path):
+def test_missing_transcription_eta_keeps_running_without_inventing_an_estimate(tmp_path):
     session = capture(tmp_path)
     write_metadata(session.directory, transcript=dict(status="running", reference=None))
     meeting = scan_library(tmp_path).meetings[0]
-    assert meeting.transcript == "none" and meeting.eta_minutes is None
-    assert any(d.code == "transcript-status-invalid" for d in meeting.diagnostics)
+    assert meeting.transcript == "running" and meeting.eta_minutes is None
+    assert meeting.badge().text == "Transcribing…" and not meeting.can_write_down
 
 
 def test_bad_metadata_and_audio_still_produce_a_stable_row(tmp_path):
@@ -218,7 +221,8 @@ def test_bad_metadata_and_audio_still_produce_a_stable_row(tmp_path):
     first = scan_library(tmp_path).meetings[0]
     second = scan_library(tmp_path).meetings[0]
     assert first == second and first.id == directory.name[10:]
-    assert first.lifecycle == "saved" and first.interrupted_at_ms == 0
+    assert first.lifecycle == "saved" and first.interrupted_at_ms is None
+    assert first.duration_ms is None and first.title == "Untitled meeting" and not first.can_write_down
     assert first.started_at_ms is None and first.diagnostics
 
 
@@ -242,7 +246,7 @@ def test_escaping_references_are_not_followed_and_invalid_folders_are_ignored(tm
     (root / f"Recording-{uuid4()}").symlink_to(tmp_path, target_is_directory=True)
     result = scan_library(root)
     assert len(result.meetings) == 1 and len(result.meetings[0].tracks) == 1
-    assert result.meetings[0].transcript == "damaged"
+    assert result.meetings[0].transcript == "none", "invalid app metadata is ignored whole"
     assert result.diagnostics[0].code == "unsafe-meeting-directory"
     assert metadata["transcript"]["reference"]["file"] == "../private.json"
 
@@ -258,14 +262,14 @@ def test_default_root_is_literal_and_missing_scan_never_creates_it(tmp_path, mon
 
 
 def test_failed_scan_is_distinct_from_empty(tmp_path, monkeypatch):
-    original = Path.iterdir
+    original = os.open
 
-    def blocked(path):
-        if path == tmp_path:
+    def blocked(path, *args, **kwargs):
+        if Path(path) == tmp_path:
             raise PermissionError("synthetic denied Library")
-        return original(path)
+        return original(path, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "iterdir", blocked)
+    monkeypatch.setattr(os, "open", blocked)
     result = scan_library(tmp_path)
     assert result.unavailable and result.diagnostics[0].code == "library-unreadable"
 
@@ -288,7 +292,7 @@ def test_unknown_metadata_version_is_retained_read_only_not_interpreted(tmp_path
     before = fingerprint(session.directory)
     meeting = scan_library(tmp_path).meetings[0]
     assert meeting.title == "Capture title" and meeting.metadata == raw
-    assert any(d.code == "meeting-version-unsupported" for d in meeting.diagnostics)
+    assert any(d.code == "unsupported-version" for d in meeting.diagnostics)
     assert fingerprint(session.directory) == before
 
 
@@ -313,5 +317,4 @@ def test_bad_received_reference_does_not_read_outside_library(tmp_path):
     raw = json.loads((directory / "meeting.json").read_text())
     raw["received"]["originalName"] = "../outside.opus"
     (directory / "meeting.json").write_text(json.dumps(raw))
-    meeting = scan_library(tmp_path).meetings[0]
-    assert meeting.duration_ms is None and meeting.diagnostics
+    assert not scan_library(tmp_path).meetings, "Received publication must pass the whole schema"

@@ -44,7 +44,20 @@ def test_monitor_handles_new_root_atomic_metadata_and_capture_activity(tmp_path)
         activity[session.manifest["id"]] = "recording"
         monitor.refresh()
         spin_until(lambda: snapshots[-1].meetings[0].lifecycle == "recording")
-        value = dict(version=1, id=session.manifest["id"], revision=0, title="Atomic app title")
+        value = dict(
+            version=1,
+            id=session.manifest["id"],
+            revision=0,
+            title="Atomic app title",
+            titleSource="user",
+            notes=[],
+            speakers=[],
+            transcript=dict(status="none", reference=None),
+            etaMinutes=None,
+            error=None,
+            quoteOverride=None,
+            received=None,
+        )
         temporary = session.directory / ".meeting-test.tmp"
         temporary.write_text(json.dumps(value))
         temporary.replace(session.directory / "meeting.json")
@@ -96,4 +109,140 @@ def test_failed_watch_does_not_prevent_scan_or_explicit_retry(tmp_path, monkeypa
         spin_until(lambda: bool(snapshots[-1].meetings))
         assert snapshots[-1].meetings[0].title == "Manual refresh still works"
     finally:
+        monitor.close()
+
+
+def test_worker_keeps_main_context_responsive_and_delivers_on_main_thread(tmp_path, monkeypatch):
+    import threading
+
+    snapshots, threads = [], []
+    entered, release = threading.Event(), threading.Event()
+    main_thread = threading.get_ident()
+
+    def delivered(snapshot):
+        assert threading.get_ident() == main_thread
+        snapshots.append(snapshot)
+
+    monitor = LibraryMonitor(delivered, tmp_path, debounce_ms=1)
+    original = monitor.scanner.scan
+
+    def blocked_scan(**kwargs):
+        threads.append(threading.get_ident())
+        entered.set()
+        assert release.wait(3), "Test did not release worker"
+        return original(**kwargs)
+
+    monkeypatch.setattr(monitor.scanner, "scan", blocked_scan)
+    try:
+        monitor.refresh()
+        spin_until(entered.is_set)
+        heartbeat = []
+        GLib.idle_add(lambda: heartbeat.append(True) and False)
+        spin_until(lambda: bool(heartbeat))
+        assert not snapshots and threads == [threads[0]] and threads[0] != main_thread
+        release.set()
+        spin_until(lambda: bool(snapshots))
+    finally:
+        release.set()
+        monitor.close()
+
+
+def test_metadata_event_is_incremental_monitors_are_reused_and_wav_events_are_ignored(tmp_path, monkeypatch):
+    from test_library import capture, write_metadata
+
+    sessions = [capture(tmp_path), capture(tmp_path)]
+    snapshots, scans = [], []
+    monitor = LibraryMonitor(snapshots.append, tmp_path, debounce_ms=10)
+    original = monitor.scanner.scan
+
+    def scanned(**kwargs):
+        scans.append(kwargs["changed_directories"])
+        return original(**kwargs)
+
+    monkeypatch.setattr(monitor.scanner, "scan", scanned)
+    try:
+        monitor.refresh()
+        spin_until(lambda: bool(snapshots))
+        watches = dict(monitor._monitors)
+        target = sessions[0]
+        write_metadata(target.directory, title="Only this row changed", titleSource="user")
+        spin_until(lambda: any(m.title == "Only this row changed" for m in snapshots[-1].meetings))
+        assert scans[-1] == {target.directory}
+        assert all(monitor._monitors[path] is value for path, value in watches.items())
+        wav = Gio.File.new_for_path(str(target.directory / target.manifest["tracks"][0]["file"]))
+        for event in (
+            Gio.FileMonitorEvent.CHANGED,
+            Gio.FileMonitorEvent.CHANGES_DONE_HINT,
+            Gio.FileMonitorEvent.CREATED,
+        ):
+            monitor._changed(None, wav, None, event)
+        assert monitor._timer == 0, "WAV events must not schedule scans"
+    finally:
+        monitor.close()
+
+
+def test_unpublished_received_folder_is_watched_until_metadata_is_published(tmp_path):
+    from test_library import received
+
+    directory = received(tmp_path)
+    metadata = directory / "meeting.json"
+    content = metadata.read_bytes()
+    metadata.unlink()
+    snapshots = []
+    monitor = LibraryMonitor(snapshots.append, tmp_path, debounce_ms=10)
+    try:
+        monitor.refresh()
+        spin_until(lambda: bool(snapshots))
+        assert not snapshots[-1].meetings and directory in monitor._monitors
+        metadata.write_bytes(content)
+        spin_until(lambda: bool(snapshots[-1].meetings))
+        assert snapshots[-1].meetings[0].origin == "received"
+    finally:
+        monitor.close()
+
+
+def test_trailing_debounce_resets_and_caps_wait_at_two_seconds(tmp_path, monkeypatch):
+    monitor = LibraryMonitor(lambda _snapshot: None, tmp_path)
+    clock, delays, removed = [0], [], []
+
+    def scheduled(delay, _callback):
+        delays.append(delay)
+        return len(delays)
+
+    monkeypatch.setattr(GLib, "get_monotonic_time", lambda: clock[0] * 1000)
+    monkeypatch.setattr(GLib, "timeout_add", scheduled)
+    monkeypatch.setattr(GLib, "source_remove", removed.append)
+    try:
+        for at in (0, 100, 1950, 2100):
+            clock[0] = at
+            monitor.refresh()
+        assert delays == [250, 250, 50, 0]
+        assert removed == [1, 2, 3]
+    finally:
+        monitor.close()
+
+
+def test_close_during_worker_scan_suppresses_late_delivery(tmp_path, monkeypatch):
+    import threading
+
+    entered, release = threading.Event(), threading.Event()
+    snapshots = []
+    monitor = LibraryMonitor(snapshots.append, tmp_path, debounce_ms=1)
+    original = monitor.scanner.scan
+
+    def scan(**kwargs):
+        entered.set()
+        assert release.wait(3)
+        return original(**kwargs)
+
+    monkeypatch.setattr(monitor.scanner, "scan", scan)
+    try:
+        monitor.refresh()
+        spin_until(entered.is_set)
+        monitor.close()
+        release.set()
+        spin_until(lambda: monitor._future is None)
+        assert not snapshots
+    finally:
+        release.set()
         monitor.close()

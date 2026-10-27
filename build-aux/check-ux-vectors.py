@@ -14,7 +14,7 @@ def check(source=None):
     copies = ROOT / "tests/ux"
     provenance = json.loads((copies / "UPSTREAM.json").read_text())
     for name, expected in provenance["sha256"].items():
-        data = (copies / name).read_bytes()
+        data = (ROOT / provenance.get("paths", {}).get(name, "tests/ux/" + name)).read_bytes()
         if hashlib.sha256(data).hexdigest() != expected:
             raise ValueError(f"Golden copy changed: {name}")
         if source is not None and data != (Path(source) / name).read_bytes():
