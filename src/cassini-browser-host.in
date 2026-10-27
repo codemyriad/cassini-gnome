@@ -3,4 +3,4 @@
 import sys
 sys.path.insert(0, '@pkgdatadir@')
 from cassini_viewer.browser_host import main
-sys.exit(main())
+sys.exit(main(viewer_path='@bindir@/cassini-viewer'))

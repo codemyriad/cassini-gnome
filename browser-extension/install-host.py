@@ -18,8 +18,13 @@ parser.add_argument(
 args = parser.parse_args()
 if not re.fullmatch("[a-p]{32}", args.extension_id):
     parser.error("Expected the 32-character extension ID shown in chrome://extensions")
+# Meson substitutes this for installed copies; checkout use retains the token.
+configured_host = Path("@bindir@") / "cassini-browser-host"
 host = Path(
-    args.host or shutil.which("cassini-browser-host") or Path(__file__).resolve().with_name("native_host.py")
+    args.host
+    or (configured_host if configured_host.is_absolute() and configured_host.is_file() else None)
+    or shutil.which("cassini-browser-host")
+    or Path(__file__).resolve().with_name("native_host.py")
 ).resolve()
 if not host.is_file():
     parser.error("Native host not found; install Cassini or specify --host")

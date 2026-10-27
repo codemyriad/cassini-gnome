@@ -6,17 +6,70 @@ WAV headers are checkpointed after every write so interrupted audio is playable.
 """
 
 import base64
+import binascii
 import json
 import math
 import os
 import struct
 import time
+import unicodedata
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 MAX_MESSAGE = 512 * 1024
 KINDS = {"microphone", "system", "application", "local", "remote", "media", "tab"}
+
+
+class ProtocolError(ValueError):
+    """A stable wire error code with a human-readable explanation."""
+
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
+def optional_string(value, default, code):
+    if value is None:
+        return default
+    if not isinstance(value, str):
+        raise ProtocolError(code, "Expected a string or null")
+    return value
+
+
+def label_text(value):
+    return "".join(c for c in value if not unicodedata.category(c).startswith("C"))[:200]
+
+
+def strict_json(data):
+    def reject_constant(value):
+        raise ProtocolError("framing", f"Invalid JSON constant: {value}")
+
+    def unique_members(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ProtocolError("framing", "Duplicate JSON member")
+            result[key] = value
+        return result
+
+    try:
+        result = json.loads(data.decode("utf-8"), parse_constant=reject_constant, object_pairs_hook=unique_members)
+        pending = [(result, 0)]
+        while pending:
+            value, depth = pending.pop()
+            if isinstance(value, (dict, list)):
+                if depth >= 64:
+                    raise ProtocolError("framing", "JSON nesting exceeds 64 levels")
+                children = list(value.keys()) + list(value.values()) if isinstance(value, dict) else value
+                pending.extend((child, depth + 1) for child in children)
+            elif isinstance(value, str):
+                value.encode("utf-8")  # Reject unpaired surrogate escapes too.
+        return result
+    except (ValueError, UnicodeError, RecursionError) as error:
+        if isinstance(error, ProtocolError):
+            raise
+        raise ProtocolError("framing", "Invalid UTF-8 JSON") from error
 
 
 def read_message(source):
@@ -27,7 +80,7 @@ def read_message(source):
             if not part:
                 if eof and not result:
                     return None
-                raise ValueError("Truncated native message")
+                raise ProtocolError("framing", "Truncated native message")
             result.extend(part)
         return result
 
@@ -36,24 +89,25 @@ def read_message(source):
         return None
     (size,) = struct.unpack("=I", header)
     if not 0 < size <= MAX_MESSAGE:
-        raise ValueError("Invalid native message size")
-    message = json.loads(exact(size))
+        raise ProtocolError("framing", "Invalid native message size")
+    message = strict_json(exact(size))
     if not isinstance(message, dict):
-        raise ValueError("Expected a message object")
+        raise ProtocolError("framing", "Expected a message object")
     return message
 
 
 def write_message(destination, message):
     data = json.dumps(message, allow_nan=False).encode()
     if len(data) > MAX_MESSAGE:
-        raise ValueError("Native response is too large")
+        raise ProtocolError("framing", "Native response is too large")
     destination.write(struct.pack("=I", len(data)) + data)
     destination.flush()
 
 
 class WAVWriter:
-    def __init__(self, path, rate, channels):
+    def __init__(self, path, rate, channels, max_bytes=0xFFFFFFFF - 36):
         self.rate, self.channels, self.size = rate, channels, 0
+        self.max_bytes = max_bytes
         self.file = open(path, "x+b")  # noqa: SIM115 — owned until session finalization
         os.chmod(path, 0o600)
         self._header()
@@ -85,8 +139,8 @@ class WAVWriter:
         self.file.flush()
 
     def append(self, data):
-        if self.size + len(data) > 0xFFFFFFFF - 36:
-            raise ValueError("Track reached the WAV size limit. Start a new recording.")
+        if self.size + len(data) > self.max_bytes:
+            raise ProtocolError("limit", "Track reached the WAV size limit. Start a new recording.")
         self.file.seek(44 + self.size)
         self.file.write(data)
         self.size += len(data)
@@ -99,23 +153,32 @@ class WAVWriter:
             self.append(bytes(count))
             remaining -= count
 
-    def close(self):
+    def sync(self):
         if not self.file.closed:
             self.file.flush()
             os.fsync(self.file.fileno())
+
+    def close(self):
+        try:
+            self.sync()
+        finally:
             self.file.close()
 
 
 class RecordingSession:
-    def __init__(self, parent, title="Browser recording", source="chromium"):
+    def __init__(
+        self, parent, title="Browser recording", source="chromium", *, clock=time.monotonic, writer_factory=WAVWriter
+    ):
+        self.clock = clock
+        self.writer_factory = writer_factory
         identifier = str(uuid4())
         self.directory = Path(parent) / f"Recording-{identifier}"
         self.directory.mkdir(mode=0o700, parents=True)
         self.manifest = {
             "version": 1,
             "id": identifier,
-            "createdAt": datetime.now(UTC).isoformat(),
-            "title": str(title)[:500],
+            "createdAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "title": optional_string(title, "Browser recording", "state")[:500],
             "source": source,
             "state": "recording",
             "tracks": [],
@@ -128,10 +191,20 @@ class RecordingSession:
     def checkpoint(self):
         path = self.directory / "session.json"
         temporary = path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(self.manifest, indent=2, allow_nan=False) + "\n")
-        temporary.chmod(0o600)
+        for writer in self.writers.values():
+            writer.sync()
+        with temporary.open("w", encoding="utf-8") as output:
+            os.chmod(temporary, 0o600)
+            output.write(json.dumps(self.manifest, indent=2, allow_nan=False) + "\n")
+            output.flush()
+            os.fsync(output.fileno())
         temporary.replace(path)
-        self._last_checkpoint = time.monotonic()
+        descriptor = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        self._last_checkpoint = self.clock()
 
     def add_track(self, identifier, label, kind, rate, channels):
         if (
@@ -140,26 +213,29 @@ class RecordingSession:
             or not identifier
             or len(identifier.encode()) > 200
             or identifier in self.writers
-            or len(self.writers) >= 64
+            or not isinstance(kind, str)
             or kind not in KINDS
             or type(rate) is not int
             or not 8000 <= rate <= 192000
             or type(channels) is not int
             or channels not in (1, 2)
         ):
-            raise ValueError("Invalid or duplicate audio source")
+            raise ProtocolError("source", "Invalid or duplicate audio source")
+        label = label_text(optional_string(label, kind, "source"))
+        if len(self.writers) >= 64:
+            raise ProtocolError("limit", "A session supports at most 64 sources")
         filename = f"track-{uuid4()}.wav"
-        self.writers[identifier] = WAVWriter(self.directory / filename, rate, channels)
+        self.writers[identifier] = self.writer_factory(self.directory / filename, rate, channels)
         self.manifest["tracks"].append(
             {
                 "id": identifier,
-                "label": str(label)[:500],
+                "label": label,
                 "kind": kind,
                 "file": filename,
                 "sampleRate": rate,
                 "channels": channels,
-                "startOffsetMs": None,
                 "frames": 0,
+                "labelSource": "browser" if self.manifest["source"] == "chromium" else "device",
             }
         )
         self.checkpoint()
@@ -167,6 +243,7 @@ class RecordingSession:
     def append(self, identifier, data, offset):
         if (
             self.finished
+            or not isinstance(identifier, str)
             or identifier not in self.writers
             or type(offset) not in (int, float)
             or not math.isfinite(offset)
@@ -174,28 +251,30 @@ class RecordingSession:
             or not data
             or len(data) > 262144
         ):
-            raise ValueError("Invalid audio chunk or timestamp")
+            raise ProtocolError("chunk", "Invalid audio chunk or timestamp")
         writer = self.writers[identifier]
         if len(data) % (writer.channels * 2):
-            raise ValueError("Incomplete PCM frame")
+            raise ProtocolError("chunk", "Incomplete PCM frame")
         track = next(t for t in self.manifest["tracks"] if t["id"] == identifier)
-        if track["startOffsetMs"] is None:
+        if track.get("startOffsetMs") is None:
             track["startOffsetMs"] = offset
-        target = round((offset - track["startOffsetMs"]) * writer.rate / 1000)
+        frame = (offset - track["startOffsetMs"]) * writer.rate / 1000
+        target = math.floor(frame + 0.5) if frame >= 0 else math.ceil(frame - 0.5)
         delta = target - writer.frames
         tolerance = writer.rate // 50
         if delta < -tolerance:
-            raise ValueError("Audio chunks arrived out of order")
+            raise ProtocolError("chunk", "Audio chunks arrived out of order")
         if delta > tolerance:
             if delta > writer.rate * 60:
-                raise ValueError("Audio source was interrupted for more than a minute")
+                raise ProtocolError("chunk", "Audio source was interrupted for more than a minute")
             writer.silence(delta)
         writer.append(data)
         track["frames"] = writer.frames
-        if time.monotonic() - self._last_checkpoint >= 1:
+        if self.clock() - self._last_checkpoint >= 1:
             self.checkpoint()
 
     def finish(self, problem=None):
+        problem = optional_string(problem, None, "state") or None
         if self.finished:
             return
         self.finished = True
@@ -204,14 +283,25 @@ class RecordingSession:
             try:
                 writer.close()
             except OSError as error:
-                failure = failure or str(error)
-        problem = problem or failure
-        if not any(t["frames"] for t in self.manifest["tracks"]):
-            problem = problem or "No audio samples were received. Check the selected sources and permissions."
+                failure = failure or error
+        for track in self.manifest["tracks"]:
+            track["ended"] = True
+            if track.get("startOffsetMs") is not None:
+                track["endOffsetMs"] = track["startOffsetMs"] + track["frames"] * 1000 / track["sampleRate"]
+        problem_kind = "capture" if problem else None
+        if failure:
+            problem, problem_kind = str(failure), "io"
+        if not any(t["frames"] for t in self.manifest["tracks"]) and not problem:
+            problem, problem_kind = (
+                "No audio samples were received. Check the selected sources and permissions.",
+                "empty",
+            )
         if problem:
-            self.manifest["problem"] = str(problem)[:1000]
+            self.manifest.update(problem=problem[:1000], problemKind=problem_kind)
         self.manifest["state"] = "interrupted" if problem else "completed"
         self.checkpoint()
+        if failure:
+            raise failure
 
 
 class BrowserHost:
@@ -223,20 +313,25 @@ class BrowserHost:
 
     def handle(self, message):
         kind = message.get("type")
+        if kind not in ("start", "track", "audio", "stop"):
+            raise ProtocolError("version", "Unknown browser message type")
         if kind == "start":
-            if type(message.get("version", 1)) is not int or message.get("version", 1) != 1:
-                raise ValueError("Unsupported browser recording protocol version")
             if self.session:
-                raise ValueError("A recording has already started")
-            self.session = RecordingSession(self.directory, message.get("title", "Browser recording"))
+                raise ProtocolError("state", "A recording has already started")
+            version = message.get("version")
+            version = 1 if version is None else version
+            if type(version) is not int or version != 1:
+                raise ProtocolError("version", "Unsupported browser recording protocol version")
+            title = optional_string(message.get("title"), "Browser recording", "state")
+            self.session = RecordingSession(self.directory, title)
             return {"type": "started", "path": str(self.session.directory)}
         if self.session is None or self.stopped:
-            raise ValueError("No active recording")
+            raise ProtocolError("state", "No active recording")
         if kind == "track":
             identifier = message.get("id")
             self.session.add_track(
                 identifier,
-                message.get("label", message.get("kind")),
+                message.get("label"),
                 message.get("kind"),
                 message.get("sampleRate"),
                 message.get("channels"),
@@ -244,23 +339,31 @@ class BrowserHost:
             self.sequences[identifier] = 0
         elif kind == "audio":
             identifier = message.get("id")
+            if not isinstance(identifier, str) or identifier not in self.sequences:
+                raise ProtocolError("source", "Unknown audio source")
             sequence = message.get("sequence")
-            if type(sequence) is not int or identifier not in self.sequences or self.sequences[identifier] != sequence:
-                raise ValueError("Missing or out-of-order audio chunk")
+            if (
+                type(sequence) is not int
+                or not 0 <= sequence <= 9007199254740991
+                or self.sequences[identifier] != sequence
+            ):
+                raise ProtocolError("sequence", "Missing or out-of-order audio chunk")
             encoded = message.get("pcm")
             if not isinstance(encoded, str) or len(encoded) > 349528:
-                raise ValueError("Invalid PCM payload")
-            self.session.append(identifier, base64.b64decode(encoded, validate=True), message.get("offsetMs"))
+                raise ProtocolError("chunk", "Invalid PCM payload")
+            try:
+                data = base64.b64decode(encoded, validate=True)
+            except (binascii.Error, ValueError) as error:
+                raise ProtocolError("chunk", "Invalid base64 PCM") from error
+            self.session.append(identifier, data, message.get("offsetMs"))
             self.sequences[identifier] += 1
         elif kind == "stop":
-            self.session.finish(message.get("problem"))
+            self.session.finish(optional_string(message.get("problem"), None, "state"))
             self.stopped = True
             result = {"type": "stopped", "path": str(self.session.directory)}
             if "problem" in self.session.manifest:
                 result["problem"] = self.session.manifest["problem"]
             return result
-        else:
-            raise ValueError("Unknown browser message")
         return {"type": "ack"}
 
     def close(self, problem="Browser disconnected before recording was stopped."):
