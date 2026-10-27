@@ -5,7 +5,7 @@ Thanks for helping. Issues and pull requests are welcome on
 
 ## Reporting bugs
 
-Include your distribution, how you installed Cassini (Flatpak, .deb, source)
+Include your distribution, how you installed Cassini (Flatpak, .deb, .rpm, Arch package, source)
 and, if you can share it, a file that shows the problem. A file that will not
 open is often explained by the format's reference reader:
 `tools/cassini-extract.py file.opus` in
@@ -14,10 +14,12 @@ open is often explained by the format's reference reader:
 ## Development
 
 ```sh
-meson setup _build --prefix="$PWD/_install" -Dprofile=development
-meson install -C _build
-GSETTINGS_SCHEMA_DIR=_install/share/glib-2.0/schemas _install/bin/cassini-viewer
+build-aux/install-deps.sh   # build and runtime dependencies, any common distribution
+make run                    # build, install into _install/ and run
 ```
+
+`make help` lists the other targets. They wrap Meson and the scripts in
+`build-aux/`, which you can also call directly.
 
 The `development` profile uses the application ID
 `com.gocassini.Viewer.Devel`, so it can run next to an installed release.
@@ -32,7 +34,8 @@ Layout:
 | `src/cassini_viewer/player.py` | GStreamer playback |
 | `src/cassini_viewer/window.py`, `src/ui/` | the window |
 | `data/` | desktop file, AppStream metadata, GSettings schema, icons, man page |
-| `build-aux/` | Flatpak manifests and the Debian build container |
+| `build-aux/` | dependency installer, distribution test matrix, and the Flatpak, Debian, RPM and Arch package builds |
+| `src/cassini_viewer/runtime.py` | the startup check for missing or old libraries; no GTK |
 | `debian/` | Debian packaging |
 
 ## Checks
@@ -40,11 +43,13 @@ Layout:
 CI runs all of these on every pull request:
 
 ```sh
-ruff check src tests
-ruff format --check src tests
+make lint                   # ruff check and ruff format --check
 pytest
-meson test -C _build        # also validates the desktop, AppStream and schema files
+make test                   # meson test: also validates the desktop, AppStream and schema files
+make check-distros          # build and test on six distributions, in containers
 ```
+
+CI also builds the .deb, both RPMs, the Arch package and the Flatpak.
 
 The GTK-free modules have unit tests; please add tests with changes there.
 For UI changes, follow the [GNOME Human Interface Guidelines](https://developer.gnome.org/hig/)
@@ -62,11 +67,17 @@ msginit -i po/cassini-viewer.pot -o po/<code>.po -l <code>
 
 ## Releases
 
-1. Update the version in `meson.build`, add a `<release>` to
-   `data/com.gocassini.Viewer.metainfo.xml.in` and an entry to
-   `debian/changelog`.
-2. Tag `vX.Y.Z` and push the tag. The release workflow builds the .deb and
-   the Flatpak bundle and attaches them to a GitHub release.
+1. Update the version in `meson.build`, and the same version in:
+   - a `<release>` in `data/com.gocassini.Viewer.metainfo.xml.in`
+   - an entry in `debian/changelog`
+   - `Version:` and a `%changelog` entry in `build-aux/rpm/cassini-viewer.spec`
+   - `pkgver` in `build-aux/arch/PKGBUILD`
+
+   The RPM and Arch build scripts refuse to build when their version differs
+   from `meson.build`.
+2. Tag `vX.Y.Z` and push the tag. The release workflow builds the .deb, the
+   Fedora and openSUSE RPMs, the Arch package and the Flatpak bundle, and
+   attaches them to a GitHub release.
 
 ## License
 

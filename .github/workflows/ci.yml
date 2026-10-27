@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# The runners have both; the build scripts would pick podman, but rootful
+# docker is what they are tested with.
+env:
+  CONTAINER_ENGINE: docker
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -47,9 +52,32 @@ jobs:
       - run: meson compile -C _build cassini-viewer-pot
       - run: DESTDIR=$PWD/_install meson install -C _build
 
+  distros:
+    name: Build and test on ${{ matrix.image }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - debian:testing
+          - ubuntu:26.04
+          - fedora:latest
+          - registry.opensuse.org/opensuse/tumbleweed:latest
+          - archlinux:latest
+          - alpine:edge
+    steps:
+      - uses: actions/checkout@v5
+      # Retried once because distribution mirrors occasionally time out.
+      - run: build-aux/check-distros.sh "${{ matrix.image }}" || build-aux/check-distros.sh "${{ matrix.image }}"
+
   deb:
     name: Debian package
     uses: ./.github/workflows/deb.yml
+
+  packages:
+    name: RPM and Arch packages
+    uses: ./.github/workflows/packages.yml
 
   flatpak:
     name: Flatpak

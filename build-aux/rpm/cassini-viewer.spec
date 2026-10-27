@@ -1,0 +1,98 @@
+# RPM spec for Fedora and openSUSE. Build it with build-aux/rpm/build.sh,
+# which makes the source tarball from the working tree.
+Name:           cassini-viewer
+Version:        0.1.1
+Release:        1%{?dist}
+Summary:        Read along with meeting recordings
+License:        GPL-3.0-or-later
+URL:            https://github.com/codemyriad/cassini-gnome
+Source0:        %{name}-%{version}.tar.xz
+BuildArch:      noarch
+
+BuildRequires:  meson >= 1.0
+BuildRequires:  python3 >= 3.11
+BuildRequires:  desktop-file-utils
+BuildRequires:  gettext
+BuildRequires:  python3-pytest
+# glib-compile-resources and glib-compile-schemas
+BuildRequires:  glib2-devel
+%if 0%{?suse_version}
+BuildRequires:  AppStream
+BuildRequires:  glib2-tools
+BuildRequires:  hicolor-icon-theme
+%else
+BuildRequires:  appstream
+%endif
+
+Requires:       python3 >= 3.11
+Requires:       python3-gobject
+%if 0%{?suse_version}
+# hicolor-icon-theme comes with GTK; openSUSE's rpmlint rejects requiring it.
+Requires:       typelib-1_0-Gtk-4_0 >= 4.18
+Requires:       typelib-1_0-Adw-1 >= 1.8
+Requires:       typelib-1_0-Gst-1_0
+Requires:       gstreamer-plugins-base
+Requires:       gstreamer-plugins-good
+Recommends:     gstreamer-plugin-pipewire
+%else
+Requires:       hicolor-icon-theme
+Requires:       gtk4 >= 4.18
+Requires:       libadwaita >= 1.8
+Requires:       gstreamer1
+Requires:       gstreamer1-plugins-base
+Requires:       gstreamer1-plugins-good
+Recommends:     pipewire-gstreamer
+%endif
+
+%description
+Cassini plays meeting recordings in the Cassini portable meeting format:
+ordinary Ogg Opus files that carry their own word-by-word transcript,
+speaker names and summary.
+
+It highlights the spoken word as the recording plays, lets you click any
+word to play from there, see participants, search the transcript, read the
+summary, verify that the audio matches its transcript, and export the
+transcript as text or WebVTT subtitles.
+
+%prep
+%autosetup -p1
+
+%build
+%meson
+%meson_build
+
+%install
+%meson_install
+# Meson installs the launcher 0555; packaging policy wants 0755.
+chmod 0755 %{buildroot}%{_bindir}/%{name}
+# po/LINGUAS may list no languages yet; an empty list is fine.
+%find_lang %{name} || : > %{name}.lang
+# rpm rejects an empty -f list, so the package's data directory goes in it.
+echo "%%dir %{_datadir}/%{name}" >> %{name}.lang
+
+%check
+%meson_test
+
+%files -f %{name}.lang
+%license COPYING
+%doc README.md NEWS
+%{_bindir}/%{name}
+%{_datadir}/%{name}/*
+%{_datadir}/applications/com.gocassini.Viewer.desktop
+%{_datadir}/metainfo/com.gocassini.Viewer.metainfo.xml
+%{_datadir}/glib-2.0/schemas/com.gocassini.Viewer.gschema.xml
+%{_datadir}/icons/hicolor/scalable/apps/com.gocassini.Viewer.svg
+%{_datadir}/icons/hicolor/symbolic/apps/com.gocassini.Viewer-symbolic.svg
+%dir %{_datadir}/dbus-1
+%dir %{_datadir}/dbus-1/services
+%{_datadir}/dbus-1/services/com.gocassini.Viewer.service
+%{_mandir}/man1/%{name}.1*
+
+%changelog
+* Thu Oct 15 2026 Silvio Tomatis <silviot@gmail.com> - 0.1.1-1
+- Fix transcript-click crashes and GTK label sizing warnings.
+- Remove participant hiding and port inline interjection grouping.
+- Preserve interjections in plain-text exports.
+
+* Thu Oct 15 2026 Silvio Tomatis <silviot@gmail.com> - 0.1.0-1
+- First release.

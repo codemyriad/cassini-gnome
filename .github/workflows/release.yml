@@ -11,6 +11,9 @@ jobs:
   deb:
     uses: ./.github/workflows/deb.yml
 
+  packages:
+    uses: ./.github/workflows/packages.yml
+
   flatpak:
     runs-on: ubuntu-latest
     container:
@@ -25,7 +28,7 @@ jobs:
           cache-key: flatpak-builder-${{ github.sha }}
 
   publish:
-    needs: [deb, flatpak]
+    needs: [deb, packages, flatpak]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v5
@@ -38,4 +41,4 @@ jobs:
         run: |
           ls -R artifacts
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes \
-            $(find artifacts -name '*.deb' -o -name '*.flatpak')
+            $(find artifacts -name '*.deb' -o -name '*.flatpak' -o -name '*.noarch.rpm' -o -name '*.pkg.tar.zst')

@@ -1,10 +1,13 @@
 __pycache__/
 *.py[cod]
 /_build/
+/_build-system/
+/_install/
 /build/
 /builddir/
 /dist/
 /.flatpak-builder/
+/_flatpak/
 /repo/
 *.flatpak
 /obj-*/

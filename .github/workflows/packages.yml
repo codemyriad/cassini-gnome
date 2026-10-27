@@ -1,0 +1,48 @@
+name: RPM and Arch packages
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The runners have both; the build scripts would pick podman, but rootful
+# docker is what they are tested with.
+env:
+  CONTAINER_ENGINE: docker
+
+jobs:
+  rpm:
+    name: Build .rpm (${{ matrix.base }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - base: fedora:latest
+            name: fedora
+          - base: registry.opensuse.org/opensuse/tumbleweed:latest
+            name: opensuse
+    steps:
+      - uses: actions/checkout@v5
+      # Builds, installs and smoke-tests in a container. Retried once
+      # because distribution mirrors occasionally time out.
+      - run: build-aux/rpm/build.sh "${{ matrix.base }}" || build-aux/rpm/build.sh "${{ matrix.base }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm-${{ matrix.name }}
+          path: dist/*.rpm
+
+  arch:
+    name: Build Arch package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - run: build-aux/arch/build.sh || build-aux/arch/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch
+          path: dist/*.pkg.tar.zst

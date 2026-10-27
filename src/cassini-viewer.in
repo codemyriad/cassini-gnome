@@ -33,6 +33,10 @@ locale.textdomain("cassini-viewer")
 gettext.install("cassini-viewer", localedir)
 
 if __name__ == "__main__":
+    from cassini_viewer import runtime
+
+    runtime.check()
+
     from gi.repository import Gio
 
     resource = Gio.Resource.load(os.path.join(pkgdatadir, "cassini-viewer.gresource"))

@@ -1,0 +1,47 @@
+# Maintainer: Silvio Tomatis <silviot@gmail.com>
+#
+# Builds Cassini Viewer from a tarball of the local source tree, staged next
+# to this file by build-aux/arch/build.sh. Keep pkgver equal to the version
+# in meson.build; build.sh refuses to build when they differ.
+#
+# For the AUR, build from the release tag instead:
+#   source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+#   sha256sums=('...')   # fill in with: updpkgsums
+#   _srcdir=cassini-gnome-$pkgver      # GitHub names the top directory after the repo
+
+pkgname=cassini-viewer
+pkgver=0.1.1
+pkgrel=1
+pkgdesc='Read along with meeting recordings in the Cassini portable meeting format'
+arch=(any)
+url='https://github.com/codemyriad/cassini-gnome'
+license=(GPL-3.0-or-later)
+depends=(
+  python
+  python-gobject
+  'gtk4>=4.18'
+  'libadwaita>=1.8'
+  gstreamer
+  gst-plugins-base
+  gst-plugins-good
+)
+makedepends=(meson)
+checkdepends=(python-pytest appstream desktop-file-utils)
+# The PulseAudio sink (pulsesink) ships in gst-plugins-good, already a dependency.
+optdepends=('gst-plugin-pipewire: audio output through PipeWire')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+_srcdir=$pkgname-$pkgver
+
+build() {
+  arch-meson "$_srcdir" build
+  meson compile -C build
+}
+
+check() {
+  meson test -C build --print-errorlogs
+}
+
+package() {
+  meson install -C build --destdir "$pkgdir"
+}

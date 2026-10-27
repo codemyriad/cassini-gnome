@@ -6,7 +6,11 @@
 
 """Audio playback with GStreamer playbin, exposed as GObject properties."""
 
+from gettext import gettext as _
+
 from gi.repository import GLib, GObject, Gst
+
+from . import runtime
 
 TICK_MS = 40
 
@@ -53,6 +57,16 @@ class Player(GObject.Object):
         self._at_end = False
         self.duration = duration_ms or 0
         self.position = 0
+        missing = runtime.missing_gst_elements(Gst.ElementFactory.find)
+        if missing:
+            # playbin would only say "missing plug-in"; name what to install.
+            self.emit(
+                "error",
+                _("Missing GStreamer elements: {elements}. Install {plugins}.").format(
+                    elements=", ".join(missing), plugins=runtime.GST_PLUGINS
+                ),
+            )
+            return
         self._pipeline.set_property("uri", uri)
         self._pipeline.set_state(Gst.State.PAUSED)
 

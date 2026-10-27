@@ -183,5 +183,7 @@ class CassiniApplication(Adw.Application):
 
 def main(application_id, version, profile):
     """The application's entry point."""
+    # Otherwise --help says "Usage: python3".
+    GLib.set_prgname("cassini-viewer")
     app = CassiniApplication(application_id, version, profile)
     return app.run(sys.argv)
