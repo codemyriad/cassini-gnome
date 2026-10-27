@@ -174,3 +174,15 @@ def test_broker_poll_lag_never_starts_recognition_before_capture_stop(tmp_path):
         assert not should_auto_write(after, None), "Historical captures wait for the user action"
     finally:
         session.finish()
+
+
+def test_salvaged_untyped_tracks_do_not_invent_capture_source_names(tmp_path):
+    from cassini_viewer.transcription import prepare_tracks
+
+    session = capture(tmp_path)
+    (session.directory / "session.json").write_bytes(b"{bad")
+    meeting = LibraryScanner(tmp_path).scan().meetings[0]
+    tracks, speakers = prepare_tracks(meeting)
+    assert len(speakers) == len(tracks) == 2
+    assert all(s["name"] is None and s["provenance"] == "unnamed" for s in speakers.values())
+    assert all(t["offsetMs"] is None for t in tracks)

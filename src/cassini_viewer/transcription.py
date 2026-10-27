@@ -24,7 +24,7 @@ def bundle_path():
 def track_speaker(track):
     if track["kind"] in ("microphone", "local"):
         return "me", text("common.me"), "source"
-    if track["kind"] == "remote":
+    if track["kind"] in ("remote", "unknown"):
         return "track-" + track["id"], None, "unnamed"
     return "others", text("common.theOthers"), "source"
 
@@ -60,8 +60,8 @@ def prepare_tracks(meeting):
             continue
         raw = source.get(track.path.name, {})
         # Salvaged named native tracks retain their physical source kind.
-        fallback = "microphone" if track.path.name == "track-microphone.wav" else "system"
-        raw = dict(id=raw.get("id", str(index)), kind=raw.get("kind", fallback))
+        fallback = {"track-microphone.wav": "microphone", "track-system.wav": "system"}.get(track.path.name, "unknown")
+        raw = dict(id=raw.get("id", track.path.stem.removeprefix("track-")), kind=raw.get("kind", fallback))
         speaker, name, provenance = track_speaker(raw)
         if len(speaker) > 200:
             raise ValueError("Capture speaker identifier exceeds metadata limit")
