@@ -8,3 +8,8 @@ option('profile',
 
 option('recording_tests', type: 'boolean', value: false,
   description: 'Enable isolated Docker/Xvfb recording integration tests')
+
+option('whistle', type: 'feature', value: 'disabled',
+  description: 'Bundle the pinned offline writing-down engine (Linux glibc x86_64 only)')
+option('whistle_cache', type: 'string', value: '.whistle-cache',
+  description: 'Directory with the pinned Whistle artifacts, relative to the source root; the build never downloads')
