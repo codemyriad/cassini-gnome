@@ -59,7 +59,7 @@ try {
  await hostManifest('com.codemyriad.cassini.control',`#!/usr/bin/python3\nimport sys\nsys.path.insert(0,${JSON.stringify(root+'/src')})\nsys.stderr=open(${JSON.stringify(path.join(artifacts,"control-host.log"))},"a",buffering=1)\nfrom cassini_viewer.browser_control_host import main\nsys.exit(main())\n`,id);
  context=await chromium.launchPersistentContext(profile,{channel:'chromium',headless:false,args:[
   `--disable-extensions-except=${extension}`,`--load-extension=${extension}`,
-  '--no-sandbox','--ozone-platform=x11','--autoplay-policy=no-user-gesture-required','--allow-loopback-in-peer-connection']});
+  '--no-sandbox','--ozone-platform=x11','--autoplay-policy=no-user-gesture-required','--allow-loopback-in-peer-connection','--disable-features=WebRtcHideLocalIpsWithMdns']});
  const worker=context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
  assert.equal(new URL(worker.url()).host,id,'unpacked extension ID matches prepared host allowlist');
  worker.on('console',message=>evidence.console.push(message.text()));
@@ -69,7 +69,7 @@ try {
  createInterface({input:ui.stdout}).on('line',line=>{try{pending.shift()?.(JSON.parse(line));}catch{evidence.console.push(line);}});
  ui.on('exit',code=>{evidence.uiExit=code;});
  await poll(async()=> (await call()).status.includes('Listening inside your browser'),'control host connected');
- remoteBrowser=await chromium.launch({headless:false,args:['--no-sandbox','--ozone-platform=x11','--autoplay-policy=no-user-gesture-required','--allow-loopback-in-peer-connection']});
+ remoteBrowser=await chromium.launch({headless:false,args:['--no-sandbox','--ozone-platform=x11','--autoplay-policy=no-user-gesture-required','--allow-loopback-in-peer-connection','--disable-features=WebRtcHideLocalIpsWithMdns']});
  const meeting=await context.newPage(),remote=await remoteBrowser.newPage();
  for(const page of [meeting,remote]) {await page.goto(`http://127.0.0.1:${server.address().port}/`);await page.click('#join');}
  await meeting.evaluate(async()=>{document.title='App-controlled synthetic meeting';await join(440);});

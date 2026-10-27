@@ -24,7 +24,7 @@ For this checkout's separate development browser, no manual extension installati
 is needed:
 
 ```sh
-build-aux/run-browser-test.sh
+build-aux/run-browser-test.sh &
 _install/bin/cassini-viewer
 ```
 
