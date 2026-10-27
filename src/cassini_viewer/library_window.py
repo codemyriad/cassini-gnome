@@ -33,6 +33,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._preview_key = None
         self._loaded_key = None
         self.snapshot = None
+        self._observed_phases = None
         self.meeting_page = None
         self._external_meeting = False
         self._list_signature = None
@@ -304,6 +305,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             meeting.has_audio,
             meeting.legacy_transcript_file,
             meeting.lifecycle,
+            meeting.transcript,
+            meeting.error,
             tuple(t.start_offset_ms for t in meeting.tracks),
         )
 
@@ -332,6 +335,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
 
     def _updated(self, snapshot):
+        self.get_application().observe_library(snapshot, self._observed_phases)
+        self._observed_phases = {m.key: (m.lifecycle, m.capture_state) for m in snapshot.meetings}
         self.snapshot = snapshot
         if self.meeting_page and self._external_meeting:
             self._update_live()
@@ -468,6 +473,18 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._recording_line_signature = None
         self.preview.append(self.recording_lines)
         self._recording_line(getattr(self.get_application(), "recorder", None))
+        from .inline_line import InlineLine
+
+        if meeting.transcript == "failed":
+            self.preview.append(
+                InlineLine(
+                    "errors.transcribeFailed.line",
+                    action="common.tryAgain",
+                    callback=lambda: self.get_application().write_down(meeting),
+                )
+            )
+        elif meeting.transcript == "damaged":
+            self.preview.append(InlineLine("errors.transcriptDamaged.line"))
         chips = Gtk.Box(spacing=8)
         for speaker in meeting.speakers:
             chips.append(self._speaker(speaker, chip=True))
@@ -488,6 +505,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
         self.read_button.connect("clicked", lambda *_: self._open_selected())
         actions.append(self.read_button)
+        if meeting.can_write_down and meeting.transcript == "none":
+            write = Gtk.Button(label=text("common.writeDown"))
+            write.connect("clicked", lambda *_: self.get_application().write_down(meeting))
+            actions.insert_child_after(write, self.play_button)
         self.preview.append(actions)
         self.preview.append(Gtk.Separator(margin_top=4))
         self.preview.append(label(text("library.preview.transcriptHeading"), "small", "heading", "dim-label", xalign=0))
@@ -567,7 +588,11 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.back_to_library()
         self._stop_playback()
         self._external_meeting = external
-        self._ensure_player(meeting)
+        if not self._ensure_player(meeting):
+            desired = FolderPlayer if meeting.origin == "own" else Player
+            self.player.shutdown()
+            self.player = desired()
+            self._connect_player()
         self.meeting_page = MeetingPage(self, meeting)
         self.navigation.push(self.meeting_page)
 

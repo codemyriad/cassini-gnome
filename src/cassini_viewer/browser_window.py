@@ -22,6 +22,7 @@ class BrowserMeetingsWindow(Adw.ApplicationWindow):
         self._pending = False
         self._queued = None
         self._closed = False
+        self._seen_saved_paths = None
         self._updating = False
         self._signature = None
         self.rows = {}
@@ -115,6 +116,8 @@ class BrowserMeetingsWindow(Adw.ApplicationWindow):
                 self._request(queued[0], **queued[1])
             return GLib.SOURCE_REMOVE
         self.error.set_visible(False)
+        self.get_application().observe_browser_recordings(snapshot, self._seen_saved_paths)
+        self._seen_saved_paths = {r["path"] for r in snapshot.get("recordings", []) if isinstance(r.get("path"), str)}
         self._browser_snapshot = snapshot
         self._updating = True
         self.automatic.set_active(snapshot["autoRecord"])

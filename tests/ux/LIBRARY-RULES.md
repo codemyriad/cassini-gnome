@@ -228,3 +228,8 @@ belong to the Meeting view (UX3).
     the current fixture, highlight the whole item.
   - The `meeting` screenshot board uses the fixture's real timings and the computed shares. A visible difference
     from board 17/18's drawn 41/38/21 % and the single highlighted word is expected.
+
+## R7.3 (D11.2): `source` names
+
+A speaker with provenance `source` shows its stored name (Me, The others). It is listed and coloured like any
+speaking speaker, in speaking order. Its sidebar caption is the track description (D11.2).

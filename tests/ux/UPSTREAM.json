@@ -39,8 +39,8 @@
   "sha256": {
     "format-vectors.json": "ee9c9b9585e76c42f09df54d7a8933e7167527fce2ea185e78b51b1059840e51",
     "states-vectors.json": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
-    "LIBRARY-RULES.md": "47b1d46457a1430e69e5a4f10ca079ec7bf2dda8b39c0e8939541fdbb2599595",
-    "meeting.schema.json": "567c20b2a81bdc7bf4e1a5ab18f66e0f2c3ee93dd9cced2d04e973d51853a211",
+    "LIBRARY-RULES.md": "95a0e5068a08efa521f6eed73799b715ab50b2cf6aee374570b5337a6a3bdd2a",
+    "meeting.schema.json": "b848e53c11cad33e729dde8a12c75108f7b365fe3eb0c1cc9a45c536c9e70ed7",
     "library-vectors/verify.py": "2011c3a7fc8d6fd5c58a4f06b16e8397f081755f743725f2732e332e4d1767da",
     "library-vectors/README.md": "8e8cbbe91ab72bbf9f404a94ab3b83822f4e137cca8cbbb25afd493b78394b54",
     "library-vectors/cases.json": "80723c1274ac44d8b23d0a154daa7b6fc5e559a1fceb6491b8e52558c4a6ce2b",
@@ -69,16 +69,20 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "f38b27d7437cd891c948afaf114792d25e699dffbdb136364f1b840a6a2c14be"
+    "strings.json": "6c8dd2f3dffd025aee5d1f9e074e60f1e27610e5ab746d87b6e5172dbec542f8"
   },
   "additionalSources": {
     "strings.json": {
-      "commit": "815fa89dcd4cb100d66d6d374f2d6569311265fd",
-      "note": "Wave 3 published R12 / D11 catalog"
+      "commit": "0fc5961bffb8e6a3a1ebeaed9deefc2af4c0bd43",
+      "note": "D11.2 source names and UX13 published action copy"
     },
     "LIBRARY-RULES.md": {
-      "commit": "28c14388b7ea4a2c133ee23e9149ed7696cffa3e",
-      "note": "Wave 3 published R12 / D11 catalog"
+      "commit": "81799a3ab2642a67139f799f857e8ad0e81135b6",
+      "note": "D11.2 source names and UX13 published action copy"
+    },
+    "meeting.schema.json": {
+      "commit": "81799a3ab2642a67139f799f857e8ad0e81135b6",
+      "note": "D11.2 source names and UX13 published action copy"
     }
   }
 }

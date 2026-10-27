@@ -84,6 +84,9 @@ class MeetingPage(Adw.NavigationPage):
             )
         )
         header.pack_end(export)
+        self.write_button = Gtk.Button(label=text("common.writeDown"), visible=False)
+        self.write_button.connect("clicked", lambda *_: window.get_application().write_down(self.meeting))
+        header.pack_end(self.write_button)
         content.add_top_bar(header)
         center = box()
         self.lines = box(margin_start=48, margin_end=48, margin_top=8)
@@ -145,18 +148,24 @@ class MeetingPage(Adw.NavigationPage):
     def _build_player(self, outer):
         bar = Gtk.Box(spacing=14, css_classes=["meeting-player"], margin_start=0)
         bar.update_property([Gtk.AccessibleProperty.LABEL], [text("player.a11y")])
+        self.transport_buttons = []
         for name, icon, action in [
             ("player.back10", "media-seek-backward-symbolic", "win.skip-back"),
             ("common.play", "media-playback-start-symbolic", "win.play-pause"),
             ("player.forward10", "media-seek-forward-symbolic", "win.skip-forward"),
         ]:
             button = Gtk.Button(
-                icon_name=icon, tooltip_text=text(name), action_name=action, css_classes=["circular", "flat"]
+                icon_name=icon,
+                tooltip_text=text(name),
+                action_name=action,
+                css_classes=["circular", "flat"],
+                valign=Gtk.Align.CENTER,
             )
             if name == "common.play":
                 self.play = button
                 button.add_css_class("suggested-action")
                 button.remove_css_class("flat")
+            self.transport_buttons.append(button)
             bar.append(button)
         self.elapsed = label(fmt.position(0), "small", "dim-label")
         bar.append(self.elapsed)
@@ -243,8 +252,19 @@ class MeetingPage(Adw.NavigationPage):
             )
         )
         self.total.set_label(fmt.position(meeting.duration_ms or 0))
+        self.write_button.set_visible(meeting.can_write_down and meeting.transcript == "none")
         self.seek.set_range(0, max(1, meeting.duration_ms or 1))
-        self.play.set_sensitive(meeting.has_audio and self.player.loaded)
+        if not self.window._playback_failed and self.window._loaded_key != meeting.key:
+            self.window._ensure_player(meeting)
+        can_play = (
+            meeting.has_audio
+            and self.player.loaded
+            and self.window._loaded_key == meeting.key
+            and not self.window._playback_failed
+        )
+        for button in self.transport_buttons:
+            button.set_sensitive(can_play)
+        self.seek.set_sensitive(can_play)
         source = self.window._activity_source
         self.set_connected(source.connected if source else False)
         signature = (id(meeting.words), meeting.speakers, meeting.transcript, meeting.error)
@@ -265,9 +285,14 @@ class MeetingPage(Adw.NavigationPage):
             top.append(label(text("meeting.speakerShare", percent=shares[speaker.id]), "small", "dim-label"))
             row.append(top)
             caption = {"user": "namedByYou", "recognised": "recognised"}.get(speaker.provenance, "notNamed")
+            caption_text = (
+                (text("common.yourMicrophone") if speaker.id == "me" else text("recordFirst.sound.title"))
+                if speaker.provenance == "source"
+                else text("meeting.speakerCaption." + caption)
+            )
             row.append(
                 label(
-                    text("meeting.speakerCaption." + caption),
+                    caption_text,
                     "small",
                     "dim-label",
                     xalign=0,
@@ -295,6 +320,7 @@ class MeetingPage(Adw.NavigationPage):
         self._reading_index = -1
         for turn in meeting.turns:
             self.store.append(TurnItem(turn))
+        self._position()
 
     def _position(self, *_):
         index = bisect_right(self._starts, self.player.position) - 1

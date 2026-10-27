@@ -1,9 +1,19 @@
-name: Whistle bundling spike
+name: Offline transcription pipeline
 on:
   pull_request:
     paths:
       - 'whistle/**'
       - 'src/cassini_viewer/whistle_*.py'
+      - 'src/cassini_viewer/speech_pipeline.py'
+      - 'src/cassini_viewer/fir-48k-16k.json'
+      - 'src/cassini_viewer/transcription.py'
+      - 'src/cassini_viewer/meeting_store.py'
+      - 'src/cassini_viewer/meeting*.py'
+      - 'src/cassini_viewer/library*.py'
+      - 'src/cassini_viewer/main.py'
+      - 'src/cassini_viewer/strings.json'
+      - 'src/cassini_viewer/meeting.schema.json'
+      - 'src/cassini_viewer/recording_session.py'
       - 'tests/whistle/**'
       - 'tests/test_whistle_spike.py'
       - '.github/workflows/whistle.yml'
@@ -28,7 +38,7 @@ jobs:
         run: |
           meson setup _whistle-build whistle -Dbundle=/tmp/whistle-bundle --prefix=/usr
           DESTDIR=$PWD/_whistle-stage meson install -C _whistle-build
-      - name: Native constructor guard and repeated real recognition without network
+      - name: Native constructor guard, both goldens and real GTK queue without network
         run: tests/whistle/run.sh "$PWD/_whistle-stage/usr/share/cassini-viewer/whistle" "$PWD/whistle-artifacts"
       - uses: actions/upload-artifact@v4
         if: always()

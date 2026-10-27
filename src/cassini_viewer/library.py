@@ -187,6 +187,7 @@ class Meeting(MeetingState):
     quote_line: str | None = None
     tracks: tuple[CaptureTrack, ...] = ()
     capture_source: str | None = None
+    capture_state: str | None = None
     audio_file: Path | None = None
     legacy_transcript_file: Path | None = None
     has_audio: bool = False
@@ -573,6 +574,7 @@ class LibraryScanner:
             else None,
             tracks=tracks,
             capture_source=capture.get("source") if origin == "own" else None,
+            capture_state=capture.get("state") if origin == "own" else None,
             audio_file=audio_file,
             legacy_transcript_file=legacy_transcript_file,
             has_audio=bool(tracks) if origin == "own" else duration is not None,

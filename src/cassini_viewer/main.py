@@ -17,6 +17,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import os
 import sys
 from gettext import gettext as _
 
@@ -43,6 +44,8 @@ class CassiniApplication(Adw.Application):
         self.version = version
         self.profile = profile
         self.settings_schema = "com.gocassini.Viewer"
+        self.transcriber = None
+        self.transcription_enabled = os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1"
         self.recorder = None
         self._native_held = False
         self._recording_cookie = 0
@@ -198,6 +201,10 @@ class CassiniApplication(Adw.Application):
         if self.recorder.pipeline is not None or self.recorder.starting:
             return
         self.recording_error = None
+        for window in self.get_windows():
+            player = getattr(window, "player", None)
+            if player is not None and player.playing:
+                player.pause()
         self.hold()
         self._native_held = True
         self.recorder.start(library_root(), test=test)
@@ -222,6 +229,8 @@ class CassiniApplication(Adw.Application):
             self.release()
 
     def _native_finished(self, _recorder, _path):
+        if self.transcription_enabled:
+            self.write_down(_path)
         self._release_native()
         self._native_changed()
 
@@ -248,7 +257,10 @@ class CassiniApplication(Adw.Application):
 
             def delivered():
                 try:
-                    result.result()
+                    paths = result.result()
+                    if self.transcription_enabled:
+                        for path in paths:
+                            self.write_down(path)
                 except (OSError, ValueError) as error:
                     self.recording_error = str(error)
                 self._native_changed()
@@ -257,6 +269,61 @@ class CassiniApplication(Adw.Application):
             GLib.idle_add(delivered)
 
         future.add_done_callback(done)
+
+    def write_down(self, meeting, *, resume=False):
+        from .transcription import TranscriptionQueue
+
+        if self.transcriber is None:
+
+            def changed(_directory):
+                GLib.idle_add(self._transcription_changed)
+
+            def finished(_directory):
+                GLib.idle_add(self._transcription_finished)
+
+            self.transcriber = TranscriptionQueue(changed, finished)
+        directory = getattr(meeting, "directory", meeting)
+        if self.transcriber.enqueue(directory, resume=resume):
+            self.hold()
+
+    def _transcription_changed(self):
+        for window in self.get_windows():
+            if hasattr(window, "monitor"):
+                window.monitor.refresh()
+        return False
+
+    def _transcription_finished(self):
+        self._transcription_changed()
+        self.release()
+        return False
+
+    def observe_library(self, snapshot, previous):
+        if not self.transcription_enabled:
+            return
+        from .transcription import should_auto_write
+
+        for meeting in snapshot.meetings:
+            if (
+                (previous is None or meeting.key not in previous)
+                and meeting.lifecycle == "saved"
+                and meeting.transcript in ("queued", "running")
+            ):
+                self.write_down(meeting, resume=True)
+            elif should_auto_write(meeting, previous):
+                self.write_down(meeting)
+
+    def observe_browser_recordings(self, snapshot, previous):
+        if not self.transcription_enabled or previous is None:
+            return
+        for recording in snapshot.get("recordings", []):
+            path = recording.get("path")
+            if isinstance(path, str) and path not in previous:
+                self.write_down(path)
+
+    def do_shutdown(self):
+        if self.transcriber:
+            self.transcriber.close()
+        Adw.Application.do_shutdown(self)
 
     def on_about(self, *_args):
         about = Adw.AboutDialog(

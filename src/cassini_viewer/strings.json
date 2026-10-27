@@ -1,5 +1,5 @@
 {
- "version": 4,
+ "version": 5,
  "note": "Shared UX strings catalog (S-2). Coordinator-owned. Each entry has en (shared, or the GNOME text when platforms differ) and an optional mac. status: drawn = on a board; harmony = required by HARMONY.md, not drawn; format = reference to a format-vectors formatter; vectors = only required by the vectors; galleryOnly = only on the hidden states-gallery debug board, never shipped; legacy = temporary, has an end milestone; pending = copy awaiting Silvio. Placeholders are {name}. Typographic ’ “ ” are part of the strings. Only ship entries whose milestone you are implementing.",
  "source": "canvas version 1793116956-b00e",
  "entries": [
@@ -495,6 +495,19 @@
    "milestone": "UX2",
    "note": "Action of errors.transcribeFailed.line (HARMONY 5). Live from UX13.",
    "status": "drawn"
+  },
+  {
+   "id": "common.writeDown",
+   "en": "Write it down",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "UX13",
+   "status": "harmony",
+   "note": "D11 / R9: shown only when canWriteDown is true and the transcript is none (for example a received meeting without a transcript, or an own meeting whose automatic start was skipped). Secondary button in the Library preview next to Play, and in the Meeting view header. Starts writing down; the row then shows the Transcribing badge. Not used for failed transcripts: those show the errors.transcribeFailed line with Try again."
   },
   {
    "id": "common.yourMicrophone",

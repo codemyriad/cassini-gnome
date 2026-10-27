@@ -59,6 +59,7 @@ def painted(window):
 artifacts = Path(os.environ.get("CASSINI_TEST_ARTIFACTS", str(Path(__file__).parent / "artifacts/gtk")))
 artifacts.mkdir(parents=True, exist_ok=True)
 app = CassiniApplication("com.gocassini.RecordingTest", "test", "development")
+app.transcription_enabled = False  # Audio/permission harness; real ML is proved by the offline pipeline job.
 evidence = {"passed": False}
 callback_errors = []
 
@@ -200,8 +201,17 @@ try:
             tones.append(dict(frequency=frequency, magnitude=desired, bleed=bleed))
         evidence["nativeTracks"] = manifest
         evidence["tones"] = tones
+        # Record keeps the earlier capture path's playback-pause behavior.
+        window.open_meeting(window.snapshot.meetings[0])
+        window.meeting_page.play.emit("clicked")
+        wait_until(
+            lambda: window.player.playing and window.player.position > 0,
+            "saved audio plays before the next recording",
+            diagnostics=diagnostics,
+        )
         # The persisted preference starts a second recording without another dialog.
         app.on_record()
+        assert not window.player.playing, "Recording must pause Cassini playback before capturing system sound"
         wait_until(
             lambda: recorder.pipeline is not None, "skip-first preference starts recording", diagnostics=diagnostics
         )

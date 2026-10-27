@@ -1,0 +1,399 @@
+{
+ "version": 1,
+ "note": "D11 golden, produced by cassini-live (SpeechGate + Silero VAD v6.2.1 + Whistle with engine needle 3.3.0 and pinned weights) on segmentation-input.wav, a 16 kHz mono PCM16 file. Both apps must reproduce the segment boundaries exactly and the words exactly (text, startMs, endMs). Word times = segment start (floor ms) + round(word seconds * 1000).",
+ "input": "segmentation-input.wav",
+ "inputSha256": "1d93aacf85e8ef17c804ff11d910c24a4f38631ae267a49da056fd89fcb227dd",
+ "sampleRate": 16000,
+ "segments": [
+  {
+   "startSample": 14336,
+   "endSample": 58368,
+   "reason": "silence",
+   "text": "And so my fellow Americans."
+  },
+  {
+   "startSample": 61440,
+   "endSample": 93184,
+   "reason": "silence",
+   "text": "\"It's not!\""
+  },
+  {
+   "startSample": 95232,
+   "endSample": 198656,
+   "reason": "silence",
+   "text": "What your country can do for you as what you can do for your country."
+  },
+  {
+   "startSample": 238080,
+   "endSample": 282112,
+   "reason": "silence",
+   "text": "And so my fellow Americans."
+  },
+  {
+   "startSample": 285184,
+   "endSample": 317440,
+   "reason": "silence",
+   "text": "\"It is not!\""
+  },
+  {
+   "startSample": 318976,
+   "endSample": 458240,
+   "reason": "silence",
+   "text": "What your country can do for you as what you can do for your country. And so my fellow Americans."
+  },
+  {
+   "startSample": 461312,
+   "endSample": 493056,
+   "reason": "silence",
+   "text": "\"It is not!\""
+  },
+  {
+   "startSample": 495104,
+   "endSample": 598528,
+   "reason": "silence",
+   "text": "What your country can do for you as what you can do for your country."
+  }
+ ],
+ "words": [
+  {
+   "startMs": 896,
+   "endMs": 1456,
+   "text": "And"
+  },
+  {
+   "startMs": 1456,
+   "endMs": 1776,
+   "text": "so"
+  },
+  {
+   "startMs": 1776,
+   "endMs": 2096,
+   "text": "my"
+  },
+  {
+   "startMs": 2096,
+   "endMs": 2496,
+   "text": "fellow"
+  },
+  {
+   "startMs": 2496,
+   "endMs": 2976,
+   "text": "Americans."
+  },
+  {
+   "startMs": 4160,
+   "endMs": 4640,
+   "text": "\"It's"
+  },
+  {
+   "startMs": 4640,
+   "endMs": 5120,
+   "text": "not!\""
+  },
+  {
+   "startMs": 6272,
+   "endMs": 6432,
+   "text": "What"
+  },
+  {
+   "startMs": 6432,
+   "endMs": 6752,
+   "text": "your"
+  },
+  {
+   "startMs": 6752,
+   "endMs": 7152,
+   "text": "country"
+  },
+  {
+   "startMs": 7152,
+   "endMs": 7552,
+   "text": "can"
+  },
+  {
+   "startMs": 7552,
+   "endMs": 7792,
+   "text": "do"
+  },
+  {
+   "startMs": 7792,
+   "endMs": 8032,
+   "text": "for"
+  },
+  {
+   "startMs": 8032,
+   "endMs": 8432,
+   "text": "you"
+  },
+  {
+   "startMs": 8432,
+   "endMs": 9472,
+   "text": "as"
+  },
+  {
+   "startMs": 9472,
+   "endMs": 9712,
+   "text": "what"
+  },
+  {
+   "startMs": 9712,
+   "endMs": 9952,
+   "text": "you"
+  },
+  {
+   "startMs": 9952,
+   "endMs": 10272,
+   "text": "can"
+  },
+  {
+   "startMs": 10272,
+   "endMs": 10512,
+   "text": "do"
+  },
+  {
+   "startMs": 10512,
+   "endMs": 10672,
+   "text": "for"
+  },
+  {
+   "startMs": 10672,
+   "endMs": 10912,
+   "text": "your"
+  },
+  {
+   "startMs": 10912,
+   "endMs": 11312,
+   "text": "country."
+  },
+  {
+   "startMs": 14880,
+   "endMs": 15520,
+   "text": "And"
+  },
+  {
+   "startMs": 15520,
+   "endMs": 15760,
+   "text": "so"
+  },
+  {
+   "startMs": 15760,
+   "endMs": 16080,
+   "text": "my"
+  },
+  {
+   "startMs": 16080,
+   "endMs": 16480,
+   "text": "fellow"
+  },
+  {
+   "startMs": 16480,
+   "endMs": 17040,
+   "text": "Americans."
+  },
+  {
+   "startMs": 18144,
+   "endMs": 18304,
+   "text": "\"It"
+  },
+  {
+   "startMs": 18304,
+   "endMs": 18704,
+   "text": "is"
+  },
+  {
+   "startMs": 18704,
+   "endMs": 19104,
+   "text": "not!\""
+  },
+  {
+   "startMs": 20256,
+   "endMs": 20416,
+   "text": "What"
+  },
+  {
+   "startMs": 20416,
+   "endMs": 20816,
+   "text": "your"
+  },
+  {
+   "startMs": 20816,
+   "endMs": 21136,
+   "text": "country"
+  },
+  {
+   "startMs": 21136,
+   "endMs": 21536,
+   "text": "can"
+  },
+  {
+   "startMs": 21536,
+   "endMs": 21776,
+   "text": "do"
+  },
+  {
+   "startMs": 21776,
+   "endMs": 22016,
+   "text": "for"
+  },
+  {
+   "startMs": 22016,
+   "endMs": 22416,
+   "text": "you"
+  },
+  {
+   "startMs": 22416,
+   "endMs": 23456,
+   "text": "as"
+  },
+  {
+   "startMs": 23456,
+   "endMs": 23696,
+   "text": "what"
+  },
+  {
+   "startMs": 23696,
+   "endMs": 23936,
+   "text": "you"
+  },
+  {
+   "startMs": 23936,
+   "endMs": 24256,
+   "text": "can"
+  },
+  {
+   "startMs": 24256,
+   "endMs": 24496,
+   "text": "do"
+  },
+  {
+   "startMs": 24496,
+   "endMs": 24656,
+   "text": "for"
+  },
+  {
+   "startMs": 24656,
+   "endMs": 24896,
+   "text": "your"
+  },
+  {
+   "startMs": 24896,
+   "endMs": 25296,
+   "text": "country."
+  },
+  {
+   "startMs": 26256,
+   "endMs": 26576,
+   "text": "And"
+  },
+  {
+   "startMs": 26576,
+   "endMs": 26736,
+   "text": "so"
+  },
+  {
+   "startMs": 26736,
+   "endMs": 27056,
+   "text": "my"
+  },
+  {
+   "startMs": 27056,
+   "endMs": 27456,
+   "text": "fellow"
+  },
+  {
+   "startMs": 27456,
+   "endMs": 28016,
+   "text": "Americans."
+  },
+  {
+   "startMs": 29152,
+   "endMs": 29312,
+   "text": "\"It"
+  },
+  {
+   "startMs": 29312,
+   "endMs": 29632,
+   "text": "is"
+  },
+  {
+   "startMs": 29632,
+   "endMs": 30112,
+   "text": "not!\""
+  },
+  {
+   "startMs": 31264,
+   "endMs": 31424,
+   "text": "What"
+  },
+  {
+   "startMs": 31424,
+   "endMs": 31744,
+   "text": "your"
+  },
+  {
+   "startMs": 31744,
+   "endMs": 32144,
+   "text": "country"
+  },
+  {
+   "startMs": 32144,
+   "endMs": 32544,
+   "text": "can"
+  },
+  {
+   "startMs": 32544,
+   "endMs": 32784,
+   "text": "do"
+  },
+  {
+   "startMs": 32784,
+   "endMs": 33024,
+   "text": "for"
+  },
+  {
+   "startMs": 33024,
+   "endMs": 33424,
+   "text": "you"
+  },
+  {
+   "startMs": 33424,
+   "endMs": 34464,
+   "text": "as"
+  },
+  {
+   "startMs": 34464,
+   "endMs": 34704,
+   "text": "what"
+  },
+  {
+   "startMs": 34704,
+   "endMs": 34944,
+   "text": "you"
+  },
+  {
+   "startMs": 34944,
+   "endMs": 35264,
+   "text": "can"
+  },
+  {
+   "startMs": 35264,
+   "endMs": 35504,
+   "text": "do"
+  },
+  {
+   "startMs": 35504,
+   "endMs": 35664,
+   "text": "for"
+  },
+  {
+   "startMs": 35664,
+   "endMs": 35904,
+   "text": "your"
+  },
+  {
+   "startMs": 35904,
+   "endMs": 36304,
+   "text": "country."
+  }
+ ]
+}

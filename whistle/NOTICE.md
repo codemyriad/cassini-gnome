@@ -9,3 +9,7 @@ https://huggingface.co/Cactus-Compute/whistle
 
 JFK audio/reference: public-domain US federal government material (1961
 inaugural address), supplied through the shared Cassini coordination fixtures.
+
+Silero VAD v6.2.1, snakers4/silero-vad revision
+7e30209a3e901f9842f81b225f3e93d8199902b1, is MIT-licensed.
+Its pinned model is bundled at build time; see LICENSE-Silero-MIT.txt.

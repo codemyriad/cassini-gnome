@@ -56,12 +56,29 @@ def main(bundle):
     sys.path.insert(0, str(bundle / "wrapper.whl"))
     model = guarded_load(lambda: importlib.import_module("needle").Whistle(weights=bundle / "whistle.cact"))
     emit("ready", pid=os.getpid(), threads=len(list(Path("/proc/self/task").iterdir())))
-    for line in iter(lambda: sys.stdin.buffer.readline(8193), b""):
-        if len(line) > 8192:
+    for line in iter(lambda: sys.stdin.buffer.readline(512 * 1024 + 1), b""):
+        if len(line) > 512 * 1024:
             raise ValueError("Worker request exceeds limit")
         message = json.loads(line)
         if message.get("type") == "quit":
             return 0
+        if message.get("type") == "pipeline":
+            tracks = message.get("tracks")
+            if not isinstance(tracks, list) or not 1 <= len(tracks) <= 64:
+                raise ValueError("Expected one to 64 capture tracks")
+            for track in tracks:
+                if (
+                    not isinstance(track, dict)
+                    or not isinstance(track.get("id"), str)
+                    or not isinstance(track.get("path"), str)
+                ):
+                    raise ValueError("Invalid capture track")
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+            from cassini_viewer.speech_pipeline import process_tracks
+
+            summary = process_tracks(model, tracks, bundle / "silero_vad.onnx", emit)
+            emit("complete", **summary)
+            continue
         if message.get("type") != "transcribe" or not isinstance(message.get("path"), str):
             raise ValueError("Expected transcribe request with local WAV path")
         path = message["path"]
@@ -74,7 +91,7 @@ def main(bundle):
             ) or not 0 < audio.getnframes() <= MAX_SECONDS * 16000:
                 raise ValueError("Expected at most 30 seconds of PCM16 mono 16 kHz")
         started = time.monotonic()
-        result = model.transcribe(path, language="en")
+        result = model.transcribe(path, language=None)
         emit("result", text=result["text"], pid=os.getpid(), seconds=time.monotonic() - started)
     return 0
 
