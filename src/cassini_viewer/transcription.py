@@ -5,7 +5,7 @@ import logging
 import os
 import tempfile
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
 
 from .library import LibraryScanner
@@ -70,7 +70,7 @@ def prepare_tracks(meeting):
     return tracks, speakers
 
 
-def decode_received(path, destination):
+def decode_received(path, destination, *, cancelled=lambda: False):
     # Opus decodes natively to 48 kHz PCM. Conversion here preserves the native
     # rate/channels; only the shared FIR ever changes 48 kHz to 16 kHz.
     import gi
@@ -87,9 +87,18 @@ def decode_received(path, destination):
     try:
         if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
             raise RuntimeError("Could not decode received audio")
-        message = pipeline.get_bus().timed_pop_filtered(120 * Gst.SECOND, Gst.MessageType.ERROR | Gst.MessageType.EOS)
-        if message is None:
-            raise RuntimeError("Received audio decode timed out")
+        import time
+
+        deadline = time.monotonic() + 120
+        message = None
+        while message is None:
+            if cancelled():
+                raise CancelledError()
+            if time.monotonic() > deadline:
+                raise RuntimeError("Received audio decode timed out")
+            message = pipeline.get_bus().timed_pop_filtered(
+                Gst.SECOND // 5, Gst.MessageType.ERROR | Gst.MessageType.EOS
+            )
         if message.type == Gst.MessageType.ERROR:
             raise RuntimeError(message.parse_error()[0].message)
     finally:
@@ -114,7 +123,7 @@ class TranscriptionQueue:
             if self.closed or directory in self.pending:
                 return False
             self.pending.add(directory)
-        future = self.preparer.submit(self._mark_queued, directory, resume)
+            future = self.preparer.submit(self._mark_queued, directory, resume)
         future.add_done_callback(lambda f: self._prepared(directory, f))
         return True
 
@@ -137,7 +146,8 @@ class TranscriptionQueue:
             resume and meeting.transcript in ("queued", "running")
         ):
             return None
-        atomic_json(directory / "transcript.json", dict(format="cassini.words.v1", language="und", items=[]))
+        if not (directory / "transcript.json").exists():
+            atomic_json(directory / "transcript.json", dict(format="cassini.words.v1", language="und", items=[]))
         update_metadata(directory, transcript=dict(status="queued", reference=REFERENCE), etaMinutes=None, error=None)
         self.changed(directory)
         return meeting, metadata
@@ -146,20 +156,30 @@ class TranscriptionQueue:
         try:
             prepared = future.result()
         except Exception as error:
-            self._failed(directory, error)
+            if not self.closed:
+                self._failed(directory, error)
             self._completed(directory)
         else:
             if prepared is None:
                 self._completed(directory)
             else:
-                self.executor.submit(self._job, directory, *prepared)
+                with self.lock:
+                    if not self.closed:
+                        future = self.executor.submit(self._job, directory, *prepared)
+                        future.add_done_callback(lambda _f: self._completed(directory))
+                        return
+                self._completed(directory)
 
     def _completed(self, directory):
         with self.lock:
-            self.pending.discard(directory)
+            if directory not in self.pending:
+                return
+            self.pending.remove(directory)
         self.finished(directory)
 
     def _failed(self, directory, error):
+        if self.closed:
+            return
         LOG.warning("Meeting transcription failed: %s", error)
         try:
             update_metadata(
@@ -174,9 +194,12 @@ class TranscriptionQueue:
 
     def _job(self, directory, meeting, metadata):
         try:
+            if self.closed:
+                return
             self._run(meeting, metadata)
         except Exception as error:
-            self._failed(directory, error)
+            if not isinstance(error, CancelledError):
+                self._failed(directory, error)
             if self.client:
                 self.client.close()
                 self.client = None
@@ -190,7 +213,7 @@ class TranscriptionQueue:
         with tempfile.TemporaryDirectory(prefix="cassini-transcribe-") as temporary:
             if meeting.origin == "received":
                 decoded = Path(temporary) / "received.wav"
-                decode_received(meeting.audio_file, decoded)
+                decode_received(meeting.audio_file, decoded, cancelled=lambda: self.closed)
                 tracks = [dict(id="received", path=str(decoded), offsetMs=0, speaker="track-original")]
                 speakers = {"track-original": dict(id="track-original", name=None, provenance="unnamed", colourIndex=0)}
             else:
@@ -205,6 +228,8 @@ class TranscriptionQueue:
             words = []
 
             def progress(value):
+                if self.closed:
+                    raise CancelledError()
                 if value["type"] == "planning":
                     return
                 if value["type"] == "progress":
@@ -228,9 +253,15 @@ class TranscriptionQueue:
                 self.changed(directory)
 
             if self.client is None:
-                self.client = self.client_factory(self.bundle, timeout=120)
+                client = self.client_factory(self.bundle, timeout=120)
+                with self.lock:
+                    if self.closed:
+                        raise CancelledError()
+                    self.client = client
                 self.client.start()
             complete = self.client.process_tracks(tracks, progress)
+            if self.closed:
+                raise CancelledError()
             for diagnostic in complete.get("diagnostics", []):
                 LOG.warning("Transcription diagnostic: %s", diagnostic)
             update_metadata(
@@ -243,9 +274,29 @@ class TranscriptionQueue:
             self.changed(directory)
 
     def close(self):
+        """Cancel promptly; callbacks/IO teardown finish off the GTK thread."""
         with self.lock:
+            if self.closed:
+                return
             self.closed = True
+            client = self.client
+        if client and hasattr(client, "cancel"):
+            client.cancel()
+        self.preparer.shutdown(wait=False, cancel_futures=True)
         self.executor.shutdown(wait=False, cancel_futures=True)
-        if self.client:
-            self.client.close()
-            self.client = None
+
+        # This cleanup is queued on the owner thread so selector/pipe mutation
+        # cannot race process_tracks. It also reaps an idle persistent child.
+        def reap():
+            if self.client:
+                self.client.close()
+                self.client = None
+
+        threading.Thread(
+            target=self._reap_after_jobs, args=(reap,), name="cassini-transcription-close", daemon=True
+        ).start()
+
+    def _reap_after_jobs(self, reap):
+        self.preparer.shutdown(wait=True, cancel_futures=True)
+        self.executor.shutdown(wait=True, cancel_futures=True)
+        reap()

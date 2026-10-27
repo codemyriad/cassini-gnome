@@ -83,6 +83,9 @@ class NativeRecorder(GObject.Object):
         self.starting = False
         try:
             self.session, (self.minutes_left, reserve) = future.result()
+            if self._stop_requested:
+                self._begin_finish()
+                return False
             sources = []
             for index, identifier in enumerate(("microphone", "system")):
                 device = "@DEFAULT_SOURCE@" if index == 0 else "@DEFAULT_MONITOR@"

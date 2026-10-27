@@ -10,7 +10,6 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from types import SimpleNamespace
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Use build-aux/ux-screenshot.sh")
@@ -21,7 +20,7 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
-from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, GLib, GObject, Gst, Gtk  # noqa: E402
 
 build = Path(os.environ["CASSINI_TEST_BUILD"])
 Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-viewer.gresource")))
@@ -120,8 +119,16 @@ with tempfile.TemporaryDirectory() as temporary:
     assert len(app.get_windows()) == 1, "File opens belong to the pushed reading page"
     # Real confirmation widgets, deterministic controller double; no device access.
     recording = Adw.ApplicationWindow(application=app)
-    recorder = SimpleNamespace(pipeline=object())
-    recorder.stop = lambda: setattr(recorder, "pipeline", None)
+
+    class Controller(GObject.Object):
+        __gsignals__ = {"finished": (GObject.SignalFlags.RUN_LAST, None, (str,))}
+        pipeline = object()
+
+        def stop(self):
+            self.pipeline = None
+            GLib.idle_add(lambda: (self.emit("finished", str(Path(temporary) / "legacy.opus")), False)[1])
+
+    recorder = Controller()
     recording.recorder = recorder
     recording.present()
     until(recording.get_mapped)

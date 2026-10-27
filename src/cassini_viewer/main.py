@@ -45,6 +45,9 @@ class CassiniApplication(Adw.Application):
         self.profile = profile
         self.settings_schema = "com.gocassini.Viewer"
         self.transcriber = None
+        self._transcription_holds = 0
+        self._transcription_generation = 0
+        self._quitting = False
         self.transcription_enabled = os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1"
         self.recorder = None
         self._native_held = False
@@ -107,6 +110,7 @@ class CassiniApplication(Adw.Application):
         return window
 
     def do_activate(self):
+        self._quitting = False
         from .library_window import LibraryWindow
 
         window = next((w for w in self.get_windows() if isinstance(w, LibraryWindow)), None)
@@ -161,7 +165,9 @@ class CassiniApplication(Adw.Application):
             return
         from .capture_guard import finish_close
 
+        self.begin_exit()
         finish_close(self, list(self.get_windows()))
+        self.quit()
 
     def on_browser_meetings(self, *_args):
         from .browser_window import BrowserMeetingsWindow
@@ -229,7 +235,11 @@ class CassiniApplication(Adw.Application):
             self.release()
 
     def _native_finished(self, _recorder, _path):
-        if self.transcription_enabled:
+        if (
+            self.transcription_enabled
+            and not self._quitting
+            and any(track["frames"] > 0 for track in _recorder.session.manifest["tracks"])
+        ):
             self.write_down(_path)
         self._release_native()
         self._native_changed()
@@ -271,19 +281,23 @@ class CassiniApplication(Adw.Application):
         future.add_done_callback(done)
 
     def write_down(self, meeting, *, resume=False):
+        if self._quitting:
+            return
         from .transcription import TranscriptionQueue
 
         if self.transcriber is None:
+            generation = self._transcription_generation
 
             def changed(_directory):
                 GLib.idle_add(self._transcription_changed)
 
             def finished(_directory):
-                GLib.idle_add(self._transcription_finished)
+                GLib.idle_add(self._transcription_finished, generation)
 
             self.transcriber = TranscriptionQueue(changed, finished)
         directory = getattr(meeting, "directory", meeting)
         if self.transcriber.enqueue(directory, resume=resume):
+            self._transcription_holds += 1
             self.hold()
 
     def _transcription_changed(self):
@@ -292,9 +306,13 @@ class CassiniApplication(Adw.Application):
                 window.monitor.refresh()
         return False
 
-    def _transcription_finished(self):
+    def _transcription_finished(self, generation):
+        if generation != self._transcription_generation:
+            return False
         self._transcription_changed()
-        self.release()
+        if self._transcription_holds:
+            self._transcription_holds -= 1
+            self.release()
         return False
 
     def observe_library(self, snapshot, previous):
@@ -320,9 +338,25 @@ class CassiniApplication(Adw.Application):
             if isinstance(path, str) and path not in previous:
                 self.write_down(path)
 
-    def do_shutdown(self):
+    def begin_exit(self):
+        self._quitting = True
+        self._transcription_generation += 1
         if self.transcriber:
             self.transcriber.close()
+            self.transcriber = None
+        while self._transcription_holds:
+            self._transcription_holds -= 1
+            self.release()
+
+    def window_closing(self, window):
+        if not self._capture_background_active() and not any(w is not window for w in self.get_windows()):
+            self.begin_exit()
+
+    def _capture_background_active(self):
+        return getattr(self, "_capture_background", False) and not self._quitting
+
+    def do_shutdown(self):
+        self.begin_exit()
         Adw.Application.do_shutdown(self)
 
     def on_about(self, *_args):

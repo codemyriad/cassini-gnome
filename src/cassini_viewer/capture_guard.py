@@ -30,48 +30,102 @@ def confirm_capture_close(app, window, *, quitting=False):
     dialog.set_close_response("keep")
     app._capture_confirmation = dialog
 
-    def close_windows():
-        finish_close(app, list(app.get_windows()) if quitting else [window])
-        return False
-
     def response(_dialog, choice):
         app._capture_confirmation = None
+        targets = list(app.get_windows()) if quitting else [window]
         if choice == "keep":
             if not getattr(app, "_capture_background", False):
                 app.hold()
                 app._capture_background = True
-            for target in app.get_windows() if quitting else [window]:
+            for target in targets:
                 target.set_visible(False)
             return
+        exiting = quitting or not any(w not in targets for w in app.get_windows())
+        if exiting:
+            app.begin_exit()
+        # Keep windows and a guard hold until every capture has finished writing.
+        app.hold()
+        waiting = {id(target.recorder) for target in native}
+        browser_done = not browser
+        paths = []
+        completing = False
+        executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-close-save")
+
+        def ready():
+            nonlocal completing
+            if waiting or not browser_done or completing:
+                return
+            completing = True
+
+            def finish_saved():
+                if exiting:
+                    for path in paths:
+                        queue_saved_for_later(path)
+
+            future = executor.submit(finish_saved)
+
+            def saved(result):
+                executor.shutdown(wait=False)
+
+                def close_saved():
+                    try:
+                        result.result()
+                    except (OSError, ValueError):
+                        # Audio is finalized; keep the window for diagnosis.
+                        app._quitting = False
+                        window.present()
+                    else:
+                        finish_close(app, targets)
+                        if exiting:
+                            app.quit()
+                    app.release()
+                    return False
+
+                GLib.idle_add(close_saved)
+
+            future.add_done_callback(saved)
+
         for target in native:
+            recorder = target.recorder
             target.open_result = False
+
+            def finished(active, path, *, recorder=recorder):
+                active.disconnect(handlers.pop(id(active)))
+                waiting.discard(id(active))
+                paths.append(path)
+                ready()
+
+            handlers[id(recorder)] = recorder.connect("finished", finished)
+        for target in native:
             target.recorder.stop()
-        if not browser:
-            GLib.idle_add(close_windows)
-            return
+        if browser:
+            future = executor.submit(stop_browser_captures)
 
-        executor = ThreadPoolExecutor(max_workers=1)
-        future = executor.submit(stop_browser_captures)
-
-        def stopped(result):
-            executor.shutdown(wait=False)
-            try:
-                paths = result.result()
-            except (OSError, ValueError):
-                # Keep the controller/window available if stopping failed.
-                GLib.idle_add(window.present)
-            else:
-
-                def finish():
-                    if getattr(app, "transcription_enabled", False):
-                        for path in paths:
+            def stopped(result):
+                def delivered():
+                    nonlocal browser_done
+                    try:
+                        completed = result.result()
+                    except (OSError, ValueError):
+                        executor.shutdown(wait=False)
+                        app._quitting = False
+                        window.present()
+                        app.release()
+                        return False
+                    paths.extend(completed)
+                    if not exiting and getattr(app, "transcription_enabled", False):
+                        for path in completed:
                             app.write_down(path)
-                    return close_windows()
+                    browser_done = True
+                    ready()
+                    return False
 
-                GLib.idle_add(finish)
+                GLib.idle_add(delivered)
 
-        future.add_done_callback(stopped)
+            future.add_done_callback(stopped)
+        ready()
 
+    handlers = {}
     dialog.connect("response", response)
     dialog.present(window)
     return True
@@ -105,3 +159,34 @@ def stop_browser_captures():
             browser_service.request("stop", id=meeting["id"])
 
     return paths
+
+
+def queue_saved_for_later(path):
+    """On explicit exit, publish resumable intent without starting inference."""
+    from pathlib import Path
+
+    from .library import library_root, meeting_id
+    from .meeting_store import read_metadata, update_metadata
+
+    directory = Path(path).resolve()
+    if directory.parent != library_root().resolve() or not meeting_id(directory):
+        return
+    value = read_metadata(directory)
+    if value["transcript"]["status"] in ("none", "failed"):
+        from .library import LibraryScanner
+
+        meeting = next(
+            (
+                m
+                for m in LibraryScanner(directory.parent).scan(changed_directories={directory}).meetings
+                if m.directory == directory
+            ),
+            None,
+        )
+        if meeting and meeting.has_audio:
+            update_metadata(
+                directory,
+                transcript=dict(status="queued", reference=value["transcript"]["reference"]),
+                etaMinutes=None,
+                error=None,
+            )

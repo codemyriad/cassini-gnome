@@ -634,6 +634,7 @@ class LibraryWindow(Adw.ApplicationWindow):
     def _close(self, *_args):
         if self.get_application().confirm_capture_close(self):
             return True
+        self.get_application().window_closing(self)
         if self.meeting_page:
             self.meeting_page.close()
             self.meeting_page = None

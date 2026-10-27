@@ -123,7 +123,9 @@ try:
         native_hash = hashes(native.directory)
         # This is the production native finalisation hook; its audio writer and
         # Pulse sources are separately exercised by the recording integration job.
-        app._native_finished(None, str(native.directory))
+        from types import SimpleNamespace
+
+        app._native_finished(SimpleNamespace(session=native), str(native.directory))
         browser = capture(
             library,
             "Browser speech",
@@ -279,7 +281,7 @@ try:
             callbackErrors=errors,
         )
         app.transcriber.close()
-        assert second_child.poll() == 0
+        until(lambda: second_child.poll() is not None, "queue cancellation reaps the child")
         app.on_quit()
         until(lambda: not app.get_windows(), "windows close")
 except BaseException:
