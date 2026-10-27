@@ -201,8 +201,17 @@ try:
             tones.append(dict(frequency=frequency, magnitude=desired, bleed=bleed))
         evidence["nativeTracks"] = manifest
         evidence["tones"] = tones
+        # Record keeps the earlier capture path's playback-pause behavior.
+        window.open_meeting(window.snapshot.meetings[0])
+        window.meeting_page.play.emit("clicked")
+        wait_until(
+            lambda: window.player.playing and window.player.position > 0,
+            "saved audio plays before the next recording",
+            diagnostics=diagnostics,
+        )
         # The persisted preference starts a second recording without another dialog.
         app.on_record()
+        assert not window.player.playing, "Recording must pause Cassini playback before capturing system sound"
         wait_until(
             lambda: recorder.pipeline is not None, "skip-first preference starts recording", diagnostics=diagnostics
         )

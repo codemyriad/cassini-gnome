@@ -30,7 +30,14 @@ actual = np.concatenate(list(resampled_chunks(root / "pipeline-input-48k.wav")))
 expected = np.fromfile(root / "pipeline-resampled-16k.f32", dtype="<f4")
 error = float(np.max(np.abs(actual - expected)))
 assert len(actual) == len(expected) and error <= 1e-6, error
-result = dict(network="none", firMaxError=error, cases=[])
+cpu = {}
+for line in Path("/proc/cpuinfo").read_text().splitlines():
+    if ":" in line:
+        key, value = line.split(":", 1)
+        if key.strip() in ("model name", "vendor_id", "flags") and key.strip() not in cpu:
+            cpu[key.strip()] = value.strip()
+result = dict(network="none", firMaxError=error, cpu=cpu, cases=[])
+failures = []
 with WhistleClient(args.bundle, timeout=120) as client:
     child = client.process
     for filename in ("whistle-golden.json", "pipeline-golden.json"):
@@ -45,15 +52,35 @@ with WhistleClient(args.bundle, timeout=120) as client:
         progress = [e for e in events if e["type"] == "progress"]
         segments = [e["segment"] for e in progress]
         words = [word for e in progress for word in e["words"]]
-        assert segments == golden["segments"], (filename, segments, golden["segments"])
-        assert words == golden["words"], (filename, words, golden["words"])
+        expected_words = golden["words"]
+        differences = [
+            dict(index=i, actual=a, expected=b)
+            for i, (a, b) in enumerate(zip(words, expected_words, strict=False))
+            if a != b
+        ]
+        segment_hashes = []
+        for segment in segments:
+            samples = np.concatenate(
+                list(resampled_chunks(root / golden["input"], segment["startSample"], segment["endSample"]))
+            )
+            segment_hashes.append(hashlib.sha256(samples.tobytes()).hexdigest())
+        if segments != golden["segments"] or words != expected_words:
+            failures.append(filename)
+        case_data = dict(
+            differences=differences,
+            actualWords=words,
+            expectedWords=expected_words,
+            segmentInputSha256=segment_hashes,
+            wordCountMatches=len(words) == len(expected_words),
+        )
         result["cases"].append(
             dict(
                 golden=filename,
                 segments=len(segments),
                 words=len(words),
-                exactSegments=True,
-                exactWords=True,
+                exactSegments=segments == golden["segments"],
+                exactWords=words == expected_words,
+                **case_data,
                 language=complete["language"],
                 childPid=child.pid,
             )
@@ -63,3 +90,4 @@ result["oneChildReused"] = True
 result["childReaped"] = True
 args.output.write_text(json.dumps(result, indent=2) + "\n")
 print(json.dumps(result, indent=2))
+assert not failures, "Strict golden mismatch: " + str(failures)

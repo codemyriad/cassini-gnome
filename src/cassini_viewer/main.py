@@ -201,6 +201,10 @@ class CassiniApplication(Adw.Application):
         if self.recorder.pipeline is not None or self.recorder.starting:
             return
         self.recording_error = None
+        for window in self.get_windows():
+            player = getattr(window, "player", None)
+            if player is not None and player.playing:
+                player.pause()
         self.hold()
         self._native_held = True
         self.recorder.start(library_root(), test=test)
