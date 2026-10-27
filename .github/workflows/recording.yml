@@ -30,8 +30,11 @@ jobs:
       - run: tests/recording/node_modules/.bin/playwright install --with-deps chromium
       - run: /usr/bin/python3 -m pytest -q
       - run: node --test browser-extension/tests/*.test.cjs
-      - name: Native capture with separate virtual microphone and desktop sources
-        run: tests/recording/run.sh /usr/bin/python3 tests/recording/native.py
+      - name: Repeat native capture readiness in three fresh isolated containers
+        run: |
+          for attempt in 1 2 3; do
+            tests/recording/run.sh /usr/bin/python3 tests/recording/native.py
+          done
       - name: Chromium WebRTC, lifecycle and tab capture through Native Messaging
         run: tests/recording/run.sh node tests/recording/browser.mjs
       - name: GTK recording and playback in a private display

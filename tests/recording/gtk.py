@@ -3,12 +3,13 @@
 """Real GTK recording/session controls and quit finalization inside the test display."""
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
-import time
+import traceback
 from pathlib import Path
 
 if not os.environ.get("CASSINI_ISOLATED_AUDIO") or os.environ.get("WAYLAND_DISPLAY"):
@@ -29,7 +30,8 @@ import gi  # noqa: E402
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gio, GLib  # noqa: E402
+from gi.repository import Gio  # noqa: E402
+from readiness import PCMProgress, wait_until  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-viewer.gresource")))
@@ -38,58 +40,89 @@ from cassini_viewer.recording_session import RecordingSession  # noqa: E402
 from cassini_viewer.recording_window import RecordingWindow  # noqa: E402
 from cassini_viewer.session_window import SessionWindow  # noqa: E402
 
-context = GLib.MainContext.default()
 
+def painted(window):
+    frames = []
 
-def spin(seconds, until=lambda: False):
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline and not until():
-        while context.pending():
-            context.iteration(False)
-        time.sleep(0.01)
+    def tick(widget, _clock):
+        if widget.get_mapped() and widget.get_width() > 0 and widget.get_height() > 0:
+            frames.append(True)
+        return len(frames) < 2
+
+    callback = window.add_tick_callback(tick)
+    try:
+        wait_until(lambda: len(frames) >= 2, "window allocated and painted", diagnostics=diagnostics)
+    finally:
+        if len(frames) < 2:
+            window.remove_tick_callback(callback)
 
 
 artifacts = Path(os.environ.get("CASSINI_TEST_ARTIFACTS", str(Path(__file__).parent / "artifacts/gtk")))
 artifacts.mkdir(parents=True, exist_ok=True)
 app = CassiniApplication("com.gocassini.RecordingTest", "test", "development")
-app.register(None)
-app.activate()
-app.on_record()
-window = next(w for w in app.get_windows() if isinstance(w, RecordingWindow))
-assert window.button.get_label() == "Record…"
-app.on_record()
-assert sum(isinstance(w, RecordingWindow) for w in app.get_windows()) == 1
-window.microphone.set_active(False)
-window.desktop.set_active(False)
-window._clicked()
-assert window.status.get_label() == "Select at least one audio source."
-window.microphone.set_active(True)
-window.desktop.set_active(True)
-spin(0.5)
-subprocess.run(["import", "-window", "root", str(artifacts / "recording.png")], check=True)
-with tempfile.TemporaryDirectory() as directory:
-    path = Path(directory) / "quit.opus"
-    window.recorder.start(path, test=True)
-    spin(0.4)
-    app.on_quit()
-    spin(12, lambda: not app.get_windows())
-    assert not app.get_windows()
-    assert path.read_bytes().startswith(b"OggS")
-    session = RecordingSession(directory, "Browser test meeting")
-    session.add_track("a", "Remote source", "remote", 48000, 1)
-    session.append("a", bytes(96000), 250)
-    session.finish()
-    app.open_in_new_window(Gio.File.new_for_path(str(session.directory / "session.json")))
-    viewer = next(w for w in app.get_windows() if isinstance(w, SessionWindow))
-    spin(0.4)
-    assert viewer.play.get_sensitive()
-    assert viewer.player.duration == 1000
-    viewer.play.emit("clicked")
-    spin(3, lambda: viewer.player.position > 0)
-    assert viewer.player.position > 0
-    assert viewer.play.get_label() == "Pause"
-    viewer.play.emit("clicked")
-    assert not viewer.player.playing
-    subprocess.run(["import", "-window", "root", str(artifacts / "session.png")], check=True)
-    viewer.close()
-print("PASS GTK recording controls, quit finalization, session opening and playback")
+evidence = {"passed": False}
+
+
+def diagnostics():
+    return {
+        "windows": [
+            dict(type=type(w).__name__, mapped=w.get_mapped(), width=w.get_width(), height=w.get_height())
+            for w in app.get_windows()
+        ]
+    }
+
+
+try:
+    app.register(None)
+    app.activate()
+    app.on_record()
+    window = next(w for w in app.get_windows() if isinstance(w, RecordingWindow))
+    assert window.button.get_label() == "Record…"
+    app.on_record()
+    assert sum(isinstance(w, RecordingWindow) for w in app.get_windows()) == 1
+    window.microphone.set_active(False)
+    window.desktop.set_active(False)
+    window._clicked()
+    assert window.status.get_label() == "Select at least one audio source."
+    window.microphone.set_active(True)
+    window.desktop.set_active(True)
+    painted(window)
+    subprocess.run(["import", "-window", "root", str(artifacts / "recording.png")], check=True)
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "quit.opus"
+        window.recorder.start(path, test=True)
+        progress = PCMProgress(window.recorder.pipeline.get_by_name("capture").get_static_pad("src"))
+        wait_until(lambda: progress.reached(0.4), "quit test captures actual PCM", diagnostics=diagnostics)
+        progress.close()
+        app.on_quit()
+        wait_until(
+            lambda: not app.get_windows(), "quit flushes and closes windows", timeout=12, diagnostics=diagnostics
+        )
+        assert not app.get_windows()
+        assert path.read_bytes().startswith(b"OggS")
+        session = RecordingSession(directory, "Browser test meeting")
+        session.add_track("a", "Remote source", "remote", 48000, 1)
+        session.append("a", bytes(96000), 250)
+        session.finish()
+        app.open_in_new_window(Gio.File.new_for_path(str(session.directory / "session.json")))
+        viewer = next(w for w in app.get_windows() if isinstance(w, SessionWindow))
+        painted(viewer)
+        assert viewer.play.get_sensitive()
+        assert viewer.player.duration == 1000
+        viewer.play.emit("clicked")
+        wait_until(lambda: viewer.player.position > 0, "session playback advances", timeout=3, diagnostics=diagnostics)
+        assert viewer.player.position > 0
+        assert viewer.play.get_label() == "Pause"
+        viewer.play.emit("clicked")
+        assert not viewer.player.playing
+        subprocess.run(["import", "-window", "root", str(artifacts / "session.png")], check=True)
+        viewer.close()
+    print("PASS GTK recording controls, quit finalization, session opening and playback")
+    evidence["passed"] = True
+except BaseException:
+    evidence["failure"] = traceback.format_exc()
+    subprocess.run(["import", "-window", "root", str(artifacts / "failure.png")], check=False)
+    raise
+finally:
+    evidence["readiness"] = diagnostics()
+    (artifacts / "results.json").write_text(json.dumps(evidence, indent=2) + "\n")
