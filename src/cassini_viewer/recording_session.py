@@ -372,37 +372,92 @@ class BrowserHost:
             self.stopped = True
 
 
+def wave_info(path, directory):
+    """Read the v1 PCM header; complete frames on disk win over stale sizes."""
+    if path.resolve().parent != directory.resolve():
+        raise ValueError("Recording audio is outside the session directory")
+    with path.open("rb") as audio:
+        header = audio.read(44)
+        size = os.fstat(audio.fileno()).st_size
+    if len(header) != 44:
+        raise ValueError("Incomplete recording WAV header")
+    riff, _, wave, fmt, fmt_size, encoding, channels, rate, byte_rate, alignment, bits, data, _ = struct.unpack(
+        "<4sI4s4sIHHIIHH4sI", header
+    )
+    if (
+        riff != b"RIFF"
+        or wave != b"WAVE"
+        or fmt != b"fmt "
+        or data != b"data"
+        or fmt_size != 16
+        or encoding != 1
+        or bits != 16
+        or channels not in (1, 2)
+        or not 8000 <= rate <= 192000
+        or alignment != channels * 2
+        or byte_rate != rate * channels * 2
+    ):
+        raise ValueError("Unsupported recording PCM WAV format")
+    return {"sampleRate": rate, "channels": channels, "frames": (size - 44) // alignment}
+
+
+def recover_session(directory):
+    files = sorted(directory.glob("track-*.wav"))
+    if len(files) > 64:
+        raise ValueError("Too many recording tracks to recover")
+    tracks = []
+    for file in files:
+        try:
+            info = wave_info(file, directory)
+        except (OSError, ValueError):
+            continue
+        tracks.append(
+            dict(id=file.stem, file=file.name, label="Recovered audio", kind="media", labelSource="recovered", **info)
+        )
+    if not tracks:
+        raise ValueError("No readable recording metadata or PCM WAV tracks were found")
+    return dict(
+        version=1,
+        id=str(uuid4()),
+        createdAt=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        title="Recovered recording",
+        source="recovered",
+        state="interrupted",
+        problemKind="recovery",
+        problem="Recovered audio from damaged or missing metadata. Source labels and relative start times are unavailable.",
+        tracks=tracks,
+    )
+
+
 def load_session(path):
-    """Validate an on-disk session before using its track paths or durations."""
-    path = Path(path).resolve()
-    if path.stat().st_size > 1024 * 1024:
-        raise ValueError("Recording manifest is too large")
-    manifest = json.loads(path.read_text())
-    if not isinstance(manifest, dict) or manifest.get("version") != 1:
+    """Load or salvage a session read-only; never infer missing labels or offsets."""
+    path = Path(path).absolute()
+    try:
+        if path.stat().st_size > 1024 * 1024:
+            raise ValueError("Recording manifest is too large")
+        manifest = strict_json(path.read_bytes())
+        if not isinstance(manifest, dict) or not isinstance(manifest.get("tracks"), list):
+            raise ValueError("Invalid recording metadata")
+    except (OSError, ValueError):
+        return recover_session(path.parent)
+    if type(manifest.get("version")) is not int or manifest["version"] != 1:
         raise ValueError("Unsupported recording session")
-    tracks = manifest.get("tracks")
-    if not isinstance(tracks, list) or len(tracks) > 64:
+    tracks = manifest["tracks"]
+    if len(tracks) > 64:
         raise ValueError("Invalid recording tracks")
     for track in tracks:
         if not isinstance(track, dict) or not isinstance(track.get("file"), str):
             raise ValueError("Invalid recording track")
-        target = path.parent / track["file"]
-        if target.resolve().parent != path.parent or not target.is_file():
-            raise ValueError("Recording track is missing or outside the session directory")
-        import wave
-
-        with wave.open(str(target)) as audio:
-            if (
-                audio.getsampwidth() != 2
-                or audio.getnchannels() not in (1, 2)
-                or not 8000 <= audio.getframerate() <= 192000
-            ):
-                raise ValueError("Unsupported recording audio")
-            # The WAV header is authoritative after an interrupted checkpoint.
-            track["frames"] = audio.getnframes()
-            track["sampleRate"] = audio.getframerate()
-            track["channels"] = audio.getnchannels()
-        offset = track.get("startOffsetMs") or 0
-        if type(offset) not in (int, float) or not math.isfinite(offset) or not 0 <= offset <= 86400000:
+        filename = track["file"]
+        if Path(filename).name != filename or not filename.endswith(".wav"):
+            raise ValueError("Recording audio is outside the session directory")
+        info = wave_info(path.parent / filename, path.parent)
+        if track.get("sampleRate") != info["sampleRate"] or track.get("channels") != info["channels"]:
+            raise ValueError("Audio format differs from recording metadata")
+        track.update(info)
+        offset = track.get("startOffsetMs")
+        if offset is not None and (
+            type(offset) not in (int, float) or not math.isfinite(offset) or not 0 <= offset <= 86400000
+        ):
             raise ValueError("Invalid recording track offset")
     return manifest
