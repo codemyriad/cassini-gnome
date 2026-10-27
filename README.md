@@ -75,9 +75,12 @@ versions to the [releases](https://github.com/codemyriad/cassini-gnome/releases)
 - **Arch Linux**: `sudo pacman -U cassini-viewer-*-any.pkg.tar.zst`
 
 If Python, PyGObject, GTK, libadwaita or GStreamer is missing or too old,
-Cassini says which one and exits, rather than crashing. If the Ogg or Opus
-GStreamer plugins are missing, it starts but names the plugins to install
-when you open a file.
+Cassini says which one and exits, rather than crashing; run `cassini-viewer`
+in a terminal to see the message. If a GStreamer plugin is missing, it starts
+anyway, warns on the terminal, and names the packages to install where the
+plugin is needed: Ogg and Opus for `.opus` files, WAV for browser recording
+tracks, and PulseAudio (`pulsesrc`), `audiointerleave`, `opusenc` and `oggmux`
+for **Record Meeting**.
 
 ## Build from source
 

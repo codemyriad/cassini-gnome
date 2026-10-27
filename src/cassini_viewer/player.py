@@ -57,7 +57,7 @@ class Player(GObject.Object):
         self._at_end = False
         self.duration = duration_ms or 0
         self.position = 0
-        missing = runtime.missing_gst_elements(Gst.ElementFactory.find)
+        missing = runtime.missing_gst_elements(Gst.ElementFactory.find, runtime.playback_elements(uri))
         if missing:
             # playbin would only say "missing plug-in"; name what to install.
             self.emit(

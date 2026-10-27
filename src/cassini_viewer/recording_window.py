@@ -4,8 +4,9 @@
 from datetime import datetime
 from gettext import gettext as _
 
-from gi.repository import Adw, Gio, GLib, Gtk
+from gi.repository import Adw, Gio, GLib, Gst, Gtk
 
+from . import runtime
 from .recorder import Recorder
 
 
@@ -92,6 +93,12 @@ class RecordingWindow(Adw.ApplicationWindow):
         try:
             self.recorder.start(file.get_path(), self.microphone.get_active(), self.desktop.get_active())
         except Exception as error:
+            # Gst.parse_launch only says 'no element "pulsesrc"'; name what to install.
+            missing = runtime.missing_gst_elements(Gst.ElementFactory.find, runtime.RECORDING_ELEMENTS)
+            if isinstance(error, GLib.Error) and missing:
+                error = _("Missing GStreamer elements: {elements}. Install {plugins}.").format(
+                    elements=", ".join(missing), plugins=runtime.plugins_for(missing)
+                )
             self._error(self.recorder, str(error))
             return
         self.microphone.set_sensitive(False)
