@@ -1462,7 +1462,7 @@
           "value": {
             "version": 1,
             "id": "a0000000-0000-4000-8000-000000000003",
-            "source": "gnome",
+            "source": "chromium",
             "title": "Weekly sync, product team",
             "createdAt": "2026-10-27T13:05:12Z",
             "state": "recording",

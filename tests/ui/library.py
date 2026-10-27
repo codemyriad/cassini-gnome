@@ -67,6 +67,7 @@ with tempfile.TemporaryDirectory() as tmp:
     assert window.capture_header.get_visible_child_name() == "live"
     assert window.live_timer.get_label() == "12:48" and not window.live_stop.get_sensitive()
     labels = [w.get_label() for w in walk(window.rows) if isinstance(w, Gtk.Label)]
+    assert "Listening inside your browser" in labels
     assert "47 min · the audio is ready to play" in labels
     assert not any(value.startswith("47 min · Marta") for value in labels)
     assert not any(value.startswith("colour-") for w in walk(window.preview) for value in w.get_css_classes())
