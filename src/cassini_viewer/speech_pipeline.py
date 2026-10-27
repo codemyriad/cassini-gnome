@@ -12,7 +12,9 @@ import math
 import os
 import wave
 from collections import deque
+from contextlib import closing
 from dataclasses import dataclass
+from itertools import groupby
 from pathlib import Path
 
 import numpy as np
@@ -48,14 +50,77 @@ def resampled_chunks(path, start=0, end=None, chunk_size=16000):
             if rate == 16000:
                 yield samples
                 continue
-            output = np.zeros(last - first, dtype=np.float64)
-            positions = np.arange(first, last, dtype=np.int64) * 3 + 48
-            for n, coefficient in enumerate(TAPS):
-                indices = positions - n - low
-                valid = (indices >= 0) & (indices < len(samples))
-                # Multiply in float64 too, matching sum h[n]*x[...] in the rule.
-                output[valid] += float(coefficient) * samples[indices[valid]].astype(np.float64)
-            yield output.astype("<f4")
+            yield fir_values(samples, low, first, last)
+
+
+def fir_values(samples, low, first, last):
+    output = np.zeros(last - first, dtype=np.float64)
+    positions = np.arange(first, last, dtype=np.int64) * 3 + 48
+    for n, coefficient in enumerate(TAPS):
+        indices = positions - n - low
+        valid = (indices >= 0) & (indices < len(samples))
+        output[valid] += float(coefficient) * samples[indices[valid]].astype(np.float64)
+    return output.astype("<f4")
+
+
+def resampled_stream(blocks):
+    """The same centred FIR, with <=one block plus 96 context samples resident."""
+    samples = np.empty(0, dtype="<f4")
+    low = total = first = 0
+    for block in blocks:
+        if len(block) > 48000:
+            raise ValueError("PCM source exceeded its one-second block limit")
+        samples = np.concatenate((samples, block))
+        total += len(block)
+        available = max(0, (total - 49) // 3 + 1)
+        while first < available:
+            last = min(first + RATE, available)
+            yield fir_values(samples, low, first, last)
+            first = last
+        keep = max(0, first * 3 - 48)
+        samples = samples[keep - low :]
+        low = keep
+    while first < (total + 2) // 3:
+        last = min(first + RATE, (total + 2) // 3)
+        yield fir_values(samples, low, first, last)
+        first = last
+
+
+def audio_chunks(track):
+    if track.get("format") == "opus":
+        from .opus_input import pcm_blocks
+
+        with closing(pcm_blocks(track["path"])) as decoded:
+            yield from resampled_stream(decoded)
+    else:
+        yield from resampled_chunks(track["path"])
+
+
+def audio_segments(track, segments):
+    """Second sequential decode pass: retain at most one speech segment, no WAV."""
+    if track.get("format") != "opus":
+        for segment in segments:
+            yield np.concatenate(list(resampled_chunks(track["path"], segment["startSample"], segment["endSample"])))
+        return
+    with closing(audio_chunks(track)) as source:
+        current, cursor = np.empty(0, dtype="<f4"), 0
+        for segment in segments:
+            start, end = segment["startSample"], segment["endSample"]
+            if not 0 < end - start <= 16 * RATE or start < cursor:
+                raise ValueError("Invalid or overlapping speech segment")
+            pieces = []
+            while cursor < end:
+                if not len(current):
+                    current = next(source, None)
+                    if current is None:
+                        raise ValueError("Received audio ended before its planned segment")
+                take = min(len(current), end - cursor)
+                offset = max(0, start - cursor)
+                if offset < take:
+                    pieces.append(current[offset:take])
+                current = current[take:]
+                cursor += take
+            yield np.concatenate(pieces)
 
 
 class SpeechDetector:
@@ -191,7 +256,7 @@ class SpeechGate:
         return chunks
 
 
-def segment_ranges(path, detector, heartbeat=None):
+def segment_ranges(path, detector, heartbeat=None, *, chunks=None):
     detector.reset()
     gate = SpeechGate(detector)
     start = None
@@ -211,7 +276,7 @@ def segment_ranges(path, detector, heartbeat=None):
     import time
 
     last_notice = time.monotonic()
-    for samples in resampled_chunks(path):
+    for samples in resampled_chunks(path) if chunks is None else chunks:
         collect(gate.feed(samples))
         if heartbeat is not None and time.monotonic() - last_notice >= 1:
             heartbeat()
@@ -220,8 +285,9 @@ def segment_ranges(path, detector, heartbeat=None):
     return ranges
 
 
-def recognise_segment(model, path, segment, offset_ms=0):
-    samples = np.concatenate(list(resampled_chunks(path, segment["startSample"], segment["endSample"])))
+def recognise_segment(model, path, segment, offset_ms=0, *, samples=None):
+    if samples is None:
+        samples = np.concatenate(list(resampled_chunks(path, segment["startSample"], segment["endSample"])))
     input_hash = hashlib.sha256(samples.tobytes()).hexdigest()
     result = model.transcribe(samples, language=None, word_timestamps=True)
     base = math.floor(offset_ms) + segment["startSample"] * 1000 // 16000
@@ -252,29 +318,37 @@ def process_tracks(model, tracks, vad_model, notify):
             diagnostics.append(dict(code="unknown-offset-display-zero", track=track["id"]))
         if type(offset) not in (int, float) or not math.isfinite(offset) or offset < 0:
             raise ValueError("Invalid capture offset")
-        for segment in segment_ranges(path, detector, lambda track=track: notify("planning", trackId=track["id"])):
+        for segment in segment_ranges(
+            path, detector, lambda track=track: notify("planning", trackId=track["id"]), chunks=audio_chunks(track)
+        ):
             plan.append((order, track, segment, offset))
     remaining = sum((s["endSample"] - s["startSample"]) / RATE for _, _, s, _ in plan)
     notify("planned", etaMinutes=math.ceil(remaining * 0.15 / 60), segments=len(plan), diagnostics=diagnostics)
     elapsed = processed = 0.0
     language = "und"
-    for order, track, segment, offset in plan:
-        started = time.monotonic()
-        value, words, language, input_hash = recognise_segment(model, track["path"], segment, offset)
-        elapsed += time.monotonic() - started
-        seconds = (segment["endSample"] - segment["startSample"]) / RATE
-        processed += seconds
-        remaining = max(0, remaining - seconds)
-        factor = elapsed / processed if processed else 0.15
-        notify(
-            "progress",
-            inputSha256=input_hash,
-            trackId=track["id"],
-            trackOrder=order,
-            segment=value,
-            words=words,
-            language=language,
-            etaMinutes=math.ceil(remaining * factor / 60),
-            realtimeFactor=factor,
-        )
+    for _order, grouped in groupby(plan, key=lambda entry: entry[0]):
+        entries = list(grouped)
+        track = entries[0][1]
+        with closing(audio_segments(track, [entry[2] for entry in entries])) as source:
+            for (order, track, segment, offset), samples in zip(entries, source, strict=True):
+                started = time.monotonic()
+                value, words, language, input_hash = recognise_segment(
+                    model, track["path"], segment, offset, samples=samples
+                )
+                elapsed += time.monotonic() - started
+                seconds = (segment["endSample"] - segment["startSample"]) / RATE
+                processed += seconds
+                remaining = max(0, remaining - seconds)
+                factor = elapsed / processed if processed else 0.15
+                notify(
+                    "progress",
+                    inputSha256=input_hash,
+                    trackId=track["id"],
+                    trackOrder=order,
+                    segment=value,
+                    words=words,
+                    language=language,
+                    etaMinutes=math.ceil(remaining * factor / 60),
+                    realtimeFactor=factor,
+                )
     return dict(language=language, diagnostics=diagnostics, segments=len(plan), vad=detector.runtime)
