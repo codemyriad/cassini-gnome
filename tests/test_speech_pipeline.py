@@ -149,3 +149,20 @@ def test_streamed_fir_matches_immutable_reference_and_arbitrary_input_boundaries
             dtype="<f4",
         )
         assert np.array_equal(result, reference), length
+
+
+def test_received_second_pass_reports_progress_while_skipping_a_long_quiet_span(monkeypatch):
+    from cassini_viewer import speech_pipeline as pipeline
+
+    def chunks(_track):
+        for _ in range(10):
+            yield np.zeros(16000, dtype="<f4")
+
+    ticks = iter(range(100))
+    monkeypatch.setattr(pipeline, "audio_chunks", chunks)
+    notices = []
+    segments = [dict(startSample=9 * 16000, endSample=10 * 16000)]
+    result = list(
+        pipeline.audio_segments(dict(format="opus"), segments, lambda: notices.append(True), clock=lambda: next(ticks))
+    )
+    assert len(notices) >= 9 and len(result[0]) == 16000

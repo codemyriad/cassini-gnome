@@ -405,3 +405,23 @@ def test_missing_root_and_unreadable_folder_evict_all_cached_bodies(tmp_path, mo
     shutil.rmtree(scanner.root)
     assert not scanner.scan().meetings
     assert not scanner._files.entries and not scanner._directories and not scanner._preview_cache
+
+
+def test_long_preview_bounds_legacy_grouping_and_retains_full_reading_body(tmp_path, monkeypatch):
+    from cassini_viewer import library, portable
+
+    scanner = LibraryScanner(tmp_path)
+    original = library.build_turns
+    observed = []
+
+    def bounded(words):
+        observed.append(len(words))
+        assert sum(i == 0 or word.speaker != words[i - 1].speaker for i, word in enumerate(words)) <= 32
+        return original(words)
+
+    monkeypatch.setattr(library, "build_turns", bounded)
+    words = tuple(portable.Word(str(index % 2), index * 1000, index * 1000 + 900, "word") for index in range(20000))
+    result = scanner._preview("long", words)
+    assert len(result) == 3
+    assert sum(len(turn.words) for turn in scanner._preview_cache["long"][2]) == 20000
+    assert scanner._preview("long", words) is result and observed == [32]

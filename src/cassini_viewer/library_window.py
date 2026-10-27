@@ -181,11 +181,22 @@ class LibraryWindow(Adw.ApplicationWindow):
         stack = Gtk.Stack(hhomogeneous=False, vhomogeneous=False)
         stack.add_named(self._record(), "record")
         live = Gtk.Box(spacing=8, css_classes=["live-pill"], valign=Gtk.Align.CENTER)
-        live.append(Gtk.Box(width_request=10, height_request=10, valign=Gtk.Align.CENTER, css_classes=["live-dot"]))
+        live.append(
+            Gtk.Box(
+                width_request=10,
+                height_request=10,
+                valign=Gtk.Align.CENTER,
+                css_classes=["live-dot"],
+                accessible_role=Gtk.AccessibleRole.PRESENTATION,
+            )
+        )
         timer = label("", "live-timer")
         live.append(timer)
         bars = vertical(3, valign=Gtk.Align.CENTER, css_classes=["live-levels"])
-        levels = [Gtk.ProgressBar(fraction=fraction, width_request=30) for fraction in (0.64, 0.38)]
+        levels = [
+            Gtk.ProgressBar(fraction=fraction, width_request=30, accessible_role=Gtk.AccessibleRole.PRESENTATION)
+            for fraction in (0.64, 0.38)
+        ]
         for bar in levels:
             bars.append(bar)
         live.append(bars)
@@ -515,7 +526,18 @@ class LibraryWindow(Adw.ApplicationWindow):
             name.append(self._speaker(speakers[turn.speaker]))
             name.append(label(fmt.position(turn.start_ms), "small", "dim-label", xalign=0))
             line.append(name)
-            line.append(label(turn.text, "excerpt", xalign=0, yalign=0, wrap=True, hexpand=True))
+            line.append(
+                label(
+                    turn.text,
+                    "excerpt",
+                    xalign=0,
+                    yalign=0,
+                    wrap=True,
+                    hexpand=True,
+                    lines=3,
+                    ellipsize=Pango.EllipsizeMode.END,
+                )
+            )
             self.preview.append(line)
 
     def _connect_player(self):

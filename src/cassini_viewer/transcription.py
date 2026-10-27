@@ -10,6 +10,7 @@ from pathlib import Path
 from .library import LibraryScanner, library_root, meeting_id
 from .meeting_store import LOCK, atomic_json, read_metadata, update_metadata
 from .strings import text
+from .transcript_publish import TranscriptPublisher
 from .whistle_client import WhistleClient
 
 LOG = logging.getLogger(__name__)
@@ -72,7 +73,11 @@ def update_progress_metadata(directory, speakers, **changes):
             merged[identifier] = dict(previous, **planned)
             if previous.get("provenance") in ("user", "recognised"):
                 merged[identifier] = previous
-        return update_metadata(directory, speakers=list(merged.values()), **changes)
+        changes["speakers"] = list(merged.values())
+        if all(current.get(key) == value for key, value in changes.items()):
+            return False
+        update_metadata(directory, **changes)
+        return True
 
 
 class TranscriptionQueue:
@@ -198,7 +203,7 @@ class TranscriptionQueue:
         if not tracks:
             raise ValueError("Meeting has no complete audio frames")
         by_track = {track["id"]: track for track in tracks}
-        words = []
+        publisher = TranscriptPublisher(directory, existing_count=len(meeting.words))
 
         def progress(value):
             if self.closed:
@@ -215,15 +220,13 @@ class TranscriptionQueue:
                         or not word["text"]
                     ):
                         raise ValueError("Invalid timed recognition item")
-                    words.append(dict(word, speaker=track["speaker"], _order=value["trackOrder"]))
-                words.sort(key=lambda w: (w["startMs"], w["_order"]))
-                body = [{k: v for k, v in word.items() if k != "_order"} for word in words]
-                atomic_json(
-                    directory / "transcript.json",
-                    dict(format="cassini.words.v1", language=value["language"], items=body),
-                )
-            update_progress_metadata(directory, speakers, etaMinutes=value["etaMinutes"])
-            self.changed(directory)
+                publisher.add(value["words"], track["speaker"], value["trackOrder"], value["language"])
+                published = publisher.flush()
+            else:
+                published = False
+            updated = update_progress_metadata(directory, speakers, etaMinutes=value["etaMinutes"])
+            if published or updated:
+                self.changed(directory)
 
         if self.client is None:
             client = self.client_factory(self.bundle, timeout=120)
@@ -232,7 +235,13 @@ class TranscriptionQueue:
                     raise CancelledError()
                 self.client = client
             self.client.start()
-        complete = self.client.process_tracks(tracks, progress)
+        completed = False
+        try:
+            complete = self.client.process_tracks(tracks, progress)
+            completed = True
+        finally:
+            if publisher.flush(force=True, complete=completed):
+                self.changed(directory)
         if self.closed:
             raise CancelledError()
         for diagnostic in complete.get("diagnostics", []):
