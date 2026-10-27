@@ -43,6 +43,7 @@ def capture(application_id, version, profile):
     window.add_tick_callback(lambda *_args: (frames.__setitem__(0, frames[0] + 1), True)[1])
     opened_meeting = False
     opened_record_first = False
+    opened_recording = False
     while time.monotonic() < deadline:
         while context.pending():
             context.iteration(False)
@@ -53,6 +54,22 @@ def capture(application_id, version, profile):
         ):
             app.on_record()
             opened_record_first = True
+            settled_frame = None
+        if os.environ.get("CASSINI_SCREENSHOT_BOARD") == "recording" and not window._pending and not opened_recording:
+            from .recording_comfort import notification_payload
+            from .recording_details import recording_observation
+
+            meeting = next(m for m in window.snapshot.meetings if m.lifecycle == "recording")
+            observed = window.monitor._executor.submit(recording_observation, meeting).result(timeout=5)
+            # Derived fixture contains a microphone silent for the entire 12:48;
+            # render the detector's >=20-second state, not a live host device.
+            app.comfort.states[meeting.key] = dict(observed, silent=observed["levels"][0] == 0, line=None)
+            window.open_meeting(meeting)
+            window._update_live()
+            target.with_name("notification.json").write_text(
+                json.dumps(notification_payload(meeting, app.comfort.elapsed(meeting)), indent=2) + "\n"
+            )
+            opened_recording = True
             settled_frame = None
         if os.environ.get("CASSINI_SCREENSHOT_BOARD") == "meeting" and not window._pending and not opened_meeting:
             from .folder_player import FolderPlayer
@@ -104,7 +121,7 @@ def capture(application_id, version, profile):
                 accent=Adw.StyleManager.get_default().get_accent_color().value_nick,
                 light=not Adw.StyleManager.get_default().get_dark(),
                 limitations=[
-                    "Recording controls still open the existing recording window until UX5.",
+                    "GNotification button appearance is controlled by GNOME Shell.",
                 ],
             ),
             indent=2,

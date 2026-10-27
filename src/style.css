@@ -147,3 +147,21 @@
 .info-line { background: alpha(@accent_bg_color, 0.13); }
 .meeting-transcript .words { font-size: 15px; line-height: 1.5; }
 .responsibility-card { background: alpha(@view_fg_color, 0.06); border-radius: 12px; padding: 16px; }
+
+/* UX6 recording comfort. */
+.recording-page { background: @window_bg_color; color: @window_fg_color; }
+.recording-timer { font-size: 44px; font-weight: 600; font-feature-settings: "tnum"; letter-spacing: -0.8px; }
+.recording-dot { background: #c01c28; border-radius: 100px; box-shadow: 0 0 0 8px #fbe4e6; }
+.library-window .recording-stop { min-height: 48px; min-width: 110px; padding: 0; border-radius: 100px; font-size: 16px; }
+.recording-title { min-height: 38px; font-size: 16px; padding: 0 12px; background: @view_bg_color; }
+.recording-sources { border: 1px solid alpha(@view_fg_color, 0.18); border-radius: 12px; }
+.recording-source { padding: 12px 16px; min-height: 38px; }
+.recording-sources progressbar trough { min-width: 96px; min-height: 6px; border-radius: 2px; background: alpha(@view_fg_color, 0.12); }
+.recording-sources progressbar progress { min-height: 6px; background: @view_fg_color; }
+.mic-silent { background: #fcefc9; color: #7a4d00; border-radius: 11px 11px 0 0; }
+.mic-silent button { background: white; color: #7a4d00; }
+.mic-silent progressbar trough { background: #ead9ad; }
+.recording-change { color: @accent_color; font-size: 13px; font-weight: 600; margin: 0 8px; }
+.recording-notes { border: 1px solid alpha(@view_fg_color, 0.18); border-radius: 6px; background: @view_bg_color; color: @view_fg_color; }
+.library-window .static-stop { background: #c01c28; color: white; font-weight: 600; min-height: 26px; padding: 0 9px; }
+.library-window .live-pill button.flat { min-height: 0; min-width: 0; padding: 0; }
