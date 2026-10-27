@@ -153,3 +153,33 @@ def test_append_failure_retains_io_reason(tmp_path, monkeypatch):
 def test_huge_json_integer_offset_has_chunk_error(tmp_path):
     code, replies = invoke(tmp_path, [START, TRACK, {**AUDIO, "offsetMs": 10**400}], open_completed=False)
     assert code == 1 and replies[-1]["code"] == "chunk"
+
+
+def test_installed_host_supplies_viewer_environment(tmp_path):
+    share = tmp_path / "local/share"
+    data = share / "cassini-viewer"
+    package = data / "cassini_viewer"
+    package.mkdir(parents=True)
+    (package / "__init__.py").touch()
+    (package / "browser_host.py").write_text(
+        "import json,os\ndef main(**kwargs):\n"
+        " print(json.dumps(dict(kwargs,schemas=os.environ.get('GSETTINGS_SCHEMA_DIR'),data=os.environ.get('XDG_DATA_DIRS'))))\n"
+        " return 0\n"
+    )
+    schemas = share / "glib-2.0/schemas"
+    schemas.mkdir(parents=True)
+    (schemas / "gschemas.compiled").touch()
+    bindir = tmp_path / "local/bin"
+    script = tmp_path / "host.py"
+    script.write_text(
+        (ROOT / "src/cassini-browser-host.in")
+        .read_text()
+        .replace("@pkgdatadir@", str(data))
+        .replace("@bindir@", str(bindir))
+    )
+    env = {key: value for key, value in os.environ.items() if key not in ("GSETTINGS_SCHEMA_DIR", "XDG_DATA_DIRS")}
+    result = subprocess.run([sys.executable, str(script)], env=env, capture_output=True, text=True, check=True)
+    values = json.loads(result.stdout)
+    assert values["schemas"] == str(schemas)
+    assert values["data"].split(":")[0] == str(share)
+    assert values["viewer_path"] == str(bindir / "cassini-viewer")

@@ -1,6 +1,16 @@
 #!@PYTHON@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import os
 import sys
+from pathlib import Path
+
+# Chrome does not inherit the environment used by `make run`. Supply the
+# installed schemas and icons when the viewer lives under a local prefix.
+share = Path('@pkgdatadir@').parent
+schemas = share / 'glib-2.0' / 'schemas'
+if (schemas / 'gschemas.compiled').is_file():
+    os.environ.setdefault('GSETTINGS_SCHEMA_DIR', str(schemas))
+os.environ['XDG_DATA_DIRS'] = str(share) + ':' + os.environ.get('XDG_DATA_DIRS', '/usr/local/share:/usr/share')
 sys.path.insert(0, '@pkgdatadir@')
 from cassini_viewer.browser_host import main
 sys.exit(main(viewer_path='@bindir@/cassini-viewer'))

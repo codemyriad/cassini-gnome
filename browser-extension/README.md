@@ -21,16 +21,25 @@ rendered mix. The extension uses the same browser code and
    # For a custom installation: --host /absolute/path/to/cassini-browser-host
    ```
 
-   The installer prefers the installed host on PATH, then the development
-   launcher in this checkout. Keep the checkout in place when using the latter.
+   For a local build (`make install`), load
+   `_install/share/cassini-viewer/browser-extension` and register its host with:
+
+   ```sh
+   python3 _install/share/cassini-viewer/browser-extension/install-host.py EXTENSION_ID --browser google-chrome
+   ```
+
+   The installed installer uses the configured host path. The checkout's
+   installer prefers a host on PATH, then its development launcher. Keep the
+   installation or checkout in place while using the extension.
    Only the supplied extension ID can connect. Custom browser user-data
    directories need the generated manifest in their `NativeMessagingHosts` folder.
 4. Reload the meeting tab so the early hooks can observe connection creation.
    Join the meeting, invoke the Cassini extension, and choose a recording mode.
    Ctrl+Shift+9 opens the extension controls if that shortcut is available.
-5. **Stop and save** finalizes all sources and opens the session in Cassini if
-   `cassini-viewer` is on PATH. Otherwise open the displayed directory's
-   `session.json` in Cassini using the Recording Session file filter.
+5. **Stop and save** finalizes all sources and opens the session in Cassini.
+   The installed host locates the viewer and its settings under the installation
+   prefix, including local builds outside PATH. You can also open the displayed
+   directory's `session.json` in Cassini using the Recording Session file filter.
 
 Source WAVs and `session.json` are saved under `~/Music/Cassini/Recording-…`.
 The GNOME session viewer plays individual sources and shows their start offsets.
