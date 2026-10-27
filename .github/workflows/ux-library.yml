@@ -1,0 +1,51 @@
+name: UX Library model
+on:
+  push:
+    branches: ['ux/1a-library-model']
+  pull_request:
+    paths:
+      - 'src/cassini_viewer/library*.py'
+      - 'src/cassini_viewer/meeting_state.py'
+      - 'src/cassini_viewer/ux_formats.py'
+      - 'tests/ux/**'
+      - 'tests/test_library*.py'
+      - 'tests/test_ux_vectors.py'
+      - 'build-aux/check-ux-vectors.py'
+      - '.github/workflows/ux-library.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  golden-vectors-and-reader:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install headless Python and GFileMonitor test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pytest python3-gi
+      - run: python3 build-aux/check-ux-vectors.py
+      - name: Run every frozen vector and the read-only scanner/watcher cases
+        run: |
+          mkdir -p ux-artifacts
+          python3 -m pytest -q tests/test_ux_vectors.py tests/test_library.py tests/test_library_monitor.py --junitxml=ux-artifacts/library-tests.xml
+          python3 - <<'PY'
+          import json,xml.etree.ElementTree as ET
+          from pathlib import Path
+          root=Path('tests/ux')
+          formats=json.loads((root/'format-vectors.json').read_bytes())
+          states=json.loads((root/'states-vectors.json').read_bytes())
+          expected={'format':sum(len(v) for key,v in formats.items() if isinstance(v,list) and key!='changelog'),'state':len(states['vectors'])}
+          cases=list(ET.parse('ux-artifacts/library-tests.xml').iter('testcase'))
+          passed={kind:sum(c.attrib['name'].startswith(prefix) and not list(c) for c in cases) for kind,prefix in [('format','test_format_vector['),('state','test_state_vector[')]}
+          assert passed==expected,(passed,expected)
+          result={'expected':expected,'passed':passed,'goldenSource':json.loads((root/'UPSTREAM.json').read_text())}
+          Path('ux-artifacts/vector-results.json').write_text(json.dumps(result,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gnome-ux-library-vectors
+          path: ux-artifacts/
+          retention-days: 14

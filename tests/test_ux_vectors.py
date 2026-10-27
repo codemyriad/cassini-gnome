@@ -14,7 +14,9 @@ from cassini_viewer.meeting_state import MeetingState
 ROOT = Path(__file__).resolve().parents[1]
 FORMATS = json.loads((ROOT / "tests/ux/format-vectors.json").read_bytes())
 STATES = json.loads((ROOT / "tests/ux/states-vectors.json").read_bytes())
-CASES = [(kind, case) for kind, cases in FORMATS.items() if isinstance(cases, list) for case in cases]
+CASES = [
+    (kind, case) for kind, cases in FORMATS.items() if isinstance(cases, list) and kind != "changelog" for case in cases
+]
 
 
 @pytest.mark.parametrize("kind,case", CASES, ids=[f"{kind}-{i}" for i, (kind, _) in enumerate(CASES)])
