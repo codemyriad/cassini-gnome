@@ -318,3 +318,90 @@ def test_bad_received_reference_does_not_read_outside_library(tmp_path):
     raw["received"]["originalName"] = "../outside.opus"
     (directory / "meeting.json").write_text(json.dumps(raw))
     assert not scan_library(tmp_path).meetings, "Received publication must pass the whole schema"
+
+
+def test_none_and_failed_never_publish_stored_body_or_speakers(tmp_path):
+    session = capture(tmp_path)
+    (session.directory / "transcript.json").write_text(
+        json.dumps(dict(language="en", items=[dict(speaker="a", startMs=0, endMs=100, text="Stale words")]))
+    )
+    scanner = LibraryScanner(tmp_path)
+    for status in ("none", "failed"):
+        write_metadata(
+            session.directory,
+            transcript=dict(
+                status=status, reference=dict(kind="sidecar", file="transcript.json", format="cassini.words.v1")
+            ),
+        )
+        meeting = scanner.scan().meetings[0]
+        assert meeting.transcript == status
+        assert not meeting.words and not meeting.speakers and not meeting.quote_line and not meeting.preview_turns
+
+
+def test_preview_filters_asides_before_limit_and_reuses_grouping_on_metadata_change(tmp_path, monkeypatch):
+    from test_transcript import WORDS, w
+
+    from cassini_viewer import library
+
+    session = capture(tmp_path)
+    words = WORDS + [w("d", 4000, 4400, "Third visible turn")]
+    (session.directory / "transcript.json").write_text(
+        json.dumps(
+            dict(
+                language="en",
+                items=[dict(speaker=w.speaker, startMs=w.start_ms, endMs=w.end_ms, text=w.text) for w in words],
+            )
+        )
+    )
+
+    def metadata(title):
+        write_metadata(
+            session.directory,
+            title=title,
+            titleSource="user",
+            transcript=dict(
+                status="done", reference=dict(kind="sidecar", file="transcript.json", format="cassini.words.v1")
+            ),
+        )
+
+    calls = []
+    original = library.build_turns
+
+    def grouped(words):
+        calls.append(True)
+        return original(words)
+
+    monkeypatch.setattr(library, "build_turns", grouped)
+    metadata("Before")
+    scanner = LibraryScanner(tmp_path)
+    before = scanner.scan().meetings[0]
+    assert [t.speaker for t in before.preview_turns] == ["a", "c", "d"]
+    metadata("After")
+    after = scanner.scan().meetings[0]
+    assert after.title == "After" and after.preview_turns is before.preview_turns
+    assert len(calls) == 1
+
+
+def test_missing_root_and_unreadable_folder_evict_all_cached_bodies(tmp_path, monkeypatch):
+    import shutil
+
+    session = capture(tmp_path / "library")
+    scanner = LibraryScanner(session.directory.parent)
+    scanner.scan()
+    assert scanner._files.entries and scanner._row_cache
+    original = os.open
+
+    def denied(path, *args, **kwargs):
+        if path == session.directory.name:
+            raise PermissionError("synthetic meeting access failure")
+        return original(path, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "open", denied)
+        scanner.scan()
+        assert not scanner._row_cache and not scanner._files.entries
+    scanner.scan()
+    assert scanner._files.entries
+    shutil.rmtree(scanner.root)
+    assert not scanner.scan().meetings
+    assert not scanner._files.entries and not scanner._directories and not scanner._preview_cache

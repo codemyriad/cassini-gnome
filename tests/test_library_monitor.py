@@ -273,3 +273,102 @@ def test_watch_target_resolution_and_stats_happen_in_worker(tmp_path, monkeypatc
         monitor._changed(None, Gio.File.new_for_path(str(tmp_path / "unrelated")), None, Gio.FileMonitorEvent.CHANGED)
     finally:
         monitor.close()
+
+
+def test_startup_metadata_change_after_read_is_observed(tmp_path, monkeypatch):
+    from test_library import capture, write_metadata
+
+    session = capture(tmp_path)
+    snapshots = []
+    monitor = LibraryMonitor(snapshots.append, tmp_path, debounce_ms=1)
+    original = monitor.scanner.scan
+    first = True
+
+    def scan(**kwargs):
+        nonlocal first
+        result = original(**kwargs)
+        if first:
+            first = False
+            # A real filesystem event after the initial snapshot was read,
+            # before any completion callback can install watches.
+            write_metadata(session.directory, title="Changed during bootstrap", titleSource="user")
+        return result
+
+    monkeypatch.setattr(monitor.scanner, "scan", scan)
+    try:
+        monitor.refresh()
+        spin_until(lambda: snapshots and snapshots[-1].meetings[0].title == "Changed during bootstrap")
+    finally:
+        monitor.close()
+
+
+def test_first_scan_failure_retains_watches_and_recovers_on_metadata_event(tmp_path, monkeypatch):
+    from test_library import capture, write_metadata
+
+    session = capture(tmp_path)
+    snapshots = []
+    monitor = LibraryMonitor(snapshots.append, tmp_path, debounce_ms=1)
+    original = monitor.scanner.scan
+    first = True
+
+    def scan(**kwargs):
+        nonlocal first
+        if first:
+            first = False
+            raise RuntimeError("synthetic initial scan failure")
+        return original(**kwargs)
+
+    monkeypatch.setattr(monitor.scanner, "scan", scan)
+    try:
+        monitor.refresh()
+        spin_until(lambda: bool(snapshots))
+        assert snapshots[-1].unavailable and session.directory in monitor._monitors
+        write_metadata(session.directory, title="Recovered", titleSource="user")
+        spin_until(lambda: snapshots[-1].meetings and snapshots[-1].meetings[0].title == "Recovered")
+    finally:
+        monitor.close()
+
+
+def test_preview_grouping_runs_on_worker_without_blocking_main_loop(tmp_path, monkeypatch):
+    import threading
+
+    from test_library import capture, write_metadata
+
+    from cassini_viewer import library
+
+    session = capture(tmp_path)
+    (session.directory / "transcript.json").write_text(
+        json.dumps(dict(language="en", items=[dict(speaker="a", startMs=0, endMs=100, text="A real preview")]))
+    )
+    write_metadata(
+        session.directory,
+        transcript=dict(
+            status="done", reference=dict(kind="sidecar", file="transcript.json", format="cassini.words.v1")
+        ),
+    )
+    entered, release = threading.Event(), threading.Event()
+    main = threading.get_ident()
+    original = library.build_turns
+
+    def group(words):
+        assert threading.get_ident() != main
+        entered.set()
+        assert release.wait(3)
+        return original(words)
+
+    monkeypatch.setattr(library, "build_turns", group)
+    snapshots = []
+    monitor = LibraryMonitor(snapshots.append, tmp_path, debounce_ms=1)
+    try:
+        monitor.refresh()
+        spin_until(entered.is_set)
+        heartbeats = []
+        GLib.idle_add(lambda: heartbeats.append(True) and False)
+        spin_until(lambda: bool(heartbeats))
+        assert not snapshots
+        release.set()
+        spin_until(lambda: bool(snapshots))
+        assert snapshots[-1].meetings[0].preview_turns[0].text == "A real preview"
+    finally:
+        release.set()
+        monitor.close()

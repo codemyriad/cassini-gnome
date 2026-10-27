@@ -63,7 +63,7 @@ try {
  const worker=context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
  assert.equal(new URL(worker.url()).host,id,'unpacked extension ID matches prepared host allowlist');
  worker.on('console',message=>evidence.console.push(message.text()));
- ui=spawn('/usr/bin/python3',[path.join(root,'tests/recording/browser-ui.py'),'--build',build],{stdio:['pipe','pipe','pipe']});
+ ui=spawn('/usr/bin/python3',[path.join(root,'tests/recording/browser-ui.py'),'--build',build],{stdio:['pipe','pipe','pipe'],env:{...process.env,CASSINI_LIBRARY_DIR:artifacts}});
  let stderr='';ui.stderr.on('data',data=>{stderr+=data;});
  ui.stderr.pipe(createWriteStream(path.join(artifacts,'gnome-ui.log')));
  createInterface({input:ui.stdout}).on('line',line=>{try{pending.shift()?.(JSON.parse(line));}catch{evidence.console.push(line);}});
@@ -92,10 +92,15 @@ try {
   return directory && (await samples(directory)).tracks.some(t=>t.frames>=t.sampleRate);
  },'one second recorded through app controls');
  const directory=state.statuses.find(s=>s.recording).path;
+ const live=await poll(async()=> (await call()).library?.find(m=>m.path===directory && m.lifecycle==='recording'),'live Library lifecycle from the real browser broker');
+ assert.equal(live.interruptedAtMs,null);
+ assert.equal(live.header,'live');
  execFileSync('xdotool',['search','--name','^Meetings in your browser$','windowraise']);
  execFileSync('import',['-window','root',path.join(artifacts,'app-recording.png')]);
  await call({action:'stop',id:row.id});
  await poll(async()=> (await call()).rows.some(r=>r.id===row.id && r.button==='Record' && r.enabled),'stopped GNOME indicator');
+ const saved=await poll(async()=> (await call()).library?.find(m=>m.path===directory && m.lifecycle==='saved' && m.interruptedAtMs===null),'saved Library lifecycle after browser Stop');
+ assert.equal(saved.header,'record');
  const first=await samples(directory);
  assert.equal(first.manifest.state,'completed');
  assert.ok(first.tracks.some(t=>t.kind==='local') && first.tracks.some(t=>t.kind==='remote'));

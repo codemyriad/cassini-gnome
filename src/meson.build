@@ -60,6 +60,7 @@ install_data(
   'cassini_viewer/library_schema.py',
   'cassini_viewer/meeting.schema.json',
   'cassini_viewer/library_monitor.py',
+  'cassini_viewer/capture_activity.py',
   'cassini_viewer/meeting_state.py',
   'cassini_viewer/ux_formats.py',
   'cassini_viewer/screenshot.py',
