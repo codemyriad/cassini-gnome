@@ -134,3 +134,9 @@ def test_build_fetch_rejects_corrupt_cached_artifact(tmp_path):
     with pytest.raises(ValueError, match="SHA256 mismatch"):
         namespace["fetch"](tmp_path / "output", tmp_path)
     assert not (tmp_path / "output").exists()
+
+
+@pytest.mark.parametrize("event", ["socket.sendto", "socket.sendmsg", "socket.getnameinfo", "socket.__new__"])
+def test_worker_network_guard_covers_connectionless_operations(event):
+    with pytest.raises(RuntimeError, match="Network access is disabled"):
+        whistle_worker.block_network(event, ())

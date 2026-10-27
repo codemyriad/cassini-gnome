@@ -124,6 +124,7 @@ class NativeRecorder(GObject.Object):
                 self._begin_finish(str(error))
             else:
                 self.emit("error", str(error))
+                self.emit("finished", "")
         return False
 
     def _sample(self, sink, identifier):

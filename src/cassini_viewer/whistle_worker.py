@@ -40,7 +40,7 @@ def verify_bundle(bundle):
 
 
 def block_network(event, _args):
-    if event in ("socket.connect", "socket.getaddrinfo", "socket.bind"):
+    if event.startswith("socket."):
         raise RuntimeError("Network access is disabled in the Whistle worker")
 
 

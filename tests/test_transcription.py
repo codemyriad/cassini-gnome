@@ -7,11 +7,17 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
 from test_library import capture, write_metadata
 
 from cassini_viewer.library import LibraryScanner
 from cassini_viewer.meeting_store import read_metadata, update_metadata
 from cassini_viewer.transcription import TranscriptionQueue
+
+
+@pytest.fixture(autouse=True)
+def configured_library(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
 
 
 def until(check):
@@ -79,9 +85,13 @@ def test_fifo_queue_marks_waiting_job_queued_and_preserves_capture_and_user_meta
         until(lambda: (sessions[1].directory / "meeting.json").exists())
         until(lambda: read_metadata(sessions[1].directory)["transcript"]["status"] == "queued")
         update_metadata(sessions[0].directory, title="Edited while writing", notes=[dict(atMs=0, text="Keep this")])
+        update_metadata(
+            sessions[1].directory, speakers=[dict(id="me", name="Named while queued", provenance="user", colourIndex=0)]
+        )
         release.set()
         until(lambda: len(finished) == 2)
         assert calls == [s.directory for s in sessions]
+        assert read_metadata(sessions[1].directory)["speakers"][0]["name"] == "Named while queued"
         assert before == [capture_hashes(s) for s in sessions]
         metadata = read_metadata(sessions[0].directory)
         assert metadata["title"] == "Edited while writing" and metadata["futureMember"] == {"keep": True}
@@ -236,3 +246,56 @@ time.sleep(30)
         assert read_metadata(first)["transcript"]["status"] == "queued"
     finally:
         resumed.close()
+
+
+def test_prepared_tracks_only_use_validated_identity_and_keep_ambiguous_sources_separate(tmp_path):
+    from cassini_viewer.transcription import prepare_tracks
+
+    session = capture(tmp_path)
+    path = session.directory / "session.json"
+    for changes in ("list", "identity", "duplicate", "wrong-types"):
+        manifest = json.loads(json.dumps(session.manifest))
+        if changes == "list":
+            manifest = []
+        elif changes == "identity":
+            manifest["id"] = "invalid"
+        elif changes == "duplicate":
+            for track in manifest["tracks"]:
+                track.update(id="duplicated", kind="remote")
+        else:
+            for track in manifest["tracks"]:
+                track.update(id=123, kind={"untrusted": True})
+        path.write_text(json.dumps(manifest))
+        meeting = LibraryScanner(tmp_path).scan().meetings[0]
+        # Subsequent raw changes must not influence the validated snapshot.
+        path.write_text('["must not be read here"]')
+        tracks, speakers = prepare_tracks(meeting)
+        assert len(tracks) == len(speakers) == 2, changes
+        assert len({t["id"] for t in tracks}) == 2
+        assert all(s["provenance"] == "unnamed" and s["name"] is None for s in speakers.values())
+
+
+def test_browser_mixed_sources_do_not_claim_system_sound_or_invent_people():
+    from cassini_viewer.transcription import track_speaker
+
+    for kind in ("tab", "media", "application", "unknown"):
+        assert track_speaker(dict(id="source", kind=kind)) == ("track-source", None, "unnamed")
+    assert track_speaker(dict(id="system", kind="system")) == ("others", "The others", "source")
+
+
+def test_progress_keeps_speaker_edits_made_after_enqueue_and_between_segments(tmp_path):
+    from cassini_viewer.transcription import update_progress_metadata
+
+    session = capture(tmp_path)
+    update_metadata(
+        session.directory,
+        speakers=[dict(id="me", name="Edited", provenance="user", colourIndex=0, futureLabel="retained")],
+    )
+    planned = dict(me=dict(id="me", name="Me", provenance="source", colourIndex=0))
+    update_progress_metadata(session.directory, planned, etaMinutes=None)
+    update_metadata(
+        session.directory, speakers=[dict(id="me", name="Edited again", provenance="recognised", colourIndex=0)]
+    )
+    update_progress_metadata(session.directory, planned, etaMinutes=None)
+    value = read_metadata(session.directory)
+    assert value["speakers"] == [dict(id="me", name="Edited again", provenance="recognised", colourIndex=0)]

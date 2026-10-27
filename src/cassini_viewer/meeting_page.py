@@ -310,8 +310,8 @@ class MeetingPage(Adw.NavigationPage):
             self.lines.append(
                 InlineLine(
                     "errors.transcribeFailed.line",
-                    action="common.tryAgain",
-                    callback=(lambda: retry(meeting)) if retry else None,
+                    action="common.tryAgain" if meeting.metadata_editable else None,
+                    callback=(lambda: retry(meeting)) if retry and meeting.metadata_editable else None,
                 )
             )
         self.store.remove_all()
