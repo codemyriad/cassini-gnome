@@ -75,7 +75,7 @@ case $family in
     build="meson ninja-build python3 gettext glib2 glib2-devel
            desktop-file-utils appstream gtk4-devel-tools python3-pytest
            python3-jsonschema python3-rfc3339-validator"
-    runtime="python3 python3-gobject gtk4 libadwaita gstreamer1
+    runtime="python3 python3-gobject gobject-introspection gtk4 libadwaita gstreamer1
              gstreamer1-plugins-base gstreamer1-plugins-good" ;;
   zypper)
     build="meson ninja python3 gettext-tools glib2-tools glib2-devel
