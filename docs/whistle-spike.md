@@ -20,11 +20,14 @@ locally compiled CPU-count bridge, and retains source, pins and licence notices.
 The bundle is about 20 MB, including 17 MB weights, and is glibc x86_64 only.
 
 ```sh
-python3 whistle/fetch.py /tmp/whistle-bundle --cache /tmp/whistle-cache
-meson setup _whistle-build whistle -Dbundle=/tmp/whistle-bundle --prefix=/usr
-DESTDIR="$PWD/_whistle-stage" meson install -C _whistle-build
-tests/whistle/run.sh "$PWD/_whistle-stage/usr/share/cassini-viewer/whistle" /tmp/whistle-results
+CASSINI_WHISTLE_CACHE=/tmp/whistle-cache build-aux/whistle-cache.sh
+meson setup _build --prefix=/usr -Dwhistle=enabled -Dwhistle_cache=/tmp/whistle-cache
+DESTDIR="$PWD/_stage" meson install -C _build
+tests/whistle/run.sh "$PWD/_stage/usr/share/cassini-viewer/whistle" /tmp/whistle-results
 ```
+
+(The spike's separate `whistle/meson.build` project is now the main
+project's `whistle` subdirectory; see [transcription.md](transcription.md).)
 
 The harness builds a small Ubuntu image, then runs with `--network none`, a
 read-only filesystem, no capabilities, private temporary storage, and read-only
@@ -52,6 +55,10 @@ time out even when the child sends a partial line; crashes and close reap the
 child. Unit tests exercise two requests, partial-line timeout and crash cleanup.
 
 ## Packaging handoff to the coordinator
+
+Done: every package now bundles the engine; see the "Packaging" section of
+[transcription.md](transcription.md) and CONTRIBUTING.md. The original handoff
+notes follow.
 
 No existing packaging manifest is changed by this spike. The separate
 `whistle/meson.build` verifies and installs the bundle under

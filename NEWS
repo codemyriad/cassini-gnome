@@ -1,3 +1,12 @@
+Unreleased
+~~~~~~~~~~
+
+- Write meetings down offline from the first launch: every package (Debian,
+  Ubuntu, Fedora, openSUSE, Arch Linux, Flatpak) bundles the pinned Whistle
+  engine and Silero VAD and uses NumPy and ONNX Runtime; nothing is downloaded
+- The packages are now x86_64 only (amd64 .debs, one per base); elsewhere,
+  and on Alpine, the app hides Write it down and logs why
+
 Version 0.2.0
 ~~~~~~~~~~~~~
 Released: 2026-10-27

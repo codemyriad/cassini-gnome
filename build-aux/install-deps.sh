@@ -4,11 +4,13 @@
 #   build-aux/install-deps.sh [--all|--build|--runtime] [--yes] [--dry-run]
 #     --all       build and runtime dependencies (default)
 #     --build     meson, ninja, gettext, glib tools, validators, pytest
-#     --runtime   python3, PyGObject, GTK 4, libadwaita, GStreamer plugins
+#     --runtime   python3, PyGObject, GTK 4, libadwaita, GStreamer plugins,
+#                 and NumPy and ONNX Runtime for writing meetings down
 #     --yes       do not ask for confirmation
 #     --dry-run   print the install command instead of running it
 # The app needs GTK >= 4.18 and libadwaita >= 1.8; older distributions
-# install fine but cannot run it (see build-aux/check-distros.sh).
+# install fine but cannot run it (see build-aux/check-distros.sh). Writing
+# down also needs the pinned engine (meson -Dwhistle=enabled, glibc x86_64).
 # shellcheck disable=SC2086 # $y is an optional flag, deliberately unquoted
 set -eu
 
@@ -20,7 +22,7 @@ for arg in "$@"; do
     --runtime) set_runtime=1 ;;
     --dry-run|-n) dry_run=1 ;;
     --yes|-y) yes=1 ;;
-    -h|--help) sed -n '2,11s/^# \{0,1\}//p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,13s/^# \{0,1\}//p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg (try --help)" >&2; exit 2 ;;
   esac
 done
@@ -38,7 +40,9 @@ Install these with your package manager (names vary between distributions):
   runtime: python3 (>= 3.11), PyGObject, GTK 4 (>= 4.18) and
            libadwaita (>= 1.8) with their GObject introspection typelibs,
            GStreamer 1.x typelib, gst-plugins-base and gst-plugins-good
-           (oggdemux, opusdec), a PipeWire or PulseAudio GStreamer sink
+           (oggdemux, opusdec), a PipeWire or PulseAudio GStreamer sink;
+           for writing meetings down (glibc x86_64 only): NumPy and
+           ONNX Runtime (CPU) for the same python3
 Or use the Flatpak build: build-aux/flatpak/
 EOF
   exit 1
@@ -70,29 +74,36 @@ case $family in
            desktop-file-utils appstream libgtk-4-bin python3-pytest
            python3-jsonschema python3-rfc3339-validator"
     runtime="python3 python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0
-             gstreamer1.0-plugins-base gstreamer1.0-plugins-good" ;;
+             gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+             python3-numpy python3-onnxruntime" ;;
   dnf)
     build="meson ninja-build python3 gettext glib2 glib2-devel
            desktop-file-utils appstream gtk4-devel-tools python3-pytest
            python3-jsonschema python3-rfc3339-validator"
     runtime="python3 python3-gobject gobject-introspection gtk4 libadwaita gstreamer1
-             gstreamer1-plugins-base gstreamer1-plugins-good" ;;
+             gstreamer1-plugins-base gstreamer1-plugins-good
+             python3-numpy python3-onnxruntime" ;;
   zypper)
     build="meson ninja python3 gettext-tools glib2-tools glib2-devel
            desktop-file-utils AppStream gtk4-tools python3-pytest
            python3-jsonschema python3-rfc3339-validator"
+    # Tumbleweed has no python3-onnxruntime; these resolve to the primary
+    # Python flavour.
     runtime="python3 python3-gobject typelib-1_0-Gtk-4_0 typelib-1_0-Adw-1
-             typelib-1_0-Gst-1_0 gstreamer-plugins-base gstreamer-plugins-good" ;;
+             typelib-1_0-Gst-1_0 gstreamer-plugins-base gstreamer-plugins-good
+             python3dist(numpy) python3dist(onnxruntime)" ;;
   pacman)
     build="meson ninja python gettext glib2 glib2-devel desktop-file-utils
            appstream gtk4 python-pytest pkgconf
            python-jsonschema python-rfc3339-validator"
     runtime="python python-gobject gtk4 libadwaita gstreamer
-             gst-plugins-base gst-plugins-good" ;;
+             gst-plugins-base gst-plugins-good python-numpy python-onnxruntime-cpu" ;;
   apk)
     build="meson samurai python3 gettext glib glib-dev desktop-file-utils
            appstream gtk4.0 py3-pytest
            py3-jsonschema py3-rfc3339-validator"
+    # No NumPy/ONNX Runtime: the pinned engine cannot run on musl, so
+    # writing down is not available on Alpine.
     runtime="python3 py3-gobject3 gtk4.0 libadwaita gstreamer
              gst-plugins-base gst-plugins-good" ;;
 esac

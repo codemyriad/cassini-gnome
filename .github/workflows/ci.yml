@@ -92,3 +92,7 @@ jobs:
           bundle: cassini-viewer-devel.flatpak
           manifest-path: build-aux/flatpak/com.gocassini.Viewer.Devel.json
           cache-key: flatpak-builder-${{ github.sha }}
+      # The same offline check as the other packages: install the bundle and
+      # write the D11 goldens down in a sandbox with --unshare=network.
+      - name: Smoke-test the installed Flatpak offline
+        run: build-aux/flatpak/smoke.sh cassini-viewer-devel.flatpak com.gocassini.Viewer.Devel

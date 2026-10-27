@@ -26,6 +26,10 @@ jobs:
           bundle: cassini-viewer.flatpak
           manifest-path: build-aux/flatpak/com.gocassini.Viewer.json
           cache-key: flatpak-builder-${{ github.sha }}
+      # The same offline check as the other packages: install the bundle and
+      # write the D11 goldens down in a sandbox with --unshare=network.
+      - name: Smoke-test the installed Flatpak offline
+        run: build-aux/flatpak/smoke.sh cassini-viewer.flatpak com.gocassini.Viewer
 
   publish:
     needs: [deb, packages, flatpak]
@@ -40,5 +44,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -R artifacts
+          # The packages carry the x86_64 writing-down engine: amd64 .debs
+          # (one per base), x86_64 RPMs and Arch package, an x86_64 Flatpak.
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes \
-            $(find artifacts -name '*.deb' -o -name '*.flatpak' -o -name '*.noarch.rpm' -o -name '*.pkg.tar.zst')
+            $(find artifacts -name '*.deb' -o -name '*.flatpak' -o -name '*.x86_64.rpm' -o -name '*.pkg.tar.zst')
