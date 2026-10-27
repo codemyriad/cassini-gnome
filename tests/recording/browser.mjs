@@ -67,7 +67,7 @@ try {
     name:'com.codemyriad.cassini',description:'Cassini integration test',path:shim,type:'stdio',allowed_origins:[`chrome-extension://${id}/`]
   }));
   if (process.env.CASSINI_TALK_ONLY) {
-    await (await import('./talk.mjs')).run({context,worker,id,artifacts});
+    await (await import('./talk.mjs')).run({context,worker,id,artifacts,poll});
   } else {
   const meeting=await context.newPage(), remote=await context.newPage();
   for(const page of [meeting,remote]) {
@@ -99,13 +99,10 @@ try {
   }
   async function stop() {
     await command('stop');
-    let result;
-    for(let n=0;n<100;n++) {
-      result=await command('status');
-      if(!result.recording) return result;
-      await new Promise(resolve=>setTimeout(resolve,100));
-    }
-    throw new Error('Stop timed out');
+    return poll(async()=>{
+      const result=await command('status');
+      return !result.recording && result;
+    },'Stop finalizes recording',10000);
   }
   // Deliberate idle-lifecycle test. Also force termination: attached developer
   // tooling can keep a worker alive, so elapsed idle time alone is insufficient.
@@ -126,16 +123,11 @@ try {
   finally { process.kill(hostPid,'SIGCONT'); }
   assert.equal((await command('status')).recording,true,'three-second host stall survives');
   evidence.scenarios.push({name:'three-second-native-host-stall'});
-  let initialLocal, initialManifest;
-  for(let n=0;n<100;n++) {
-    initialManifest=JSON.parse(await readFile(path.join(started.path,'session.json')));
-    initialLocal=initialManifest.tracks.find(t=>t.kind==='local');
-    if(initialLocal) {
-      const bytes=await readFile(path.join(started.path,initialLocal.file));
-      if(bytes.length>44+2*48000*2) break;
-    }
-    await meeting.waitForTimeout(100);
-  }
+  const initialLocal=await poll(async()=>{
+    const captured=await snapshot(started.path);
+    const track=captured.tracks.find(t=>t.kind==='local');
+    return track && track.audio.bytes.length>2*48000*2 && track;
+  },'local source captures two seconds before mute',10000);
   assert.ok(initialLocal,'local audio source registered');
   const beforeMute=await readFile(path.join(started.path,initialLocal.file));
   const muteFrame=(beforeMute.length-44)/(initialLocal.channels*2);
@@ -201,8 +193,10 @@ try {
   const again=await command('start','tracks');
   await poll(async()=> (await snapshot(again.path)).tracks.some(t=>t.audio.bytes.length>48000*2),'audio before navigation');
   await meeting.goto(`http://127.0.0.1:${server.address().port}/?navigated`);
-  let interrupted;
-  for(let i=0;i<100;i++) {interrupted=await command('status');if(!interrupted.recording)break;await meeting.waitForTimeout(100);}
+  const interrupted=await poll(async()=>{
+    const state=await command('status');
+    return !state.recording && state;
+  },'navigation finalizes interrupted recording',10000);
   assert.equal(interrupted.recording,false);
   const partial=await snapshot(interrupted.path,true);
   assert.equal(partial.manifest.state,'interrupted');

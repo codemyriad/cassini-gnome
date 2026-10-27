@@ -101,3 +101,33 @@ its Stop action over private D-Bus, verifies notification withdrawal and meeting
 Only the notification server is a private test implementation; capture, native messaging,
 service IPC, app widgets and the returning Stop command are production code.
 `CASSINI_TEST_EXTENSION` can select an exact upstream checkout for cross-app PR review.
+
+## Readiness and native repeat validation (R3)
+
+Startup sequencing uses bounded conditions rather than elapsed sleeps. Native
+capture first observes one second of continuously nonzero PCM from **each actual
+private PulseAudio monitor**, then counts 2.5 seconds of complete interleaved PCM
+at the recorder. GTK waits for painted/allocated windows, 0.4 seconds of captured
+PCM before Quit, finalization and advancing playback. Browser/Talk checks wait
+for real UI/state transitions and captured samples. Poll intervals are not
+startup assumptions. The 35-second worker-idle exercise and three-second host
+stall remain intentional lifecycle/fault-injection durations.
+
+The final native assertions remain unchanged: two channels, at least two seconds
+of decoded audio, expected tones above 0.08, cross-channel tones below 0.01, and
+the same measurement window. Browser/Talk duration/tone/bleed assertions are also
+unchanged. A timeout fails with observed progress; it does not shorten the
+required recording or turn an assertion into a retry. Native `results.json`
+checkpoints retain the current stage, failure traceback, producer/capture counts, decoded frames and measured
+amplitudes when available, alongside the original Opus/WAV files. A 60-second
+watchdog bounds synchronous C-level stalls and preserves thread traces in
+`threads.log`. Observations are detached before EOS/teardown so Python streaming
+callbacks cannot obstruct synchronous shutdown. GTK retains
+failure state and a screenshot. Browser failure diagnostics remain in place.
+
+For repeated validation, run the native command several times through `run.sh`;
+CI runs three native invocations without retrying failures;
+each invocation creates a new private audio container/display and unique evidence
+directory. Report every result, including failures, rather than retrying until a
+single success. The readiness unit tests use finite synthetic buffers and verify
+silent-input rejection and bounded timeout diagnostics without any audio server.
