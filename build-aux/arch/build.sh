@@ -14,6 +14,9 @@ if [ "$meson_ver" != "$pkg_ver" ]; then
   exit 1
 fi
 
+# The pinned writing-down artifacts, the PKGBUILD's other sources; makepkg
+# finds them next to the PKGBUILD and checks their sha256sums again.
+build-aux/whistle-cache.sh
 mkdir -p dist
 # Per base image, so parallel builds do not swap names.
 name_file=.pkg-name-$(image_slug "$BASE")
@@ -27,13 +30,13 @@ container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:r
   mkdir -p /build/pkg "/build/$name"
   cp -a /in/. "/build/$name"
   cd "/build/$name"
-  rm -rf .git _build* _install _flatpak ./*.flatpak build builddir dist obj-* .flatpak-builder repo .venv \
+  rm -rf .whistle-cache .git _build* _install _flatpak ./*.flatpak build builddir dist obj-* .flatpak-builder repo .venv \
          .ruff_cache .pytest_cache debian/.debhelper debian/cassini-viewer \
     tests/recording/node_modules tests/recording/artifacts
   find . -name __pycache__ -prune -exec rm -rf {} +
   cd /build
   tar -czf "pkg/$name.tar.gz" "$name"
-  cp "/in/build-aux/arch/PKGBUILD" pkg/
+  cp "/in/build-aux/arch/PKGBUILD" /in/.whistle-cache/* pkg/
   chown -R builder: /build/pkg
 
   cd /build/pkg
@@ -62,12 +65,11 @@ container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:r
 pkg_name=$(cat "dist/$name_file") && rm -f "dist/$name_file"
 
 # The build container has makedepends and checkdepends installed, which can
-# hide a missing dependency; install the package in a fresh container.
-container_run -v "$PWD/dist":/d:ro$Z -v "$PWD/build-aux":/aux:ro$Z -e PKG="$pkg_name" "$BASE" sh -ec '
+# hide a missing dependency; install the package in a fresh container, then
+# check it there with no network, writing the D11 goldens down offline.
+container_offline_smoke "$BASE" '
   pacman -Syu --noconfirm --noprogressbar -q >/dev/null
   pacman -U --noconfirm --noprogressbar "/d/$PKG" >/dev/null
-  cassini-viewer --help >/dev/null
-  python3 -I /aux/smoke-installed.py
-  echo "clean install smoke test passed"
-'
+  pacman -Scc --noconfirm >/dev/null
+' -v "$PWD/dist":/d:ro$Z -e PKG="$pkg_name"
 ls -l "dist/$pkg_name"
