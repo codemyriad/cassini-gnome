@@ -36,7 +36,9 @@ container_run -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z "$BASE" sh -ec '
 
   cd /build/pkg
   su builder -c "makepkg -s --noconfirm"
-  pkg=$(ls /build/pkg/*.pkg.tar.zst)
+  # The exact file this PKGBUILD produces, not whatever matches a glob.
+  pkg=$(su builder -c "makepkg --packagelist" | grep -v -- "-debug-")
+  [ "$(echo "$pkg" | wc -l)" = 1 ] && [ -f "$pkg" ] || { echo "unexpected package list: $pkg" >&2; exit 1; }
 
   if pacman -S --noconfirm --needed namcap >/dev/null 2>&1; then
     namcap PKGBUILD "$pkg" || true
@@ -61,15 +63,18 @@ print(Gst.version_string())
 
   cp "$pkg" /out/
   chown "$(stat -c %u:%g /out)" "/out/${pkg##*/}" 2>/dev/null || true
+  # Tell the clean-install step below which file this build produced.
+  echo "${pkg##*/}" > /out/.pkg-name
 ' sh "$pkg_ver"
+pkg_name=$(cat dist/.pkg-name) && rm -f dist/.pkg-name
 
 # The build container has makedepends and checkdepends installed, which can
 # hide a missing dependency; install the package in a fresh container.
-container_run -v "$PWD/dist":/d:ro$Z "$BASE" sh -ec '
+container_run -v "$PWD/dist":/d:ro$Z -e PKG="$pkg_name" "$BASE" sh -ec '
   pacman -Syu --noconfirm --noprogressbar -q >/dev/null
-  pacman -U --noconfirm --noprogressbar "/d/cassini-viewer-$1-"*-any.pkg.tar.zst >/dev/null
+  pacman -U --noconfirm --noprogressbar "/d/$PKG" >/dev/null
   cassini-viewer --help >/dev/null
   python3 -c "import sys; sys.path.insert(0, \"/usr/share/cassini-viewer\"); from cassini_viewer import runtime; runtime.check()"
   echo "clean install smoke test passed"
-' sh "$pkg_ver"
-ls -l dist/*.pkg.tar.zst
+'
+ls -l "dist/$pkg_name"
