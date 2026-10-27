@@ -40,7 +40,7 @@ def main(
     except Exception as error:
         code = error.code if isinstance(error, ProtocolError) else "io" if isinstance(error, OSError) else "state"
         try:
-            host.close(str(error))
+            host.close(str(error), problem_kind="io" if code == "io" else "capture")
         except Exception as cleanup_error:
             LOG.error("Failed to finalize partial recording: %s", cleanup_error)
         LOG.warning("Recording host %s error: %s", code, error)

@@ -22,7 +22,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-gi python3-pytest gir1.2-gstreamer-1.0 \
-            gstreamer1.0-plugins-base gstreamer1.0-plugins-good xvfb xauth xdotool dbus-x11
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good xvfb xauth xdotool dbus-x11 \
+            gir1.2-gtk-4.0 gir1.2-adw-1 imagemagick meson ninja-build gettext \
+            libglib2.0-dev-bin desktop-file-utils appstream
       - run: python3 build-aux/verify-browser-protocol.py
       - run: npm ci --prefix tests/recording
       - run: tests/recording/node_modules/.bin/playwright install --with-deps chromium
@@ -32,6 +34,11 @@ jobs:
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/native.py
       - name: Chromium WebRTC, lifecycle and tab capture through Native Messaging
         run: tests/recording/run.sh node tests/recording/browser.mjs
+      - name: GTK recording and playback in a private display
+        run: |
+          meson setup _recording-build
+          meson compile -C _recording-build
+          tests/recording/run.sh /usr/bin/python3 tests/recording/gtk.py --build _recording-build
       - uses: actions/upload-artifact@v4
         if: always()
         with:

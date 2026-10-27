@@ -137,3 +137,14 @@ def test_checkpoint_uses_injected_clock_and_audio_before_metadata(tmp_path, monk
     assert events[0].endswith(".wav") and events[1].endswith("session.tmp")
     assert events[2] == str(session.directory)
     session.finish()
+
+
+def test_append_failure_retains_io_reason(tmp_path, monkeypatch):
+    def fail_append(self, data):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(WAVWriter, "append", fail_append)
+    code, replies = invoke(tmp_path, [START, TRACK, AUDIO], open_completed=False)
+    assert code == 1 and replies[-1]["code"] == "io"
+    manifest = json.loads((Path(replies[0]["path"]) / "session.json").read_text())
+    assert manifest["state"] == "interrupted" and manifest["problemKind"] == "io"

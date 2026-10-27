@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-gnome.compile_resources('cassini-viewer',
+viewer_resources = gnome.compile_resources('cassini-viewer',
   'cassini-viewer.gresource.xml',
   gresource_bundle: true,
   install: true,
@@ -100,6 +100,7 @@ foreach scenario : ['browser', 'native', 'gtk']
     find_program('../tests/recording/run.sh'),
     args: scenario_args,
     suite: 'recording',
+    depends: viewer_resources,
     timeout: 300,
     workdir: meson.project_source_root(),
   )

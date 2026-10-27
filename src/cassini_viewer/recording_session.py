@@ -273,7 +273,7 @@ class RecordingSession:
         if self.clock() - self._last_checkpoint >= 1:
             self.checkpoint()
 
-    def finish(self, problem=None):
+    def finish(self, problem=None, *, problem_kind=None):
         problem = optional_string(problem, None, "state") or None
         if self.finished:
             return
@@ -288,7 +288,7 @@ class RecordingSession:
             track["ended"] = True
             if track.get("startOffsetMs") is not None:
                 track["endOffsetMs"] = track["startOffsetMs"] + track["frames"] * 1000 / track["sampleRate"]
-        problem_kind = "capture" if problem else None
+        problem_kind = problem_kind or ("capture" if problem else None)
         if failure:
             problem, problem_kind = str(failure), "io"
         if not any(t["frames"] for t in self.manifest["tracks"]) and not problem:
@@ -366,9 +366,9 @@ class BrowserHost:
             return result
         return {"type": "ack"}
 
-    def close(self, problem="Browser disconnected before recording was stopped."):
+    def close(self, problem="Browser disconnected before recording was stopped.", *, problem_kind=None):
         if self.session and not self.stopped:
-            self.session.finish(problem)
+            self.session.finish(problem, problem_kind=problem_kind)
             self.stopped = True
 
 
