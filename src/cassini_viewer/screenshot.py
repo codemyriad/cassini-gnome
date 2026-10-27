@@ -23,7 +23,11 @@ def capture(application_id, version, profile):
     target.parent.mkdir(parents=True, exist_ok=True)
     Gtk.Settings.get_default().props.gtk_enable_animations = False
     Gtk.Settings.get_default().props.gtk_font_name = "Cantarell 11"
-    Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
+    Adw.StyleManager.get_default().set_color_scheme(
+        Adw.ColorScheme.FORCE_DARK
+        if os.environ.get("CASSINI_SCREENSHOT_SCHEME") == "dark"
+        else Adw.ColorScheme.FORCE_LIGHT
+    )
     app = CassiniApplication(application_id, version, profile)
     app.register(None)
     app.activate()
