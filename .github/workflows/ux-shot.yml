@@ -49,6 +49,7 @@ jobs:
           assert (width,height) == (1120,720)
           assert struct.unpack('>II',Path('ux-artifacts/first-run.png').read_bytes()[16:24]) == (1120,720)
           assert struct.unpack('>II',Path('ux-artifacts/meeting.png').read_bytes()[16:24]) == (1120,720)
+          assert struct.unpack('>II',Path('ux-artifacts/record-first.png').read_bytes()[16:24]) == (1120,720)
           info=json.loads(root.with_suffix('.json').read_text())
           assert info['renderer']=='cairo' and info['accent']=='blue' and info['light']
           assert info['tz']=='Europe/Rome' and info['lang']=='en_GB.UTF-8'

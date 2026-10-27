@@ -152,6 +152,14 @@ class LibraryMonitor:
         remaining = max(0, self.max_wait_ms - (now - self._first_event))
         self._timer = GLib.timeout_add(min(self.debounce_ms, remaining), self._dispatch)
 
+    def refresh_now(self):
+        """Controller phase changes bypass metadata debounce; IO stays on the worker."""
+        self.refresh()
+        if self._timer:
+            GLib.source_remove(self._timer)
+            self._timer = 0
+        self._dispatch()
+
     def _dispatch(self):
         self._timer = 0
         if not self._closed:

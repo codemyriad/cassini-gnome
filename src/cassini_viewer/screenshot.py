@@ -42,9 +42,18 @@ def capture(application_id, version, profile):
     settled_frame = None
     window.add_tick_callback(lambda *_args: (frames.__setitem__(0, frames[0] + 1), True)[1])
     opened_meeting = False
+    opened_record_first = False
     while time.monotonic() < deadline:
         while context.pending():
             context.iteration(False)
+        if (
+            os.environ.get("CASSINI_SCREENSHOT_BOARD") == "record-first"
+            and not window._pending
+            and not opened_record_first
+        ):
+            app.on_record()
+            opened_record_first = True
+            settled_frame = None
         if os.environ.get("CASSINI_SCREENSHOT_BOARD") == "meeting" and not window._pending and not opened_meeting:
             from .folder_player import FolderPlayer
 
