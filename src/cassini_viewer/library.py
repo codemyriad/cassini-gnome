@@ -176,6 +176,7 @@ class Meeting(MeetingState):
     tracks: tuple[CaptureTrack, ...] = ()
     capture_source: str | None = None
     audio_file: Path | None = None
+    legacy_transcript_file: Path | None = None
     has_audio: bool = False
     metadata_editable: bool = True
     diagnostics: tuple[Diagnostic, ...] = ()
@@ -516,6 +517,20 @@ class LibraryScanner:
             Path(received_name).stem if received_name else None,
         ]
         title = next((t.strip() for t in title_values if isinstance(t, str) and t.strip()), "Untitled meeting")
+        reference = (metadata.get("transcript") or {}).get("reference") or {}
+        legacy_transcript_file = (
+            audio_file
+            if (
+                origin == "received"
+                and bool(words)
+                and transcript in ("done", "queued", "running")
+                and embedded is not None
+                and embedded.is_readable
+                and reference.get("kind") == "embedded"
+                and reference.get("transcriptId", embedded.default_transcript_id) == embedded.default_transcript_id
+            )
+            else None
+        )
         return Meeting(
             id=identifier,
             directory=directory,
@@ -536,6 +551,7 @@ class LibraryScanner:
             tracks=tracks,
             capture_source=capture.get("source") if origin == "own" else None,
             audio_file=audio_file,
+            legacy_transcript_file=legacy_transcript_file,
             has_audio=bool(tracks) if origin == "own" else duration is not None,
             metadata_editable=not unsupported,
             diagnostics=tuple(diagnostics),

@@ -3,7 +3,6 @@
 
 import os
 import time
-from zoneinfo import ZoneInfo
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
@@ -27,6 +26,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.add_css_class("library-window")
         self._pending = True
         self.selected = None
+        self.play_button = None
+        self.read_button = None
         self._preview_key = None
         self.snapshot = None
         # These are hidden harness inputs, never separate production fixtures or fake widget data.
@@ -35,16 +36,13 @@ class LibraryWindow(Adw.ApplicationWindow):
             if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") == "1" and os.environ.get("CASSINI_SCREENSHOT_NOW")
             else None
         )
-        self.tz = os.environ.get("TZ") or GLib.TimeZone.new_local().get_identifier()
-        try:
-            ZoneInfo(self.tz)
-        except (ValueError, KeyError):
-            self.tz = "Europe/Rome"
+        self.tz = fmt.local_timezone(os.environ.get("TZ") or GLib.TimeZone.new_local().get_identifier())
         from .player import Player
 
         self.player = Player()
         self._playback_failed = False
         self.player.connect("error", self._playback_error)
+        self.get_application().watch_player(self.player)
         self._fixture_activity = {}
         if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") == "1" and os.environ.get("CASSINI_SCREENSHOT_ACTIVITY"):
             import json
@@ -73,7 +71,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             action_name="app.record",
         )
         box = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
-        box.append(label("●", "record-dot"))
+        box.append(label("●", "record-dot", accessible_role=Gtk.AccessibleRole.PRESENTATION))
         box.append(label(text("common.record")))
         button.set_child(box)
         button.update_property([Gtk.AccessibleProperty.LABEL], [text("common.record")])
@@ -92,9 +90,11 @@ class LibraryWindow(Adw.ApplicationWindow):
         if close:
             menu = Gio.Menu()
             menu.append(text("common.legacy.browserMeetings"), "app.browser-meetings")
-            header.pack_end(
-                Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=menu, tooltip_text=text("common.mainMenu"))
+            button = Gtk.MenuButton(
+                icon_name="open-menu-symbolic", menu_model=menu, tooltip_text=text("common.mainMenu"), primary=True
             )
+            button.update_property([Gtk.AccessibleProperty.LABEL], [text("common.mainMenu")])
+            header.pack_end(button)
         return header
 
     def _build_empty(self):
@@ -106,6 +106,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             Gtk.Image(
                 icon_name="audio-input-microphone-symbolic",
                 pixel_size=48,
+                accessible_role=Gtk.AccessibleRole.PRESENTATION,
                 halign=Gtk.Align.CENTER,
                 css_classes=["first-run-icon"],
             )
@@ -135,7 +136,11 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
         outer.append(center)
         footer = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER, margin_bottom=18)
-        footer.append(Gtk.Image(icon_name="changes-prevent-symbolic", pixel_size=14))
+        footer.append(
+            Gtk.Image(
+                icon_name="changes-prevent-symbolic", pixel_size=14, accessible_role=Gtk.AccessibleRole.PRESENTATION
+            )
+        )
         footer.append(label(text("firstRun.footer"), "small", "dim-label"))
         outer.append(footer)
         view.set_content(outer)
@@ -170,8 +175,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.capture_header.add_named(live, "live")
         header.pack_start(self.capture_header)
         sidebar.add_top_bar(header)
-        self.rows = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE, css_classes=["library-rows"])
-        self.rows.connect("row-selected", self._selected)
+        self.rows = Gtk.ListBox(selection_mode=Gtk.SelectionMode.BROWSE, css_classes=["library-rows"])
+        self._selection_handler = self.rows.connect("row-selected", self._selected)
         sidebar.set_content(Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, child=self.rows, vexpand=True))
         self.split.set_sidebar(Adw.NavigationPage.new(sidebar, text("library.listPane.a11y")))
         content = Adw.ToolbarView()
@@ -189,11 +194,14 @@ class LibraryWindow(Adw.ApplicationWindow):
             elapsed = max(0, self.now_ms - live.started_at_ms) if live.started_at_ms is not None else 0
             self.live_timer.set_label(fmt.live_badge(elapsed))
         old = self.selected.key if self.selected else None
+        self.rows.handler_block(self._selection_handler)
         self.rows.remove_all()
         self.selected = None
         if snapshot.unavailable:
+            self._stop_playback(clear_selection=True)
             self.root_box.set_visible_child_name("offline")
         elif not snapshot.meetings:
+            self._stop_playback(clear_selection=True)
             self.root_box.set_visible_child_name("empty")
         else:
             self.root_box.set_visible_child_name("library")
@@ -213,6 +221,8 @@ class LibraryWindow(Adw.ApplicationWindow):
                     ):
                         selected = row
             self.rows.select_row(selected or self.rows.get_row_at_index(1))
+        self.rows.handler_unblock(self._selection_handler)
+        self._selected(self.rows, self.rows.get_selected_row())
         self.loading.set_spinning(False)
         self._pending = False
 
@@ -242,13 +252,17 @@ class LibraryWindow(Adw.ApplicationWindow):
         box = Gtk.Box(spacing=6, css_classes=["speaker-chip"] if chip else [])
         box.append(label(speaker.name, "speaker-name"))
         if speaker.provenance == "recognised":
-            box.append(label(text("common.autoTag"), "auto-tag", tooltip_text=text("common.autoTag.tooltip")))
+            tag = label(text("common.autoTag"), "auto-tag", tooltip_text=text("common.autoTag.tooltip"))
+            tag.update_property([Gtk.AccessibleProperty.DESCRIPTION], [text("common.autoTag.tooltip")])
+            box.append(tag)
         return box
 
     def _selected(self, _rows, row):
         if row is None or not hasattr(row, "meeting"):
             return
         if self._preview_key != row.meeting.key:
+            self._stop_playback()
+        elif not row.meeting.has_audio:
             self.player.stop()
         self._preview_key = row.meeting.key
         self.selected = meeting = row.meeting
@@ -282,13 +296,15 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.play_button = Gtk.Button(
             label=text("common.play"),
             css_classes=["suggested-action"],
-            sensitive=meeting.audio_file is not None and meeting.has_audio,
+            sensitive=meeting.audio_file is not None and meeting.has_audio and not self._playback_failed,
         )
         self.play_button.connect("clicked", lambda *_: self._play_selected())
         actions.append(self.play_button)
-        read = Gtk.Button(label=text("library.preview.readTranscript"), sensitive=bool(meeting.words))
-        read.connect("clicked", lambda *_: self._open_selected())
-        actions.append(read)
+        self.read_button = Gtk.Button(
+            label=text("library.preview.readTranscript"), sensitive=meeting.legacy_transcript_file is not None
+        )
+        self.read_button.connect("clicked", lambda *_: self._open_selected())
+        actions.append(self.read_button)
         self.preview.append(actions)
         self.preview.append(Gtk.Separator(margin_top=4))
         self.preview.append(label(text("library.preview.transcriptHeading"), "small", "heading", "dim-label", xalign=0))
@@ -306,19 +322,26 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def _playback_error(self, _player, _message):
         self._playback_failed = True
-        self.play_button.set_sensitive(False)
+        if self.play_button is not None:
+            self.play_button.set_sensitive(False)
 
     def _play_selected(self):
-        if self.selected and self.selected.audio_file is not None:
+        if self.selected and self.selected.audio_file is not None and self.play_button.get_sensitive():
             self._playback_failed = False
             self.player.load(Gio.File.new_for_path(str(self.selected.audio_file)).get_uri(), self.selected.duration_ms)
             if not self._playback_failed:
                 self.player.play()
 
+    def _stop_playback(self, *, clear_selection=False):
+        self.player.stop()
+        if clear_selection:
+            self._preview_key = None
+        self._playback_failed = False
+
     def _open_selected(self):
-        if self.selected:
-            path = self.selected.audio_file or self.selected.directory / "session.json"
-            self.get_application().open_in_new_window(Gio.File.new_for_path(str(path)))
+        if self.selected and self.selected.legacy_transcript_file is not None:
+            self._stop_playback()
+            self.get_application().open_in_new_window(Gio.File.new_for_path(str(self.selected.legacy_transcript_file)))
 
     def _close(self, *_args):
         self.player.shutdown()

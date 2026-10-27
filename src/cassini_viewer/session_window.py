@@ -15,6 +15,7 @@ class SessionWindow(Adw.ApplicationWindow):
     def __init__(self, application, file):
         super().__init__(application=application, title=_("Recorded Meeting"), default_width=640, default_height=500)
         self.player = Player()
+        application.watch_player(self.player)
         self.path = Path(file.get_path()) if file.get_path() else None
         view = Adw.ToolbarView()
         view.add_top_bar(Adw.HeaderBar())

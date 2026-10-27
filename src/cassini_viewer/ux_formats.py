@@ -2,7 +2,8 @@
 """Fixed en-GB display formats from HARMONY §6; independent of GTK and locale."""
 
 import math
-from datetime import datetime, timedelta
+import re
+from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
@@ -67,8 +68,24 @@ def confirmed_speech(ms):
     return meeting_duration(ms) + " confirmed speech"
 
 
+def local_timezone(identifier):
+    """Accept GLib/POSIX identifiers; unsupported zones fall back to UTC."""
+    name = identifier.lstrip(":").removeprefix("/usr/share/zoneinfo/") if isinstance(identifier, str) else ""
+    try:
+        ZoneInfo(name)
+        return name
+    except (ValueError, KeyError, TypeError, OSError):
+        match = re.fullmatch(r"([+-])(\d{2}):(\d{2})", name)
+        if match:
+            sign, hours, minutes = match.groups()
+            if int(hours) < 24 and int(minutes) < 60:
+                offset = timedelta(hours=int(hours), minutes=int(minutes))
+                return timezone(offset if sign == "+" else -offset)
+        return "UTC"
+
+
 def _local(at_ms, tz):
-    return datetime.fromtimestamp(at_ms / 1000, ZoneInfo(tz))
+    return datetime.fromtimestamp(at_ms / 1000, ZoneInfo(tz) if isinstance(tz, str) else tz)
 
 
 def _relative_date(at_ms, now_ms, tz):
