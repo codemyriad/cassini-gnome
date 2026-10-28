@@ -85,6 +85,7 @@ with tempfile.TemporaryDirectory() as temporary:
     meeting = next(m for m in window.snapshot.meetings if m.lifecycle == "recording")
     window.open_meeting(meeting)
     page = window.recording_page
+    window._update_live()
     page.change_sources.emit("clicked")
     dialog = page.sources_dialog
     assert dialog.radios[(True, True)].get_active()

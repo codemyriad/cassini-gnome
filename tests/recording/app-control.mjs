@@ -165,6 +165,7 @@ try {
  for (const pair of pairs) {await pair.meeting.evaluate(() => meeting.pc.close()); await pair.remote.evaluate(() => meeting.pc.close());}
  await poll(async () => !(await call()).meetings.length, 'inventory removes ended calls');
  evidence.scenarios.push({name: 'auto-record-hidden-native-notification-stop-all-new-call-reopen'});
+ await (await import('./source-changes.mjs')).run({context, call, join, recording, samples, power, poll, automatic, id, artifacts, evidence});
  console.log('PASS real Library Record/individual Stop/global Stop; concurrent muted source capture and mic copies; windowless auto-record/native notification controls');
 } catch (error) {evidence.failure = error.stack; throw error;}
 finally {

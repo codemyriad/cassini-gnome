@@ -1,0 +1,10 @@
+{
+  "trackSpeakers": {"track-microphone.wav": "me", "track-before.wav": "track-remote-wire-1", "track-after.wav": "track-remote-wire-1"},
+  "speakerCount": 2,
+  "durationMs": 20000,
+  "trackOffsetsMs": {"track-microphone.wav": 0, "track-before.wav": 0, "track-after.wav": 10000},
+  "me": true,
+  "others": true,
+  "source": "browser",
+  "fallback": false
+}

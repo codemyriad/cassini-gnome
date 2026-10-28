@@ -163,6 +163,11 @@
 .mic-silent progressbar trough { background: #ead9ad; }
 .recording-change { color: @accent_color; font-size: 13px; font-weight: 600; margin: 0 8px; }
 .recording-path-card { background: alpha(@view_fg_color, 0.06); border-radius: 12px; padding: 12px 14px; }
+.what-is-recorded { font-size: 15px; }
+.what-is-recorded .small, .what-is-recorded .subtitle { font-size: 13px; }
+.what-is-recorded .title-2 { font-size: 20px; }
+.what-is-recorded row { min-height: 60px; }
+.what-is-recorded row .title { font-weight: 600; }
 .recording-notes { border: 1px solid alpha(@view_fg_color, 0.18); border-radius: 6px; background: @view_bg_color; color: @view_fg_color; }
 .library-window .static-stop { background: #c01c28; color: white; font-weight: 600; min-height: 26px; padding: 0 9px; }
 .library-window .live-pill button.flat { min-height: 0; min-width: 0; padding: 0; }

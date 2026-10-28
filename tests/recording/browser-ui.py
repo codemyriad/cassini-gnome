@@ -77,6 +77,16 @@ def dispatch(packet, result, ready):
             window.open_meeting(meeting)
             assert window.recording_page.stop.get_sensitive()
             window.recording_page.stop.emit("clicked")
+        elif action == "selection":
+            assert window is not None
+            meeting = next(m for m in window.snapshot.meetings if str(m.directory) == packet["path"])
+            window.open_meeting(meeting)
+            page = window.recording_page
+            page.change_sources.emit("clicked")
+            page.sources_dialog.radios[(packet["me"], packet["others"])].set_active(True)
+        elif action == "sources-done":
+            assert window and window.recording_page and window.recording_page.sources_dialog
+            window.recording_page.sources_dialog.done.emit("clicked")
         elif action == "stop-all":
             assert window is not None
             window._stop_live()
@@ -107,6 +117,7 @@ def dispatch(packet, result, ready):
             settingsReady=bool(
                 app.settings_dialog and not app.settings_dialog.closed and app.settings_dialog._future is None
             ),
+            sourceChangePending=bool(app._source_changes),
             notifications=services.notifications,
             library=[
                 dict(

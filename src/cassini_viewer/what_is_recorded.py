@@ -21,7 +21,7 @@ def explain_fallback(parent):
 
 class WhatIsRecorded(Adw.Dialog):
     def __init__(self, page):
-        super().__init__(title=text("whatIsRecorded.title"), content_width=480)
+        super().__init__(title=text("whatIsRecorded.title"), content_width=480, css_classes=["what-is-recorded"])
         self.page, self.app = page, page.app
         self.current = self.app.comfort.sources(page.meeting)
         self.future = None
@@ -40,11 +40,17 @@ class WhatIsRecorded(Adw.Dialog):
         heading = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         heading.append(Gtk.Label(label=text("whatIsRecorded.title"), css_classes=["title-2"], wrap=True))
         heading.append(
-            Gtk.Label(
-                label=text("whatIsRecorded.subtitle"),
-                wrap=True,
-                justify=Gtk.Justification.CENTER,
-                css_classes=["dim-label"],
+            Adw.Clamp(
+                maximum_size=380,
+                tightening_threshold=380,
+                child=Gtk.Label(
+                    label=text("whatIsRecorded.subtitle"),
+                    wrap=True,
+                    justify=Gtk.Justification.CENTER,
+                    halign=Gtk.Align.CENTER,
+                    max_width_chars=48,
+                    css_classes=["dim-label"],
+                ),
             )
         )
         content.append(heading)

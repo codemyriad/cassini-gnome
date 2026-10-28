@@ -173,6 +173,14 @@ class BrowserCapture:
         return self._change(self.me, self.others, fallback=reason)
 
     def _change(self, me, others, *, fallback=None):
+        try:
+            return self._apply_change(me, others, fallback=fallback)
+        except OSError as error:
+            self.error = str(error)
+            self.changed(self, "error")
+            raise
+
+    def _apply_change(self, me, others, *, fallback=None):
         if self.starting and not self.ready.wait(12):
             raise TimeoutError("Native capture did not finish starting")
         with self.transition:
@@ -195,6 +203,11 @@ class BrowserCapture:
                 if not events:
                     self.browser_lost = lost
                     return self.snapshot()
+                needed = self.streams.additions(me, others, browser=not lost)
+                needed += int(me and "microphone" not in self.native_taps)
+                needed += int(others and lost and "system" not in self.native_taps)
+                if len(self.host.session.writers) + needed > 64:
+                    raise ProtocolError("limit", "A session supports at most 64 sources")
                 additions, removed = [], []
                 with self.host.session.change(events):
                     self.streams.select(me, others, at, browser=not lost)

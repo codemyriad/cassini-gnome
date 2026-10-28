@@ -198,6 +198,29 @@ def test_salvaged_untyped_tracks_do_not_invent_capture_source_names(tmp_path):
     assert all(t["offsetMs"] is None for t in tracks)
 
 
+def test_browser_span_identity_uses_utf8_bound_and_never_labels(tmp_path):
+    from cassini_viewer.recording_session import RecordingSession
+    from cassini_viewer.transcription import prepare_tracks
+
+    session = RecordingSession(tmp_path)
+    identities = ["", "é" * 101, "é" * 100, "é" * 100]
+    with session.change([]):
+        for index, source in enumerate(identities):
+            session.add_track(f"remote-{index}", "The same browser label", "remote", 48000, 1)
+            session.manifest["tracks"][-1]["sourceTrackId"] = source
+            session.append(f"remote-{index}", b"\x01\x00" * 480, index * 100)
+    session.finish()
+    before = (session.directory / "session.json").read_bytes()
+    (meeting,) = LibraryScanner(tmp_path).scan().meetings
+    tracks, speakers = prepare_tracks(meeting)
+    assert len(tracks) == 4 and len(speakers) == 3
+    assert tracks[0]["speaker"] != tracks[1]["speaker"]
+    assert tracks[2]["speaker"] == tracks[3]["speaker"]
+    assert len([d for d in meeting.diagnostics if d.code == "source-track-identity-invalid"]) == 2
+    assert all(s["name"] is None and s["provenance"] == "unnamed" for s in speakers.values())
+    assert (session.directory / "session.json").read_bytes() == before
+
+
 def test_close_cancels_real_busy_child_without_blocking_or_failing_partial_work(tmp_path, monkeypatch):
     from test_whistle_spike import child_client
 

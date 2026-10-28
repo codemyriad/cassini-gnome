@@ -106,8 +106,11 @@ def request(action="status", *, path=None, **values):
 
 
 class BrowserConnection:
-    def __init__(self, stream, browser_name=None):
+    def __init__(self, stream, browser_name=None, browser_instance=None):
         self.browser_name = browser_name if isinstance(browser_name, str) and len(browser_name) <= 100 else None
+        self.browser_instance = (
+            browser_instance if isinstance(browser_instance, str) and 0 < len(browser_instance) <= 128 else None
+        )
         self.id = str(uuid4())
         self.stream = stream
         self.write_lock = threading.Lock()
@@ -154,6 +157,7 @@ class BrowserService:
         self.browsers = {}
         self.recordings = []
         self.captures = {}
+        self.call_captures = {}
         self.capture_parent, self.tap_factory = capture_parent, tap_factory
         self.applications = {}
         self.application_pids = {}
@@ -228,6 +232,17 @@ class BrowserService:
         if event == "error":
             self.workers.submit(capture.stop, capture.error)
         elif event == "finished" and capture.directory is not None:
+            with self.lock:
+                self.call_captures = {
+                    key: value for key, value in self.call_captures.items() if value != capture.capture_id
+                }
+                for browser in self.browsers.values():
+                    for state in browser.states.values():
+                        if state.get("captureId") == capture.capture_id:
+                            state["recording"] = False
+                finished = [key for key, owner in self.captures.items() if owner.finished]
+                for key in finished[:-19]:
+                    self.captures.pop(key, None)
             self._remember_saved(str(capture.directory), capture.host.session.manifest["title"])
 
     def _remember_saved(self, path, title, message=None):
@@ -351,6 +366,18 @@ class BrowserService:
             owner = self.captures.get(old.get("captureId"))
             if owner is not None and not owner.finished and owner.browser_lost:
                 states.setdefault(tab, old)
+        if browser.browser_instance is not None:
+            for (instance, tab), capture_id in list(self.call_captures.items()):
+                owner = self.captures.get(capture_id)
+                if instance == browser.browser_instance and owner is not None and not owner.finished:
+                    states.setdefault(
+                        tab, dict(recording=True, tabId=tab, captureId=capture_id, path=str(owner.directory))
+                    )
+                    browser.attempted.add(tab)
+            for tab, state in states.items():
+                capture_id = state.get("captureId")
+                if capture_id in self.captures and not self.captures[capture_id].finished:
+                    self.call_captures[(browser.browser_instance, tab)] = capture_id
         browser.states = states
         for tab, old in previous.items():
             if old.get("recording") and not states.get(tab, {}).get("recording"):
@@ -556,6 +583,8 @@ class BrowserService:
                 capture.browser_lost = True
                 self.captures[capture_id] = capture
                 browser.states[tab] = dict(recording=True, captureId=capture_id, tabId=tab)
+                if browser.browser_instance is not None:
+                    self.call_captures[(browser.browser_instance, tab)] = capture_id
             else:
                 capture = None
         if capture is None:
@@ -576,6 +605,11 @@ class BrowserService:
         except Exception as error:
             capture.stop(str(error))
             with self.lock:
+                if capture.directory is None:
+                    self.captures.pop(capture_id, None)
+                    self.call_captures = {
+                        key: value for key, value in self.call_captures.items() if value != capture_id
+                    }
                 if browser.states.get(tab, {}).get("captureId") == capture_id:
                     browser.states[tab] = dict(recording=False, tabId=tab)
             raise
@@ -806,7 +840,7 @@ class BrowserService:
                 if not packet:
                     return
                 if packet.get("role") == "extension":
-                    browser = BrowserConnection(stream, packet.get("browserName"))
+                    browser = BrowserConnection(stream, packet.get("browserName"), packet.get("browserInstance"))
                     with self.lock:
                         self.browsers[browser.id] = browser
                     while (packet := read_packet(stream)) is not None:

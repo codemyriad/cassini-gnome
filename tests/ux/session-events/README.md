@@ -16,3 +16,9 @@ fallback line is absent then. No return to the browser is inferred.
 Readers ignore unknown event types and fields. A v1 folder without events has
 no inferred fallback line. Export mixes the three WAVs by their explicit offsets;
 events themselves are not exported in wave 6.
+
+`python3 make.py /temporary/Library --case browser-off-on` creates the second
+case. The browser side is off from 5000 to 10000 ms. Its resumed span has a new
+ID and WAV but the same opaque `sourceTrackId`, so both spans write down as one
+speaker. The browser label deliberately changes: labels never establish identity.
+The microphone omits `sourceTrackId` and retains the source speaker Me.

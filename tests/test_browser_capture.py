@@ -181,3 +181,123 @@ def test_two_stop_requests_join_one_native_finalization(server):
         assert capture.finished
     finally:
         client.close()
+
+
+def test_rejected_browser_start_uses_its_own_system_fallback_without_forcing_microphone(server):
+    from test_browser_sessions import Extension
+
+    service, path, _ = server
+    peer = Extension(path, (3,))
+    try:
+        with ThreadPoolExecutor(1) as pool:
+            pending = pool.submit(request, "start-all", path=path, microphone=False)
+            peer.answer(peer.receive(), ok=False)
+            result = pending.result(2)
+        assert result["attempted"] == 1 and not result["failures"]
+        active = [s for s in result["statuses"] if s["recording"]]
+        assert len(active) == 1
+        capture = service.captures[active[0]["captureId"]]
+        assert capture.microphone is None and set(capture.native_taps) == {"system"}
+        value = json.loads((capture.directory / "session.json").read_text())
+        assert value["events"] == [
+            dict(atMs=0, type="othersSource", source="system", reason="missing"),
+            dict(atMs=0, type="selection", me=False, others=True, reason="start"),
+        ]
+        assert [t["kind"] for t in value["tracks"]] == ["system"]
+        assert value["tracks"][0]["startOffsetMs"] == 0
+        request("stop-all", path=path)
+        assert capture.finished
+    finally:
+        peer.close()
+
+
+def test_rpc_selection_stops_only_its_sources_and_retains_browser_span_identity(server):
+    service, path, _ = server
+    client = BrowserAudioProxy(path=path)
+    try:
+        start(client, "selection")
+        remote(client, "remote")
+        capture = service.captures["selection"]
+        original = capture.microphone
+        request("selection", path=path, directory=str(capture.directory), me=False, others=True)
+        assert original.stopped and capture.microphone is None
+        selected = request("selection", path=path, directory=str(capture.directory), me=True, others=False)
+        assert capture.microphone is not original and not capture.microphone.stopped
+        first_remote = next(t for t in capture.host.session.manifest["tracks"] if t["kind"] == "remote")
+        assert first_remote["ended"]
+        frozen = (capture.directory / first_remote["file"]).read_bytes()
+        offset = selected["events"][-1]["atMs"] + 10
+        client.handle(
+            dict(type="audio", id="remote", sequence=1, offsetMs=offset, pcm=base64.b64encode(b"\x02\x00" * 4).decode())
+        )
+        selected = request("selection", path=path, directory=str(capture.directory), me=True, others=True)
+        client.handle(
+            dict(
+                type="audio",
+                id="remote",
+                sequence=2,
+                offsetMs=selected["events"][-1]["atMs"] + 10,
+                pcm=base64.b64encode(b"\x03\x00" * 4).decode(),
+            )
+        )
+        remotes = [t for t in capture.host.session.manifest["tracks"] if t["kind"] == "remote"]
+        assert len(remotes) == 2 and remotes[0]["id"] != remotes[1]["id"]
+        assert remotes[0]["sourceTrackId"] == remotes[1]["sourceTrackId"] == "remote"
+        assert (capture.directory / first_remote["file"]).read_bytes() == frozen
+        client.handle(dict(type="stop"))
+    finally:
+        client.close()
+
+
+def test_source_limit_failure_keeps_last_applied_choice_and_tracks(server):
+    service, path, _ = server
+    client = BrowserAudioProxy(path=path)
+    try:
+        start(client, "limit", microphone=False)
+        remote(client, "remote")
+        capture = service.captures["limit"]
+        with capture.lock:
+            for index in range(63):
+                capture.host.session.add_track(f"ended-{index}", "Old", "remote", 48000, 1)
+                capture.host.session.end_track(f"ended-{index}")
+        before = (capture.directory / "session.json").read_bytes()
+        with pytest.raises(ValueError, match="64 sources"):
+            request("selection", path=path, directory=str(capture.directory), me=True, others=False)
+        assert capture.me is False and capture.others is True and capture.microphone is None
+        assert capture.streams.tracks["remote"].recorded == "remote"
+        assert (capture.directory / "session.json").read_bytes() == before
+        client.handle(dict(type="stop"))
+    finally:
+        client.close()
+
+
+def test_stop_before_missing_browser_fallback_begins_cannot_create_a_late_folder(server, monkeypatch):
+    from test_browser_sessions import Extension
+
+    from cassini_viewer.browser_capture import BrowserCapture
+
+    service, path, root = server
+    peer = Extension(path, (3,))
+    entered, release = threading.Event(), threading.Event()
+    original = BrowserCapture.start
+
+    def delayed(capture, *args, **kwargs):
+        entered.set()
+        assert release.wait(3)
+        return original(capture, *args, **kwargs)
+
+    monkeypatch.setattr(BrowserCapture, "start", delayed)
+    try:
+        with ThreadPoolExecutor(1) as pool:
+            pending = pool.submit(request, "start-all", path=path, microphone=False, groupId="fallback-cancel")
+            peer.answer(peer.receive(), ok=False)
+            assert entered.wait(2)
+            request("stop-all", path=path, cancelGroups=["fallback-cancel"])
+            release.set()
+            assert pending.result(2)["cancelled"]
+        assert not list(root.glob("Recording-*"))
+        assert not any(s.get("recording") for s in request(path=path)["statuses"])
+        assert not service.captures
+    finally:
+        release.set()
+        peer.close()

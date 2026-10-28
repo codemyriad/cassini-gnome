@@ -154,6 +154,7 @@ class CaptureTrack:
     channels: int = 1
     id: str | None = None
     kind: str = "unknown"
+    source_track_id: str | None = None
 
     @property
     def display_end_ms(self):
@@ -522,8 +523,26 @@ class LibraryScanner:
                 kind = value.get("kind")
                 if not isinstance(kind, str) or kind not in KINDS:
                     kind = {"track-microphone.wav": "microphone", "track-system.wav": "system"}.get(name, "unknown")
+                source_identity = value.get("sourceTrackId")
+                if source_identity is not None and (
+                    not isinstance(source_identity, str) or not source_identity or len(source_identity.encode()) > 200
+                ):
+                    source_identity = None
+                    diagnostics.append(Diagnostic(directory / name, "source-track-identity-invalid"))
+                if kind in ("microphone", "local", "system"):
+                    source_identity = None
                 tracks.append(
-                    CaptureTrack(directory / name, frames, rate, offset, value.get("ended"), channels, identity, kind)
+                    CaptureTrack(
+                        directory / name,
+                        frames,
+                        rate,
+                        offset,
+                        value.get("ended"),
+                        channels,
+                        identity,
+                        kind,
+                        source_identity,
+                    )
                 )
             except (OSError, ValueError, TypeError):
                 diagnostics.append(Diagnostic(directory, "capture-track-unreadable"))

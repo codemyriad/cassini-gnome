@@ -2,14 +2,19 @@
 # SPDX-License-Identifier: CC0-1.0
 """Materialise the S-6 fixture as sparse silent PCM; no audio megabytes in Git."""
 
+import argparse
 import json
 import struct
-import sys
 from pathlib import Path
 
 source = Path(__file__).resolve().parent
-manifest = json.loads((source / "session.json").read_text())
-folder = Path(sys.argv[1]) / ("Recording-" + manifest["id"])
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("library", type=Path)
+parser.add_argument("--case", choices=("fallback", "browser-off-on"), default="fallback")
+args = parser.parse_args()
+filename = "session.json" if args.case == "fallback" else "browser-off-on.session.json"
+manifest = json.loads((source / filename).read_text())
+folder = args.library / ("Recording-" + manifest["id"])
 folder.mkdir(mode=0o700, parents=True)
 for track in manifest["tracks"]:
     rate, channels = track["sampleRate"], track["channels"]
@@ -34,5 +39,5 @@ for track in manifest["tracks"]:
             )
         )
         audio.truncate(44 + size)
-(folder / "session.json").write_bytes((source / "session.json").read_bytes())
+(folder / "session.json").write_bytes((source / filename).read_bytes())
 print(folder)

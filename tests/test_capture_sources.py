@@ -51,6 +51,7 @@ def test_off_side_discards_pcm_but_checks_sequence_geometry_and_new_span_offsets
         streams.select(True, True, 500)
     resumed = session.manifest["tracks"][1]
     assert resumed["startOffsetMs"] == 500 and resumed["id"] != old["id"] and resumed["file"] != old["file"]
+    assert old["sourceTrackId"] == resumed["sourceTrackId"] == "remote"
     audio(host, 2, 490, b"\x02\x00" * 480 + b"\x03\x00" * 480)
     host.handle(dict(type="stop"))
     assert resumed["frames"] == 480 and resumed["endOffsetMs"] == 510

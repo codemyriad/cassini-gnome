@@ -49,6 +49,30 @@ def test_shared_s6_fixture_library_and_handwritten_timeline_states(tmp_path):
     assert manifest.read_bytes() == before
 
 
+def test_shared_browser_off_on_fixture_retains_one_speaker_and_each_span_offset(tmp_path):
+    from cassini_viewer.library import LibraryScanner
+    from cassini_viewer.transcription import prepare_tracks
+
+    fixture = Path(__file__).parent / "ux/session-events"
+    subprocess.run(
+        [sys.executable, str(fixture / "make.py"), str(tmp_path), "--case", "browser-off-on"], check=True, timeout=5
+    )
+    expected = json.loads((fixture / "browser-off-on.expected.json").read_text())
+    (meeting,) = LibraryScanner(tmp_path).scan().meetings
+    tracks, speakers = prepare_tracks(meeting)
+    assert {t["id"]: t["speaker"] for t in tracks} == expected["trackSpeakers"]
+    assert {t["id"]: t["offsetMs"] for t in tracks} == expected["trackOffsetsMs"]
+    assert len(speakers) == expected["speakerCount"]
+    assert meeting.duration_ms == expected["durationMs"]
+    state = meeting_sources(meeting)
+    assert (state.me, state.others, state.source, state.fallback) == (
+        expected["me"],
+        expected["others"],
+        expected["source"],
+        expected["fallback"],
+    )
+
+
 def test_reader_uses_newest_known_events_without_inferring_or_rewriting():
     events = initial() + [
         dict(atMs=754210, type="othersSource", source="system", reason="lost", future=True),

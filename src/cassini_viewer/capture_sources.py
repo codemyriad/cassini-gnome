@@ -52,18 +52,27 @@ class BrowserStreams:
     def enabled(self, track):
         return self.browser and (self.me if track.kind in ME_KINDS else self.others)
 
+    def additions(self, me, others, *, browser=True):
+        return sum(
+            t.recorded is None and browser and (me if t.kind in ME_KINDS else others) for t in self.tracks.values()
+        )
+
     def _record(self, identifier, track, boundary=None):
         stored = identifier if identifier not in self.session.writers else "span-" + str(uuid4())
         self.session.add_track(stored, track.label, track.kind, track.rate, track.channels, label_source="browser")
         track.recorded, track.boundary = stored, boundary or 0
+        if track.kind not in ME_KINDS and track.kind != "system":
+            self.session.manifest["tracks"][-1]["sourceTrackId"] = identifier
         if boundary is not None:
             self.session.manifest["tracks"][-1]["startOffsetMs"] = boundary
+        self.session.checkpoint()
 
     def add_track(self, identifier, label, kind, rate, channels):
         label = source_parameters(identifier, label, kind, rate, channels, self.tracks)
         track = WireTrack(label, kind, rate, channels)
         if self.enabled(track):
-            self._record(identifier, track)
+            with self.session.change([]):
+                self._record(identifier, track)
         self.tracks[identifier] = track
 
     def append(self, identifier, data, offset):
