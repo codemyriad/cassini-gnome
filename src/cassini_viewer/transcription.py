@@ -135,11 +135,8 @@ class TranscriptionQueue:
 
     def _mark_queued(self, directory, resume):
         canonical = self._owned(directory)
-        meeting = next(
-            m
-            for m in LibraryScanner(canonical.parent).scan(changed_directories={canonical}).meetings
-            if m.directory == canonical
-        )
+        scanner = LibraryScanner(canonical.parent)
+        meeting = next(m for m in scanner.scan(changed_directories={canonical}).meetings if m.directory == canonical)
         metadata = read_metadata(directory)
         if (
             not meeting.metadata_editable
@@ -155,6 +152,11 @@ class TranscriptionQueue:
         if not (directory / "transcript.json").exists():
             atomic_json(directory / "transcript.json", dict(format="cassini.words.v1", language="und", items=[]))
         update_metadata(directory, transcript=dict(status="queued", reference=REFERENCE), etaMinutes=None, error=None)
+        # Failed bodies are intentionally hidden by the Library. Once queued,
+        # read the preserved sidecar through the normal validated reader so the
+        # publisher knows how many words it must retain until recomputation
+        # catches up. An explicit retry follows the same rule as auto-resume.
+        meeting = next(m for m in scanner.scan(changed_directories={canonical}).meetings if m.directory == canonical)
         self.changed(directory)
         return meeting, metadata
 
