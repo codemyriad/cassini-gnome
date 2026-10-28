@@ -129,6 +129,7 @@ def broker_command(socket_path):
         [
             flatpak,
             "run",
+            "--unshare=network",
             "--arch=" + target.arch,
             "--branch=" + target.branch,
             "--command=python3",

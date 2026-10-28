@@ -35,6 +35,6 @@ while [ "$pid" -gt 1 ] && [ "$remaining" -gt 0 ]; do
     pid=$parent
     remaining=$((remaining - 1))
 done
-exec @FLATPAK@ run --arch=@ARCH@ --branch=@BRANCH@ --command=@COMMAND@ \
+exec @FLATPAK@ run --unshare=network --arch=@ARCH@ --branch=@BRANCH@ --command=@COMMAND@ \
     "--env=CASSINI_HOST_BROWSER_NAME=$browser_name" \
     "--env=CASSINI_HOST_BROWSER_INSTANCE=$browser_instance" @APPLICATION@
