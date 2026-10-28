@@ -40,7 +40,8 @@ def refresh_capture_background(app):
     visible = [w for w in windows if w.get_visible()]
     if visible and (native or browser):
         browser_observed = any(
-            getattr(w, "_activity_source", None) is not None or hasattr(w, "_browser_snapshot") for w in visible
+            getattr(w, "_activity_source", None) is not None and getattr(w, "monitor", None) is not None
+            for w in visible
         )
         # A legacy player does not poll browser capture. Retain its hidden
         # observer until another observer is visible or the capture is saved.
@@ -120,6 +121,8 @@ def remember_capture_paths(app):
         if session:
             paths.add(str(session.directory))
     for window in app.get_windows():
+        activity = getattr(window, "_activity_source", None)
+        paths.update(getattr(activity, "paths", {}).values())
         for meeting in getattr(getattr(window, "snapshot", None), "meetings", ()):
             if meeting.lifecycle in ("recording", "saving"):
                 paths.add(str(meeting.directory))
@@ -134,6 +137,16 @@ def confirm_capture_close(app, window, *, quitting=False):
     from gi.repository import Adw, GLib
 
     if getattr(app, "_capture_close_allowed", False):
+        return False
+    # A secondary player/companion window does not own the Library's capture.
+    # Its close must not offer a default action that stops another window.
+    if (
+        not quitting
+        and not recorder_busy(getattr(window, "recorder", None))
+        and any(
+            w is not window and w.get_visible() and getattr(w, "monitor", None) is not None for w in app.get_windows()
+        )
+    ):
         return False
     # The guard covers the dialog AND all asynchronous finalization, including
     # the interval after pipelines disappear but before metadata is saved.
