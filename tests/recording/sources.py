@@ -80,6 +80,73 @@ try:
         producers.append(producer)
         assert producer.set_state(Gst.State.PLAYING) != Gst.StateChangeReturn.FAILURE
         assert producer.get_state(5 * Gst.SECOND).state == Gst.State.PLAYING
+    # The old system source must keep recording if a newly requested mic
+    # fails in the real Pulse/GStreamer startup path. No device is mocked.
+    from cassini_viewer.browser_capture import BrowserCapture
+    from cassini_viewer.native_tap import NativeTap
+
+    changes = []
+    capture = BrowserCapture(lambda _capture, event: changes.append(event), parent=artifacts)
+    capture.start(
+        dict(
+            type="start",
+            version=1,
+            independent=True,
+            captureId="failed-source-change",
+            timelineOriginMs=int(time.time() * 1000),
+            microphone=False,
+        ),
+        others_source="system",
+        reason="missing",
+    )
+    try:
+        original_id, original_tap = capture.native_taps["system"]
+        wait_until(
+            lambda: capture.host.session.writers[original_id].frames >= 96000,
+            "browser fallback has two seconds",
+            diagnostics=capture.snapshot,
+        )
+        events = list(capture.host.session.manifest["events"])
+        files = {p.name for p in capture.directory.iterdir()}
+        parse = Gst.parse_launch
+        failed_taps = []
+
+        def factory(*args, **kwargs):
+            tap = NativeTap(*args, **kwargs)
+            failed_taps.append(tap)
+            return tap
+
+        capture.tap_factory = factory
+        with patch.object(
+            Gst,
+            "parse_launch",
+            side_effect=lambda description: parse(
+                description.replace("device=@DEFAULT_SOURCE@", "device=cassini-device-does-not-exist")
+            ),
+        ):
+            try:
+                capture.select(True, False)
+            except OSError:
+                pass
+            else:
+                raise AssertionError("A nonexistent Pulse microphone must fail readiness")
+        assert not capture.finished and not capture.error and "error" not in changes
+        assert (capture.me, capture.others) == (False, True)
+        assert capture.host.session.manifest["events"] == events
+        assert list(capture.host.session.writers) == [original_id]
+        assert {p.name for p in capture.directory.iterdir()} == files
+        assert not original_tap.closed.is_set()
+        assert failed_taps and all(tap.closed.is_set() for tap in failed_taps)
+        before = capture.host.session.writers[original_id].frames
+        wait_until(
+            lambda: capture.host.session.writers[original_id].frames >= before + 48000,
+            "old browser fallback continues after a real device failure",
+            diagnostics=capture.snapshot,
+        )
+        evidence["browserFailedChangeKeepsSource"] = True
+    finally:
+        capture.stop()
+
     native.start(artifacts)
     wait_until(
         lambda: native.session is not None and frames("microphone") >= 96000 and frames("system") >= 96000,
