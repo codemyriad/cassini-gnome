@@ -7,6 +7,15 @@ Files: *
 Copyright: 2026 Silvio Tomatis
 License: GPL-3.0-or-later
 
+Files: browser-protocol/*
+       browser-extension/*
+Copyright: 2026 Silvio Tomatis
+License: GPL-3.0-or-later
+Comment: Vendored from https://github.com/codemyriad/cassini-browser-protocol.
+ The upstream licence is GPL-3.0-or-later, confirmed in upstream PR #10
+ (https://github.com/codemyriad/cassini-browser-protocol/pull/10).
+ browser-extension is the pinned runtime copy of the same extension.
+
 Files: tests/conformance/*
 Copyright: 2026 Codemyriad
 License: CC0-1.0
