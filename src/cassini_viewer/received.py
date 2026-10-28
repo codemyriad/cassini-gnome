@@ -36,7 +36,11 @@ def regular_input(path):
 
 def import_received(path, root=None):
     original = Path(path).absolute()
-    if original.suffix.lower() not in (".opus", ".ogg") or not original.is_file():
+    if (
+        original.suffix.lower() not in (".opus", ".ogg")
+        or not original.name.rsplit(".", 1)[0].strip(".")
+        or not original.is_file()
+    ):
         raise ValueError("Choose an Ogg Opus recording")
     requested_root = root
     root = library_root(root).resolve()
