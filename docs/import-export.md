@@ -90,3 +90,10 @@ Export takes the current Meeting-page/Library snapshot; an export already in
 progress retains its chosen immutable input. The isolated GUI proof rejects
 Python stat calls during dialog construction, changes real metadata while the
 dialog is open, and checks the updated title and note in the resulting file.
+
+D19 recovery exports stamp `createdAtUtc` at export time. A known meeting start
+is retained separately as the optional local wall-clock `recordedAtLocal`; an
+unknown start remains absent. Export mixes unknown source offsets at zero using
+copies of the track descriptors and records the assumption in
+`x["gocassini.com"].recovery.offsetsAssumedZero`. Capture files and the Library's
+unknown offsets remain unchanged. Import/re-export carries that private marker.

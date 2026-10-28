@@ -5,6 +5,7 @@ import ctypes
 import errno
 import os
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 from . import portable
@@ -56,10 +57,13 @@ def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
                 policy = None
                 original = None
                 if meeting.origin == "own":
-                    if meeting.lifecycle != "saved" or any(
-                        t.start_offset_ms is None and t.frames for t in meeting.tracks
-                    ):
-                        raise ValueError("Cannot align recording sources with unknown start offsets")
+                    if meeting.lifecycle != "saved":
+                        raise ValueError("Only saved recordings can be exported")
+                    # D19's export-only recovery policy does not alter the
+                    # Library model, capture metadata or playback alignment.
+                    tracks = tuple(
+                        replace(t, start_offset_ms=0) if t.start_offset_ms is None else t for t in meeting.tracks
+                    )
                     policy = encode_choice(
                         [
                             dict(
@@ -74,7 +78,7 @@ def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
                     audio_fd, audio_name = tempfile.mkstemp(prefix=".cassini-audio-", suffix=".opus", dir=directory)
                     os.close(audio_fd)
                     encoded = Path(audio_name)
-                    encode_pcm(meeting.tracks, encoded, policy, cancel)
+                    encode_pcm(tracks, encoded, policy, cancel)
                     audio_path = encoded
                 else:
                     audio_path = meeting.audio_file
@@ -91,7 +95,13 @@ def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
                             integrity.get(k) == digest[k] for k in ("channels", "sampleCount", "durationMs")
                         ):
                             policy = original.manifest.get("audioEncode")
-                    tags, _manifest = descriptors(meeting, digest, policy=policy)
+                    tags, _manifest = descriptors(
+                        meeting,
+                        digest,
+                        policy=policy,
+                        tz=tz,
+                        recorded_at_local=original.recorded_at_local if original else None,
+                    )
                     rewrite_tags(audio, output, tags, cancel)
             else:
                 raise ValueError("Unknown export format")

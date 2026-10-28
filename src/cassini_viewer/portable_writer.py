@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 
 from . import portable
 from .export_audio import check_cancel
+from .ux_formats import _local
 
 ENCODING = "base64url+gzip+utf8json"
 MANIFEST_MIME = "application/vnd.cassini.portable-meeting+json"
@@ -55,7 +56,7 @@ def chunk_set(prefix, value, mime):
     return tags, ref
 
 
-def descriptors(meeting, digest, *, policy=None):
+def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None):
     items = (
         [
             dict(
@@ -78,12 +79,7 @@ def descriptors(meeting, digest, *, policy=None):
         sampleCount=digest["sampleCount"],
         durationMs=digest["durationMs"],
     )
-    created = (
-        datetime.fromtimestamp(meeting.started_at_ms / 1000, UTC)
-        if meeting.started_at_ms is not None
-        else datetime.now(UTC)
-    )
-    date = created.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    date = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     identifier = "mtg_" + digest["sha256"]
     manifest = dict(
         kind="cassini-portable-meeting",
@@ -97,11 +93,28 @@ def descriptors(meeting, digest, *, policy=None):
             dict(id="words", default=True, format=portable.WORDS_FORMAT, wordCount=len(items), payloadRef=reference)
         ],
     )
+    if meeting.origin == "own" and meeting.started_at_ms is not None:
+        manifest["meeting"]["recordedAtLocal"] = _local(meeting.started_at_ms, tz).strftime("%Y-%m-%dT%H:%M:%S")
+    elif recorded_at_local is not None:
+        # A Received row's Library date may be artifact/export/import time.
+        # Carry only an explicitly stored recording wall-clock label forward.
+        try:
+            parsed = datetime.strptime(recorded_at_local, "%Y-%m-%dT%H:%M:%S")
+        except (TypeError, ValueError):
+            pass
+        else:
+            if parsed.strftime("%Y-%m-%dT%H:%M:%S") == recorded_at_local:
+                manifest["meeting"]["recordedAtLocal"] = recorded_at_local
     if policy is not None:
         manifest["audioEncode"] = deepcopy(policy)
     extension = deepcopy(meeting.extensions)
     domain = extension.get("gocassini.com")
     domain = domain if isinstance(domain, dict) else {}
+    if meeting.origin == "own" and any(t.start_offset_ms is None for t in meeting.tracks):
+        recovery = domain.get("recovery")
+        recovery = recovery if isinstance(recovery, dict) else {}
+        recovery["offsetsAssumedZero"] = True
+        domain["recovery"] = recovery
     if meeting.notes:
         domain["notes"] = deepcopy(list(meeting.notes))
     else:
