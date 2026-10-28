@@ -309,3 +309,33 @@ def test_actual_transcription_queue_keeps_old_paths_and_accepts_new_root_after_m
     finally:
         release.set()
         queue.close()
+
+
+def test_collection_preserves_disconnected_symlink_as_offline_not_empty(roots, tmp_path, monkeypatch):
+    old, _new = roots
+    recording = session(old)
+    recording.finish()
+    link = tmp_path / "Library-link"
+    link.symlink_to(old, target_is_directory=True)
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(link))
+    scanner = LibraryCollectionScanner()
+    assert len(scanner.scan().meetings) == 1
+    old.rename(tmp_path / "disconnected")
+    assert scanner.scan().unavailable
+
+
+def test_default_capture_and_late_edits_follow_canonical_move_from_a_symlink(roots, tmp_path, monkeypatch):
+    old, new = roots
+    old.mkdir()
+    link = tmp_path / "Library-link"
+    link.symlink_to(old, target_is_directory=True)
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(link))
+    browser = BrowserHost()
+    browser.handle(dict(type="start"))
+    directory = browser.session.directory
+    assert directory.parent == old
+    browser.handle(dict(type="stop"))
+    location.request(new)
+    assert location.process()["pending"] == []
+    edit_recording(link / directory.name, title="Edit queued at the old symlink")
+    assert location.owned_directory(link / directory.name) == new / directory.name

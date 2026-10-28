@@ -176,7 +176,7 @@ class RecordingSession:
         self._lease_fd = None
         default_parent = parent is None
         with routing() if parent is None else nullcontext():
-            parent = primary() if parent is None else parent
+            parent = primary().resolve() if parent is None else parent
             self.clock = clock
             self.writer_factory = writer_factory
             identifier = str(uuid4())

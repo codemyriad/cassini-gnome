@@ -21,7 +21,7 @@ def config_path():
 
 
 def initial_root():
-    return Path(os.environ.get("CASSINI_LIBRARY_DIR", Path.home() / "Music/Cassini")).resolve()
+    return Path(os.environ.get("CASSINI_LIBRARY_DIR", Path.home() / "Music/Cassini")).absolute()
 
 
 def load():
@@ -191,6 +191,7 @@ def owned_directory(path):
             target = Path(entry["target"])
             if target.is_dir() and not target.is_symlink():
                 return target.resolve()
+    original = canonical
     visited = set()
     while not original.exists() and str(original) in value["aliases"] and str(original) not in visited:
         visited.add(str(original))
