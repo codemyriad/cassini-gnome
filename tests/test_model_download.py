@@ -5,6 +5,7 @@ import ctypes
 import hashlib
 import io
 import json
+import shutil
 import struct
 import threading
 from collections import Counter
@@ -462,3 +463,24 @@ def test_original_model_notice_filename_is_preserved_separately_from_distributio
     assert (result / ".cassini-NOTICE.txt").read_bytes() == NOTICE
     assert (client.root / "NOTICE.txt").read_bytes() == NOTICE
     assert client.installed(ID, REVISION)
+
+
+@pytest.mark.parametrize("linked_component", [0, 1, 2])
+def test_remove_refuses_symlinked_partial_parent_before_deleting_any_revision(remote, tmp_path, linked_component):
+    client = store(tmp_path, remote)
+    installed = download(client, remote)
+    shutil.rmtree(client.root / ".downloads")
+    parts = (".downloads", ID, REVISION)
+    anchor = client.root.joinpath(*parts[: linked_component + 1])
+    anchor.parent.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "outside"
+    redirected = outside.joinpath(*parts[linked_component + 1 :])
+    redirected.mkdir(parents=True)
+    (redirected / "keep.txt").write_bytes(b"Outside data must survive Remove")
+    anchor.symlink_to(outside, target_is_directory=True)
+    requests = list(remote.requests)
+    with pytest.raises(ValueError, match="symbolic"):
+        client.remove(ID, REVISION)
+    assert (redirected / "keep.txt").read_bytes() == b"Outside data must survive Remove"
+    assert installed.is_dir() and client.installed(ID, REVISION)
+    assert remote.requests == requests

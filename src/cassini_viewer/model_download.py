@@ -452,11 +452,18 @@ class ModelStore:
         final = self._directory(model_id, revision)
         with self._lock(model_id, revision, cancelled):
             _cancelled(cancelled)
+            partial = self.root / ".downloads" / model_id / revision
+            # Check every cleanup ancestor before removing the installed copy.
+            # rmtree refuses a final symlink, but follows symlinked parents.
+            for directory in (partial, *partial.parents):
+                if directory == self.root:
+                    break
+                if directory.is_symlink():
+                    raise ValueError("Model storage directories must not be symbolic links")
             if final.exists():
                 tombstone = final.with_name(".removing-" + uuid4().hex)
                 os.rename(final, tombstone)
                 _sync_directory(final.parent)
                 shutil.rmtree(tombstone)
-            partial = self.root / ".downloads" / model_id / revision
             if partial.exists():
                 shutil.rmtree(partial)
