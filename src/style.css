@@ -205,3 +205,9 @@
 .companion-setup { font-size: 15px; }
 .companion-step-badge { min-width: 24px; min-height: 24px; border: 2px solid @accent_color; border-radius: 50%; color: @accent_color; font-weight: 700; }
 .companion-step-badge.done { border-color: @success_bg_color; background: @success_bg_color; color: @success_fg_color; }
+
+/* UX16: native surfaces; the avatar uses the same first-speaking colour. */
+.speaker-edit { padding: 0; }
+.speakers-dialog { font-size: 15px; }
+.speakers-dialog .small { font-size: 13px; }
+.speaker-avatar { min-width: 40px; min-height: 40px; border-radius: 50%; background: alpha(@accent_color, 0.12); font-weight: 700; }

@@ -78,7 +78,7 @@ def capture(application_id, version, profile):
             opened_recording = True
             settled_frame = None
         if (
-            os.environ.get("CASSINI_SCREENSHOT_BOARD") in ("meeting", "export")
+            os.environ.get("CASSINI_SCREENSHOT_BOARD") in ("meeting", "export", "speakers")
             and not window._pending
             and not opened_meeting
         ):
@@ -101,6 +101,10 @@ def capture(application_id, version, profile):
             else:
                 window.player.seek(192000)
                 window.player.play()
+            if board == "speakers":
+                window.player.pause()
+                window.meeting_page.name_speakers("guest")
+                window.meeting_page.speakers_dialog.entry.set_text("Giulia")
             opened_meeting = True
             settled_frame = None
         if os.environ.get("CASSINI_SCREENSHOT_BOARD") == "search" and not window._pending and not opened_search:
@@ -180,6 +184,15 @@ def capture(application_id, version, profile):
                         if opened_settings and hasattr(app.settings_dialog, "parakeet")
                         else []
                     )
+                ),
+                speakersDialog=(
+                    dict(
+                        id=window.meeting_page.speakers_dialog.identifier,
+                        name=window.meeting_page.speakers_dialog.entry.get_text(),
+                        saveEnabled=window.meeting_page.speakers_dialog.save.get_sensitive(),
+                    )
+                    if board == "speakers"
+                    else None
                 ),
                 diarizationOn=(
                     bool(

@@ -219,3 +219,48 @@ def test_folder_state_failure_does_not_mark_playing(tmp_path):
         assert errors and not player.playing and player._tick_id == 0
     finally:
         player.shutdown()
+
+
+@pytest.mark.parametrize("kind", ["folder", "file"])
+@pytest.mark.parametrize("end", [500, 12000])
+def test_voice_sample_has_a_real_stop_boundary_and_normal_playback_recovers(tmp_path, kind, end):
+    from cassini_viewer.player import Player
+
+    path = tmp_path / "voice.wav"
+    frames = tone(path, 440, seconds=12)
+    sink = Gst.ElementFactory.make("appsink", None)
+    sink.set_property("emit-signals", True)
+    sink.set_property("sync", False)
+    sink.set_property("caps", Gst.Caps.from_string("audio/x-raw,format=S16LE,layout=interleaved,rate=48000,channels=1"))
+    samples = []
+
+    def received(source):
+        sample = source.emit("pull-sample")
+        samples.append(sample.get_buffer().get_size() // 2)
+        return Gst.FlowReturn.OK
+
+    sink.connect("new-sample", received)
+    player = FolderPlayer(audio_sink=sink) if kind == "folder" else Player()
+    errors = []
+    player.connect("error", lambda _p, error: errors.append(error))
+    try:
+        if kind == "folder":
+            player.load_tracks([CaptureTrack(path, frames, 48000, 0, True)])
+        else:
+            player._pipeline.set_property("audio-sink", sink)
+            player.load(path.as_uri(), 12000)
+        until(lambda: player._prerolled or errors)
+        assert not errors
+        assert player.play_range(200, end)
+        until(lambda: player._at_end or errors)
+        stop = min(end, 10200)
+        assert not errors and player.position == stop and not player.playing
+        assert sum(samples) == (stop - 200) * 48, "Stop must bound actual output PCM, including the 10 s cap"
+        player.clear_range()
+        player.seek(0)
+        samples.clear()
+        player.play()
+        until(lambda: player._at_end or errors)
+        assert not errors and player.position == 12000 and sum(samples) == 12000 * 48
+    finally:
+        player.shutdown()

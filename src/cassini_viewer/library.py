@@ -170,6 +170,8 @@ class LibrarySpeaker:
     provenance: str | None
     first_spoken_ms: int
     colour_index: int
+    talk_ms: int = 0
+    sample_span: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -591,6 +593,12 @@ class LibraryScanner:
         words, transcript, eta, error = self._transcript(
             fd, directory, metadata, origin, embedded, trusted, embedded_words, diagnostics
         )
+        from .speaker_merges import apply_merges
+
+        known = [s["id"] for s in metadata.get("speakers", [])]
+        if embedded:
+            known.extend(s.id for s in embedded.speakers)
+        words = apply_merges(words, metadata.get("speakerMerges", []), known)
         received_name = metadata.get("received", {}).get("originalName") if origin == "received" else None
         title_values = [
             metadata.get("title"),
@@ -779,6 +787,9 @@ def _sidecar_words(body):
 
 
 def _speakers(words, values, embedded):
+    from .speaker_merges import speaker_metrics
+
+    metrics = speaker_metrics(words)
     metadata = {s["id"]: s for s in values}
     labels = {s.id: s.label for s in embedded.speakers} if embedded else {}
     first = {}
@@ -789,9 +800,19 @@ def _speakers(words, values, embedded):
         value = metadata.get(identifier, {})
         name = value.get("name")
         if name is None:
-            label = labels.get(identifier)
+            label = labels.get(identifier) if value.get("provenance") != "unnamed" else None
             name = label if label and not re.fullmatch(r"Speaker \d+", label) else f"Speaker {rank + 1}"
-        result.append(LibrarySpeaker(identifier, name, value.get("provenance"), first[identifier][0], rank))
+        result.append(
+            LibrarySpeaker(
+                identifier,
+                name,
+                value.get("provenance"),
+                first[identifier][0],
+                rank,
+                metrics[identifier]["talkMs"],
+                metrics[identifier]["sample"],
+            )
+        )
     return tuple(result)
 
 

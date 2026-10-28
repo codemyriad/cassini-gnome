@@ -29,6 +29,10 @@ class MeetingPage(Adw.NavigationPage):
     def __init__(self, window, meeting):
         super().__init__(title=meeting.title)
         self.window, self.meeting = window, meeting
+        self.speakers_dialog = None
+        self._speaker_future = None
+        self._selected_speaker = None
+        self._closed = False
         self.player = window.player
         self._updating = False
         self.bound = {}
@@ -79,7 +83,7 @@ class MeetingPage(Adw.NavigationPage):
         self.headline = Adw.WindowTitle()
         header.set_title_widget(self.headline)
         self.export_button = Gtk.Button(label=text("common.exportEllipsis"), action_name="win.export")
-        menu = Gio.Menu()
+        menu = self.more_menu = Gio.Menu()
         menu.append(text("common.exportEllipsis"), "win.export")
         more = Gtk.MenuButton(
             icon_name="view-more-symbolic",
@@ -283,8 +287,23 @@ class MeetingPage(Adw.NavigationPage):
         self.seek.set_sensitive(can_play)
         source = self.window._activity_source
         self.set_connected(source.connected if source else False)
+        if self.speakers_dialog and not self.speakers_dialog.closed:
+            self.speakers_dialog.update(meeting)
+        undo = bool(meeting.metadata_editable and meeting.metadata.get("speakerMerges"))
+        self.window.lookup_action("undo-speaker-merge").set_enabled(undo and self._speaker_future is None)
+        self.more_menu.remove_all()
+        self.more_menu.append(text("common.exportEllipsis"), "win.export")
+        if undo:
+            self.more_menu.append(text("meeting.undoMerge"), "win.undo-speaker-merge")
         dark = self._style_manager.get_dark()
-        signature = (id(meeting.words), meeting.speakers, meeting.transcript, meeting.error, dark)
+        signature = (
+            id(meeting.words),
+            meeting.speakers,
+            meeting.transcript,
+            meeting.error,
+            meeting.metadata_editable,
+            dark,
+        )
         if signature == self._signature:
             return
         self._signature = signature
@@ -317,7 +336,20 @@ class MeetingPage(Adw.NavigationPage):
                     margin_start=18,
                 )
             )
-            self.speakers.append(row)
+            if meeting.metadata_editable:
+                edit = Gtk.Button(child=row, css_classes=["flat", "speaker-edit"])
+                edit.update_property(
+                    [Gtk.AccessibleProperty.LABEL, Gtk.AccessibleProperty.DESCRIPTION],
+                    [speaker.name, text("meeting.nameSpeakers")],
+                )
+                edit.connect("clicked", lambda _button, identifier=speaker.id: self.name_speakers(identifier))
+                self.speakers.append(edit)
+            else:
+                self.speakers.append(row)
+        if meeting.speakers and meeting.metadata_editable:
+            self.name_speakers_button = Gtk.Button(label=text("meeting.nameSpeakers"))
+            self.name_speakers_button.connect("clicked", lambda *_: self.name_speakers())
+            self.speakers.append(self.name_speakers_button)
         while child := self.lines.get_first_child():
             self.lines.remove(child)
         if meeting.transcript == "damaged":
@@ -351,6 +383,53 @@ class MeetingPage(Adw.NavigationPage):
         self._speaker_signature = meeting.speakers
         self._starts = [turn.start_ms for turn in meeting.turns]
         self._position()
+
+    def name_speakers(self, identifier=None):
+        if not self.meeting.metadata_editable or not self.meeting.speakers:
+            return
+        from .speakers_dialog import SpeakersDialog
+
+        if self.speakers_dialog and not self.speakers_dialog.closed:
+            self.speakers_dialog.close()
+        visible = {s.id for s in self.meeting.speakers}
+        selected = identifier or self._selected_speaker
+        self._selected_speaker = selected if selected in visible else self.meeting.speakers[0].id
+        self.speakers_dialog = SpeakersDialog(self, self._selected_speaker)
+        self.speakers_dialog.present(self.window)
+        self.speakers_dialog.entry.grab_focus()
+
+    def undo_speaker_merge(self):
+        if self._closed or self._speaker_future is not None or not self.meeting.metadata_editable:
+            return
+        from .speaker_edits import undo_merge
+
+        directory = self.meeting.directory
+        self.window.lookup_action("undo-speaker-merge").set_enabled(False)
+        self._speaker_future = self.window.monitor._executor.submit(undo_merge, directory)
+        self._speaker_future.add_done_callback(lambda f: GLib.idle_add(self._merge_undone, f))
+
+    def _merge_undone(self, future):
+        from concurrent.futures import CancelledError
+
+        self._speaker_future = None
+        try:
+            future.result()
+        except CancelledError:
+            pass
+        except (OSError, ValueError):
+            if not self._closed:
+                self.window.toasts.add_toast(
+                    Adw.Toast(
+                        title=GLib.markup_escape_text(text("speakers.changeFailed")),
+                        button_label=text("common.tryAgain"),
+                        action_name="win.undo-speaker-merge",
+                    )
+                )
+                self.window.lookup_action("undo-speaker-merge").set_enabled(True)
+        else:
+            if not self._closed:
+                self.window.monitor.refresh_now()
+        return False
 
     def _position(self, _player=None, property=None):
         index = bisect_right(self._starts, self.player.position) - 1
@@ -392,6 +471,11 @@ class MeetingPage(Adw.NavigationPage):
         self.play.set_sensitive(False)
 
     def close(self):
+        self._closed = True
+        if self.speakers_dialog and not self.speakers_dialog.closed:
+            self.speakers_dialog.close()
+        if self._speaker_future is not None:
+            self._speaker_future.cancel()
         if self._style_signal:
             self._style_manager.disconnect(self._style_signal)
             self._style_signal = 0
