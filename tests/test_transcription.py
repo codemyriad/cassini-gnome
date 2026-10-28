@@ -344,3 +344,65 @@ def test_unavailable_reason_defaults_to_the_configured_bundle(monkeypatch, tmp_p
     assert reason() is None
     monkeypatch.setenv("CASSINI_WHISTLE_BUNDLE", str(tmp_path / "elsewhere"))
     assert "not installed" in reason()
+
+
+@pytest.mark.parametrize(("status", "resume"), [("failed", False), ("running", True)])
+def test_retry_keeps_partial_words_until_recomputation_catches_up(tmp_path, status, resume):
+    from cassini_viewer.meeting_store import atomic_json
+    from cassini_viewer.transcription import REFERENCE
+
+    session = capture(tmp_path)
+    write_metadata(session.directory, transcript=dict(status=status, reference=REFERENCE))
+    body = dict(
+        format="cassini.words.v1",
+        language="en",
+        items=[dict(speaker="me", startMs=i * 100, endMs=i * 100 + 90, text=f"Preserved {i}") for i in range(50)],
+    )
+    atomic_json(session.directory / "transcript.json", body)
+    before = (session.directory / "transcript.json").read_bytes()
+    waiting, release = threading.Event(), threading.Event()
+    finished, visible = [], []
+
+    class Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            notify(
+                dict(
+                    type="progress",
+                    trackId=tracks[0]["id"],
+                    trackOrder=0,
+                    language="en",
+                    etaMinutes=1,
+                    words=[dict(startMs=0, endMs=90, text="Recomputed")],
+                )
+            )
+            waiting.set()
+            assert release.wait(3)
+            return dict(diagnostics=[])
+
+    def changed(directory):
+        meeting = LibraryScanner(tmp_path).scan().meetings[0]
+        visible.append((meeting.transcript, len(meeting.words)))
+
+    queue = TranscriptionQueue(changed, finished.append, client_factory=Client, bundle=tmp_path)
+    try:
+        assert queue.enqueue(session.directory, resume=resume)
+        until(waiting.is_set)
+        assert (session.directory / "transcript.json").read_bytes() == before
+        assert visible and all(count == 50 for state, count in visible if state in ("queued", "running")), visible
+        release.set()
+        until(lambda: bool(finished))
+        result = json.loads((session.directory / "transcript.json").read_text())
+        assert result["items"][0]["text"] == "Recomputed" and len(result["items"]) == 1
+        assert read_metadata(session.directory)["transcript"]["status"] == "done"
+    finally:
+        release.set()
+        queue.close()
