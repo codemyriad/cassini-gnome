@@ -1,6 +1,8 @@
 # Naming and merging speakers (UX16)
 
-The Meeting sidebar opens the native Speakers dialog for a chosen speaker.
+The Meeting sidebar opens the native Speakers dialog for a chosen speaker. Its
+speaker list scrolls, keeping the last speaker and naming action reachable without
+stretching the window for a large meeting.
 Names are trimmed, limited to 64 characters and contain no control or formatting
 characters. An empty field stores `name: null, provenance: unnamed`. This is an
 explicit local override of a received file's embedded name; without a local

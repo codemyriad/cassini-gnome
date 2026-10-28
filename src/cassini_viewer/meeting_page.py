@@ -71,7 +71,13 @@ class MeetingPage(Adw.NavigationPage):
         sidebar.add_top_bar(header)
         self.speakers = box(20, margin_start=20, margin_end=20, margin_top=18)
         self.speakers.update_property([Gtk.AccessibleProperty.LABEL], [text("meeting.speakersPane.a11y")])
-        sidebar.set_content(self.speakers)
+        self.speakers_scroller = Gtk.ScrolledWindow(
+            child=self.speakers,
+            hscrollbar_policy=Gtk.PolicyType.NEVER,
+            vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
+            vexpand=True,
+        )
+        sidebar.set_content(self.speakers_scroller)
         split.set_sidebar(Adw.NavigationPage.new(sidebar, text("common.speakers")))
         content = Adw.ToolbarView()
         header = Adw.HeaderBar(

@@ -153,7 +153,32 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog.cancel.emit("clicked")
     until(lambda: dialog.closed)
     assert (meeting.directory / "meeting.json").read_bytes() == before
+    # A normal many-person meeting must keep its last speaker/action reachable.
+    from cassini_viewer.library import LibrarySpeaker
+    from cassini_viewer.meeting_text import reading_turns
+    from cassini_viewer.portable import Word
+
+    window.monitor.close()
+    height = window.get_height()
+    voices = tuple(LibrarySpeaker(f"voice-{i}", f"Voice {i + 1}", None, i * 1000, i) for i in range(20))
+    words = tuple(Word(voice.id, i * 1000, i * 1000 + 100, "Spoken") for i, voice in enumerate(voices))
+    page.update(replace(page.meeting, speakers=voices, words=words, turns=reading_turns(words)))
     # Outside folders are readable, but offer no name/edit controls.
+    frames = []
+    window.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 3)[1])
+    window.queue_draw()
+    until(lambda: len(frames) >= 3)
+    visible, bounds = page.name_speakers_button.compute_bounds(window)
+    adjustment = page.speakers_scroller.get_vadjustment()
+    assert adjustment.get_upper() > adjustment.get_page_size()
+    adjustment.set_value(adjustment.get_upper() - adjustment.get_page_size())
+
+    def last_speaker_action_reachable():
+        visible, bounds = page.name_speakers_button.compute_bounds(window)
+        return visible and bounds.get_y() + bounds.get_height() <= window.get_height()
+
+    until(last_speaker_action_reachable)
+    assert window.get_height() == height, (height, window.get_height())
     page.update(replace(page.meeting, metadata_editable=False))
     page.name_speakers("guest")
     assert page.speakers_dialog.closed
@@ -161,4 +186,4 @@ with tempfile.TemporaryDirectory() as temporary:
     app.begin_exit()
     window.close()
     app.do_shutdown()
-    print("PASS speaker GTK: validation/name/clear/failure/retry/sample/merge/Undo/Cancel/read-only")
+    print("PASS speaker GTK: validation/name/clear/failure/retry/sample/merge/Undo/Cancel/read-only/20-speaker scrolling")
