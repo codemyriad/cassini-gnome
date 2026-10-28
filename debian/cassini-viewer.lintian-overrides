@@ -8,3 +8,10 @@ no-manual-page [usr/bin/cassini-browser-control-host]
 # directory or be stripped; the engine is the pinned upstream binary.
 arch-dependent-file-in-usr-share [usr/share/cassini-viewer/whistle/libcassini_whistle_cpu.so]
 arch-dependent-file-in-usr-share [usr/share/cassini-viewer/whistle/libneedle3.so]
+# The private ONNX Runtime (/usr/lib/<multiarch>/cassini-viewer/python) is
+# the pinned upstream PyPI wheel, installed unmodified and checked against its
+# RECORD before the recognition child loads it. Its extension module links
+# curl and mbedtls statically, for the Azure execution provider, which the
+# app never uses: it creates only CPUExecutionProvider sessions.
+embedded-library curl [usr/lib/x86_64-linux-gnu/cassini-viewer/python/onnxruntime/capi/onnxruntime_pybind11_state.cpython-*-x86_64-linux-gnu.so]
+embedded-library mbedtls [usr/lib/x86_64-linux-gnu/cassini-viewer/python/onnxruntime/capi/onnxruntime_pybind11_state.cpython-*-x86_64-linux-gnu.so]

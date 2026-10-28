@@ -20,7 +20,7 @@
     ],
     "modules": [
         {
-            "name": "python3-numpy-onnxruntime",
+            "name": "python3-numpy",
             "only-arches": [
                 "x86_64"
             ],
@@ -29,27 +29,18 @@
                 "no-debuginfo": true
             },
             "build-commands": [
-                "pip3 install --no-index --no-deps --no-build-isolation --no-compile --prefix=${FLATPAK_DEST} numpy-2.5.4-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl onnxruntime-1.31.0-cp313-cp313-manylinux_2_28_x86_64.whl",
-                "python3 -c 'import numpy, onnxruntime; assert onnxruntime.__version__ == \"1.31.0\", onnxruntime.__version__; print(\"numpy\", numpy.__version__, \"onnxruntime\", onnxruntime.__version__, onnxruntime.get_available_providers())'"
+                "pip3 install --no-index --no-deps --no-build-isolation --no-compile --prefix=${FLATPAK_DEST} numpy-2.5.4-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+                "python3 -c 'import numpy; print(\"numpy\", numpy.__version__)'"
             ],
             "cleanup": [
                 "/bin/f2py",
-                "/bin/numpy-config",
-                "/bin/onnxruntime_test",
-                "/lib/python3.13/site-packages/onnxruntime/transformers",
-                "/lib/python3.13/site-packages/onnxruntime/quantization",
-                "/lib/python3.13/site-packages/onnxruntime/tools"
+                "/bin/numpy-config"
             ],
             "sources": [
                 {
                     "type": "file",
                     "url": "https://files.pythonhosted.org/packages/da/24/3bd070f3269dc609d8f26b2643f62ef91bb415841c0b294805aaf7fe06da/numpy-2.5.4-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
                     "sha256": "6ffa07666f8da0eef81d149934a626d0d95fbd6838432a33e66245423a9062c0"
-                },
-                {
-                    "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/0d/ac/67ebbaab4b3083f2a6b27ee6c4aa400c7f8d6c72b5499aac7e4cd6ba74f5/onnxruntime-1.31.0-cp313-cp313-manylinux_2_28_x86_64.whl",
-                    "sha256": "37fd78cee5160c7a43a1730ccb3682ffd880af9c9e80385d625c0c2f8b125809"
                 }
             ]
         },
@@ -135,6 +126,15 @@
                     "sha256": "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3",
                     "dest": ".whistle-cache",
                     "dest-filename": "silero_vad.onnx",
+                    "only-arches": [
+                        "x86_64"
+                    ]
+                },
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/0d/ac/67ebbaab4b3083f2a6b27ee6c4aa400c7f8d6c72b5499aac7e4cd6ba74f5/onnxruntime-1.31.0-cp313-cp313-manylinux_2_28_x86_64.whl",
+                    "sha256": "37fd78cee5160c7a43a1730ccb3682ffd880af9c9e80385d625c0c2f8b125809",
+                    "dest": ".whistle-cache",
                     "only-arches": [
                         "x86_64"
                     ]

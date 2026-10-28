@@ -15,6 +15,7 @@ from .meeting_store import LOCK, atomic_json, read_metadata, update_metadata
 from .strings import text
 from .transcript_publish import TranscriptPublisher
 from .whistle_client import WhistleClient
+from .whistle_worker import onnxruntime_dir
 
 LOG = logging.getLogger(__name__)
 REFERENCE = dict(kind="sidecar", file="transcript.json", format="cassini.words.v1")
@@ -28,8 +29,10 @@ def unavailable_reason(bundle=None):
     """Why this computer cannot write meetings down, or None when it can.
 
     Cheap and import-free: GTK must never import NumPy, ONNX Runtime or the
-    engine, so dependencies are only located, not loaded. The worker still
-    verifies every bundle hash before it loads anything.
+    engine, so dependencies are only located, not loaded: NumPy in this
+    Python, ONNX Runtime in the app's private directory (packages) or else in
+    this Python. The worker still verifies every bundle hash, and every file
+    of the private ONNX Runtime, before it loads anything.
     """
     if sys.platform != "linux" or platform.machine() != "x86_64":
         return f"the offline engine runs only on Linux x86_64, not {sys.platform} {platform.machine()}"
@@ -39,7 +42,9 @@ def unavailable_reason(bundle=None):
     bundle = Path(bundle) if bundle else bundle_path()
     if not (bundle / "pins.json").is_file():
         return f"the offline engine is not installed (no {bundle / 'pins.json'})"
-    missing = [name for name in ("numpy", "onnxruntime") if importlib.util.find_spec(name) is None]
+    missing = ["numpy"] if importlib.util.find_spec("numpy") is None else []
+    if onnxruntime_dir() is None and importlib.util.find_spec("onnxruntime") is None:
+        missing.append("onnxruntime")
     if missing:
         return "Python cannot find " + " and ".join(missing)
     return None

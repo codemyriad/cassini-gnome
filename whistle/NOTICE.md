@@ -13,3 +13,10 @@ inaugural address), supplied through the shared Cassini coordination fixtures.
 Silero VAD v6.2.1, snakers4/silero-vad revision
 7e30209a3e901f9842f81b225f3e93d8199902b1, is MIT-licensed.
 Its pinned model is bundled at build time; see LICENSE-Silero-MIT.txt.
+
+ONNX Runtime 1.31.0 (Microsoft, MIT), which runs Silero VAD, is the pinned
+upstream PyPI wheel for the package's Python (URLs and sha256 in pins.json),
+installed unpacked in the app's private directory without its model tools
+or C API library; see LICENSE-ONNXRuntime-MIT.txt, and
+onnxruntime/ThirdPartyNotices.txt there for the third-party components it
+includes.

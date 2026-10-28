@@ -132,8 +132,10 @@ build-aux/whistle-cache.sh           # or: make whistle-cache
 meson setup _build -Dwhistle=enabled # reads .whistle-cache (-Dwhistle_cache=DIR)
 ```
 
-The app's Python also needs NumPy and ONNX Runtime (`install-deps.sh`
-installs them, except on Alpine).
+The app's Python also needs NumPy (`install-deps.sh` installs it, except on
+Alpine). `-Dwhistle=enabled` installs the pinned ONNX Runtime wheel for that
+Python privately (see below); a run from the source tree uses the Python's
+own onnxruntime, if it has one.
 
 ### Packages
 
@@ -155,19 +157,27 @@ choose), then install it in a fresh container and smoke-test it there with
 
 Every package writes meetings down offline from its first launch, so each one
 bundles the pinned **Whistle** weights, the **Needle** engine (glibc x86_64)
-and wrapper, and **Silero VAD**, under `share/cassini-viewer/whistle`, with
-their licences (Apache-2.0, MIT) and `NOTICE.md`. `whistle/pins.json` pins
-every URL and sha256; `tests/test_packaging_pins.py` checks that the spec,
-the PKGBUILD and both Flatpak manifests use exactly those.
+and wrapper, and **Silero VAD**, under `share/cassini-viewer/whistle`, and
+the pinned **ONNX Runtime** wheel for its Python, unpacked under
+`<libdir>/cassini-viewer/python`, with their licences (Apache-2.0, MIT) and
+`NOTICE.md`. `whistle/pins.json` pins every URL and sha256;
+`tests/test_packaging_pins.py` checks that the spec, the PKGBUILD and both
+Flatpak manifests use exactly those.
 
 - **Download once, build offline.** `build-aux/whistle-cache.sh` downloads
-  the four files into `.whistle-cache/`, checking each sha256, with retries;
+  the four files and the ONNX Runtime wheels (cp311 to cp314, 24 MB each)
+  into `.whistle-cache/`, checking each sha256, with retries;
   `make deb|rpm|arch|packages` run it first, and CI caches it per
   `pins.json`. Meson (`-Dwhistle=enabled`) then runs `whistle/fetch.py
   --offline`, which never downloads and stops on a missing file or a hash
   mismatch, builds the small CPU-count bridge, and `whistle/verify.py` checks
-  the bundle. The RPM takes the files as `Source1`-`Source4`, the PKGBUILD as
-  `source=` with `sha256sums`, the Flatpak as `file` sources.
+  the bundle. `fetch.py --onnxruntime cpXY --offline` unpacks the wheel for
+  the build's Python (without its model tools and C API library) and
+  `verify.py --onnxruntime` checks it against the wheel's RECORD. The RPM
+  takes the files as `Source1`-`Source5` (Source5: the wheel for
+  `%{python3_version}`), the PKGBUILD as `source=` with `sha256sums` (the
+  cp314 wheel, matching its `python>=3.14 python<3.15`), the Flatpak as
+  `file` sources (cp313, GNOME 50's Python).
 - **x86_64 only.** The engine is a glibc x86_64 binary, so the .deb is
   `amd64`, the RPM `ExclusiveArch: x86_64`, the Arch package `arch=(x86_64)`.
   The Flatpak builds everywhere but bundles the engine and its Python wheels
@@ -176,22 +186,31 @@ the PKGBUILD and both Flatpak manifests use exactly those.
   computer" with the reason.
 - **Never strip the bundle.** The app checks every file against
   `manifest.json` before it loads anything, so a stripped library would never
-  run: `dh_strip`/`dh_dwz -Xwhistle/`, no RPM debuginfo or brp-strip (and no
-  `libneedle.so` provide), `options=(!strip !debug)`, Flatpak `no-debuginfo`.
-  Each build verifies the installed bundle again after those steps.
-- **Runtime dependencies.** NumPy and ONNX Runtime (CPU) for the app's
-  Python: `python3-numpy`, `python3-onnxruntime` (Debian, Ubuntu universe);
-  `python3dist(numpy)`, `python3dist(onnxruntime)` (Fedora, openSUSE);
-  `python-numpy`, `python-onnxruntime` (Arch; pacman picks
-  `python-onnxruntime-cpu`). The Flatpak runtime has neither, so the
-  manifests install pinned cp313 wheels (NumPy 2.5.4, ONNX Runtime 1.31.0);
-  move them with `runtime-version`. Nothing is downloaded at run time, the
-  Flatpak has no network permission, and telemetry is off.
+  run: `dh_strip`/`dh_dwz -Xwhistle/ -Xcassini-viewer/python/`, no RPM
+  debuginfo or brp-strip (and no `libneedle.so` or ONNX Runtime provides),
+  `options=(!strip !debug)`, Flatpak `no-debuginfo`. Each build verifies the
+  installed bundle and ONNX Runtime again after those steps.
+- **Runtime dependencies.** NumPy for the app's Python: `python3-numpy`
+  (Debian, Ubuntu), `python3dist(numpy)` (Fedora, openSUSE), `python-numpy`
+  (Arch); the Flatpak runtime has none, so the manifests install the pinned
+  cp313 NumPy 2.5.4 wheel. Never the distribution's ONNX Runtime: on Fedora
+  it pulls in sympy and, with default weak dependencies, about 1 GiB; the
+  private wheel needs only NumPy. Because that wheel is built for one
+  CPython ABI, each package depends on exactly its Python version:
+  `python3 (>= X.Y~), python3 (<< X.Y+1)` (a `cassini:Python` substvar from
+  `debian/rules`), `python(abi) = %{python3_version}`, `python>=3.14
+  python<3.15`. A new distribution Python needs a rebuild (and, for Arch,
+  the PKGBUILD's wheel moved with its bound); a Python newer than cp314 needs
+  its wheel pinned in `pins.json`. Move the Flatpak's wheels with
+  `runtime-version`. Nothing is downloaded at run time, the Flatpak has no
+  network permission, and telemetry is off.
 - **The offline smoke test.** After installing the package in a fresh
   container, each build script saves that container as a local image
   (`cassini-pkgtest-installed:*`) and starts it with `--network none` and a
   read-only root. There `build-aux/smoke-installed.py --whistle tests/whistle`
-  checks the bundle's hashes, then writes both D11 goldens down with the
+  checks the bundle's hashes and the private ONNX Runtime (and that the
+  app's Python has no onnxruntime of its own), then writes both D11 goldens
+  down with the
   installed worker: segments and word texts exact, word times within 80 ms
   (D11.3). `build-aux/flatpak/build.sh --smoke` (and CI) does the same in the
   installed Flatpak with `--unshare=network`.
