@@ -1,8 +1,26 @@
-tree aebb147b756c7acf8864d8e50b1a7cd2d6a71f3b
-parent 8fccd6484ef50cf6e3fbc71e3c53685a6df87f4c
-author Silvio Tomatis <silviot@gmail.com> 1793204005 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793204005 +0100
+tree 98074bef3f55dcedd0ad76423659e9a32a5b02ab
+parent 1a3f28844aeab01e6cebabbccb3cda7d3dd5116e
+parent c21127257ba1711fc065f722d6c28c4ea9f7ac3b
+author Silvio Tomatis <silviot@gmail.com> 1793207380 +0100
+committer GitHub <noreply@github.com> 1793207380 +0100
+gpgsig -----BEGIN PGP SIGNATURE-----
+ 
+ wsFcBAABCAAQBQJq4ixUCRC1aQ7uu5UhlAAARwUQAATlhDnR784geOPI1CWIMpeF
+ 8j78aZjCwj5s9PyRbJiccScafjaps5qWc+1sAEKgey/C6kbCXdCJiWS53DaG0uRt
+ PLdYTgd2Z+wuCSQ44c/1gSFBIccf2PIxqey0BKZyB4MxUnd3C7p+SFh+9s545dEt
+ 3h1kNME2oG2QDX8DTgetMwlpkFgoIY2teaiRZv99LTgwEg2RdqadeB5D8oxovVdF
+ vKFZgvccX1PaEfWz/VVN0+3kf/wA4IctAbWmGVl8S58d4cE6ZbbWHxYcYGJ1SOu2
+ 0+XJWsV52FbtszE0iaiTFQwh3n0rRd0o8BknKGp/gg0Ds4H7hLf70+H+Eg5vW5WG
+ TtGWhrJFmnvwZCpsZSL26yV3zcysJNGYup1JleJXaG7jfli+sfgxVFqM277Cnxq3
+ cpy1+DdPKwXVduKBxfPIZRvtKPqmoCDjEfweE6T1W/oNiiyjVKG1znJW/U1rc5t6
+ ZTkLs2wFx3I2fUsmmE1yor1Y/kHmvD70ApNxgK6bCQOz4A8+WrceK/bYBAkBLLZN
+ ZzOCrUudGUoGiZXL4GunoQjtCswYNi3K/aQ25frG5Wjar1DvGPZjEg5VNf7jSM04
+ Xq4fq7BK9ohj/rdzECW91xg74j/u/pjk6XmIF3Pg3v0DJ6+Gtu/jRXY/0a0pWAcr
+ 0XvrcsRhVlVKkNOILesU
+ =XOVR
+ -----END PGP SIGNATURE-----
+ 
 
-Checkpoint browser fixture audio on native host termination
+Merge pull request #14 from codemyriad/fix/icon-hashes
 
-Chromium may send SIGTERM before stdin EOF. Finalize through a finally block, add an explicit EOF/SIGTERM byte-retention regression, and include the manifest in worker-death timeout diagnostics. Keep all timing/audio thresholds.
+List the extension icons in SHA256SUMS
