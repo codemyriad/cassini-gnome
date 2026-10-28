@@ -8,7 +8,7 @@ from threading import Event
 from gi.repository import Adw, Gio, GLib, GObject, Gtk
 
 from . import ux_formats as fmt
-from .search_index import SearchIndex, excerpt_markup
+from .search_index import SearchIndex
 from .strings import text
 
 LOG = logging.getLogger(__name__)
@@ -312,7 +312,7 @@ class SearchPage(Adw.NavigationPage):
         )
         row.append(heading)
         quote = label(
-            text("common.quote", quote=excerpt_markup(hit.marked, selected=item.get_selected())),
+            text("common.quote", quote=(hit.selected_quote_markup if item.get_selected() else hit.quote_markup)),
             "search-quote",
             use_markup=True,
             xalign=0,
@@ -334,7 +334,7 @@ class SearchPage(Adw.NavigationPage):
         item._selected_handler = item.connect(
             "notify::selected",
             lambda selected, *_: quote.set_label(
-                text("common.quote", quote=excerpt_markup(hit.marked, selected=selected.get_selected()))
+                text("common.quote", quote=(hit.selected_quote_markup if selected.get_selected() else hit.quote_markup))
             ),
         )
 
@@ -394,7 +394,7 @@ class SearchPage(Adw.NavigationPage):
             row.append(name)
             row.append(
                 label(
-                    excerpt_markup(hit.marked, limit=800)
+                    hit.context_markup
                     if index == hit.turn
                     else GLib.markup_escape_text(turn.text[:800] + ("…" if len(turn.text) > 800 else "")),
                     "search-quote",

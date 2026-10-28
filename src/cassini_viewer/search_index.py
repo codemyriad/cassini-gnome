@@ -33,6 +33,9 @@ class SearchHit:
     turn: int
     marked: str
     position_ms: int
+    quote_markup: str
+    selected_quote_markup: str
+    context_markup: str
 
 
 def marked_markup(value, *, selected=False):
@@ -197,7 +200,17 @@ class SearchIndex:
                 if first < end:
                     position = word.start_ms
                     break
-            result.append(SearchHit(key, turn_index, marked, position))
+            result.append(
+                SearchHit(
+                    key,
+                    turn_index,
+                    marked,
+                    position,
+                    excerpt_markup(marked),
+                    excerpt_markup(marked, selected=True),
+                    excerpt_markup(marked, limit=800),
+                )
+            )
         return tuple(result)
 
     def _check_cancelled(self):
