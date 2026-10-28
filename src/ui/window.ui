@@ -8,10 +8,6 @@
   <menu id="primary_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">_Browser Meetings…</attribute>
-        <attribute name="action">app.browser-meetings</attribute>
-      </item>
-      <item>
         <attribute name="label" translatable="yes">_Record Meeting…</attribute>
         <attribute name="action">app.record</attribute>
       </item>

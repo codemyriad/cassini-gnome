@@ -52,6 +52,17 @@ def walk(widget):
         child = child.get_next_sibling()
 
 
+def menu_actions(model):
+    for index in range(model.get_n_items()):
+        action = model.get_item_attribute_value(index, "action", None)
+        if action:
+            yield action.get_string()
+        for link in ("section", "submenu"):
+            child = model.get_item_link(index, link)
+            if child:
+                yield from menu_actions(child)
+
+
 with tempfile.TemporaryDirectory() as tmp:
     fixtures = Path(tmp) / "fixtures"
     subprocess.run([sys.executable, str(ROOT / "ux/library-vectors/make.py"), str(fixtures)], check=True)
@@ -99,13 +110,10 @@ with tempfile.TemporaryDirectory() as tmp:
     app.activate()
     assert sum(isinstance(w, LibraryWindow) for w in app.get_windows()) == 1
     assert app.lookup_action("new-window") is None
+    assert app.lookup_action("browser-meetings") is None
     assert app.get_accels_for_action("app.browser-meetings") == []
     menus = [w.get_menu_model() for w in walk(window) if isinstance(w, Gtk.MenuButton)]
-    assert any(
-        m.get_item_attribute_value(0, "label", None).get_string() == text("common.legacy.browserMeetings")
-        for m in menus
-        if m
-    )
+    assert all("app.browser-meetings" not in set(menu_actions(m)) for m in menus if m)
     # Idle/live-clock ticks and equivalent snapshots retain widget identity,
     # selection, focus and scroll rather than tearing down the Library.
     first_row = window.rows.get_selected_row()
