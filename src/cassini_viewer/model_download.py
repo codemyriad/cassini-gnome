@@ -285,7 +285,7 @@ class ModelStore:
         needed = remaining + expanded + 2 * SMALL_LIMIT
         return SpacePlan(model.download_bytes, model.installed_bytes, remaining, needed, reserve, usage.free)
 
-    def installed(self, model_id, revision, *, model=None, cancelled=None):
+    def installed(self, model_id, revision, *, model=None, expected_files=None, cancelled=None):
         final = self._directory(model_id, revision)
         try:
             receipt = _read_json(final / RECEIPT)
@@ -301,6 +301,11 @@ class ModelStore:
                     for f in model.files
                 ],
                 key=lambda f: f["path"],
+            ):
+                return False
+            if (
+                expected_files is not None
+                and {file["path"]: (file["size"], file["sha256"]) for file in records} != expected_files
             ):
                 return False
             for file in receipt["files"]:
@@ -377,6 +382,10 @@ class ModelStore:
                         temporary.unlink(missing_ok=True)
                     compressed.unlink(missing_ok=True)
                     compressed.with_suffix(".json").unlink(missing_ok=True)
+                else:
+                    # A previously verified expanded file still contributes to
+                    # resumed download progress, without fetching it again.
+                    progress("verifying", file.path, artifact.size, artifact.size)
                 records.append(
                     dict(path=file.path, size=artifact.uncompressed_size, sha256=artifact.uncompressed_sha256)
                 )
