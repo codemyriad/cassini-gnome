@@ -18,6 +18,7 @@ import gi
 
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
+from gst_evidence import GstEvidence  # noqa: E402
 from readiness import PCMProgress, wait_until  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -33,6 +34,9 @@ producers, monitors, observations = [], [], []
 capture_progress = None
 evidence = {"passed": False}
 recorder = Recorder()
+trace = GstEvidence(artifacts)
+trace.hook_messages(Recorder)
+trace.hook_failure(Recorder)
 errors, finished = [], []
 recorder.connect("error", lambda _r, message: errors.append(message))
 recorder.connect("finished", lambda _r, path: finished.append(path))
@@ -41,6 +45,7 @@ recorder.connect("finished", lambda _r, path: finished.append(path))
 def diagnostics():
     return dict(
         errors=errors,
+        gst=trace.snapshot(),
         finished=finished,
         producers=[p.snapshot() for p in observations],
         capture=capture_progress.snapshot() if capture_progress else None,
@@ -48,6 +53,7 @@ def diagnostics():
 
 
 def checkpoint(stage):
+    trace.checkpoint(stage, recorder.pipeline)
     evidence["stage"] = stage
     evidence["readiness"] = diagnostics()
     (artifacts / "results.json").write_text(json.dumps(evidence, indent=2) + "\n")
@@ -92,6 +98,7 @@ try:
 
     def captured_enough():
         assert not errors, errors
+        trace.healthy("capturing")
         return capture_progress.reached(2.5)
 
     wait_until(captured_enough, "recorder receives 2.5 seconds of complete PCM", diagnostics=diagnostics)
@@ -161,3 +168,4 @@ finally:
         checkpoint("complete" if evidence["passed"] else "failed")
         faulthandler.cancel_dump_traceback_later()
         fault_log.close()
+        trace.close()

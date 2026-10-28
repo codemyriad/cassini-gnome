@@ -29,6 +29,7 @@ gi.require_version("Gst", "1.0")
 gi.require_version("GdkX11", "4.0")
 from desktop_services import DesktopServices  # noqa: E402
 from gi.repository import GdkX11, Gio, Gst  # noqa: E402
+from gst_evidence import GstEvidence  # noqa: E402
 from readiness import PCMProgress, wait_until  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(args.build.resolve() / "src/cassini-viewer.gresource")))
@@ -36,6 +37,7 @@ from cassini_viewer import native_recorder  # noqa: E402
 from cassini_viewer.global_shortcut import GlobalShortcut  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
 from cassini_viewer.meeting_store import read_metadata  # noqa: E402
+from cassini_viewer.recording_session import RecordingSession  # noqa: E402
 
 artifacts = Path(os.environ["CASSINI_TEST_ARTIFACTS"])
 errors, producers, probes, observers = [], [], [], []
@@ -50,6 +52,9 @@ def callback_error(kind, value, tb):
 sys.excepthook = callback_error
 services = DesktopServices()
 app = None
+trace = GstEvidence(artifacts)
+trace.hook_messages(native_recorder.NativeRecorder)
+trace.hook_appends(RecordingSession)
 
 
 def diagnostics():
@@ -63,6 +68,7 @@ def diagnostics():
 
     return dict(
         errors=errors,
+        gst=trace.snapshot(),
         notifications=services.notifications,
         capture=dict(
             starting=native.starting,
@@ -87,7 +93,12 @@ def diagnostics():
 
 
 def until(condition, description):
-    return wait_until(condition, description, diagnostics=diagnostics)
+    def checked():
+        trace.healthy(description)
+        return condition()
+
+    trace.checkpoint(description.replace(" ", "-")[:100], app.recorder.pipeline if app and app.recorder else None)
+    return wait_until(checked, description, diagnostics=diagnostics)
 
 
 private = tempfile.TemporaryDirectory()
@@ -111,6 +122,7 @@ try:
         )
         source.set_state(Gst.State.PLAYING)
         producers.append(source)
+        trace.watch(source, "producer-" + device)
         probe = Gst.parse_launch(
             f"pulsesrc device={device}.monitor ! audioconvert ! audioresample ! audio/x-raw,format=S16LE,rate=48000,channels=1 ! fakesink name=observed sync=false"
         )
@@ -286,6 +298,7 @@ finally:
         observer.close()
     for pipeline in probes + producers:
         pipeline.set_state(Gst.State.NULL)
+    trace.close()
     services.close()
     private.cleanup()
     (artifacts / "comfort.json").write_text(json.dumps(dict(report, diagnostics=diagnostics()), indent=2) + "\n")
