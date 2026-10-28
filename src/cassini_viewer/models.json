@@ -1,0 +1,42 @@
+{
+  "format": "cassini.desktop-models.v1",
+  "models": {
+    "parakeet-ultra-0.6b-int8": {
+      "source_sha256": "18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9",
+      "files": {
+        "encoder.int8.onnx": {
+          "size": 652282922,
+          "sha256": "299617fefd4664d1c115b691dcb6413cabcdbcc694cdf3cb4464b72c5fc3ae69",
+          "downloadBytes": 452306705
+        },
+        "decoder.int8.onnx": {
+          "size": 11845274,
+          "sha256": "1fab98fe6c12aded87d2da66272cc9e148d0a0044ce3850a12fe56302ec4a922",
+          "downloadBytes": 8841708
+        },
+        "joiner.int8.onnx": {
+          "size": 6355277,
+          "sha256": "8a71aaccfdba3d451775507a889afd2257d2e754463fd81095a8c8f290f924c2",
+          "downloadBytes": 3714640
+        },
+        "tokens.txt": {
+          "size": 93939,
+          "sha256": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d",
+          "downloadBytes": 45831
+        }
+      }
+    },
+    "nemotron-3-diarization-int8": {
+      "source_sha256": "47c221ea9b4d4e7f6c108bd098e769bc706cdc986c29f6133c93cae335fe6779",
+      "license": "OpenMDW-1.1",
+      "files": {
+        "model.int8.onnx": {
+          "size": 103967426,
+          "sha256": "47c221ea9b4d4e7f6c108bd098e769bc706cdc986c29f6133c93cae335fe6779",
+          "downloadBytes": 64915668,
+          "artifactSHA256": "794720a59892189484d38a186d2b350018b4194cae55292f501b2849d6313290"
+        }
+      }
+    }
+  }
+}

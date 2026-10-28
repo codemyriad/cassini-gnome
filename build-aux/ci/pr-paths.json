@@ -77,7 +77,10 @@
       "src/cassini_viewer/recording_session.py",
       "tests/whistle/**",
       "tests/test_whistle_spike.py",
-      ".github/workflows/whistle.yml"
+      ".github/workflows/whistle.yml",
+      "tests/diarization/**",
+      "tests/test_diarization*.py",
+      "tests/ux/diarization/**"
     ]
   }
 }

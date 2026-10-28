@@ -110,6 +110,13 @@ def capture(application_id, version, profile):
             opened_search = True
             settled_frame = None
         if board.startswith("settings-") and not window._pending and not opened_settings:
+            if board == "settings-transcription" and app.diarization_models:
+                if app.diarization_models.snapshot()["busy"]:
+                    time.sleep(0.01)
+                    continue
+                # The board fixture renders the accepted On state without
+                # downloading or shipping optional weights in screenshots.
+                app.diarization_models._change(downloaded=True, ready=True, busy=False, percent=100)
             app.on_preferences()
             app.settings_dialog.set_visible_page_name(board.removeprefix("settings-"))
             opened_settings = True
@@ -172,6 +179,13 @@ def capture(application_id, version, profile):
                         ["parakeet-ultra-0.6b-int8"]
                         if opened_settings and hasattr(app.settings_dialog, "parakeet")
                         else []
+                    )
+                ),
+                diarizationOn=(
+                    bool(
+                        opened_settings
+                        and hasattr(app.settings_dialog, "nemotron_status")
+                        and app.settings_dialog.nemotron_status.get_label() == "On"
                     )
                 ),
                 limitations=[

@@ -310,7 +310,7 @@ def recognise_segment(model, path, segment, offset_ms=0, *, samples=None):
     return dict(segment, text=result["text"]), words, result.get("language") or "und", input_hash
 
 
-def process_tracks(model, tracks, vad_model, notify):
+def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
     """One complete queue job; all inference and floating PCM stay in the child."""
     import time
 
@@ -332,7 +332,10 @@ def process_tracks(model, tracks, vad_model, notify):
     remaining = sum((s["endSample"] - s["startSample"]) / RATE for _, _, s, _ in plan)
     initial_factor = getattr(model, "initial_realtime_factor", 0.15)
     notify(
-        "planned", etaMinutes=math.ceil(remaining * initial_factor / 60), segments=len(plan), diagnostics=diagnostics
+        "planned",
+        etaMinutes=math.ceil((remaining * initial_factor + extra_seconds) / 60),
+        segments=len(plan),
+        diagnostics=diagnostics,
     )
     elapsed = processed = 0.0
     language = "und"
@@ -362,7 +365,7 @@ def process_tracks(model, tracks, vad_model, notify):
                     segment=value,
                     words=words,
                     language=language,
-                    etaMinutes=math.ceil(remaining * factor / 60),
+                    etaMinutes=math.ceil((remaining * factor + extra_seconds) / 60),
                     realtimeFactor=factor,
                 )
     return dict(language=language, diagnostics=diagnostics, segments=len(plan), vad=detector.runtime)

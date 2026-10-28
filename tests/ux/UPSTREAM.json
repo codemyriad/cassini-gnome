@@ -42,13 +42,21 @@
     "session-events/README.md": "tests/ux/session-events/README.md",
     "session-events/browser-off-on.session.json": "tests/ux/session-events/browser-off-on.session.json",
     "session-events/browser-off-on.expected.json": "tests/ux/session-events/browser-off-on.expected.json",
-    "SESSION-EVENTS.md": "tests/ux/SESSION-EVENTS.md"
+    "SESSION-EVENTS.md": "tests/ux/SESSION-EVENTS.md",
+    "diarization/ATTRIBUTION.md": "tests/ux/diarization/ATTRIBUTION.md",
+    "diarization/README.md": "tests/ux/diarization/README.md",
+    "diarization/SHA256SUMS": "tests/ux/diarization/SHA256SUMS",
+    "diarization/assign-vectors.json": "tests/ux/diarization/assign-vectors.json",
+    "diarization/build.py": "tests/ux/diarization/build.py",
+    "diarization/fetch-pins.json": "tests/ux/diarization/fetch-pins.json",
+    "diarization/golden.json": "tests/ux/diarization/golden.json",
+    "diarization/verify.py": "tests/ux/diarization/verify.py"
   },
   "sha256": {
     "format-vectors.json": "ee9c9b9585e76c42f09df54d7a8933e7167527fce2ea185e78b51b1059840e51",
     "states-vectors.json": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
     "LIBRARY-RULES.md": "95a0e5068a08efa521f6eed73799b715ab50b2cf6aee374570b5337a6a3bdd2a",
-    "meeting.schema.json": "aed7704a3f6916d156f122cb60dd31c2cffe4a5701fcaebae691dd14dd5be03c",
+    "meeting.schema.json": "51d0d6d579bf1326825433434e128daf6676efc55335bc057d46d042f0f211f6",
     "library-vectors/verify.py": "2011c3a7fc8d6fd5c58a4f06b16e8397f081755f743725f2732e332e4d1767da",
     "library-vectors/README.md": "8e8cbbe91ab72bbf9f404a94ab3b83822f4e137cca8cbbb25afd493b78394b54",
     "library-vectors/cases.json": "80723c1274ac44d8b23d0a154daa7b6fc5e559a1fceb6491b8e52558c4a6ce2b",
@@ -77,32 +85,40 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "f080f0280f825dcbf5ff786b1f7b5cd90e3ac1d7b1d3ec02c24b51f1f18b9a7b",
-    "LIBRARY.md": "95d431461b51a73cf81bdec206e500fa7a40bcab4e9117e41f59a7e9c29bffbd",
+    "strings.json": "07b25fe07889c42de190f311167cde6e351abcebebccd66545ec1da4ccbf4113",
+    "LIBRARY.md": "6cd4063cdd58567c75a4733c8862e9fe0983863df890b86a91e9a9bb17749751",
     "session-events/session.json": "6bcec60cf4024421b57683d86a44d7ffd92efdc84a3e5b67e24cb09fcfb55723",
     "session-events/expected.json": "905ad1966fa3cac23aa348109d4f694a5606ea685f3a5689cc052cf092a8a920",
     "session-events/make.py": "ae313621bfd29b514de6fe8f6015f09ac279a02dd7f15f79b88da743d0cc8f1e",
     "session-events/README.md": "df0bc13f0f741613641e572df432a13ede5e1d8898b00f8c4765d72fa65b9144",
     "session-events/browser-off-on.session.json": "d652f7296dd4e778adafc700e53543e62bc0c15693ea8e29ce848b98ed19b58c",
     "session-events/browser-off-on.expected.json": "bf324a9af624c31cca085da73817957babd98bcccab2f9742595a63b9ecd11f0",
-    "SESSION-EVENTS.md": "c4a2d46cf7ea0ce5ab5e55d9c0a8b413496ed003e3d7a1b5991d1d4821d126cd"
+    "SESSION-EVENTS.md": "c4a2d46cf7ea0ce5ab5e55d9c0a8b413496ed003e3d7a1b5991d1d4821d126cd",
+    "diarization/ATTRIBUTION.md": "f94b2bd0a87de7bbc4ad3dd90ee843973261517e1b407e6a1eb1c3ebc014dc6c",
+    "diarization/README.md": "9dfbc38bdd6be0d5d76b44069ad70df1756ecc1e9ec061434ee3571657135dc7",
+    "diarization/SHA256SUMS": "3552eee0ac27dfa63f848594f77b5e91c090b67cb1b3e711794acbb735176f14",
+    "diarization/assign-vectors.json": "1980752b37b5a5cc97e8686bf0ebef2eba0bc75c26cf40e948fcc41858680254",
+    "diarization/build.py": "54bcb2ef10472899fc83441456100f46037144eea4a2230359cdddb2ae7aac3e",
+    "diarization/fetch-pins.json": "303cba14363838dbfc50bbd9ebc236d0caeeaf1ba25afe9a07bbb5dcc2d25219",
+    "diarization/golden.json": "221668f7db8d3435e6f2bfc22bdce291031387b3b5a219717fc967511782625a",
+    "diarization/verify.py": "1b94537cf3b13285c66cb559fa73d19553180bbc5064b45bd60e86bd6e2549f9"
   },
   "additionalSources": {
     "strings.json": {
-      "commit": "0fa190ebd9c007e0137e63c69659a2a92bc87cd0",
-      "note": "D22 UX11 source-change failure warn line and Try again"
+      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
+      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
     },
     "LIBRARY-RULES.md": {
       "commit": "81799a3ab2642a67139f799f857e8ad0e81135b6",
       "note": "D11.2 source names and UX13 published action copy"
     },
     "meeting.schema.json": {
-      "commit": "7177f1f7cd3876a379042ac8bd2905a4c57a8422",
-      "note": "D16 optional speech model and model fallback copy"
+      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
+      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
     },
     "LIBRARY.md": {
-      "commit": "7177f1f7cd3876a379042ac8bd2905a4c57a8422",
-      "note": "D16 optional speech model and model fallback copy"
+      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
+      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
     },
     "session-events/session.json": {
       "commit": "3349555b8e9bd5f47236cc5ce61b1edfee201d34",
@@ -131,6 +147,38 @@
     "SESSION-EVENTS.md": {
       "commit": "87ddac2f2abd6b473848f7c252bc6fac12430200",
       "note": "S-6 with approved optional sourceTrackId"
+    },
+    "diarization/ATTRIBUTION.md": {
+      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
+      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
+    },
+    "diarization/README.md": {
+      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
+      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
+    },
+    "diarization/SHA256SUMS": {
+      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
+      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
+    },
+    "diarization/assign-vectors.json": {
+      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
+      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
+    },
+    "diarization/build.py": {
+      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
+      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
+    },
+    "diarization/fetch-pins.json": {
+      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
+      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
+    },
+    "diarization/golden.json": {
+      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
+      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
+    },
+    "diarization/verify.py": {
+      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
+      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
     }
   }
 }

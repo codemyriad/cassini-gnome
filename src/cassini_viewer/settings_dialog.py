@@ -159,6 +159,7 @@ class SettingsDialog(Adw.PreferencesDialog):
             speech.add(self.model_line)
             self.render_models()
         page.add(speech)
+        self._speakers_models(page)
         # Source/unsupported-architecture builds never claim an absent bundle.
         self.whistle.set_visible(self.app.writing_available)
         network = Adw.PreferencesGroup(title=text("settings.transcription.network.heading"))
@@ -171,6 +172,119 @@ class SettingsDialog(Adw.PreferencesDialog):
             )
         )
         page.add(network)
+
+    def _speakers_models(self, page):
+        if self.app.diarization_models is None:
+            return  # Whistle-only builds retain their runtime-independent profile.
+        from .nemotron_model import DOWNLOAD_BYTES
+        from .ux_formats import size
+
+        group = Adw.PreferencesGroup(
+            title=text("common.speakers"), description=text("settings.transcription.speakers.description")
+        )
+        self.nemotron = Adw.PreferencesRow()
+        self.nemotron.update_property([Gtk.AccessibleProperty.LABEL], [text("models.tellSpeakersApart.name")])
+        row = Gtk.Box(spacing=12, margin_top=12, margin_bottom=12, margin_start=16, margin_end=16)
+        details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True)
+        title = Gtk.Box(spacing=8)
+        title.append(Gtk.Label(label=text("models.tellSpeakersApart.name"), xalign=0, css_classes=["heading"]))
+        title.append(
+            Gtk.Label(
+                label=text(
+                    "models.sizeWithEngine",
+                    model=text("models.nemotron.name"),
+                    size=text("format.size.download", size=size(DOWNLOAD_BYTES)),
+                ),
+                xalign=0,
+                css_classes=["dim-label", "caption"],
+            )
+        )
+        details.append(title)
+        details.append(
+            Gtk.Label(
+                label=text("models.tellSpeakersApart.description"),
+                xalign=0,
+                wrap=True,
+                css_classes=["dim-label", "caption"],
+            )
+        )
+        self.nemotron_status = Gtk.Label(xalign=0)
+        details.append(self.nemotron_status)
+        self.nemotron_progress = Gtk.ProgressBar()
+        self.nemotron_progress.update_property(
+            [Gtk.AccessibleProperty.LABEL], [text("models.downloading.a11y", model=text("models.nemotron.name"))]
+        )
+        details.append(self.nemotron_progress)
+        row.append(details)
+        self.nemotron_remove = Gtk.Button(label=text("models.remove"), valign=Gtk.Align.CENTER, visible=False)
+        self.nemotron_remove.connect("clicked", lambda *_: self.app.diarization_models.remove())
+        row.append(self.nemotron_remove)
+        self.nemotron_action = Gtk.Button(valign=Gtk.Align.CENTER)
+        self.nemotron_action.connect("clicked", self._nemotron_action)
+        row.append(self.nemotron_action)
+        self.nemotron.set_child(row)
+        group.add(self.nemotron)
+        self.nemotron_line = Gtk.Label(wrap=True, xalign=0, css_classes=["dim-label"])
+        group.add(self.nemotron_line)
+        recognise = Adw.ActionRow(
+            title=text("models.recogniseVoices.name"),
+            subtitle=text("models.recogniseVoices.description") + "\n" + text("models.status.needsTellApart"),
+            use_markup=False,
+            subtitle_lines=0,
+        )
+        recognise.add_suffix(Gtk.Button(label=text("models.download"), sensitive=False, valign=Gtk.Align.CENTER))
+        group.add(recognise)
+        page.add(group)
+        self.render_diarization()
+
+    def _nemotron_action(self, *_):
+        models = self.app.diarization_models
+        if models is None:
+            return
+        state = models.snapshot()
+        if state["downloading"]:
+            models.cancel_download()
+        elif state["downloaded"] and state["error"]:
+            models.retry()
+        elif state["downloaded"]:
+            models.remove()
+        else:
+            models.download()
+        self.render_diarization()
+
+    def render_diarization(self):
+        if not hasattr(self, "nemotron"):
+            return
+        models = self.app.diarization_models
+        state = (
+            models.snapshot()
+            if models
+            else dict(downloaded=False, busy=False, downloading=False, percent=0, error=False, ready=False)
+        )
+        if state["downloading"]:
+            status, action = text("models.status.downloading", percent=state["percent"]), text("common.cancel")
+        elif state.get("ready"):
+            status, action = text("models.status.on"), text("models.remove")
+        elif state["downloaded"]:
+            status = text("models.status.downloaded")
+            action = text("common.tryAgain" if state["error"] else "models.remove")
+        else:
+            status = text("models.status.notDownloaded")
+            action = text("common.tryAgain" if state["error"] else "models.download")
+        self.nemotron_status.set_label(status)
+        self.nemotron_status.set_css_classes(
+            ["success", "caption", "heading"] if state.get("ready") else ["dim-label", "caption"]
+        )
+        self.nemotron_action.set_label(action)
+        self.nemotron_action.set_sensitive(models is not None and (not state["busy"] or state["downloading"]))
+        self.nemotron_progress.set_visible(state["downloading"])
+        self.nemotron_progress.set_fraction(state["percent"] / 100)
+        self.nemotron_remove.set_visible(state["downloaded"] and state["error"])
+        self.nemotron_remove.set_sensitive(not state["busy"])
+        self.nemotron_line.set_visible(state["error"] and not state.get("runtime_error"))
+        self.nemotron_line.set_label(
+            text("errors.modelDownloadFailed.line", model=text("models.nemotron.name")) if state["error"] else ""
+        )
 
     def _speech_selected(self, radio, model):
         if radio.get_active() and not self._updating and self.app.speech_models:
@@ -189,6 +303,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.render_models()
 
     def render_models(self):
+        self.render_diarization()
         models = self.app.speech_models
         if models is None or not hasattr(self, "parakeet"):
             return

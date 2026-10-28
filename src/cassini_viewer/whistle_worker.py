@@ -136,8 +136,13 @@ def main(bundle):
                     raise ValueError("Invalid capture track")
             sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
             from cassini_viewer.speech_pipeline import process_tracks
+            from cassini_viewer.worker_diarization import complete, estimate
 
-            summary = process_tracks(model, tracks, bundle / "silero_vad.onnx", emit)
+            options = message.get("diarization")
+            summary = process_tracks(
+                model, tracks, bundle / "silero_vad.onnx", emit, extra_seconds=estimate(tracks, options)
+            )
+            summary = complete(summary, tracks, options, emit)
             emit("complete", **summary)
             continue
         if message.get("type") != "transcribe" or not isinstance(message.get("path"), str):

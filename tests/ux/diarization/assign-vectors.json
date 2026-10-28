@@ -1,0 +1,1147 @@
+{
+  "format": "cassini.diarization.assign-vectors.v1",
+  "version": 1,
+  "decision": "D24",
+  "provenance": {
+    "repo": "codemyriad/gocassini",
+    "commit": "e5746ec256b243fe5c3154b98c528d2fff32a3f0",
+    "file": "cassini-go-recorder/internal/transcribe/diarize_test.go",
+    "sha256": "5d5af153d57fb6c74a96fabfa59a3e0aeaccd2a330b8981c647dea5cde270c42"
+  },
+  "specialFloatStrings": [
+    "NaN",
+    "Infinity",
+    "-Infinity"
+  ],
+  "cases": [
+    {
+      "id": "majority-overlap",
+      "operation": "assign",
+      "sourceTest": "TestAssignWordsMajorityOverlapWinsAndIdsFollowFirstAppearance",
+      "groupId": "others",
+      "turns": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "speaker": 7
+        },
+        {
+          "startMs": 1000,
+          "endMs": 2000,
+          "speaker": 3
+        }
+      ],
+      "words": [
+        {
+          "startMs": 100,
+          "endMs": 400,
+          "text": "w"
+        },
+        {
+          "startMs": 900,
+          "endMs": 1300,
+          "text": "w"
+        },
+        {
+          "startMs": 1100,
+          "endMs": 1500,
+          "text": "w"
+        }
+      ],
+      "expected": {
+        "nativeSpeakers": [
+          7,
+          3,
+          3
+        ],
+        "candidateWordSpeakerIds": [
+          "others~1",
+          "others~2",
+          "others~2"
+        ]
+      }
+    },
+    {
+      "id": "nearest-gap",
+      "operation": "assign",
+      "sourceTest": "TestAssignWordsInAGapTakesTheNearestTurn",
+      "groupId": "others",
+      "turns": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "speaker": 0
+        },
+        {
+          "startMs": 2000,
+          "endMs": 3000,
+          "speaker": 1
+        }
+      ],
+      "words": [
+        {
+          "startMs": 1100,
+          "endMs": 1200,
+          "text": "w"
+        },
+        {
+          "startMs": 1700,
+          "endMs": 1800,
+          "text": "w"
+        }
+      ],
+      "expected": {
+        "nativeSpeakers": [
+          0,
+          1
+        ],
+        "candidateWordSpeakerIds": [
+          "others~1",
+          "others~2"
+        ]
+      }
+    },
+    {
+      "id": "no-turns",
+      "operation": "assign",
+      "sourceTest": "TestAssignWordsWithoutValidTurnsAssignsNothing",
+      "groupId": "others",
+      "turns": [],
+      "words": [
+        {
+          "startMs": 0,
+          "endMs": 10,
+          "text": "w"
+        }
+      ],
+      "expected": {
+        "nativeSpeakers": null,
+        "candidateWordSpeakerIds": null
+      }
+    },
+    {
+      "id": "invalid-turns",
+      "operation": "assign",
+      "sourceTest": "TestAssignWordsWithoutValidTurnsAssignsNothing",
+      "groupId": "others",
+      "turns": [
+        {
+          "startMs": -1,
+          "endMs": 10,
+          "speaker": 0
+        },
+        {
+          "startMs": 10,
+          "endMs": 0,
+          "speaker": 1
+        },
+        {
+          "startMs": 0,
+          "endMs": 0,
+          "speaker": 1
+        },
+        {
+          "startMs": 0,
+          "endMs": 20,
+          "speaker": -1
+        }
+      ],
+      "words": [
+        {
+          "startMs": 0,
+          "endMs": 10,
+          "text": "w"
+        }
+      ],
+      "expected": {
+        "nativeSpeakers": null,
+        "candidateWordSpeakerIds": null
+      }
+    },
+    {
+      "id": "sum-disjoint-turns",
+      "operation": "assign",
+      "sourceTest": "TestAssignWordsSumsDisjointTurnsPerSpeaker",
+      "groupId": "others",
+      "turns": [
+        {
+          "startMs": 0,
+          "endMs": 100,
+          "speaker": 0
+        },
+        {
+          "startMs": 100,
+          "endMs": 200,
+          "speaker": 1
+        },
+        {
+          "startMs": 200,
+          "endMs": 400,
+          "speaker": 0
+        }
+      ],
+      "words": [
+        {
+          "startMs": 0,
+          "endMs": 50,
+          "text": "w"
+        },
+        {
+          "startMs": 110,
+          "endMs": 150,
+          "text": "w"
+        },
+        {
+          "startMs": 50,
+          "endMs": 300,
+          "text": "w"
+        }
+      ],
+      "expected": {
+        "nativeSpeakers": [
+          0,
+          1,
+          0
+        ],
+        "candidateWordSpeakerIds": [
+          "others~1",
+          "others~2",
+          "others~1"
+        ]
+      }
+    },
+    {
+      "id": "union-overlapping-and-touching",
+      "operation": "assign",
+      "sourceTest": "TestAssignWordsOverlappingCopiesCannotDoubleCountTheSameSpeaker",
+      "groupId": "others",
+      "turns": [
+        {
+          "startMs": 0,
+          "endMs": 400,
+          "speaker": 0
+        },
+        {
+          "startMs": 200,
+          "endMs": 500,
+          "speaker": 0
+        },
+        {
+          "startMs": 1000,
+          "endMs": 1600,
+          "speaker": 1
+        },
+        {
+          "startMs": 1600,
+          "endMs": 1700,
+          "speaker": 1
+        }
+      ],
+      "words": [
+        {
+          "startMs": 0,
+          "endMs": 10,
+          "text": "w"
+        },
+        {
+          "startMs": 1010,
+          "endMs": 1020,
+          "text": "w"
+        },
+        {
+          "startMs": 0,
+          "endMs": 1700,
+          "text": "w"
+        }
+      ],
+      "expected": {
+        "nativeSpeakers": [
+          0,
+          1,
+          1
+        ],
+        "candidateWordSpeakerIds": [
+          "others~1",
+          "others~2",
+          "others~2"
+        ]
+      }
+    },
+    {
+      "id": "ties-ignore-native-order",
+      "operation": "assign",
+      "sourceTest": "TestAssignWordsTiesAreIndependentOfNativeOrder",
+      "groupId": "others",
+      "turns": [
+        {
+          "startMs": 200,
+          "endMs": 300,
+          "speaker": 1
+        },
+        {
+          "startMs": 0,
+          "endMs": 100,
+          "speaker": 8
+        }
+      ],
+      "words": [
+        {
+          "startMs": 0,
+          "endMs": 10,
+          "text": "w"
+        },
+        {
+          "startMs": 200,
+          "endMs": 210,
+          "text": "w"
+        },
+        {
+          "startMs": 50,
+          "endMs": 250,
+          "text": "w"
+        },
+        {
+          "startMs": 150,
+          "endMs": 150,
+          "text": "w"
+        }
+      ],
+      "expected": {
+        "nativeSpeakers": [
+          8,
+          1,
+          8,
+          8
+        ],
+        "candidateWordSpeakerIds": [
+          "others~1",
+          "others~2",
+          "others~1",
+          "others~1"
+        ],
+        "repeatWithReversedTurns": true
+      }
+    },
+    {
+      "id": "zero-length-word",
+      "operation": "assign",
+      "sourceTest": "TestAssignWordsZeroLengthWordTakesNearestOverlappingTurn",
+      "groupId": "others",
+      "turns": [
+        {
+          "startMs": 0,
+          "endMs": 400,
+          "speaker": 0
+        },
+        {
+          "startMs": 900,
+          "endMs": 1400,
+          "speaker": 1
+        }
+      ],
+      "words": [
+        {
+          "startMs": 1000,
+          "endMs": 1200,
+          "text": "w"
+        },
+        {
+          "startMs": 0,
+          "endMs": 200,
+          "text": "w"
+        },
+        {
+          "startMs": 1200,
+          "endMs": 1200,
+          "text": "w"
+        }
+      ],
+      "expected": {
+        "nativeSpeakers": [
+          1,
+          0,
+          1
+        ],
+        "candidateWordSpeakerIds": [
+          "others~2",
+          "others~1",
+          "others~2"
+        ]
+      }
+    },
+    {
+      "id": "normalize-clamp-and-invalid",
+      "operation": "normalize",
+      "sourceTest": "TestNormalizeTurnsDropsInvalidAndClamps",
+      "durationMs": 10000,
+      "rawTurns": [
+        {
+          "start": 1.2,
+          "end": 2.5,
+          "speaker": 1
+        },
+        {
+          "start": -0.5,
+          "end": 0.4,
+          "speaker": 0
+        },
+        {
+          "start": 9.0,
+          "end": 12.0,
+          "speaker": 0
+        },
+        {
+          "start": "NaN",
+          "end": 1,
+          "speaker": 0
+        },
+        {
+          "start": 3,
+          "end": 3,
+          "speaker": 0
+        },
+        {
+          "start": 1,
+          "end": 2,
+          "speaker": -1
+        },
+        {
+          "start": 0,
+          "end": "Infinity",
+          "speaker": 1
+        },
+        {
+          "start": "-Infinity",
+          "end": 1,
+          "speaker": 1
+        }
+      ],
+      "expected": [
+        {
+          "startMs": 0,
+          "endMs": 400,
+          "speaker": 0
+        },
+        {
+          "startMs": 1200,
+          "endMs": 2500,
+          "speaker": 1
+        },
+        {
+          "startMs": 9000,
+          "endMs": 10000,
+          "speaker": 0
+        }
+      ]
+    },
+    {
+      "id": "float32-truncate-not-round",
+      "operation": "normalize",
+      "sourceTest": "D24-4-extra",
+      "durationMs": 2000,
+      "rawTurns": [
+        {
+          "start": 0.011,
+          "end": 1.01,
+          "speaker": 2
+        }
+      ],
+      "expected": [
+        {
+          "startMs": 10,
+          "endMs": 1009,
+          "speaker": 2
+        }
+      ]
+    },
+    {
+      "id": "split-only-shared-preserve-word-fields",
+      "operation": "split",
+      "sourceTest": "TestSplitSpeakerSegmentsSplitsOnlyTheSharedStream",
+      "groupId": "spk_room",
+      "turns": [
+        {
+          "startMs": 0,
+          "endMs": 1050,
+          "speaker": 4
+        },
+        {
+          "startMs": 1950,
+          "endMs": 3100,
+          "speaker": 0
+        }
+      ],
+      "segments": [
+        {
+          "speakerId": "spk_room",
+          "startMs": 0,
+          "endMs": 3000,
+          "text": "a b c d",
+          "words": [
+            {
+              "startMs": 0,
+              "endMs": 500,
+              "text": "a"
+            },
+            {
+              "startMs": 600,
+              "endMs": 1000,
+              "text": "b",
+              "attributionGapDB": 2.5,
+              "hasAttributionGap": true
+            },
+            {
+              "startMs": 2000,
+              "endMs": 2400,
+              "text": "c",
+              "lowConfidenceSpeaker": true
+            },
+            {
+              "startMs": 2500,
+              "endMs": 3000,
+              "text": "d"
+            }
+          ]
+        },
+        {
+          "speakerId": "spk_ben",
+          "startMs": 1100,
+          "endMs": 1900,
+          "text": "x y",
+          "words": [
+            {
+              "startMs": 1100,
+              "endMs": 1400,
+              "text": "x"
+            },
+            {
+              "startMs": 1500,
+              "endMs": 1900,
+              "text": "y"
+            }
+          ]
+        },
+        {
+          "speakerId": "spk_room",
+          "startMs": 5000,
+          "endMs": 5000,
+          "text": "legacy text without words"
+        }
+      ],
+      "expected": {
+        "segments": [
+          {
+            "speakerId": "spk_room~1",
+            "startMs": 0,
+            "endMs": 1000,
+            "text": "a b",
+            "words": [
+              {
+                "startMs": 0,
+                "endMs": 500,
+                "text": "a"
+              },
+              {
+                "startMs": 600,
+                "endMs": 1000,
+                "text": "b",
+                "attributionGapDB": 2.5,
+                "hasAttributionGap": true
+              }
+            ]
+          },
+          {
+            "speakerId": "spk_ben",
+            "startMs": 1100,
+            "endMs": 1900,
+            "text": "x y",
+            "words": [
+              {
+                "startMs": 1100,
+                "endMs": 1400,
+                "text": "x"
+              },
+              {
+                "startMs": 1500,
+                "endMs": 1900,
+                "text": "y"
+              }
+            ]
+          },
+          {
+            "speakerId": "spk_room~2",
+            "startMs": 2000,
+            "endMs": 3000,
+            "text": "c d",
+            "words": [
+              {
+                "startMs": 2000,
+                "endMs": 2400,
+                "text": "c",
+                "lowConfidenceSpeaker": true
+              },
+              {
+                "startMs": 2500,
+                "endMs": 3000,
+                "text": "d"
+              }
+            ]
+          },
+          {
+            "speakerId": "spk_room",
+            "startMs": 5000,
+            "endMs": 5000,
+            "text": "legacy text without words"
+          }
+        ],
+        "subSpeakerIds": [
+          "spk_room~1",
+          "spk_room~2"
+        ],
+        "wordsPerSpeaker": [
+          2,
+          2
+        ],
+        "speakerCount": 2,
+        "turnCount": 2
+      }
+    },
+    {
+      "id": "split-deterministic",
+      "operation": "split",
+      "sourceTest": "TestSplitSpeakerSegmentsIsDeterministic",
+      "groupId": "p",
+      "turns": [
+        {
+          "startMs": 0,
+          "endMs": 200,
+          "speaker": 1
+        },
+        {
+          "startMs": 400,
+          "endMs": 700,
+          "speaker": 0
+        }
+      ],
+      "segments": [
+        {
+          "speakerId": "p",
+          "words": [
+            {
+              "startMs": 0,
+              "endMs": 100,
+              "text": "w"
+            },
+            {
+              "startMs": 500,
+              "endMs": 600,
+              "text": "w"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "segments": [
+          {
+            "speakerId": "p~1",
+            "startMs": 0,
+            "endMs": 100,
+            "text": "w",
+            "words": [
+              {
+                "startMs": 0,
+                "endMs": 100,
+                "text": "w"
+              }
+            ]
+          },
+          {
+            "speakerId": "p~2",
+            "startMs": 500,
+            "endMs": 600,
+            "text": "w",
+            "words": [
+              {
+                "startMs": 500,
+                "endMs": 600,
+                "text": "w"
+              }
+            ]
+          }
+        ],
+        "subSpeakerIds": [
+          "p~1",
+          "p~2"
+        ],
+        "wordsPerSpeaker": [
+          1,
+          1
+        ],
+        "speakerCount": 2,
+        "turnCount": 2
+      },
+      "repeat": 2
+    },
+    {
+      "id": "split-without-turns",
+      "operation": "split",
+      "sourceTest": "TestSplitSpeakerSegmentsWithoutTurnsLeavesTranscriptAlone",
+      "groupId": "p",
+      "turns": [],
+      "segments": [
+        {
+          "speakerId": "p",
+          "text": "w",
+          "words": [
+            {
+              "startMs": 0,
+              "endMs": 100,
+              "text": "w"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "segments": [
+          {
+            "speakerId": "p",
+            "text": "w",
+            "words": [
+              {
+                "startMs": 0,
+                "endMs": 100,
+                "text": "w"
+              }
+            ]
+          }
+        ],
+        "subSpeakerIds": [],
+        "wordsPerSpeaker": [],
+        "speakerCount": 0,
+        "turnCount": 0
+      }
+    },
+    {
+      "id": "split-absent-group",
+      "operation": "split",
+      "sourceTest": "TestSplitSpeakerSegmentsWithoutTurnsLeavesTranscriptAlone",
+      "groupId": "absent",
+      "turns": [
+        {
+          "startMs": 0,
+          "endMs": 100,
+          "speaker": 0
+        }
+      ],
+      "segments": [
+        {
+          "speakerId": "p",
+          "text": "w",
+          "words": [
+            {
+              "startMs": 0,
+              "endMs": 100,
+              "text": "w"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "segments": [
+          {
+            "speakerId": "p",
+            "text": "w",
+            "words": [
+              {
+                "startMs": 0,
+                "endMs": 100,
+                "text": "w"
+              }
+            ]
+          }
+        ],
+        "subSpeakerIds": [],
+        "wordsPerSpeaker": [],
+        "speakerCount": 1,
+        "turnCount": 1
+      }
+    },
+    {
+      "id": "numbering-from-turns-not-first-word",
+      "operation": "applyGroup",
+      "sourceTest": "TestSplitSpeakerVoiceNumbersDependOnlyOnTheTurns",
+      "groupId": "p",
+      "turns": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "speaker": 5
+        },
+        {
+          "startMs": 2000,
+          "endMs": 3000,
+          "speaker": 2
+        },
+        {
+          "startMs": 4000,
+          "endMs": 5000,
+          "speaker": 5
+        }
+      ],
+      "words": [
+        {
+          "startMs": 2100,
+          "endMs": 2500,
+          "text": "w"
+        },
+        {
+          "startMs": 4100,
+          "endMs": 4500,
+          "text": "w"
+        }
+      ],
+      "expected": {
+        "nativeSpeakers": [
+          2,
+          5
+        ],
+        "candidateWordSpeakerIds": [
+          "p~2",
+          "p~1"
+        ],
+        "wordSpeakerIds": [
+          "p~2",
+          "p~1"
+        ],
+        "voiceIds": [
+          "p~1",
+          "p~2"
+        ],
+        "conclusive": true,
+        "displayOrder": [
+          "p~2",
+          "p~1"
+        ],
+        "displayNames": {
+          "p~2": "Speaker 1",
+          "p~1": "Speaker 2"
+        }
+      }
+    },
+    {
+      "id": "unused-first-voice-keeps-number-but-group-inconclusive",
+      "operation": "applyGroup",
+      "sourceTest": "TestSplitSpeakerVoiceNumbersDependOnlyOnTheTurns + D24-inconclusive",
+      "groupId": "p",
+      "turns": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "speaker": 5
+        },
+        {
+          "startMs": 2000,
+          "endMs": 3000,
+          "speaker": 2
+        },
+        {
+          "startMs": 4000,
+          "endMs": 5000,
+          "speaker": 5
+        }
+      ],
+      "words": [
+        {
+          "startMs": 2200,
+          "endMs": 2600,
+          "text": "w"
+        }
+      ],
+      "expected": {
+        "nativeSpeakers": [
+          2
+        ],
+        "candidateWordSpeakerIds": [
+          "p~2"
+        ],
+        "wordSpeakerIds": [
+          "p"
+        ],
+        "voiceIds": [
+          "p"
+        ],
+        "conclusive": false
+      }
+    },
+    {
+      "id": "one-voice-inconclusive",
+      "operation": "applyGroup",
+      "sourceTest": "D24-4-extra",
+      "groupId": "others",
+      "turns": [
+        {
+          "startMs": 0,
+          "endMs": 1000,
+          "speaker": 7
+        }
+      ],
+      "words": [
+        {
+          "startMs": 0,
+          "endMs": 100,
+          "text": "w"
+        },
+        {
+          "startMs": 500,
+          "endMs": 600,
+          "text": "w"
+        }
+      ],
+      "expected": {
+        "nativeSpeakers": [
+          7,
+          7
+        ],
+        "candidateWordSpeakerIds": [
+          "others~1",
+          "others~1"
+        ],
+        "wordSpeakerIds": [
+          "others",
+          "others"
+        ],
+        "voiceIds": [
+          "others"
+        ],
+        "conclusive": false
+      }
+    },
+    {
+      "id": "source-track-id-off-on-group",
+      "operation": "groupTracks",
+      "sourceTest": "D24-4-extra / S-6",
+      "origin": "own",
+      "tracks": [
+        {
+          "id": "mic",
+          "kind": "microphone",
+          "startOffsetMs": 0,
+          "frames": 240000,
+          "sampleRate": 16000
+        },
+        {
+          "id": "remote-first",
+          "kind": "remote",
+          "sourceTrackId": "remote-wire-1",
+          "label": "first label",
+          "startOffsetMs": 0,
+          "frames": 80000,
+          "sampleRate": 16000
+        },
+        {
+          "id": "remote-second",
+          "kind": "remote",
+          "sourceTrackId": "remote-wire-1",
+          "label": "different label",
+          "startOffsetMs": 10000,
+          "frames": 80000,
+          "sampleRate": 16000
+        }
+      ],
+      "expected": [
+        {
+          "id": "me",
+          "tracks": [
+            "mic"
+          ],
+          "eligible": false,
+          "durationMs": 15000
+        },
+        {
+          "id": "track-remote-wire-1",
+          "tracks": [
+            "remote-first",
+            "remote-second"
+          ],
+          "eligible": false,
+          "durationMs": 15000
+        }
+      ]
+    },
+    {
+      "id": "room-microphone-only",
+      "operation": "groupTracks",
+      "sourceTest": "D24-2",
+      "origin": "own",
+      "tracks": [
+        {
+          "id": "mic",
+          "kind": "microphone",
+          "startOffsetMs": 0,
+          "frames": 16000,
+          "sampleRate": 16000
+        }
+      ],
+      "expected": [
+        {
+          "id": "me",
+          "tracks": [
+            "mic"
+          ],
+          "eligible": true,
+          "durationMs": 1000
+        }
+      ]
+    },
+    {
+      "id": "native-system-and-whole-tab-eligible",
+      "operation": "groupTracks",
+      "sourceTest": "D24-2",
+      "origin": "own",
+      "tracks": [
+        {
+          "id": "system",
+          "kind": "system",
+          "startOffsetMs": 0,
+          "frames": 16000,
+          "sampleRate": 16000
+        },
+        {
+          "id": "tab",
+          "kind": "tab",
+          "startOffsetMs": 0,
+          "frames": 16000,
+          "sampleRate": 16000
+        },
+        {
+          "id": "media",
+          "kind": "media",
+          "startOffsetMs": 0,
+          "frames": 16000,
+          "sampleRate": 16000
+        },
+        {
+          "id": "application",
+          "kind": "application",
+          "startOffsetMs": 0,
+          "frames": 16000,
+          "sampleRate": 16000
+        }
+      ],
+      "expected": [
+        {
+          "id": "others",
+          "tracks": [
+            "system"
+          ],
+          "eligible": true,
+          "durationMs": 1000
+        },
+        {
+          "id": "track-tab",
+          "tracks": [
+            "tab"
+          ],
+          "eligible": true,
+          "durationMs": 1000
+        },
+        {
+          "id": "track-media",
+          "tracks": [
+            "media"
+          ],
+          "eligible": true,
+          "durationMs": 1000
+        },
+        {
+          "id": "track-application",
+          "tracks": [
+            "application"
+          ],
+          "eligible": true,
+          "durationMs": 1000
+        }
+      ]
+    },
+    {
+      "id": "received-stream-eligible",
+      "operation": "groupTracks",
+      "sourceTest": "D24-2",
+      "origin": "received",
+      "tracks": [
+        {
+          "id": "original",
+          "kind": "original",
+          "startOffsetMs": 0,
+          "frames": 16000,
+          "sampleRate": 16000
+        }
+      ],
+      "expected": [
+        {
+          "id": "track-original",
+          "tracks": [
+            "original"
+          ],
+          "eligible": true,
+          "durationMs": 1000
+        }
+      ]
+    },
+    {
+      "id": "rejoin-leading-silence-sum-and-short-input",
+      "operation": "rejoin",
+      "sourceTest": "D24-2",
+      "tracks": [
+        {
+          "startOffsetMs": 1,
+          "sampleRate": 16000,
+          "pcm": [
+            32767,
+            -32768,
+            16384,
+            -16384
+          ]
+        },
+        {
+          "startOffsetMs": 1,
+          "sampleRate": 16000,
+          "pcm": [
+            1,
+            0,
+            16384,
+            16384
+          ]
+        }
+      ],
+      "expected": {
+        "sampleRate": 16000,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          -1,
+          1,
+          0
+        ],
+        "durationMs": 1,
+        "invokeModel": false,
+        "turns": []
+      }
+    }
+  ]
+}

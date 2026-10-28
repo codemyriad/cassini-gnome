@@ -109,7 +109,10 @@ class WhistleClient:
     def process_tracks(self, tracks, progress):
         if self.process is None or self.process.poll() is not None:
             raise RuntimeError("Whistle worker is not running")
-        packet = json.dumps(dict(type="pipeline", tracks=tracks)).encode() + b"\n"
+        message = dict(type="pipeline", tracks=tracks)
+        if getattr(self, "diarization", None) is not None:
+            message["diarization"] = self.diarization
+        packet = json.dumps(message).encode() + b"\n"
         if len(packet) > 512 * 1024:
             raise ValueError("Worker request exceeds limit")
         try:
@@ -121,7 +124,7 @@ class WhistleClient:
             value = self._receive()
             if value.get("type") == "complete":
                 return value
-            if value.get("type") not in ("planning", "planned", "progress"):
+            if value.get("type") not in ("planning", "planned", "progress", "recognised", "diarizing", "diarized"):
                 raise RuntimeError("Whistle worker failed: " + str(value.get("message", "invalid reply")))
             progress(value)
 

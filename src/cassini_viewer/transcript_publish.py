@@ -21,6 +21,11 @@ class TranscriptPublisher:
         self.words.extend(dict(word, speaker=speaker, _order=order) for word in words)
         self.language = language
 
+    def reassign(self, words):
+        self.words = words
+        self.published = -1  # Same word count, but speaker IDs have changed.
+        return self.flush(force=True, complete=True)
+
     def flush(self, *, force=False, complete=False):
         count = len(self.words)
         if count == self.published and (not complete or self.last_flush is not None):

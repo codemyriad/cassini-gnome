@@ -9,7 +9,6 @@ from . import parakeet_model
 from .model_download import IntegrityError, ModelStore, _write
 from .model_manifest import NOTICE
 from .parakeet_client import ParakeetClient
-from .parakeet_model import DOWNLOAD_BYTES, MODEL_ID, REVISION, check_manifest
 from .received import regular_input
 from .sherpa_runtime import runtime_path
 
@@ -17,6 +16,10 @@ LOG = logging.getLogger(__name__)
 
 
 class SpeechModels:
+    pin = parakeet_model
+    invalid_notice = "models.parakeetUltra.invalidFallback"
+    removed_notice = "models.parakeetUltra.removedFallback"
+
     def __init__(self, selected, persist, changed, *, store=None, client_factory=ParakeetClient):
         self.store = store if store is not None else ModelStore()
         self.persist, self.changed = persist, changed
@@ -25,7 +28,7 @@ class SpeechModels:
         self.loading = threading.Lock()
         self.cancelled = threading.Event()
         self.download_cancelled = threading.Event()
-        self._selected = selected if selected in ("whistle", MODEL_ID) else "whistle"
+        self._selected = selected if selected in ("whistle", self.pin.MODEL_ID) else "whistle"
         self._state = dict(downloaded=False, busy=True, downloading=False, percent=0, error=False, notice=None)
         self._thread = None
         self._launch(self._inspect)
@@ -49,7 +52,11 @@ class SpeechModels:
 
     def select(self, value):
         with self.lock:
-            if value not in ("whistle", MODEL_ID) or value == MODEL_ID and not self._state["downloaded"]:
+            if (
+                value not in ("whistle", self.pin.MODEL_ID)
+                or value == self.pin.MODEL_ID
+                and not self._state["downloaded"]
+            ):
                 return False
             self._choice(value)
         self._change(notice=None)
@@ -74,20 +81,20 @@ class SpeechModels:
 
     def _invalid(self):
         self._choice("whistle")
-        self._change(downloaded=False, notice="models.parakeetUltra.invalidFallback")
-        self.store.remove(MODEL_ID, REVISION, cancelled=self.cancelled)
+        self._change(downloaded=False, notice=self.invalid_notice)
+        self.store.remove(self.pin.MODEL_ID, self.pin.REVISION, cancelled=self.cancelled)
 
     def _verified(self):
         # Receipt, notice, complete tree and pinned model files form one
         # installed revision. Check each weight once, against the D16 pins.
         if not self.store.installed(
-            MODEL_ID,
-            REVISION,
-            expected_files={name: (size, sha) for name, (size, sha, _compressed) in parakeet_model.FILES.items()},
+            self.pin.MODEL_ID,
+            self.pin.REVISION,
+            expected_files={name: (size, sha) for name, (size, sha, _compressed) in self.pin.FILES.items()},
             cancelled=self.cancelled,
         ):
             raise ValueError("Installed Parakeet revision is damaged")
-        directory = self.store._directory(MODEL_ID, REVISION)
+        directory = self.store._directory(self.pin.MODEL_ID, self.pin.REVISION)
         # About uses the local root notice. Restore it from the verified
         # revision before enabling the model, including after manual damage.
         self.store._check_directories(self.store.root)
@@ -97,16 +104,16 @@ class SpeechModels:
 
     def _inspect(self):
         try:
-            directory = self.store._directory(MODEL_ID, REVISION)
+            directory = self.store._directory(self.pin.MODEL_ID, self.pin.REVISION)
         except (OSError, ValueError):
             self._invalid()
             return
         if not directory.exists():
-            if self.snapshot()["selected"] == MODEL_ID:
+            if self.snapshot()["selected"] == self.pin.MODEL_ID:
                 self._invalid()
             return
         # Serialize inspection with a different process removing the revision.
-        with self.store._lock(MODEL_ID, REVISION, self.cancelled):
+        with self.store._lock(self.pin.MODEL_ID, self.pin.REVISION, self.cancelled):
             try:
                 self._verified()
             except (OSError, ValueError):
@@ -129,7 +136,7 @@ class SpeechModels:
     def _download(self):
         event = self.download_cancelled
         manifest = self.store.fetch_manifest(cancelled=event)
-        model = check_manifest(manifest.model(MODEL_ID, REVISION))
+        model = self.pin.check_manifest(manifest.model(self.pin.MODEL_ID, self.pin.REVISION))
         paths = {file.artifact.key: file.path for file in model.files}
         completed, current = {}, {}
 
@@ -139,15 +146,17 @@ class SpeechModels:
             elif phase == "verifying":
                 completed[key] = total
                 current.pop(key, None)
-            value = min(99, int((sum(current.values()) + sum(completed.values())) * 100 / DOWNLOAD_BYTES))
+            value = min(99, int((sum(current.values()) + sum(completed.values())) * 100 / self.pin.DOWNLOAD_BYTES))
             self._change(percent=max(self.snapshot()["percent"], value))
 
         try:
-            self.store.download(MODEL_ID, REVISION, manifest=manifest, cancelled=event, progress=progress)
+            self.store.download(
+                self.pin.MODEL_ID, self.pin.REVISION, manifest=manifest, cancelled=event, progress=progress
+            )
         except IntegrityError:
             # Try again must be able to repair a damaged published revision,
             # rather than repeatedly asking for a terminal-only removal.
-            if self.store._directory(MODEL_ID, REVISION).exists():
+            if self.store._directory(self.pin.MODEL_ID, self.pin.REVISION).exists():
                 self._invalid()
             raise
         # ModelStore verified the exact manifest and notice before the atomic
@@ -163,8 +172,8 @@ class SpeechModels:
             if self.cancelled.is_set() or self._state["busy"]:
                 return False
             self._choice("whistle")
-            self._change(downloaded=False, busy=True, error=False, notice="models.parakeetUltra.removedFallback")
-            self._launch(lambda: self.store.remove(MODEL_ID, REVISION, cancelled=self.cancelled))
+            self._change(downloaded=False, busy=True, error=False, notice=self.removed_notice)
+            self._launch(lambda: self.store.remove(self.pin.MODEL_ID, self.pin.REVISION, cancelled=self.cancelled))
         return True
 
     def start_parakeet(self, bundle, *, register):
@@ -174,9 +183,9 @@ class SpeechModels:
         loaded recognizer owns its weights independently of the cache folder.
         """
         with self.loading:
-            if self.snapshot()["selected"] != MODEL_ID:
+            if self.snapshot()["selected"] != self.pin.MODEL_ID:
                 return None
-            with self.store._lock(MODEL_ID, REVISION, self.cancelled):
+            with self.store._lock(self.pin.MODEL_ID, self.pin.REVISION, self.cancelled):
                 try:
                     directory = self._verified()
                 except (OSError, ValueError):

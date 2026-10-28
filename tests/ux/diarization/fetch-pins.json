@@ -1,0 +1,76 @@
+{
+  "format": "cassini.diarization-fixture.v1",
+  "rate": 16000,
+  "channels": 1,
+  "width": 2,
+  "source": "https://www.openslr.org/12",
+  "mirrorCommit": "6e1c1eced6e68bb35b1f1d89c56478229201a2f7",
+  "files": [
+    {
+      "id": "A",
+      "filename": "librispeech_test_clean_1089_134686_0000.wav",
+      "url": "https://huggingface.co/datasets/podscripter-project/test-fixtures/resolve/6e1c1eced6e68bb35b1f1d89c56478229201a2f7/en/librispeech_test_clean_1089_134686_0000.wav",
+      "sha256": "0b1785dba56f22af426ccb25d318f7e103558fd40e1c3ab064b455dba2afae12",
+      "bytes": 333964,
+      "dataset": "LibriSpeech test-clean",
+      "originalUtterance": "1089-134686-0000",
+      "license": "CC-BY-4.0",
+      "utterance": "1089-134686-0000",
+      "originalMember": "LibriSpeech/test-clean/1089/134686/1089-134686-0000.flac",
+      "originalFlacSHA256": "30885601173f96b0d8ddd020dc959b055c6c1582b85a33e3fcab8c4b08ed94c2",
+      "pcmSHA256": "06b3e22db20760452d503a01d24cd7a7a23ddbeab07919c58e22eccb68cc03fb",
+      "pcmMatchesPinnedWavMirror": true
+    },
+    {
+      "id": "B",
+      "filename": "librispeech_test_clean_260_123440_0004.wav",
+      "url": "https://huggingface.co/datasets/podscripter-project/test-fixtures/resolve/6e1c1eced6e68bb35b1f1d89c56478229201a2f7/en/librispeech_test_clean_260_123440_0004.wav",
+      "sha256": "b705182467706b101089465062b82f3086ba99dc77d52ae7aabd6c58b8ba6bcb",
+      "bytes": 384718,
+      "dataset": "LibriSpeech test-clean",
+      "originalUtterance": "260-123440-0004",
+      "license": "CC-BY-4.0",
+      "utterance": "260-123440-0004",
+      "originalMember": "LibriSpeech/test-clean/260/123440/260-123440-0004.flac",
+      "originalFlacSHA256": "288d22f60ab2527ac2e4035a16c9095438c71deed8becde769d91a964234d139",
+      "pcmSHA256": "9425918df560fd143e3bd5e7a855b10582550b04d7adf7224c5e44fc2d1e5ec7",
+      "pcmMatchesPinnedWavMirror": true
+    }
+  ],
+  "placements": [
+    {
+      "source": "A",
+      "startFrame": 0,
+      "sourceStartFrame": 0,
+      "frames": 166960
+    },
+    {
+      "source": "B",
+      "startFrame": 174960,
+      "sourceStartFrame": 0,
+      "frames": 166960
+    },
+    {
+      "source": "A",
+      "startFrame": 309920,
+      "sourceStartFrame": 0,
+      "frames": 166960
+    },
+    {
+      "source": "B",
+      "startFrame": 484880,
+      "sourceStartFrame": 0,
+      "frames": 166960
+    }
+  ],
+  "frames": 651840,
+  "gainNumerator": 1,
+  "gainDenominator": 2,
+  "pcmSHA256": "2726c250b0998b9a28c3cf442e34025e41fe2d568fdcbdbdfce2df6a9cff500e",
+  "wavSHA256": "df49da0c9455ed507c04af0ad3819ad9619d42b7d08b7b016607687ced03f184",
+  "officialArchive": {
+    "url": "https://www.openslr.org/resources/12/test-clean.tar.gz",
+    "bytes": 346663984,
+    "sha256": "39fde525e59672dc6d1551919b1478f724438a95aa55f874b576be21967e6c23"
+  }
+}
