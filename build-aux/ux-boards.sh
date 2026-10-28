@@ -7,11 +7,13 @@ out=$(realpath -m "$2")
 fixture=$(mktemp -d /tmp/cassini-library-boards-XXXXXXXX)
 trap 'rm -rf "$fixture"' EXIT
 python3 ux/library-vectors/make.py "$fixture"
+python3 tests/ui/recording-fixture.py "$fixture"
 mkdir -p "$out"
-for board in library first-run meeting record-first; do
+for board in library first-run meeting record-first recording; do
   case_name=main
   [ "$board" != first-run ] || case_name=empty
   [ "$board" != record-first ] || case_name=first-record
+  [ "$board" != recording ] || case_name=recording
   CASSINI_LIBRARY_DIR="$fixture/$case_name/root" \
   CASSINI_SCREENSHOT_ACTIVITY="$fixture/$case_name/activity.json" \
   CASSINI_SCREENSHOT_NOW=1793107080000 CASSINI_SCREENSHOT_BOARD="$board" \

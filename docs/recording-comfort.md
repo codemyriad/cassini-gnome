@@ -1,0 +1,60 @@
+# Recording page and recording with Cassini hidden
+
+W4-1 implements boards 11/12 and 15/16 with the shared copy catalog. The live
+Recording page opens from the Library row or timer pill and after native capture
+starts. Title edits and each note line are stored in app-owned meeting.json;
+notes retain the first-keystroke time while edited. No session/audio bytes are
+rewritten. Text focus preserves spaces and arrow keys for editing.
+
+Native microphone/system meters use actual GStreamer levels; browser meters
+read at most one second of complete PCM per validated active track. Remote
+voices are counted from live remote tracks. The microphone warning starts after
+20 seconds below -55 dBFS; Check opens GNOME sound settings. A source becoming
+silent between observations is covered by the recent one-second sound window.
+A Browser-only window can supply controller paths even without a Library window;
+models are scanned off GTK and refreshed when tracks join or end. Capture
+liveness always comes from the controller, never file age.
+
+GNOME's GlobalShortcuts portal owns the Ctrl+Alt+R registration and desktop
+permission. The shortcut toggles capture; an accepted first-run preference lets
+it start without presenting a hidden window. Session/request cleanup and denial
+are handled. Native and browser capture inhibit suspend while active. Hidden
+capture updates one GNotification each second with Stop and Open Cassini; later
+updates use low priority. The browser notification uses the shared catalog body.
+Until the coordinator publishes native-specific body copy (R16), native capture
+shows its actual title rather than claiming it records a browser.
+
+Disk space keeps max(1 GiB, 2% capacity) in reserve. Estimated minutes use active
+PCM byte rates. Below 30 minutes there is a line and one warning, without a
+recovery button; a below-10-minute start is allowed and immediately warned.
+Reaching reserve stops and keeps the capture, and the affected saved Meeting
+retains the stopped line. Browser stop is scoped by capture path, works even
+when meeting inventory is absent, and requires the broker's stopped state before
+starting writing down. This changes app/broker IPC only, not the extension or
+shared browser protocol.
+
+Run checks with the established private harnesses:
+
+```sh
+CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/recording.py /tmp/recording.png
+tests/recording/run.sh /usr/bin/python3 tests/recording/comfort.py --build _build-shot
+CASSINI_TEST_BUILD="$PWD/_build-shot" tests/recording/run.sh node tests/recording/app-control.mjs
+build-aux/ux-boards.sh _install-shot/bin/cassini-viewer /tmp/ux-boards
+```
+
+The first proof exercises portal wire requests (including immediate responses,
+denial, activation and cleanup), actual GNotification payloads/actions, title and
+pinned-note persistence, silent/disk UI, and browser-only hidden capture with a
+newly joined track. The Pulse proof uses real private sound, keyboard events,
+portal activation and notification actions, one disk warning, allowed low-space
+start, reserve stop, and the final keystroke surviving quit. It allows a fresh
+window after hidden capture completion. The extension proof retains real
+Chromium/app Record/Stop, automatic recording, notification Stop and saved WAVs.
+
+All displays, session buses, HOME/XDG state and Pulse servers are private. The
+harness never targets the user's Wayland desktop, browser profile, audio device
+or sound-settings window. The board fixture derives four remote tracks with an
+audible tail and a silent microphone, without changing shared fixture bytes or
+expected outputs. The artifact contains light/dark 1120x720 recording.png and
+notification.json. Native-only wording and actual Shell notification chrome are
+explicit platform/catalog limits, not screenshots of fake Shell widgets.

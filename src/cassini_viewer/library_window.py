@@ -36,11 +36,13 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.snapshot = None
         self._observed_phases = None
         self.meeting_page = None
+        self.recording_page = None
         self._external_meeting = False
         self._list_signature = None
         self._preview_signature_value = None
         self._live_badges = {}
         self._capture_headers = []
+        self._focused_editors = set()
         self._activity_source = None
         self._activity_timer = 0
         # These are hidden harness inputs, never separate production fixtures or fake widget data.
@@ -85,6 +87,22 @@ class LibraryWindow(Adw.ApplicationWindow):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", lambda _action, _param, call=callback: call())
             self.add_action(action)
+
+    def protect_text_input(self, widget):
+        controller = Gtk.EventControllerFocus()
+        controller.connect("enter", lambda *_: self._editor_focus(widget, True))
+        controller.connect("leave", lambda *_: self._editor_focus(widget, False))
+        widget.add_controller(controller)
+
+    def _editor_focus(self, widget, focused):
+        if focused:
+            self._focused_editors.add(id(widget))
+        else:
+            self._focused_editors.discard(id(widget))
+        for name in ("play-pause", "skip-back", "skip-forward"):
+            action = self.lookup_action(name)
+            if action:
+                action.set_enabled(not self._focused_editors)
 
     @property
     def now_ms(self):
@@ -178,10 +196,12 @@ class LibraryWindow(Adw.ApplicationWindow):
         offline_view.add_top_bar(self._header(record=True))
         self.root_box.add_named(offline_view, "offline")
 
-    def capture_controls(self):
+    def capture_controls(self, meeting=None):
         stack = Gtk.Stack(hhomogeneous=False, vhomogeneous=False)
         stack.add_named(self._record(), "record")
-        live = Gtk.Box(spacing=8, css_classes=["live-pill"], valign=Gtk.Align.CENTER)
+        live = Gtk.Box(
+            spacing=8, css_classes=["live-pill"], valign=Gtk.Align.CENTER, tooltip_text=text("recording.pill.noSleep")
+        )
         live.append(
             Gtk.Box(
                 width_request=10,
@@ -192,7 +212,9 @@ class LibraryWindow(Adw.ApplicationWindow):
             )
         )
         timer = label("", "live-timer")
-        live.append(timer)
+        show = Gtk.Button(child=timer, css_classes=["flat"], tooltip_text=text("recording.pill.noSleep"))
+        show.connect("clicked", lambda *_: self.open_live_recording())
+        live.append(show)
         bars = vertical(3, valign=Gtk.Align.CENTER, css_classes=["live-levels"])
         levels = [
             Gtk.ProgressBar(fraction=fraction, width_request=30, accessible_role=Gtk.AccessibleRole.PRESENTATION)
@@ -202,10 +224,13 @@ class LibraryWindow(Adw.ApplicationWindow):
             bars.append(bar)
         live.append(bars)
         stop = Gtk.Button(label=text("common.stop"), sensitive=False, css_classes=["static-stop"])
+        stop._meeting_key = meeting.key if meeting else None
         stop.connect("clicked", self._stop_live)
         live.append(stop)
         stack.add_named(live, "live")
-        stack._controls = dict(stack=stack, timer=timer, levels=levels, stop=stop)
+        stack._controls = dict(
+            stack=stack, timer=timer, levels=levels, stop=stop, meeting=meeting.key if meeting else None
+        )
         self._capture_headers.append(stack._controls)
         return stack
 
@@ -225,6 +250,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         header.pack_start(self.capture_header)
         sidebar.add_top_bar(header)
         self.rows = Gtk.ListBox(selection_mode=Gtk.SelectionMode.BROWSE, css_classes=["library-rows"])
+        self.rows.connect(
+            "row-activated", lambda _rows, row: self.open_meeting(row.meeting) if hasattr(row, "meeting") else None
+        )
         self._selection_handler = self.rows.connect("row-selected", self._selected)
         sidebar.set_content(Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, child=self.rows, vexpand=True))
         self.split.set_sidebar(Adw.NavigationPage.new(sidebar, text("library.listPane.a11y")))
@@ -234,6 +262,16 @@ class LibraryWindow(Adw.ApplicationWindow):
         content.set_content(Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, child=self.preview))
         self.split.set_content(Adw.NavigationPage.new(content, text("library.previewPane.a11y")))
         self.root_box.add_named(self.split, "library")
+
+    def capture_changed(self):
+        # Level messages arrive at 10 Hz. Update meters, scanning only on a
+        # controller phase change; date grouping stays on the one-second tick.
+        activity = dict(self._activity_source.snapshot) if self._activity_source else dict(self._fixture_activity)
+        activity.update(recorder_activity(self.get_application().get_windows() + [self.get_application()]))
+        if activity != self._activity:
+            self._activity = activity
+            self.monitor.refresh_now()
+        self._update_live()
 
     def _activity_tick(self):
         activity = dict(self._activity_source.snapshot) if self._activity_source else {}
@@ -252,28 +290,68 @@ class LibraryWindow(Adw.ApplicationWindow):
     def _update_live(self):
         if self.snapshot is None:
             return
-        live = next((m for m in self.snapshot.meetings if m.lifecycle == "recording"), None)
+        live = self.live_meeting()
         native = getattr(self.get_application(), "recorder", None)
         real_native = native is not None and native.pipeline is not None
-        real_browser = bool(self._activity_source and self._activity_source.snapshot)
         if real_native:
             elapsed = max(0, (GLib.get_monotonic_time() - native._start_us) // 1000)
         else:
             elapsed = max(0, self.now_ms - live.started_at_ms) if live and live.started_at_ms else 0
         for controls in self._capture_headers:
-            controls["stack"].set_visible_child_name("live" if live or real_native else "record")
-            controls["timer"].set_label(fmt.live_badge(elapsed))
-            controls["stop"].set_sensitive((real_native and not native.stopping) or real_browser)
-            if self._fixed_now is None:
-                for bar, fraction in zip(controls["levels"], native.levels if real_native else (0.0, 0.0), strict=True):
+            target = (
+                next((m for m in self.snapshot.meetings if m.key == controls["meeting"]), None)
+                if controls["meeting"]
+                else live
+            )
+            own_native = real_native and (not target or native.session.directory == target.directory)
+            browser = bool(target and self._activity_source and target.id in self._activity_source.snapshot)
+            ms = self.get_application().comfort.elapsed(target) if target else elapsed
+            controls["stack"].set_visible_child_name("live" if target or own_native else "record")
+            controls["timer"].set_label(fmt.live_badge(ms))
+            controls["stop"].set_sensitive((own_native and not native.stopping) or browser)
+            state = self.get_application().comfort.status(target) if target else {}
+            if self._fixed_now is None or self.recording_page:
+                levels = native.levels if own_native else state.get("levels", (0.0, 0.0))
+                for bar, fraction in zip(controls["levels"], levels, strict=True):
                     bar.set_fraction(fraction)
+            bar = controls["levels"][0]
+            (bar.add_css_class if state.get("silent") else bar.remove_css_class)("mic-silent-meter")
         self._recording_line(native)
+        if self.recording_page:
+            self.recording_page.update_status()
         for meeting in self.snapshot.meetings:
             if meeting.lifecycle == "recording" and meeting.key in self._live_badges:
                 ms = max(0, self.now_ms - meeting.started_at_ms) if meeting.started_at_ms else 0
                 self._live_badges[meeting.key].set_label(meeting.badge(live_ms=ms).text)
 
-    def _stop_live(self, *_):
+    def stop_meeting(self, meeting):
+        app = self.get_application()
+        if meeting.capture_source == "gnome":
+            if app.recorder and app.recorder.session and app.recorder.session.directory == meeting.directory:
+                app.stop_native()
+        else:
+            app.stop_browser_recordings(meeting.directory)
+
+    def live_meeting(self):
+        if not self.snapshot:
+            return None
+        native = self.get_application().recorder
+        if native and native.pipeline is not None and native.session:
+            return next((m for m in self.snapshot.meetings if m.directory == native.session.directory), None)
+        return next((m for m in self.snapshot.meetings if m.lifecycle in ("recording", "saving")), None)
+
+    def open_live_recording(self):
+        meeting = self.live_meeting()
+        if meeting:
+            self.open_meeting(meeting)
+
+    def _stop_live(self, button=None):
+        key = getattr(button, "_meeting_key", None)
+        if key:
+            meeting = next((m for m in self.snapshot.meetings if m.key == key), None)
+            if meeting:
+                self.stop_meeting(meeting)
+            return
         app = self.get_application()
         if app.recorder and app.recorder.pipeline is not None:
             app.stop_native()
@@ -284,22 +362,34 @@ class LibraryWindow(Adw.ApplicationWindow):
     def _recording_line(self, recorder):
         from .inline_line import InlineLine
 
-        signature = (recorder.line, recorder.minutes_left) if recorder else (None, 0)
-        message = getattr(self.get_application(), "recording_error", None)
-        signature += (message,)
-        if signature == getattr(self, "_recording_line_signature", None):
-            return
-        self._recording_line_signature = signature
-        for lines in (getattr(self, "recording_lines", None), self.first_recording_lines):
-            if lines is None:
-                continue
-            lines.set_visible(bool(signature[0] or message))
-            while child := lines.get_first_child():
-                lines.remove(child)
-            if signature[0]:
-                lines.append(InlineLine(signature[0], n=signature[1]))
+        app = self.get_application()
+        message = getattr(app, "recording_error", None)
+        selected = app.comfort.status(self.selected) if self.selected else {}
+        signature = selected.get("line"), selected.get("minutes", 0), message
+        if signature != getattr(self, "_recording_line_signature", None):
+            self._recording_line_signature = signature
+            lines = getattr(self, "recording_lines", None)
+            if lines is not None:
+                lines.set_visible(bool(signature[0] or message))
+                while child := lines.get_first_child():
+                    lines.remove(child)
+                if signature[0]:
+                    lines.append(InlineLine(signature[0], n=signature[1]))
+                if message:
+                    lines.append(label(message, wrap=True, xalign=0))
+        first = (recorder.line, recorder.minutes_left, message) if recorder else (None, 0, message)
+        if first != getattr(self, "_first_recording_line_signature", None):
+            self._first_recording_line_signature = first
+            self.first_recording_lines.set_visible(bool(first[0] or message))
+            while child := self.first_recording_lines.get_first_child():
+                self.first_recording_lines.remove(child)
+            if first[0]:
+                self.first_recording_lines.append(InlineLine(first[0], n=first[1]))
             if message:
-                lines.append(label(message, wrap=True, xalign=0))
+                self.first_recording_lines.append(label(message, wrap=True, xalign=0))
+        if self.meeting_page:
+            state = app.comfort.status(self.meeting_page.meeting)
+            self.meeting_page.set_recording_notice(state["line"], state["minutes"])
 
     def _preview_signature(self, meeting):
         return (
@@ -350,6 +440,21 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.get_application().observe_library(snapshot, self._observed_phases)
         self._observed_phases = {m.key: (m.lifecycle, m.capture_state) for m in snapshot.meetings}
         self.snapshot = snapshot
+        if self.recording_page:
+            current = next((m for m in snapshot.meetings if m.key == self.recording_page.meeting.key), None)
+            if current and (current.lifecycle in ("recording", "saving") or self.get_application()._quitting):
+                self.recording_page.update(current)
+            elif current:
+                self.back_to_library()
+                self.open_meeting(current)
+            else:
+                self.back_to_library()
+        pending = self.get_application()._pending_recording
+        if pending:
+            current = next((m for m in snapshot.meetings if str(m.directory) == pending), None)
+            if current:
+                self.get_application()._pending_recording = None
+                self.open_meeting(current)
         if self.meeting_page and not self._external_meeting:
             current = next((m for m in snapshot.meetings if m.key == self.meeting_page.meeting.key), None)
             if current is None:
@@ -606,11 +711,22 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def open_meeting(self, meeting, *, external=False):
         from .meeting_page import MeetingPage
+        from .recording_page import RecordingPage
 
-        if self.meeting_page:
+        if (
+            self.recording_page
+            and self.recording_page.meeting.key == meeting.key
+            and meeting.lifecycle in ("recording", "saving")
+        ):
+            return
+        if self.meeting_page or self.recording_page:
             self.back_to_library()
         self._stop_playback()
         self._external_meeting = external
+        if meeting.lifecycle in ("recording", "saving"):
+            self.recording_page = RecordingPage(self, meeting)
+            self.navigation.push(self.recording_page)
+            return
         if not self._ensure_player(meeting):
             desired = FolderPlayer if meeting.origin == "own" else Player
             self.player.shutdown()
@@ -620,6 +736,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.navigation.push(self.meeting_page)
 
     def back_to_library(self, *_):
+        if self.recording_page:
+            self.recording_page.close()
+            self.recording_page = None
         if self.meeting_page:
             self.meeting_page.close()
             self.meeting_page = None
@@ -629,6 +748,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.navigation.pop()
 
     def _page_popped(self, _navigation, page):
+        if page is self.recording_page:
+            page.close()
+            self.recording_page = None
         if page is self.meeting_page:
             page.close()
             self.meeting_page = None
@@ -662,6 +784,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         if self.get_application().confirm_capture_close(self):
             return True
         self.get_application().window_closing(self)
+        if self.recording_page:
+            self.recording_page.close()
+            self.recording_page = None
         if self.meeting_page:
             self.meeting_page.close()
             self.meeting_page = None

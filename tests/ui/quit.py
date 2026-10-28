@@ -5,6 +5,7 @@
 import json
 import os
 import selectors
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -92,6 +93,11 @@ time.sleep(30)
 
 with tempfile.TemporaryDirectory() as tmp:
     os.environ["CASSINI_LIBRARY_DIR"] = tmp
+    schemas = Path(tmp) / "schemas"
+    schemas.mkdir()
+    shutil.copyfile(ROOT / "data/com.gocassini.Viewer.gschema.xml", schemas / "com.gocassini.Viewer.gschema.xml")
+    subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
+    os.environ["GSETTINGS_SCHEMA_DIR"] = str(schemas)
     app = CassiniApplication("com.gocassini.QuitTest" + mode.replace("-", ""), "test", "development")
     app.transcription_enabled = mode != "stop-after-finish" and not mode.startswith("keep-")
     session = None

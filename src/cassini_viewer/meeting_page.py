@@ -93,6 +93,9 @@ class MeetingPage(Adw.NavigationPage):
         header.pack_end(self.write_button)
         content.add_top_bar(header)
         center = box()
+        self.recording_notice = box(margin_start=48, margin_end=48, margin_top=8, visible=False)
+        self._notice_signature = None
+        center.append(self.recording_notice)
         self.lines = box(margin_start=48, margin_end=48, margin_top=8)
         center.append(self.lines)
         self.store = Gio.ListStore.new(TurnItem)
@@ -367,6 +370,17 @@ class MeetingPage(Adw.NavigationPage):
         self.play.update_property([Gtk.AccessibleProperty.LABEL], [play_name])
         for turn, words, _row in list(self.bound.values()):
             words.set_markup(item_markup(turn.words, self.player.position))
+
+    def set_recording_notice(self, line, minutes):
+        signature = line, minutes
+        if self._notice_signature == signature:
+            return
+        self._notice_signature = signature
+        while child := self.recording_notice.get_first_child():
+            self.recording_notice.remove(child)
+        self.recording_notice.set_visible(bool(line))
+        if line:
+            self.recording_notice.append(InlineLine(line, n=minutes))
 
     def _error(self, *_):
         self.play.set_sensitive(False)
