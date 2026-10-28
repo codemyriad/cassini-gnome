@@ -44,6 +44,22 @@ if missing:
     sys.exit("smoke test failed: missing GStreamer elements: " + ", ".join(missing))
 print("smoke test passed: " + ", ".join(runtime.all_elements()))
 
+# ModelStore uses ctypes, so ELF dependency scanners cannot discover libzstd.
+# Exercise the installed app's loader in the same fresh/offline package smoke
+# used for both recognition engines, including the Flatpak runtime.
+from cassini_viewer.zstd_stream import library as zstd_library  # noqa: E402
+
+zstd = zstd_library()
+stream = zstd.ZSTD_createDStream()
+if not stream:
+    sys.exit("model unpack smoke test failed: could not create a Zstandard stream")
+try:
+    if zstd.ZSTD_isError(zstd.ZSTD_initDStream(stream)):
+        sys.exit("model unpack smoke test failed: could not initialise libzstd")
+finally:
+    zstd.ZSTD_freeDStream(stream)
+print("model unpack runtime smoke test passed: libzstd")
+
 if args.whistle:
     import importlib.util  # noqa: E402
 

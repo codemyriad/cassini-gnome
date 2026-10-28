@@ -110,6 +110,7 @@ Requires:       python3-gobject
 Requires:       python3dist(numpy)
 %if 0%{?suse_version}
 # hicolor-icon-theme comes with GTK; openSUSE's rpmlint rejects requiring it.
+Requires:       libzstd1
 Requires:       typelib-1_0-Gtk-4_0 >= 4.18
 Requires:       typelib-1_0-Adw-1 >= 1.8
 Requires:       typelib-1_0-Gst-1_0
@@ -118,6 +119,7 @@ Requires:       gstreamer-plugins-good
 Recommends:     gstreamer-plugin-pipewire
 %else
 Requires:       hicolor-icon-theme
+Requires:       libzstd
 Requires:       gtk4 >= 4.18
 Requires:       libadwaita >= 1.8
 # GTK's typelib needs cairo-1.0.typelib, which only this package ships;
