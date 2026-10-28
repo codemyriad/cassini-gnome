@@ -289,8 +289,9 @@ class SettingsDialog(Adw.PreferencesDialog):
 
     def _automatic_changed(self, *_):
         if not self._updating:
-            self.app.set_auto_recording_hold(self.automatic.get_active())
-            self._request("configure", autoRecord=self.automatic.get_active())
+            enabled = self.automatic.get_active()
+            token = self.app.begin_auto_recording_change(enabled)
+            self._request("configure", autoRecord=enabled, _preferenceToken=token)
 
     def _request(self, action="status", **values):
         if self.closed:
@@ -307,15 +308,22 @@ class SettingsDialog(Adw.PreferencesDialog):
         self._future.add_done_callback(lambda future: GLib.idle_add(self._received, future))
 
     def _call(self, action, values):
-        target = browser_service.ensure_service(
-            self.service_path, cancelled=self.cancelled if action == "status" else None
-        )
-        with browser_service.connect(target, timeout=0.8) as connection, connection.makefile("rwb") as stream:
-            browser_service.send_packet(stream, dict(role="app", action=action, **values))
-            result = browser_service.read_packet(stream)
-            if result is None or result.get("error"):
-                raise ValueError("Browser connection unavailable")
-            return result
+        values = dict(values)
+        token = values.pop("_preferenceToken", None)
+        result = None
+        try:
+            target = browser_service.ensure_service(
+                self.service_path, cancelled=self.cancelled if action == "status" else None
+            )
+            with browser_service.connect(target, timeout=0.8) as connection, connection.makefile("rwb") as stream:
+                browser_service.send_packet(stream, dict(role="app", action=action, **values))
+                result = browser_service.read_packet(stream)
+                if result is None or result.get("error"):
+                    raise ValueError("Browser connection unavailable")
+                return result
+        finally:
+            if token is not None:
+                GLib.idle_add(self.app.finish_auto_recording_change, token, result)
 
     def _received(self, future):
         self._future = None

@@ -68,6 +68,9 @@ class CassiniApplication(Adw.Application):
         self.browser_watch = None
         self._browser_seen_saved = None
         self._auto_recording_held = False
+        self._auto_recording_pending = None
+        self._auto_recording_request = 0
+        self._auto_recording_revision = 0
         self._record_start_future = None
         self._record_start_group = None
         self._record_start_generation = 0
@@ -275,11 +278,36 @@ class CassiniApplication(Adw.Application):
             self._auto_recording_held = False
             self.release()
 
+    def begin_auto_recording_change(self, enabled):
+        self._auto_recording_request += 1
+        token = self._auto_recording_request
+        self._auto_recording_pending = (token, enabled)
+        self.hold()  # Keep an accepted preference write alive after its dialog closes.
+        self.set_auto_recording_hold(enabled)
+        return token
+
+    def finish_auto_recording_change(self, token, snapshot):
+        if self._auto_recording_pending and self._auto_recording_pending[0] == token:
+            self._auto_recording_pending = None
+            if snapshot is not None:
+                self._browser_changed(snapshot)
+            else:
+                self.set_auto_recording_hold(self._browser_snapshot.get("autoRecord", False))
+        self.release()
+        return False
+
     def _browser_changed(self, snapshot):
+        snapshot = dict(snapshot)
+        revision = snapshot.get("autoRecordRevision", 0)
+        if type(revision) is not int or revision < self._auto_recording_revision:
+            snapshot["autoRecord"] = self._browser_snapshot.get("autoRecord", False)
+        else:
+            self._auto_recording_revision = revision
         self._browser_snapshot = snapshot
         self.observe_browser_recordings(snapshot, self._browser_seen_saved)
         self._browser_seen_saved = {r["path"] for r in snapshot.get("recordings", []) if isinstance(r.get("path"), str)}
-        self.set_auto_recording_hold(snapshot.get("autoRecord", False))
+        desired = self._auto_recording_pending
+        self.set_auto_recording_hold(desired[1] if desired else snapshot.get("autoRecord", False))
         for window in self.get_windows():
             window._browser_snapshot = snapshot
         self._native_changed()

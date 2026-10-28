@@ -118,8 +118,13 @@ with tempfile.TemporaryDirectory() as temporary:
     assert dialog.shortcut.get_subtitle() == "Ctrl+Shift+R"
     assert app.recording_settings.get_string("record-shortcut-description") == "Ctrl+Shift+R"
     assert any(c["method"] == "ConfigureShortcuts" for c in desktop.calls)
+    stale = request(path=path)
     dialog.automatic.set_active(True)
-    until(lambda: service.auto_record and dialog._future is None)
+    app._browser_changed(stale)
+    assert app._auto_recording_held, "An old poll undid an accepted auto-record choice"
+    until(lambda: service.auto_record and dialog._future is None and app._auto_recording_pending is None)
+    app._browser_changed(stale)
+    assert app._auto_recording_held, "An old poll undid the completed preference write"
     assert json.loads((tmp / "browser-config.json").read_text())["autoRecord"] is True
     with broker_connect(path) as browser:
         stream = browser.makefile("rwb")
@@ -153,7 +158,8 @@ with tempfile.TemporaryDirectory() as temporary:
     second.refresh()
     second.automatic.set_active(False)
     second.force_close()
-    until(lambda: second.closed and not service.auto_record)
+    until(lambda: second.closed and not service.auto_record and app._auto_recording_pending is None)
+    assert not app._auto_recording_held
     assert json.loads((tmp / "browser-config.json").read_text())["autoRecord"] is False
     app.global_shortcut.close()
     app.global_shortcut = GlobalShortcut(app.on_global_record, connection=desktop.bus, settings=app.recording_settings)

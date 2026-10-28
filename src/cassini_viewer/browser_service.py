@@ -143,6 +143,7 @@ class BrowserService:
             else Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "cassini/browser.json"
         )
         self.auto_record = False
+        self.auto_record_revision = time.monotonic_ns()
         with contextlib.suppress(OSError, ValueError, AttributeError):
             self.auto_record = json.loads(self.config.read_text()).get("autoRecord") is True
         self.lock = threading.RLock()
@@ -212,6 +213,7 @@ class BrowserService:
                     }
                 ),
                 autoRecord=self.auto_record,
+                autoRecordRevision=self.auto_record_revision,
                 meetings=meetings,
                 recordings=list(self.recordings),
                 statuses=statuses,
@@ -288,6 +290,7 @@ class BrowserService:
             temporary.chmod(0o600)
             temporary.replace(self.config)
             self.auto_record = enabled
+            self.auto_record_revision = max(self.auto_record_revision + 1, time.monotonic_ns())
             if enabled:
                 for browser in self.browsers.values():
                     browser.attempted.clear()
