@@ -27,3 +27,14 @@ available if another cause fails capture.
 References: [GStreamer clock selection](https://gstreamer.freedesktop.org/documentation/application-development/advanced/clocks.html),
 [AudioBaseSrc provide-clock](https://gstreamer.freedesktop.org/documentation/audio/gstaudiobasesrc.html),
 and [the upstream 1.28 audio-source skew path](https://github.com/GStreamer/gstreamer/blob/1.28/subprojects/gst-plugins-base/gst-libs/gst/audio/gstaudiobasesrc.c).
+
+
+Source changes stage a live branch and require its first valid PCM sample before
+committing the selection, track endings and new track offsets. The staged
+appsink has async=false so its preroll cannot pause the confirmed pipeline.
+Readiness buffers are discarded; post-checkpoint buffers keep the shared clock.
+Errors from staged or retired branches are attributed to that attempt, allowing
+the previous sources to continue and the dialog to show its existing retry line.
+The isolated sources harness rejects a nonexistent real Pulse system device,
+checks unchanged events/track IDs and continuing microphone samples, then proves
+a successful retry and all existing tone, bleed and Stop conditions.

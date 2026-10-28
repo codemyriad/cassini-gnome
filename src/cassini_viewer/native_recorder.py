@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Separate native PCM tracks on one GStreamer clock, checkpointed off GTK."""
 
+import contextlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -45,6 +46,8 @@ class NativeRecorder(GObject.Object):
         self._track_ids = {"microphone": "microphone", "system": "system"}
         self._boundaries = {"microphone": 0, "system": 0}
         self._branches = {}
+        self._pending_sources = {}
+        self._retired_branches = set()
 
     @property
     def activity(self):
@@ -64,6 +67,8 @@ class NativeRecorder(GObject.Object):
         self._track_ids = {"microphone": "microphone", "system": "system"}
         self._boundaries = {"microphone": 0, "system": 0}
         self._branches = {}
+        self._pending_sources = {}
+        self._retired_branches = set()
         future = self._executor.submit(self._prepare, Path(parent) if parent is not None else None)
         future.add_done_callback(lambda f: GLib.idle_add(self._prepared, f, test))
 
@@ -137,11 +142,13 @@ class NativeRecorder(GObject.Object):
             if self._test_sources
             else f'pulsesrc device={device} client-name="Cassini Recording" provide-clock=false'
         )
+        # A staged live sink must not start a new pipeline-wide preroll: that
+        # would pause the confirmed sources while the replacement is tested.
         branch = Gst.parse_bin_from_description(
             source + " ! queue ! audioconvert ! audioresample ! "
             "audio/x-raw,format=S16LE,rate=48000,channels=1 ! "
             f"level name=level-{kind} interval=100000000 post-messages=true ! "
-            f"appsink name={kind} emit-signals=true sync=false max-buffers=8 drop=false",
+            f"appsink name={kind} emit-signals=true sync=false async=false max-buffers=8 drop=false",
             False,
         )
         branch.get_by_name(kind).connect("new-sample", self._sample, kind)
@@ -165,50 +172,80 @@ class NativeRecorder(GObject.Object):
         removed, added = self._track_ids.keys() - desired, desired - self._track_ids.keys()
         if not removed and not added:
             return source_state(self.session.manifest.get("events"))
-        branches = {kind: self._branch(kind) for kind in added}
-        clock = self.pipeline.get_clock()
-        elapsed = (clock.get_time() - self.pipeline.get_base_time()) / Gst.MSECOND
-        with self._lock:
-            at = change_time(self.session, elapsed)
-            events = [dict(atMs=at, type="selection", me=me, others=others, reason="user")]
-            if "system" in removed:
-                events.append(dict(atMs=at, type="othersSource", source="none", reason="user"))
-            elif "system" in added:
-                events.append(dict(atMs=at, type="othersSource", source="system", reason="user"))
-            identifiers = dict(self._track_ids)
-            with self.session.change(events):
-                for kind in removed:
-                    self.session.end_track(identifiers.pop(kind))
-                for kind in added:
-                    identifier = kind + "-" + str(uuid4())
-                    self.session.add_track(
-                        identifier, text("common.me" if kind == "microphone" else "common.theOthers"), kind, RATE, 1
-                    )
-                    self.session.manifest["tracks"][-1]["startOffsetMs"] = at
-                    identifiers[kind] = identifier
-            self._track_ids = identifiers
-            for kind in added:
-                self._boundaries[kind] = at
-        for kind in removed:
-            branch = self._branches.pop(kind)
-            branch.set_state(Gst.State.NULL)
-            self.pipeline.remove(branch)
-            self.levels[0 if kind == "microphone" else 1] = 0
-        for kind, branch in branches.items():
-            self.pipeline.add(branch)
-            self._branches[kind] = branch
-            if not branch.sync_state_with_parent():
-                raise OSError("Could not start native audio capture")
-        return source_state(self.session.manifest.get("events"))
+        pipeline = self.pipeline
+        prepared = {}
+        committed = False
+        try:
+            for kind in sorted(added):
+                branch = self._branch(kind)
+                attempt = dict(branch=branch, ready=threading.Event(), error=None)
+                prepared[kind] = attempt
+                with self._lock:
+                    self._pending_sources[kind] = attempt
+                pipeline.add(branch)
+                if not branch.sync_state_with_parent():
+                    raise OSError("Could not start native audio capture")
+                if not attempt["ready"].wait(3):
+                    raise OSError("Native audio capture did not produce a sample")
+                if attempt["error"]:
+                    raise OSError(attempt["error"])
+            clock = pipeline.get_clock()
+            elapsed = (clock.get_time() - pipeline.get_base_time()) / Gst.MSECOND
+            with self._lock:
+                if self.pipeline is not pipeline or self.stopping or self._finishing:
+                    raise ValueError("No source change is available")
+                for attempt in prepared.values():
+                    if attempt["error"]:
+                        raise OSError(attempt["error"])
+                at = change_time(self.session, elapsed)
+                events = [dict(atMs=at, type="selection", me=me, others=others, reason="user")]
+                if "system" in removed:
+                    events.append(dict(atMs=at, type="othersSource", source="none", reason="user"))
+                elif "system" in added:
+                    events.append(dict(atMs=at, type="othersSource", source="system", reason="user"))
+                identifiers = dict(self._track_ids)
+                with self.session.change(events):
+                    for kind in removed:
+                        self.session.end_track(identifiers.pop(kind))
+                    for kind in sorted(added):
+                        identifier = kind + "-" + str(uuid4())
+                        self.session.add_track(
+                            identifier, text("common.me" if kind == "microphone" else "common.theOthers"), kind, RATE, 1
+                        )
+                        self.session.manifest["tracks"][-1]["startOffsetMs"] = at
+                        identifiers[kind] = identifier
+                self._track_ids = identifiers
+                retired = [self._branches.pop(kind) for kind in removed]
+                self._retired_branches.update(retired)
+                for kind, attempt in prepared.items():
+                    self._boundaries[kind] = at
+                    self._branches[kind] = attempt["branch"]
+                    self._pending_sources.pop(kind)
+                committed = True
+            for kind in removed:
+                self.levels[0 if kind == "microphone" else 1] = 0
+            for branch in retired:
+                branch.set_state(Gst.State.NULL)
+                pipeline.remove(branch)
+            return source_state(self.session.manifest.get("events"))
+        finally:
+            if not committed:
+                for attempt in prepared.values():
+                    branch = attempt["branch"]
+                    with self._lock:
+                        self._retired_branches.add(branch)
+                    branch.set_state(Gst.State.NULL)
+                    if branch.get_parent() == pipeline:
+                        pipeline.remove(branch)
+                with self._lock:
+                    for kind in prepared:
+                        self._pending_sources.pop(kind, None)
 
     def _sources_changed(self, future):
         self._changing_sources = False
-        try:
+        # Keep the old source; the caller displays the catalog failure.
+        with contextlib.suppress(Exception):
             future.result()
-        except ValueError:
-            pass  # The caller displays the catalog change-failed line.
-        except Exception as error:
-            self._begin_finish(str(error))
         self.emit("changed")
         if self._stop_requested and not self.stopping and not self._finishing:
             self.stop()
@@ -224,19 +261,39 @@ class NativeRecorder(GObject.Object):
                 raise ValueError("Audio source has no clock timestamp")
             data = buffer.extract_dup(0, buffer.get_size())
             with self._lock:
+                attempt = self._pending_sources.get(identifier)
+                if attempt is not None:
+                    attempt["ready"].set()
+                    return Gst.FlowReturn.OK  # Uncommitted readiness PCM is discarded.
                 stored = self._track_ids.get(identifier)
                 if stored is not None:
                     data, offset = selected_pcm(data, buffer.pts / Gst.MSECOND, RATE, 1, self._boundaries[identifier])
                     if data:
                         self.session.append(stored, data, offset)
         except Exception as error:
-            GLib.idle_add(self._begin_finish, str(error))
+            with self._lock:
+                attempt = self._pending_sources.get(identifier)
+                if attempt is not None:
+                    attempt["error"] = str(error)
+                    attempt["ready"].set()
+                else:
+                    GLib.idle_add(self._begin_finish, str(error))
             return Gst.FlowReturn.ERROR
         return Gst.FlowReturn.OK
 
     def _message(self, _bus, message):
         if message.type == Gst.MessageType.ERROR:
-            self._begin_finish(message.parse_error()[0].message)
+            problem = message.parse_error()[0].message
+            with self._lock:
+                for attempt in self._pending_sources.values():
+                    branch = attempt["branch"]
+                    if message.src == branch or message.src.has_as_ancestor(branch):
+                        attempt["error"] = problem
+                        attempt["ready"].set()
+                        return
+                if any(message.src == b or message.src.has_as_ancestor(b) for b in self._retired_branches):
+                    return  # A failed/deselected device must not stop the old source.
+            self._begin_finish(problem)
         elif message.type == Gst.MessageType.EOS:
             self._begin_finish()
         elif message.type == Gst.MessageType.ELEMENT:
@@ -309,6 +366,7 @@ class NativeRecorder(GObject.Object):
                 bus.remove_signal_watch()
                 del self._bus_handler
         self.pipeline = None
+        self._retired_branches.clear()
         self.stopping = self._finishing = False
         self.levels = [0.0, 0.0]
         self.emit("changed")

@@ -161,6 +161,43 @@ try:
     wait_until(lambda: frames("microphone") >= before + 48000, "microphone continues alone", diagnostics=diagnostics)
     assert (session.directory / initial["system"]).read_bytes() == system_frozen
     assert native.pipeline.get_by_name("system") is None, "Off source must release its Pulse stream"
+    # A real failed system-device startup must not end the microphone,
+    # publish a choice, create a track, or leave a pending branch behind.
+    before_events = list(session.manifest["events"])
+    before_tracks = set(session.writers)
+    parse = Gst.parse_bin_from_description
+    with patch.object(
+        Gst,
+        "parse_bin_from_description",
+        side_effect=lambda description, ghost: parse(
+            description.replace("device=@DEFAULT_MONITOR@", "device=cassini-device-does-not-exist"), ghost
+        ),
+    ):
+        failed = native.select(False, True)
+        wait_until(
+            lambda: failed.done() and not native._changing_sources,
+            "failed system source returns without ending recording",
+            diagnostics=diagnostics,
+        )
+        try:
+            failed.result()
+        except OSError:
+            pass
+        else:
+            raise AssertionError("A nonexistent system source must fail readiness")
+    assert not errors and not native.stopping and not native._finishing
+    assert session.manifest["state"] == "recording"
+    assert session.manifest["events"] == before_events and set(session.writers) == before_tracks
+    assert set(native._track_ids) == {"microphone"} and not native._pending_sources
+    assert native.pipeline.get_by_name("system") is None
+    before = frames("microphone")
+    wait_until(
+        lambda: frames("microphone") >= before + 48000,
+        "microphone continues after a rejected system source",
+        diagnostics=diagnostics,
+    )
+    assert (session.directory / initial["system"]).read_bytes() == system_frozen
+    evidence["nativeFailedChangeKeepsSource"] = True
     select(False, True)
     microphone_frozen = (session.directory / initial["microphone"]).read_bytes()
     wait_until(lambda: frames("system") >= 96000, "new system span has two seconds", diagnostics=diagnostics)
