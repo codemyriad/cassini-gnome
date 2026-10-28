@@ -50,7 +50,7 @@ for info in pins[\"onnxruntime\"][\"wheels\"].values():
     name = info[\"url\"].rsplit(\"/\", 1)[1]
     shutil.copyfile(\"/in/.whistle-cache/\" + name, \"$top/SOURCES/\" + name)
 "
-  cp /in/.sherpa-cache/* "$top/SOURCES/"
+  install -m 644 /in/.sherpa-cache/* "$top/SOURCES/"
   cp -a /in/. "$src"
   cd "$src"
   rm -rf .whistle-cache .sherpa-cache .git _build* _install _flatpak build builddir dist repo .flatpak-builder .venv obj-* \

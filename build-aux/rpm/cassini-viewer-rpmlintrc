@@ -11,3 +11,7 @@ addFilter(r"devel-file-in-non-devel-package .*/cassini-viewer/whistle/cpu_limit.
 # (not installed) and its optional APIs use. The app's CPU sessions need none
 # of them, so the package deliberately does not require them.
 addFilter(r"python-missing-require (flatbuffers|packaging|protobuf|sympy)")
+# D16 requires this exact C API binary. It has an upstream RUNPATH (including
+# an empty tail); the worker hash-checks and loads native ORT by absolute path
+# first. Keep the approved bytes, and scope this exception to that file.
+addFilter(r"binary-or-shlib-defines-rpath .*/cassini-viewer/sherpa/libsherpa-onnx-c-api\.so ")

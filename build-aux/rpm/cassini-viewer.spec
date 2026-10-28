@@ -60,7 +60,7 @@ ExclusiveArch:  x86_64
 # The C API's unversioned native ORT dependency is satisfied privately by
 # the hash-checked sibling, preloaded by the worker. Keep libc/libstdc++ and
 # other system dependencies generated normally.
-%global __requires_exclude ^libonnxruntime\\.so\\(\\)\\(64bit\\)$
+%global __requires_exclude ^libonnxruntime\\.so\\((VERS_1\\.27\\.1)?\\)\\(64bit\\)$
 # The private dist-info is outside site-packages, so the Python dependency
 # generator skips it anyway; never let it read the METADATA, which lists
 # packages the app does not use (protobuf, flatbuffers, sympy extras).

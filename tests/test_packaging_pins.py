@@ -170,3 +170,13 @@ def test_rpm_runtime_sources_use_the_pinned_fork_without_model_weights():
     assert "dist.gocassini.com" not in spec
     assert "sherpa/fetch.py --cache .sherpa-cache --verify" in spec
     assert "%license %{_datadir}/licenses/%{name}/sherpa" in spec
+
+
+def test_rpm_filters_only_its_exact_private_native_ort_dependency():
+    spec = (ROOT / "build-aux/rpm/cassini-viewer.spec").read_text()
+    pattern = re.search(r"^%global __requires_exclude (.+)$", spec, re.M).group(1)
+    pattern = pattern.replace("\\\\", "\\")
+    for dependency in ("libonnxruntime.so()(64bit)", "libonnxruntime.so(VERS_1.27.1)(64bit)"):
+        assert re.fullmatch(pattern, dependency)
+    for dependency in ("libonnxruntime.so(VERS_1.31.0)(64bit)", "libstdc++.so.6()(64bit)", "libc.so.6()(64bit)"):
+        assert not re.fullmatch(pattern, dependency)
