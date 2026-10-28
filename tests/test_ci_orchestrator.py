@@ -18,9 +18,9 @@ from test_ci_release import module
     ("path", "extra"),
     [
         ("docs/notes.md", set()),
-        ("src/cassini_viewer/player.py", {"boards"}),
+        ("src/cassini_viewer/player.py", {"boards", "library", "offline"}),
         ("src/cassini_viewer/library.py", {"boards", "library", "offline"}),
-        ("src/cassini_viewer/parakeet.py", {"boards", "offline"}),
+        ("src/cassini_viewer/parakeet.py", {"boards", "library", "offline"}),
         ("tests/parakeet/queue_probe.py", {"offline"}),
         ("tests/ui/quit.py", {"boards"}),
         ("tests/ux/states-vectors.json", {"library"}),
@@ -154,3 +154,23 @@ def test_product_rejects_traversal_before_extraction(tmp_path, name):
     with pytest.raises(ValueError, match="Unsafe"):
         module("product").unpack(archive, tmp_path / "restored", "a" * 40, "core")
     assert not (tmp_path / "escape").exists()
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "src/cassini_viewer/model_download.py",
+        "src/cassini_viewer/model_manifest.py",
+        "src/cassini_viewer/zstd_stream.py",
+        "src/cassini_viewer/strings.json",
+        "src/cassini_viewer/portable_context.py",
+        "src/cassini_viewer/meeting_store.py",
+        "src/cassini_viewer/recording_session.py",
+        "src/cassini_viewer/future_dependency.py",
+        "src/cassini-viewer.gresource.xml",
+        "build-aux/whistle-cache.sh",
+    ],
+)
+def test_transitive_dependencies_run_both_engine_and_library_checks(path):
+    selected = module("changes").select([path])
+    assert selected["library"] and selected["offline"]

@@ -20,6 +20,8 @@
       ".github/workflows/ux-shot.yml"
     ],
     "library": [
+      "src/**",
+      "build-aux/**",
       "meson.build",
       "meson_options.txt",
       "data/**",
@@ -39,6 +41,8 @@
       ".github/workflows/ux-library.yml"
     ],
     "offline": [
+      "src/**",
+      "build-aux/**",
       "meson.build",
       "meson_options.txt",
       "data/**",
