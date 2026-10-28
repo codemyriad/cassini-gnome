@@ -16,7 +16,7 @@ parser.add_argument("bundle", type=Path)
 parser.add_argument("output", type=Path)
 parser.add_argument("--modules", type=Path, required=True)
 args = parser.parse_args()
-from golden_check import assess_words  # noqa: E402
+from golden_check import assess_pipeline  # noqa: E402
 
 sys.path.insert(0, str(args.modules))
 import numpy as np  # noqa: E402
@@ -47,7 +47,8 @@ failures = []
 with WhistleClient(args.bundle, timeout=120) as client:
     child = client.process
     for filename in ("whistle-golden.json", "pipeline-golden.json"):
-        golden = json.loads((root / filename).read_text())
+        golden_bytes = (root / filename).read_bytes()
+        golden = json.loads(golden_bytes)
         events = []
         complete = client.process_tracks(
             [dict(id="golden", path=str(root / golden["input"]), offsetMs=0)], events.append
@@ -77,8 +78,21 @@ with WhistleClient(args.bundle, timeout=120) as client:
             hashlib.sha256(reference[segment["startSample"] : segment["endSample"]].tobytes()).hexdigest()
             for segment in golden["segments"]
         ]
-        assessment = assess_words(words, expected_words, segment_hashes, expected_hashes)
-        if segments != golden["segments"] or not assessment["accepted"]:
+        pins = json.loads((args.bundle / "pins.json").read_text())
+        assessment = assess_pipeline(
+            words,
+            segments,
+            golden_bytes,
+            filename,
+            segment_hashes,
+            expected_hashes,
+            dict(
+                version=pins["engineVersion"],
+                model=pins["installed"]["whistle.cact"],
+                library=pins["installed"]["libneedle3.so"],
+            ),
+        )
+        if not assessment["accepted"]:
             failures.append(filename)
         case_data = dict(
             differences=differences,
@@ -93,7 +107,6 @@ with WhistleClient(args.bundle, timeout=120) as client:
                 golden=filename,
                 segments=len(segments),
                 words=len(words),
-                exactSegments=segments == golden["segments"],
                 **case_data,
                 language=complete["language"],
                 childPid=child.pid,

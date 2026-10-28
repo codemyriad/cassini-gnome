@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "decision": "D11.5",
+  "platform": "any",
+  "enginePins": {
+    "engineVersion": "3.3.0",
+    "modelSha256": "b6e02f048568ac5d01a2042556c658061e699acbc0aa2a1439f52f3d461dffeb",
+    "macArm64LibrarySha256": "99b9bd363d2e247626118e7ade04a3dc70c60ebe6bbb0e1bca50bc0bce24b0d3",
+    "macX86_64LibrarySha256": "0ea5cf58a46145ce146b7e6d9f9d945132a13c1e6eeb0401ce27182e6e2a846a",
+    "linuxX86_64LibneedleSha256": "cc0dac6c27546a3a715fb704e068f9eac134fcb83cabcb07c5a6bb7975241675"
+  },
+  "exceptions": [
+    {
+      "golden": "whistle-golden.json",
+      "goldenSha256": "25afea52f6cdc1865105be6feab7d2072e77d457e96bf94eabc22277731dc305",
+      "segmentIndex": 5,
+      "startSample": 318976,
+      "endSample": 458240,
+      "segmentInputSha256": "6c404deaebdb28fe1719303645a7dbf4fb2f56dac5254ae79aa4ef5aec5e95e0",
+      "wordIndex": 37,
+      "expectedWord": "as",
+      "actualWord": "ask",
+      "expectedSegmentText": "What your country can do for you as what you can do for your country. And so my fellow Americans.",
+      "actualSegmentText": "What your country can do for you ask what you can do for your country. And so my fellow Americans.",
+      "allowedWords": [
+        "as",
+        "ask"
+      ]
+    }
+  ],
+  "note": "D11.5 widens D11.4 to every platform: the same word flips between 'as' and 'ask' depending on the CPU (Mac M4, hosted Mac ARM/Intel, hosted Ubuntu x86_64), with identical segment input hashes. A run may read either word at this one position; everything else stays exact. Original goldens unchanged; D11.3 timing rules apply."
+}
