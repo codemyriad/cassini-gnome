@@ -131,3 +131,20 @@ each invocation creates a new private audio container/display and unique evidenc
 directory. Report every result, including failures, rather than retrying until a
 single success. The readiness unit tests use finite synthetic buffers and verify
 silent-input rejection and bounded timeout diagnostics without any audio server.
+
+
+Failure evidence is collected before a recorder tears down its pipeline. The
+`gst-evidence.json` file keeps the error domain/code, exact source path and full
+GStreamer debug string, plus a pipeline graph and negotiated source caps/clock.
+An appender exception is recorded separately with its track, offset and frame
+count, so a later generic “Internal data stream error” cannot conceal the cause.
+The comfort proof fails immediately on such an error instead of timing out with
+zero levels. Native checkpoints also precede EOS/failure cleanup, so a blocked
+C-level state change retains the last graph and the existing thread dump.
+
+Every run retains per-process `gstreamer-<pid>.log`, `pulse-server.log` and
+`pulse-state.log` from its private container. The
+[GStreamer runtime controls](https://gstreamer.freedesktop.org/documentation/gstreamer/running.html)
+document the `%p` log-file pattern; it prevents helper processes from overwriting
+one another's evidence. No readiness, duration, tone, bleed or disk threshold is
+relaxed, and failures are not retried into a passing result.

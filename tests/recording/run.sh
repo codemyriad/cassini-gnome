@@ -18,12 +18,22 @@ fi
 artifact_root="$PWD/tests/recording/artifacts"
 mkdir -p "$artifact_root"
 export CASSINI_TEST_ARTIFACTS=$(mktemp -d "$artifact_root/run-XXXXXXXX")
-ln -sfn "$(basename "$CASSINI_TEST_ARTIFACTS")" "$artifact_root/latest"
+# Publish the convenience pointer atomically; concurrent isolated invocations
+# must never race unlink/create and abort before their private server starts.
+ln -s "$(basename "$CASSINI_TEST_ARTIFACTS")" "$CASSINI_TEST_ARTIFACTS.latest"
+mv -Tf "$CASSINI_TEST_ARTIFACTS.latest" "$artifact_root/latest"
 echo "Recording evidence: $CASSINI_TEST_ARTIFACTS"
 export LANGUAGE=C
+# Per-process filenames prevent the GTK app and helper tools overwriting one
+# another's logs. Levels record negotiation/state/errors, not PCM contents.
+export GST_DEBUG="${GST_DEBUG:-2,pulsesrc:4,pulsesink:4,audiobasesrc:4,interleave:4}"
+export GST_DEBUG_NO_COLOR=1
+export GST_DEBUG_FILE="$CASSINI_TEST_ARTIFACTS/gstreamer-%p.log"
 runtime=$(mktemp -d /tmp/cassini-audio-XXXXXX)
 container="cassini-audio-$(id -u)-$$"
 cleanup() {
+    docker logs "$container" > "$CASSINI_TEST_ARTIFACTS/pulse-server.log" 2>&1 || true
+    docker exec "$container" pactl --server=unix:/audio/pulse.sock list > "$CASSINI_TEST_ARTIFACTS/pulse-state.log" 2>&1 || true
     docker rm -f "$container" >/dev/null 2>&1 || true
     local helper
     helper=$(command -v fusermount3 || command -v fusermount || true)
