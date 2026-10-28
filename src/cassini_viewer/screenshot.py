@@ -166,6 +166,14 @@ def capture(application_id, version, profile):
                 font=Gtk.Settings.get_default().props.gtk_font_name,
                 accent=Adw.StyleManager.get_default().get_accent_color().value_nick,
                 light=not Adw.StyleManager.get_default().get_dark(),
+                speechModels=(
+                    (["whistle"] if opened_settings and app.settings_dialog.whistle.get_visible() else [])
+                    + (
+                        ["parakeet-ultra-0.6b-int8"]
+                        if opened_settings and hasattr(app.settings_dialog, "parakeet")
+                        else []
+                    )
+                ),
                 limitations=[
                     "GNotification button appearance is controlled by GNOME Shell.",
                 ],
