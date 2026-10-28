@@ -37,8 +37,16 @@ def refresh_capture_background(app):
     remember_capture_paths(app)
     native, browser = capture_targets(app)
     hidden = [w for w in getattr(app, "_capture_hidden_windows", ()) if w in windows and not w.get_visible()]
-    if any(w.get_visible() for w in windows):
-        finished = [w for w in hidden if not recorder_busy(getattr(w, "recorder", None))]
+    visible = [w for w in windows if w.get_visible()]
+    if visible and (native or browser):
+        browser_observed = any(
+            getattr(w, "_activity_source", None) is not None or hasattr(w, "_browser_snapshot") for w in visible
+        )
+        # A legacy player does not poll browser capture. Retain its hidden
+        # observer until another observer is visible or the capture is saved.
+        finished = [
+            w for w in hidden if not recorder_busy(getattr(w, "recorder", None)) and (not browser or browser_observed)
+        ]
         finish_close(app, finished, background=True)
         if len(finished) < len(hidden):
             return True
@@ -77,6 +85,12 @@ def refresh_capture_background(app):
             if not app._quitting:
                 for path in queued:
                     app.write_down(path, resume=True)
+            if any(capture_targets(app)):
+                # A new independent capture may have started while the old
+                # saved-intent IO was running. Keep its windows and observer.
+                if getattr(app, "_capture_background", False):
+                    GLib.timeout_add(100, refresh_capture_background, app)
+                return False
             hidden = [
                 w for w in app.get_windows() if w in getattr(app, "_capture_hidden_windows", ()) and not w.get_visible()
             ]
