@@ -22,10 +22,22 @@ jobs:
             libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream xvfb xauth dbus-x11 \
             locales fontconfig python3-pil python3-pytest libzstd1 fonts-cantarell=0.303.1-4 fonts-inter=4.1+ds-1
           sudo locale-gen en_GB.UTF-8
+      - uses: actions/cache@v4
+        if: inputs.product == ''
+        with:
+          path: .whistle-cache
+          key: whistle-${{ hashFiles('whistle/pins.json') }}
+      - uses: actions/cache@v4
+        if: inputs.product == ''
+        with:
+          path: .sherpa-cache
+          key: sherpa-${{ hashFiles('src/cassini_viewer/sherpa-pins.json') }}
       - name: Build a local installation for standalone dispatch
         if: inputs.product == ''
         run: |
-          meson setup _build-shot --prefix="$PWD/_install-shot" -Dprofile=development
+          build-aux/whistle-cache.sh
+          build-aux/sherpa-cache.sh
+          meson setup _build-shot --prefix="$PWD/_install-shot" -Dprofile=development -Dwhistle=enabled -Dwhistle_cache="$PWD/.whistle-cache" -Dsherpa=enabled -Dsherpa_cache="$PWD/.sherpa-cache"
           meson install -C _build-shot
           echo "BOARD_APP=$PWD/_install-shot/bin/cassini-viewer" >> "$GITHUB_ENV"
           echo "CASSINI_BOARD_BUILD=$PWD/_build-shot" >> "$GITHUB_ENV"
@@ -80,6 +92,9 @@ jobs:
           for name in ['settings-recording','settings-transcription']:
               for folder in ['ux-artifacts','ux-artifacts/dark']:
                   assert struct.unpack('>II',Path(folder,f'{name}.png').read_bytes()[16:24]) == (1120,720)
+          for folder in ['ux-artifacts', 'ux-artifacts/dark']:
+              settings = json.loads(Path(folder, 'settings-transcription.json').read_text())
+              assert settings['speechModels'] == ['whistle', 'parakeet-ultra-0.6b-int8'], settings
           notification=json.loads(Path('ux-artifacts/notification.json').read_text())
           assert [button['action'] for button in notification['buttons']] == ['app.stop-recording','app.open-recording']
           info=json.loads(root.with_suffix('.json').read_text())
