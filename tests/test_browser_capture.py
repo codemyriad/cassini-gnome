@@ -301,3 +301,105 @@ def test_stop_before_missing_browser_fallback_begins_cannot_create_a_late_folder
     finally:
         release.set()
         peer.close()
+
+
+def bind_capture(peer, capture, tab=3):
+    from test_browser_service import wait_for
+
+    from cassini_viewer.browser_service import send_packet
+
+    peer.sessions[tab] = dict(recording=True, tabId=tab, captureId=capture.capture_id, path=str(capture.directory))
+    send_packet(peer.stream, dict(type="status", recording=True, sessions=list(peer.sessions.values())))
+    wait_for(
+        lambda: any(
+            s["id"].endswith(":" + str(tab)) and s.get("captureId") == capture.capture_id
+            for s in request(path=peer.path)["statuses"]
+        )
+    )
+
+
+def test_independent_call_hangup_stops_without_system_fallback(server):
+    from test_browser_service import meeting, wait_for
+    from test_browser_sessions import Extension
+
+    from cassini_viewer.browser_service import send_packet
+
+    service, path, _ = server
+    peer = Extension(path, (3,))
+    client = BrowserAudioProxy(path=path)
+    try:
+        start(client, "hangup")
+        remote(client, "remote")
+        capture = service.captures["hangup"]
+        bind_capture(peer, capture)
+        send_packet(peer.stream, dict(type="meetings", meetings=[dict(meeting(), sourceCount=0)]))
+        wait_for(lambda: "hangup" in service._capture_missing_since)
+        assert not capture.browser_lost and not capture.finished
+        assert {tap.kind for tap in Tap.instances} == {"microphone"}
+        with service.lock:
+            service._capture_missing_since["hangup"] = time.monotonic() - 2.01
+        request(path=path)  # Busy accept traffic must also advance policy.
+        command = peer.receive()
+        assert command["action"] == "stop"
+        peer.answer(command)
+        wait_for(lambda: capture.finished)
+        manifest = json.loads((capture.directory / "session.json").read_text())
+        assert manifest["state"] == "completed"
+        assert not any(t["kind"] == "system" for t in manifest["tracks"])
+        assert capture.microphone.stopped
+    finally:
+        client.close()
+        peer.close()
+
+
+def test_reload_fallback_survives_return_but_stops_when_call_does_not_return(server):
+    from test_browser_service import wait_for
+    from test_browser_sessions import Extension
+
+    service, path, _ = server
+    peer = Extension(path, (3,))
+    client = BrowserAudioProxy(path=path)
+    try:
+        start(client, "reload")
+        remote(client, "remote")
+        capture = service.captures["reload"]
+        bind_capture(peer, capture)
+        peer.inventory(())
+        command = peer.receive()
+        assert command["action"] == "stop"
+        peer.answer(command)
+        wait_for(lambda: capture.browser_lost)
+        assert not capture.finished and set(capture.native_taps) == {"microphone", "system"}
+        peer.inventory((3,))
+        wait_for(lambda: "reload" not in service._capture_missing_since)
+        assert capture.browser_lost  # No automatic switch back.
+        peer.inventory(())
+        wait_for(lambda: "reload" in service._capture_missing_since)
+        with service.lock:
+            service._capture_missing_since["reload"] = time.monotonic() - 30.01
+        service.policy()
+        wait_for(lambda: capture.finished)
+        assert all(tap.stopped for tap in Tap.instances)
+        assert json.loads((capture.directory / "session.json").read_text())["state"] == "completed"
+    finally:
+        client.close()
+        peer.close()
+
+
+def test_disconnected_fallback_is_saved_after_bounded_browser_return_grace(server):
+    from test_browser_service import wait_for
+
+    service, path, _ = server
+    client = BrowserAudioProxy(path=path)
+    start(client, "disconnected")
+    capture = service.captures["disconnected"]
+    client.close()
+    wait_for(lambda: capture.browser_lost)
+    service.policy()
+    assert not capture.finished
+    with service.lock:
+        service._capture_missing_since["disconnected"] = time.monotonic() - 30.01
+    service.policy()
+    wait_for(lambda: capture.finished)
+    assert all(tap.stopped for tap in Tap.instances)
+    assert json.loads((capture.directory / "session.json").read_text())["state"] == "completed"
