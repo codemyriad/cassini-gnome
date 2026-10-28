@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 from unittest.mock import patch
@@ -101,8 +102,55 @@ with tempfile.TemporaryDirectory() as temporary:
         assert not window.meeting_page._companion.get_visible()
         window.meeting_page.set_connected(False)
         assert not window.meeting_page._companion.get_visible()
+        # An external host probe can be slow and fail transiently. It runs
+        # off GTK; controls stay hidden until a later successful retry.
+        from cassini_viewer import flatpak_bridge as bridge
+
+        entered, release = threading.Event(), threading.Event()
+        threads, beats = [], []
+        main_thread = threading.get_ident()
+
+        def host_info():
+            threads.append(threading.get_ident())
+            assert threads[-1] != main_thread
+            if len(threads) == 1:
+                entered.set()
+                assert release.wait(5)
+                raise OSError("Transient host activation timeout")
+            return (tmp / "host-config", tmp / "host-data", "/usr/bin/flatpak", {})
+
+        settings = app.settings_dialog = SettingsDialog(app)
+        settings.present(window)
+        timer = GLib.timeout_add(10, lambda: (beats.append(1), GLib.SOURCE_CONTINUE)[1])
+        try:
+            with (
+                patch.object(
+                    bridge, "deployment", return_value=bridge.Deployment("com.gocassini.Viewer", "x86_64", "master")
+                ),
+                patch.object(bridge, "host_info", side_effect=host_info),
+                patch.object(SettingsDialog, "_call", return_value={}),
+            ):
+                app._refresh_companion()
+                until(lambda: entered.is_set() and len(beats) >= 8)
+                assert app._companion_probe_future and not app._companion_probe_future.done()
+                assert not app.browser_companion_available
+                assert not settings.browser_setup.get_visible() and not settings.automatic.get_visible()
+                assert not window.first_companion.get_visible()
+                release.set()
+                until(lambda: app._companion_probe_future is None)
+                assert not app.browser_companion_available and app._companion_probe_timer
+                until(lambda: app.browser_companion_available)  # Actual scheduled retry.
+                assert len(threads) == 2 and all(t != main_thread for t in threads)
+                assert window.first_companion.get_visible()
+                assert settings.browser_setup.get_visible() and settings.automatic.get_visible()
+                assert window.meeting_page._companion.get_visible()
+        finally:
+            release.set()
+            GLib.source_remove(timer)
+            settings.force_close()
+            until(lambda: settings.closed)
         window.close()
         app.do_shutdown()
     print(
-        "PASS Flatpak gate: no first-run/Meeting/Settings setup or auto-record actions; native microphone/system recording still works"
+        "PASS Flatpak gate, native fallback, GTK responsiveness during blocked host probe and automatic retry enabling controls"
     )

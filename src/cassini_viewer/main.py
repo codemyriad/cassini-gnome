@@ -67,6 +67,9 @@ class CassiniApplication(Adw.Application):
         self._last_native = None
         self._browser_snapshot = {}
         self.browser_watch = None
+        self._companion_ready = not self.in_flatpak
+        self._companion_probe_future = None
+        self._companion_probe_timer = 0
         self._browser_seen_saved = None
         self._auto_recording_held = False
         self._auto_recording_pending = None
@@ -117,10 +120,11 @@ class CassiniApplication(Adw.Application):
         from .recording_comfort import RecordingComfort
 
         self.comfort = RecordingComfort(self, automatic=os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1")
-        if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" and self.browser_companion_available:
-            from .browser_watch import BrowserWatch
-
-            self.browser_watch = BrowserWatch(self._browser_changed)
+        if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
+            if self.in_flatpak:
+                self._refresh_companion()
+            else:
+                self._start_browser_watch()
         from .sherpa_runtime import available as parakeet_available
 
         if self.writing_available and parakeet_available():
@@ -238,9 +242,43 @@ class CassiniApplication(Adw.Application):
 
     @property
     def browser_companion_available(self):
+        return self._companion_ready
+
+    def _start_browser_watch(self):
+        if self.browser_watch is None and os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
+            from .browser_watch import BrowserWatch
+
+            self.browser_watch = BrowserWatch(self._browser_changed)
+
+    def _refresh_companion(self):
+        self._companion_probe_timer = 0
+        if self._quitting or self._companion_ready or self._companion_probe_future is not None:
+            return GLib.SOURCE_REMOVE
         from .companion import available
 
-        return available()
+        future = self._record_start_executor.submit(available)
+        self._companion_probe_future = future
+        future.add_done_callback(lambda f: GLib.idle_add(self._companion_probed, f))
+        return GLib.SOURCE_REMOVE
+
+    def _companion_probed(self, future):
+        self._companion_probe_future = None
+        if self._quitting:
+            return GLib.SOURCE_REMOVE
+        try:
+            self._companion_ready = bool(future.result())
+        except Exception:
+            logging.getLogger(__name__).exception("Could not probe the host browser bridge")
+        if self._companion_ready:
+            self._start_browser_watch()
+            for window in self.get_windows():
+                if hasattr(window, "companion_available_changed"):
+                    window.companion_available_changed()
+            if self.settings_dialog and not self.settings_dialog.closed:
+                self.settings_dialog.refresh()
+        else:
+            self._companion_probe_timer = GLib.timeout_add_seconds(5, self._refresh_companion)
+        return GLib.SOURCE_REMOVE
 
     def on_companion_setup(self, *_args, parent=None):
         if not self.browser_companion_available:
@@ -690,6 +728,9 @@ class CassiniApplication(Adw.Application):
 
     def begin_exit(self):
         self._quitting = True
+        if self._companion_probe_timer:
+            GLib.source_remove(self._companion_probe_timer)
+            self._companion_probe_timer = 0
         self._record_start_generation += 1
         if self.browser_watch:
             self.browser_watch.close()

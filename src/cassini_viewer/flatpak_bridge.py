@@ -7,7 +7,6 @@ import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 
 APPLICATIONS = {"com.gocassini.Viewer", "com.gocassini.Viewer.Devel"}
@@ -99,18 +98,12 @@ def host_info():
         raise OSError("Could not reach the host browser") from error
 
 
-@lru_cache(maxsize=2)
-def _available(target):
+def available():
+    """Probe from a worker; a transient failure must never become permanent."""
     try:
+        deployment()
         host_info()
         return True
-    except OSError:
-        return False
-
-
-def available():
-    try:
-        return _available(deployment())
     except OSError:
         return False
 
