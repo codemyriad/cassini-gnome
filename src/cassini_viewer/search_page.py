@@ -366,7 +366,9 @@ class SearchPage(Adw.NavigationPage):
     def _selected(self, *_):
         chosen = self.selection.get_selected_item()
         hit = chosen.hit if chosen else None
-        if self.hit and (not hit or hit.key != self.hit.key):
+        if self.hit and (
+            not hit or (hit.key, hit.turn, hit.position_ms) != (self.hit.key, self.hit.turn, self.hit.position_ms)
+        ):
             self.window._stop_playback()
         self.hit = hit
         child = self.context.get_first_child()

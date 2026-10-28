@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sqlite3
+import stat
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from html import escape
@@ -94,42 +95,65 @@ class SearchIndex:
         cache.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.path = cache / ("search-" + hashlib.sha256(root.encode()).hexdigest()[:16] + ".sqlite3")
         self.cancelled = cancelled
-        self.db = sqlite3.connect(self.path)
-        try:
-            valid = self.db.execute("PRAGMA quick_check").fetchone() == ("ok",)
-        except sqlite3.DatabaseError as error:
-            if error.sqlite_errorcode not in (sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB):
-                self.db.close()
-                raise
-            valid = False
-        if not valid:
-            self.db.close()
-            self.path.unlink()
-            self.db = sqlite3.connect(self.path)
-        self.path.chmod(0o600)
+        self.db = self._open_database()
         if cancelled is not None:
             self.db.set_progress_handler(lambda: int(cancelled.is_set()), 1000)
-        self.db.executescript("""
-            CREATE TABLE IF NOT EXISTS meetings (
-                key TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, started INTEGER, origin TEXT NOT NULL
-            );
-            CREATE VIRTUAL TABLE IF NOT EXISTS hits USING fts5(
-                body, key UNINDEXED, turn UNINDEXED, speaker UNINDEXED, tokenize='unicode61'
-            );
-        """)
         self.current = {}
         self.turns = {}
         self.signatures = {}
 
+    def _open_database(self):
+        for attempt in range(2):
+            # SQLite follows final symlinks. Precreate privately with no-follow,
+            # and reject unsafe auxiliary files before SQLite can open them.
+            for path in (
+                self.path,
+                *(self.path.with_name(self.path.name + suffix) for suffix in ("-journal", "-wal", "-shm")),
+            ):
+                if path.is_symlink():
+                    raise ValueError("Search cache files must not be symbolic links")
+            fd = os.open(self.path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+            try:
+                info = os.fstat(fd)
+                if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                    raise ValueError("Search cache must be a private regular file")
+                os.fchmod(fd, 0o600)
+            finally:
+                os.close(fd)
+            db = sqlite3.connect(self.path)
+            try:
+                if db.execute("PRAGMA quick_check").fetchone() != ("ok",):
+                    raise ValueError("Corrupt search cache")
+                db.executescript("""
+                    CREATE TABLE IF NOT EXISTS meetings (
+                        key TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, started INTEGER, origin TEXT NOT NULL
+                    );
+                    CREATE VIRTUAL TABLE IF NOT EXISTS hits USING fts5(
+                        body, key UNINDEXED, turn UNINDEXED, speaker UNINDEXED, tokenize='unicode61'
+                    );
+                """)
+                # quick_check omits FTS shadow-table consistency.
+                db.execute("INSERT INTO hits(hits) VALUES('integrity-check')")
+                db.commit()
+                return db
+            except (sqlite3.DatabaseError, ValueError) as error:
+                db.close()
+                code = getattr(error, "sqlite_errorcode", sqlite3.SQLITE_CORRUPT) & 0xFF
+                if attempt or code not in (sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB, sqlite3.SQLITE_ERROR):
+                    raise
+                self.path.unlink()
+        raise AssertionError("Unreachable cache initialization")
+
     def sync(self, snapshot):
         meetings = {m.key: m for m in snapshot.meetings} if not snapshot.unavailable else {}
         stored = dict(self.db.execute("SELECT key, fingerprint FROM meetings"))
+        next_turns, next_signatures = dict(self.turns), dict(self.signatures)
         with self.db:
             for key in stored.keys() - meetings.keys():
                 self.db.execute("DELETE FROM hits WHERE key = ?", (key,))
                 self.db.execute("DELETE FROM meetings WHERE key = ?", (key,))
-                self.turns.pop(key, None)
-                self.signatures.pop(key, None)
+                next_turns.pop(key, None)
+                next_signatures.pop(key, None)
             for key, meeting in meetings.items():
                 self._check_cancelled()
                 # Scanner keeps immutable word tuples alive. Polling capture levels
@@ -149,8 +173,8 @@ class SearchIndex:
                 fingerprint = hashlib.sha256(
                     json.dumps([rows, meeting.started_at_ms, meeting.origin], ensure_ascii=False).encode()
                 ).hexdigest()
-                self.turns[key] = turns
-                self.signatures[key] = signature
+                next_turns[key] = turns
+                next_signatures[key] = signature
                 if stored.get(key) == fingerprint:
                     continue
                 self.db.execute("DELETE FROM hits WHERE key = ?", (key,))
@@ -159,6 +183,7 @@ class SearchIndex:
                     "INSERT OR REPLACE INTO meetings VALUES (?,?,?,?)",
                     (key, fingerprint, meeting.started_at_ms, meeting.origin),
                 )
+        self.turns, self.signatures = next_turns, next_signatures
         self.current = meetings
 
     def speakers(self):

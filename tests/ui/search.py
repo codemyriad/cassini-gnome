@@ -128,9 +128,16 @@ with tempfile.TemporaryDirectory() as temporary:
     page.entry.set_text("budget")
     until(lambda: page.pending)
     until(lambda: not page.pending)
+    page.selection.set_selected(0)
+    page.list.grab_focus()
+    until(lambda: window.lookup_action("play-pause").get_enabled())
+    window.lookup_action("play-pause").activate(None)
+    until(lambda: window.player.playing)
+    window.lookup_action("play-pause").activate(None)
+    assert not window.player.playing
     page.selection.set_selected(1)
     assert page.hit.position_ms == 872000
-    page.play.emit("clicked")
+    window.lookup_action("play-pause").activate(None)
     until(lambda: window.player.playing and window.player.position >= 872000)
     position = window.player.position
     previous_snapshot = window.snapshot
