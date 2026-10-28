@@ -81,9 +81,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.root_box.set_visible_child_name("loading")
         self._activity = dict(self._fixture_activity)
         self.monitor = LibraryMonitor(self._updated, capture_activity=lambda: self._activity)
-        if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" and self.get_application().browser_companion_available:
-            self._activity_source = BrowserActivity(self._activity_tick)
-            self._activity_timer = GLib.timeout_add_seconds(1, self._activity_tick)
+        self.companion_available_changed()
         self.monitor.refresh()
         self.connect("close-request", self._close)
         for name, callback in (
@@ -366,6 +364,15 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._activity = activity
             self.monitor.refresh_now()
         self._update_live()
+
+    def companion_available_changed(self):
+        available = self.get_application().browser_companion_available
+        self.first_companion.set_visible(available)
+        if available and self._activity_source is None and os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
+            self._activity_source = BrowserActivity(self._activity_tick)
+            self._activity_timer = GLib.timeout_add_seconds(1, self._activity_tick)
+        if self.meeting_page:
+            self.meeting_page.set_connected(self._activity_source.connected if self._activity_source else False)
 
     def _activity_tick(self):
         activity = dict(self._activity_source.snapshot) if self._activity_source else {}

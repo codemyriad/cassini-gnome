@@ -121,7 +121,6 @@ def test_deployment_requires_effective_permission_and_known_app(tmp_path):
 
 
 def test_missing_host_service_disables_companion(monkeypatch):
-    bridge._available.cache_clear()
     monkeypatch.setenv("FLATPAK_ID", "com.gocassini.Viewer")
     monkeypatch.setattr(bridge, "deployment", lambda: bridge.Deployment("com.gocassini.Viewer", "x86_64", "master"))
 
@@ -130,7 +129,8 @@ def test_missing_host_service_disables_companion(monkeypatch):
 
     monkeypatch.setattr(bridge, "host_info", unreachable)
     assert not companion.available()
-    bridge._available.cache_clear()
+    monkeypatch.setattr(bridge, "host_info", lambda: None)
+    assert companion.available(), "A transient host failure must be retried"
 
 
 def test_sandbox_add_uses_host_browser_without_sandbox_environment_overrides(monkeypatch, tmp_path):
