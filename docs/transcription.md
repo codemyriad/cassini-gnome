@@ -55,30 +55,71 @@ dist or downloads at runtime. Add this immutable artifact to each package's buil
 sources/cache and ship LICENSE-Silero-MIT.txt alongside the existing notices.
 
 Runtime dependencies now include **NumPy and ONNX Runtime CPU** for the app's
-Python interpreter, alongside PyGObject/GStreamer for child-process Opus decoding.
-Every package uses its distribution's own: with no network, both D11 goldens pass
-exactly (8/8 segments, 68/68 words, 0 ms) on Ubuntu 26.04 (ORT 1.23.2), Debian
-testing (1.23.2), Fedora 44 (1.22.2), Tumbleweed (1.31.0) and Arch (1.29.0).
-The Flatpak installs pinned cp313 wheels of NumPy 2.5.4 and ORT 1.31.0
-(cassini-live's version) into /app, x86_64 only. Alpine's ORT works but the
-glibc engine cannot load under musl, so Alpine stays a source/check target.
-ORT uses one intra-op and one inter-op thread and disables telemetry before
-import. The engine remains confined to the child; GTK imports neither Needle nor
-ORT. The spike's glibc x86_64 engine limitation remains until another pinned
-platform engine is independently validated.
+Python, alongside PyGObject/GStreamer for child-process Opus decoding. NumPy is
+the distribution's own (the Flatpak installs the pinned cp313 NumPy 2.5.4
+wheel). ONNX Runtime is not: every package carries the pinned upstream PyPI
+wheel of ORT 1.31.0 (cassini-live's version) for its Python's ABI
+(`whistle/pins.json` pins cp311 to cp314, with their sha256), because the
+distributions' packages cost far more than the engine they serve. Fedora 44's
+python3-onnxruntime requires sympy, whose weak dependencies (matplotlib,
+scipy, cython, TeX Live) make a default install 485 packages and 1 GiB;
+Ubuntu 26.04's pulls in 24 packages and 191 MB (oneDNN, sympy, the shared
+library). The PyPI wheel needs only NumPy at run time, and Whistle with its
+environment must stay lighter than sherpa-onnx with Parakeet. Measured on a
+system that already has the app's GTK, GStreamer and PyGObject, with default
+package manager settings, installing the package now adds 5 to 10 packages
+and 93 to 166 MB (Ubuntu 26.04 and Debian testing without recommends: 93
+and 110 MB; Fedora 44 with weak dependencies: 166 MB, was 487 packages and
+1.2 GB; Tumbleweed: 120 MB; Arch: 122 MB, was 483 MB), and the Flatpak
+installs in 112 MB instead of 141 MB.
+
+Meson (`-Dwhistle=enabled`) runs `whistle/fetch.py --onnxruntime cpXY
+--offline`, which takes the wheel for the Python the launcher runs with from
+the same pre-filled cache, unpacks it without `transformers/`,
+`quantization/`, `tools/`, `backend/` (model tools and the ONNX backend
+adapter, which import sympy, onnx and packaging) and the separate C API
+library (the extension module links the runtime statically), about 31 MB, and
+`whistle/verify.py --onnxruntime` checks every file against the wheel's
+RECORD. It is installed in `<libdir>/cassini-viewer/python` (for example
+/usr/lib/x86_64-linux-gnu/cassini-viewer/python on Debian, /usr/lib64/... on
+Fedora and openSUSE, /usr/lib/... on Arch, /app/lib/... in the Flatpak), never
+stripped, and Meson writes that path to `cassini_viewer/paths.json`. Only the
+recognition child puts it first on `sys.path`, after checking it against
+RECORD again; the GTK process never does. Without a private copy for the
+running Python's ABI (a source run, a build with `-Dwhistle=disabled`), the
+child uses the Python's own onnxruntime, if any. The packages depend on
+exactly the Python version they were built for (`python(abi)`, `python3 (>=
+X.Y~), python3 (<< X.Y+1)`, `python>=X.Y python<X.Y+1`), like any extension
+module, and no package tool sees the private dist-info (it is outside
+site-packages; the RPM excludes it from dependency generation explicitly), so
+nothing depends on sympy, protobuf or flatbuffers. The upstream extension
+module also links curl and mbedtls statically for ORT's Azure execution
+provider, which the app never uses (it creates only CPU sessions); Debian's
+lintian override says so. With no network, both D11 goldens pass exactly (8/8
+segments, 68/68 words, 0 ms) with the private ORT 1.31.0 on Ubuntu 26.04,
+Debian testing, Fedora 44, Tumbleweed, Arch and in the Flatpak. Alpine's ORT
+works but the glibc engine cannot load under musl, so Alpine stays a
+source/check target. ORT uses one intra-op and one inter-op thread and
+disables telemetry before import. The engine remains confined to the child;
+GTK imports neither Needle nor ORT. The spike's glibc x86_64 engine limitation
+remains until another pinned platform engine is independently validated.
 
 Developers/tests can explicitly point CASSINI_WHISTLE_BUNDLE at a bundle
 directory. Without a usable bundle (not installed, not Linux glibc x86_64) or
-without NumPy/ORT, the app hides **Write it down** and **Try again**, does not
-queue recordings, and logs "Writing down is not available on this computer"
-with the reason (`transcription.unavailable_reason`, which locates but never
-imports NumPy/ORT in GTK); audio remains usable. A user-facing line for this
-needs a new strings.json entry approved by the catalogue owner.
+without NumPy or an ORT (private or the Python's own), the app hides **Write
+it down** and **Try again**, does not queue recordings, and logs "Writing down
+is not available on this computer" with the reason
+(`transcription.unavailable_reason`, which locates but never imports NumPy/ORT
+in GTK); audio remains usable. A user-facing line for this needs a new
+strings.json entry approved by the catalogue owner.
 
 Every package build's clean-install step runs the installed worker on both
 D11 goldens in a container with `--network none`
 (`build-aux/smoke-installed.py --whistle`), so a released package is proven
 to write down offline, with its own dependencies, before it is published.
+The smoke test also requires the private ORT to match the installed Python
+and its RECORD, the child to report the pinned ORT version, and the app's
+Python to have no onnxruntime of its own.
 
 ## Evidence and tests
 
