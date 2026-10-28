@@ -18,7 +18,14 @@ class TimedNotes:
         self.buffer, self.elapsed, self.changed = buffer, elapsed, changed
         self.guard = False
         self.lines = [(n["atMs"], n["text"]) for n in notes] or [(None, "")]
+        self.history = []
+        self.history_position = -1
+        buffer.begin_irreversible_action()
         self._render(0, 0)
+        buffer.end_irreversible_action()
+        for action in ("undo", "redo"):
+            buffer.connect(action, self._history_begin)
+            buffer.connect_after(action, self._history_end, action)
         buffer.connect("insert-text", self._insert)
         buffer.connect("delete-range", self._delete)
 
@@ -36,8 +43,39 @@ class TimedNotes:
             base = end + 1
         raise AssertionError("Missing note line")
 
+    @staticmethod
+    def _text(lines):
+        return "\n".join(TimedNotes._prefix(at) + body for at, body in lines)
+
+    def _history_begin(self, _buffer):
+        # GTK replays rendered text, including timestamp prefixes. Let that
+        # replay finish without treating its inserts as newly typed notes.
+        self.guard = True
+
+    def _history_end(self, buffer, action):
+        value = buffer.get_text(*buffer.get_bounds(), True)
+        positions = (
+            range(self.history_position - 1, -1, -1)
+            if action == "undo"
+            else range(self.history_position + 1, len(self.history))
+        )
+        for position in positions:
+            if self._text(self.history[position]) == value:
+                self.history_position = position
+                self.lines = list(self.history[position])
+                break
+        else:
+            # An undo with no available action leaves the current text intact.
+            assert self._text(self.lines) == value, "Unknown note undo state"
+        self.guard = False
+        self.changed()
+
     def _render(self, line, column):
-        value = "\n".join(self._prefix(at) + body for at, body in self.lines)
+        value = self._text(self.lines)
+        if self.history_position < 0 or self.history[self.history_position] != self.lines:
+            del self.history[self.history_position + 1 :]
+            self.history.append(list(self.lines))
+            self.history_position = len(self.history) - 1
         old = self.buffer.get_text(*self.buffer.get_bounds(), True)
         # A minimal edit keeps Gtk's native user-action/undo grouping and avoids
         # replacing every note when one character changes.
@@ -72,6 +110,11 @@ class TimedNotes:
         replacement = [(at if at is not None else now, body[:column] + parts[0])]
         replacement.extend((now, part) for part in parts[1:])
         replacement[-1] = (replacement[-1][0], replacement[-1][1] + body[column:])
+        if len(parts) > 1 and column == 0 and body:
+            # Inserting a blank line before an existing note keeps that note's
+            # pinned time; only newly typed content gets the current time.
+            replacement[0] = (now, replacement[0][1])
+            replacement[-1] = (at, replacement[-1][1])
         self.lines[line : line + 1] = replacement
         self._render(line + len(parts) - 1, (column if len(parts) == 1 else 0) + len(parts[-1]))
         self.changed()
@@ -83,7 +126,13 @@ class TimedNotes:
         first, left = self._point(start.get_offset())
         last, right = self._point(end.get_offset())
         if (first, left) == (last, right):
-            return  # Deleting only a timestamp span never deletes the note.
+            if first > 0 and left == 0 and end.get_offset() - start.get_offset() == 1:
+                # Backspace from the body start crosses the protected prefix.
+                # Merge with the previous body as a normal editor would.
+                first -= 1
+                left = len(self.lines[first][1])
+            else:
+                return  # Deleting only a timestamp span never deletes the note.
         at, body = self.lines[first]
         self.lines[first : last + 1] = [(at, body[:left] + self.lines[last][1][right:])]
         if len(self.lines) == 1 and not self.lines[0][1]:
@@ -95,8 +144,12 @@ class TimedNotes:
         return [dict(atMs=int(at), text=body) for at, body in self.lines if at is not None and body.strip()]
 
     def reset(self, notes):
+        self.buffer.begin_irreversible_action()
+        self.history = []
+        self.history_position = -1
         self.lines = [(n["atMs"], n["text"]) for n in notes] or [(None, "")]
         self._render(0, 0)
+        self.buffer.end_irreversible_action()
 
 
 class RecordingPage(Adw.NavigationPage):
