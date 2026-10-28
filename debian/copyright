@@ -62,7 +62,7 @@ Comment: Not in the source tree: ONNX Runtime 1.31.0, the PyPI wheel for the
  Source: https://github.com/microsoft/onnxruntime
 
 Files: sherpa/libsherpa-onnx-c-api.so
-Copyright: 2022-2026 Xiaomi Corporation and sherpa-onnx contributors
+Copyright: 2023 Xiaomi Corporation and contributors
 License: Apache-2.0
 Comment: Not in the source tree: the Cassini fork C API at
  https://raw.githubusercontent.com/codemyriad/sherpa-onnx-go-linux/03a94bc4bfc1e1bd455cd2fa62b93e8d73817a85/

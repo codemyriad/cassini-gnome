@@ -173,6 +173,11 @@ cp -p %{SOURCE8} .sherpa-cache/CASSINI-SHA256SUMS
 %install
 # openSUSE strips in its own brp scripts; see debug_package above.
 export NO_BRP_STRIP_DEBUG=true
+# The D16-pinned C API has a trailing empty RUNPATH entry. Do not patch the
+# approved binary: the worker verifies hashes and preloads its exact native
+# ORT by absolute path before the C API. Allow only this RPM diagnostic;
+# retain checks for invalid/insecure paths and all other RUNPATH failures.
+export QA_RPATHS=0x0010
 %meson_install
 mkdir -p %{buildroot}%{_datadir}/licenses/%{name}/sherpa
 cp -p sherpa/NOTICE.md sherpa/LICENSE-sherpa-Apache-2.0.txt sherpa/LICENSE-ONNXRuntime-MIT.txt %{buildroot}%{_datadir}/licenses/%{name}/sherpa/
