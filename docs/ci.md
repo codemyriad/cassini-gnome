@@ -9,7 +9,10 @@ Missing bases, invalid events and failed diffs select everything. Main, nightly
 and dispatch never use PR path filtering. Legacy UX spike push branches are kept.
 
 Even a failed Changes job causes the build and area calls to default to running.
-No automatic cancellation remains. Agents may cancel their own superseded heads
+A failed profile does not suppress other consumers of already-uploaded products;
+a missing product makes its consumer fail explicitly. Root calls use
+`!cancelled()` so detection failures run everything while manual cancellation
+still stops downstream work, following [GitHub status-check semantics](https://docs.github.com/en/actions/reference/workflows-and-actions/expressions#status-check-functions). No automatic cancellation remains. Agents may cancel their own superseded heads
 manually, never main/nightly or the last potentially mergeable head.
 
 The PR checks list names the areas: Changed areas, Build, Source, Packaging,
@@ -28,7 +31,8 @@ One Linux build job produces the distinct configurations without conflating them
 | `ci-offline` | Default profile, `/usr`, bundled Whistle/Silero/private Python ORT and sherpa | Both engines, goldens, ABI and real queue/GTK proofs |
 
 The source-validation environment stays an Ubuntu 26.04 container without GI.
-It gains a compiler and Git to exercise ABI and diff integration tests. All
+It gains a compiler and Git to exercise ABI and diff integration tests, plus CA
+certificates for verified HTTPS and zstd for the same cache format as host jobs. All
 original Meson/protocol/desktop/schema tests, POT and staged-install checks run.
 Distro and package builds remain separate: their OS/ABI/recipe tests are distinct.
 No packaging recipe is changed. All six source distros, five native packages,

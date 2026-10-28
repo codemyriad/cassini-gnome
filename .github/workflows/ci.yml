@@ -28,14 +28,14 @@ jobs:
         id: areas
         run: python3 build-aux/ci/changes.py --report changed-areas.json
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ !cancelled() }}
         with:
           name: changed-areas
           path: changed-areas.json
   build:
     name: Build
     needs: changes
-    if: always()
+    if: ${{ !cancelled() }}
     uses: ./.github/workflows/build.yml
     with:
       boards: ${{ needs.changes.outputs.boards != 'false' }}
@@ -43,36 +43,36 @@ jobs:
   source:
     name: Source
     needs: changes
-    if: ${{ always() && (needs.changes.result != 'success' || needs.changes.outputs.source != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.source != 'false') }}
     uses: ./.github/workflows/source.yml
   packages:
     name: Packaging
     needs: changes
-    if: ${{ always() && (needs.changes.result != 'success' || needs.changes.outputs.packages != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.packages != 'false') }}
     uses: ./.github/workflows/packaging.yml
   recording:
     name: Recording
     needs: [changes, build]
-    if: ${{ always() && needs.build.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.recording != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.recording != 'false') }}
     uses: ./.github/workflows/recording.yml
     with:
       product: ci-core
   boards:
     name: Boards
     needs: [changes, build]
-    if: ${{ always() && needs.build.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.boards != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.boards != 'false') }}
     uses: ./.github/workflows/ux-shot.yml
     with:
       product: ci-boards
   library:
     name: Library
     needs: changes
-    if: ${{ always() && (needs.changes.result != 'success' || needs.changes.outputs.library != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.library != 'false') }}
     uses: ./.github/workflows/ux-library.yml
   offline:
     name: Offline
     needs: [changes, build]
-    if: ${{ always() && needs.build.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.offline != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.offline != 'false') }}
     uses: ./.github/workflows/whistle.yml
     with:
       product: ci-offline
