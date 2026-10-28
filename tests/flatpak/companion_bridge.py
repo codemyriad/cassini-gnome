@@ -13,6 +13,8 @@ import json
 import math
 import os
 import selectors
+import shlex
+import shutil
 import stat
 import struct
 import subprocess
@@ -87,7 +89,8 @@ def worker(application, private, report):
     # Session-helper inherits this host PATH, not the sandbox's /app/bin PATH.
     # Activation happens only after these private executables are in place.
     info = inside(
-        "import json,os;from cassini_viewer import companion;"
+        "import json,os;from cassini_viewer import companion,flatpak_bridge;"
+        "flatpak_bridge.deployment();flatpak_bridge.host_info();"
         "assert companion.available();browsers=companion.installed_browsers();"
         "written=companion.register();child=companion.open_add(browsers[0]);assert child.wait(5)==0;"
         "print(json.dumps(dict(browsers=[b.name for b in browsers],paths=[str(p) for p in written],"
@@ -294,6 +297,27 @@ def main():
         for name in ("home", "config", "data", "cache", "runtime", "Musica"):
             (private / name).mkdir(mode=0o700)
         (private / "config/user-dirs.dirs").write_text(f'XDG_MUSIC_DIR="{private}/Musica"\n')
+        # The official build image has the real Flatpak helper under /app but
+        # omits its activation file. Supply it only on this private session bus.
+        prefix = Path(shutil.which("flatpak")).resolve().parents[1]
+        helper = next(
+            (
+                path
+                for path in (
+                    prefix / "libexec/flatpak-session-helper",
+                    prefix / "lib/flatpak-session-helper",
+                    prefix / "lib/flatpak/flatpak-session-helper",
+                )
+                if path.is_file() and os.access(path, os.X_OK)
+            ),
+            None,
+        )
+        assert helper is not None, "Install the Flatpak session helper for the private bridge test"
+        services = private / "data/dbus-1/services"
+        services.mkdir(parents=True)
+        (services / "org.freedesktop.Flatpak.service").write_text(
+            "[D-BUS Service]\nName=org.freedesktop.Flatpak\nExec=" + shlex.quote(str(helper)) + "\n"
+        )
         env = dict(
             os.environ,
             HOME=str(private / "home"),
@@ -310,6 +334,7 @@ def main():
         subprocess.run(
             [
                 "dbus-run-session",
+                "--dbus-daemon=" + (shutil.which("dbus-daemon") or "dbus-daemon"),
                 "--",
                 sys.executable,
                 str(Path(__file__).resolve()),
