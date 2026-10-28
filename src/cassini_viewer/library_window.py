@@ -401,7 +401,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.recording_page.update_status()
         for meeting in self.snapshot.meetings:
             if meeting.lifecycle == "recording" and meeting.key in self._live_badges:
-                ms = max(0, self.now_ms - meeting.started_at_ms) if meeting.started_at_ms else 0
+                ms = self.get_application().comfort.elapsed(meeting)
                 self._live_badges[meeting.key].set_label(meeting.badge(live_ms=ms).text)
 
     def stop_meeting(self, meeting):
@@ -636,7 +636,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         top.append(label(fmt.row_time(meeting.started_at_ms, tz=self.tz), "small", "dim-label"))
         box.append(top)
         meta = Gtk.Box(spacing=6)
-        elapsed = max(0, self.now_ms - meeting.started_at_ms) if meeting.started_at_ms is not None else 0
+        elapsed = self.get_application().comfort.elapsed(meeting)
         badge = meeting.badge(live_ms=elapsed)
         if badge:
             badge_label = label(badge.text, "badge", "badge-" + badge.tint)
