@@ -61,8 +61,8 @@ until(
 activations = []
 shortcut = GlobalShortcut(lambda: activations.append(True), connection=services.bus)
 until(lambda: shortcut.bound)
-assert [c["method"] for c in services.calls] == ["CreateSession", "BindShortcuts"]
-assert services.calls[1]["values"][1][0][1]["preferred_trigger"] == "CTRL+ALT+r"
+assert [c["method"] for c in services.calls] == ["CreateSession", "ListShortcuts", "BindShortcuts"]
+assert services.calls[2]["values"][1][0][1]["preferred_trigger"] == "CTRL+ALT+r"
 services.activate(session="/wrong/session")
 services.activate(identifier="wrong")
 services.activate()
