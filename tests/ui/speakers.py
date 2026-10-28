@@ -186,4 +186,6 @@ with tempfile.TemporaryDirectory() as temporary:
     app.begin_exit()
     window.close()
     app.do_shutdown()
-    print("PASS speaker GTK: validation/name/clear/failure/retry/sample/merge/Undo/Cancel/read-only/20-speaker scrolling")
+    print(
+        "PASS speaker GTK: validation/name/clear/failure/retry/sample/merge/Undo/Cancel/read-only/20-speaker scrolling"
+    )
