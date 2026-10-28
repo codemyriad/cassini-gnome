@@ -50,6 +50,7 @@ class Player(GObject.Object):
         self._prerolled = False
         self._pending_seek: int | None = None
         self._at_end = False
+        self._range_end = None
         # Why play() cannot start, or None once a file is loaded.
         self._load_error: str | None = _("No recording is loaded.")
 
@@ -95,6 +96,26 @@ class Player(GObject.Object):
         self.playing = True
         self._start_tick()
 
+    def play_range(self, start_ms, end_ms):
+        """Play a voice sample with a GStreamer stop boundary, at most 10 s."""
+        start_ms = max(0, int(start_ms))
+        end_ms = min(int(end_ms), start_ms + 10000)
+        if self.duration:
+            end_ms = min(end_ms, self.duration)
+        if not self.loaded or not self._prerolled or end_ms <= start_ms:
+            return False
+        self.pause()
+        self._range_end = end_ms
+        if not self.seek(start_ms):
+            self.clear_range()
+            self.emit("error", _("The audio could not be played."))
+            return False
+        self.play()
+        return self.playing
+
+    def clear_range(self):
+        self._range_end = None
+
     def pause(self):
         if not self.loaded:
             return
@@ -110,6 +131,7 @@ class Player(GObject.Object):
             self.play()
 
     def stop(self):
+        self.clear_range()
         self._stop_tick()
         self._pipeline.set_state(Gst.State.NULL)
         self.playing = False
@@ -122,8 +144,8 @@ class Player(GObject.Object):
         self.position = ms
         if not self._prerolled:
             self._pending_seek = ms
-            return
-        self._do_seek(ms)
+            return True
+        return self._do_seek(ms)
 
     def skip(self, delta_ms: int):
         self.seek(self.position + delta_ms)
@@ -135,7 +157,15 @@ class Player(GObject.Object):
 
     def _do_seek(self, ms: int):
         flags = Gst.SeekFlags.FLUSH | Gst.SeekFlags.ACCURATE
-        self._pipeline.seek(self.rate, Gst.Format.TIME, flags, Gst.SeekType.SET, ms * Gst.MSECOND, Gst.SeekType.NONE, 0)
+        return self._pipeline.seek(
+            self.rate,
+            Gst.Format.TIME,
+            flags,
+            Gst.SeekType.SET,
+            ms * Gst.MSECOND,
+            Gst.SeekType.SET,
+            self._range_end * Gst.MSECOND if self._range_end is not None else -1,
+        )
 
     def shutdown(self):
         self.stop()
@@ -186,7 +216,7 @@ class Player(GObject.Object):
             self._stop_tick()
             self._at_end = True
             if self.duration:
-                self.position = self.duration
+                self.position = self._range_end if self._range_end is not None else self.duration
         elif message.type == Gst.MessageType.ERROR:
             err, _debug = message.parse_error()
             self.stop()

@@ -5196,6 +5196,24 @@
    "milestone": "UX16",
    "status": "harmony",
    "note": "Coordinator (D24). Meeting view More actions item, shown only while meeting.json has speakerMerges; removes the last merge."
+  },
+  {
+   "id": "speakers.changeFailed",
+   "en": "Couldn’t change the speakers. Your previous names and merges are kept.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "Speakers",
+    "Speakers-mac",
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "UX16",
+   "status": "harmony",
+   "note": "Coordinator (D24, GNOME question). Warn line when saving a name, a merge or Undo merge can't be written (for example a read-only or disconnected Library). Action: common.tryAgain. The Speakers dialog stays open and keeps the typed name."
   }
  ]
 }

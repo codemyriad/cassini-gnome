@@ -56,7 +56,7 @@
     "format-vectors.json": "ee9c9b9585e76c42f09df54d7a8933e7167527fce2ea185e78b51b1059840e51",
     "states-vectors.json": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
     "LIBRARY-RULES.md": "95a0e5068a08efa521f6eed73799b715ab50b2cf6aee374570b5337a6a3bdd2a",
-    "meeting.schema.json": "51d0d6d579bf1326825433434e128daf6676efc55335bc057d46d042f0f211f6",
+    "meeting.schema.json": "354b9c8e2a4ab3d321a33a899f08b17890b26d50733eb6072bc1e2cccfc394d5",
     "library-vectors/verify.py": "2011c3a7fc8d6fd5c58a4f06b16e8397f081755f743725f2732e332e4d1767da",
     "library-vectors/README.md": "8e8cbbe91ab72bbf9f404a94ab3b83822f4e137cca8cbbb25afd493b78394b54",
     "library-vectors/cases.json": "80723c1274ac44d8b23d0a154daa7b6fc5e559a1fceb6491b8e52558c4a6ce2b",
@@ -85,7 +85,7 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "07b25fe07889c42de190f311167cde6e351abcebebccd66545ec1da4ccbf4113",
+    "strings.json": "b0588067ec372c8a753a64a0f81947d2f72c20e74927ad62d179c9b6f1ba429a",
     "LIBRARY.md": "6cd4063cdd58567c75a4733c8862e9fe0983863df890b86a91e9a9bb17749751",
     "session-events/session.json": "6bcec60cf4024421b57683d86a44d7ffd92efdc84a3e5b67e24cb09fcfb55723",
     "session-events/expected.json": "905ad1966fa3cac23aa348109d4f694a5606ea685f3a5689cc052cf092a8a920",
@@ -105,20 +105,20 @@
   },
   "additionalSources": {
     "strings.json": {
-      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
-      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
+      "commit": "46a149113bf3d2b3e9cf196155bee24502e728b0",
+      "note": "D24 UX16: version1, ordered merge history, explicit unnamed and failed edit copy"
     },
     "LIBRARY-RULES.md": {
-      "commit": "81799a3ab2642a67139f799f857e8ad0e81135b6",
-      "note": "D11.2 source names and UX13 published action copy"
+      "commit": "46a149113bf3d2b3e9cf196155bee24502e728b0",
+      "note": "D24 UX16: version1, ordered merge history, explicit unnamed and failed edit copy"
     },
     "meeting.schema.json": {
-      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
-      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
+      "commit": "46a149113bf3d2b3e9cf196155bee24502e728b0",
+      "note": "D24 UX16: version1, ordered merge history, explicit unnamed and failed edit copy"
     },
     "LIBRARY.md": {
-      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
-      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
+      "commit": "46a149113bf3d2b3e9cf196155bee24502e728b0",
+      "note": "D24 UX16: version1, ordered merge history, explicit unnamed and failed edit copy"
     },
     "session-events/session.json": {
       "commit": "3349555b8e9bd5f47236cc5ce61b1edfee201d34",

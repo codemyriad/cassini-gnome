@@ -62,6 +62,8 @@ jobs:
           python3 tests/ui/check-dark.py ux-artifacts/dark
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/library.py ux-artifacts/gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/meeting.py ux-artifacts/meeting-gui.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speakers.py ux-artifacts/speakers-gui.png
+          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speakers.py ux-artifacts/dark/speakers-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/quit.py ux-artifacts/quit-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/refresh.py ux-artifacts/refresh-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/recording.py ux-artifacts/recording-gui.png
@@ -100,6 +102,9 @@ jobs:
               for folder in ['ux-artifacts','ux-artifacts/dark']:
                   assert struct.unpack('>II',Path(folder,f'{name}.png').read_bytes()[16:24]) == (1120,720)
           for folder in ['ux-artifacts', 'ux-artifacts/dark']:
+              assert struct.unpack('>II',Path(folder,'speakers.png').read_bytes()[16:24]) == (1120,720)
+              speakers = json.loads(Path(folder, 'speakers.json').read_text())
+              assert speakers['speakersDialog'] == dict(id='guest', name='Giulia', saveEnabled=True), speakers
               settings = json.loads(Path(folder, 'settings-transcription.json').read_text())
               assert settings['speechModels'] == ['whistle', 'parakeet-ultra-0.6b-int8'], settings
               assert settings['diarizationOn'] is True, settings

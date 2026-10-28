@@ -88,6 +88,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             ("back-library", self.back_to_library),
             ("search", self.toggle_search),
             ("export", self.show_export),
+            ("undo-speaker-merge", lambda *_: self.meeting_page.undo_speaker_merge() if self.meeting_page else None),
             ("play-pause", self._play_selected),
             ("skip-back", lambda *_: self.player.skip(-10000)),
             ("skip-forward", lambda *_: self.player.skip(10000)),

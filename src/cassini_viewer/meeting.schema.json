@@ -318,6 +318,31 @@
      "additionalProperties": true
     }
    ]
+  },
+  "speakerMerges": {
+   "type": "array",
+   "maxItems": 1000,
+   "items": {
+    "type": "object",
+    "properties": {
+     "from": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+     },
+     "into": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+     }
+    },
+    "required": [
+     "from",
+     "into"
+    ],
+    "additionalProperties": true
+   },
+   "$comment": "D24/UX16. Optional; version stays 1. An ordered history: readers apply entries in order and resolve chains (A->B then B->C shows A and B as C) for display, export and Search; transcript.json is never rewritten. Undo merge removes the last entry, so undoing B->C restores A->B. Writers append only when from and into are both speakers visible after resolution and from != into, so no cycle is written. Readers ignore an entry whose from or into is unknown, or that would create a cycle."
   }
  },
  "required": [
