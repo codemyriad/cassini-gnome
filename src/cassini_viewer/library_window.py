@@ -964,11 +964,11 @@ class LibraryWindow(Adw.ApplicationWindow):
                     inside = False
                 watched = inside and meeting.id == meeting_id(meeting.directory)
                 self.open_meeting(meeting, external=not watched)
-        except (OSError, ValueError):
-            # Keep the existing failed-open presentation until its copy is drawn.
-            window = self.get_application().new_window()
-            window.open_file(file)
-            window.present()
+        except (OSError, ValueError) as error:
+            # Import failed: retain the Library and show its diagnostic. Opening
+            # the readable header in the legacy player would disguise a failed
+            # copy, incomplete stream, or full Library as a successful import.
+            self.toast(str(error))
         return False
 
     def _close(self, *_args):
