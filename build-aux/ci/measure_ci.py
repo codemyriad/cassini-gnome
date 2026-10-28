@@ -29,6 +29,12 @@ def summarize(jobs):
     )
 
 
+def reported_minutes(usages):
+    if not usages or any(usage is None for usage in usages):
+        return None
+    return sum(platform["total_ms"] for usage in usages for platform in usage.values()) / 60000
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("commit")
@@ -42,6 +48,8 @@ def main():
         return json.loads(subprocess.check_output(["gh", "api", "repos/" + args.repo + path]))
 
     runs = api("/actions/runs?event=pull_request&head_sha=" + args.commit + "&per_page=100")["workflow_runs"]
+    if not runs:
+        raise ValueError("No pull-request workflows found for this commit")
     report = dict(commit=args.commit, event="pull_request", runs=[], jobs=[])
     for run in runs:
         # A single workflow here has at most 15 jobs. Fail clearly rather than
@@ -50,6 +58,10 @@ def main():
         if data["total_count"] > 100:
             raise ValueError("Job pagination is required for this larger matrix")
         report["runs"].append({k: run[k] for k in ("id", "name", "status", "conclusion", "run_attempt", "html_url")})
+        try:
+            report["runs"][-1]["usage"] = api("/actions/runs/" + str(run["id"]) + "/timing")["billable"]
+        except subprocess.CalledProcessError:
+            report["runs"][-1]["usage"] = None
         for job in data["jobs"]:
             item = {
                 k: job[k]
@@ -75,6 +87,7 @@ def main():
             )
             report["jobs"].append(item)
     report["summary"] = summarize(report["jobs"])
+    report["summary"]["githubReportedBillableMinutes"] = reported_minutes([r["usage"] for r in report["runs"]])
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report["summary"], indent=2))
 

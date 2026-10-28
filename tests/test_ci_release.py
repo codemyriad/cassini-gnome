@@ -70,3 +70,10 @@ def test_ci_minutes_round_each_job_and_unstarted_jobs_are_not_falsely_complete()
     assert result["jobCount"] == 3 and result["completedJobs"] == 2
     assert result["estimatedRoundedLinuxMinutes"] == 3
     assert result["executionMinutes"] == 62 / 60 and result["medianQueueSeconds"] == 5
+
+
+def test_usage_api_minutes_are_separate_from_rounded_resource_estimates():
+    usage = module("measure_ci").reported_minutes
+    assert usage([{"UBUNTU": {"total_ms": 0}}]) == 0
+    assert usage([{"UBUNTU": {"total_ms": 90000}}, {"UBUNTU": {"total_ms": 30000}}]) == 2
+    assert usage([None]) is None and usage([]) is None

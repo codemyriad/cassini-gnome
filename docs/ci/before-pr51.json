@@ -8,7 +8,19 @@
       "status": "completed",
       "conclusion": "success",
       "run_attempt": 1,
-      "html_url": "https://github.com/codemyriad/cassini-gnome/actions/runs/40678787352"
+      "html_url": "https://github.com/codemyriad/cassini-gnome/actions/runs/40678787352",
+      "usage": {
+        "UBUNTU": {
+          "total_ms": 0,
+          "jobs": 1,
+          "job_runs": [
+            {
+              "job_id": 122783870702,
+              "duration_ms": 0
+            }
+          ]
+        }
+      }
     },
     {
       "id": 40678787309,
@@ -16,7 +28,19 @@
       "status": "completed",
       "conclusion": "success",
       "run_attempt": 1,
-      "html_url": "https://github.com/codemyriad/cassini-gnome/actions/runs/40678787309"
+      "html_url": "https://github.com/codemyriad/cassini-gnome/actions/runs/40678787309",
+      "usage": {
+        "UBUNTU": {
+          "total_ms": 0,
+          "jobs": 1,
+          "job_runs": [
+            {
+              "job_id": 122783869560,
+              "duration_ms": 0
+            }
+          ]
+        }
+      }
     },
     {
       "id": 40678787316,
@@ -24,7 +48,19 @@
       "status": "completed",
       "conclusion": "success",
       "run_attempt": 1,
-      "html_url": "https://github.com/codemyriad/cassini-gnome/actions/runs/40678787316"
+      "html_url": "https://github.com/codemyriad/cassini-gnome/actions/runs/40678787316",
+      "usage": {
+        "UBUNTU": {
+          "total_ms": 0,
+          "jobs": 1,
+          "job_runs": [
+            {
+              "job_id": 122783869963,
+              "duration_ms": 0
+            }
+          ]
+        }
+      }
     },
     {
       "id": 40678787346,
@@ -32,7 +68,71 @@
       "status": "completed",
       "conclusion": "success",
       "run_attempt": 1,
-      "html_url": "https://github.com/codemyriad/cassini-gnome/actions/runs/40678787346"
+      "html_url": "https://github.com/codemyriad/cassini-gnome/actions/runs/40678787346",
+      "usage": {
+        "UBUNTU": {
+          "total_ms": 0,
+          "jobs": 14,
+          "job_runs": [
+            {
+              "job_id": 122784314323,
+              "duration_ms": 0
+            },
+            {
+              "job_id": 122784314606,
+              "duration_ms": 0
+            },
+            {
+              "job_id": 122784314647,
+              "duration_ms": 0
+            },
+            {
+              "job_id": 122784314660,
+              "duration_ms": 0
+            },
+            {
+              "job_id": 122784314693,
+              "duration_ms": 0
+            },
+            {
+              "job_id": 122784314715,
+              "duration_ms": 0
+            },
+            {
+              "job_id": 122784314726,
+              "duration_ms": 0
+            },
+            {
+              "job_id": 122784314757,
+              "duration_ms": 0
+            },
+            {
+              "job_id": 122784314762,
+              "duration_ms": 0
+            },
+            {
+              "job_id": 122784314779,
+              "duration_ms": 0
+            },
+            {
+              "job_id": 122784314782,
+              "duration_ms": 0
+            },
+            {
+              "job_id": 122784314841,
+              "duration_ms": 0
+            },
+            {
+              "job_id": 122784314899,
+              "duration_ms": 0
+            },
+            {
+              "job_id": 122784314902,
+              "duration_ms": 0
+            }
+          ]
+        }
+      }
     }
   ],
   "jobs": [
@@ -298,6 +398,7 @@
     "executionMinutes": 47.95,
     "estimatedRoundedLinuxMinutes": 56,
     "medianQueueSeconds": 5.0,
-    "note": "Linux per-job rounded minute estimate, not an invoice. Queue is started_at minus job created_at."
+    "note": "Linux per-job rounded minute estimate, not an invoice. Queue is started_at minus job created_at.",
+    "githubReportedBillableMinutes": 0.0
   }
 }

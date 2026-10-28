@@ -42,7 +42,9 @@ release still needs main to finish before the tag is pushed.
 Use `python3 build-aux/ci/measure_ci.py FULL_SHA --output report.json` with a
 read-only authenticated `gh`. It records every latest PR workflow attempt and
 job, execution duration and creation-to-start queue wait. Rounded Linux minutes
-are an estimate (each job rounds separately), not a billing invoice. Pending jobs
+are an estimate (each job rounds separately), not a billing invoice. The report
+also records GitHub's usage API totals separately; it reports zero billable
+minutes for the #51 control. Pending jobs
 remain explicitly incomplete. Compare complete, successful heads, and retain
 reports rather than attributing runner/network variance to a cache change.
 
