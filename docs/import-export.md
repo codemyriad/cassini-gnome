@@ -71,7 +71,6 @@ is converted to the export dialog's cancellation type only when its cancel event
 is set; unrelated IO interruptions remain errors. Empty embedded speaker IDs are
 unreadable, and a successfully written empty sidecar stays done even if the
 original portable file contained an empty transcript.
-||||||| parent of c0f90d2 (Validate received imports before publishing Library folders)
 Received imports normalize the copied filename to the shared lowercase `.opus`
 folder convention (including `.ogg`, `.OPUS` and backslashes in source names).
 The audio bytes stay unchanged. Source paths are normalized before taking the
@@ -81,7 +80,6 @@ removes the newly published folder. Failed imports leave the Library visible
 with the failure diagnostic instead of reopening the original in the legacy
 viewer. The isolated Open/drop probe covers both filename variants, deduplication
 and a header-readable stream missing its ending.
-||||||| parent of a41014d (Export the current meeting snapshot without GTK file IO)
 
 The scanner carries a received file's byte size into its immutable Meeting model;
 Export does not stat that file on the GTK thread. An open idle Export dialog

@@ -88,7 +88,6 @@ cannot play a previously selected meeting, Export follows pushed-page state,
 and repeated browser Stop buttons are disabled while their save is pending.
 The default native capture path was already canonicalized by #35; a regression
 asserts this under a symlinked Library.
-||||||| parent of d482279 (Retain the last browser observer behind a visible player)
 When the only visible window is a legacy player, it cannot take over browser
 polling from a hidden Library/Browser window. The hidden observer stays owned
 until capture saves, then the same saved-intent checkpoint runs before that
