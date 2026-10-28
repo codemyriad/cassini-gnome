@@ -17,7 +17,7 @@ def test_registration_origin_matches_the_pinned_manifest_key():
     raw = hashlib.sha256(base64.b64decode(manifest["key"], validate=True)).hexdigest()[:32]
     identifier = "".join(chr(ord("a") + int(char, 16)) for char in raw)
     assert identifier == companion.EXTENSION_ID
-    assert companion.ORIGIN == f"chrome-extension://{identifier}/"
+    assert f"chrome-extension://{identifier}/" == companion.ORIGIN
 
 
 def test_detects_the_four_installed_browsers_under_this_users_config(tmp_path):
