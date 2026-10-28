@@ -99,7 +99,14 @@ with tempfile.TemporaryDirectory() as tmp:
     window.open_meeting(live)
     page = window.recording_page
     assert page and not window.meeting_page and page.timer.get_label() == "00:12:48"
+    from unittest.mock import patch
+
+    with patch.object(Gio.AppInfo, "create_from_commandline", side_effect=GLib.Error("No control centre")):
+        page._check_sound()
     assert page.stop.get_sensitive()
+    assert not window.lookup_action("export").get_enabled()
+    window._play_selected()
+    assert not window.player.playing
     page.title_entry.set_text("Renamed while recording")
     buffer = page.notes_view.get_buffer()
     buffer.insert(buffer.get_end_iter(), "\nA new decision")
@@ -120,7 +127,28 @@ with tempfile.TemporaryDirectory() as tmp:
     # Closing/switching flushes a pending keystroke edit before debounce.
     buffer.insert(buffer.get_end_iter(), " updated")
     window.back_to_library()
-    until(lambda: json.loads((live.directory / "meeting.json").read_text())["notes"][-1]["text"].endswith(" updated"))
+    # Reopen the stale scanner object before its debounce; the pending draft
+    # must survive and cannot replace notes saved by the closed page.
+    window.open_meeting(live)
+    reopened = window.recording_page
+    assert reopened.notes.values()[-1]["text"].endswith(" updated")
+    assert reopened.title_entry.get_text() == "Renamed while recording"
+    reopened.update(live)
+    assert reopened.title_entry.get_text() == "Renamed while recording"
+    from concurrent.futures import Future
+
+    failed = Future()
+    failed.set_exception(OSError("Synthetic save failure"))
+    reopened._saving += 1
+    reopened._saved(failed, dict(notes=reopened.notes.values()))
+    assert reopened._dirty and reopened._notes_dirty
+
+    reopened_buffer = reopened.notes_view.get_buffer()
+    reopened_buffer.insert(reopened_buffer.get_end_iter(), "\nAfter reopening")
+    window.back_to_library()
+    until(lambda: json.loads((live.directory / "meeting.json").read_text())["notes"][-1]["text"] == "After reopening")
+    saved = json.loads((live.directory / "meeting.json").read_text())["notes"]
+    assert saved[-2]["text"].endswith(" updated")
     assert not window.recording_page
     # GNotification travels over the private bus, not a mocked Python method.
     window.open_meeting(live)
@@ -178,6 +206,36 @@ with tempfile.TemporaryDirectory() as tmp:
     browser_app.comfort.tick()
     until(lambda: "recording" not in services.notifications)
     session.finish()
+    # A native controller also drives notifications without a Library window.
+    from types import SimpleNamespace
+
+    native_session = RecordingSession(Path(os.environ["CASSINI_LIBRARY_DIR"]), "Native-only recording", source="gnome")
+    native_session.add_track("mic", "Me", "microphone", 48000, 1)
+    native_session.append("mic", bytes(96000), 0)
+    browser_app.recorder = SimpleNamespace(
+        session=native_session,
+        pipeline=object(),
+        starting=False,
+        stopping=False,
+        _finishing=False,
+        levels=[0.2, 0.5],
+        line=None,
+        minutes_left=50,
+        _start_us=GLib.get_monotonic_time(),
+    )
+    browser_app.comfort.tick()
+    until(
+        lambda: (
+            "recording" in services.notifications
+            and "Native-only recording" in services.notifications["recording"]["body"]
+        )
+    )
+    assert native_session.directory.name in browser_app.comfort.active()
+    assert len(browser_app.get_windows()) == 1 and not browser_window.get_visible()
+    browser_app.recorder.pipeline = None
+    native_session.finish()
+    browser_app.comfort.tick()
+    until(lambda: "recording" not in services.notifications)
     browser_window.close()
     browser_app.comfort.close()
 
@@ -189,6 +247,31 @@ buffer.insert(buffer.get_end_iter(), "First")
 now[0] = 22000
 buffer.insert(buffer.get_end_iter(), " revised\nSecond")
 assert notes.values() == [dict(atMs=12345, text="First revised"), dict(atMs=22000, text="Second")], notes.values()
+# Split an existing body and type before the displayed timestamp.
+now[0] = 33000
+buffer.insert(buffer.get_iter_at_offset(len("00:00:12  First")), "\n")
+assert notes.values() == [
+    dict(atMs=12345, text="First"),
+    dict(atMs=33000, text=" revised"),
+    dict(atMs=22000, text="Second"),
+]
+buffer.insert(buffer.get_start_iter(), "At column zero ")
+assert notes.values()[0] == dict(atMs=12345, text="At column zero First")
+# Native interactive deletion, including every timestamp and newline.
+buffer.delete_interactive(*buffer.get_bounds(), True)
+assert notes.values() == [] and buffer.get_char_count() == 0
+buffer.insert(buffer.get_end_iter(), "One\nTwo\nThree")
+assert [n["text"] for n in notes.values()] == ["One", "Two", "Three"]
+# Removing across lines merges bodies and retains the first note's time.
+first = buffer.get_iter_at_offset(len("00:00:33  O"))
+last = buffer.get_iter_at_offset(len("00:00:33  One\n00:00:33  Tw"))
+buffer.delete_interactive(first, last, True)
+assert [n["text"] for n in notes.values()] == ["Oo", "Three"]
+undo_buffer = Gtk.TextBuffer(enable_undo=True)
+undo_notes = TimedNotes(undo_buffer, [], lambda: 0, lambda: None)
+undo_buffer.insert(undo_buffer.get_end_iter(), "Undo me")
+undo_buffer.undo()
+assert undo_notes.values() == [], undo_notes.values()
 services.close()
 print(
     "PASS portal binding/denial/activation, real GNotification payload/updates/Open, Recording page, rename, pinned notes, flush, silence and disk line"

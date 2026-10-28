@@ -37,7 +37,7 @@ def edit_recording(directory, *, title=None, notes=None):
     directory = Path(directory).absolute()
     changes = {}
     if title is not None:
-        value = title.strip()
+        value = title.strip()[:500]
         changes.update(title=value or None, titleSource="user" if value else "meeting-window")
     if notes is not None:
         changes["notes"] = notes

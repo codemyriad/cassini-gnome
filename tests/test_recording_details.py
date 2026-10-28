@@ -98,3 +98,29 @@ def test_targeted_browser_stop_does_not_stop_another_meeting(tmp_path, monkeypat
     monkeypatch.setattr(browser_service, "request", request)
     assert stop_browser_captures(paths[1]) == [paths[1]]
     assert calls == ["1"]
+
+
+def test_long_live_title_is_bounded_without_dropping_batched_notes(tmp_path, monkeypatch):
+    from cassini_viewer.meeting_store import read_metadata
+    from cassini_viewer.recording_details import edit_recording
+
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    session = RecordingSession(tmp_path)
+    notes = [dict(atMs=1, text="Retain this decision")]
+    edit_recording(session.directory, title="x" * 1000, notes=notes)
+    value = read_metadata(session.directory)
+    assert value["title"] == "x" * 500 and value["notes"] == notes
+    session.finish()
+
+
+def test_default_capture_directory_is_canonical_under_symlinked_library(tmp_path, monkeypatch):
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "Library"
+    link.symlink_to(real, target_is_directory=True)
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(link))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    session = RecordingSession(None)
+    assert session.directory.parent == real
+    assert session.directory == session.directory.resolve()
+    session.finish()

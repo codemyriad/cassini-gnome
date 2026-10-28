@@ -783,6 +783,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.play_button.set_sensitive(False)
 
     def _play_selected(self):
+        if self.recording_page:
+            return
         if self.search_page:
             if self.search_page.hit and self._loaded_key == self.search_page.hit.key:
                 self.player.toggle()
@@ -847,6 +849,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         if meeting.lifecycle in ("recording", "saving"):
             self.recording_page = RecordingPage(self, meeting)
             self.navigation.push(self.recording_page)
+            self._refresh_export()
             return
         if not self._ensure_player(meeting):
             desired = FolderPlayer if meeting.origin == "own" else Player
@@ -906,6 +909,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         if page is self.recording_page:
             page.close()
             self.recording_page = None
+            self._refresh_export()
         if page is self.meeting_page:
             page.close()
             self.meeting_page = None

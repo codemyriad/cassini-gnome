@@ -73,3 +73,18 @@ The private-Xvfb process-exit probe covers native and simulated browser hidden
 completion with a delayed writing-down job, Keep recording with two windows,
 reopening two hidden windows, and interrupted native finalization. The browser
 stop unit cases cover a concurrent completed stop and an already-running save.
+
+Live note editing maps body edits independently of the displayed timestamp spans:
+splitting a line timestamps the new line, typing before a timestamp edits that
+note's body, and multi-line deletion/undo retains the intended bodies and times.
+Pending title/note drafts belong to the application editor, so reopening before
+a scanner debounce or receiving an old activity snapshot cannot replace an edit.
+Failed saves retain their dirty fields for retry. Titles use the schema's
+500-character limit in the entry and writer, preserving batched notes.
+
+Missing desktop sound settings are caught as a launch diagnostic. Native capture
+notifications also work when the Library window is absent. Recording-page Space
+cannot play a previously selected meeting, Export follows pushed-page state,
+and repeated browser Stop buttons are disabled while their save is pending.
+The default native capture path was already canonicalized by #35; a regression
+asserts this under a symlinked Library.

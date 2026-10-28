@@ -38,6 +38,7 @@ class RecordingComfort:
         self.clocks = {}
         self.futures = {}
         self.loading = {}
+        self.drafts = {}
         self.editor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-meeting-edits")
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-live-details")
         self.timer = GLib.timeout_add_seconds(1, self.tick) if automatic else 0
@@ -49,7 +50,20 @@ class RecordingComfort:
         self._browser_inhibit_requested = False
 
     def edit(self, directory, **changes):
+        draft = dict(changes)
+        if "title" in draft:
+            draft["title"] = draft["title"].strip()[:500] or None
+        self.drafts.setdefault(str(directory), {}).update(draft)
         return self.editor.submit(edit_recording, directory, **changes)
+
+    def draft(self, meeting):
+        """Retain optimistic edits until the scanner has observed every field."""
+        key = str(meeting.directory)
+        draft = self.drafts.get(key, {})
+        if draft and all(meeting.metadata.get(field) == value for field, value in draft.items()):
+            self.drafts.pop(key, None)
+            return {}
+        return dict(draft)
 
     def active(self):
         from pathlib import Path
@@ -58,6 +72,14 @@ class RecordingComfort:
         from .library_location import owned_directory
 
         controllers = {}
+        native = self.app.recorder
+        if recorder_busy(native) and native.session:
+            directory = native.session.directory
+            controllers[meeting_id(directory)] = "saving" if native.stopping else "recording"
+            if directory.name not in self.known and directory.name not in self.loading:
+                future = self.executor.submit(live_meeting, directory, controllers[meeting_id(directory)])
+                self.loading[directory.name] = future
+                future.add_done_callback(lambda f, key=directory.name: GLib.idle_add(self._loaded, key, f))
         for window in self.app.get_windows():
             controllers.update(getattr(window, "_activity", {}))
             for status in getattr(window, "_browser_snapshot", {}).get("statuses", []):
@@ -109,7 +131,7 @@ class RecordingComfort:
                 self._disk_notification(None, native.line, native.minutes_left, key=key)
             if native.pipeline is not None:
                 now = GLib.get_monotonic_time() / 1e6
-                self.clocks.setdefault(key, SilenceClock(now)).update(native.levels[0], now)
+                state["silent"] = self.clocks.setdefault(key, SilenceClock(now)).update(native.levels[0], now)
 
     def elapsed(self, meeting):
         native = self.app.recorder
@@ -206,7 +228,7 @@ class RecordingComfort:
         state.update(levels=value["levels"], voices=value["voices"], minutes=value["minutes"])
         if value["recent_sound"]:
             now = GLib.get_monotonic_time() / 1e6
-            self.clocks.setdefault(meeting.key, SilenceClock(now)).update(1, now)
+            state["silent"] = self.clocks.setdefault(meeting.key, SilenceClock(now)).update(1, now)
         if value["reserve"]:
             state["line"] = "errors.diskStopped.line"
             self.app.stop_browser_recordings(meeting.directory)
