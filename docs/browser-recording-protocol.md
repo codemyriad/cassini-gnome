@@ -97,3 +97,18 @@ Run the pinned Node unit/conformance suite with
 `node --test browser-protocol/extension/tests/*.test.cjs`. Its optional independent
 vectors live beside that canonical tree. The installed `browser-extension` copy
 is proved byte-identical first by `verify.py`; real browser tests load that copy.
+
+## Browser call lifetime
+
+For independent captures, a reachable page reporting zero call sources ends the
+meeting after a two-second grace; it does not select system sound. Losing the
+page or companion invokes Q4. A fallback keeps its existing folder and sources
+when an active call returns, without switching back to browser audio. If no
+active call returns within 30 seconds, Cassini stops and saves it, including when
+the browser connection itself is gone. The broker advances these deadlines on
+busy accept traffic as well as idle timeouts.
+
+The private recording harness proves hang-up with a tab left open, reload,
+worker reconnection, expiry without an active call, and unaffected simultaneous
+meetings. Unit tests advance only the recorded missing timestamp to exercise the
+same deadline branches without wall-clock sleeps.

@@ -21,6 +21,8 @@ from pathlib import Path
 from uuid import uuid4
 
 MAX_PACKET = 512 * 1024
+CALL_END_GRACE = 2
+BROWSER_RETURN_GRACE = 30
 
 
 class StartRejected(ValueError):
@@ -168,6 +170,9 @@ class BrowserService:
         self.recordings = []
         self.captures = {}
         self.call_captures = {}
+        self._capture_missing_since = {}
+        self._capture_observed = set()
+        self._capture_policy_pending = set()
         self.capture_parent, self.tap_factory = capture_parent, tap_factory
         self.applications = {}
         self.application_pids = {}
@@ -693,9 +698,54 @@ class BrowserService:
         if self.closed.is_set() or self._stopping_all.is_set():
             return
         tasks = []
-        fallbacks = []
+        capture_tasks = []
         with self.lock:
             generation = self._stop_generation
+            now = time.monotonic()
+            observed = {
+                state.get("captureId"): (browser, tab, browser.meetings.get(tab))
+                for browser in self.browsers.values()
+                if not browser.closed and browser.status_seen
+                for tab, state in browser.states.items()
+                if state.get("recording")
+            }
+            self._capture_observed.update(observed)
+            self._capture_observed.intersection_update(self.captures)
+            for key, capture in self.captures.items():
+                if (
+                    capture.finished
+                    or capture.starting
+                    or capture.stopping
+                    or capture.stop_requested.is_set()
+                    or key not in self._capture_observed
+                ):
+                    self._capture_missing_since.pop(key, None)
+                    continue
+                peer = observed.get(key)
+                if peer is not None and peer[2] is not None and peer[2]["sourceCount"] > 0:
+                    self._capture_missing_since.pop(key, None)
+                    continue
+                since = self._capture_missing_since.setdefault(key, now)
+                # A reachable, still-recording page with zero sources has hung
+                # up. An absent page/companion gets a bounded reconnection grace
+                # while Q4 keeps audio. Never switch a fallback back to browser.
+                ended = (
+                    peer is not None
+                    and peer[2] is not None
+                    and not capture.browser_lost
+                    and peer[0].states[peer[1]].get("stopping") is not True
+                )
+                identifier = f"{peer[0].id}:{peer[1]}" if peer is not None else None
+                action = None
+                if now - since >= (CALL_END_GRACE if ended else BROWSER_RETURN_GRACE):
+                    action = "stop"
+                elif not ended and not capture.browser_lost and (peer is not None or now - since >= CALL_END_GRACE):
+                    action = "fallback"
+                if action and key not in self._capture_policy_pending:
+                    self._capture_policy_pending.add(key)
+                    capture_tasks.append((key, capture, identifier, action))
+            for key in self._capture_missing_since.keys() - self.captures.keys():
+                self._capture_missing_since.pop(key, None)
             for browser in self.browsers.values():
                 if browser.closed or not browser.status_seen:
                     continue
@@ -705,13 +755,11 @@ class BrowserService:
                         continue
                     if browser.meetings.get(tab, {}).get("sourceCount", 0) > 0:
                         browser.missing_since.pop(tab, None)
-                    elif (capture := self.captures.get(state.get("captureId"))) is not None:
-                        if not capture.browser_lost:
-                            browser.scheduled.add(tab)
-                            fallbacks.append((f"{browser.id}:{tab}", capture))
+                    elif state.get("captureId") in self.captures:
+                        continue  # Independently owned sessions are handled above.
                     elif tab not in browser.missing_since:
                         browser.missing_since[tab] = time.monotonic()
-                    elif time.monotonic() - browser.missing_since[tab] >= 2:
+                    elif time.monotonic() - browser.missing_since[tab] >= CALL_END_GRACE:
                         browser.scheduled.add(tab)
                         tasks.append((f"{browser.id}:{tab}", "stop"))
                         browser.missing_since[tab] = float("inf")
@@ -738,8 +786,26 @@ class BrowserService:
                                 break
         for identifier, action in tasks:
             self.workers.submit(self._automatic, identifier, action, generation)
-        for identifier, capture in fallbacks:
-            self.workers.submit(self._fallback, identifier, capture)
+        for key, capture, identifier, action in capture_tasks:
+            self.workers.submit(self._capture_lifecycle, key, capture, identifier, action)
+
+    def _capture_lifecycle(self, key, capture, identifier, action):
+        try:
+            if action == "fallback":
+                if identifier is not None:
+                    self._fallback(identifier, capture)
+                else:
+                    capture.fallback()
+            else:
+                # Save before waiting for a potentially unreachable extension.
+                capture.stop()
+                if identifier is not None:
+                    self.command(identifier, "stop")
+        except (OSError, ValueError, TimeoutError):
+            logging.getLogger(__name__).exception("Browser capture lifecycle: %s", action)
+        finally:
+            with self.lock:
+                self._capture_policy_pending.discard(key)
 
     def _fallback(self, identifier, capture):
         try:
@@ -943,7 +1009,10 @@ class BrowserService:
                             idle_since = time.monotonic()
                             threading.Thread(target=self.handle, args=(connection,), daemon=True).start()
                         except TimeoutError:
-                            self.policy()
+                            pass
+                        # UI/PCM traffic may keep accept() busy indefinitely;
+                        # call-end and return deadlines must still advance.
+                        self.policy()
                         if idle_timeout is not None:
                             with self.lock:
                                 active = (

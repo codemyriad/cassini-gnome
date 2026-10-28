@@ -17,6 +17,19 @@ export async function run({context, call, join, recording, samples, power, poll,
   await call({action: 'sources-done'});
  }
  try {
+  // A normal hang-up keeps the tab/companion reachable. It must save the
+  // meeting after the call-end grace, without ever starting system capture.
+  const hungUp = await join('Hang-up with tab still open', 770, 1100, id);
+  await call({action: 'record'});
+  const hungUpDirectory = await recording('Hang-up with tab still open');
+  await hungUp.meeting.evaluate(() => meeting.pc.close());
+  const savedHangup = await poll(async () => {
+   const current = await samples(hungUpDirectory);
+   return current.manifest.state === 'completed' && current;
+  }, 'hang-up saves while the tab remains open');
+  assert.ok(!hungUp.meeting.isClosed());
+  assert.ok(!savedHangup.tracks.some(t => t.kind === 'system'), 'hang-up never falls back');
+  evidence.scenarios.push({name: 'hang-up-tab-open-stops-without-fallback', directory: hungUpDirectory});
   const first = await join('Fallback browser meeting', 440, 880, id);
   await join('Unaffected browser meeting', 550, 990, id);
   await call({action: 'record'});
@@ -85,6 +98,10 @@ export async function run({context, call, join, recording, samples, power, poll,
   const afterRestart = await samples(directory);
   assert.equal(afterRestart.manifest.events.filter(e => e.type === 'othersSource').at(-1).source, 'system');
   assert.equal(afterRestart.tracks.filter(t => t.kind === 'system').length, 1);
+  await poll(async () => (await samples(directory)).manifest.state === 'completed',
+   'fallback saves when no active call returns within thirty seconds', 45000);
+  assert.equal((await samples(otherDirectory)).manifest.state, 'recording');
+  evidence.scenarios.push({name: 'reload-fallback-without-return-stops-at-bounded-grace', directory});
   await call({action: 'notification-stop'});
   await poll(async () => !(await call()).statuses.some(s => s.recording), 'hidden Stop saves all fallbacks');
   assert.equal((await samples(directory)).manifest.state, 'completed');
