@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """About exposes downloaded notices through a local native launcher, without a fetch."""
 
+import json
 import os
 import sys
 import time
@@ -46,15 +47,47 @@ app.register(None)
 app.activate()
 window = app.get_active_window()
 until(lambda: not window._pending)
+
+
+def labels(widget):
+    values = [widget.get_text()] if isinstance(widget, Gtk.Label) else []
+    child = widget.get_first_child()
+    while child:
+        values += labels(child)
+        child = child.get_next_sibling()
+    return values
+
+
 launched = []
 with patch.object(ModelStore, "fetch_manifest", side_effect=AssertionError("About fetched a manifest")):
+    empty = app.on_about()
+    assert "Licences of downloaded models" not in labels(empty)
+    empty.force_close()
+    revision = model_root() / "fixture-model" / ("a" * 64)
+    revision.mkdir(parents=True)
+    (revision / "weights.bin").write_bytes(b"synthetic private fixture")
+    (revision / ".cassini-model.json").write_text(
+        json.dumps(
+            dict(
+                id="fixture-model",
+                source_sha256="a" * 64,
+                files=[dict(path="weights.bin")],
+            )
+        )
+    )
     about = app.on_about()
+    assert "Licences of downloaded models" in labels(about)
     with patch.object(
         Gtk.FileLauncher, "launch", lambda launcher, *_args: launched.append(launcher.get_file().get_path())
     ):
         assert about.emit("activate-link", notice.as_uri())
         assert launched == [str(notice)]
     about.force_close()
+    ModelStore().remove("fixture-model", "a" * 64)
+    assert notice.is_file()  # A kept notice alone must not expose the link.
+    removed = app.on_about()
+    assert "Licences of downloaded models" not in labels(removed)
+    removed.force_close()
 window.close()
 app.do_shutdown()
 print("PASS About: local NOTICE.txt native launch, no model network request")

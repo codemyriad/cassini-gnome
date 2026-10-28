@@ -61,6 +61,8 @@ class CassiniApplication(Adw.Application):
         self._recording_cookie = 0
         self.recording_error = None
         self.record_first = None
+        self.settings_dialog = None
+        self.library_relocator = None
         self.comfort = None
         self.global_shortcut = None
         self._pending_recording = None
@@ -68,6 +70,7 @@ class CassiniApplication(Adw.Application):
 
         self._add_action("open", self.on_open, ["<primary>o"])
         self._add_action("about", self.on_about)
+        self._add_action("preferences", self.on_preferences, ["<primary>comma"])
         self._add_action("quit", self.on_quit, ["<primary>q"])
         self._add_action("record", self.on_record, ["<primary>r"])
         self._add_action("browser-meetings", self.on_browser_meetings)
@@ -95,10 +98,13 @@ class CassiniApplication(Adw.Application):
         from .recording_comfort import RecordingComfort
 
         self.comfort = RecordingComfort(self, automatic=os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1")
+        from .library_relocator import LibraryRelocator
+
+        self.library_relocator = LibraryRelocator(self)
         if not os.environ.get("CASSINI_SCREENSHOT_ISOLATED") and not os.environ.get("CASSINI_ISOLATED_AUDIO"):
             from .global_shortcut import GlobalShortcut
 
-            self.global_shortcut = GlobalShortcut(self.on_global_record)
+            self.global_shortcut = GlobalShortcut(self.on_global_record, settings=self.recording_settings)
 
     def _add_action(self, name, callback, accels=None):
         action = Gio.SimpleAction.new(name, None)
@@ -242,7 +248,6 @@ class CassiniApplication(Adw.Application):
             self.on_record()
 
     def start_native(self, *, test=False):
-        from .library import library_root
         from .native_recorder import NativeRecorder
 
         if self.recorder is None:
@@ -260,7 +265,7 @@ class CassiniApplication(Adw.Application):
                 player.pause()
         self.hold()
         self._native_held = True
-        self.recorder.start(library_root(), test=test)
+        self.recorder.start(test=test)
 
     def _native_started(self, _recorder, path):
         self._pending_recording = path
@@ -421,6 +426,8 @@ class CassiniApplication(Adw.Application):
 
     def begin_exit(self):
         self._quitting = True
+        if self.library_relocator:
+            self.library_relocator.close()
         self._transcription_generation += 1
         if getattr(self, "_capture_background", False):
             self._capture_background = False
@@ -449,6 +456,36 @@ class CassiniApplication(Adw.Application):
         self.begin_exit()
         Adw.Application.do_shutdown(self)
 
+    def move_library(self, destination, parent):
+        from .capture_guard import capture_targets
+        from .strings import text
+
+        if any(capture_targets(self)):
+            dialog = Adw.AlertDialog(heading=text("confirm.moveLibrary.title"), body=text("confirm.moveLibrary.body"))
+            dialog.add_response("cancel", text("common.cancel"))
+            dialog.add_response("move", text("confirm.moveLibrary.primary"))
+            dialog.set_response_appearance("move", Adw.ResponseAppearance.SUGGESTED)
+            dialog.set_default_response("move")
+            dialog.set_close_response("cancel")
+
+            def response(_dialog, choice):
+                self._move_confirmation = None
+                if choice == "move":
+                    self.library_relocator.move(destination)
+
+            dialog.connect("response", response)
+            self._move_confirmation = dialog
+            dialog.present(self.get_active_window())
+        else:
+            self.library_relocator.move(destination)
+
+    def on_preferences(self, *_args):
+        from .settings_dialog import SettingsDialog
+
+        if self.settings_dialog is None or self.settings_dialog.closed:
+            self.settings_dialog = SettingsDialog(self)
+        self.settings_dialog.present(self.get_active_window())
+
     def on_about(self, *_args):
         about = Adw.AboutDialog(
             application_name=_("Cassini"),
@@ -466,12 +503,13 @@ class CassiniApplication(Adw.Application):
         # Translators: Replace "translator-credits" with your name/username, and optionally an email or URL.
         about.set_translator_credits(_("translator-credits"))
         about.add_link(_("Cassini Portable Meeting Format"), "https://format.gocassini.com/")
-        from .model_download import model_root
+        from .model_download import has_downloaded_models, model_root
+        from .strings import text
 
         notice = model_root() / "NOTICE.txt"
-        if notice.is_file():
+        if notice.is_file() and has_downloaded_models():
             uri = notice.as_uri()
-            about.add_link(notice.name, uri)  # Actual local filename, not new product copy.
+            about.add_link(text("about.modelNotices"), uri)
 
             def local_notice(_dialog, target):
                 if target == uri:

@@ -169,24 +169,34 @@ class RecordingSession:
     def __init__(
         self, parent, title="Browser recording", source="chromium", *, clock=time.monotonic, writer_factory=WAVWriter
     ):
-        self.clock = clock
-        self.writer_factory = writer_factory
-        identifier = str(uuid4())
-        self.directory = Path(parent) / f"Recording-{identifier}"
-        self.directory.mkdir(mode=0o700, parents=True)
-        self.manifest = {
-            "version": 1,
-            "id": identifier,
-            "createdAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "title": optional_string(title, "Browser recording", "state")[:500],
-            "source": source,
-            "state": "recording",
-            "tracks": [],
-        }
-        self.writers = {}
-        self.finished = False
-        self._last_checkpoint = 0
-        self.checkpoint()
+        from contextlib import nullcontext
+
+        from .library_location import capture_lease, primary, routing
+
+        self._lease_fd = None
+        default_parent = parent is None
+        with routing() if parent is None else nullcontext():
+            parent = primary().resolve() if parent is None else parent
+            self.clock = clock
+            self.writer_factory = writer_factory
+            identifier = str(uuid4())
+            self.directory = Path(parent) / f"Recording-{identifier}"
+            self.directory.mkdir(mode=0o700, parents=True)
+            self.manifest = {
+                "version": 1,
+                "id": identifier,
+                "createdAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "title": optional_string(title, "Browser recording", "state")[:500],
+                "source": source,
+                "state": "recording",
+                "tracks": [],
+            }
+            self.writers = {}
+            self.finished = False
+            self._last_checkpoint = 0
+            self.checkpoint()
+            if default_parent:
+                self._lease_fd = capture_lease(identifier)
 
     def checkpoint(self):
         path = self.directory / "session.json"
@@ -301,14 +311,19 @@ class RecordingSession:
         if problem:
             self.manifest.update(problem=problem[:1000], problemKind=problem_kind)
         self.manifest["state"] = "interrupted" if problem else "completed"
-        self.checkpoint()
+        try:
+            self.checkpoint()
+        finally:
+            if self._lease_fd is not None:
+                os.close(self._lease_fd)
+                self._lease_fd = None
         if failure:
             raise failure
 
 
 class BrowserHost:
     def __init__(self, directory=None):
-        self.directory = Path(directory) if directory else Path.home() / "Music" / "Cassini"
+        self.directory = Path(directory) if directory is not None else None
         self.session = None
         self.sequences = {}
         self.stopped = False

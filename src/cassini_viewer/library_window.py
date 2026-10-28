@@ -34,6 +34,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.read_button = None
         self._preview_key = None
         self._loaded_key = None
+        self._loaded_directory = None
         self.snapshot = None
         self._observed_phases = None
         self.meeting_page = None
@@ -190,6 +191,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             # Existing, undrawn GNOME primary-menu copy is retained (HARMONY 11).
             menu.append(_("Open…"), "app.open")
             menu.append(text("common.exportEllipsis"), "win.export")
+            menu.append(text("settings.title"), "app.preferences")
             menu.append(_("_About Cassini"), "app.about")
             button = Gtk.MenuButton(
                 icon_name="open-menu-symbolic", menu_model=menu, tooltip_text=text("common.mainMenu"), primary=True
@@ -247,6 +249,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             )
         )
         footer.append(label(text("firstRun.footer"), "small", "dim-label"))
+        self.privacy_footer = footer
         outer.append(footer)
         view.set_content(outer)
         self.root_box.add_named(view, "empty")
@@ -518,6 +521,18 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.get_application().observe_library(snapshot, self._observed_phases)
         self._observed_phases = {m.key: (m.lifecycle, m.capture_state) for m in snapshot.meetings}
         self.snapshot = snapshot
+        from .library_location import initial_root, primary
+
+        # The published first-run footer names the original location literally.
+        # Do not claim that path after an explicit relocation (HARMONY 11).
+        self.privacy_footer.set_visible(primary() == initial_root())
+        loaded = next((m for m in snapshot.meetings if m.key == self._loaded_key), None)
+        if loaded and not self._external_meeting and self._loaded_directory != loaded.directory:
+            position, playing = self.player.position, self.player.playing
+            if self._ensure_player(loaded):
+                self.player.seek(position)
+                if playing:
+                    self.player.play()
         if self.search_page:
             self.search_page.update(snapshot)
         if self.recording_page:
@@ -781,7 +796,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.player.toggle()
 
     def _ensure_player(self, meeting):
-        if self._loaded_key == meeting.key:
+        if self._loaded_key == meeting.key and self._loaded_directory == meeting.directory:
             return not self._playback_failed
         if not meeting.has_audio or (meeting.origin == "own" and not FolderPlayer.can_play(meeting)):
             return False
@@ -800,6 +815,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._playback_error(self.player, str(error))
         if not self._playback_failed:
             self._loaded_key = meeting.key
+            self._loaded_directory = meeting.directory
         return not self._playback_failed
 
     def _stop_playback(self, *, clear_selection=False):
@@ -909,7 +925,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             path = Path(file.get_path())
             if path.is_dir() or path.name == "session.json":
                 return load_open_meeting(path, self.monitor.scanner.root), False
-            return import_received(path, self.monitor.scanner.root), True
+            return import_received(path), True
 
         self._opening_files += 1
         future = self.monitor._executor.submit(opened)
@@ -927,9 +943,13 @@ class LibraryWindow(Adw.ApplicationWindow):
                 self._pending_selection = meeting.key
                 self.monitor.refresh_now()
             else:
-                watched = meeting.directory.parent == self.monitor.scanner.root.resolve() and meeting.id == meeting_id(
-                    meeting.directory
-                )
+                from .library_location import owned_directory
+
+                try:
+                    inside = owned_directory(meeting.directory) == meeting.directory
+                except ValueError:
+                    inside = False
+                watched = inside and meeting.id == meeting_id(meeting.directory)
                 self.open_meeting(meeting, external=not watched)
         except (OSError, ValueError):
             # Keep the existing failed-open presentation until its copy is drawn.

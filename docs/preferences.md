@@ -1,0 +1,25 @@
+# Preferences implementation (D15)
+
+The native four-page `Adw.PreferencesDialog` opens from the primary menu or Ctrl+comma. Search is disabled. Recording uses the same GSettings value as RecordFirst, inverted for “Explain recording before the first one”. The browser auto-record switch is owned here rather than Browser meetings; broker observation and writes run off GTK. A last explicit toggle is saved even if the dialog closes before an observation finishes.
+
+The record-anywhere binding remains desktop-owned. The GlobalShortcuts portal is queried before binding; an existing record action is registered without a replacement preferred trigger. Change invokes ConfigureShortcuts and accepts the new description through ShortcutsChanged. GSettings caches its display description, not a parsed localized accelerator. An unavailable portal leaves Change insensitive.
+
+Transcription shows only the bundled Whistle row, its actual installed weight-file size when available, Included and In use for new meetings. The row is hidden in unsupported/unbundled builds. It offers no future model or speaker controls. The updates bullet is absent because the application has no updater.
+
+## Moving the Library (D15.1)
+
+The GNOME-owned destination and pending move plan live in `$XDG_CONFIG_HOME/cassini/library.json`, with an append-only progress journal beside it. The new folder becomes primary before moves begin. Native and browser capture resolve that primary when creating each session; a short routing lock serializes folder creation with plan publication. Capture activity is protected by per-session advisory leases in the configuration directory, independent of broker polling; no session.json or extension-protocol fields change. This does not serialize recordings with one another.
+
+Idle meetings move one folder at a time without overwrite. Cross-filesystem copies stream and verify sizes and SHA256 before publication and deletion; cancellation leaves the complete original. The read-only copy runs without holding the metadata lock; publication takes that lock and rechecks whether the meeting acquired a writer. Edits never wait behind a whole large-file copy. Edits already queued with an old path follow the journaled alias after publication. Captures, finalization and queued/running writing-down jobs retain their paths until idle. The scanner watches the primary root and the exact pending folders from old roots, including failed moves, without adopting unrelated old-root folders. Duplicate basenames remain two rows with distinct internal keys.
+
+Each completed/failed folder is fsynced as a small journal append. The plan is compacted once per batch, avoiding a whole-plan rewrite per meeting. A generation makes compaction crash safe; incomplete final journal records are ignored, and an already-published complete folder is recovered on restart. Pending jobs and failures survive quit. Try again selects only failed entries. Closing the app cancels the copy worker without waiting on GTK; an unfinished folder remains pending for the next launch.
+
+Received imports can finish copying while the primary changes; publication resolves the current destination again and verifies a copied staging folder if needed. Search creates a new cache for a changed primary and updates every hit to the current meeting path. Playback is rebound to relocated audio while retaining its position.
+
+The Library tab uses the published Moving / waiting / failed copy, including singular forms. Browser status uses Connected for an unknown browser. About shows Licences of downloaded models only while a published downloaded model exists; a kept NOTICE.txt after Remove is insufficient.
+
+## Isolated evidence
+
+`tests/ui/settings.py` drives native Preferences against a private D-Bus portal double and real private browser broker. It verifies both first-record directions, ConfigureShortcuts/ShortcutsChanged, re-registration preserving desktop choice, automatic recording persistence, connected browser status and close during an outstanding choice. `tests/recording/app-control.mjs` uses the real extension and private Pulse container to verify discovery, recording, Stop and automatic recording through Preferences.
+
+`build-aux/ux-boards.sh` renders settings-recording and settings-transcription from the main fixture at 1120×720, in light and dark modes. These capture the native dialog over the Library; current libadwaita uses an inline page switcher in its title bar rather than the mock-up’s separate title/tab rows. No desktop screenshot or real user audio device is accessed. Unit move tests include a real cross-filesystem transfer into a private `/dev/shm` directory, collisions, low space, publication failure, source changes, concurrent capture leases, deferred writing, restart recovery and linear journal writes. `tests/ui/library-move.py` uses synthetic native PCM sources, the real chooser callback/confirmation and GIO watches to verify retained rows, failed-only retry, recording finalization, new capture routing and rebuilt Search.

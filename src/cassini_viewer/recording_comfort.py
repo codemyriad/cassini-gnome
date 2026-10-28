@@ -54,7 +54,8 @@ class RecordingComfort:
     def active(self):
         from pathlib import Path
 
-        from .library import library_root, meeting_id
+        from .library import meeting_id
+        from .library_location import owned_directory
 
         controllers = {}
         for window in self.app.get_windows():
@@ -62,10 +63,11 @@ class RecordingComfort:
             for status in getattr(window, "_browser_snapshot", {}).get("statuses", []):
                 if not status.get("recording") or not isinstance(status.get("path"), str):
                     continue
-                directory = Path(status["path"]).resolve()
-                identifier = meeting_id(directory)
-                if directory.parent != library_root().resolve() or identifier is None:
+                try:
+                    directory = owned_directory(Path(status["path"]))
+                except ValueError:
                     continue
+                identifier = meeting_id(directory)
                 controllers[identifier] = "recording"
                 if directory.name not in self.known and directory.name not in self.loading:
                     future = self.executor.submit(live_meeting, directory)

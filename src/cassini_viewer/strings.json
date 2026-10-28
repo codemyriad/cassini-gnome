@@ -3914,6 +3914,248 @@
    "status": "drawn"
   },
   {
+   "id": "settings.recording.shortcut.title",
+   "en": "Start or stop recording from anywhere",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15). Recording tab row. The subtitle is the current shortcut (common.shortcut.recordAnywhere when unchanged); trailing button settings.recording.changeShortcut.",
+   "status": "harmony"
+  },
+  {
+   "id": "settings.recording.firstRecord.title",
+   "en": "Explain recording before the first one",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15). Recording tab switch. On by default; turning it off is the same as \"Don't show again\" on the RecordFirst dialog, and turning it back on shows that dialog again next time.",
+   "status": "harmony"
+  },
+  {
+   "id": "settings.library.folder.title",
+   "en": "Library folder",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15). Library tab row. Subtitle: the folder path as the person knows it (~/Music/Cassini shown as \"Music › Cassini\"). Trailing buttons settings.library.show and settings.library.move.",
+   "status": "harmony"
+  },
+  {
+   "id": "settings.library.folder.description",
+   "en": "Each meeting is a folder with its audio, transcript and notes. Back it up like any other folder.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15). Library tab description under the heading.",
+   "status": "harmony"
+  },
+  {
+   "id": "settings.library.show",
+   "en": "Show in Files",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15). Library tab button. Opens the folder in the file manager.",
+   "status": "harmony",
+   "mac": "Show in Finder"
+  },
+  {
+   "id": "settings.library.move",
+   "en": "Move…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15). Library tab button. Opens a native folder chooser; moves every meeting into the chosen folder. While recording, confirm.moveLibrary.* is shown first (drawn).",
+   "status": "harmony"
+  },
+  {
+   "id": "settings.browser.description",
+   "en": "With the browser companion, Cassini hears each person in your browser meeting separately.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15). Browser companion tab description (short form of companion.body).",
+   "status": "harmony"
+  },
+  {
+   "id": "settings.browser.status.connected",
+   "en": "Connected to {browser}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15). Browser companion tab status row when connected.",
+   "status": "harmony",
+   "placeholders": {
+    "browser": "browser display name, e.g. Firefox"
+   }
+  },
+  {
+   "id": "settings.browser.status.notSetUp",
+   "en": "Not set up",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15). Browser companion tab status row when no browser is connected. Trailing button meeting.companionCard.setUp (\"Set up\"), which opens the existing setup path until UX10.",
+   "status": "harmony"
+  },
+  {
+   "id": "settings.browser.status.connectedGeneric",
+   "en": "Connected",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15.1). Browser companion status when a browser is connected but its name is unknown.",
+   "status": "harmony"
+  },
+  {
+   "id": "settings.library.move.moving",
+   "en": "Moving meetings…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15.1). Library tab folder-row subtitle while the move runs.",
+   "status": "harmony"
+  },
+  {
+   "id": "settings.library.move.waiting",
+   "en": "{n} meetings move when they are finished.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15.1). Library tab line (info) while meetings that are recording, saving or being written down wait to move.",
+   "status": "harmony",
+   "placeholders": {
+    "n": "count of waiting meetings"
+   },
+   "plural": {
+    "one": "1 meeting moves when it is finished.",
+    "other": "{n} meetings move when they are finished."
+   }
+  },
+  {
+   "id": "settings.library.move.failed",
+   "en": "{n} meetings could not be moved. They are still in {folder}.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15.1). Library tab warn line after a move with failures. Action: common.tryAgain (retries only the failed ones).",
+   "status": "harmony",
+   "placeholders": {
+    "n": "count",
+    "folder": "old folder shown as on the folder row, e.g. Music › Cassini"
+   },
+   "plural": {
+    "one": "1 meeting could not be moved. It is still in {folder}.",
+    "other": "{n} meetings could not be moved. They are still in {folder}."
+   }
+  },
+  {
+   "id": "about.modelNotices",
+   "en": "Licences of downloaded models",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "About"
+   ],
+   "milestone": "UX8b",
+   "note": "Coordinator (D15.1). About dialog link (GNOME: AdwAboutDialog legal section / link; Mac: About window or Help menu). Opens the local NOTICE.txt shipped with downloaded models. Shown only when at least one model is downloaded.",
+   "status": "harmony"
+  },
+  {
    "id": "speakers.duplicate.question",
    "en": "Is this the same person?",
    "platforms": [

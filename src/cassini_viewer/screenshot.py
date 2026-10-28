@@ -46,6 +46,8 @@ def capture(application_id, version, profile):
     opened_recording = False
     opened_search = False
     selected_search = False
+    opened_settings = False
+    board = os.environ.get("CASSINI_SCREENSHOT_BOARD", "")
     while time.monotonic() < deadline:
         while context.pending():
             context.iteration(False)
@@ -107,6 +109,15 @@ def capture(application_id, version, profile):
             window.search_page.choose_speaker("Marta")
             opened_search = True
             settled_frame = None
+        if board.startswith("settings-") and not window._pending and not opened_settings:
+            app.on_preferences()
+            app.settings_dialog.set_visible_page_name(board.removeprefix("settings-"))
+            opened_settings = True
+            settled_frame = None
+        if opened_settings and app.settings_dialog._future is not None:
+            settled_frame = None
+            time.sleep(0.01)
+            continue
         if window.search_page and window.search_page.pending:
             settled_frame = None
             time.sleep(0.01)
@@ -163,6 +174,8 @@ def capture(application_id, version, profile):
         )
         + "\n"
     )
+    if opened_settings:
+        app.settings_dialog.force_close()
     window.close()
     print(f"Saved real GTK current-main window to {target}")
     return 0

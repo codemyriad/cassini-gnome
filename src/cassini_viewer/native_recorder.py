@@ -46,7 +46,7 @@ class NativeRecorder(GObject.Object):
             return {}
         return {self.session.manifest["id"]: "saving" if self.stopping else "recording"}
 
-    def start(self, parent, *, test=False):
+    def start(self, parent=None, *, test=False):
         if self.pipeline is not None or self.starting or self.stopping:
             raise RuntimeError("Already recording")
         self.starting = True
@@ -55,7 +55,7 @@ class NativeRecorder(GObject.Object):
         self.stopping = self._finishing = False
         self._problem = self.line = None
         self.levels = [0.0, 0.0]
-        future = self._executor.submit(self._prepare, Path(parent))
+        future = self._executor.submit(self._prepare, Path(parent) if parent is not None else None)
         future.add_done_callback(lambda f: GLib.idle_add(self._prepared, f, test))
 
     @staticmethod

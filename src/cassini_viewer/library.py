@@ -26,7 +26,9 @@ MAX_JSON = 1024 * 1024
 
 
 def library_root(root=None):
-    return Path(root if root is not None else os.environ.get("CASSINI_LIBRARY_DIR", Path.home() / "Music/Cassini"))
+    from .library_location import primary
+
+    return Path(root) if root is not None else primary()
 
 
 def meeting_id(path):
@@ -199,9 +201,11 @@ class Meeting(MeetingState):
     notes: tuple[dict, ...] = ()
     extensions: dict = field(default_factory=dict, compare=False, repr=False)
 
+    collection_key: str | None = None
+
     @property
     def key(self):
-        return self.directory.name
+        return self.collection_key or self.directory.name
 
     @property
     def speaker_names(self):
@@ -789,3 +793,55 @@ def _quote(words, override):
 
 def scan_library(root=None, *, capture_activity=None):
     return LibraryScanner(root).scan(capture_activity=capture_activity)
+
+
+class LibraryCollectionScanner:
+    """Read the primary Library plus exactly its durable pending folders."""
+
+    def __init__(self):
+        self.scanners = {}
+
+    @property
+    def root(self):
+        return library_root()
+
+    @property
+    def roots(self):
+        from .library_location import roots
+
+        return roots()
+
+    def scan(self, *, capture_activity=None, changed_directories=None):
+        import hashlib
+        from dataclasses import replace
+
+        from .library_location import load, roots
+
+        value = load()
+        current_roots = roots(value)
+        pending = {Path(e["source"]).resolve() for e in value["pending"]}
+        meetings, diagnostics, directories, seen = [], [], [], set()
+        unavailable = False
+        for root in current_roots:
+            scanner = self.scanners.setdefault(root, LibraryScanner(root))
+            changed = (
+                None
+                if changed_directories is None
+                else {p for p in changed_directories if Path(p).parent == root.resolve()}
+            )
+            snapshot = scanner.scan(capture_activity=capture_activity, changed_directories=changed)
+            unavailable |= snapshot.unavailable and root == current_roots[0]
+            diagnostics.extend(snapshot.diagnostics)
+            for meeting in snapshot.meetings:
+                if root != current_roots[0] and meeting.directory.resolve() not in pending:
+                    continue
+                if meeting.key in seen:
+                    meeting = replace(
+                        meeting, collection_key=meeting.key + "@" + hashlib.sha256(str(root).encode()).hexdigest()[:16]
+                    )
+                seen.add(meeting.key)
+                meetings.append(meeting)
+            directories.extend(snapshot.directories)
+        for root in self.scanners.keys() - set(current_roots):
+            del self.scanners[root]
+        return LibrarySnapshot(tuple(sorted(meetings, key=_sort)), tuple(diagnostics), unavailable, tuple(directories))

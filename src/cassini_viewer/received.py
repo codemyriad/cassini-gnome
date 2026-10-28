@@ -36,6 +36,7 @@ def import_received(path, root=None):
     original = Path(path).absolute()
     if original.suffix.lower() not in (".opus", ".ogg") or not original.is_file():
         raise ValueError("Choose an Ogg Opus recording")
+    requested_root = root
     root = library_root(root).resolve()
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     with IMPORT_LOCK:
@@ -57,7 +58,15 @@ def import_received(path, root=None):
             sha = digest.hexdigest()
             # A stored digest is an index. A changed/missing original copy must
             # not prevent this good incoming copy from reaching the Library.
-            for directory in root.iterdir():
+            candidates = list(root.iterdir())
+            if requested_root is None:
+                from .library_location import load
+
+                state = load()
+                current = Path(state["primary"])
+                candidates.extend(current.iterdir() if current.exists() else ())
+                candidates.extend(Path(e["source"]) for e in state["pending"])
+            for directory in dict.fromkeys(candidates):
                 if directory.is_symlink() or not directory.is_dir() or not directory.name.startswith("Received-"):
                     continue
                 try:
@@ -96,13 +105,7 @@ def import_received(path, root=None):
             if original.parent.name:
                 metadata["received"]["originalFolderName"] = original.parent.name
             atomic_json(stage / "meeting.json", metadata)
-            published = root / ("Received-" + identifier)
-            stage.rename(published)
-            fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
-            try:
-                os.fsync(fd)
-            finally:
-                os.close(fd)
+            published = _publish_import(stage, identifier, requested_root)
             return _meeting(published)
         finally:
             if stage.exists():
@@ -115,3 +118,39 @@ def _meeting(directory):
         for m in LibraryScanner(directory.parent).scan(changed_directories={directory}).meetings
         if m.directory == directory
     )
+
+
+def _publish_import(stage, identifier, root):
+    from contextlib import nullcontext
+
+    from .library_location import routing
+    from .library_move import _copy_file
+
+    current = stage
+    try:
+        while True:
+            target_root = library_root(root).resolve()
+            target_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if current.parent != target_root:
+                replacement = Path(tempfile.mkdtemp(prefix=".received-", dir=target_root))
+                try:
+                    shutil.copytree(current, replacement, dirs_exist_ok=True, copy_function=_copy_file)
+                except BaseException:
+                    shutil.rmtree(replacement)
+                    raise
+                shutil.rmtree(current)
+                current = replacement
+            with routing() if root is None else nullcontext():
+                if library_root(root).resolve() != target_root:
+                    continue
+                published = target_root / ("Received-" + identifier)
+                current.rename(published)
+                fd = os.open(target_root, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+                return published
+    finally:
+        if current.exists():
+            shutil.rmtree(current)

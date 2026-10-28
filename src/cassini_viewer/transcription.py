@@ -114,6 +114,7 @@ class TranscriptionQueue:
         self.changed, self.finished = changed, finished
         self.bundle = Path(bundle) if bundle else bundle_path()
         self.root = library_root(root).absolute()
+        self._explicit_root = root is not None
         self.client_factory = client_factory
         self.client = None
         self.preparer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-queue-metadata")
@@ -133,13 +134,24 @@ class TranscriptionQueue:
         return True
 
     def _owned(self, directory):
+        if not self._explicit_root:
+            from .library_location import owned_directory
+
+            return owned_directory(directory)
         canonical = directory.resolve()
         if directory.is_symlink() or canonical.parent != self.root.resolve() or not meeting_id(canonical):
             raise ValueError("Transcription may only write inside the configured Library")
         return canonical
 
     def _mark_queued(self, directory, resume):
+        from .meeting_store import LOCK
+
+        with LOCK:
+            return self._mark_queued_locked(directory, resume)
+
+    def _mark_queued_locked(self, directory, resume):
         canonical = self._owned(directory)
+        directory = canonical
         scanner = LibraryScanner(canonical.parent)
         meeting = next(m for m in scanner.scan(changed_directories={canonical}).meetings if m.directory == canonical)
         metadata = read_metadata(directory)
@@ -195,7 +207,7 @@ class TranscriptionQueue:
             return
         LOG.warning("Meeting transcription failed: %s", error)
         try:
-            self._owned(directory)
+            directory = self._owned(directory)
             update_metadata(
                 directory,
                 transcript=dict(status="failed", reference=REFERENCE),
