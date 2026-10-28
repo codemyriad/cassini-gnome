@@ -355,16 +355,17 @@ def stop_browser_captures(directory=None):
             try:
                 browser_service.request("stop", id=identifier)
                 break
-            except ValueError:
+            except ValueError as error:
                 # A concurrent stop may already have finished, or may still
                 # be saving. Check the controller rather than aborting Quit.
                 current = browser_service.request()
                 active = [s for s in current.get("statuses", []) if s.get("recording") and s.get("id") == identifier]
                 if not active:
                     break
-                if time.monotonic() >= deadline or not any(
+                busy = str(error) == "A recording command is still being processed" or any(
                     m.get("busy") and m.get("id") == identifier for m in current.get("meetings", [])
-                ):
+                )
+                if time.monotonic() >= deadline or not busy:
                     raise
                 time.sleep(0.05)
     after = browser_service.request()
