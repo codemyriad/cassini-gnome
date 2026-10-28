@@ -409,6 +409,7 @@ with tempfile.TemporaryDirectory() as tmp:
             return False
         return True
 
+    queue_before_exit = app.transcriber
     GLib.timeout_add(10, drive)
     result = app.run([sys.argv[0]])
     assert result == 0 and closing_at is not None and time.monotonic() - closing_at < 0.8
@@ -425,6 +426,12 @@ with tempfile.TemporaryDirectory() as tmp:
         while child.poll() is None and time.monotonic() < deadline:
             time.sleep(0.005)
         assert child.poll() is not None
+        # The latency assertion above measures GTK shutdown. The queue then
+        # flushes/reaps off GTK; keep its fixture directory alive until that
+        # cleanup finishes instead of racing rmtree against transcript writes.
+        while queue_before_exit.client is not None and time.monotonic() < deadline:
+            time.sleep(0.005)
+        assert queue_before_exit.client is None, "Queue teardown did not finish"
     elif mode in ("stop-save", "stop-after-finish", "stop-finishing", "stop-interrupted", "stop-secondary-close"):
         recorder = app.test_primary_recorder if mode == "stop-finishing" else app.recorder
         assert recorder.pipeline is None and not app.native_captures
