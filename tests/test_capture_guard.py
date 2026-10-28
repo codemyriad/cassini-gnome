@@ -46,3 +46,41 @@ def test_close_save_never_overwrites_newer_running_reference(tmp_path, monkeypat
     before = (session.directory / "meeting.json").read_bytes()
     queue_saved_for_later(session.directory)
     assert (session.directory / "meeting.json").read_bytes() == before
+
+
+def test_concurrent_browser_stop_is_already_successful(tmp_path, monkeypatch):
+    from cassini_viewer import browser_service
+    from cassini_viewer.capture_guard import stop_browser_captures
+
+    path = str(tmp_path / "Recording-one")
+    active = True
+
+    def request(action="status", **values):
+        nonlocal active
+        if action == "stop":
+            active = False
+            raise ValueError("This meeting is not recording")
+        return dict(statuses=[dict(id="one:2", path=path, recording=active)], meetings=[])
+
+    monkeypatch.setattr(browser_service, "request", request)
+    assert stop_browser_captures() == [path]
+
+
+def test_stop_waits_for_an_existing_browser_save(tmp_path, monkeypatch):
+    from cassini_viewer import browser_service
+    from cassini_viewer.capture_guard import stop_browser_captures
+
+    path = str(tmp_path / "Recording-one")
+    attempts = []
+
+    def request(action="status", **values):
+        if action == "stop":
+            attempts.append(values["id"])
+            if len(attempts) == 1:
+                raise ValueError("A recording command is still being processed")
+        active = len(attempts) < 2
+        return dict(statuses=[dict(id="one:2", path=path, recording=active)], meetings=[dict(id="one:2", busy=active)])
+
+    monkeypatch.setattr(browser_service, "request", request)
+    assert stop_browser_captures() == [path]
+    assert len(attempts) == 2
