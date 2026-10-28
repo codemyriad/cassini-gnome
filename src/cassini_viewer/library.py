@@ -708,7 +708,7 @@ class LibraryScanner:
             return (), "damaged", None, actionable
         if status is None:
             status = "done" if readable else "none"
-        if origin == "received" and status == "done" and readable and not words:
+        if origin == "received" and status == "done" and readable and not words and reference.get("kind") == "embedded":
             from .portable_context import empty_word_transcripts
 
             if empty_word_transcripts(embedded, embedded_words):
