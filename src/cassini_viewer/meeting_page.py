@@ -139,7 +139,7 @@ class MeetingPage(Adw.NavigationPage):
         body.append(label(text("meeting.companionCard.body"), xalign=0, wrap=True))
         buttons = Gtk.Box(spacing=12)
         setup = Gtk.Button(label=text("meeting.companionCard.setUp"), css_classes=["suggested-action"])
-        setup.connect("clicked", lambda *_: self.window.get_application().on_browser_meetings())
+        setup.connect("clicked", lambda *_: self.window.get_application().on_companion_setup(parent=self.window))
         later = Gtk.Button(label=text("common.notNow"), css_classes=["flat"])
         later.connect("clicked", self._dismiss_card)
         buttons.append(setup)
@@ -153,7 +153,11 @@ class MeetingPage(Adw.NavigationPage):
         self.set_connected(False)
 
     def set_connected(self, connected):
-        visible = not connected and not self.settings.get_boolean("companion-card-dismissed")
+        visible = (
+            self.window.get_application().browser_companion_available
+            and not connected
+            and not self.settings.get_boolean("companion-card-dismissed")
+        )
         self._companion.set_visible(visible)
 
     def _build_player(self, outer):

@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Two real sandbox launches retain PCM in a private, localized XDG Music folder."""
+
+import argparse
+import json
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("application")
+parser.add_argument("--output", type=Path, required=True)
+parser.add_argument("--modules", type=Path, default=Path("/app/share/cassini-viewer"))
+parser.add_argument(
+    "--grant-for-local-proof",
+    action="store_true",
+    help="Test an older local installation with the proposed scope; never used by package CI",
+)
+args = parser.parse_args()
+permissions = subprocess.check_output(["flatpak", "info", "--user", "--show-permissions", args.application], text=True)
+assert "filesystems=home" not in permissions and ";home" not in permissions
+scoped = "xdg-music/Cassini:create" in permissions
+assert scoped or args.grant_for_local_proof, "The installed manifest must declare the scoped persistent Library"
+location = subprocess.check_output(
+    ["flatpak", "info", "--user", "--show-location", args.application], text=True
+).strip()
+repository = location.split("/app/")[0]
+assert repository != location
+inside = """import hashlib,json,sys
+from pathlib import Path
+sys.path.insert(0,sys.argv[1])
+from cassini_viewer.library_location import primary
+from cassini_viewer.recording_session import RecordingSession
+expected=Path(sys.argv[2]);root=primary()
+assert root == expected,(root,expected)
+if sys.argv[3] == "write":
+    session=RecordingSession(None,source="gnome",title="Private persistence check")
+    for identifier,kind,data in (("mic","microphone",b"\\x01\\x00"),("system","system",b"\\x02\\x00")):
+        session.add_track(identifier,identifier,kind,48000,1)
+        session.append(identifier,data*9600,0)
+    session.finish()
+else:
+    assert len(list(root.glob("Recording-*"))) == 1
+folder,=root.glob("Recording-*")
+manifest=json.loads((folder/"session.json").read_text())
+assert manifest["state"] == "completed"
+assert {t["kind"] for t in manifest["tracks"]} == {"microphone","system"}
+assert all(t["frames"] == 9600 for t in manifest["tracks"])
+print(json.dumps({"library":str(root),"folder":folder.name,"sha256":{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.iterdir()}}))
+"""
+with tempfile.TemporaryDirectory(prefix="cassini-flatpak-persistence-") as temporary:
+    private = Path(temporary)
+    config, home, music = (private / name for name in ("config", "home", "Musica"))
+    for directory in (config, home, music):
+        directory.mkdir()
+    (config / "user-dirs.dirs").write_text(f'XDG_MUSIC_DIR="{music}"\n')
+    env = dict(
+        os.environ,
+        HOME=str(home),
+        XDG_CONFIG_HOME=str(config),
+        XDG_DATA_HOME=str(private / "data"),
+        XDG_CACHE_HOME=str(private / "cache"),
+        FLATPAK_USER_DIR=repository,
+    )
+    env.pop("CASSINI_LIBRARY_DIR", None)
+    command = [
+        "flatpak",
+        "run",
+        "--user",
+        "--command=python3",
+        "--unshare=network",
+        "--unshare=ipc",
+        "--nosocket=wayland",
+        "--nosocket=x11",
+        "--nosocket=fallback-x11",
+        "--nosocket=pulseaudio",
+        "--no-documents-portal",
+    ]
+    if args.grant_for_local_proof:
+        command.append("--filesystem=xdg-music/Cassini:create")
+    if args.modules != Path("/app/share/cassini-viewer"):
+        command.append(f"--filesystem={args.modules.resolve()}:ro")
+    command += [args.application, "-I", "-c", inside, str(args.modules), str(music / "Cassini")]
+    reports = [
+        json.loads(subprocess.check_output(command + [phase], env=env, text=True, timeout=20))
+        for phase in ("write", "read")
+    ]
+    assert reports[0] == reports[1], "Restart lost or changed the Library's PCM/manifest bytes"
+    assert (music / "Cassini" / reports[0]["folder"] / "session.json").is_file()
+    # HOME remains a private fixture. The real user's Library is never opened.
+    result = dict(
+        installedManifestScope=scoped,
+        developmentGrant=args.grant_for_local_proof,
+        separateLaunches=2,
+        localizedMusic=True,
+        pcmAndManifestPreserved=True,
+        **reports[1],
+    )
+args.output.parent.mkdir(parents=True, exist_ok=True)
+args.output.write_text(json.dumps(result, indent=2) + "\n")
+print(json.dumps(result))

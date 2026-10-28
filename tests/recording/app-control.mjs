@@ -1,142 +1,179 @@
-// Full browser -> native control host -> broker -> GNOME widgets, and return path.
+// Real extension -> native hosts -> broker -> Library, using private devices only.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {spawn,execFileSync} from 'node:child_process';
+import {spawn, execFileSync} from 'node:child_process';
 import {createServer} from 'node:http';
-import {mkdtemp,mkdir,readFile,writeFile,chmod,rm} from 'node:fs/promises';
+import {mkdtemp, mkdir, readFile, writeFile, chmod, rm} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {createInterface} from 'node:readline';
 import {createWriteStream} from 'node:fs';
 import {chromium} from 'playwright';
-if(!process.env.CASSINI_ISOLATED_AUDIO || process.env.WAYLAND_DISPLAY) throw new Error('Use private recording harness');
-const root=path.resolve(import.meta.dirname,'../..');
-const artifacts=process.env.CASSINI_TEST_ARTIFACTS;
-const extension=process.env.CASSINI_TEST_EXTENSION || path.join(root,'browser-extension');
-const build=process.env.CASSINI_TEST_BUILD || path.join(root,'_build');
-const profile=await mkdtemp(path.join(os.tmpdir(),'cassini-app-control-'));
-const fixture=await readFile(path.join(root,'tests/recording/fixture.html'));
-const server=createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.end(fixture);});
-await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-let context,remoteBrowser,ui;
-const evidence={scenarios:[],console:[]};
-const pending=[];
-async function poll(check,label,timeout=20000) {
- const end=Date.now()+timeout;
- while(Date.now()<end) {const value=await check();if(value)return value;await new Promise(r=>setTimeout(r,100));}
+assert.equal(process.env.CASSINI_ISOLATED_AUDIO, '1', 'Use private recording harness');
+assert.ok(!process.env.WAYLAND_DISPLAY);
+assert.match(process.env.PULSE_SERVER || '', /^unix:\/tmp\/cassini-audio-/);
+const root = path.resolve(import.meta.dirname, '../..');
+const artifacts = process.env.CASSINI_TEST_ARTIFACTS;
+process.env.CASSINI_LIBRARY_DIR = artifacts;
+const extension = process.env.CASSINI_TEST_EXTENSION || path.join(root, 'browser-extension');
+const build = process.env.CASSINI_TEST_BUILD || path.join(root, '_build');
+const profile = await mkdtemp(path.join(os.tmpdir(), 'cassini-app-control-'));
+const fixture = await readFile(path.join(root, 'tests/recording/fixture.html'));
+const server = createServer((_req, res) => {res.setHeader('Content-Type', 'text/html'); res.end(fixture);});
+await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+const evidence = {scenarios: [], console: []}, pending = [], pairs = [];
+let context, remoteBrowser, ui, microphone;
+async function poll(check, label, timeout=20000) {
+ const end = Date.now() + timeout;
+ while (Date.now() < end) {const value = await check(); if (value) return value; await new Promise(r => setTimeout(r, 100));}
  throw new Error(`Timed out: ${label}`);
 }
-function call(packet={action:'status'}) {
- return new Promise((resolve,reject)=>{
-  const timer=setTimeout(()=>reject(new Error('GNOME UI request timed out')),12000);
-  pending.push(value=>{clearTimeout(timer);value.error?reject(new Error(value.error)):resolve(value);});
-  ui.stdin.write(JSON.stringify(packet)+'\n');
+function call(packet={action: 'status'}) {
+ return new Promise((resolve, reject) => {
+  const timer = setTimeout(() => reject(new Error('GNOME UI request timed out')), 12000);
+  pending.push(value => {clearTimeout(timer); value.error ? reject(new Error(value.error)) : resolve(value);});
+  ui.stdin.write(JSON.stringify(packet) + '\n');
  });
 }
-async function hostManifest(name,script,id) {
- const file=path.join(profile,name+'.py');await writeFile(file,script);await chmod(file,0o700);
- await writeFile(path.join(profile,'NativeMessagingHosts',name+'.json'),JSON.stringify({name,description:'Isolated app control test',path:file,type:'stdio',allowed_origins:[`chrome-extension://${id}/`]}));
-}
-async function broker() {
- return JSON.parse(await new Promise((resolve,reject)=>{
-  const p=spawn('/usr/bin/python3',['-c',`import sys,json;sys.path.insert(0,${JSON.stringify(root+'/src')});from cassini_viewer.browser_service import request;print(json.dumps(request()))`]);
-  let out='';p.stdout.on('data',d=>out+=d);p.on('exit',code=>code?reject(new Error('Broker query failed')):resolve(out));
- }));
+async function hostManifest(name, script, id) {
+ const file = path.join(profile, name + '.py'); await writeFile(file, script); await chmod(file, 0o700);
+ await writeFile(path.join(profile, 'NativeMessagingHosts', name + '.json'), JSON.stringify({name, description: 'Isolated app test', path: file, type: 'stdio', allowed_origins: [`chrome-extension://${id}/`]}));
 }
 async function samples(directory) {
- const manifest=JSON.parse(await readFile(path.join(directory,'session.json')));
- const tracks=[];
- for(const track of manifest.tracks) {
-  const bytes=await readFile(path.join(directory,track.file));
-  tracks.push({...track,frames:(bytes.length-44)/(track.channels*2)});
+ const manifest = JSON.parse(await readFile(path.join(directory, 'session.json'))), tracks = [];
+ for (const track of manifest.tracks) {
+  const bytes = await readFile(path.join(directory, track.file));
+  tracks.push({...track, frames: (bytes.length - 44) / (track.channels * 2), bytes});
  }
- return {manifest,tracks};
+ return {manifest, tracks};
+}
+function power(track, frequency) {
+ const count = Math.min(track.frames, 48000), start = track.frames - count;
+ let real = 0, imaginary = 0;
+ for (let i=0; i<count; i++) {
+  const sample = track.bytes.readInt16LE(44 + (start + i) * track.channels * 2) / 32768;
+  const angle = 2 * Math.PI * frequency * i / track.sampleRate;
+  real += sample * Math.cos(angle); imaginary += sample * Math.sin(angle);
+ }
+ return (real * real + imaginary * imaginary) / (count * count);
+}
+async function join(title, localHz, remoteHz, id) {
+ const meeting = await context.newPage(), remote = await remoteBrowser.newPage();
+ pairs.push({meeting, remote});
+ for (const page of [meeting, remote]) {await page.goto(`http://127.0.0.1:${server.address().port}/`); await page.click('#join');}
+ await meeting.evaluate(async ({title, localHz}) => {document.title = title; await window.join(localHz);}, {title, localHz});
+ await remote.evaluate(hz => window.join(hz), remoteHz);
+ const offer = await meeting.evaluate(async () => {await meeting.pc.setLocalDescription(await meeting.pc.createOffer()); return meeting.description();});
+ const answer = await remote.evaluate(async offer => {await meeting.pc.setRemoteDescription(offer); await meeting.pc.setLocalDescription(await meeting.pc.createAnswer()); return meeting.description();}, offer);
+ await meeting.evaluate(answer => meeting.pc.setRemoteDescription(answer), answer);
+ await poll(async () => (await call()).meetings.some(m => m.title === title), `app discovers ${title}`);
+ const worker = context.serviceWorkers().find(worker => worker.url().includes(id)) || await context.waitForEvent('serviceworker');
+ await worker.evaluate(async title => {const tab = (await chrome.tabs.query({})).find(tab => tab.title === title); await chrome.tabs.update(tab.id, {muted: true});}, title);
+ return {meeting, remote};
+}
+async function automatic(enabled) {
+ await call({action: 'show-settings'});
+ await poll(async () => (await call()).settingsReady, 'Settings reads real browser preference');
+ await call({action: 'auto', enabled});
+ await poll(async () => (await call()).auto === enabled, 'automatic preference applied');
+}
+async function recording(title) {
+ const status = await poll(async () => (await call()).statuses.find(s => s.recording && s.title === title && s.path), `recording ${title}`);
+ await poll(async () => (await samples(status.path)).tracks.some(t => t.kind === 'remote' && t.frames >= t.sampleRate * 2), `two seconds of ${title}`);
+ return status.path;
 }
 try {
- const id=[...createHash('sha256').update(extension).digest('hex').slice(0,32)].map(c=>String.fromCharCode(97+parseInt(c,16))).join('');
- await mkdir(path.join(profile,'NativeMessagingHosts'),{recursive:true});
- await hostManifest('com.codemyriad.cassini',`#!/usr/bin/python3\nimport sys\nsys.path.insert(0,${JSON.stringify(root+'/src')})\nfrom cassini_viewer.browser_host import main\nsys.exit(main(directory=${JSON.stringify(artifacts)},open_completed=False))\n`,id);
- await hostManifest('com.codemyriad.cassini.control',`#!/usr/bin/python3\nimport sys\nsys.path.insert(0,${JSON.stringify(root+'/src')})\nsys.stderr=open(${JSON.stringify(path.join(artifacts,"control-host.log"))},"a",buffering=1)\nfrom cassini_viewer.browser_control_host import main\nsys.exit(main())\n`,id);
- context=await chromium.launchPersistentContext(profile,{channel:'chromium',headless:false,args:[
-  `--disable-extensions-except=${extension}`,`--load-extension=${extension}`,
-  '--no-sandbox','--ozone-platform=x11','--autoplay-policy=no-user-gesture-required','--allow-loopback-in-peer-connection','--disable-features=WebRtcHideLocalIpsWithMdns']});
- const worker=context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
- assert.equal(new URL(worker.url()).host,id,'unpacked extension ID matches prepared host allowlist');
- worker.on('console',message=>evidence.console.push(message.text()));
- ui=spawn('/usr/bin/python3',[path.join(root,'tests/recording/browser-ui.py'),'--build',build],{stdio:['pipe','pipe','pipe'],env:{...process.env,CASSINI_LIBRARY_DIR:artifacts}});
- let stderr='';ui.stderr.on('data',data=>{stderr+=data;});
- ui.stderr.pipe(createWriteStream(path.join(artifacts,'gnome-ui.log')));
- createInterface({input:ui.stdout}).on('line',line=>{try{pending.shift()?.(JSON.parse(line));}catch{evidence.console.push(line);}});
- ui.on('exit',code=>{evidence.uiExit=code;});
- await poll(async()=> (await call()).status.includes('Listening inside your browser'),'control host connected');
- remoteBrowser=await chromium.launch({headless:false,args:['--no-sandbox','--ozone-platform=x11','--autoplay-policy=no-user-gesture-required','--allow-loopback-in-peer-connection','--disable-features=WebRtcHideLocalIpsWithMdns']});
- const meeting=await context.newPage(),remote=await remoteBrowser.newPage();
- for(const page of [meeting,remote]) {await page.goto(`http://127.0.0.1:${server.address().port}/`);await page.click('#join');}
- await meeting.evaluate(async()=>{document.title='App-controlled synthetic meeting';await join(440);});
- await remote.evaluate(()=>join(880));
- const offer=await meeting.evaluate(async()=>{await meeting.pc.setLocalDescription(await meeting.pc.createOffer());return meeting.description();});
- const answer=await remote.evaluate(async offer=>{await meeting.pc.setRemoteDescription(offer);await meeting.pc.setLocalDescription(await meeting.pc.createAnswer());return meeting.description();},offer);
- await meeting.evaluate(answer=>meeting.pc.setRemoteDescription(answer),answer);
- const discovered=await poll(async()=>{const value=await call();return value.rows.find(row=>row.title==='App-controlled synthetic meeting') && value;},'meeting in GNOME list');
- const row=discovered.rows.find(row=>row.title==='App-controlled synthetic meeting');
- assert.equal(row.button,'Record');
- const distraction=await context.newPage();
- await distraction.goto(`http://127.0.0.1:${server.address().port}/?not-a-meeting`);
- await distraction.bringToFront(); // Record must target the selected row, never the active tab.
- await call({action:'record',id:row.id});
- await poll(async()=> (await call()).rows.some(r=>r.id===row.id && r.button==='Stop and save' && r.enabled),'recording indicator');
- let state;
- await poll(async()=>{
-  state=await broker();
-  const directory=state.statuses.find(s=>s.recording)?.path;
-  return directory && (await samples(directory)).tracks.some(t=>t.frames>=t.sampleRate);
- },'one second recorded through app controls');
- const directory=state.statuses.find(s=>s.recording).path;
- const live=await poll(async()=> (await call()).library?.find(m=>m.path===directory && m.lifecycle==='recording'),'live Library lifecycle from the real browser broker');
- assert.equal(live.interruptedAtMs,null);
- assert.equal(live.header,'live');
- execFileSync('xdotool',['search','--name','^Meetings in your browser$','windowraise']);
- execFileSync('import',['-window','root',path.join(artifacts,'app-recording.png')]);
- await call({action:'stop',id:row.id});
- await poll(async()=> (await call()).rows.some(r=>r.id===row.id && r.button==='Record' && r.enabled),'stopped GNOME indicator');
- const saved=await poll(async()=> (await call()).library?.find(m=>m.path===directory && m.lifecycle==='saved' && m.interruptedAtMs===null),'saved Library lifecycle after browser Stop');
- assert.equal(saved.header,'record');
- const first=await samples(directory);
- assert.equal(first.manifest.state,'completed');
- assert.ok(first.tracks.some(t=>t.kind==='local') && first.tracks.some(t=>t.kind==='remote'));
- evidence.scenarios.push({name:'gnome-discover-explicit-row-record-stop',path:directory,tracks:first.manifest.tracks});
- await call({action:'auto',enabled:true});
- const automatic=await poll(async()=>{const value=await call();return Object.keys(value.notifications).length && value;},'automatic notification with Stop');
- const notification=Object.entries(automatic.notifications)[0];
- assert.ok(notification[1].actions.includes('stop'));
- await call({action:'close-window'});
- assert.equal((await call()).status,'Window closed');
- await call({action:'notification-stop',id:notification[0]});
- await poll(async()=> !Object.keys((await call()).notifications).length,'Stop works with meeting window closed');
- await meeting.evaluate(()=>meeting.pc.close());await remote.evaluate(()=>meeting.pc.close());
- await poll(async()=> !(await broker()).meetings.length,'first meeting ended while app window closed');
- await meeting.evaluate(()=>join(550));await remote.evaluate(()=>join(990));
- const nextOffer=await meeting.evaluate(async()=>{await meeting.pc.setLocalDescription(await meeting.pc.createOffer());return meeting.description();});
- const nextAnswer=await remote.evaluate(async offer=>{await meeting.pc.setRemoteDescription(offer);await meeting.pc.setLocalDescription(await meeting.pc.createAnswer());return meeting.description();},nextOffer);
- await meeting.evaluate(answer=>meeting.pc.setRemoteDescription(answer),nextAnswer);
- const nextAutomatic=await poll(async()=>{const value=await call();return Object.keys(value.notifications).length && value;},'new meeting automatically records while app window closed');
- await call({action:'notification-stop',id:Object.keys(nextAutomatic.notifications)[0]});
- await poll(async()=> !Object.keys((await call()).notifications).length,'new automatic recording stopped');
- await call({action:'reopen'});
- await poll(async()=> (await call()).rows.some(r=>r.button==='Record' && r.enabled),'reopened app reconciles stopped recording');
- await call({action:'auto',enabled:false});
- await meeting.evaluate(()=>meeting.pc.close());
- await poll(async()=> !(await call()).rows.length,'meeting removed after call ends');
- evidence.scenarios.push({name:'opt-in-auto-record-new-meeting-with-window-closed-notification-stop-teardown'});
- evidence.uiStderr=stderr;
- console.log('PASS real extension discovery -> GNOME list -> Record/Stop -> saved source WAVs; auto-record notification Stop and teardown');
-} catch(error) {evidence.failure=error.stack;throw error;}
-finally {
- if(ui && ui.exitCode===null) {
-  try {await call({action:'quit'});ui.stdin.end();await Promise.race([new Promise(resolve=>ui.once('exit',resolve)),new Promise(resolve=>setTimeout(resolve,2000))]);} catch {}
-  if(ui.exitCode===null) ui.kill();
+ const manifest = JSON.parse(await readFile(path.join(extension, 'manifest.json')));
+ assert.ok(manifest.key, 'the companion has a pinned key');
+ const id = [...createHash('sha256').update(Buffer.from(manifest.key, 'base64')).digest('hex').slice(0, 32)].map(c => String.fromCharCode(97 + parseInt(c, 16))).join('');
+ assert.equal(id, 'pcafdaahfhjiolfpfnlhmljfgoabbaij');
+ await mkdir(path.join(profile, 'NativeMessagingHosts'), {recursive: true});
+ await hostManifest('com.codemyriad.cassini', `#!/usr/bin/python3\nimport sys\nsys.path.insert(0,${JSON.stringify(root + '/src')})\nfrom cassini_viewer.browser_host import main\nsys.exit(main(directory=${JSON.stringify(artifacts)},open_completed=False))\n`, id);
+ await hostManifest('com.codemyriad.cassini.control', `#!/usr/bin/python3\nimport sys\nsys.path.insert(0,${JSON.stringify(root + '/src')})\nsys.stderr=open(${JSON.stringify(path.join(artifacts, 'control-host.log'))},'a',buffering=1)\nfrom cassini_viewer.browser_control_host import main\nsys.exit(main())\n`, id);
+ ui = spawn('/usr/bin/python3', [path.join(root, 'tests/recording/browser-ui.py'), '--build', build], {stdio: ['pipe', 'pipe', 'pipe'], env: {...process.env}});
+ ui.stderr.pipe(createWriteStream(path.join(artifacts, 'gnome-ui.log')));
+ createInterface({input: ui.stdout}).on('line', line => {try {pending.shift()?.(JSON.parse(line));} catch {evidence.console.push(line);}});
+ ui.on('exit', code => {evidence.uiExit = code;});
+ await poll(async () => (await call()).shortcutBound, 'private portal shortcut bound before browser startup');
+ microphone = spawn('/usr/bin/python3', ['-c', `import gi,signal\ngi.require_version('Gst','1.0')\nfrom gi.repository import Gst,GLib\nGst.init(None)\np=Gst.parse_launch('audiotestsrc is-live=true freq=660 volume=0.2 ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=1 ! pulsesink device=cassini_microphone sync=false')\nloop=GLib.MainLoop()\nsignal.signal(signal.SIGTERM,lambda *_:loop.quit())\np.set_state(Gst.State.PLAYING)\ntry: loop.run()\nfinally:p.set_state(Gst.State.NULL)\n`], {stdio: ['ignore', 'ignore', 'pipe']});
+ microphone.stderr.pipe(createWriteStream(path.join(artifacts, 'microphone-producer.log')));
+ execFileSync('pactl', ['--server', process.env.PULSE_SERVER, 'set-sink-mute', 'cassini_desktop', '1']);
+ assert.match(execFileSync('pactl', ['--server', process.env.PULSE_SERVER, 'get-sink-mute', 'cassini_desktop'], {encoding: 'utf8'}), /yes/);
+ const flags = ['--no-sandbox', '--ozone-platform=x11', '--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns'];
+ context = await chromium.launchPersistentContext(profile, {channel: 'chromium', headless: false, ignoreDefaultArgs: ['--mute-audio'], args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, ...flags]});
+ const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
+ assert.equal(new URL(worker.url()).host, id);
+ worker.on('console', message => evidence.console.push(message.text()));
+ await poll(async () => (await call()).connected > 0, 'actual companion handshake in Library');
+ remoteBrowser = await chromium.launch({headless: false, ignoreDefaultArgs: ['--mute-audio'], args: flags});
+ await join('First browser meeting', 440, 880, id);
+ await join('Second browser meeting', 550, 990, id);
+ const distraction = await context.newPage(); await distraction.goto(`http://127.0.0.1:${server.address().port}/?not-a-meeting`); await distraction.bringToFront();
+ await call({action: 'record'}); // The real Library Record action snapshots both calls.
+ const directories = [await recording('First browser meeting'), await recording('Second browser meeting')];
+ assert.notEqual(...directories);
+ const powers = [];
+ for (let i=0; i<directories.length; i++) {
+  const audio = await samples(directories[i]);
+  const microphone = audio.tracks.find(t => t.kind === 'microphone'), remote = audio.tracks.find(t => t.kind === 'remote');
+  assert.ok(microphone && remote && !audio.tracks.some(t => t.kind === 'local'), 'native mic copy plus browser remote, without page-local duplication');
+  const wanted = power(remote, [880, 990][i]), bleed = power(remote, [990, 880][i]), mic = power(microphone, 660);
+  assert.ok(wanted > .001 && bleed < wanted * .01 && mic > .001, `muted source/mic isolation: ${JSON.stringify({wanted, bleed, mic})}`);
+  powers.push({wanted, bleed, mic});
+  const live = await poll(async () => (await call()).library.find(m => m.path === directories[i] && m.lifecycle === 'recording'), 'real live Library row');
+  assert.equal(live.interruptedAtMs, null); assert.equal(live.header, 'live');
  }
- await context?.close();await remoteBrowser?.close();server.close();
- await writeFile(path.join(artifacts,'app-control-results.json'),JSON.stringify(evidence,null,2));
- await rm(profile,{recursive:true,force:true});
+ await join('Later call stays manual', 770, 1210, id);
+ const manual = await call();
+ assert.equal(manual.meetings.length, 3);
+ assert.equal(manual.statuses.filter(s => s.recording).length, 2, 'a later call must not join manual Record');
+ await call({action: 'reopen'});
+ execFileSync('import', ['-window', 'root', path.join(artifacts, 'app-recording.png')]);
+ await call({action: 'stop', path: directories[0]});
+ await poll(async () => (await call()).library.some(m => m.path === directories[0] && m.lifecycle === 'saved'), 'individual page Stop saves only first');
+ const frozen = (await samples(directories[0])).tracks.map(t => t.frames);
+ const secondFrames = (await samples(directories[1])).tracks.find(t => t.kind === 'remote').frames;
+ await poll(async () => (await samples(directories[1])).tracks.find(t => t.kind === 'remote').frames >= secondFrames + 48000, 'other session keeps receiving a full second');
+ assert.deepEqual((await samples(directories[0])).tracks.map(t => t.frames), frozen);
+ await call({action: 'stop-all'});
+ await poll(async () => !(await call()).statuses.some(s => s.recording), 'global pill stops remaining session');
+ for (const directory of directories) assert.equal((await samples(directory)).manifest.state, 'completed');
+ evidence.scenarios.push({name: 'library-records-two-active-calls-muted-tab-and-sink-independent-mic-stop', directories, powers});
+ await automatic(true);
+ await poll(async () => (await call()).statuses.filter(s => s.recording).length === 3, 'auto opt-in starts every current call');
+ await call({action: 'shortcut'});
+ await poll(async () => !(await call()).statuses.some(s => s.recording), 'actual portal shortcut stops all sessions');
+ await automatic(false);
+ await automatic(true);
+ await poll(async () => (await call()).statuses.filter(s => s.recording).length === 3, 'auto re-enabled for hidden capture');
+ await call({action: 'close-window'});
+ assert.equal((await call()).status, 'Window closed');
+ const hidden = await poll(async () => (await call()).notifications.recording, 'native hidden notification');
+ assert.ok(hidden.buttons.some(button => button.action === 'app.stop-recording'));
+ await call({action: 'notification-stop'});
+ await poll(async () => !(await call()).statuses.some(s => s.recording) && !(await call()).notifications.recording, 'notification Stop stops all hidden captures');
+ for (const pair of pairs) {await pair.meeting.evaluate(() => meeting.pc.close()); await pair.remote.evaluate(() => meeting.pc.close());}
+ await poll(async () => !(await call()).meetings.length, 'all previous calls end while hidden');
+ await join('New hidden meeting', 550, 1100, id);
+ await recording('New hidden meeting');
+ const nextHidden = await poll(async () => (await call()).notifications.recording, 'new call auto-records without visible window');
+ assert.ok(nextHidden.body.includes('New hidden meeting'));
+ await call({action: 'notification-stop'});
+ await poll(async () => !(await call()).statuses.some(s => s.recording), 'new hidden meeting stopped');
+ await call({action: 'reopen'});
+ await automatic(false);
+ for (const pair of pairs) {await pair.meeting.evaluate(() => meeting.pc.close()); await pair.remote.evaluate(() => meeting.pc.close());}
+ await poll(async () => !(await call()).meetings.length, 'inventory removes ended calls');
+ evidence.scenarios.push({name: 'auto-record-hidden-native-notification-stop-all-new-call-reopen'});
+ console.log('PASS real Library Record/individual Stop/global Stop; concurrent muted source capture and mic copies; windowless auto-record/native notification controls');
+} catch (error) {evidence.failure = error.stack; throw error;}
+finally {
+ if (ui && ui.exitCode === null) {
+  try {await call({action: 'quit'}); ui.stdin.end(); await Promise.race([new Promise(resolve => ui.once('exit', resolve)), new Promise(resolve => setTimeout(resolve, 2000))]);} catch {}
+  if (ui.exitCode === null) ui.kill();
+ }
+ microphone?.kill();
+ await context?.close(); await remoteBrowser?.close(); server.close();
+ await writeFile(path.join(artifacts, 'app-control-results.json'), JSON.stringify(evidence, null, 2));
+ await rm(profile, {recursive: true, force: true});
 }

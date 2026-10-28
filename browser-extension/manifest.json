@@ -1,9 +1,16 @@
 {
   "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4bfHu05n/2FMxqgKy4P14UtVfbDrHyYM+vBu6p/VRs8o3G0TR6R7QzJRg1COSc8dyxiBE+alWBqWWRIa8lvr3mCkHidNWzsc42m1bcVGXf7j0jY9UlYPFQDi/QMBdnOWl0wxTkC6+WHzxftzqM92E+WMJpEjMeSeMQY3HHdTQJlrnNqyworOrMJADDq8/UsNCl7r6Ytp8t9fDhfKOX+u+FJFmCT+tEruZfVdtoId2YN8pahBIs+SRnOA9L9tPtW+G4fV/n4f64UO8z/58fBiGe7YMfxnZr5NPaHVkZh62IfdNNX4vdsvDc2o5VZyl0qeCmgUAtffv830+EgEpd4sewIDAQAB",
   "name": "Cassini Recorder",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minimum_chrome_version": "116",
-  "description": "Record a meeting’s audio tracks, or the whole tab, to WAV files on this computer with Cassini.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "description": "Record a meeting\u2019s audio tracks, or the whole tab, to WAV files on this computer with Cassini.",
   "permissions": [
     "activeTab",
     "nativeMessaging",
@@ -18,6 +25,10 @@
     "type": "module"
   },
   "action": {
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    },
     "default_popup": "popup.html",
     "default_title": "Cassini Recorder"
   },

@@ -255,8 +255,11 @@ def test_default_root_is_literal_and_missing_scan_never_creates_it(tmp_path, mon
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("CASSINI_LIBRARY_DIR", raising=False)
     monkeypatch.setenv("XDG_MUSIC_DIR", str(tmp_path / "elsewhere"))
-    assert library_root() == tmp_path / "Music/Cassini"
-    assert not scan_library().meetings and not (tmp_path / "Music").exists()
+    from cassini_viewer import library_location
+
+    monkeypatch.setattr(library_location, "music_directory", lambda: tmp_path / "Musica")
+    assert library_root() == tmp_path / "Musica/Cassini"
+    assert not scan_library().meetings and not (tmp_path / "Musica").exists()
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path / "injected"))
     assert library_root() == tmp_path / "injected"
 

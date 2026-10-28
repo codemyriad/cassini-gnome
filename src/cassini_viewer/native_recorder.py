@@ -244,3 +244,9 @@ class NativeRecorder(GObject.Object):
             self.line = None
         self.emit("changed")
         return False
+
+    def close(self):
+        """Release this finished session's IO worker without joining GTK."""
+        if self.pipeline is not None or self.starting or self.stopping or self._finishing:
+            raise RuntimeError("Capture has not finished")
+        self._executor.shutdown(wait=False)

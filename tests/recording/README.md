@@ -94,12 +94,21 @@ is distinct from the continuously active remote/replacement source timelines.
 
 `CASSINI_TEST_BUILD=$PWD/_build tests/recording/run.sh node tests/recording/app-control.mjs`
 runs the real extension, production native audio/control hosts, private broker and actual
-GNOME meeting window. It discovers a generated WebRTC call, clicks the app's Record
-button while another browser tab is active, validates saved local/remote audio, and stops
-from the app. It then enables automatic recording, checks the desktop notification, sends
-its Stop action over private D-Bus, verifies notification withdrawal and meeting teardown.
-Only the notification server is a private test implementation; capture, native messaging,
-service IPC, app widgets and the returning Stop command are production code.
+Library widgets. It records two generated WebRTC calls while both tabs and the
+private output sink are muted, checks separate remote tones and native microphone
+copies, and proves that a later call does not join manual Record. The meeting
+page stops one while the other grows; the pill and actual private portal shortcut
+stop all. Automatic recording continues with no visible window, and the native
+GNotification Open/Stop actions travel over private D-Bus. A new call starts while
+the app is hidden. All device, framing, IPC and widget code is production code;
+only the meeting peers and private desktop services are fixtures.
+
+`tests/recording/run.sh /usr/bin/python3 tests/recording/browser-microphone.py`
+checks two independent microphone copies, a per-session mic-off choice, tone and
+bleed thresholds, stopping one copy and keeping the other growing. Hosted
+Recording runs this in its own private Pulse container. The app-control muted-sink
+proof also requires `pactl` (`pulseaudio-utils`), always given the explicit private
+socket. It refuses the default desktop server.
 `CASSINI_TEST_EXTENSION` can select an exact upstream checkout for cross-app PR review.
 
 ## Readiness and native repeat validation (R3)

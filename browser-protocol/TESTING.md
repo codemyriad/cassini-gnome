@@ -38,3 +38,17 @@ manual/nightly DrMeyers runner. Neither runner setup nor a synthetic fixture gra
 SPEC v1.1 adds checked-in macOS/GNOME native-session WAV fixtures, offline Git pin-verification
 regressions, and controlled Teams mixed-receiver / Zoom PC-free / Meet switching-slot browser
 models. Product account/version observations remain manual in products/results/.
+
+
+The independent-session capability adds `tests/independent-sessions.mjs`: two
+real Chromium WebRTC calls, separate native host connections and folders, both
+tabs muted and an explicitly private Pulse sink muted. It checks two isolated
+tones, media-clone deduplication, and one meeting continuing after the other's
+Stop. It requires CASSINI_ISOLATED_AUDIO=1 and validates the private Pulse socket
+and sink before mutating them; it refuses to run against a desktop sound server.
+Use the GNOME private recording harness locally. Hosted CI starts its own server.
+The default audio writer/control bridge are test fixtures, not product hosts.
+CASSINI_NATIVE_HOST and CASSINI_CONTROL_NATIVE_HOST select actual app adapters;
+CASSINI_TEST_EXTENSION and PLAYWRIGHT_MODULE select a pinned installed extension
+and local Playwright. The generated launchers force all output into the private
+fixture Library. Failure artifacts keep recent control events and manifests.

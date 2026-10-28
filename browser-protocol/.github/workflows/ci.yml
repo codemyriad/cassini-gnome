@@ -22,9 +22,19 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y pulseaudio
-          pulseaudio --start --exit-idle-time=-1
-          pactl load-module module-null-sink sink_name=cassini_ci
-          pactl set-default-sink cassini_ci
+          private=$(mktemp -d /tmp/cassini-audio-ci-XXXXXXXX)
+          mkdir -m 700 "$private/daemon"
+          cat > "$private/server.pa" <<EOF
+          load-module module-native-protocol-unix socket=$private/pulse.sock auth-anonymous=1
+          load-module module-null-sink sink_name=cassini_ci rate=48000 channels=2
+          set-default-sink cassini_ci
+          set-default-source cassini_ci.monitor
+          EOF
+          PULSE_RUNTIME_PATH="$private/daemon" pulseaudio -n --daemonize --exit-idle-time=-1 --file="$private/server.pa" --log-target="file:$private/server.log"
+          for _ in $(seq 1 100); do [ -S "$private/pulse.sock" ] && break; sleep .1; done
+          test -S "$private/pulse.sock"
+          echo "CASSINI_ISOLATED_AUDIO=1" >> "$GITHUB_ENV"
+          echo "PULSE_SERVER=unix:$private/pulse.sock" >> "$GITHUB_ENV"
       - run: npm test
       - uses: actions/upload-artifact@v5
         if: always()

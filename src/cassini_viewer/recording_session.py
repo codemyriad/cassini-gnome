@@ -216,7 +216,7 @@ class RecordingSession:
             os.close(descriptor)
         self._last_checkpoint = self.clock()
 
-    def add_track(self, identifier, label, kind, rate, channels, *, filename=None):
+    def add_track(self, identifier, label, kind, rate, channels, *, filename=None, label_source=None):
         if (
             self.finished
             or not isinstance(identifier, str)
@@ -231,6 +231,8 @@ class RecordingSession:
             or channels not in (1, 2)
         ):
             raise ProtocolError("source", "Invalid or duplicate audio source")
+        if label_source is not None and label_source not in ("browser", "device"):
+            raise ProtocolError("source", "Invalid audio source label provenance")
         label = label_text(optional_string(label, kind, "source"))
         if len(self.writers) >= 64:
             raise ProtocolError("limit", "A session supports at most 64 sources")
@@ -247,7 +249,7 @@ class RecordingSession:
                 "sampleRate": rate,
                 "channels": channels,
                 "frames": 0,
-                "labelSource": "browser" if self.manifest["source"] == "chromium" else "device",
+                "labelSource": label_source or ("browser" if self.manifest["source"] == "chromium" else "device"),
             }
         )
         self.checkpoint()

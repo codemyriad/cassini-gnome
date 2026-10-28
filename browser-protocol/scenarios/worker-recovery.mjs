@@ -44,7 +44,7 @@ export async function workerDeathDuringRecording({ context, meetingPage, popup, 
     after = await status();
     metadata = JSON.parse(await readFile(path.join(before.path, 'session.json')));
     if (!after.recording && /interrupted/i.test(after.message) && metadata.state === 'interrupted') break;
-    assert.ok(Date.now() < recovered, `worker interruption was not reported: ${JSON.stringify(after)}`);
+    assert.ok(Date.now() < recovered, `worker interruption was not reported: ${JSON.stringify({ status: after, manifest: metadata })}`);
     await new Promise(resolve => setTimeout(resolve, 50));
   }
   assert.equal(after.path, before.path);

@@ -172,6 +172,7 @@ with tempfile.TemporaryDirectory() as tmp:
         window._update_live()
         assert window._live_badges[live.key].get_label() == "Recording 1:05"
         assert all(c["timer"].get_label() == "1:05" for c in window._capture_headers)
+    app.native_captures.clear()  # Retire the injected clock-only fixture controller.
     app.recorder = None
     window._fixed_now = original_now
     window._live_badges[live.key] = original_badge

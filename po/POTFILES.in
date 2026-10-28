@@ -9,8 +9,6 @@ src/cassini_viewer/player.py
 src/cassini_viewer/window.py
 src/cassini_viewer/recorder.py
 src/cassini_viewer/recording_window.py
-src/cassini_viewer/session_window.py
-src/cassini_viewer/browser_window.py
 src/cassini_viewer/browser_notifications.py
 src/cassini_viewer/export_dialog.py
 src/cassini_viewer/library_window.py

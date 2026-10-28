@@ -9,7 +9,7 @@ from gettext import gettext as _
 from gi.repository import Gio, GLib, Gtk
 
 from . import ux_formats as fmt
-from .capture_guard import recorder_busy
+from .capture_guard import native_recorders, recorder_busy
 from .recording_details import SilenceClock, edit_recording, live_meeting, live_observation
 from .strings import CATALOG, text
 
@@ -65,77 +65,88 @@ class RecordingComfort:
             return {}
         return dict(draft)
 
+    def _native_for(self, meeting):
+        return next(
+            (
+                native
+                for native in native_recorders(self.app)
+                if native.session and native.session.directory == meeting.directory
+            ),
+            None,
+        )
+
     def active(self):
         from pathlib import Path
 
         from .library import meeting_id
         from .library_location import owned_directory
 
-        controllers = {}
-        native = self.app.recorder
-        if recorder_busy(native) and native.session:
-            directory = native.session.directory
-            controllers[meeting_id(directory)] = "saving" if native.stopping else "recording"
+        controllers, native_directories = {}, set()
+
+        def load(directory, lifecycle="recording"):
+            identifier = meeting_id(directory)
+            controllers[identifier] = lifecycle
             if directory.name not in self.known and directory.name not in self.loading:
-                future = self.executor.submit(live_meeting, directory, controllers[meeting_id(directory)])
+                future = self.executor.submit(live_meeting, directory, lifecycle)
                 self.loading[directory.name] = future
                 future.add_done_callback(lambda f, key=directory.name: GLib.idle_add(self._loaded, key, f))
+
+        for native in native_recorders(self.app):
+            if recorder_busy(native) and native.session:
+                directory = native.session.directory
+                native_directories.add(directory)
+                load(directory, "saving" if native.stopping else "recording")
+        snapshots = [getattr(self.app, "_browser_snapshot", {})]
         for window in self.app.get_windows():
             controllers.update(getattr(window, "_activity", {}))
-            for status in getattr(window, "_browser_snapshot", {}).get("statuses", []):
+            snapshots.append(getattr(window, "_browser_snapshot", {}))
+            if getattr(window, "snapshot", None):
+                self.known.update(
+                    {m.key: m for m in window.snapshot.meetings if m.lifecycle in ("recording", "saving")}
+                )
+        for snapshot in snapshots:
+            for status in snapshot.get("statuses", []):
                 if not status.get("recording") or not isinstance(status.get("path"), str):
                     continue
                 try:
                     directory = owned_directory(Path(status["path"]))
                 except ValueError:
                     continue
-                identifier = meeting_id(directory)
-                controllers[identifier] = "recording"
-                if directory.name not in self.known and directory.name not in self.loading:
-                    future = self.executor.submit(live_meeting, directory)
-                    self.loading[directory.name] = future
-                    future.add_done_callback(lambda f, key=directory.name: GLib.idle_add(self._loaded, key, f))
-            if getattr(window, "snapshot", None):
-                self.known.update(
-                    {m.key: m for m in window.snapshot.meetings if m.lifecycle in ("recording", "saving")}
-                )
-        result = {}
-        native = self.app.recorder
-        for key, meeting in self.known.items():
-            if meeting.id not in controllers:
-                continue
-            if meeting.capture_source == "gnome" and not (
-                recorder_busy(native) and native.session and native.session.directory == meeting.directory
-            ):
-                continue
-            result[key] = meeting
-        self.known = result
-        return result
+                load(directory, "saving" if status.get("stopping") else "recording")
+        self.known = {
+            key: meeting
+            for key, meeting in self.known.items()
+            if meeting.id in controllers
+            and (meeting.capture_source != "gnome" or meeting.directory in native_directories)
+        }
+        return self.known
 
     def status(self, meeting):
         state = dict(
             self.states.get(meeting.key, dict(levels=[0.0, 0.0], voices=0, silent=False, line=None, minutes=0))
         )
-        native = self.app.recorder
-        if native and native.session and native.session.directory == meeting.directory:
+        native = self._native_for(meeting)
+        if native:
             state.update(levels=list(native.levels), line=native.line, minutes=native.minutes_left)
         return state
 
     def native_level(self):
-        native = self.app.recorder
-        if native and native.session:
-            key = native.session.directory.name
-            state = self.states.setdefault(key, dict(levels=[0.0, 0.0], voices=0, silent=False, line=None, minutes=0))
-            state.update(levels=list(native.levels), line=native.line, minutes=native.minutes_left)
-            if native.line:
-                self._disk_notification(None, native.line, native.minutes_left, key=key)
-            if native.pipeline is not None:
-                now = GLib.get_monotonic_time() / 1e6
-                state["silent"] = self.clocks.setdefault(key, SilenceClock(now)).update(native.levels[0], now)
+        for native in native_recorders(self.app):
+            if native.session:
+                key = native.session.directory.name
+                state = self.states.setdefault(
+                    key, dict(levels=[0.0, 0.0], voices=0, silent=False, line=None, minutes=0)
+                )
+                state.update(levels=list(native.levels), line=native.line, minutes=native.minutes_left)
+                if native.line:
+                    self._disk_notification(None, native.line, native.minutes_left, key=key)
+                if native.pipeline is not None:
+                    now = GLib.get_monotonic_time() / 1e6
+                    state["silent"] = self.clocks.setdefault(key, SilenceClock(now)).update(native.levels[0], now)
 
     def elapsed(self, meeting):
-        native = self.app.recorder
-        if native and native.pipeline is not None and native.session.directory == meeting.directory:
+        native = self._native_for(meeting)
+        if native and native.pipeline is not None:
             return max(0, (GLib.get_monotonic_time() - native._start_us) // 1000)
         window = next((w for w in self.app.get_windows() if hasattr(w, "now_ms")), None)
         now = window.now_ms if window else int(time.time() * 1000)
@@ -159,9 +170,10 @@ class RecordingComfort:
             self._browser_inhibit_requested = False
         native = self.app.recorder
         for key, meeting in meetings.items():
+            own_native = self._native_for(meeting)
             state = self.states.setdefault(key, dict(levels=[0.0, 0.0], voices=0, silent=False, line=None, minutes=0))
-            if meeting.capture_source == "gnome" and native and native.pipeline is not None:
-                state.update(levels=list(native.levels), minutes=native.minutes_left, line=native.line)
+            if own_native and own_native.pipeline is not None:
+                state.update(levels=list(own_native.levels), minutes=own_native.minutes_left, line=own_native.line)
             elif key not in self.futures and meeting.lifecycle == "recording":
                 future = self.executor.submit(live_observation, meeting)
                 self.futures[key] = future
@@ -179,9 +191,9 @@ class RecordingComfort:
         self._refresh_pages()
         hidden = bool(meetings) and not any(w.get_visible() for w in self.app.get_windows())
         if hidden:
-            meeting = next(
-                (m for m in meetings.values() if native and native.session and m.directory == native.session.directory),
-                next(iter(meetings.values())),
+            meeting = min(
+                meetings.values(),
+                key=lambda m: (m.started_at_ms if m.started_at_ms is not None else float("inf"), m.key),
             )
             payload = notification_payload(meeting, self.elapsed(meeting), native=meeting.capture_source == "gnome")
             self.last_payload = payload

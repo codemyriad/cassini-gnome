@@ -1,135 +1,126 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Drive real GNOME widgets and notifications inside the private recording harness."""
+"""Actual Library actions, private portal/notifications and browser inventory."""
 
 import argparse
 import json
 import os
 import shutil
+import subprocess
 import sys
 import threading
 from pathlib import Path
 
-if not os.environ.get("CASSINI_ISOLATED_AUDIO") or os.environ.get("WAYLAND_DISPLAY"):
+if os.environ.get("CASSINI_ISOLATED_AUDIO") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Private harness required")
 parser = argparse.ArgumentParser()
 parser.add_argument("--build", required=True)
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[2]
 build = Path(args.build).resolve()
-schemas = build / "browser-test-schemas"
-schemas.mkdir(exist_ok=True)
+schemas = Path(os.environ["XDG_RUNTIME_DIR"]) / "browser-test-schemas"
+schemas.mkdir()
 shutil.copyfile(root / "data/com.gocassini.Viewer.gschema.xml", schemas / "com.gocassini.Viewer.gschema.xml")
-import subprocess  # noqa: E402
-
 subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
 os.environ["GSETTINGS_SCHEMA_DIR"] = str(schemas)
 import gi  # noqa: E402
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
+gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
-sys.path.insert(0, str(root / "src"))
+sys.path[:0] = [str(root / "src"), str(root / "tests")]
 Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-viewer.gresource")))
-from cassini_viewer.browser_window import BrowserMeetingsWindow  # noqa: E402
+from desktop_services import DesktopServices  # noqa: E402
+
+from cassini_viewer.global_shortcut import GlobalShortcut  # noqa: E402
 from cassini_viewer.library_window import LibraryWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
 
+services = DesktopServices()
 app = CassiniApplication("com.gocassini.Viewer.BrowserTest", "test", "development")
-app.hold()  # Keep only the private notification test server alive after a window closes.
-notifications = {}
-next_notification = 0
-bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-xml = """<node><interface name="org.freedesktop.Notifications">
-<method name="Notify"><arg type="s" direction="in"/><arg type="u" direction="in"/><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="as" direction="in"/><arg type="a{sv}" direction="in"/><arg type="i" direction="in"/><arg type="u" direction="out"/></method>
-<method name="CloseNotification"><arg type="u" direction="in"/></method>
-<signal name="ActionInvoked"><arg type="u"/><arg type="s"/></signal>
-</interface></node>"""
-
-
-def notification_call(_connection, _sender, _path, _interface, method, parameters, invocation):
-    global next_notification
-    if method == "Notify":
-        next_notification += 1
-        values = parameters.unpack()
-        notifications[next_notification] = dict(title=values[3], body=values[4], actions=values[5])
-        invocation.return_value(GLib.Variant("(u)", (next_notification,)))
-    else:
-        notifications.pop(parameters.unpack()[0], None)
-        invocation.return_value(None)
-
-
-bus.register_object(
-    "/org/freedesktop/Notifications", Gio.DBusNodeInfo.new_for_xml(xml).interfaces[0], notification_call
+# The RPC test server stays available while checking normal windowless auto-record.
+app.hold()
+# Production deliberately avoids shortcut registration in isolated-audio runs.
+# Bind the real adapter explicitly to this harness's private portal instead.
+app.connect(
+    "startup",
+    lambda application: setattr(
+        application,
+        "global_shortcut",
+        GlobalShortcut(application.on_global_record, connection=services.bus, settings=application.recording_settings),
+    ),
 )
-Gio.bus_own_name_on_connection(bus, "org.freedesktop.Notifications", Gio.BusNameOwnerFlags.NONE, None, None)
 
 
 def dispatch(packet, result, ready):
     try:
-        library = next((w for w in app.get_windows() if isinstance(w, LibraryWindow)), None)
-        result["library"] = (
-            [
+        window = next((w for w in app.get_windows() if isinstance(w, LibraryWindow)), None)
+        action = packet.get("action", "status")
+        if action == "quit":
+            app.on_quit()
+        elif action == "reopen":
+            app.activate()
+        elif action == "notification-stop":
+            services.app_action(app, "stop-recording")
+        elif action == "notification-open":
+            services.app_action(app, "open-recording")
+        elif action == "shortcut":
+            services.activate()
+        elif action == "record":
+            app.recording_settings.set_boolean("skip-record-first", True)
+            app.activate_action("record", None)
+        elif action == "stop":
+            assert window is not None
+            meeting = next(m for m in window.snapshot.meetings if str(m.directory) == packet["path"])
+            window.open_meeting(meeting)
+            assert window.recording_page.stop.get_sensitive()
+            window.recording_page.stop.emit("clicked")
+        elif action == "stop-all":
+            assert window is not None
+            window._stop_live()
+        elif action == "show-settings":
+            app.on_preferences()
+        elif action == "auto":
+            dialog = app.settings_dialog
+            assert dialog is not None and not dialog.closed and dialog._future is None
+            dialog.automatic.set_active(packet["enabled"])
+        elif action == "close-window":
+            assert window is not None
+            if app.settings_dialog and not app.settings_dialog.closed:
+                app.settings_dialog.force_close()
+            window.close()
+            dialog = app._capture_confirmation
+            if dialog:
+                dialog.emit("response", "keep")
+                dialog.force_close()
+        window = next((w for w in app.get_windows() if isinstance(w, LibraryWindow)), None)
+        result.update(
+            status="Library" if window and window.get_visible() else "Window closed",
+            title=window.get_title() if window else None,
+            connected=app._browser_snapshot.get("connectedBrowsers", 0),
+            auto=app._browser_snapshot.get("autoRecord", False),
+            meetings=app._browser_snapshot.get("meetings", []),
+            statuses=app._browser_snapshot.get("statuses", []),
+            shortcutBound=bool(app.global_shortcut and app.global_shortcut.bound),
+            settingsReady=bool(
+                app.settings_dialog and not app.settings_dialog.closed and app.settings_dialog._future is None
+            ),
+            notifications=services.notifications,
+            library=[
                 dict(
                     path=str(m.directory),
+                    title=m.title,
                     lifecycle=m.lifecycle,
                     interruptedAtMs=m.interrupted_at_ms,
-                    header=library.capture_header.get_visible_child_name(),
+                    header=window.capture_header.get_visible_child_name(),
                 )
-                for m in library.snapshot.meetings
+                for m in window.snapshot.meetings
             ]
-            if library and library.snapshot
-            else []
-        )
-        window = next((w for w in app.get_windows() if isinstance(w, BrowserMeetingsWindow) and w.get_visible()), None)
-        action = packet.get("action", "status")
-        if action == "notification-stop":
-            identifier = int(packet["id"])
-            bus.emit_signal(
-                None,
-                "/org/freedesktop/Notifications",
-                "org.freedesktop.Notifications",
-                "ActionInvoked",
-                GLib.Variant("(us)", (identifier, "stop")),
-            )
-        elif action == "quit":
-            app.quit()
-        elif action == "reopen":
-            app.activate_action("browser-meetings", None)
-            window = next(w for w in app.get_windows() if isinstance(w, BrowserMeetingsWindow))
-        elif window is not None:
-            if action in ("record", "stop"):
-                row = window.rows[packet["id"]]
-                assert row.button.get_sensitive(), "Recording button is disabled"
-                row.button.emit("clicked")
-            elif action == "auto":
-                app.on_preferences()
-                app.settings_dialog.automatic.set_active(packet["enabled"])
-            elif action == "close-window":
-                window.close()
-                if getattr(app, "_capture_confirmation", None):
-                    app._capture_confirmation.emit("response", "keep")
-                window = None
-        if window is None:
-            result.update(dict(status="Window closed", rows=[], notifications=notifications))
-            return GLib.SOURCE_REMOVE
-        result.update(
-            dict(
-                status=window.status.get_label(),
-                auto=getattr(window, "_browser_snapshot", {}).get("autoRecord", False),
-                rows=[
-                    dict(
-                        id=identifier,
-                        title=row.get_title(),
-                        button=row.button.get_label(),
-                        enabled=row.button.get_sensitive(),
-                    )
-                    for identifier, row in window.rows.items()
-                ],
-                notifications=notifications,
-                error=window.error.get_label() if window.error.get_visible() else None,
-            )
+            if window and window.snapshot
+            else [],
+            error=app.recording_error,
         )
     except Exception as error:
         result["error"] = str(error)
@@ -141,6 +132,7 @@ def dispatch(packet, result, ready):
 def requests():
     for line in sys.stdin:
         result, ready = {}, threading.Event()
+        packet = {}
         try:
             packet = json.loads(line)
             GLib.idle_add(dispatch, packet, result, ready)
@@ -153,7 +145,5 @@ def requests():
             return
 
 
-# Launch still exercises the Library; enter the retained browser screen explicitly.
-app.connect("activate", lambda application: application.activate_action("browser-meetings", None))
 threading.Thread(target=requests, daemon=True).start()
 sys.exit(app.run([]))

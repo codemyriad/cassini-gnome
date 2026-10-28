@@ -80,6 +80,7 @@ class SettingsDialog(Adw.PreferencesDialog):
             subtitle=text("settings.recording.autoRecord.subtitle"),
             use_markup=False,
         )
+        self.automatic.set_visible(self.app.browser_companion_available)
         self.automatic.connect("notify::active", self._automatic_changed)
         group.add(self.automatic)
 
@@ -237,6 +238,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.move = Gtk.Button(label=text("settings.library.move"), valign=Gtk.Align.CENTER)
         self.move.connect("clicked", lambda *_: self._choose_folder())
         self.move.set_sensitive(True)
+        self.move.set_visible(not self.app.in_flatpak)
         self.folder.add_suffix(self.show_folder)
         self.folder.add_suffix(self.move)
         group.add(self.folder)
@@ -248,8 +250,12 @@ class SettingsDialog(Adw.PreferencesDialog):
         group = Adw.PreferencesGroup(description=text("settings.browser.description"))
         self.pages["browserCompanion"].add(group)
         self.browser = Adw.ActionRow(title=text("settings.browser.status.notSetUp"), use_markup=False)
-        setup = Gtk.Button(label=text("meeting.companionCard.setUp"), valign=Gtk.Align.CENTER)
-        setup.connect("clicked", lambda *_: self.app.on_browser_meetings())
+        setup = self.browser_setup = Gtk.Button(
+            label=text("meeting.companionCard.setUp"),
+            valign=Gtk.Align.CENTER,
+            visible=self.app.browser_companion_available,
+        )
+        setup.connect("clicked", lambda *_: self.app.on_companion_setup(parent=self))
         self.browser.add_suffix(setup)
         group.add(self.browser)
 
@@ -289,9 +295,14 @@ class SettingsDialog(Adw.PreferencesDialog):
 
     def _automatic_changed(self, *_):
         if not self._updating:
-            self._request("configure", autoRecord=self.automatic.get_active())
+            enabled = self.automatic.get_active()
+            token = self.app.begin_auto_recording_change(enabled)
+            self._request("configure", autoRecord=enabled, _preferenceToken=token)
 
     def _request(self, action="status", **values):
+        if not self.app.browser_companion_available:
+            self.browser.set_title(text("settings.browser.status.notSetUp"))
+            return
         if self.closed:
             return
         if self._future:
@@ -306,15 +317,22 @@ class SettingsDialog(Adw.PreferencesDialog):
         self._future.add_done_callback(lambda future: GLib.idle_add(self._received, future))
 
     def _call(self, action, values):
-        target = browser_service.ensure_service(
-            self.service_path, cancelled=self.cancelled if action == "status" else None
-        )
-        with browser_service.connect(target, timeout=0.8) as connection, connection.makefile("rwb") as stream:
-            browser_service.send_packet(stream, dict(role="app", action=action, **values))
-            result = browser_service.read_packet(stream)
-            if result is None or result.get("error"):
-                raise ValueError("Browser connection unavailable")
-            return result
+        values = dict(values)
+        token = values.pop("_preferenceToken", None)
+        result = None
+        try:
+            target = browser_service.ensure_service(
+                self.service_path, cancelled=self.cancelled if action == "status" else None
+            )
+            with browser_service.connect(target, timeout=0.8) as connection, connection.makefile("rwb") as stream:
+                browser_service.send_packet(stream, dict(role="app", action=action, **values))
+                result = browser_service.read_packet(stream)
+                if result is None or result.get("error"):
+                    raise ValueError("Browser connection unavailable")
+                return result
+        finally:
+            if token is not None:
+                GLib.idle_add(self.app.finish_auto_recording_change, token, result)
 
     def _received(self, future):
         self._future = None
@@ -329,7 +347,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.automatic.set_sensitive(True)
         self._updating = False
         names = self._snapshot.get("browserNames", [])
-        if self._snapshot.get("browsers"):
+        if self._snapshot.get("connectedBrowsers", self._snapshot.get("browsers")):
             if names:
                 self.browser.set_title(text("settings.browser.status.connected", browser=", ".join(names)))
             else:

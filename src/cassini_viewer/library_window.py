@@ -4,6 +4,7 @@
 import os
 import time
 from gettext import gettext as _
+from pathlib import Path
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
@@ -80,7 +81,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.root_box.set_visible_child_name("loading")
         self._activity = dict(self._fixture_activity)
         self.monitor = LibraryMonitor(self._updated, capture_activity=lambda: self._activity)
-        if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
+        if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" and self.get_application().browser_companion_available:
             self._activity_source = BrowserActivity(self._activity_tick)
             self._activity_timer = GLib.timeout_add_seconds(1, self._activity_tick)
         self.monitor.refresh()
@@ -187,7 +188,6 @@ class LibraryWindow(Adw.ApplicationWindow):
             header.pack_start(self.capture_controls())
         if close:
             menu = Gio.Menu()
-            menu.append(text("common.legacy.browserMeetings"), "app.browser-meetings")
             # Existing, undrawn GNOME primary-menu copy is retained (HARMONY 11).
             menu.append(_("Open…"), "app.open")
             menu.append(text("common.exportEllipsis"), "win.export")
@@ -241,6 +241,14 @@ class LibraryWindow(Adw.ApplicationWindow):
                 margin_top=8,
             )
         )
+        companion = self.first_companion = Gtk.Button(
+            label=text("companion.addStep.title"),
+            css_classes=["flat"],
+            halign=Gtk.Align.CENTER,
+            visible=self.get_application().browser_companion_available,
+        )
+        companion.connect("clicked", lambda *_: self.get_application().on_companion_setup(parent=self))
+        center.append(companion)
         outer.append(center)
         footer = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER, margin_bottom=18)
         footer.append(
@@ -347,7 +355,13 @@ class LibraryWindow(Adw.ApplicationWindow):
         # Level messages arrive at 10 Hz. Update meters, scanning only on a
         # controller phase change; date grouping stays on the one-second tick.
         activity = dict(self._activity_source.snapshot) if self._activity_source else dict(self._fixture_activity)
-        activity.update(recorder_activity(self.get_application().get_windows() + [self.get_application()]))
+        app = self.get_application()
+        activity.update(recorder_activity(app.get_windows() + [app]))
+        from .library import meeting_id
+
+        for state in app._browser_snapshot.get("statuses", []):
+            if state.get("recording") and isinstance(state.get("path"), str):
+                activity[meeting_id(Path(state["path"]))] = "saving" if state.get("stopping") else "recording"
         if activity != self._activity:
             self._activity = activity
             self.monitor.refresh_now()
@@ -355,7 +369,13 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def _activity_tick(self):
         activity = dict(self._activity_source.snapshot) if self._activity_source else {}
-        activity.update(recorder_activity(self.get_application().get_windows() + [self.get_application()]))
+        app = self.get_application()
+        activity.update(recorder_activity(app.get_windows() + [app]))
+        from .library import meeting_id
+
+        for state in app._browser_snapshot.get("statuses", []):
+            if state.get("recording") and isinstance(state.get("path"), str):
+                activity[meeting_id(Path(state["path"]))] = "saving" if state.get("stopping") else "recording"
         if activity != self._activity:
             self._activity = activity
             self.monitor.refresh_now()
@@ -383,15 +403,16 @@ class LibraryWindow(Adw.ApplicationWindow):
                 if controls["meeting"]
                 else live
             )
-            own_native = real_native and (not target or native.session.directory == target.directory)
+            local_native = self.get_application().native_recorder_for(target.directory) if target else native
+            own_native = local_native is not None and local_native.pipeline is not None
             browser = bool(target and self._activity_source and target.id in self._activity_source.snapshot)
             ms = self.get_application().comfort.elapsed(target) if target else elapsed
             controls["stack"].set_visible_child_name("live" if target or own_native else "record")
             controls["timer"].set_label(fmt.live_badge(ms))
-            controls["stop"].set_sensitive((own_native and not native.stopping) or browser)
+            controls["stop"].set_sensitive((own_native and not local_native.stopping) or browser)
             state = self.get_application().comfort.status(target) if target else {}
             if self._fixed_now is None or self.recording_page:
-                levels = native.levels if own_native else state.get("levels", (0.0, 0.0))
+                levels = local_native.levels if own_native else state.get("levels", (0.0, 0.0))
                 for bar, fraction in zip(controls["levels"], levels, strict=True):
                     bar.set_fraction(fraction)
             bar = controls["levels"][0]
@@ -407,18 +428,15 @@ class LibraryWindow(Adw.ApplicationWindow):
     def stop_meeting(self, meeting):
         app = self.get_application()
         if meeting.capture_source == "gnome":
-            if app.recorder and app.recorder.session and app.recorder.session.directory == meeting.directory:
-                app.stop_native()
+            app.stop_native(directory=meeting.directory)
         else:
             app.stop_browser_recordings(meeting.directory)
 
     def live_meeting(self):
         if not self.snapshot:
             return None
-        native = self.get_application().recorder
-        if native and native.pipeline is not None and native.session:
-            return next((m for m in self.snapshot.meetings if m.directory == native.session.directory), None)
-        return next((m for m in self.snapshot.meetings if m.lifecycle in ("recording", "saving")), None)
+        live = [m for m in self.snapshot.meetings if m.lifecycle in ("recording", "saving")]
+        return min(live, key=lambda m: (m.started_at_ms is None, m.started_at_ms or 0, m.key)) if live else None
 
     def open_live_recording(self):
         meeting = self.live_meeting()
@@ -432,12 +450,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             if meeting:
                 self.stop_meeting(meeting)
             return
-        app = self.get_application()
-        if app.recorder and app.recorder.pipeline is not None:
-            app.stop_native()
-        elif self._activity_source and self._activity_source.snapshot:
-            # The existing browser controls retain their real Stop route.
-            app.stop_browser_recordings()
+        self.get_application().on_stop_recording()
 
     def _recording_line(self, recorder):
         from .inline_line import InlineLine

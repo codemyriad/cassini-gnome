@@ -232,7 +232,11 @@ try:
     window = app.get_active_window()
     space[0] = (9, False)
     services.activate()
-    until(lambda: native.pipeline is not None, "global shortcut starts next recording")
+    until(
+        lambda: app.recorder is not native and app.recorder.pipeline is not None,
+        "global shortcut starts next recording",
+    )
+    native = app.recorder
     assert native.minutes_left == 9 and native.line == "errors.diskLow.line", "low-space start was blocked or unwarned"
     until(lambda: all(w.frames >= 9600 for w in native.session.writers.values()), "low-space capture is allowed")
     capture_clock(native)
@@ -248,7 +252,8 @@ try:
     assert window.meeting_page.meeting.directory != first_saved
     space[0] = (90, False)
     services.activate()
-    until(lambda: native.pipeline is not None, "last-edit close capture starts")
+    until(lambda: app.recorder is not native and app.recorder.pipeline is not None, "last-edit close capture starts")
+    native = app.recorder
     until(
         lambda: window.recording_page is not None and all(w.frames >= 9600 for w in native.session.writers.values()),
         "last-edit capture has audio",

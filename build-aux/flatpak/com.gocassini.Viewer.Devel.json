@@ -10,7 +10,8 @@
         "--socket=fallback-x11",
         "--socket=wayland",
         "--device=dri",
-        "--socket=pulseaudio"
+        "--socket=pulseaudio",
+        "--filesystem=xdg-music/Cassini:create"
     ],
     "cleanup": [
         "/include",

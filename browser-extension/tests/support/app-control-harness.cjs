@@ -11,9 +11,9 @@ async function until(check) {
   const deadline = Date.now() + 3000;
   while (!check()) { assert.ok(Date.now() < deadline, 'control fixture timed out'); await new Promise(resolve => setImmediate(resolve)); }
 }
-async function setup(sourceCount = 3) {
+async function setup(sourceCount = 3, previous = {}) {
   const ports = [], audio = [], alarms = new Map(), timers = new Map(), pages = [];
-  const stored = {}; let timerID = 0;
+  const stored = { ...previous }; let timerID = 0, uuid = 0;
   const tabs = new Map([[2, { id: 2, title: 'Meeting B', url: 'https://meet.example/call' }], [99, { id: 99, title: 'Active unrelated page', url: 'https://other.example/' }]]);
   const getCalls = [], queries = [];
   const chrome = {
@@ -39,7 +39,7 @@ async function setup(sourceCount = 3) {
   };
   const later = (fn, ms) => { const id = ++timerID; timers.set(id, { fn, ms }); return id; };
   const cancel = id => timers.delete(id);
-  const context = vm.createContext({ chrome, URL, crypto: { randomUUID: () => 'token' }, queueMicrotask, setTimeout, clearTimeout });
+  const context = vm.createContext({ chrome, URL, crypto: { randomUUID: () => 'token-' + (++uuid) }, queueMicrotask, setTimeout, clearTimeout });
   const extension = path.resolve(__dirname, '../..');
   vm.runInContext(fs.readFileSync(path.join(extension, 'app-control.js'), 'utf8').replace('export class AppControl', 'class AppControl'), context);
   context.controlLater = later; context.controlCancel = cancel;

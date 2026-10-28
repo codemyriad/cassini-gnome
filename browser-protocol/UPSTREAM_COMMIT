@@ -1,26 +1,26 @@
-tree b6168407b37a8f2e9e5caf257517597e8ca6a671
-parent 38bd12a6dfa3e4e618db6c77f950f5497186b042
-parent 335152c47220d5bd7cf0a2a3dffeda5b53d43503
-author DrMeyers <drmeyers@codemyriad.io> 1793114888 +0100
-committer GitHub <noreply@github.com> 1793114888 +0100
+tree 98074bef3f55dcedd0ad76423659e9a32a5b02ab
+parent 1a3f28844aeab01e6cebabbccb3cda7d3dd5116e
+parent c21127257ba1711fc065f722d6c28c4ea9f7ac3b
+author Silvio Tomatis <silviot@gmail.com> 1793207380 +0100
+committer GitHub <noreply@github.com> 1793207380 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq4MMICRC1aQ7uu5UhlAAAbMMQADFdCdMlNdi9c+8x43Yb3s9v
- 9SlNshc6x5SbNE+30617YbwBouEB2acbFFtS9/mgzGwYYEBc52B49bj99dxKsyxJ
- mPApqIijxtFjDGWXWGN8qBaE5TMn5rVkIqN+nJ8IMvAnkalPMsKFE6W/JRldl2Kq
- 1R0xMKHTiQXB52bboShAyPvfi5rS6FkI2o8xGRui/P30Pb+aX/WHTRXKr4fdmMaT
- xGgfMZI5bt3pj6jXoopYX9nf2dmDjkMVQ4Df8kkhEPEY+BML26498Zoo8qTPlev4
- Mvqxe2Q0pnrAokZYgNP64eu25hf18kOLvQEeekIGn/4y0A9HNRacjLtQEr/yeLQJ
- DVaHEN+xq2pnzyOf3M4cUTxVrQ4fhXl3Z1Jl2p3jGE7z/8NG7SxTLPrNvMrnRwla
- F4OyRqmEjMEio0aHzJJsbhbsYQd24HTBJK8cA4DXtFJZBk7NR8XQMWL6lu2ykKxD
- 2B3bZ+wJSPVnOctH8lnH6hicYieNYWKiB4GZ7RFfPLixFofDDORR4mVLYpF+L1U/
- VgRLwwDirZ8b5y0dYBvdpMc8nF8bskKnPkxfikIlC1j3yUrCiaLysVgkOrMXhkXI
- 9aCeBkQRDNkUCzzUlYaOMXr0r4+vSbO3yWJdll90BCPsRJup9nRzV3RW6+fRBBKk
- tRyrHZBXXI6918E1lJ3T
- =RhXr
+ wsFcBAABCAAQBQJq4ixUCRC1aQ7uu5UhlAAARwUQAATlhDnR784geOPI1CWIMpeF
+ 8j78aZjCwj5s9PyRbJiccScafjaps5qWc+1sAEKgey/C6kbCXdCJiWS53DaG0uRt
+ PLdYTgd2Z+wuCSQ44c/1gSFBIccf2PIxqey0BKZyB4MxUnd3C7p+SFh+9s545dEt
+ 3h1kNME2oG2QDX8DTgetMwlpkFgoIY2teaiRZv99LTgwEg2RdqadeB5D8oxovVdF
+ vKFZgvccX1PaEfWz/VVN0+3kf/wA4IctAbWmGVl8S58d4cE6ZbbWHxYcYGJ1SOu2
+ 0+XJWsV52FbtszE0iaiTFQwh3n0rRd0o8BknKGp/gg0Ds4H7hLf70+H+Eg5vW5WG
+ TtGWhrJFmnvwZCpsZSL26yV3zcysJNGYup1JleJXaG7jfli+sfgxVFqM277Cnxq3
+ cpy1+DdPKwXVduKBxfPIZRvtKPqmoCDjEfweE6T1W/oNiiyjVKG1znJW/U1rc5t6
+ ZTkLs2wFx3I2fUsmmE1yor1Y/kHmvD70ApNxgK6bCQOz4A8+WrceK/bYBAkBLLZN
+ ZzOCrUudGUoGiZXL4GunoQjtCswYNi3K/aQ25frG5Wjar1DvGPZjEg5VNf7jSM04
+ Xq4fq7BK9ohj/rdzECW91xg74j/u/pjk6XmIF3Pg3v0DJ6+Gtu/jRXY/0a0pWAcr
+ 0XvrcsRhVlVKkNOILesU
+ =XOVR
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #9 from codemyriad/app-control-v1
+Merge pull request #14 from codemyriad/fix/icon-hashes
 
-Control browser meeting recording from the app
+List the extension icons in SHA256SUMS

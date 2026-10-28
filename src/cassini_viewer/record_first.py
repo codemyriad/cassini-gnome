@@ -84,4 +84,4 @@ class RecordFirst(Adw.Dialog):
 
     def _start(self, *_):
         self.close()
-        self.app.start_native()
+        self.app.start_recordings()

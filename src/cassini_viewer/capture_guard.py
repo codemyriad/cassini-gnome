@@ -15,11 +15,29 @@ def recorder_busy(recorder):
     )
 
 
+def native_recorders(target):
+    registry = getattr(target, "native_captures", None)
+    if registry is not None:
+        return tuple(registry.values())
+    recorder = getattr(target, "recorder", None)
+    return (recorder,) if recorder is not None else ()
+
+
 def capture_targets(app):
+    from types import SimpleNamespace
+
     native = [w for w in app.get_windows() if recorder_busy(getattr(w, "recorder", None))]
-    if recorder_busy(getattr(app, "recorder", None)):
-        native.append(app)
-    browser = any(getattr(w, "_activity_source", None) and w._activity_source.snapshot for w in app.get_windows())
+    native.extend(
+        SimpleNamespace(recorder=recorder, open_result=False)
+        for recorder in native_recorders(app)
+        if recorder_busy(recorder)
+    )
+    browser = bool(getattr(app, "_record_start_future", None)) or any(
+        s.get("recording") for s in getattr(app, "_browser_snapshot", {}).get("statuses", [])
+    )
+    browser = browser or any(
+        getattr(w, "_activity_source", None) and w._activity_source.snapshot for w in app.get_windows()
+    )
     browser = browser or any(
         any(s.get("recording") for s in getattr(w, "_browser_snapshot", {}).get("statuses", []))
         for w in app.get_windows()
@@ -120,6 +138,9 @@ def remember_capture_paths(app):
         session = getattr(target.recorder, "session", None)
         if session:
             paths.add(str(session.directory))
+    for status in getattr(app, "_browser_snapshot", {}).get("statuses", ()):
+        if status.get("recording") and isinstance(status.get("path"), str):
+            paths.add(status["path"])
     for window in app.get_windows():
         activity = getattr(window, "_activity_source", None)
         paths.update(getattr(activity, "paths", {}).values())
@@ -153,7 +174,9 @@ def confirm_capture_close(app, window, *, quitting=False):
     if getattr(app, "_capture_confirmation", None):
         return True
     native, browser = capture_targets(app)
-    if not native and not browser:
+    watch = getattr(app, "browser_watch", None)
+    idle_quit = quitting and watch is not None and not native and not browser
+    if not native and not browser and not idle_quit:
         return False
     remember_capture_paths(app)
     dialog = Adw.AlertDialog(heading=text("confirm.recordingRunning.title"), body=text("confirm.recordingRunning.body"))
@@ -188,11 +211,17 @@ def confirm_capture_close(app, window, *, quitting=False):
         app._capture_confirmation = True  # Finalization guard; release the closed dialog itself.
         exiting = quitting or not any(w not in targets for w in app.get_windows())
         app._capture_exiting = exiting
+        if exiting and watch is not None:
+            watch.pause()
+        if hasattr(app, "_record_start_generation"):
+            app._record_start_generation += 1
         paths = list(remember_capture_paths(app))
         app.hold()
-        active_native = [target for target in native if recorder_busy(target.recorder)]
+        current_native, _current_browser = capture_targets(app)
+        active_native = [target for target in current_native if recorder_busy(target.recorder)]
         waiting = {id(target.recorder) for target in active_native}
-        browser_done = not browser
+        browser_stop = browser or exiting and watch is not None
+        browser_done = not browser_stop
         paths.extend(
             str(target.recorder.session.directory)
             for target in native
@@ -218,7 +247,10 @@ def confirm_capture_close(app, window, *, quitting=False):
             executor.shutdown(wait=False, cancel_futures=True)
             app._capture_confirmation = None
             app._capture_exiting = False
-            window.present()
+            if watch is not None:
+                watch.resume()
+            if window is not None:
+                window.present()
             app.release()
 
         def ready():
@@ -293,8 +325,14 @@ def confirm_capture_close(app, window, *, quitting=False):
             except Exception:
                 abort()
                 break
-        if browser and not completed:
-            future = executor.submit(stop_browser_captures)
+        if browser_stop and not completed:
+            pending = getattr(app, "_record_start_group", None)
+            future = executor.submit(
+                stop_browser_captures,
+                cancel_groups=[pending] if pending else [],
+                quitting=exiting,
+                generation=watch.generation if watch is not None else 0,
+            )
 
             def stopped(result):
                 def delivered():
@@ -319,8 +357,11 @@ def confirm_capture_close(app, window, *, quitting=False):
             future.add_done_callback(stopped)
         ready()
 
-    dialog.connect("response", response)
-    dialog.present(window)
+    if idle_quit:
+        response(dialog, "stop")
+    else:
+        dialog.connect("response", response)
+        dialog.present(window)
     return True
 
 
@@ -344,7 +385,7 @@ def finish_close(app, windows, *, background=False):
         release_background(app)
 
 
-def stop_browser_captures(directory=None):
+def stop_browser_captures(directory=None, *, cancel_groups=(), quitting=False, generation=0):
     import time
     from pathlib import Path
 
@@ -354,6 +395,17 @@ def stop_browser_captures(directory=None):
         return isinstance(path, str) and (directory is None or Path(path).resolve() == Path(directory).resolve())
 
     state = browser_service.request()
+    if state.get("protocol", 0) >= 2:
+        result = browser_service.request(
+            "stop-all",
+            directory=str(directory) if directory is not None else None,
+            cancelGroups=list(cancel_groups),
+            quitting=quitting,
+            generation=generation,
+        )
+        if any(s.get("recording") and matches(s.get("path")) for s in result.get("statuses", [])):
+            raise ValueError("The browser has not confirmed the recording stopped")
+        return result.get("stoppedPaths", [])
     statuses = [s for s in state.get("statuses", []) if s.get("recording") and matches(s.get("path"))]
     paths = [s["path"] for s in statuses]
     identifiers = {s["id"] for s in statuses if isinstance(s.get("id"), str)}

@@ -137,3 +137,71 @@ checks the real native audio host. Schemas live in schemas/control-{extension,ho
 Chrome API basis: [Native Messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging),
 [tabs metadata permissions](https://developer.chrome.com/docs/extensions/reference/api/tabs),
 [alarms and pre-150 persistence](https://developer.chrome.com/docs/extensions/reference/api/alarms).
+
+
+## Extension identity
+
+`extension/manifest.json` pins the extension's public `key`, so the extension ID is the same however it is
+installed (unpacked, self-hosted or from a store):
+
+    pcafdaahfhjiolfpfnlhmljfgoabbaij
+
+- Native host manifests written by Cassini (per user, never system-wide) list exactly
+  `chrome-extension://pcafdaahfhjiolfpfnlhmljfgoabbaij/` in `allowed_origins`. There is no wildcard and no manual ID entry.
+- The matching private key is held by the project owner outside every repository. It is needed only to sign a
+  packaged extension or to keep this ID on a first store upload. Never commit it.
+- Tests that load the extension unpacked get this ID too. Tests may still read the ID at run time.
+
+
+## Independent sessions capability (D17 / D18)
+
+This additive capability preserves all v1 messages and legacy vectors. Without
+`independent: true`, the popup/app start retains the v1 single-slot refusal.
+The extension's hello now advertises `capabilities: ["independent-sessions-v1"]`.
+Only apps that see that capability may request concurrent capture.
+
+An app may send `start` with `independent: true` for each active-call tab. Each
+recording has its own native audio connection, token, source clock, frames and
+persistent recovery entry. A pending start reserves its own tab; it cannot block
+another tab. A valid independent Stop marks that tab's pending start cancelled
+immediately, while its result still follows the start result in arrival order.
+It cannot create a late host after Stop; invalid/duplicate stops have no new
+side effects. Starting the same tab twice is refused. There are at most 100 live
+or pending sessions per extension. `stop` with `independent: true` targets only
+its explicit tabId; an idle stop is idempotent and never stops another tab.
+Losing one tab/PCM host cannot stop a different session. Control reconnect still
+leaves all PCM sessions alive and publishes replacement snapshots.
+
+Every status adds `sessions`, a complete replacement list of the live recordings,
+including those saving. Each entry has recording/tabId/path/message/tracks/stopping/captureId
+as in v1 (path may be null while start is pending). Command result's top-level
+status is for that tab; the aggregate snapshot's top-level fields retain the first
+live recording or the last saved status for legacy readers. Consumers must use
+`sessions` when present, even when it is empty. Recovery persists all session
+paths and opaque capture IDs under `cassiniSessions`; `cassiniActive` retains its first-entry legacy
+shape. A terminated worker reports every saved path as interrupted and never
+claims that PCM capture survived termination. The status adds an `interrupted`
+list of those saved statuses after recovery; `sessions` still contains only live captures.
+
+Independent starts may include `captureLocal` (default true) and `microphone`
+(default true). `captureLocal: false` excludes page sender/microphone-preview
+sources. Apps that supply their own per-session microphone copy set it false,
+so that copy is not duplicated by the page sender. The background passes the
+microphone choice to the native host in its start message, along with
+`independent: true`, `captureId` (the background token, an opaque string of
+at most128 characters) and `timelineOriginMs` (its Date.now() session origin), which
+lets the platform's own microphone share the source timeline. These optional
+start fields do not change the version1 PCM transport; legacy hosts ignore them.
+No page controls the choice or supplies an output path. Invalid option types are
+refused before any audio side effect.
+
+When an independent recording stops because its page/PCM path was lost, its stop
+message adds `failureReason: "lost"`; an explicit Stop omits it. The platform can
+use this distinction for Q4 system-sound fallback in the same folder. This field
+does not itself capture a system source and never selects a microphone fallback.
+
+Capture reads source tracks before the tab's output. A remote media-element clone
+of a receiver is the same source and must not create a second recording track;
+known clone roots are deduplicated. Source IDs still describe capture sources,
+not participant identities. Whole-tab capture still requires the browser action
+invocation grant and keeps its single offscreen document.

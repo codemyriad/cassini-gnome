@@ -20,7 +20,9 @@
 import logging
 import os
 import sys
+from concurrent.futures import CancelledError, ThreadPoolExecutor
 from gettext import gettext as _
+from uuid import uuid4
 
 import gi
 
@@ -60,7 +62,19 @@ class CassiniApplication(Adw.Application):
         screenshot = os.environ.get("CASSINI_SCREENSHOT_ISOLATED") == "1"
         self.writing_unavailable = None if screenshot else self._writing_unavailable()
         self.transcription_enabled = not screenshot and self.writing_unavailable is None
-        self.recorder = None
+        self.native_captures = {}
+        self._last_native = None
+        self._browser_snapshot = {}
+        self.browser_watch = None
+        self._browser_seen_saved = None
+        self._auto_recording_held = False
+        self._auto_recording_pending = None
+        self._auto_recording_request = 0
+        self._auto_recording_revision = 0
+        self._record_start_future = None
+        self._record_start_group = None
+        self._record_start_generation = 0
+        self._record_start_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-record-start")
         self._native_held = False
         self._recording_cookie = 0
         self.recording_error = None
@@ -77,7 +91,6 @@ class CassiniApplication(Adw.Application):
         self._add_action("preferences", self.on_preferences, ["<primary>comma"])
         self._add_action("quit", self.on_quit, ["<primary>q"])
         self._add_action("record", self.on_record, ["<primary>r"])
-        self._add_action("browser-meetings", self.on_browser_meetings)
         self._add_action("stop-recording", self.on_stop_recording)
         self._add_action("open-recording", self.on_open_recording)
         self.set_accels_for_action("window.close", ["<primary>w"])
@@ -102,6 +115,10 @@ class CassiniApplication(Adw.Application):
         from .recording_comfort import RecordingComfort
 
         self.comfort = RecordingComfort(self, automatic=os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1")
+        if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" and self.browser_companion_available:
+            from .browser_watch import BrowserWatch
+
+            self.browser_watch = BrowserWatch(self._browser_changed)
         from .sherpa_runtime import available as parakeet_available
 
         if self.writing_available and parakeet_available():
@@ -211,35 +228,124 @@ class CassiniApplication(Adw.Application):
         finish_close(self, list(self.get_windows()))
         self.quit()
 
-    def on_browser_meetings(self, *_args):
-        from .browser_window import BrowserMeetingsWindow
+    @property
+    def in_flatpak(self):
+        from .companion import in_flatpak
 
-        window = next((w for w in self.get_windows() if isinstance(w, BrowserMeetingsWindow)), None)
-        if window is None:
-            window = BrowserMeetingsWindow(self)
-        window.present()
+        return in_flatpak()
+
+    @property
+    def browser_companion_available(self):
+        from .companion import available
+
+        return available()
+
+    def on_companion_setup(self, *_args, parent=None):
+        if not self.browser_companion_available:
+            return None
+        from .companion_setup import CompanionSetup
+
+        dialog = getattr(self, "companion_setup", None)
+        if dialog is None or dialog.closed:
+            dialog = self.companion_setup = CompanionSetup(self)
+        dialog.present(parent or self.get_active_window())
+        return dialog
 
     @property
     def recording_settings(self):
         return Gio.Settings.new(self.settings_schema)
 
+    @property
+    def recorder(self):
+        """The earliest active native capture for existing meter clients."""
+        from .capture_guard import recorder_busy
+
+        active = [r for r in self.native_captures.values() if recorder_busy(r)]
+        return min(active, key=lambda r: getattr(r, "_start_us", 0)) if active else self._last_native
+
+    @recorder.setter
+    def recorder(self, value):
+        # Older embedded clients can supply a controller, without displacing
+        # another session. All recording control enumerates the registry.
+        if value is not None:
+            self.native_captures[str(uuid4())] = value
+        self._last_native = value
+
+    def native_recorder_for(self, directory):
+        from pathlib import Path
+
+        return next(
+            (
+                r
+                for r in self.native_captures.values()
+                if r.session and r.session.directory.resolve() == Path(directory).resolve()
+            ),
+            None,
+        )
+
+    def set_auto_recording_hold(self, enabled):
+        enabled = bool(enabled) and not self._quitting
+        if enabled and not self._auto_recording_held:
+            self.hold()
+            self._auto_recording_held = True
+        elif not enabled and self._auto_recording_held:
+            self._auto_recording_held = False
+            self.release()
+
+    def begin_auto_recording_change(self, enabled):
+        self._auto_recording_request += 1
+        token = self._auto_recording_request
+        self._auto_recording_pending = (token, enabled)
+        self.hold()  # Keep an accepted preference write alive after its dialog closes.
+        self.set_auto_recording_hold(enabled)
+        return token
+
+    def finish_auto_recording_change(self, token, snapshot):
+        if self._auto_recording_pending and self._auto_recording_pending[0] == token:
+            self._auto_recording_pending = None
+            if snapshot is not None:
+                self._browser_changed(snapshot)
+            else:
+                self.set_auto_recording_hold(self._browser_snapshot.get("autoRecord", False))
+        self.release()
+        return False
+
+    def _browser_changed(self, snapshot):
+        snapshot = dict(snapshot)
+        revision = snapshot.get("autoRecordRevision", 0)
+        if type(revision) is not int or revision < self._auto_recording_revision:
+            snapshot["autoRecord"] = self._browser_snapshot.get("autoRecord", False)
+        else:
+            self._auto_recording_revision = revision
+        self._browser_snapshot = snapshot
+        self.observe_browser_recordings(snapshot, self._browser_seen_saved)
+        self._browser_seen_saved = {r["path"] for r in snapshot.get("recordings", []) if isinstance(r.get("path"), str)}
+        desired = self._auto_recording_pending
+        self.set_auto_recording_hold(desired[1] if desired else snapshot.get("autoRecord", False))
+        for window in self.get_windows():
+            window._browser_snapshot = snapshot
+        self._native_changed()
+
     def browser_capture_active(self):
-        return any(
+        return any(s.get("recording") for s in self._browser_snapshot.get("statuses", [])) or any(
             (getattr(window, "_activity_source", None) and window._activity_source.snapshot)
             or any(status.get("recording") for status in getattr(window, "_browser_snapshot", {}).get("statuses", []))
             for window in self.get_windows()
         )
 
     def on_record(self, *_args):
-        if self.browser_capture_active():
-            self.stop_browser_recordings()
-            return
-        if self.recorder and (self.recorder.pipeline is not None or self.recorder.starting or self.recorder.stopping):
-            self.stop_native()
+        from .capture_guard import recorder_busy
+
+        if (
+            self._record_start_future
+            or self.browser_capture_active()
+            or any(recorder_busy(r) for r in self.native_captures.values())
+        ):
+            self.on_stop_recording()
             return
         self.do_activate()
         if self.recording_settings.get_boolean("skip-record-first"):
-            self.start_native()
+            self.start_recordings()
         elif not self.record_first:
             from .record_first import RecordFirst
 
@@ -247,45 +353,107 @@ class CassiniApplication(Adw.Application):
             self.record_first.connect("closed", lambda *_: setattr(self, "record_first", None))
 
     def on_global_record(self, *_):
-        active = self.recorder and (
-            self.recorder.pipeline is not None or self.recorder.starting or self.recorder.stopping
+        from .capture_guard import recorder_busy
+
+        active = (
+            self._record_start_future
+            or any(recorder_busy(r) for r in self.native_captures.values())
+            or self.browser_capture_active()
         )
-        active = active or self.browser_capture_active()
         if (
             not active
             and self.recording_settings.get_boolean("skip-record-first")
             and self.get_windows()
             and not any(w.get_visible() for w in self.get_windows())
         ):
-            self.start_native()
+            self.start_recordings()
         else:
             self.on_record()
 
-    def start_native(self, *, test=False):
-        from .native_recorder import NativeRecorder
+    def start_recordings(self):
+        from . import browser_service
 
-        if self.recorder is None:
-            self.recorder = NativeRecorder()
-            self.recorder.connect("started", self._native_started)
-            self.recorder.connect("finished", self._native_finished)
-            self.recorder.connect("error", self._native_error)
-            self.recorder.connect("changed", self._native_changed)
-        if self.recorder.pipeline is not None or self.recorder.starting or self.recorder.stopping:
+        if self._record_start_future is not None or self._quitting:
             return
-        self.recording_error = None
+        if not self.browser_companion_available:
+            self.start_native()
+            return
+        self._record_start_generation += 1
+        generation = self._record_start_generation
+        group = self._record_start_group = str(uuid4())
         for window in self.get_windows():
             player = getattr(window, "player", None)
             if player is not None and player.playing:
                 player.pause()
         self.hold()
-        self._native_held = True
-        self.recorder.start(test=test)
+
+        def start():
+            target = browser_service.ensure_service()
+            return browser_service.request("start-all", path=target, groupId=group)
+
+        self._record_start_future = self._record_start_executor.submit(start)
+        self._record_start_future.add_done_callback(
+            lambda future: GLib.idle_add(self._recordings_started, future, generation)
+        )
+
+    def _recordings_started(self, future, generation):
+        self._record_start_future = None
+        self._record_start_group = None
+        try:
+            snapshot = future.result()
+            if (
+                generation != self._record_start_generation
+                or self._quitting
+                or self._capture_exiting
+                or snapshot.get("cancelled")
+            ):
+                return False
+            self._browser_changed(snapshot)
+            active = [s for s in snapshot.get("statuses", []) if s.get("recording") and isinstance(s.get("path"), str)]
+            calls = [m for m in snapshot.get("meetings", []) if m.get("sourceCount", 0) > 0]
+            if not calls and not active:
+                self.start_native()
+            elif snapshot.get("failures"):
+                self.recording_error = snapshot["failures"][0]["error"]
+            elif active and any(w.get_visible() for w in self.get_windows()):
+                self._pending_recording = active[0]["path"]
+            self._native_changed()
+        except CancelledError:
+            pass
+        except (OSError, ValueError, TimeoutError) as error:
+            if generation == self._record_start_generation and not self._quitting:
+                self.recording_error = str(error)
+                self._native_changed()
+        finally:
+            self.release()
+        return False
+
+    def start_native(self, *, test=False):
+        from .native_recorder import NativeRecorder
+
+        recorder = NativeRecorder()
+        self.native_captures[str(uuid4())] = recorder
+        self._last_native = recorder
+        recorder.connect("started", self._native_started)
+        recorder.connect("finished", self._native_finished)
+        recorder.connect("error", self._native_error)
+        recorder.connect("changed", self._native_changed)
+        self.recording_error = None
+        for window in self.get_windows():
+            player = getattr(window, "player", None)
+            if player is not None and player.playing:
+                player.pause()
+        if not self._native_held:
+            self.hold()
+            self._native_held = True
+        recorder.start(test=test)
 
     def _native_started(self, _recorder, path):
         self._pending_recording = path
-        self._recording_cookie = self.inhibit(
-            self.get_active_window(), Gtk.ApplicationInhibitFlags.SUSPEND, _("Recording a meeting")
-        )
+        if not self._recording_cookie:
+            self._recording_cookie = self.inhibit(
+                self.get_active_window(), Gtk.ApplicationInhibitFlags.SUSPEND, _("Recording a meeting")
+            )
         self._native_changed()
 
     def _native_changed(self, *_):
@@ -296,6 +464,10 @@ class CassiniApplication(Adw.Application):
                 window.capture_changed()
 
     def _release_native(self):
+        from .capture_guard import recorder_busy
+
+        if any(recorder_busy(r) for r in self.native_captures.values()):
+            return
         if self._recording_cookie:
             self.uninhibit(self._recording_cookie)
             self._recording_cookie = 0
@@ -304,6 +476,9 @@ class CassiniApplication(Adw.Application):
             self.release()
 
     def _native_finished(self, _recorder, _path):
+        self.native_captures = {key: r for key, r in self.native_captures.items() if r is not _recorder}
+        self._last_native = _recorder
+        _recorder.close()
         self._pending_recording = None
         if (
             self.transcription_enabled
@@ -318,13 +493,20 @@ class CassiniApplication(Adw.Application):
 
     def _native_error(self, _recorder, message):
         self.recording_error = message
-        if not self.recorder.pipeline and not self.recorder.starting:
+        if not _recorder.pipeline and not _recorder.starting:
             self._release_native()
         self._native_changed()
 
-    def stop_native(self, *_):
-        if self.recorder:
-            self.recorder.stop()
+    def stop_native(self, *_, directory=None):
+        from pathlib import Path
+
+        for recorder in tuple(self.native_captures.values()):
+            if (
+                directory is None
+                or recorder.session
+                and recorder.session.directory.resolve() == Path(directory).resolve()
+            ):
+                recorder.stop()
 
     def stop_browser_recordings(self, directory=None):
         from concurrent.futures import ThreadPoolExecutor
@@ -338,7 +520,11 @@ class CassiniApplication(Adw.Application):
         self._browser_stops.add(key)
         self.hold()
         executor = ThreadPoolExecutor(max_workers=1)
-        future = executor.submit(stop_browser_captures, directory)
+        future = executor.submit(
+            stop_browser_captures,
+            directory,
+            cancel_groups=[self._record_start_group] if self._record_start_group and directory is None else [],
+        )
 
         def done(result):
             executor.shutdown(wait=False)
@@ -440,9 +626,9 @@ class CassiniApplication(Adw.Application):
                 self.write_down(path)
 
     def on_stop_recording(self, *_):
-        if self.recorder and (self.recorder.pipeline is not None or self.recorder.starting or self.recorder.stopping):
-            self.stop_native()
-        if self.browser_capture_active():
+        self._record_start_generation += 1
+        self.stop_native()
+        if self.browser_capture_active() or self._record_start_future:
             self.stop_browser_recordings()
 
     def on_open_recording(self, *_):
@@ -455,6 +641,11 @@ class CassiniApplication(Adw.Application):
 
     def begin_exit(self):
         self._quitting = True
+        self._record_start_generation += 1
+        if self.browser_watch:
+            self.browser_watch.close()
+        self.set_auto_recording_hold(False)
+        self._record_start_executor.shutdown(wait=False, cancel_futures=True)
         if self.speech_models:
             self.speech_models.close()
         if self.library_relocator:
@@ -473,7 +664,11 @@ class CassiniApplication(Adw.Application):
     def window_closing(self, window):
         if self._closing_background_windows:
             return
-        if not self._capture_background_active() and not any(w is not window for w in self.get_windows()):
+        if (
+            not self._auto_recording_held
+            and not self._capture_background_active()
+            and not any(w is not window for w in self.get_windows())
+        ):
             self.begin_exit()
 
     def _capture_background_active(self):

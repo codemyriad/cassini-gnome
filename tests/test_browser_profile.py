@@ -12,6 +12,7 @@ def test_development_profile_registers_both_hosts_for_loaded_extension(tmp_path)
     profile = tmp_path / "profile"
     recordings = tmp_path / "recordings"
     identifier = module.prepare(root, profile, recordings)
+    assert identifier == "pcafdaahfhjiolfpfnlhmljfgoabbaij"
     for name, module_name in [
         ("com.codemyriad.cassini", "browser_host"),
         ("com.codemyriad.cassini.control", "browser_control_host"),
