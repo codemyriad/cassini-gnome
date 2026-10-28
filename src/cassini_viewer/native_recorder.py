@@ -8,6 +8,7 @@ from pathlib import Path
 
 from gi.repository import GLib, GObject, Gst
 
+from .recorder import request_eos
 from .recording_session import RecordingSession
 
 RATE = 48000
@@ -166,8 +167,12 @@ class NativeRecorder(GObject.Object):
         self.stopping = True
         self.emit("changed")
         self._timeout = GLib.timeout_add_seconds(10, self._timed_out)
-        if not self.pipeline.send_event(Gst.Event.new_eos()):
+        request_eos(self.pipeline, self._eos_rejected)
+
+    def _eos_rejected(self, pipeline):
+        if self.pipeline is pipeline and self.stopping:
             self._begin_finish("Could not finish the recording.")
+        return False
 
     def _timed_out(self):
         self._timeout = 0

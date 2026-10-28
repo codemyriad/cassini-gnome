@@ -139,3 +139,49 @@ def test_pipeline_construction_failure_leaves_no_partial_output(tmp_path, monkey
         recorder.start(tmp_path / "failure.opus", test=True)
     assert recorder.pipeline is None
     assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("kind", ["opus", "tracks"])
+def test_stop_never_waits_for_source_stream_locks_on_main_context(tmp_path, monkeypatch, kind):
+    import threading
+
+    from cassini_viewer.native_recorder import NativeRecorder
+
+    recorder = Recorder() if kind == "opus" else NativeRecorder()
+    entered, release = threading.Event(), threading.Event()
+    threads, finished, errors = [], [], []
+    recorder.connect("finished", lambda _r, path: finished.append(path))
+    recorder.connect("error", lambda _r, error: errors.append(error))
+    recorder.start(tmp_path / "meeting.opus" if kind == "opus" else tmp_path, test=True)
+    spin_until(lambda: recorder.pipeline is not None)
+    original = Gst.Element.send_event
+
+    def slow_event(element, event):
+        if event.type == Gst.EventType.EOS:
+            threads.append(threading.get_ident())
+            entered.set()
+            assert release.wait(3), "Source event never released"
+        return original(element, event)
+
+    monkeypatch.setattr(Gst.Element, "send_event", slow_event)
+    try:
+        before = time.monotonic()
+        recorder.stop()
+        assert time.monotonic() - before < 0.2, "Stop waited on a streaming lock"
+        assert entered.wait(1)
+        spin_until(lambda: len(threads) == 2)
+        assert len(set(threads)) == 2, "Both interleave inputs must be able to finish independently"
+        idle = []
+        GLib.idle_add(lambda: idle.append(True) or False)
+        spin_until(lambda: bool(idle))
+        assert threads and all(thread != threading.get_ident() for thread in threads)
+        # Both source events may be blocked; GTK and its stop watchdog still run.
+        release.set()
+        spin_until(lambda: bool(finished or errors))
+        assert not errors and len(finished) == 1
+    finally:
+        release.set()
+        if kind == "opus":
+            recorder._cleanup()
+        else:
+            recorder._executor.shutdown(wait=True)
