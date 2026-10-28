@@ -112,8 +112,8 @@ def test_independent_native_host_writers_copy_only_the_selected_microphone(serve
         two.close()
 
 
-def test_audio_peer_eof_finalizes_only_its_own_capture(server):
-    _, path, root = server
+def test_audio_peer_eof_falls_back_only_its_own_capture_and_keeps_the_microphone(server):
+    service, path, root = server
     one, two = BrowserAudioProxy(path=path), BrowserAudioProxy(path=path)
     try:
         first = start(one, "first")
@@ -122,12 +122,21 @@ def test_audio_peer_eof_finalizes_only_its_own_capture(server):
         remote(two, "remote-two")
         one.close()
         end = time.monotonic() + 2
-        while time.monotonic() < end and len([s for s in request(path=path)["statuses"] if s["recording"]]) != 1:
+        while time.monotonic() < end and not service.captures["first"].browser_lost:
             time.sleep(0.01)
-        assert [s["captureId"] for s in request(path=path)["statuses"] if s["recording"]] == ["second"]
+        assert [s["captureId"] for s in request(path=path)["statuses"] if s["recording"]] == ["first", "second"]
         from pathlib import Path
 
-        assert json.loads((Path(first["path"]) / "session.json").read_text())["state"] == "interrupted"
+        value = json.loads((Path(first["path"]) / "session.json").read_text())
+        assert value["state"] == "recording"
+        assert value["events"][-1] == dict(
+            atMs=value["events"][-1]["atMs"], type="othersSource", source="system", reason="lost"
+        )
+        assert value["tracks"][-1]["kind"] == "system"
+        assert value["tracks"][-1]["startOffsetMs"] == value["events"][-1]["atMs"]
+        assert not service.captures["first"].microphone.stopped
+        assert not service.captures["second"].browser_lost
+        service.captures["first"].stop()
         two.handle(dict(type="stop"))
     finally:
         one.close()

@@ -19,6 +19,7 @@ from .library_schema import valid
 from .meeting_state import MeetingError, MeetingState
 from .meeting_text import reading_turns
 from .recording_session import KINDS, strict_json
+from .session_events import meeting_sources, read_events
 from .strings import text
 from .transcript import build_turns, visible_turns
 
@@ -192,6 +193,7 @@ class Meeting(MeetingState):
     tracks: tuple[CaptureTrack, ...] = ()
     capture_source: str | None = None
     capture_state: str | None = None
+    capture_events: tuple[dict, ...] = ()
     audio_file: Path | None = None
     audio_size_bytes: int | None = None
     legacy_transcript_file: Path | None = None
@@ -215,7 +217,10 @@ class Meeting(MeetingState):
     def row_texts(self):
         """R11 state-specific meta and second line; no capture labels become names."""
         if self.lifecycle == "recording":
-            if self.capture_source in ("chromium", "chrome", "firefox", "browser", "browser-host"):
+            state = meeting_sources(self)
+            if self.capture_source in ("chromium", "chrome", "firefox", "browser", "browser-host") and (
+                not self.capture_events or (state.others and state.source == "browser")
+            ):
                 return text("common.listeningInsideBrowser"), text("library.row.recording.line")
             return None, None
         if self.lifecycle == "saving":
@@ -612,6 +617,7 @@ class LibraryScanner:
             tracks=tracks,
             capture_source=capture.get("source") if origin == "own" else None,
             capture_state=capture.get("state") if origin == "own" else None,
+            capture_events=read_events(capture.get("events")) if origin == "own" else (),
             audio_file=audio_file,
             audio_size_bytes=audio_size,
             legacy_transcript_file=legacy_transcript_file,

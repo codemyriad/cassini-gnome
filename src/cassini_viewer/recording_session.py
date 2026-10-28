@@ -13,6 +13,8 @@ import os
 import struct
 import time
 import unicodedata
+from contextlib import contextmanager
+from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -39,6 +41,48 @@ def optional_string(value, default, code):
 
 def label_text(value):
     return "".join(c for c in value if unicodedata.category(c) not in ("Cc", "Cf"))[:200]
+
+
+def source_parameters(identifier, label, kind, rate, channels, identifiers):
+    if (
+        not isinstance(identifier, str)
+        or not identifier
+        or len(identifier.encode()) > 200
+        or identifier in identifiers
+        or not isinstance(kind, str)
+        or kind not in KINDS
+        or type(rate) is not int
+        or not 8000 <= rate <= 192000
+        or type(channels) is not int
+        or channels not in (1, 2)
+    ):
+        raise ProtocolError("source", "Invalid or duplicate audio source")
+    if len(identifiers) >= 64:
+        raise ProtocolError("limit", "A session supports at most 64 sources")
+    return label_text(optional_string(label, kind, "source"))
+
+
+def chunk_plan(rate, channels, frames, start, data, offset):
+    """Validate wire geometry even when the selected side is not being saved."""
+    if (
+        type(offset) not in (int, float)
+        or not 0 <= offset <= 86400000
+        or not math.isfinite(offset)
+        or not data
+        or len(data) > 262144
+    ):
+        raise ProtocolError("chunk", "Invalid audio chunk or timestamp")
+    if len(data) % (channels * 2):
+        raise ProtocolError("chunk", "Incomplete PCM frame")
+    start = offset if start is None else start
+    frame = (offset - start) * rate / 1000
+    target = math.floor(frame + 0.5) if frame >= 0 else math.ceil(frame - 0.5)
+    delta, tolerance = target - frames, rate // 50
+    if delta < -tolerance:
+        raise ProtocolError("chunk", "Audio chunks arrived out of order")
+    if delta > rate * 60:
+        raise ProtocolError("chunk", "Audio source was interrupted for more than a minute")
+    return start, delta if delta > tolerance else 0
 
 
 def strict_json(data):
@@ -193,12 +237,15 @@ class RecordingSession:
             }
             self.writers = {}
             self.finished = False
+            self._changing = False
             self._last_checkpoint = 0
             self.checkpoint()
             if default_parent:
                 self._lease_fd = capture_lease(identifier)
 
     def checkpoint(self):
+        if self._changing:
+            return
         path = self.directory / "session.json"
         temporary = path.with_suffix(".tmp")
         for writer in self.writers.values():
@@ -216,26 +263,50 @@ class RecordingSession:
             os.close(descriptor)
         self._last_checkpoint = self.clock()
 
+    @contextmanager
+    def change(self, events):
+        """Publish S-6 events and their track changes in one synced manifest.
+
+        Callers hold their capture lock. A crash before rename leaves the old
+        manifest; a crash after rename leaves both the new tracks and events.
+        A failed durability barrier never removes files a renamed manifest may
+        already reference, and is reported to the capture owner before use/ACK.
+        """
+        from .session_events import append_events
+
+        if self.finished or self._changing:
+            raise ProtocolError("state", "No source change is available")
+        previous, identifiers = deepcopy(self.manifest), set(self.writers)
+        append_events(self.manifest, events)
+        self._changing = True
+        try:
+            yield
+        except BaseException:
+            added = [t for t in self.manifest["tracks"] if t["id"] not in identifiers]
+            self.manifest = previous
+            for track in added:
+                self.writers.pop(track["id"]).close()
+                (self.directory / track["file"]).unlink()
+            raise
+        finally:
+            self._changing = False
+        self.checkpoint()
+
+    def end_track(self, identifier):
+        track = next((t for t in self.manifest["tracks"] if t["id"] == identifier), None)
+        if self.finished or track is None:
+            raise ProtocolError("source", "No active audio source")
+        track["ended"] = True
+        if track.get("startOffsetMs") is not None:
+            track["endOffsetMs"] = track["startOffsetMs"] + track["frames"] * 1000 / track["sampleRate"]
+        self.checkpoint()
+
     def add_track(self, identifier, label, kind, rate, channels, *, filename=None, label_source=None):
-        if (
-            self.finished
-            or not isinstance(identifier, str)
-            or not identifier
-            or len(identifier.encode()) > 200
-            or identifier in self.writers
-            or not isinstance(kind, str)
-            or kind not in KINDS
-            or type(rate) is not int
-            or not 8000 <= rate <= 192000
-            or type(channels) is not int
-            or channels not in (1, 2)
-        ):
+        if self.finished:
             raise ProtocolError("source", "Invalid or duplicate audio source")
+        label = source_parameters(identifier, label, kind, rate, channels, self.writers)
         if label_source is not None and label_source not in ("browser", "device"):
             raise ProtocolError("source", "Invalid audio source label provenance")
-        label = label_text(optional_string(label, kind, "source"))
-        if len(self.writers) >= 64:
-            raise ProtocolError("limit", "A session supports at most 64 sources")
         if filename is not None and filename not in ("track-microphone.wav", "track-system.wav"):
             raise ProtocolError("source", "Invalid native track filename")
         filename = filename or f"track-{uuid4()}.wav"
@@ -255,32 +326,15 @@ class RecordingSession:
         self.checkpoint()
 
     def append(self, identifier, data, offset):
-        if (
-            self.finished
-            or not isinstance(identifier, str)
-            or identifier not in self.writers
-            or type(offset) not in (int, float)
-            or not 0 <= offset <= 86400000
-            or not math.isfinite(offset)
-            or not data
-            or len(data) > 262144
-        ):
+        if self.finished or not isinstance(identifier, str) or identifier not in self.writers:
             raise ProtocolError("chunk", "Invalid audio chunk or timestamp")
         writer = self.writers[identifier]
-        if len(data) % (writer.channels * 2):
-            raise ProtocolError("chunk", "Incomplete PCM frame")
         track = next(t for t in self.manifest["tracks"] if t["id"] == identifier)
-        if track.get("startOffsetMs") is None:
-            track["startOffsetMs"] = offset
-        frame = (offset - track["startOffsetMs"]) * writer.rate / 1000
-        target = math.floor(frame + 0.5) if frame >= 0 else math.ceil(frame - 0.5)
-        delta = target - writer.frames
-        tolerance = writer.rate // 50
-        if delta < -tolerance:
-            raise ProtocolError("chunk", "Audio chunks arrived out of order")
-        if delta > tolerance:
-            if delta > writer.rate * 60:
-                raise ProtocolError("chunk", "Audio source was interrupted for more than a minute")
+        if track.get("ended"):
+            raise ProtocolError("chunk", "Audio source has ended")
+        start, delta = chunk_plan(writer.rate, writer.channels, writer.frames, track.get("startOffsetMs"), data, offset)
+        track["startOffsetMs"] = start
+        if delta:
             writer.silence(delta)
         writer.append(data)
         track["frames"] = writer.frames
@@ -329,6 +383,7 @@ class BrowserHost:
         self.session = None
         self.sequences = {}
         self.stopped = False
+        self.audio_sink = None
 
     def handle(self, message):
         kind = message.get("type")
@@ -348,7 +403,7 @@ class BrowserHost:
             raise ProtocolError("state", "No active recording")
         if kind == "track":
             identifier = message.get("id")
-            self.session.add_track(
+            (self.audio_sink or self.session).add_track(
                 identifier,
                 message.get("label"),
                 message.get("kind"),
@@ -374,7 +429,7 @@ class BrowserHost:
                 data = base64.b64decode(encoded, validate=True)
             except (binascii.Error, ValueError) as error:
                 raise ProtocolError("chunk", "Invalid base64 PCM") from error
-            self.session.append(identifier, data, message.get("offsetMs"))
+            (self.audio_sink or self.session).append(identifier, data, message.get("offsetMs"))
             self.sequences[identifier] += 1
         elif kind == "stop":
             self.session.finish(optional_string(message.get("problem"), None, "state"))

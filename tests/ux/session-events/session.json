@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "id": "b0000000-0000-4000-8000-000000000006",
+  "createdAt": "2026-10-28T10:00:00Z",
+  "title": "Browser fallback and Me-only selection",
+  "source": "chromium",
+  "state": "completed",
+  "tracks": [
+    {"id": "microphone-1", "label": "Me", "kind": "microphone", "file": "track-microphone.wav", "labelSource": "device", "sampleRate": 8000, "channels": 1, "frames": 7680000, "startOffsetMs": 0, "endOffsetMs": 960000, "ended": true},
+    {"id": "browser-1", "label": "Remote audio", "kind": "remote", "file": "track-browser.wav", "labelSource": "browser", "sampleRate": 8000, "channels": 1, "frames": 6033680, "startOffsetMs": 0, "endOffsetMs": 754210, "ended": true},
+    {"id": "system-1", "label": "The others", "kind": "system", "file": "track-system.wav", "labelSource": "device", "sampleRate": 8000, "channels": 1, "frames": 1166320, "startOffsetMs": 754210, "endOffsetMs": 900000, "ended": true}
+  ],
+  "events": [
+    {"atMs": 0, "type": "othersSource", "source": "browser", "reason": "start"},
+    {"atMs": 0, "type": "selection", "me": true, "others": true, "reason": "start"},
+    {"atMs": 754210, "type": "othersSource", "source": "system", "reason": "lost"},
+    {"atMs": 900000, "type": "selection", "me": true, "others": false, "reason": "user"},
+    {"atMs": 900000, "type": "othersSource", "source": "none", "reason": "user"}
+  ]
+}

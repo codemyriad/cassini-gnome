@@ -458,18 +458,34 @@ class LibraryWindow(Adw.ApplicationWindow):
         app = self.get_application()
         message = getattr(app, "recording_error", None)
         selected = app.comfort.status(self.selected) if self.selected else {}
-        signature = selected.get("line"), selected.get("minutes", 0), message
+        fallback = bool(
+            self.selected
+            and self.selected.lifecycle in ("recording", "saving")
+            and app.comfort.sources(self.selected).fallback
+        )
+        signature = selected.get("line"), selected.get("minutes", 0), message, fallback
         if signature != getattr(self, "_recording_line_signature", None):
             self._recording_line_signature = signature
             lines = getattr(self, "recording_lines", None)
             if lines is not None:
-                lines.set_visible(bool(signature[0] or message))
+                lines.set_visible(bool(signature[0] or message or fallback))
                 while child := lines.get_first_child():
                     lines.remove(child)
                 if signature[0]:
                     lines.append(InlineLine(signature[0], n=signature[1]))
                 if message:
                     lines.append(label(message, wrap=True, xalign=0))
+                if fallback:
+                    from .what_is_recorded import explain_fallback
+
+                    lines.append(
+                        InlineLine(
+                            "errors.othersFallback.line",
+                            action="errors.othersFallback.action",
+                            callback=lambda: explain_fallback(self),
+                            info=True,
+                        )
+                    )
         first = (recorder.line, recorder.minutes_left, message) if recorder else (None, 0, message)
         if first != getattr(self, "_first_recording_line_signature", None):
             self._first_recording_line_signature = first

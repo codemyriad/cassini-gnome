@@ -22,6 +22,7 @@ import os
 import sys
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from gettext import gettext as _
+from pathlib import Path
 from uuid import uuid4
 
 import gi
@@ -72,6 +73,7 @@ class CassiniApplication(Adw.Application):
         self._auto_recording_request = 0
         self._auto_recording_revision = 0
         self._record_start_future = None
+        self._source_changes = {}
         self._record_start_group = None
         self._record_start_generation = 0
         self._record_start_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-record-start")
@@ -447,6 +449,44 @@ class CassiniApplication(Adw.Application):
             self.hold()
             self._native_held = True
         recorder.start(test=test)
+
+    def change_recording_sources(self, meeting, me, others):
+        from . import browser_service
+
+        key = str(meeting.directory)
+        if self._quitting or self._capture_exiting or key in self._source_changes:
+            raise ValueError("A source change is not available")
+        native = self.native_recorder_for(meeting.directory)
+        self.hold()
+        try:
+            future = (
+                native.select(me, others)
+                if native
+                else self._record_start_executor.submit(
+                    browser_service.request, "selection", directory=key, me=me, others=others
+                )
+            )
+        except Exception:
+            self.release()
+            raise
+        self._source_changes[key] = future
+        future.add_done_callback(lambda f: GLib.idle_add(self._recording_sources_changed, key, f))
+        self._native_changed()
+        return future
+
+    def _recording_sources_changed(self, key, future):
+        self._source_changes.pop(key, None)
+        try:
+            future.result()
+        except Exception as error:
+            logging.getLogger(__name__).warning("Could not change recording sources: %s", error)
+        finally:
+            self.release()
+        for window in self.get_windows():
+            if getattr(window, "monitor", None) is not None and not window.monitor._closed:
+                window.monitor.refresh({Path(key)})
+        self._native_changed()
+        return False
 
     def _native_started(self, _recorder, path):
         self._pending_recording = path
