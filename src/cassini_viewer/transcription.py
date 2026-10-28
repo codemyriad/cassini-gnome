@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""One FIFO per app and one persistent inference child; no engine import in GTK."""
+"""One FIFO per app, at most one speech child; no engine import in GTK."""
 
 import importlib.util
 import logging
@@ -110,13 +110,15 @@ def update_progress_metadata(directory, speakers, **changes):
 
 
 class TranscriptionQueue:
-    def __init__(self, changed, finished, *, bundle=None, client_factory=WhistleClient, root=None):
+    def __init__(self, changed, finished, *, bundle=None, client_factory=WhistleClient, root=None, models=None):
         self.changed, self.finished = changed, finished
         self.bundle = Path(bundle) if bundle else bundle_path()
         self.root = library_root(root).absolute()
         self._explicit_root = root is not None
         self.client_factory = client_factory
         self.client = None
+        self.models = models
+        self.client_model = None
         self.preparer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-queue-metadata")
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-transcription")
         self.pending = set()
@@ -168,7 +170,12 @@ class TranscriptionQueue:
             return None
         if not (directory / "transcript.json").exists():
             atomic_json(directory / "transcript.json", dict(format="cassini.words.v1", language="und", items=[]))
-        update_metadata(directory, transcript=dict(status="queued", reference=REFERENCE), etaMinutes=None, error=None)
+        update_metadata(
+            directory,
+            transcript=dict(metadata["transcript"], status="queued", reference=REFERENCE),
+            etaMinutes=None,
+            error=None,
+        )
         # Failed bodies are intentionally hidden by the Library. Once queued,
         # read the preserved sidecar through the normal validated reader so the
         # publisher knows how many words it must retain until recomputation
@@ -208,12 +215,13 @@ class TranscriptionQueue:
         LOG.warning("Meeting transcription failed: %s", error)
         try:
             directory = self._owned(directory)
-            update_metadata(
-                directory,
-                transcript=dict(status="failed", reference=REFERENCE),
-                etaMinutes=None,
-                error=dict(id="transcribe-failed", action="Try again"),
-            )
+            with LOCK:
+                update_metadata(
+                    directory,
+                    transcript=dict(read_metadata(directory)["transcript"], status="failed", reference=REFERENCE),
+                    etaMinutes=None,
+                    error=dict(id="transcribe-failed", action="Try again"),
+                )
             self.changed(directory)
         except (OSError, ValueError):
             LOG.exception("Could not preserve failed transcription state")
@@ -234,8 +242,30 @@ class TranscriptionQueue:
 
     def _run(self, meeting, metadata):
         directory = meeting.directory
-        update_metadata(directory, transcript=dict(status="running", reference=REFERENCE), etaMinutes=None, error=None)
+        # Select on this owner thread when the job starts, never at enqueue.
+        from .parakeet_model import MODEL_ID, MODEL_TAG
+
+        selected = self.models.snapshot()["selected"] if self.models else "whistle"
+        tag = MODEL_TAG if selected == MODEL_ID else "whistle"
+        update_metadata(
+            directory, transcript=dict(status="running", reference=REFERENCE, model=tag), etaMinutes=None, error=None
+        )
         self.changed(directory)
+        if self.client and (self.client_model != selected or selected == MODEL_ID):
+            self.client.close()
+            self.client = None
+        if selected == MODEL_ID:
+            self.client = self.models.start_parakeet(self.bundle, register=self._register_client)
+            self.client_model = MODEL_ID if self.client else None
+        if self.client is None:
+            client = self.client_factory(self.bundle, timeout=120)
+            self._register_client(client)
+            self.client_model = "whistle"
+            self.client.start()
+        if self.client_model != selected:
+            tag = "whistle"
+            update_metadata(directory, transcript=dict(status="running", reference=REFERENCE, model=tag))
+            self.changed(directory)
         if meeting.origin == "received":
             tracks = [
                 dict(id="received", path=str(meeting.audio_file), format="opus", offsetMs=0, speaker="track-original")
@@ -271,13 +301,6 @@ class TranscriptionQueue:
             if published or updated:
                 self.changed(directory)
 
-        if self.client is None:
-            client = self.client_factory(self.bundle, timeout=120)
-            with self.lock:
-                if self.closed:
-                    raise CancelledError()
-                self.client = client
-            self.client.start()
         completed = False
         try:
             complete = self.client.process_tracks(tracks, progress)
@@ -290,9 +313,23 @@ class TranscriptionQueue:
         for diagnostic in complete.get("diagnostics", []):
             LOG.warning("Transcription diagnostic: %s", diagnostic)
         update_progress_metadata(
-            directory, speakers, transcript=dict(status="done", reference=REFERENCE), etaMinutes=None, error=None
+            directory,
+            speakers,
+            transcript=dict(status="done", reference=REFERENCE, model=tag),
+            etaMinutes=None,
+            error=None,
         )
         self.changed(directory)
+        if self.client_model == MODEL_ID:
+            self.client.close()
+            self.client = None
+            self.client_model = None
+
+    def _register_client(self, client):
+        with self.lock:
+            if self.closed:
+                raise CancelledError()
+            self.client = client
 
     def close(self):
         """Cancel promptly; callbacks/IO teardown finish off the GTK thread."""

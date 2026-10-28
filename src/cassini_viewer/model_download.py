@@ -331,6 +331,11 @@ class ModelStore:
             model = manifest.model(model_id, revision)
             if manifest.origin != self.origin:
                 raise ValueError("Manifest and downloader origins differ")
+            staging = self.root / ".downloads" / model_id / revision
+            # Abrupt app exit may interrupt decode or an atomic metadata write.
+            # Only our named regular temporaries are disposable; retained .part
+            # files and their validators still resume under the normal checks.
+            self._clean_temporaries(staging)
             plan = self.plan(model, cancelled=cancelled)
             if plan.free_bytes - plan.required_bytes < plan.reserve_bytes:
                 raise InsufficientSpace(plan)
@@ -405,6 +410,12 @@ class ModelStore:
             progress("installed", model.id, model.download_bytes, model.download_bytes)
             return final
 
+    def _clean_temporaries(self, staging):
+        for relative in self._tree_paths(staging):
+            path = staging / relative
+            if re.fullmatch(r"(?:\.decoded-[a-f0-9]{32}|\.metadata-[a-z0-9_]{8})", path.name):
+                path.unlink()
+
     def _tree_paths(self, root):
         self._check_directories(root)
         paths = set()
@@ -413,7 +424,7 @@ class ModelStore:
                 path = Path(directory) / name
                 mode = path.lstat().st_mode
                 if stat.S_ISLNK(mode) or not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
-                    raise IntegrityError("Unchecked nonregular path in model")
+                    raise IntegrityError("Unchecked nonregular path or symbolic link in model")
             paths.update(str((Path(directory) / name).relative_to(root)) for name in names)
         return paths
 

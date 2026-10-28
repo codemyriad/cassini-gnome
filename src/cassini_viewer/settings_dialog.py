@@ -96,10 +96,11 @@ class SettingsDialog(Adw.PreferencesDialog):
             description=text("settings.transcription.speech.description"),
         )
         speech.update_property([Gtk.AccessibleProperty.LABEL], [text("settings.transcription.speech.a11y")])
-        self.whistle = Adw.PreferencesRow(css_classes=["whistle-model"])
+        self.whistle = Adw.PreferencesRow(css_classes=["speech-model-selected"])
         row = Gtk.Box(spacing=12, margin_top=12, margin_bottom=12, margin_start=16, margin_end=16)
         self._speech_group = Gtk.CheckButton()
-        radio = Gtk.CheckButton(group=self._speech_group, active=True, focusable=False, can_target=False)
+        radio = self.whistle_radio = Gtk.CheckButton(group=self._speech_group, active=True)
+        radio.connect("toggled", self._speech_selected, "whistle")
         radio.update_property([Gtk.AccessibleProperty.LABEL], [text("models.whistle.name")])
         row.append(radio)
         details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True)
@@ -117,13 +118,45 @@ class SettingsDialog(Adw.PreferencesDialog):
                 label=text("models.whistle.description"), wrap=True, xalign=0, css_classes=["dim-label", "caption"]
             )
         )
-        details.append(
-            Gtk.Label(label=text("models.status.inUse"), xalign=0, css_classes=["success", "caption", "heading"])
+        self.whistle_status = Gtk.Label(
+            label=text("models.status.inUse"), xalign=0, css_classes=["success", "caption", "heading"]
         )
+        details.append(self.whistle_status)
         row.append(details)
         row.append(Gtk.Label(label=text("models.included"), css_classes=["dim-label", "caption"]))
         self.whistle.set_child(row)
         speech.add(self.whistle)
+        if self.app.speech_models is not None:
+            from .parakeet_model import MODEL_ID
+
+            self.parakeet = Adw.ActionRow(
+                title=text("models.parakeetUltra.name"),
+                subtitle=text("models.parakeetUltra.description"),
+                use_markup=False,
+                subtitle_lines=0,
+            )
+            self.parakeet_radio = Gtk.CheckButton(group=self._speech_group)
+            self.parakeet_radio.update_property([Gtk.AccessibleProperty.LABEL], [text("models.parakeetUltra.name")])
+            self.parakeet_radio.connect("toggled", self._speech_selected, MODEL_ID)
+            self.parakeet.add_prefix(self.parakeet_radio)
+            self.parakeet.set_activatable_widget(self.parakeet_radio)
+            controls = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, valign=Gtk.Align.CENTER)
+            self.parakeet_status = Gtk.Label(xalign=0)
+            controls.append(self.parakeet_status)
+            self.parakeet_progress = Gtk.ProgressBar()
+            self.parakeet_progress.update_property(
+                [Gtk.AccessibleProperty.LABEL],
+                [text("models.downloading.a11y", model=text("models.parakeetUltra.name"))],
+            )
+            controls.append(self.parakeet_progress)
+            self.parakeet.add_suffix(controls)
+            self.parakeet_action = Gtk.Button(valign=Gtk.Align.CENTER)
+            self.parakeet_action.connect("clicked", self._model_action)
+            self.parakeet.add_suffix(self.parakeet_action)
+            speech.add(self.parakeet)
+            self.model_line = Gtk.Label(wrap=True, xalign=0, css_classes=["dim-label"])
+            speech.add(self.model_line)
+            self.render_models()
         page.add(speech)
         # Source/unsupported-architecture builds never claim an absent bundle.
         self.whistle.set_visible(self.app.writing_available)
@@ -137,6 +170,63 @@ class SettingsDialog(Adw.PreferencesDialog):
             )
         )
         page.add(network)
+
+    def _speech_selected(self, radio, model):
+        if radio.get_active() and not self._updating and self.app.speech_models:
+            self.app.speech_models.select(model)
+            self.render_models()
+
+    def _model_action(self, *_):
+        models = self.app.speech_models
+        state = models.snapshot()
+        if state["downloading"]:
+            models.cancel_download()
+        elif state["downloaded"]:
+            models.remove()
+        else:
+            models.download()
+        self.render_models()
+
+    def render_models(self):
+        models = self.app.speech_models
+        if models is None or not hasattr(self, "parakeet"):
+            return
+        from .parakeet_model import DOWNLOAD_BYTES, MODEL_ID
+        from .ux_formats import size
+
+        state = models.snapshot()
+        chosen = state["selected"] == MODEL_ID
+        self._updating = True
+        self.whistle_radio.set_active(not chosen)
+        self.parakeet_radio.set_active(chosen)
+        self._updating = False
+        self.whistle_status.set_visible(not chosen)
+        self.whistle.set_css_classes(["speech-model-selected"] if not chosen else [])
+        if chosen:
+            self.parakeet.add_css_class("speech-model-selected")
+        else:
+            self.parakeet.remove_css_class("speech-model-selected")
+        self.parakeet_radio.set_sensitive(state["downloaded"] and not state["busy"])
+        self.parakeet_action.set_sensitive(not state["busy"] or state["downloading"])
+        self.parakeet_progress.set_visible(state["downloading"])
+        self.parakeet_progress.set_fraction(state["percent"] / 100)
+        if state["downloading"]:
+            status = text("models.status.downloading", percent=state["percent"])
+            action = text("common.cancel")
+        elif state["downloaded"]:
+            status = text("models.status.inUse" if chosen else "models.status.downloaded")
+            action = text("models.remove")
+        else:
+            status = text("format.size.download", size=size(DOWNLOAD_BYTES))
+            action = text("common.tryAgain" if state["error"] else "models.download")
+        self.parakeet_status.set_css_classes(["success", "caption", "heading"] if chosen else ["dim-label", "caption"])
+        self.parakeet_status.set_label(status)
+        self.parakeet_action.set_label(action)
+        line = text(state["notice"]) if state["notice"] else ""
+        if state["error"]:
+            line = text("errors.modelDownloadFailed.line", model=text("models.parakeetUltra.name"))
+        self.model_line.set_label(line)
+        self.model_line.set_visible(bool(line))
 
     def _library(self):
         group = Adw.PreferencesGroup(description=text("settings.library.folder.description"))

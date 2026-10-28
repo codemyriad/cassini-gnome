@@ -63,6 +63,7 @@ install_data(
   'cassini_viewer/meeting_store.py',
   'cassini_viewer/transcription.py',
   'cassini_viewer/transcript_publish.py',
+  'cassini_viewer/speech_models.py',
   'cassini_viewer/parakeet.py',
   'cassini_viewer/parakeet_abi.py',
   'cassini_viewer/parakeet_model.py',

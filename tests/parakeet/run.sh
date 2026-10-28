@@ -23,5 +23,5 @@ docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
   -v "$ort:$ort_target:ro" -v "$runtime:$runtime_target:ro" \
   -v "$model:/model:ro" -v "$bundle:/bundle:ro" -v "$output:/out:rw" -w /source \
   cassini-whistle-test /bin/bash -c \
-  'set -e; cc --version > /out/compiler.txt; python3 -m pytest -q -p no:cacheprovider tests/test_parakeet.py --junitxml=/out/parakeet-tests.xml; python3 tests/parakeet/pipeline_probe.py --bundle /bundle --model /model --runtime "$1" --modules /modules --output /out/parakeet-linux.json' \
+  'set -e; cc --version > /out/compiler.txt; python3 -m pytest -q -p no:cacheprovider tests/test_parakeet.py --junitxml=/out/parakeet-tests.xml; python3 tests/parakeet/pipeline_probe.py --bundle /bundle --model /model --runtime "$1" --modules /modules --output /out/parakeet-linux.json; python3 tests/parakeet/queue_probe.py --bundle /bundle --model /model --runtime "$1" --modules /modules --output /out/parakeet-queue.json' \
   cassini-parakeet-test "$runtime_target"

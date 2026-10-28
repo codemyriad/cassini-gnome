@@ -193,4 +193,4 @@
 .library-window .search-chip.suggested-action > button, .library-window button.search-chip:checked { background: #1c71d8; color: white; border-color: #1c71d8; }
 .search-filters flowboxchild, .search-actions flowboxchild { padding: 0; }
 
-.cassini-preferences .whistle-model { background: alpha(@accent_bg_color, 0.07); }
+.cassini-preferences .speech-model-selected { background: alpha(@accent_bg_color, 0.07); }
