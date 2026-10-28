@@ -272,6 +272,42 @@ undo_notes = TimedNotes(undo_buffer, [], lambda: 0, lambda: None)
 undo_buffer.insert(undo_buffer.get_end_iter(), "Undo me")
 undo_buffer.undo()
 assert undo_notes.values() == [], undo_notes.values()
+# GTK native undo/redo must restore exact model milliseconds, not parse display text.
+for deletion in ("all", "across"):
+    original_notes = [dict(atMs=12345, text="First"), dict(atMs=33456, text="Second")]
+    undo_buffer = Gtk.TextBuffer(enable_undo=True)
+    undo_notes = TimedNotes(undo_buffer, original_notes, lambda: 45000, lambda: None)
+    if deletion == "all":
+        undo_buffer.delete_interactive(*undo_buffer.get_bounds(), True)
+    else:
+        undo_buffer.delete_interactive(undo_buffer.get_iter_at_offset(12), undo_buffer.get_iter_at_offset(28), True)
+    deleted = undo_notes.values()
+    undo_buffer.undo()
+    assert undo_notes.values() == original_notes, (deletion, undo_notes.values())
+    undo_buffer.redo()
+    assert undo_notes.values() == deleted, undo_notes.values()
+    undo_buffer.undo()
+    undo_buffer.insert(undo_buffer.get_end_iter(), " revised")
+    assert undo_notes.values()[-1] == dict(atMs=33456, text="Second revised")
+
+# A newline before an existing body preserves its original pin.
+buffer = Gtk.TextBuffer(enable_undo=True)
+notes = TimedNotes(buffer, [dict(atMs=12345, text="First")], lambda: 45000, lambda: None)
+buffer.insert(buffer.get_iter_at_offset(10), "\n")
+assert notes.values() == [dict(atMs=12345, text="First")], notes.values()
+buffer.undo()
+assert notes.values() == [dict(atMs=12345, text="First")]
+buffer.insert(buffer.get_end_iter(), "\n")
+# Gtk.TextView's Backspace deletes the last prefix character at the body start.
+end = buffer.get_iter_at_mark(buffer.get_insert())
+start = end.copy()
+start.backward_char()
+buffer.delete_interactive(start, end, True)
+assert len(notes.lines) == 1 and notes.values() == [dict(atMs=12345, text="First")], notes.lines
+buffer.undo()
+assert len(notes.lines) == 2
+buffer.redo()
+assert len(notes.lines) == 1
 services.close()
 print(
     "PASS portal binding/denial/activation, real GNotification payload/updates/Open, Recording page, rename, pinned notes, flush, silence and disk line"
