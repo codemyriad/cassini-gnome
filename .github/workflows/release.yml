@@ -6,15 +6,66 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
+  main-inputs:
+    name: Require exact green main inputs
+    runs-on: ubuntu-26.04
+    outputs:
+      run_id: ${{ steps.main.outputs.run_id }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Require all main checks and the five package artifacts
+        id: main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 build-aux/ci/green_main.py --repo "$GITHUB_REPOSITORY" --commit "$(git rev-parse HEAD)" --output "$GITHUB_OUTPUT"
+
   deb:
-    uses: ./.github/workflows/deb.yml
+    name: Reuse verified Debian packages
+    needs: main-inputs
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.main-inputs.outputs.run_id }}
+          pattern: deb-*
+          merge-multiple: true
+          path: dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-deb
+          path: dist/*.deb
+          if-no-files-found: error
 
   packages:
-    uses: ./.github/workflows/packages.yml
+    name: Reuse verified RPM and Arch packages
+    needs: main-inputs
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.main-inputs.outputs.run_id }}
+          pattern: rpm-*
+          merge-multiple: true
+          path: dist
+      - uses: actions/download-artifact@v5
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.main-inputs.outputs.run_id }}
+          name: arch
+          path: dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: dist/*
+          if-no-files-found: error
 
   flatpak:
+    needs: main-inputs
     runs-on: ubuntu-26.04
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
@@ -46,5 +97,5 @@ jobs:
           ls -R artifacts
           # The packages carry the x86_64 writing-down engine: amd64 .debs
           # (one per base), x86_64 RPMs and Arch package, an x86_64 Flatpak.
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes \
-            $(find artifacts -name '*.deb' -o -name '*.flatpak' -o -name '*.x86_64.rpm' -o -name '*.pkg.tar.zst')
+          mapfile -d '' bundles < <(find artifacts -type f \( -name '*.deb' -o -name '*.flatpak' -o -name '*.x86_64.rpm' -o -name '*.pkg.tar.zst' \) -print0)
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes "${bundles[@]}"

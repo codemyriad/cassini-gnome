@@ -1,9 +1,14 @@
 name: UX Library model
 on:
   push:
-    branches: ['ux/1a-library-model']
+    branches: [main, 'ux/1a-library-model']
   pull_request:
     paths:
+      - 'meson.build'
+      - 'meson_options.txt'
+      - 'data/**'
+      - 'build-aux/ci/**'
+      - 'pyproject.toml'
       - 'src/cassini_viewer/library*.py'
       - 'src/cassini_viewer/meeting_state.py'
       - 'src/cassini_viewer/portable.py'
@@ -16,6 +21,8 @@ on:
       - 'tests/test_ux_vectors.py'
       - 'build-aux/check-ux-vectors.py'
       - '.github/workflows/ux-library.yml'
+  schedule:
+    - cron: "11 3 * * *"
   workflow_dispatch:
 permissions:
   contents: read

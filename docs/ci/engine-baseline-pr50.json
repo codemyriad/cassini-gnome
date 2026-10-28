@@ -1,0 +1,326 @@
+{
+  "commit": "77c6d4c25e7863e78f45f38d8adaf5d4d63f76cb",
+  "event": "pull_request",
+  "runs": [
+    {
+      "id": 40675593338,
+      "name": "UX Library model",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "html_url": "https://github.com/codemyriad/cassini-gnome/actions/runs/40675593338"
+    },
+    {
+      "id": 40675593353,
+      "name": "UX boards and Library interaction",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "html_url": "https://github.com/codemyriad/cassini-gnome/actions/runs/40675593353"
+    },
+    {
+      "id": 40675593422,
+      "name": "Recording integration",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "html_url": "https://github.com/codemyriad/cassini-gnome/actions/runs/40675593422"
+    },
+    {
+      "id": 40675593457,
+      "name": "CI",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "html_url": "https://github.com/codemyriad/cassini-gnome/actions/runs/40675593457"
+    },
+    {
+      "id": 40675593451,
+      "name": "Offline transcription pipeline",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "html_url": "https://github.com/codemyriad/cassini-gnome/actions/runs/40675593451"
+    }
+  ],
+  "jobs": [
+    {
+      "id": 122773057207,
+      "name": "golden-vectors-and-reader",
+      "run_id": 40675593338,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:58Z",
+      "completed_at": "2026-10-28T10:53:33Z",
+      "labels": [
+        "ubuntu-26.04"
+      ],
+      "queueSeconds": 3.0,
+      "executionSeconds": 35.0
+    },
+    {
+      "id": 122773057605,
+      "name": "current-window",
+      "run_id": 40675593353,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:58Z",
+      "completed_at": "2026-10-28T10:54:34Z",
+      "labels": [
+        "ubuntu-26.04"
+      ],
+      "queueSeconds": 3.0,
+      "executionSeconds": 96.0
+    },
+    {
+      "id": 122773057510,
+      "name": "capture",
+      "run_id": 40675593422,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:57Z",
+      "completed_at": "2026-10-28T10:56:45Z",
+      "labels": [
+        "ubuntu-26.04"
+      ],
+      "queueSeconds": 2.0,
+      "executionSeconds": 228.0
+    },
+    {
+      "id": 122773057937,
+      "name": "Lint and test",
+      "run_id": 40675593457,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:58Z",
+      "completed_at": "2026-10-28T10:54:18Z",
+      "labels": [
+        "ubuntu-26.04"
+      ],
+      "queueSeconds": 3.0,
+      "executionSeconds": 80.0
+    },
+    {
+      "id": 122773058338,
+      "name": "Build and test on ubuntu:26.04",
+      "run_id": 40675593457,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:58Z",
+      "completed_at": "2026-10-28T10:55:05Z",
+      "labels": [
+        "ubuntu-26.04"
+      ],
+      "queueSeconds": 3.0,
+      "executionSeconds": 127.0
+    },
+    {
+      "id": 122773058401,
+      "name": "RPM and Arch packages / Build Arch package",
+      "run_id": 40675593457,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:58Z",
+      "completed_at": "2026-10-28T10:55:44Z",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "queueSeconds": 3.0,
+      "executionSeconds": 166.0
+    },
+    {
+      "id": 122773058419,
+      "name": "Flatpak",
+      "run_id": 40675593457,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:53:00Z",
+      "completed_at": "2026-10-28T10:56:12Z",
+      "labels": [
+        "ubuntu-26.04"
+      ],
+      "queueSeconds": 5.0,
+      "executionSeconds": 192.0
+    },
+    {
+      "id": 122773058450,
+      "name": "Meson build and validate",
+      "run_id": 40675593457,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:58Z",
+      "completed_at": "2026-10-28T10:54:27Z",
+      "labels": [
+        "ubuntu-26.04"
+      ],
+      "queueSeconds": 3.0,
+      "executionSeconds": 89.0
+    },
+    {
+      "id": 122773058492,
+      "name": "Debian package / Build .deb (debian:testing)",
+      "run_id": 40675593457,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:58Z",
+      "completed_at": "2026-10-28T10:56:36Z",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "queueSeconds": 3.0,
+      "executionSeconds": 218.0
+    },
+    {
+      "id": 122773058493,
+      "name": "Build and test on debian:testing",
+      "run_id": 40675593457,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:58Z",
+      "completed_at": "2026-10-28T10:54:53Z",
+      "labels": [
+        "ubuntu-26.04"
+      ],
+      "queueSeconds": 3.0,
+      "executionSeconds": 115.0
+    },
+    {
+      "id": 122773058527,
+      "name": "Build and test on alpine:edge",
+      "run_id": 40675593457,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:58Z",
+      "completed_at": "2026-10-28T10:54:08Z",
+      "labels": [
+        "ubuntu-26.04"
+      ],
+      "queueSeconds": 3.0,
+      "executionSeconds": 70.0
+    },
+    {
+      "id": 122773058541,
+      "name": "Build and test on fedora:latest",
+      "run_id": 40675593457,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:58Z",
+      "completed_at": "2026-10-28T10:54:44Z",
+      "labels": [
+        "ubuntu-26.04"
+      ],
+      "queueSeconds": 3.0,
+      "executionSeconds": 106.0
+    },
+    {
+      "id": 122773058559,
+      "name": "RPM and Arch packages / Build .rpm (registry.opensuse.org/opensuse/tumbleweed:latest)",
+      "run_id": 40675593457,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:58Z",
+      "completed_at": "2026-10-28T10:56:36Z",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "queueSeconds": 3.0,
+      "executionSeconds": 218.0
+    },
+    {
+      "id": 122773058565,
+      "name": "Build and test on registry.opensuse.org/opensuse/tumbleweed:latest",
+      "run_id": 40675593457,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:58Z",
+      "completed_at": "2026-10-28T10:54:23Z",
+      "labels": [
+        "ubuntu-26.04"
+      ],
+      "queueSeconds": 3.0,
+      "executionSeconds": 85.0
+    },
+    {
+      "id": 122773058580,
+      "name": "Debian package / Build .deb (ubuntu:26.04)",
+      "run_id": 40675593457,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:58Z",
+      "completed_at": "2026-10-28T10:56:45Z",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "queueSeconds": 3.0,
+      "executionSeconds": 227.0
+    },
+    {
+      "id": 122773058591,
+      "name": "RPM and Arch packages / Build .rpm (fedora:latest)",
+      "run_id": 40675593457,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:58Z",
+      "completed_at": "2026-10-28T10:56:08Z",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "queueSeconds": 3.0,
+      "executionSeconds": 190.0
+    },
+    {
+      "id": 122773058642,
+      "name": "Build and test on archlinux:latest",
+      "run_id": 40675593457,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:58Z",
+      "completed_at": "2026-10-28T10:54:32Z",
+      "labels": [
+        "ubuntu-26.04"
+      ],
+      "queueSeconds": 3.0,
+      "executionSeconds": 94.0
+    },
+    {
+      "id": 122773057283,
+      "name": "pinned-offline-recognition",
+      "run_id": 40675593451,
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-28T10:52:55Z",
+      "started_at": "2026-10-28T10:52:58Z",
+      "completed_at": "2026-10-28T11:00:42Z",
+      "labels": [
+        "ubuntu-26.04"
+      ],
+      "queueSeconds": 3.0,
+      "executionSeconds": 464.0
+    }
+  ],
+  "summary": {
+    "jobCount": 18,
+    "completedJobs": 18,
+    "executionMinutes": 46.666666666666664,
+    "estimatedRoundedLinuxMinutes": 55,
+    "medianQueueSeconds": 3.0,
+    "note": "Linux per-job rounded minute estimate, not an invoice. Queue is started_at minus job created_at."
+  }
+}
