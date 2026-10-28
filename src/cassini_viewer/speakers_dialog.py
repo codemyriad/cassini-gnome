@@ -139,12 +139,18 @@ class SpeakersDialog(Adw.Dialog):
             value = self.entry.get_text()
 
             def operation():
-                return speaker_edits.save_name(self.meeting.directory, self.identifier, value)
+                return speaker_edits.save_name(
+                    self.meeting.directory, self.identifier, value, scanner=self.window.monitor.scanner
+                )
 
         self._submit(operation)
 
     def _merge(self, target):
-        self._submit(lambda: speaker_edits.merge_into(self.meeting.directory, self.identifier, target))
+        self._submit(
+            lambda: speaker_edits.merge_into(
+                self.meeting.directory, self.identifier, target, scanner=self.window.monitor.scanner
+            )
+        )
 
     def _submit(self, operation):
         if self.closed or self.busy or self.window.monitor._closed:

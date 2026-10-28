@@ -202,3 +202,32 @@ def test_outside_and_symlink_folders_are_never_edited(meeting, tmp_path, monkeyp
         with pytest.raises(ValueError):
             undo_merge(directory)
     assert (hashes(outside), (outside / "meeting.json").read_bytes()) == before
+
+
+def test_received_name_clear_uses_the_retained_scan_cache_without_rehashing(meeting, monkeypatch):
+    from cassini_viewer import library
+    from cassini_viewer.received import import_received
+
+    source = Path(__file__).parents[1] / "ux/library-vectors/assets/onboarding.opus"
+    imported = import_received(source, meeting.directory.parent)
+    scanner = LibraryScanner(meeting.directory.parent)
+    current = next(m for m in scanner.scan().meetings if m.directory == imported.directory)
+    identifier = current.speakers[0].id
+    assert current.speakers[0].name == "Silvio"
+    before = hashes(imported.directory)
+
+    def unchanged_audio_must_stay_cached(*_args):
+        pytest.fail("A speaker metadata edit re-read/re-verified unchanged received audio")
+
+    monkeypatch.setattr(library, "_opus", unchanged_audio_must_stay_cached)
+    save_name(imported.directory, identifier, "New name", scanner=scanner)
+    updated = next(
+        m for m in scanner.scan(changed_directories={imported.directory}).meetings if m.directory == imported.directory
+    )
+    assert updated.speakers[0].name == "New name" and updated.speakers[0].provenance == "user"
+    save_name(imported.directory, identifier, "", scanner=scanner)
+    cleared = next(
+        m for m in scanner.scan(changed_directories={imported.directory}).meetings if m.directory == imported.directory
+    )
+    assert cleared.speakers[0].name == "Speaker 1" and cleared.speakers[0].provenance == "unnamed"
+    assert hashes(imported.directory) == before

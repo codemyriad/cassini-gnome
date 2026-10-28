@@ -405,7 +405,9 @@ class MeetingPage(Adw.NavigationPage):
 
         directory = self.meeting.directory
         self.window.lookup_action("undo-speaker-merge").set_enabled(False)
-        self._speaker_future = self.window.monitor._executor.submit(undo_merge, directory)
+        self._speaker_future = self.window.monitor._executor.submit(
+            undo_merge, directory, scanner=self.window.monitor.scanner
+        )
         self._speaker_future.add_done_callback(lambda f: GLib.idle_add(self._merge_undone, f))
 
     def _merge_undone(self, future):

@@ -14,21 +14,24 @@ def name_value(value):
     return value or None
 
 
-def current_meeting(directory):
+def current_meeting(directory, *, scanner=None):
     from .library import LibraryScanner
     from .library_location import owned_directory
 
     directory = owned_directory(Path(directory))
-    meeting = next((m for m in LibraryScanner(directory.parent).scan().meetings if m.directory == directory), None)
+    scanner = scanner if scanner is not None else LibraryScanner(directory.parent)
+    meeting = next(
+        (m for m in scanner.scan(changed_directories={directory}).meetings if m.directory == directory), None
+    )
     if meeting is None or not meeting.metadata_editable:
         raise ValueError("Speaker edits require an editable meeting in the Library")
     return meeting
 
 
-def save_name(directory, identifier, value):
+def save_name(directory, identifier, value, *, scanner=None):
     value = name_value(value)
     with LOCK:
-        meeting = current_meeting(directory)
+        meeting = current_meeting(directory, scanner=scanner)
         visible = {s.id: s for s in meeting.speakers}
         if identifier not in visible:
             raise ValueError("Speaker is no longer visible")
@@ -39,9 +42,9 @@ def save_name(directory, identifier, value):
         return update_metadata(meeting.directory, speakers=list(speakers.values()))
 
 
-def merge_into(directory, source, target):
+def merge_into(directory, source, target, *, scanner=None):
     with LOCK:
-        meeting = current_meeting(directory)
+        meeting = current_meeting(directory, scanner=scanner)
         visible = {s.id for s in meeting.speakers}
         if source == target or source not in visible or target not in visible:
             raise ValueError("Choose two different visible speakers")
@@ -51,9 +54,9 @@ def merge_into(directory, source, target):
         return update_metadata(meeting.directory, speakerMerges=history)
 
 
-def undo_merge(directory):
+def undo_merge(directory, *, scanner=None):
     with LOCK:
-        meeting = current_meeting(directory)
+        meeting = current_meeting(directory, scanner=scanner)
         metadata = read_metadata(meeting.directory)
         history = list(metadata.get("speakerMerges", []))
         if not history:

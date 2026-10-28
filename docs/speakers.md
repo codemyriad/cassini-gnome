@@ -7,7 +7,8 @@ explicit local override of a received file's embedded name; without a local
 speaker entry the embedded label is still inherited. Source names such as Me and
 The others can also be changed.
 
-All metadata reads and writes run on the Library worker. Before an edit, the
+All metadata reads and writes run on the Library worker. The retained scan cache
+keeps unchanged received audio from being re-read or hashed on an edit. Before an edit, the
 writer resolves the configured Library and reloads the current meeting. Outside
 folders and symlinks are rejected. A successful edit publishes one atomic
 meeting.json revision, retaining other speaker fields and unrelated metadata.
