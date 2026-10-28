@@ -46,6 +46,7 @@ class CassiniApplication(Adw.Application):
         self.profile = profile
         self.settings_schema = "com.gocassini.Viewer"
         self.transcriber = None
+        self.speech_models = None
         self._transcription_holds = 0
         self._transcription_generation = 0
         self._quitting = False
@@ -101,6 +102,16 @@ class CassiniApplication(Adw.Application):
         from .recording_comfort import RecordingComfort
 
         self.comfort = RecordingComfort(self, automatic=os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1")
+        from .sherpa_runtime import available as parakeet_available
+
+        if self.writing_available and parakeet_available():
+            from .speech_models import SpeechModels
+
+            self.speech_models = SpeechModels(
+                self.recording_settings.get_string("speech-model"),
+                lambda value: self.recording_settings.set_string("speech-model", value),
+                lambda: GLib.idle_add(self._models_changed),
+            )
         from .library_relocator import LibraryRelocator
 
         self.library_relocator = LibraryRelocator(self)
@@ -379,11 +390,16 @@ class CassiniApplication(Adw.Application):
             def finished(_directory):
                 GLib.idle_add(self._transcription_finished, generation)
 
-            self.transcriber = TranscriptionQueue(changed, finished)
+            self.transcriber = TranscriptionQueue(changed, finished, models=self.speech_models)
         directory = getattr(meeting, "directory", meeting)
         if self.transcriber.enqueue(directory, resume=resume):
             self._transcription_holds += 1
             self.hold()
+
+    def _models_changed(self):
+        if self.settings_dialog and not self.settings_dialog.closed:
+            self.settings_dialog.render_models()
+        return False
 
     def _transcription_changed(self):
         for window in self.get_windows():
@@ -439,6 +455,8 @@ class CassiniApplication(Adw.Application):
 
     def begin_exit(self):
         self._quitting = True
+        if self.speech_models:
+            self.speech_models.close()
         if self.library_relocator:
             self.library_relocator.close()
         self._transcription_generation += 1

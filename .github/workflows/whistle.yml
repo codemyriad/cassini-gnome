@@ -5,6 +5,8 @@ on:
       - 'whistle/**'
       - 'sherpa/**'
       - 'src/cassini_viewer/parakeet*.py'
+      - 'src/cassini_viewer/speech_models.py'
+      - 'tests/test_speech_models.py'
       - 'src/cassini_viewer/sherpa*'
       - 'tests/parakeet/**'
       - 'tests/test_parakeet.py'

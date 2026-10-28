@@ -584,3 +584,36 @@ def test_200_restart_invalidates_validator_before_truncation_can_fail(remote, tm
     assert (download(client, remote) / "weights.onnx").read_bytes() == remote.data
     requests = [headers for path, headers in remote.requests if path == "/" + remote.key]
     assert "Range" not in requests[-1]
+
+
+def test_abrupt_exit_decode_and_metadata_temporaries_are_cleaned_before_space_plan(remote, tmp_path):
+    client = store(tmp_path, remote)
+    staging = client.root / ".downloads" / ID / REVISION
+    files = staging / "files"
+    files.mkdir(parents=True)
+    (files / (".decoded-" + "a" * 32)).write_bytes(b"abandoned decode")
+    (files / ".metadata-a1b2c3d4").write_bytes(b"abandoned receipt")
+    (staging / ".metadata-12345678").write_bytes(b"abandoned validator")
+    original = client.plan
+    checked = []
+
+    def plan(*args, **kwargs):
+        assert not list(staging.rglob(".decoded-*")) and not list(staging.rglob(".metadata-*"))
+        checked.append(True)
+        return original(*args, **kwargs)
+
+    client.plan = plan
+    assert (download(client, remote) / "weights.onnx").read_bytes() == remote.data
+    assert checked
+
+
+def test_crash_cleanup_does_not_follow_a_temporary_symlink(remote, tmp_path):
+    client = store(tmp_path, remote)
+    files = client.root / ".downloads" / ID / REVISION / "files"
+    files.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"Keep outside data")
+    (files / (".decoded-" + "a" * 32)).symlink_to(outside)
+    with pytest.raises(IntegrityError, match="nonregular"):
+        download(client, remote)
+    assert not remote.requests and outside.read_bytes() == b"Keep outside data"

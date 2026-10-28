@@ -25,7 +25,7 @@ jobs:
           sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0 \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good meson ninja-build gettext \
             libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream xvfb xauth dbus-x11 \
-            locales fontconfig python3-pil fonts-cantarell=0.303.1-4 fonts-inter=4.1+ds-1
+            locales fontconfig python3-pil python3-pytest libzstd1 fonts-cantarell=0.303.1-4 fonts-inter=4.1+ds-1
           sudo locale-gen en_GB.UTF-8
       - name: Build a local installation
         run: |
@@ -47,6 +47,8 @@ jobs:
           CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/model-notices.py ux-artifacts/notices-gui.png
           CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/settings.py ux-artifacts/settings-gui.png
           CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/library-move.py ux-artifacts/library-move-gui.png
+          CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/speech-models.py ux-artifacts/speech-models.png
+          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/speech-models.py ux-artifacts/dark/speech-models.png
           python3 - <<'PY'
           import json,struct
           from pathlib import Path

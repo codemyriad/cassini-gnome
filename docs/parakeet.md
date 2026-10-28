@@ -50,3 +50,29 @@ Python ONNX Runtime, a new child PID per job and child reaping. Artifacts includ
 segments, words, input hashes, library maps and timing differences. On the local
 installed build both goldens had eight segments and 66 words, exact input hashes,
 exact text and zero word-boundary difference.
+
+## Settings and queue policy
+
+When the installed runtime is present, Preferences offers Download, retry,
+Cancel and Remove, plus the Whistle / Parakeet radio group. It checks existing
+weights in the background without requesting the manifest. Only Download makes
+network requests; cancelling retains verified resumable bytes. Download completion
+does not select Parakeet. The setting is read when each FIFO job starts, and
+`transcript.model` records the actual engine, including after a failed/retried job.
+
+Remove persists Whistle immediately, then waits off the UI thread for any model
+load to finish before deleting weights. The loaded job completes in its child;
+waiting jobs use Whistle. A failed raw-weight check deletes the bad revision and
+uses the published fallback line. Missing runtime libraries do not delete valid
+weights. App exit signals cancellation without joining network threads. A future
+launch safely removes only recognized regular decode/metadata temporaries in the
+staging tree before calculating download space; partial transfers still resume.
+
+The GUI integration test drives the production controller and ModelStore with
+small loopback fixture weights. Light and dark images show available, selected
+and removed states. Unit barriers check selection while queued, Remove during
+native loading and inference, and prompt exit during a stalled read. The offline
+installed-worker proof additionally sends two recordings through the production
+queue, checks both actual segment inputs against the golden before word timing,
+checks track offsets, tags and capture-byte preservation, and requires distinct
+reaped children with no engine imported in the parent.
