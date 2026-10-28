@@ -118,7 +118,11 @@ def test_destination_inside_a_meeting_is_rejected_before_changes(tmp_path):
 
 def test_real_cross_device_move_publishes_identical_bytes(tmp_path):
     shared = Path("/dev/shm")
-    if not shared.is_dir() or shared.stat().st_dev == tmp_path.stat().st_dev or shutil.disk_usage(shared).free < 1024**2:
+    if (
+        not shared.is_dir()
+        or shared.stat().st_dev == tmp_path.stat().st_dev
+        or shutil.disk_usage(shared).free < 1024**2
+    ):
         pytest.skip("A separate writable temporary filesystem is unavailable")
     source = folder(tmp_path / "source")
     expected = {p.name: p.read_bytes() for p in source.iterdir()}

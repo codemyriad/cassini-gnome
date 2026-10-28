@@ -26,7 +26,13 @@ def path_caption(path):
 
 class SettingsDialog(Adw.PreferencesDialog):
     def __init__(self, app, *, service_path=None):
-        super().__init__(title=text("settings.title"), search_enabled=False, content_width=700, content_height=640, css_classes=["cassini-preferences"])
+        super().__init__(
+            title=text("settings.title"),
+            search_enabled=False,
+            content_width=700,
+            content_height=640,
+            css_classes=["cassini-preferences"],
+        )
         self.app = app
         self.service_path = service_path
         self.closed = False
@@ -107,9 +113,13 @@ class SettingsDialog(Adw.PreferencesDialog):
             name.append(Gtk.Label(label=size(weights.stat().st_size), css_classes=["dim-label", "caption"]))
         details.append(name)
         details.append(
-            Gtk.Label(label=text("models.whistle.description"), wrap=True, xalign=0, css_classes=["dim-label", "caption"])
+            Gtk.Label(
+                label=text("models.whistle.description"), wrap=True, xalign=0, css_classes=["dim-label", "caption"]
+            )
         )
-        details.append(Gtk.Label(label=text("models.status.inUse"), xalign=0, css_classes=["success", "caption", "heading"]))
+        details.append(
+            Gtk.Label(label=text("models.status.inUse"), xalign=0, css_classes=["success", "caption", "heading"])
+        )
         row.append(details)
         row.append(Gtk.Label(label=text("models.included"), css_classes=["dim-label", "caption"]))
         self.whistle.set_child(row)
