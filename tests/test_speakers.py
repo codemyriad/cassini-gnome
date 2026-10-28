@@ -3,6 +3,7 @@
 
 import hashlib
 from contextlib import closing
+from pathlib import Path
 
 import pytest
 
@@ -11,6 +12,7 @@ from cassini_viewer.export_model import markdown, model_projection
 from cassini_viewer.exporting import export_meeting
 from cassini_viewer.library import LibraryScanner, _speakers
 from cassini_viewer.meeting_store import atomic_json, read_metadata, update_metadata
+from cassini_viewer.portable_writer import descriptors
 from cassini_viewer.recording_session import RecordingSession
 from cassini_viewer.search_index import SearchIndex
 from cassini_viewer.speaker_edits import current_meeting, merge_into, name_value, save_name, undo_merge
@@ -155,6 +157,23 @@ def test_resolved_names_and_merges_reach_search_and_both_exports(meeting, tmp_pa
         index.sync(LibraryScanner(meeting.directory.parent).scan())
         hits = index.query("alpha", speaker="Robert", now_ms=0, tz="UTC")
         assert len(hits) == 1 and not index.query("alpha", speaker="Alice", now_ms=0, tz="UTC")
+    # Descriptor/word consumers need no GStreamer in the core profile.
+    asset = Path(__file__).parents[1] / "ux/library-vectors/assets/plain-title.opus"
+    with asset.open("rb") as stream:
+        head, _comments, _vendor = portable.read_header(stream)
+    tags, _manifest = descriptors(current, dict(channels=head[9], sampleCount=144000, durationMs=3000, sha256="0" * 64))
+    exported = portable.interpret(head, list(tags.items()))
+    assert {s.id: s.label for s in exported.speakers} == {"b": "Robert", "c": "Carol"}
+    assert [w.speaker for w in portable.load_words(exported, exported.default_transcript_id)] == ["b", "b", "c"]
+    assert hashes(meeting.directory) == before
+
+
+def test_resolved_names_and_merges_survive_actual_audio_export(meeting, tmp_path):
+    pytest.importorskip("gi")  # Actual PCM encoding runs in GTK-equipped source/package profiles.
+    before = hashes(meeting.directory)
+    merge_into(meeting.directory, "a", "b")
+    save_name(meeting.directory, "b", "Robert")
+    current = current_meeting(meeting.directory)
     output = tmp_path / "Export"
     output.mkdir()
     path = export_meeting(current, output)
