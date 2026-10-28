@@ -21,7 +21,11 @@ jobs:
       - name: Install system Python audio test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pytest python3-jsonschema python3-rfc3339-validator python3-gi gir1.2-gstreamer-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+          sudo apt-get install -y gcc libc6-dev python3-pytest python3-jsonschema python3-rfc3339-validator python3-gi gir1.2-gstreamer-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+      - name: Require the approved native ABI layout check
+        run: |
+          command -v cc
+          /usr/bin/python3 -m pytest -q tests/test_parakeet.py::test_all_used_struct_sizes_and_every_field_offset_match_the_approved_fork_header
       - run: /usr/bin/python3 -m pytest -q
 
   distros:
