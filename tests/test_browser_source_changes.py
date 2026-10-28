@@ -11,7 +11,7 @@ from cassini_viewer.browser_service import request
 
 
 @pytest.mark.parametrize("via_callback", [False, True])
-def test_failed_replacement_keeps_old_source_and_manifest(server, via_callback):
+def test_failed_replacement_keeps_old_source_and_manifest(server, via_callback):  # noqa: F811
     service, path, _ = server
     client = BrowserAudioProxy(path=path)
 
@@ -52,7 +52,7 @@ def test_failed_replacement_keeps_old_source_and_manifest(server, via_callback):
 
 
 @pytest.mark.parametrize("limit", ["tracks", "events"])
-def test_browser_close_failure_finalizes_and_releases_microphone(server, limit):
+def test_browser_close_failure_finalizes_and_releases_microphone(server, limit):  # noqa: F811
     from test_browser_service import wait_for
 
     service, path, _ = server
@@ -80,7 +80,7 @@ def test_browser_close_failure_finalizes_and_releases_microphone(server, limit):
     assert json.loads((capture.directory / "session.json").read_text())["state"] == "interrupted"
 
 
-def test_me_only_browser_loss_closes_local_span_and_publishes_activity(server):
+def test_me_only_browser_loss_closes_local_span_and_publishes_activity(server):  # noqa: F811
     service, path, _ = server
     client = BrowserAudioProxy(path=path)
     try:
