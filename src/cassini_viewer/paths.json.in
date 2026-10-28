@@ -1,1 +1,1 @@
-{"onnxruntime": "@ONNXRUNTIME_DIR@"}
+{"onnxruntime": "@ONNXRUNTIME_DIR@", "sherpa": "@SHERPA_DIR@"}

@@ -1,0 +1,13 @@
+{
+  "coordinator": "7177f1f7cd3876a379042ac8bd2905a4c57a8422",
+  "sha256": {
+    "pins.json": "6aea80f4368a38d73289fbf739cf1a7d5d1d50cea18034f5de18af3cb792d697",
+    "SHA256SUMS": "9e0bd753d9400b0030e994d4221e1112ef7c7e931473b58aae8651a379a5aa81",
+    "parakeet-golden.json": "ba583daa780dacc3d251a046a37964c48bfcf64bf5bde296cbca4a83c672b73b",
+    "parakeet-pipeline-golden.json": "dbb556030e2c4ae8c6b981457a3341ce78dce7ec8c7d0c1be794374627b16534",
+    "parakeet-text-exceptions.json": "600171d03cccdecf2c3d57ba61e1ef6f8684020f6994355262672ec43449b2a8",
+    "tools/capi_golden.py": "f5dae686ddd1191dc6bba15ac377461fe81bebf05003c5846f7ec6ed58d693d6",
+    "tools/decode.c": "c6801179ccd07917b51d060169bb117731021d23b55e89c885e470b37be28c13",
+    "tools/make_golden_fork.py": "841652f98092e375519e50be3a957212bbfda9897adc6807e8503265f01a00d0"
+  }
+}

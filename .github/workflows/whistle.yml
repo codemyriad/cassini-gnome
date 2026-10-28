@@ -3,6 +3,12 @@ on:
   pull_request:
     paths:
       - 'whistle/**'
+      - 'sherpa/**'
+      - 'src/cassini_viewer/parakeet*.py'
+      - 'src/cassini_viewer/sherpa*'
+      - 'tests/parakeet/**'
+      - 'tests/test_parakeet.py'
+      - 'build-aux/sherpa-cache.sh'
       - 'meson.build'
       - 'meson_options.txt'
       - 'src/cassini_viewer/whistle_*.py'
@@ -31,7 +37,7 @@ permissions:
 jobs:
   pinned-offline-recognition:
     runs-on: ubuntu-26.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
       - name: Install build-only dependencies
@@ -46,12 +52,32 @@ jobs:
         run: |
           CASSINI_WHISTLE_CACHE=/tmp/whistle-cache build-aux/whistle-cache.sh
           CASSINI_WHISTLE_CACHE=/tmp/whistle-cache build-aux/whistle-cache.sh
+      - uses: actions/cache@v4
+        with:
+          path: /tmp/sherpa-cache
+          key: sherpa-${{ hashFiles('src/cassini_viewer/sherpa-pins.json') }}
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/parakeet-models
+          key: parakeet-ultra-18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
+      - name: Prepare pinned D16 runtime and golden fixture
+        run: |
+          CASSINI_SHERPA_CACHE=/tmp/sherpa-cache build-aux/sherpa-cache.sh
+          python3 tests/parakeet/prepare_model.py --cache "$RUNNER_TEMP/parakeet-models"
       - name: Build and stage the app with the bundle, offline
         run: |
-          meson setup _build --prefix=/usr -Dwhistle=enabled -Dwhistle_cache=/tmp/whistle-cache
+          meson setup _build --prefix=/usr -Dwhistle=enabled -Dwhistle_cache=/tmp/whistle-cache -Dsherpa=enabled -Dsherpa_cache=/tmp/sherpa-cache
           DESTDIR=$PWD/_stage meson install -C _build
       - name: Native constructor guard, both goldens and real GTK queue without network
         run: tests/whistle/run.sh "$PWD/_stage/usr/share/cassini-viewer/whistle" "$PWD/whistle-artifacts"
+      - name: Both Parakeet goldens and ABI through isolated per-job workers
+        run: tests/parakeet/run.sh "$PWD/_stage/usr/share/cassini-viewer/whistle" "$RUNNER_TEMP/parakeet-models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9" "$PWD/_stage/usr/lib/x86_64-linux-gnu/cassini-viewer/sherpa" "$PWD/parakeet-artifacts"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: parakeet-linux-x86_64
+          path: parakeet-artifacts/
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         if: always()
         with:

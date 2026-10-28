@@ -186,6 +186,13 @@
        "additionalProperties": true
       }
      ]
+    },
+    "model": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "description": "Speech model that produced the transcript: \"whistle\" or \"<dist id>@<source_sha256>\" (D16). Optional; absent means unknown."
     }
    },
    "required": [
@@ -359,6 +366,13 @@
          "queued",
          "running"
         ]
+       },
+       "model": {
+        "type": [
+         "string",
+         "null"
+        ],
+        "description": "Speech model that produced the transcript: \"whistle\" or \"<dist id>@<source_sha256>\" (D16). Optional; absent means unknown."
        }
       }
      }

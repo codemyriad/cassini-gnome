@@ -13,3 +13,8 @@ option('whistle', type: 'feature', value: 'disabled',
   description: 'Bundle the pinned offline writing-down engine (Linux glibc x86_64 only)')
 option('whistle_cache', type: 'string', value: '.whistle-cache',
   description: 'Directory with the pinned Whistle artifacts, relative to the source root; the build never downloads')
+
+option('sherpa', type: 'feature', value: 'disabled',
+  description: 'Bundle the D16 optional Parakeet C API runtime (Linux glibc x86_64)')
+option('sherpa_cache', type: 'string', value: '.sherpa-cache',
+  description: 'Pinned sherpa build artifacts; Meson never downloads')

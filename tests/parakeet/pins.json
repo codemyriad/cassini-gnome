@@ -1,0 +1,64 @@
+{
+  "tag": "v1.13.7-cassini.8",
+  "chosenBecause": "newest cassini.N tag on both repos; gocassini pins it on origin/chore/sherpa-cassini-7-parakeet-ultra (linux, macos, windows); gocassini origin/main still pins linux cassini.6, which cannot load the dist Ultra export",
+  "source": {
+    "repo": "codemyriad/sherpa-onnx",
+    "commit": "0c2ee3f3f5f16bb06d234a0f98632810296ba0eb",
+    "tag": "v1.13.7-cassini-parakeet-ultra-v1"
+  },
+  "nativeVersion": "1.13.7+cassini-parakeet-v3-reference-v1.nemotron-diarization-v2.parakeet-ultra-v1",
+  "sherpa-onnx-go-linux": {
+    "tagObject": "6d57641b51cbe976daa37f95bfc3ec8abec0a551",
+    "commit": "03a94bc4bfc1e1bd455cd2fa62b93e8d73817a85",
+    "files": {
+      "lib/x86_64-unknown-linux-gnu/libonnxruntime.so": {
+        "size": 26407985,
+        "sha256": "c85f471e1bd5059a4556038f7f5288fa41141647613688452ae7de4879150903"
+      },
+      "lib/x86_64-unknown-linux-gnu/libsherpa-onnx-c-api.so": {
+        "size": 3569104,
+        "sha256": "9f461c6b5bb2c57567971cde1fc6fd7762a395427f4063d0ee9b8611c3e1fddc"
+      },
+      "lib/x86_64-unknown-linux-gnu/libsherpa-onnx-cxx-api.so": {
+        "size": 261792,
+        "sha256": "84f46a17f8bd144b2243b5121c7b582373ba4b34a0cf001ff30e26ed792ceb29"
+      }
+    },
+    "onnxruntime": "1.27.1"
+  },
+  "sherpa-onnx-go-macos": {
+    "tagObject": "9d7cb94b61146fbbf9a90ca346a03a9f1d47a866",
+    "commit": "e46ea026d083a5319cca8c7f2ee4a8f32019fed7",
+    "files": {
+      "lib/aarch64-apple-darwin/.gitkeep": {
+        "size": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "lib/aarch64-apple-darwin/libonnxruntime.dylib": {
+        "size": 28942064,
+        "sha256": "f1217a893bd4e619022264dbc4bad3490866552b48926ee4c09243e9200b4c53"
+      },
+      "lib/aarch64-apple-darwin/libsherpa-onnx-c-api.dylib": {
+        "size": 3113056,
+        "sha256": "77914d7a1e00a7ed220dbefbd36826ac1b2c32a218a1fb7b7a08ee5524ecd654"
+      },
+      "lib/aarch64-apple-darwin/libsherpa-onnx-cxx-api.dylib": {
+        "size": 162880,
+        "sha256": "39f139add755a817baeab2687a2afbcd60b0bdaa4a46f0e69877f9731ae109c2"
+      },
+      "lib/x86_64-apple-darwin/libonnxruntime.dylib": {
+        "size": 32172656,
+        "sha256": "8dc3d87827183d659f65fc526bd9ea06ad7e9bd906b16bdae26338d3ef26863e"
+      },
+      "lib/x86_64-apple-darwin/libsherpa-onnx-c-api.dylib": {
+        "size": 3367216,
+        "sha256": "4bc86777a9ef6ecc2bff91eafb6e5192e2aeca396a11104651a8cfe26267e616"
+      },
+      "lib/x86_64-apple-darwin/libsherpa-onnx-cxx-api.dylib": {
+        "size": 128592,
+        "sha256": "90cfeac575b065216733f0945adbfe1fb4dfea8f594b210b531e5ebe31f37413"
+      }
+    },
+    "onnxruntime": "1.28.1"
+  }
+}

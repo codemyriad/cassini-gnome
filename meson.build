@@ -27,6 +27,11 @@ else
   onnxruntime_dir = ''
 endif
 
+sherpa_dir = ''
+if get_option('sherpa').enabled()
+  sherpa_dir = get_option('prefix') / get_option('libdir') / meson.project_name() / 'sherpa'
+endif
+
 # Runtime requirements, checked by gi.require_version() at startup:
 # GTK >= 4.18, libadwaita >= 1.8, GStreamer >= 1.20 with the Opus plugin.
 
@@ -35,6 +40,9 @@ subdir('src')
 subdir('po')
 if get_option('whistle').enabled()
   subdir('whistle')
+endif
+if get_option('sherpa').enabled()
+  subdir('sherpa')
 endif
 
 # Distribution packages refresh these caches with triggers, so the tools are

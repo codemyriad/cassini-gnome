@@ -63,6 +63,13 @@ install_data(
   'cassini_viewer/meeting_store.py',
   'cassini_viewer/transcription.py',
   'cassini_viewer/transcript_publish.py',
+  'cassini_viewer/parakeet.py',
+  'cassini_viewer/parakeet_abi.py',
+  'cassini_viewer/parakeet_model.py',
+  'cassini_viewer/parakeet_client.py',
+  'cassini_viewer/parakeet_worker.py',
+  'cassini_viewer/sherpa_runtime.py',
+  'cassini_viewer/sherpa-pins.json',
   'cassini_viewer/whistle_client.py',
   'cassini_viewer/whistle_worker.py',
   'cassini_viewer/speech_pipeline.py',
@@ -123,7 +130,7 @@ install_data(
 configure_file(
   input: 'cassini_viewer/paths.json.in',
   output: 'paths.json',
-  configuration: {'ONNXRUNTIME_DIR': onnxruntime_dir},
+  configuration: {'ONNXRUNTIME_DIR': onnxruntime_dir, 'SHERPA_DIR': sherpa_dir},
   install: true,
   install_dir: moduledir,
 )

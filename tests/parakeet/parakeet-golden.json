@@ -1,0 +1,431 @@
+{
+  "version": 1,
+  "decision": "D16",
+  "note": "D16 golden (fork engine), same input and D11 segmentation as whistle-golden.json, segment boundaries identical; recognised per segment by the unmodified dist parakeet-ultra-0.6b-int8 with codemyriad sherpa-onnx v1.13.7-cassini.8 (C API). Word times = segment start (floor ms) + per-word ms from token timestamps: a token beginning with U+2581 or U+0020 starts a word; start = round(ts*1000) of the word's first piece; end = max round((ts+dur)*1000) over pieces holding a Unicode letter or number (punctuation stays attached but never extends the word); round half away from zero, in double from the engine's float32. Conformance: segments, segment inputSha256 and word count exact; words exact up to trailing , . ? ! (D16); startMs/endMs within 80 ms (D11.3) once hashes match.",
+  "input": "segmentation-input.wav",
+  "inputSha256": "1d93aacf85e8ef17c804ff11d910c24a4f38631ae267a49da056fd89fcb227dd",
+  "sampleRate": 16000,
+  "segments": [
+    {
+      "startSample": 14336,
+      "endSample": 58368,
+      "reason": "silence",
+      "text": "And so, my fellow Americans",
+      "inputSha256": "eceb2e1368c790aeaf56adf37fed778b18f510b87499848d719720105f6f7b6d"
+    },
+    {
+      "startSample": 61440,
+      "endSample": 93184,
+      "reason": "silence",
+      "text": "Ask not",
+      "inputSha256": "7c9d72f3aca7ec324afba674d378d2e615aa3f26005207f32e55b4600cc760aa"
+    },
+    {
+      "startSample": 95232,
+      "endSample": 198656,
+      "reason": "silence",
+      "text": "What your country can do for you, ask what you can do for your country.",
+      "inputSha256": "d09c42c87ce39a339efa1db93944a9b219ab72aba70c215ce2388e6bab6dc5e7"
+    },
+    {
+      "startSample": 238080,
+      "endSample": 282112,
+      "reason": "silence",
+      "text": "And so, my fellow Americans",
+      "inputSha256": "9b9380ba120824a524a265b1983ad525caa7b588631a4ee89f4bc04cc487a658"
+    },
+    {
+      "startSample": 285184,
+      "endSample": 317440,
+      "reason": "silence",
+      "text": "Ask not",
+      "inputSha256": "eb294e15633ba7d3a55f4f70696262c0d31a49e715679a4cb5e962f874651e05"
+    },
+    {
+      "startSample": 318976,
+      "endSample": 458240,
+      "reason": "silence",
+      "text": "What your country can do for you, ask what you can do for your country. And so, my fellow Americans.",
+      "inputSha256": "6c404deaebdb28fe1719303645a7dbf4fb2f56dac5254ae79aa4ef5aec5e95e0"
+    },
+    {
+      "startSample": 461312,
+      "endSample": 493056,
+      "reason": "silence",
+      "text": "Ask not",
+      "inputSha256": "f5adbff0944f72f592e35d889c64ec28161d91d9edf0601c856f8f337266e236"
+    },
+    {
+      "startSample": 495104,
+      "endSample": 598528,
+      "reason": "silence",
+      "text": "What your country can do for you, ask what you can do for your country.",
+      "inputSha256": "a2ead921cd5c72c5513eddc966e6ee03cbf58150fda8bb39b8fa9ef8dbf04fb4"
+    }
+  ],
+  "words": [
+    {
+      "startMs": 1056,
+      "endMs": 1376,
+      "text": "And"
+    },
+    {
+      "startMs": 1376,
+      "endMs": 1616,
+      "text": "so,"
+    },
+    {
+      "startMs": 1776,
+      "endMs": 2016,
+      "text": "my"
+    },
+    {
+      "startMs": 2016,
+      "endMs": 2496,
+      "text": "fellow"
+    },
+    {
+      "startMs": 2496,
+      "endMs": 3296,
+      "text": "Americans"
+    },
+    {
+      "startMs": 4080,
+      "endMs": 4720,
+      "text": "Ask"
+    },
+    {
+      "startMs": 4720,
+      "endMs": 5040,
+      "text": "not"
+    },
+    {
+      "startMs": 6112,
+      "endMs": 6512,
+      "text": "What"
+    },
+    {
+      "startMs": 6512,
+      "endMs": 6752,
+      "text": "your"
+    },
+    {
+      "startMs": 6752,
+      "endMs": 7312,
+      "text": "country"
+    },
+    {
+      "startMs": 7312,
+      "endMs": 7552,
+      "text": "can"
+    },
+    {
+      "startMs": 7552,
+      "endMs": 7792,
+      "text": "do"
+    },
+    {
+      "startMs": 7792,
+      "endMs": 8112,
+      "text": "for"
+    },
+    {
+      "startMs": 8112,
+      "endMs": 8432,
+      "text": "you,"
+    },
+    {
+      "startMs": 8912,
+      "endMs": 9472,
+      "text": "ask"
+    },
+    {
+      "startMs": 9472,
+      "endMs": 9712,
+      "text": "what"
+    },
+    {
+      "startMs": 9712,
+      "endMs": 9952,
+      "text": "you"
+    },
+    {
+      "startMs": 9952,
+      "endMs": 10192,
+      "text": "can"
+    },
+    {
+      "startMs": 10192,
+      "endMs": 10512,
+      "text": "do"
+    },
+    {
+      "startMs": 10512,
+      "endMs": 10672,
+      "text": "for"
+    },
+    {
+      "startMs": 10672,
+      "endMs": 10912,
+      "text": "your"
+    },
+    {
+      "startMs": 10912,
+      "endMs": 11792,
+      "text": "country."
+    },
+    {
+      "startMs": 15040,
+      "endMs": 15360,
+      "text": "And"
+    },
+    {
+      "startMs": 15360,
+      "endMs": 15600,
+      "text": "so,"
+    },
+    {
+      "startMs": 15760,
+      "endMs": 16000,
+      "text": "my"
+    },
+    {
+      "startMs": 16000,
+      "endMs": 16480,
+      "text": "fellow"
+    },
+    {
+      "startMs": 16480,
+      "endMs": 17280,
+      "text": "Americans"
+    },
+    {
+      "startMs": 18144,
+      "endMs": 18784,
+      "text": "Ask"
+    },
+    {
+      "startMs": 18784,
+      "endMs": 19104,
+      "text": "not"
+    },
+    {
+      "startMs": 20096,
+      "endMs": 20496,
+      "text": "What"
+    },
+    {
+      "startMs": 20496,
+      "endMs": 20736,
+      "text": "your"
+    },
+    {
+      "startMs": 20736,
+      "endMs": 21296,
+      "text": "country"
+    },
+    {
+      "startMs": 21296,
+      "endMs": 21536,
+      "text": "can"
+    },
+    {
+      "startMs": 21536,
+      "endMs": 21856,
+      "text": "do"
+    },
+    {
+      "startMs": 21856,
+      "endMs": 22176,
+      "text": "for"
+    },
+    {
+      "startMs": 22176,
+      "endMs": 22496,
+      "text": "you,"
+    },
+    {
+      "startMs": 22896,
+      "endMs": 23456,
+      "text": "ask"
+    },
+    {
+      "startMs": 23456,
+      "endMs": 23776,
+      "text": "what"
+    },
+    {
+      "startMs": 23776,
+      "endMs": 24016,
+      "text": "you"
+    },
+    {
+      "startMs": 24016,
+      "endMs": 24256,
+      "text": "can"
+    },
+    {
+      "startMs": 24256,
+      "endMs": 24496,
+      "text": "do"
+    },
+    {
+      "startMs": 24496,
+      "endMs": 24656,
+      "text": "for"
+    },
+    {
+      "startMs": 24656,
+      "endMs": 24896,
+      "text": "your"
+    },
+    {
+      "startMs": 24896,
+      "endMs": 25696,
+      "text": "country."
+    },
+    {
+      "startMs": 26016,
+      "endMs": 26336,
+      "text": "And"
+    },
+    {
+      "startMs": 26336,
+      "endMs": 26576,
+      "text": "so,"
+    },
+    {
+      "startMs": 26736,
+      "endMs": 26976,
+      "text": "my"
+    },
+    {
+      "startMs": 26976,
+      "endMs": 27456,
+      "text": "fellow"
+    },
+    {
+      "startMs": 27456,
+      "endMs": 28336,
+      "text": "Americans."
+    },
+    {
+      "startMs": 29152,
+      "endMs": 29792,
+      "text": "Ask"
+    },
+    {
+      "startMs": 29792,
+      "endMs": 30112,
+      "text": "not"
+    },
+    {
+      "startMs": 31104,
+      "endMs": 31504,
+      "text": "What"
+    },
+    {
+      "startMs": 31504,
+      "endMs": 31744,
+      "text": "your"
+    },
+    {
+      "startMs": 31744,
+      "endMs": 32304,
+      "text": "country"
+    },
+    {
+      "startMs": 32304,
+      "endMs": 32544,
+      "text": "can"
+    },
+    {
+      "startMs": 32544,
+      "endMs": 32864,
+      "text": "do"
+    },
+    {
+      "startMs": 32864,
+      "endMs": 33184,
+      "text": "for"
+    },
+    {
+      "startMs": 33184,
+      "endMs": 33504,
+      "text": "you,"
+    },
+    {
+      "startMs": 33904,
+      "endMs": 34464,
+      "text": "ask"
+    },
+    {
+      "startMs": 34464,
+      "endMs": 34704,
+      "text": "what"
+    },
+    {
+      "startMs": 34704,
+      "endMs": 35024,
+      "text": "you"
+    },
+    {
+      "startMs": 35024,
+      "endMs": 35184,
+      "text": "can"
+    },
+    {
+      "startMs": 35184,
+      "endMs": 35504,
+      "text": "do"
+    },
+    {
+      "startMs": 35504,
+      "endMs": 35664,
+      "text": "for"
+    },
+    {
+      "startMs": 35664,
+      "endMs": 35904,
+      "text": "your"
+    },
+    {
+      "startMs": 35904,
+      "endMs": 36784,
+      "text": "country."
+    }
+  ],
+  "engine": {
+    "name": "sherpa-onnx (codemyriad fork)",
+    "tag": "v1.13.7-cassini.8",
+    "nativeVersion": "1.13.7+cassini-parakeet-v3-reference-v1.nemotron-diarization-v2.parakeet-ultra-v1",
+    "source": "codemyriad/sherpa-onnx 0c2ee3f3f5f16bb06d234a0f98632810296ba0eb (v1.13.7-cassini-parakeet-ultra-v1)",
+    "api": "C API",
+    "goldenPlatform": "x86_64-unknown-linux-gnu (onnxruntime 1.27.1)",
+    "libs": {
+      "libsherpa-onnx-c-api.so": "9f461c6b5bb2c57567971cde1fc6fd7762a395427f4063d0ee9b8611c3e1fddc",
+      "libonnxruntime.so": "c85f471e1bd5059a4556038f7f5288fa41141647613688452ae7de4879150903"
+    }
+  },
+  "model": {
+    "distId": "parakeet-ultra-0.6b-int8",
+    "sourceSha256": "18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9",
+    "files": {
+      "encoder.int8.onnx": "299617fefd4664d1c115b691dcb6413cabcdbcc694cdf3cb4464b72c5fc3ae69",
+      "decoder.int8.onnx": "1fab98fe6c12aded87d2da66272cc9e148d0a0044ce3850a12fe56302ec4a922",
+      "joiner.int8.onnx": "8a71aaccfdba3d451775507a889afd2257d2e754463fd81095a8c8f290f924c2",
+      "tokens.txt": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d"
+    },
+    "transform": "none: the dist files are loaded exactly as downloaded"
+  },
+  "recognizerConfig": {
+    "model_type": "nemo_transducer",
+    "decoding_method": "greedy_search",
+    "num_threads": 1,
+    "provider": "cpu",
+    "sample_rate": 16000,
+    "feature_dim": 128,
+    "dither": 0.0,
+    "blank_penalty": 0.0
+  }
+}
