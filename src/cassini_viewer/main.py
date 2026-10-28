@@ -51,6 +51,9 @@ class CassiniApplication(Adw.Application):
         self._quitting = False
         self._capture_background = False
         self._capture_confirmation = None
+        self._browser_stops = set()
+        self._capture_exiting = False
+        self._closing_background_windows = False
         # Screenshot runs keep the "Write it down" actions visible but never
         # start the engine. Otherwise both need the bundle and its runtime.
         screenshot = os.environ.get("CASSINI_SCREENSHOT_ISOLATED") == "1"
@@ -294,6 +297,7 @@ class CassiniApplication(Adw.Application):
         if (
             self.transcription_enabled
             and not self._quitting
+            and not self._capture_exiting
             and _recorder.session is not None
             and any(track["frames"] > 0 for track in _recorder.session.manifest["tracks"])
         ):
@@ -313,9 +317,15 @@ class CassiniApplication(Adw.Application):
 
     def stop_browser_recordings(self, directory=None):
         from concurrent.futures import ThreadPoolExecutor
+        from pathlib import Path
 
         from .capture_guard import stop_browser_captures
 
+        key = str(Path(directory).resolve()) if directory is not None else None
+        if None in self._browser_stops or key in self._browser_stops:
+            return
+        self._browser_stops.add(key)
+        self.hold()
         executor = ThreadPoolExecutor(max_workers=1)
         future = executor.submit(stop_browser_captures, directory)
 
@@ -330,6 +340,9 @@ class CassiniApplication(Adw.Application):
                             self.write_down(path)
                 except (OSError, ValueError) as error:
                     self.recording_error = str(error)
+                finally:
+                    self._browser_stops.discard(key)
+                    self.release()
                 self._native_changed()
                 return False
 
@@ -353,7 +366,7 @@ class CassiniApplication(Adw.Application):
         return self.writing_unavailable is None
 
     def write_down(self, meeting, *, resume=False):
-        if self._quitting:
+        if self._quitting or self._capture_exiting:
             return
         from .transcription import TranscriptionQueue
 
@@ -440,6 +453,8 @@ class CassiniApplication(Adw.Application):
             self.release()
 
     def window_closing(self, window):
+        if self._closing_background_windows:
+            return
         if not self._capture_background_active() and not any(w is not window for w in self.get_windows()):
             self.begin_exit()
 

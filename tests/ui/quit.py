@@ -26,6 +26,11 @@ if len(sys.argv) == 1:
         "keep-reactivate",
         "keep-finished",
         "keep-hidden-finish",
+        "keep-hidden-writing",
+        "keep-browser-finish",
+        "keep-two-windows",
+        "keep-reopen-two",
+        "stop-interrupted",
         "stop-finishing",
         "stop-error",
     ):
@@ -49,6 +54,7 @@ from cassini_viewer.transcription import TranscriptionQueue  # noqa: E402
 from cassini_viewer.whistle_client import WhistleClient  # noqa: E402
 
 mode = sys.argv[1]
+busy_writing = mode in ("quit-writing", "close-writing")
 started = time.monotonic()
 phase = 0
 closing_at = None
@@ -99,9 +105,37 @@ with tempfile.TemporaryDirectory() as tmp:
     subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
     os.environ["GSETTINGS_SCHEMA_DIR"] = str(schemas)
     app = CassiniApplication("com.gocassini.QuitTest" + mode.replace("-", ""), "test", "development")
-    app.transcription_enabled = mode != "stop-after-finish" and not mode.startswith("keep-")
+    app.transcription_enabled = mode != "stop-after-finish" and (
+        not mode.startswith("keep-") or mode in ("keep-hidden-writing", "keep-browser-finish")
+    )
+    if mode in ("keep-hidden-writing", "keep-browser-finish"):
+
+        class CompletedClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def start(self):
+                return self
+
+            def process_tracks(self, tracks, progress):
+                time.sleep(0.3)  # Keep inference alive beyond the background-close timer.
+                assert not app._quitting
+                return dict(words=[], languages={}, diagnostics=[])
+
+            def close(self):
+                pass
+
+            def cancel(self):
+                pass
+
+        app.transcriber = TranscriptionQueue(
+            lambda _: None,
+            lambda _: GLib.idle_add(app._transcription_finished, 0),
+            bundle=Path(tmp),
+            client_factory=CompletedClient,
+        )
     session = None
-    if mode.endswith("writing"):
+    if busy_writing:
         session = RecordingSession(tmp, source="gnome")
         session.add_track("mic", "Me", "microphone", 48000, 1)
         session.append("mic", bytes(9600), 0)
@@ -139,7 +173,7 @@ with tempfile.TemporaryDirectory() as tmp:
         if not app.get_windows():
             return True
         window = app.get_active_window()
-        if mode.endswith("writing"):
+        if busy_writing:
             if phase == 0:
                 app.write_down(session.directory)
                 phase = 1
@@ -148,6 +182,25 @@ with tempfile.TemporaryDirectory() as tmp:
             ).read_bytes():
                 closing_at = time.monotonic()
                 app.on_quit() if mode == "quit-writing" else window.close()
+                return False
+        elif mode == "keep-browser-finish":
+            if phase == 0:
+                browser_session = RecordingSession(tmp, source="chromium")
+                browser_session.add_track("remote", "Remote", "remote", 48000, 1)
+                browser_session.append("remote", bytes(19200), 0)
+                app.test_browser_session = browser_session
+                from types import SimpleNamespace
+
+                window._activity_source = SimpleNamespace(close=lambda: None, connected=True, snapshot={})
+                window._activity_source.snapshot = {browser_session.manifest["id"]: "recording"}
+                window._browser_snapshot = dict(statuses=[dict(recording=True, path=str(browser_session.directory))])
+                app.on_quit()
+                respond("keep")
+                assert app._capture_background and not window.get_visible()
+                browser_session.finish()
+                window._activity_source.snapshot = {}
+                window._browser_snapshot = {}
+                closing_at = time.monotonic()
                 return False
         elif mode == "stop-error":
             from cassini_viewer.recording_window import RecordingWindow
@@ -159,6 +212,9 @@ with tempfile.TemporaryDirectory() as tmp:
                 legacy.recorder.stop = lambda: legacy.recorder._fail("Synthetic stop failure")
                 app.on_quit()
                 respond("stop")
+                # Error handling checks for a final finished signal on the next idle.
+                while GLib.MainContext.default().pending():
+                    GLib.MainContext.default().iteration(False)
                 assert app._capture_confirmation is None and not app._quitting
                 assert legacy.get_visible() and legacy.status.get_label().startswith("Synthetic stop failure")
                 assert legacy.recorder.pipeline is None
@@ -174,6 +230,8 @@ with tempfile.TemporaryDirectory() as tmp:
 
                 NativeRecorder._prepare = staticmethod(fail)
             app.start_native(test=True)
+            if mode in ("keep-two-windows", "keep-reopen-two"):
+                app.on_browser_meetings()
             phase = 1
             if mode in ("stop-starting", "prepare-failed"):
                 closing_at = time.monotonic()
@@ -213,13 +271,31 @@ with tempfile.TemporaryDirectory() as tmp:
                 assert not app._capture_background
                 app.stop_native()
                 phase = 3
-            elif mode == "keep-hidden-finish":
+            elif mode in ("keep-hidden-finish", "keep-hidden-writing"):
                 closing_at = time.monotonic()
                 app.stop_native()
                 return False
+            elif mode in ("keep-two-windows", "keep-reopen-two"):
+                if mode == "keep-reopen-two":
+                    app.activate()
+                # The timer must destroy hidden auxiliary windows.
+                phase = 5
             elif app.recorder.pipeline is None:
                 respond("keep")
                 assert not getattr(app, "_capture_background", False) and window.get_visible()
+                closing_at = time.monotonic()
+                window.close()
+                return False
+        elif phase == 5:
+            from cassini_viewer.library_window import LibraryWindow
+
+            visible = [w for w in app.get_windows() if w.get_visible()]
+            if len(app.get_windows()) == 1 and isinstance(visible[0], LibraryWindow):
+                assert not app._capture_background
+                app.stop_native()
+                phase = 3
+        elif phase == 3 and mode in ("keep-two-windows", "keep-reopen-two"):
+            if not app.recorder.pipeline and not app.recorder._finishing:
                 closing_at = time.monotonic()
                 window.close()
                 return False
@@ -233,7 +309,15 @@ with tempfile.TemporaryDirectory() as tmp:
             and app.recorder.session
             and all(t["frames"] >= 9600 for t in app.recorder.session.manifest["tracks"])
         ):
-            app.on_quit()
+            if mode == "stop-interrupted":
+                original_begin = app.recorder._begin_finish
+                app.recorder._begin_finish = lambda problem=None: original_begin("Synthetic interrupted finalization")
+            if mode == "keep-two-windows":
+                from cassini_viewer.browser_window import BrowserMeetingsWindow
+
+                next(w for w in app.get_windows() if isinstance(w, BrowserMeetingsWindow)).close()
+            else:
+                app.on_quit()
             if mode == "stop-finishing":
                 app.recorder._begin_finish()
                 phase = 2
@@ -264,23 +348,30 @@ with tempfile.TemporaryDirectory() as tmp:
         app._quitting,
         app._capture_confirmation,
     )
-    if mode.endswith("writing"):
+    if busy_writing:
         assert read_metadata(session.directory)["transcript"]["status"] == "running"
         assert b"Already saved" in (session.directory / "transcript.json").read_bytes()
         deadline = time.monotonic() + 2
         while child.poll() is None and time.monotonic() < deadline:
             time.sleep(0.005)
         assert child.poll() is not None
-    elif mode in ("stop-save", "stop-after-finish", "stop-finishing"):
+    elif mode in ("stop-save", "stop-after-finish", "stop-finishing", "stop-interrupted"):
         assert app.recorder.pipeline is None
-        assert app.recorder.session.manifest["state"] == "completed", app.recorder.session.manifest
+        assert app.recorder.session.manifest["state"] == (
+            "interrupted" if mode == "stop-interrupted" else "completed"
+        ), app.recorder.session.manifest
         assert all(t["frames"] >= 9600 for t in app.recorder.session.manifest["tracks"])
         assert read_metadata(app.recorder.session.directory)["transcript"]["status"] == (
             "none" if mode == "stop-after-finish" else "queued"
         )
         assert app.transcriber is None, "Quit started hidden inference"
+    elif mode == "keep-browser-finish":
+        assert not app._capture_background
+        assert read_metadata(app.test_browser_session.directory)["transcript"]["status"] == "done"
     elif mode.startswith("keep-"):
         assert not app._capture_background and app.recorder.pipeline is None
+        if mode == "keep-hidden-writing":
+            assert read_metadata(app.recorder.session.directory)["transcript"]["status"] == "done"
     elif mode == "stop-error":
         pass
     elif mode == "prepare-failed":

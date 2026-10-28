@@ -28,18 +28,92 @@ def capture_targets(app):
 
 
 def refresh_capture_background(app):
-    """Own the background hold only while a hidden capture actually needs it."""
+    """Retire hidden windows without treating background completion as Quit."""
     if not getattr(app, "_capture_background", False):
         return False
-    windows = app.get_windows()
-    native, browser = capture_targets(app)
-    if not any(w.get_visible() for w in windows) and (native or browser):
+    if getattr(app, "_capture_confirmation", None):
         return True
-    app._capture_background = False
-    app.release()
-    if not native and not browser and windows and not any(w.get_visible() for w in windows):
-        finish_close(app, windows)
+    windows = app.get_windows()
+    remember_capture_paths(app)
+    native, browser = capture_targets(app)
+    hidden = [w for w in getattr(app, "_capture_hidden_windows", ()) if w in windows and not w.get_visible()]
+    if any(w.get_visible() for w in windows):
+        finished = [w for w in hidden if not recorder_busy(getattr(w, "recorder", None))]
+        finish_close(app, finished, background=True)
+        if len(finished) < len(hidden):
+            return True
+        app._capture_hidden_windows = set()
+        release_background(app)
+        return False
+    if native or browser or getattr(app, "_browser_stops", ()):
+        return True
+    if getattr(app, "_capture_background_saving", False):
+        return True
+    from gi.repository import GLib
+
+    # Browser activity can disappear before a Library scan observes saved audio.
+    # Persist intent before dropping the last window/hold, then let the normal
+    # queue finish under its own holds. No inference is cancelled by this close.
+    app._capture_background_saving = True
+    paths = tuple(getattr(app, "_capture_paths", ()))
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-hidden-save")
+
+    def save():
+        if app.transcription_enabled:
+            return [path for path in paths if queue_saved_for_later(path)]
+        return []
+
+    def saved(future):
+        executor.shutdown(wait=False)
+
+        def complete():
+            app._capture_background_saving = False
+            try:
+                queued = future.result()
+            except (OSError, ValueError) as error:
+                app.recording_error = str(error)
+                app.activate()
+                return False
+            if not app._quitting:
+                for path in queued:
+                    app.write_down(path, resume=True)
+            hidden = [
+                w for w in app.get_windows() if w in getattr(app, "_capture_hidden_windows", ()) and not w.get_visible()
+            ]
+            finish_close(app, hidden, background=True)
+            app._capture_hidden_windows = set()
+            app._capture_paths = set()
+            release_background(app)
+            return False
+
+        GLib.idle_add(complete)
+
+    executor.submit(save).add_done_callback(saved)
     return False
+
+
+def release_background(app):
+    if getattr(app, "_capture_background", False):
+        app._capture_background = False
+        app.release()
+
+
+def remember_capture_paths(app):
+    paths = getattr(app, "_capture_paths", set())
+    native, _ = capture_targets(app)
+    for target in native:
+        session = getattr(target.recorder, "session", None)
+        if session:
+            paths.add(str(session.directory))
+    for window in app.get_windows():
+        for meeting in getattr(getattr(window, "snapshot", None), "meetings", ()):
+            if meeting.lifecycle in ("recording", "saving"):
+                paths.add(str(meeting.directory))
+        for status in getattr(window, "_browser_snapshot", {}).get("statuses", ()):
+            if status.get("recording") and isinstance(status.get("path"), str):
+                paths.add(status["path"])
+    app._capture_paths = paths
+    return paths
 
 
 def confirm_capture_close(app, window, *, quitting=False):
@@ -54,6 +128,7 @@ def confirm_capture_close(app, window, *, quitting=False):
     native, browser = capture_targets(app)
     if not native and not browser:
         return False
+    remember_capture_paths(app)
     dialog = Adw.AlertDialog(heading=text("confirm.recordingRunning.title"), body=text("confirm.recordingRunning.body"))
     dialog.add_response("keep", text("confirm.recordingRunning.secondary"))
     dialog.add_response("stop", text("confirm.recordingRunning.primary"))
@@ -74,6 +149,8 @@ def confirm_capture_close(app, window, *, quitting=False):
             # dismisses it without hiding the last window or acquiring a hold.
             if not any(capture_targets(app)):
                 return
+            remember_capture_paths(app)
+            app._capture_hidden_windows = getattr(app, "_capture_hidden_windows", set()) | set(targets)
             if not getattr(app, "_capture_background", False):
                 app.hold()
                 app._capture_background = True
@@ -83,17 +160,17 @@ def confirm_capture_close(app, window, *, quitting=False):
             return
         app._capture_confirmation = True  # Finalization guard; release the closed dialog itself.
         exiting = quitting or not any(w not in targets for w in app.get_windows())
-        if exiting:
-            app.begin_exit()
+        app._capture_exiting = exiting
+        paths = list(remember_capture_paths(app))
         app.hold()
         active_native = [target for target in native if recorder_busy(target.recorder)]
         waiting = {id(target.recorder) for target in active_native}
         browser_done = not browser
-        paths = [
+        paths.extend(
             str(target.recorder.session.directory)
             for target in native
             if target not in active_native and getattr(target.recorder, "session", None)
-        ]
+        )
         completing = False
         completed = False
         handlers = {}
@@ -113,7 +190,7 @@ def confirm_capture_close(app, window, *, quitting=False):
             disconnect()
             executor.shutdown(wait=False, cancel_futures=True)
             app._capture_confirmation = None
-            app._quitting = False
+            app._capture_exiting = False
             window.present()
             app.release()
 
@@ -146,6 +223,9 @@ def confirm_capture_close(app, window, *, quitting=False):
                         completed = True
                         disconnect()
                         app._capture_confirmation = None
+                        app._capture_exiting = False
+                        if exiting:
+                            app.begin_exit()
                         finish_close(app, targets)
                         if exiting:
                             app.quit()
@@ -165,8 +245,16 @@ def confirm_capture_close(app, window, *, quitting=False):
                 paths.append(path)
                 ready()
 
-            def failed(_active, _message):
-                abort()
+            def failed(active, _message):
+                # NativeRecorder reports an interrupted, finalized recording
+                # with error followed by finished. Legacy/start failures have
+                # no finished signal: check on the next main-loop iteration.
+                def check():
+                    if id(active) in waiting:
+                        abort()
+                    return False
+
+                GLib.idle_add(check)
 
             handlers[id(recorder)] = (
                 recorder,
@@ -209,7 +297,9 @@ def confirm_capture_close(app, window, *, quitting=False):
     return True
 
 
-def finish_close(app, windows):
+def finish_close(app, windows, *, background=False):
+    previous = getattr(app, "_closing_background_windows", False)
+    app._closing_background_windows = previous or background
     app._capture_close_allowed = True
     try:
         for target in windows:
@@ -222,12 +312,13 @@ def finish_close(app, windows):
                     target.destroy()
     finally:
         app._capture_close_allowed = False
-    if getattr(app, "_capture_background", False):
-        app._capture_background = False
-        app.release()
+        app._closing_background_windows = previous
+    if not background:
+        release_background(app)
 
 
 def stop_browser_captures(directory=None):
+    import time
     from pathlib import Path
 
     from . import browser_service
@@ -245,7 +336,23 @@ def stop_browser_captures(directory=None):
         if m.get("recording") and (directory is None or matches(m.get("path")))
     )
     for identifier in identifiers:
-        browser_service.request("stop", id=identifier)
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                browser_service.request("stop", id=identifier)
+                break
+            except ValueError:
+                # A concurrent stop may already have finished, or may still
+                # be saving. Check the controller rather than aborting Quit.
+                current = browser_service.request()
+                active = [s for s in current.get("statuses", []) if s.get("recording") and s.get("id") == identifier]
+                if not active:
+                    break
+                if time.monotonic() >= deadline or not any(
+                    m.get("busy") and m.get("id") == identifier for m in current.get("meetings", [])
+                ):
+                    raise
+                time.sleep(0.05)
     after = browser_service.request()
     if any(s.get("recording") and matches(s.get("path")) for s in after.get("statuses", [])):
         raise ValueError("The browser has not confirmed the recording stopped")
@@ -285,3 +392,5 @@ def queue_saved_for_later(path):
                     etaMinutes=None,
                     error=None,
                 )
+                return True
+        return value["transcript"]["status"] in ("queued", "running")

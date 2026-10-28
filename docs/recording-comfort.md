@@ -58,3 +58,18 @@ audible tail and a silent microphone, without changing shared fixture bytes or
 expected outputs. The artifact contains light/dark 1120x720 recording.png and
 notification.json. Native-only wording and actual Shell notification chrome are
 explicit platform/catalog limits, not screenshots of fake Shell widgets.
+
+Background completion retires only windows hidden by Keep recording. Reopening
+Cassini removes the other hidden windows, while an active legacy recorder window
+stays owned until its recording finishes. A background Stop persists any saved
+meeting's writing-down intent before removing the final window; the normal queue
+keeps its own application holds until it finishes. This path does not call the
+explicit Quit cancellation path. Stop and save only begins that cancellation
+after capture finalization and the resumable intent checkpoint succeed. A native
+error followed by a finalized recording is saved, while a preparation/legacy
+failure without a finished signal keeps the window visible for diagnosis.
+
+The private-Xvfb process-exit probe covers native and simulated browser hidden
+completion with a delayed writing-down job, Keep recording with two windows,
+reopening two hidden windows, and interrupted native finalization. The browser
+stop unit cases cover a concurrent completed stop and an already-running save.
