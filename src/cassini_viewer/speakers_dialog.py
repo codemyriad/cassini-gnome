@@ -185,21 +185,31 @@ class SpeakersDialog(Adw.Dialog):
             self.close()
         return False
 
+    def _can_play(self):
+        return bool(
+            self.meeting.has_audio
+            and self.page.player.loaded
+            and self.window._loaded_key == self.meeting.key
+            and not self.window._playback_failed
+        )
+
     def _play(self, *_):
         if self.sample_active:
             self._finish_sample()
             return
-        if self.sample and self.page.player.loaded:
+        if self.sample and self._can_play():
             self._sample_position = self.page.player.position
             self.sample_active = self.page.player.play_range(*self.sample)
             self._tick()
 
     def _finish_sample(self):
         if self.sample_active:
-            self.page.player.pause()
-            self.page.player.clear_range()
-            if self.page.player.loaded:
+            if self._can_play():
+                self.page.player.pause()
+                self.page.player.clear_range()
                 self.page.player.seek(self._sample_position)
+            else:
+                self.page.player.clear_range()
             self.sample_active = False
 
     def _tick(self):
@@ -207,7 +217,7 @@ class SpeakersDialog(Adw.Dialog):
             return GLib.SOURCE_REMOVE
         if self.sample_active and not self.page.player.playing:
             self._finish_sample()
-        self.play.set_sensitive(not self.busy and self.sample is not None and self.page.player.loaded)
+        self.play.set_sensitive(not self.busy and self.sample is not None and self._can_play())
         self.play.set_icon_name(
             "media-playback-pause-symbolic" if self.sample_active else "media-playback-start-symbolic"
         )

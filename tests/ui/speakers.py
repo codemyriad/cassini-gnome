@@ -107,6 +107,16 @@ with tempfile.TemporaryDirectory() as temporary:
     assert window.player._range_end == 198000
     dialog.play.emit("clicked")
     assert not window.player.playing and window.player.position == 192000 and window.player._range_end is None
+    from dataclasses import replace
+
+    dialog.update(replace(page.meeting, has_audio=False))
+    dialog._tick()
+    assert not dialog.play.get_sensitive()
+    dialog.play.emit("clicked")
+    assert not window.player.playing
+    dialog.update(page.meeting)
+    dialog._tick()
+    assert dialog.play.get_sensitive()
     # A real failed update stays open and retains the field for Try again.
     with patch.object(speaker_edits, "save_name", side_effect=OSError("fixture read-only volume")):
         dialog.save.emit("clicked")
@@ -144,8 +154,6 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: dialog.closed)
     assert (meeting.directory / "meeting.json").read_bytes() == before
     # Outside folders are readable, but offer no name/edit controls.
-    from dataclasses import replace
-
     page.update(replace(page.meeting, metadata_editable=False))
     page.name_speakers("guest")
     assert page.speakers_dialog.closed
