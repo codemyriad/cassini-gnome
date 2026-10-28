@@ -177,3 +177,13 @@ def test_long_turn_excerpt_keeps_hit_and_markup_bounded():
     assert len(excerpt) < 1500
     assert excerpt.count("<span ") == excerpt.count("</span>") == 1
     assert "<unsafe>" not in excerpt
+
+
+def test_received_items_are_ordered_by_start_with_file_order_ties(index):
+    meeting = next(m for m in index.current.values() if m.title == "Budget review")
+    reordered = replace(meeting, words=tuple(reversed(meeting.words)))
+    index.sync(LibrarySnapshot(meetings=(reordered,)))
+    assert [h.position_ms for h in search(index, speaker="Marta")] == [4000, 872000]
+    equal = replace(meeting, words=(Word("second", 100, 200, "budget two"), Word("first", 100, 200, "budget one")))
+    index.sync(LibrarySnapshot(meetings=(equal,)))
+    assert [index.turns[h.key][h.turn].speaker for h in search(index)] == ["second", "first"]

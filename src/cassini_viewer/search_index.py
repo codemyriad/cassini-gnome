@@ -138,9 +138,10 @@ class SearchIndex:
                 signature = (meeting.words, meeting.speakers, meeting.started_at_ms, meeting.origin)
                 if old is not None and old[0] is meeting.words and old[1:] == signature[1:]:
                     continue
+                ordered = sorted(meeting.words, key=lambda word: word.start_ms)
                 turns = tuple(
                     SearchTurn(speaker, items, " ".join(w.text.replace(START, "").replace(END, "") for w in items))
-                    for speaker, words in groupby(meeting.words, key=lambda w: w.speaker)
+                    for speaker, words in groupby(ordered, key=lambda w: w.speaker)
                     if (items := tuple(words))
                 )
                 names = {s.id: s.name.casefold() for s in meeting.speakers}
