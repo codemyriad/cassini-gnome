@@ -91,7 +91,7 @@ class CassiniApplication(Adw.Application):
         if not os.environ.get("CASSINI_SCREENSHOT_ISOLATED") and not os.environ.get("CASSINI_ISOLATED_AUDIO"):
             from .global_shortcut import GlobalShortcut
 
-            self.global_shortcut = GlobalShortcut(self.on_record)
+            self.global_shortcut = GlobalShortcut(self.on_global_record)
 
     def _add_action(self, name, callback, accels=None):
         action = Gio.SimpleAction.new(name, None)
@@ -193,8 +193,15 @@ class CassiniApplication(Adw.Application):
     def recording_settings(self):
         return Gio.Settings.new(self.settings_schema)
 
+    def browser_capture_active(self):
+        return any(
+            (getattr(window, "_activity_source", None) and window._activity_source.snapshot)
+            or any(status.get("recording") for status in getattr(window, "_browser_snapshot", {}).get("statuses", []))
+            for window in self.get_windows()
+        )
+
     def on_record(self, *_args):
-        if self.comfort and any(m.capture_source != "gnome" for m in self.comfort.active().values()):
+        if self.browser_capture_active():
             self.stop_browser_recordings()
             return
         if self.recorder and (self.recorder.pipeline is not None or self.recorder.starting):
@@ -208,6 +215,19 @@ class CassiniApplication(Adw.Application):
 
             self.record_first = RecordFirst(self, self.get_active_window())
             self.record_first.connect("closed", lambda *_: setattr(self, "record_first", None))
+
+    def on_global_record(self, *_):
+        active = self.recorder and (self.recorder.pipeline is not None or self.recorder.starting)
+        active = active or self.browser_capture_active()
+        if (
+            not active
+            and self.recording_settings.get_boolean("skip-record-first")
+            and self.get_windows()
+            and not any(w.get_visible() for w in self.get_windows())
+        ):
+            self.start_native()
+        else:
+            self.on_record()
 
     def start_native(self, *, test=False):
         from .library import library_root
@@ -238,9 +258,11 @@ class CassiniApplication(Adw.Application):
         self._native_changed()
 
     def _native_changed(self, *_):
+        if self.comfort:
+            self.comfort.native_level()
         for window in self.get_windows():
-            if hasattr(window, "_activity_tick"):
-                window._activity_tick()
+            if hasattr(window, "capture_changed"):
+                window.capture_changed()
 
     def _release_native(self):
         if self._recording_cookie:
@@ -272,13 +294,13 @@ class CassiniApplication(Adw.Application):
         if self.recorder:
             self.recorder.stop()
 
-    def stop_browser_recordings(self):
+    def stop_browser_recordings(self, directory=None):
         from concurrent.futures import ThreadPoolExecutor
 
         from .capture_guard import stop_browser_captures
 
         executor = ThreadPoolExecutor(max_workers=1)
-        future = executor.submit(stop_browser_captures)
+        future = executor.submit(stop_browser_captures, directory)
 
         def done(result):
             executor.shutdown(wait=False)
@@ -359,9 +381,8 @@ class CassiniApplication(Adw.Application):
     def on_stop_recording(self, *_):
         if self.recorder and (self.recorder.pipeline is not None or self.recorder.starting):
             self.stop_native()
-        self.stop_browser_recordings() if self.comfort and any(
-            m.capture_source != "gnome" for m in self.comfort.active().values()
-        ) else None
+        if self.browser_capture_active():
+            self.stop_browser_recordings()
 
     def on_open_recording(self, *_):
         self.do_activate()
@@ -374,6 +395,9 @@ class CassiniApplication(Adw.Application):
     def begin_exit(self):
         self._quitting = True
         self._transcription_generation += 1
+        if getattr(self, "_capture_background", False):
+            self._capture_background = False
+            self.release()
         if self.transcriber:
             self.transcriber.close()
             self.transcriber = None
@@ -386,7 +410,12 @@ class CassiniApplication(Adw.Application):
             self.begin_exit()
 
     def _capture_background_active(self):
-        return getattr(self, "_capture_background", False) and not self._quitting
+        native = self.recorder and (self.recorder.pipeline is not None or self.recorder.starting)
+        browser = any(
+            getattr(window, "_activity_source", None) and window._activity_source.snapshot
+            for window in self.get_windows()
+        )
+        return getattr(self, "_capture_background", False) and not self._quitting and bool(native or browser)
 
     def do_shutdown(self):
         if self.global_shortcut:

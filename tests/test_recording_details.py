@@ -4,10 +4,17 @@ import json
 import math
 import struct
 
+import pytest
+
 from cassini_viewer.library import LibraryScanner
 from cassini_viewer.meeting_store import update_metadata
 from cassini_viewer.recording_details import SilenceClock, edit_recording, recording_observation
 from cassini_viewer.recording_session import RecordingSession
+
+
+@pytest.fixture(autouse=True)
+def configured_library(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
 
 
 def test_silence_requires_twenty_seconds_and_sound_resets_clock():
@@ -58,3 +65,36 @@ def test_browser_source_observation_reads_real_pcm_without_writing(tmp_path):
     assert value["levels"][0] == 0 and value["levels"][1] > 0.5
     assert all((session.directory / name).read_bytes() == data for name, data in before.items())
     session.finish()
+
+
+def test_brief_microphone_sound_between_polls_resets_silence_even_when_meter_is_now_zero(tmp_path):
+    session = RecordingSession(tmp_path)
+    session.add_track("mic", "Mic", "microphone", 48000, 1)
+    tone = b"".join(struct.pack("<h", int(12000 * math.sin(2 * math.pi * 440 * i / 48000))) for i in range(4800))
+    session.append("mic", tone + bytes(43200 * 2), 0)
+    meeting = LibraryScanner(tmp_path).scan(capture_activity={session.manifest["id"]: "recording"}).meetings[0]
+    observed = recording_observation(meeting)
+    assert observed["levels"][0] == 0 and observed["recent_sound"]
+    session.finish()
+
+
+def test_targeted_browser_stop_does_not_stop_another_meeting(tmp_path, monkeypatch):
+    from cassini_viewer import browser_service
+    from cassini_viewer.capture_guard import stop_browser_captures
+
+    paths = [str(tmp_path / "one"), str(tmp_path / "two")]
+    calls = []
+
+    def request(action="status", **values):
+        if action == "stop":
+            calls.append(values["id"])
+        return dict(
+            statuses=[
+                dict(recording=str(index) not in calls, path=path, id=str(index)) for index, path in enumerate(paths)
+            ],
+            meetings=[dict(recording=True, path=path, id=str(index)) for index, path in enumerate(paths)],
+        )
+
+    monkeypatch.setattr(browser_service, "request", request)
+    assert stop_browser_captures(paths[1]) == [paths[1]]
+    assert calls == ["1"]

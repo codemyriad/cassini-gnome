@@ -8,7 +8,6 @@ from gi.repository import Adw, Gio, GLib, Gtk
 from . import ux_formats as fmt
 from .inline_line import InlineLine
 from .library_window import label, vertical
-from .recording_details import edit_recording
 from .strings import text
 
 
@@ -68,8 +67,11 @@ class RecordingPage(Adw.NavigationPage):
         self.window, self.meeting = window, meeting
         self.app = window.get_application()
         self._save_timer = 0
+        self._saving = 0
         self._closed = False
-        self._editing = False
+        self._title_dirty = False
+        self._notes_dirty = False
+        self._updating_title = False
         self._line_signature = None
         self._dirty = False
         view = Adw.ToolbarView(css_classes=["recording-page"])
@@ -88,7 +90,7 @@ class RecordingPage(Adw.NavigationPage):
                 css_classes=["flat"],
             )
         )
-        self.capture = window.capture_controls()
+        self.capture = window.capture_controls(meeting)
         self.capture.set_tooltip_text(text("recording.pill.noSleep"))
         header.pack_start(self.capture)
         self.headline = label(meeting.title, "heading")
@@ -121,9 +123,18 @@ class RecordingPage(Adw.NavigationPage):
         title_box.append(label(text("recording.title.label"), "small", "heading", "dim-label", xalign=0))
         self.title_entry = Gtk.Entry(text=meeting.title, max_length=1000, css_classes=["recording-title"])
         self.title_entry.update_property([Gtk.AccessibleProperty.LABEL], [text("recording.title.label")])
+        window.protect_text_input(self.title_entry)
         self.title_entry.connect("changed", self._title_changed)
         title_box.append(self.title_entry)
-        title_box.append(label(text("recording.title.caption"), "small", "dim-label", xalign=0))
+        title_box.append(
+            label(
+                text("recording.title.caption"),
+                "small",
+                "dim-label",
+                xalign=0,
+                visible=meeting.capture_source != "gnome",
+            )
+        )
         column.append(title_box)
         sources = vertical(css_classes=["recording-sources"])
         self.mic_row = Gtk.Box(spacing=14, css_classes=["recording-source"])
@@ -135,7 +146,9 @@ class RecordingPage(Adw.NavigationPage):
         )
         mic_labels.append(self.mic_warning)
         self.mic_row.append(mic_labels)
-        self.mic_level = Gtk.ProgressBar(width_request=96, valign=Gtk.Align.CENTER)
+        self.mic_level = Gtk.ProgressBar(
+            width_request=96, valign=Gtk.Align.CENTER, accessible_role=Gtk.AccessibleRole.PRESENTATION
+        )
         self.mic_row.append(self.mic_level)
         self.check = Gtk.Button(label=text("errors.micSilentRow.action"), valign=Gtk.Align.CENTER, visible=False)
         self.check.connect("clicked", self._check_sound)
@@ -149,7 +162,9 @@ class RecordingPage(Adw.NavigationPage):
         self.others_caption = label("", "small", "dim-label", xalign=0)
         others_labels.append(self.others_caption)
         others.append(others_labels)
-        self.others_level = Gtk.ProgressBar(width_request=96, valign=Gtk.Align.CENTER)
+        self.others_level = Gtk.ProgressBar(
+            width_request=96, valign=Gtk.Align.CENTER, accessible_role=Gtk.AccessibleRole.PRESENTATION
+        )
         others.append(self.others_level)
         others.append(Gtk.Box(width_request=66))
         sources.append(others)
@@ -174,9 +189,10 @@ class RecordingPage(Adw.NavigationPage):
             right_margin=12,
             css_classes=["recording-notes"],
         )
+        window.protect_text_input(self.notes_view)
         self.notes_view.update_property([Gtk.AccessibleProperty.LABEL], [text("recording.notes.label")])
         self.notes = TimedNotes(
-            self.notes_view.get_buffer(), meeting.metadata.get("notes", []), self.elapsed, self._changed
+            self.notes_view.get_buffer(), meeting.metadata.get("notes", []), self.elapsed, self._notes_changed
         )
         note_box.append(self.notes_view)
         note_box.append(label(text("recording.notes.caption"), "small", "dim-label", xalign=0))
@@ -193,9 +209,16 @@ class RecordingPage(Adw.NavigationPage):
         )
 
     def _title_changed(self, *_):
+        if self._updating_title:
+            return
+        self._title_dirty = True
         title = self.title_entry.get_text().strip() or self.meeting.title
         self.headline.set_label(title)
         self.set_title(title)
+        self._changed()
+
+    def _notes_changed(self):
+        self._notes_dirty = True
         self._changed()
 
     def _changed(self):
@@ -209,13 +232,19 @@ class RecordingPage(Adw.NavigationPage):
         if not self._dirty:
             return False
         self._dirty = False
-        future = self.window.monitor._executor.submit(
-            edit_recording, self.meeting.directory, title=self.title_entry.get_text(), notes=self.notes.values()
-        )
+        changes = {}
+        if self._title_dirty:
+            changes["title"] = self.title_entry.get_text()
+        if self._notes_dirty:
+            changes["notes"] = self.notes.values()
+        self._title_dirty = self._notes_dirty = False
+        self._saving += 1
+        future = self.app.comfort.edit(self.meeting.directory, **changes)
         future.add_done_callback(lambda f: GLib.idle_add(self._saved, f))
         return False
 
     def _saved(self, future):
+        self._saving -= 1
         try:
             future.result()
         except (OSError, ValueError) as error:
@@ -226,7 +255,10 @@ class RecordingPage(Adw.NavigationPage):
 
     def update(self, meeting):
         self.meeting = meeting
-        if not self._dirty and not self.title_entry.has_focus():
+        if not self._dirty and not self._saving and not self.title_entry.has_focus():
+            self._updating_title = True
+            self.title_entry.set_text(meeting.title)
+            self._updating_title = False
             self.headline.set_label(meeting.title)
         self.update_status()
 
@@ -257,6 +289,8 @@ class RecordingPage(Adw.NavigationPage):
         if self._closed:
             return
         self._closed = True
+        self.window._editor_focus(self.title_entry, False)
+        self.window._editor_focus(self.notes_view, False)
         if self._save_timer:
             GLib.source_remove(self._save_timer)
             self._save_timer = 0

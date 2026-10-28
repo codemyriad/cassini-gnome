@@ -160,15 +160,28 @@ def finish_close(app, windows):
         app.release()
 
 
-def stop_browser_captures():
+def stop_browser_captures(directory=None):
+    from pathlib import Path
+
     from . import browser_service
 
-    state = browser_service.request()
-    paths = [s["path"] for s in state.get("statuses", []) if s.get("recording") and isinstance(s.get("path"), str)]
-    for meeting in state.get("meetings", []):
-        if meeting.get("recording"):
-            browser_service.request("stop", id=meeting["id"])
+    def matches(path):
+        return isinstance(path, str) and (directory is None or Path(path).resolve() == Path(directory).resolve())
 
+    state = browser_service.request()
+    statuses = [s for s in state.get("statuses", []) if s.get("recording") and matches(s.get("path"))]
+    paths = [s["path"] for s in statuses]
+    identifiers = {s["id"] for s in statuses if isinstance(s.get("id"), str)}
+    identifiers.update(
+        m["id"]
+        for m in state.get("meetings", [])
+        if m.get("recording") and (directory is None or matches(m.get("path")))
+    )
+    for identifier in identifiers:
+        browser_service.request("stop", id=identifier)
+    after = browser_service.request()
+    if any(s.get("recording") and matches(s.get("path")) for s in after.get("statuses", [])):
+        raise ValueError("The browser has not confirmed the recording stopped")
     return paths
 
 

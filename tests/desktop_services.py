@@ -76,6 +76,20 @@ class DesktopServices:
         self.closed = True
         _args[-1].return_value(None)
 
+    def app_action(self, app, action):
+        self.bus.call(
+            app.get_application_id(),
+            app.get_dbus_object_path(),
+            "org.gtk.Actions",
+            "Activate",
+            GLib.Variant("(sava{sv})", (action, [], {})),
+            None,
+            Gio.DBusCallFlags.NONE,
+            2000,
+            None,
+            None,
+        )
+
     def activate(self, *, session=None, identifier="record"):
         self.bus.emit_signal(
             None,

@@ -60,7 +60,9 @@ def capture(application_id, version, profile):
             from .recording_details import recording_observation
 
             meeting = next(m for m in window.snapshot.meetings if m.lifecycle == "recording")
-            observed = window.monitor._executor.submit(recording_observation, meeting).result(timeout=5)
+            observed = window.monitor._executor.submit(recording_observation, meeting, freshness_seconds=None).result(
+                timeout=5
+            )
             # Derived fixture contains a microphone silent for the entire 12:48;
             # render the detector's >=20-second state, not a live host device.
             app.comfort.states[meeting.key] = dict(observed, silent=observed["levels"][0] == 0, line=None)
