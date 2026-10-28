@@ -31,6 +31,7 @@ depends=(
   # Writing meetings down offline. ONNX Runtime is not a dependency: the
   # package carries the pinned upstream wheel, see source=.
   python-numpy
+  zstd
   glibc
   gcc-libs
 )
