@@ -27,7 +27,7 @@ The Library scan computes the union of each speaker's word spans for talk time.
 It also chooses the longest run of consecutive items for the sample, breaking
 ties by earliest start, and limits the sample to 10 seconds. GStreamer enforces
 the stop boundary on output PCM; a UI timer is not responsible for limiting the
-audio. Stopping a sample restores the previous position, paused. Normal playback
+audio. Samples wait for preroll and remain paused if the bounded seek is rejected. Stopping a sample restores the previous position, paused. Normal playback
 clears the range so it can play the whole meeting again.
 
 Saved voices, recognition and Remember this voice remain outside UX16. The

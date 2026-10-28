@@ -102,11 +102,14 @@ class Player(GObject.Object):
         end_ms = min(int(end_ms), start_ms + 10000)
         if self.duration:
             end_ms = min(end_ms, self.duration)
-        if not self.loaded or end_ms <= start_ms:
+        if not self.loaded or not self._prerolled or end_ms <= start_ms:
             return False
         self.pause()
         self._range_end = end_ms
-        self.seek(start_ms)
+        if not self.seek(start_ms):
+            self.clear_range()
+            self.emit("error", _("The audio could not be played."))
+            return False
         self.play()
         return self.playing
 
@@ -141,8 +144,8 @@ class Player(GObject.Object):
         self.position = ms
         if not self._prerolled:
             self._pending_seek = ms
-            return
-        self._do_seek(ms)
+            return True
+        return self._do_seek(ms)
 
     def skip(self, delta_ms: int):
         self.seek(self.position + delta_ms)
@@ -154,7 +157,7 @@ class Player(GObject.Object):
 
     def _do_seek(self, ms: int):
         flags = Gst.SeekFlags.FLUSH | Gst.SeekFlags.ACCURATE
-        self._pipeline.seek(
+        return self._pipeline.seek(
             self.rate,
             Gst.Format.TIME,
             flags,

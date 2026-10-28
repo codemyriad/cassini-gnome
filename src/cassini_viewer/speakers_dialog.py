@@ -189,6 +189,7 @@ class SpeakersDialog(Adw.Dialog):
         return bool(
             self.meeting.has_audio
             and self.page.player.loaded
+            and self.page.player._prerolled
             and self.window._loaded_key == self.meeting.key
             and not self.window._playback_failed
         )

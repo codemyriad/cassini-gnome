@@ -264,3 +264,31 @@ def test_voice_sample_has_a_real_stop_boundary_and_normal_playback_recovers(tmp_
         assert not errors and player.position == 12000 and sum(samples) == 12000 * 48
     finally:
         player.shutdown()
+
+
+@pytest.mark.parametrize("kind", ["folder", "file"])
+def test_voice_sample_waits_for_preroll_and_does_not_play_if_seek_fails(tmp_path, monkeypatch, kind):
+    from cassini_viewer.player import Player
+
+    path = tmp_path / "voice.wav"
+    frames = tone(path, 440)
+    sink = Gst.ElementFactory.make("fakesink", None)
+    sink.set_property("sync", True)
+    player = FolderPlayer(audio_sink=sink) if kind == "folder" else Player()
+    errors = []
+    player.connect("error", lambda _player, error: errors.append(error))
+    try:
+        assert not player.play_range(100, 500) and not player.playing
+        if kind == "folder":
+            player.load_tracks([CaptureTrack(path, frames, 48000, 0, True)])
+        else:
+            player._pipeline.set_property("audio-sink", sink)
+            player.load(path.as_uri(), 2000)
+        assert not player.play_range(100, 500), "A sample must wait until its start/end seek can be applied"
+        until(lambda: player._prerolled or errors)
+        assert not errors
+        monkeypatch.setattr(player._pipeline, "seek", lambda *_args: False)
+        assert not player.play_range(100, 500) and not player.playing
+        assert player._range_end is None and len(errors) == 1
+    finally:
+        player.shutdown()
