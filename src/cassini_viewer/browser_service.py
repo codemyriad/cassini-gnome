@@ -449,6 +449,8 @@ class BrowserService:
                     browser.busy.discard(tab)
 
     def start_all(self, *, microphone=True, group_id=None):
+        if type(microphone) is not bool:
+            raise ValueError("Invalid microphone selection")
         group = threading.Event()
         token = str(uuid4()) if group_id is None else group_id
         if not isinstance(token, str) or not 0 < len(token) <= 128:
