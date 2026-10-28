@@ -1340,8 +1340,43 @@
    "placeholders": {
     "name": "display name of the speaker recognised automatically from a saved voice, shown semibold (600) inline (sample: Dario)"
    },
-   "note": "The raw text is three runs around <strong>; join them as one template. Only the one-name variant is drawn. The zero and several-name variants come in strings.json (HARMONY 9); do not invent them.",
+   "note": "The raw text is three runs around <strong>; join them as one template. Use this when exactly one speaker name was recognised automatically. With none use export.speakerNames.body.none; with two or more use export.speakerNames.body.several.",
    "status": "drawn"
+  },
+  {
+   "id": "export.speakerNames.body.none",
+   "en": "The file carries the names in this meeting. Voiceprints are never exported.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Export",
+    "Export-mac"
+   ],
+   "milestone": "UX7a",
+   "note": "Coordinator variant (HARMONY 9). Shown when no speaker name was recognised automatically (every name is from the source, typed by the person, or there are no names).",
+   "status": "harmony"
+  },
+  {
+   "id": "export.speakerNames.body.several",
+   "en": "The file carries the names in this meeting, including {names}, who were recognised automatically. Voiceprints are never exported.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Export",
+    "Export-mac"
+   ],
+   "milestone": "UX7a",
+   "placeholders": {
+    "names": "two or more automatically recognised display names in speaker order, each semibold (600), joined as a list without the Oxford comma: 'Dario and Ana', 'Dario, Ana and Lea'. Mac: ListFormatter. GNOME: ', ' between names and ' and ' before the last. Only the names are semibold, not the separators."
+   },
+   "note": "Coordinator variant (HARMONY 9). Shown when two or more speaker names were recognised automatically. Never truncate the list: export is the moment to say exactly which names leave the computer.",
+   "status": "harmony"
   },
   {
    "id": "export.speakerNames.heading",

@@ -253,7 +253,6 @@ class CassiniWindow(Adw.ApplicationWindow):
         add("nudge-forward", lambda *_: self.player.skip(NUDGE_MS))
         add("next-match", lambda *_: self._step_match(1))
         add("previous-match", lambda *_: self._step_match(-1))
-        add("export", self._on_export, "s")
         add("show-in-files", self._on_show_in_files)
         add("show-transcript", lambda *_: self.view_stack.set_visible_child_name("transcript"))
         add("show-summary", lambda *_: self.view_stack.set_visible_child_name("summary"))
@@ -1021,16 +1020,7 @@ class CassiniWindow(Adw.ApplicationWindow):
 
         buttons = Gtk.Box(spacing=8, homogeneous=True)
         buttons.append(Gtk.Button(label=_("Show in Files"), action_name="win.show-in-files"))
-        export = Gtk.MenuButton(label=_("Export…"), menu_model=self._export_menu())
-        export.set_sensitive(bool(self.turns))
-        buttons.append(export)
         box.append(buttons)
-
-    def _export_menu(self):
-        menu = Gio.Menu()
-        menu.append(_("As Text…"), "win.export::txt")
-        menu.append(_("As Subtitles (WebVTT)…"), "win.export::vtt")
-        return menu
 
     def _trust_card(self):
         meeting = self.meeting
@@ -1077,7 +1067,6 @@ class CassiniWindow(Adw.ApplicationWindow):
         for name in ("play-pause", "skip-back", "skip-forward", "nudge-back", "nudge-forward", "show-in-files"):
             self.lookup_action(name).set_enabled(has)
         self.lookup_action("search").set_enabled(has and bool(self.turns))
-        self.lookup_action("export").set_enabled(has and bool(self.turns))
         self.lookup_action("show-summary").set_enabled(self.summary_page.get_visible())
 
     # Rate, files, export
@@ -1110,51 +1099,6 @@ class CassiniWindow(Adw.ApplicationWindow):
         except GLib.Error as exc:
             if not exc.matches(Gtk.dialog_error_quark(), Gtk.DialogError.DISMISSED):
                 self.toast(_("Could not open the folder"))
-
-    def _on_export(self, _action, param):
-        kind = param.get_string()
-        if not self.turns:
-            return
-        title = (self.meeting.title if self.meeting else None) or "transcript"
-        safe = "".join(c if c not in '/\\:*?"<>|' else "_" for c in title).strip() or "transcript"
-        dialog = Gtk.FileDialog(title=_("Export Transcript"), initial_name=f"{safe}.{kind}")
-        file_filter = Gtk.FileFilter()
-        if kind == "vtt":
-            file_filter.set_name(_("WebVTT Subtitles"))
-            file_filter.add_mime_type("text/vtt")
-            file_filter.add_suffix("vtt")
-        else:
-            file_filter.set_name(_("Plain Text"))
-            file_filter.add_mime_type("text/plain")
-        filters = Gio.ListStore.new(Gtk.FileFilter)
-        filters.append(file_filter)
-        dialog.set_filters(filters)
-        dialog.set_default_filter(file_filter)
-        dialog.save(self, None, self._on_export_chosen, kind)
-
-    def _on_export_chosen(self, dialog, result, kind):
-        try:
-            file = dialog.save_finish(result)
-        except GLib.Error:
-            return
-        if kind == "vtt":
-            text = transcript.export_webvtt(self.turns, self.speaker_label)
-        else:
-            text = transcript.export_text(self.turns, self.speaker_label, self.meeting.title if self.meeting else None)
-        bytes_ = GLib.Bytes.new(text.encode("utf-8"))
-        file.replace_contents_bytes_async(
-            bytes_, None, False, Gio.FileCreateFlags.REPLACE_DESTINATION, None, self._on_export_written
-        )
-
-    def _on_export_written(self, file, result):
-        try:
-            file.replace_contents_finish(result)
-        except GLib.Error as exc:
-            self.toast(_("Could not export: {error}").format(error=exc.message))
-            return
-        toast = Adw.Toast(title=_("Transcript exported"), button_label=_("Open"), timeout=4)
-        toast.connect("button-clicked", lambda *_: Gtk.FileLauncher.new(file).launch(self, None, None))
-        self.toast_overlay.add_toast(toast)
 
     def toast(self, message):
         self.toast_overlay.add_toast(Adw.Toast(title=GLib.markup_escape_text(message)))

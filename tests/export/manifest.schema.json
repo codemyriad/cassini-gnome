@@ -1,0 +1,476 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://format.gocassini.com/schema/cassini-portable-meeting-manifest-v1.schema.json",
+  "title": "Cassini Portable Meeting Manifest v1",
+  "description": "This schema is deliberately open. Every object below accepts members it does not declare, except integrity and every payloadRef, and a consumer MUST ignore a manifest member it does not recognise, at any depth, rather than treat its presence as an error. Those two objects are the exception because everything in them is an instruction, for reassembling bytes or for deciding whether this audio and this transcript belong together, so an unrecognised member there is a decode or verification failure and not a lost hint. Adding a member to either one is a new major version. Being open does not mean the file may be anything: every member this schema does declare keeps the type and the meaning declared here.",
+  "type": "object",
+  "required": [
+    "kind",
+    "version",
+    "profile",
+    "meeting",
+    "audio",
+    "integrity",
+    "speakers",
+    "transcripts"
+  ],
+  "properties": {
+    "kind": {
+      "const": "cassini-portable-meeting",
+      "description": "The literal string that says this document is a portable meeting manifest. It does not vary, in any version of the format."
+    },
+    "version": {
+      "const": 1,
+      "description": "The wire version of this manifest. The published format is 1."
+    },
+    "profile": {
+      "const": "ogg-opus"
+    },
+    "meeting": {
+      "$ref": "#/$defs/meeting"
+    },
+    "audio": {
+      "$ref": "#/$defs/audio"
+    },
+    "integrity": {
+      "$ref": "#/$defs/integrity"
+    },
+    "speakers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/speaker"
+      }
+    },
+    "transcripts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/transcriptEntry"
+      }
+    },
+    "readableTranscripts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/readableTranscriptEntry"
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "description": "Which systems produced the text, display formatting and summary, plus records of speaker attribution and word timing. Unknown members are ignored.",
+      "properties": {
+        "speechToText": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/processingStep"
+          }
+        },
+        "displayTranscript": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/processingStep"
+          }
+        },
+        "meetingSummary": {
+          "$ref": "#/$defs/processingStep"
+        },
+        "attribution": {
+          "$ref": "#/$defs/attributionProvenance"
+        },
+        "wordTimings": {
+          "$ref": "#/$defs/wordTimingProvenance"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "description": "Metadata about the summary attachment, not the summary."
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "mime",
+          "contentBase64"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mime": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contentBase64": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "meeting": {
+      "type": "object",
+      "description": "Open. Meeting metadata is open-ended by nature, and nothing in it is load-bearing for decoding, so a member a consumer does not recognise is ignored.",
+      "required": [
+        "id",
+        "title",
+        "createdAtUtc",
+        "durationMs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "createdAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+        },
+        "recordedAtLocal": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$",
+          "description": "Wall-clock time at the recording site, no offset. A label, not an instant."
+        },
+        "processedAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^rm_[0-9a-f]{16}$",
+          "description": "Id of the conversation this meeting was recorded in: a deterministic one-way derivation of the room's identity, never the identity itself. For a Nextcloud Talk recording it derives from the conversation token, which is also that room's join link and is therefore never published. Shaped rm_<16 lowercase hex>. Absent when the room is unknown."
+        },
+        "jobId": {
+          "type": "string",
+          "description": "Id of the operator job that produced this artifact. Absent when the producer was not an operator job. Discloses nothing new: the operator publishes the artifact under this same id."
+        },
+        "attemptNumber": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Which attempt of that job produced this artifact, 1-based. Absent when unknown. There is no separate attempt id: an attempt's identity is the pair (jobId, attemptNumber)."
+        }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "description": "Open. Descriptive, not instructional: it restates what the Ogg stream already says, so a consumer that ignores a member it does not recognise loses nothing.",
+      "required": [
+        "container",
+        "codec",
+        "sampleRate",
+        "channels",
+        "sampleCount",
+        "durationMs"
+      ],
+      "properties": {
+        "container": {
+          "const": "ogg"
+        },
+        "codec": {
+          "const": "opus"
+        },
+        "sampleRate": {
+          "const": 48000
+        },
+        "channels": {
+          "type": "integer",
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "sampleCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "CLOSED. A member here that a consumer does not recognise is a verification failure and not a hint: a consumer that ignored an unrecognised digest field would report a file as verified while ignoring the field that defines its identity. Adding a member to this object is a new major version, and that is the deliberate price of the open-world rule everywhere else.",
+      "required": [
+        "matchPolicy",
+        "opusAudioSha256",
+        "sampleRate",
+        "channels",
+        "sampleCount",
+        "durationMs"
+      ],
+      "properties": {
+        "matchPolicy": {
+          "const": "exact-opus-audio-v1"
+        },
+        "opusAudioSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sampleRate": {
+          "const": 48000
+        },
+        "channels": {
+          "type": "integer",
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "sampleCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "speaker": {
+      "type": "object",
+      "description": "Open. The two-string speaker is deliberate, but a colour or an external identity is a hint and not an instruction, so a member a consumer does not recognise is ignored.",
+      "required": [
+        "id",
+        "label"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "transcriptEntry": {
+      "type": "object",
+      "description": "A word-timed transcript. No origin classification is required. Consumers select by default and array order, and ignore legacy role and sourceTranscriptId members.",
+      "required": [
+        "id",
+        "format",
+        "payloadRef"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/transcriptId"
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "format": {
+          "type": "string",
+          "minLength": 1
+        },
+        "language": {
+          "type": "string"
+        },
+        "wordCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "createdAtUtc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payloadRef": {
+          "$ref": "#/$defs/payloadRef"
+        }
+      }
+    },
+    "readableTranscriptEntry": {
+      "type": "object",
+      "description": "Open. Same grounds as transcriptEntry: everything load-bearing is in required, so a missing or misspelled one is still an error, and anything else is a hint a consumer may ignore.",
+      "required": [
+        "id",
+        "role",
+        "format",
+        "sourceTranscriptId",
+        "payloadRef"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/transcriptId"
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Display entries use display. Consumers skip any other readable role; older entries remain valid metadata."
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "format": {
+          "type": "string",
+          "minLength": 1
+        },
+        "language": {
+          "type": "string"
+        },
+        "wordCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceTranscriptId": {
+          "$ref": "#/$defs/transcriptId",
+          "description": "The word-timed entry this display document was made from. Required; the id must name an entry in transcripts[]."
+        },
+        "createdAtUtc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payloadRef": {
+          "$ref": "#/$defs/payloadRef"
+        }
+      }
+    },
+    "transcriptId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,31}$",
+      "description": "Lowercase, and no underscore. A transcript's tag prefix is its id upper-cased with - replaced by _, so raw-asr and raw_asr would both address CASSINI_TX_RAW_ASR_PAYLOAD_: two entries, one chunk set, one body lost with no error anywhere."
+    },
+    "payloadRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "CLOSED. A member here that a consumer does not recognise is a decode failure and not a hint: everything in this object is an instruction for reassembling bytes, and a consumer that ignored one would build the wrong bytes and then fail the digest it was given. Adding a member to this object is a new major version.",
+      "required": [
+        "prefix",
+        "chunkCount",
+        "sha256",
+        "rawBytes",
+        "gzipBytes",
+        "mime",
+        "encoding"
+      ],
+      "properties": {
+        "prefix": {
+          "type": "string",
+          "pattern": "^CASSINI_TX_[A-Z0-9_]+_PAYLOAD_$"
+        },
+        "chunkCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "rawBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gzipBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mime": {
+          "type": "string",
+          "minLength": 1
+        },
+        "encoding": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "processingStep": {
+      "type": "object",
+      "description": "Open. Every member is optional and every member is a note about how one stage ran, so a consumer ignores what it does not recognise.",
+      "properties": {
+        "backend": {
+          "type": "string"
+        },
+        "engine": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "device": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "attributionProvenance": {
+      "type": "object",
+      "description": "Open. The five required counters are what a consumer needs to read the record; a sixth statistic is a hint.",
+      "required": [
+        "ran",
+        "mode",
+        "wordsMeasured",
+        "wordsFlagged",
+        "wordsDropped"
+      ],
+      "properties": {
+        "ran": {
+          "type": "boolean",
+          "description": "Whether the cross-track attribution stage ran against this file's default raw transcript."
+        },
+        "mode": {
+          "type": "string",
+          "minLength": 1,
+          "description": "How flagged words were handled: annotate (per-word evidence kept on the words), drop (flagged words deleted before publication; this record is then the only trace they existed), or disabled."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why the stage did not run. Absent when ran is true."
+        },
+        "wordsMeasured": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "wordsFlagged": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "wordsDropped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "thresholdDb": {
+          "type": "number",
+          "description": "The meeting's estimated crosstalk threshold in dB. Absent when the meeting showed no crosstalk population."
+        }
+      }
+    },
+    "wordTimingProvenance": {
+      "type": "object",
+      "required": [
+        "endsBoundedByAudio"
+      ],
+      "description": "How the producer decided where each word ends. Absent on files produced before the rule changed, and on files whose speech recognizer makes no such guarantee. Absent means only that the guarantee was not made: the ends may be token-derived, in which case a word's end came from its last token including a trailing punctuation mark — a mark the recognizer stamps at the next acoustic onset, so such a word can run for seconds while its speaker is silent — or they may be sound and simply undeclared. A consumer keys off presence: absent means those ends are unvouched-for and a repair that clips an over-long word is appropriate; present means they were measured against the speaker's own audio and clipping them destroys correct timing. Open: one required boolean, and the object is built around presence rather than exhaustiveness.",
+      "properties": {
+        "endsBoundedByAudio": {
+          "description": "True when each word's end was measured against its own speaker's track rather than taken from its last token's timestamp.",
+          "const": true
+        }
+      }
+    }
+  }
+}

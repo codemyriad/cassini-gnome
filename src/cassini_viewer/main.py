@@ -87,7 +87,7 @@ class CassiniApplication(Adw.Application):
         self.set_accels_for_action("win.follow-along", ["<primary>l"])
         self.set_accels_for_action("win.show-transcript", ["<alt>1"])
         self.set_accels_for_action("win.show-summary", ["<alt>2"])
-        self.set_accels_for_action("win.export('txt')", ["<primary>e"])
+        self.set_accels_for_action("win.export", ["<primary><shift>e"])
 
     def do_startup(self):
         Adw.Application.do_startup(self)
@@ -145,7 +145,7 @@ class CassiniApplication(Adw.Application):
             self.open_in_new_window(file)
 
     def open_in_new_window(self, file):
-        """Open *file* in an empty window if there is one, else in a new window."""
+        """Import/open *file* in the Library, presenting its window."""
         self.do_activate()
         from .library_window import LibraryWindow
 

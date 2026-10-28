@@ -67,15 +67,6 @@ def test_format_time():
     assert transcript.format_time(3_723_000) == "1:02:03"
 
 
-def test_exports():
-    turns = transcript.build_turns(WORDS)
-    text = transcript.export_text(turns, str.upper, "Standup")
-    assert text.splitlines()[2] == "[0:00] A: So I think we ship. Then"
-    vtt = transcript.export_webvtt(turns, str.upper)
-    assert vtt.startswith("WEBVTT\n")
-    assert "00:00:01.900 --> 00:00:02.200\n<v B>Yeah." in vtt
-
-
 def test_rapid_clean_exchange_stays_separate():
     turns = transcript.build_turns(
         [w("a", 0, 1000, "Question?"), w("b", 1050, 1150, "Yes."), w("a", 1200, 2000, "Good.")]
@@ -116,12 +107,9 @@ def test_unsplit_host_does_not_swallow_another_turn():
     assert len(transcript.visible_turns(turns)) == 2
 
 
-def test_search_and_export_keep_rejoined_words_and_asides_once():
+def test_search_keeps_rejoined_words_once():
     turns = transcript.build_turns(WORDS)
     assert transcript.find_matches(turns, "Then") == [(0, 5)]
-    text = transcript.export_text(turns, str.upper)
-    assert text.count("Then") == 1
-    assert text.count("Yeah.") == 1
 
 
 def test_short_fragments_weaving_through_host_are_competing_speech():

@@ -207,38 +207,3 @@ def format_time(ms: int, *, force_hours: bool = False) -> str:
     if hours or force_hours:
         return f"{hours}:{minutes:02d}:{secs:02d}"
     return f"{minutes}:{secs:02d}"
-
-
-def _vtt_time(ms: int) -> str:
-    ms = max(0, int(ms))
-    hours, rem = divmod(ms, 3_600_000)
-    minutes, rem = divmod(rem, 60_000)
-    seconds, millis = divmod(rem, 1000)
-    return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{millis:03d}"
-
-
-def export_text(turns: list[Turn], label, title: str | None = None) -> str:
-    lines = []
-    if title:
-        lines += [title, ""]
-    for turn in turns:
-        lines.append(f"[{format_time(turn.start_ms)}] {label(turn.speaker)}: {turn.text}")
-    return "\n".join(lines) + "\n"
-
-
-def export_webvtt(turns: list[Turn], label, max_words: int = 14) -> str:
-    """WebVTT cues of at most *max_words* words, with voice spans for speakers."""
-    out = ["WEBVTT", ""]
-    for turn in sorted(turns, key=lambda t: t.start_ms):
-        for i in range(0, len(turn.words), max_words):
-            chunk = turn.words[i : i + max_words]
-            start = chunk[0].start_ms
-            end = max(max(w.end_ms for w in chunk), start + 1)
-            text = " ".join(w.text for w in chunk)
-            name = label(turn.speaker).replace(">", "")
-            out += [f"{_vtt_time(start)} --> {_vtt_time(end)}", f"<v {name}>{_escape_vtt(text)}", ""]
-    return "\n".join(out)
-
-
-def _escape_vtt(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

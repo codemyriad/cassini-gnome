@@ -3,8 +3,9 @@
 
 import os
 import time
+from gettext import gettext as _
 
-from gi.repository import Adw, Gio, GLib, Gtk, Pango
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
 from . import ux_formats as fmt
 from .capture_activity import BrowserActivity, recorder_activity
@@ -38,6 +39,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.meeting_page = None
         self.recording_page = None
         self._external_meeting = False
+        self.export_dialog = None
+        self._pending_selection = None
+        self._opening_files = 0
         self._list_signature = None
         self._preview_signature_value = None
         self._live_badges = {}
@@ -65,7 +69,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.navigation = Adw.NavigationView()
         self.navigation.add(Adw.NavigationPage.new(self.root_box, text("library.title")))
         self.navigation.connect("popped", self._page_popped)
-        self.set_content(self.navigation)
+        self.toasts = Adw.ToastOverlay(child=self.navigation)
+        self.set_content(self.toasts)
         self._build_empty()
         self._build_library()
         self.loading = Gtk.Spinner(spinning=True, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
@@ -80,6 +85,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.connect("close-request", self._close)
         for name, callback in (
             ("back-library", self.back_to_library),
+            ("export", self.show_export),
             ("play-pause", self._play_selected),
             ("skip-back", lambda *_: self.player.skip(-10000)),
             ("skip-forward", lambda *_: self.player.skip(10000)),
@@ -87,6 +93,39 @@ class LibraryWindow(Adw.ApplicationWindow):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", lambda _action, _param, call=callback: call())
             self.add_action(action)
+        target = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
+        target.connect("drop", self._drop_files)
+        self.add_controller(target)
+        self._refresh_export()
+
+    def toast(self, message):
+        self.toasts.add_toast(Adw.Toast(title=GLib.markup_escape_text(message)))
+
+    def _drop_files(self, _target, files, _x, _y):
+        for file in files.get_files():
+            self.open_file(file)
+        return bool(files.get_files())
+
+    def _refresh_export(self):
+        meeting = self.meeting_page.meeting if self.meeting_page else self.selected
+        action = self.lookup_action("export")
+        if action:
+            action.set_enabled(
+                bool(meeting and meeting.has_audio and meeting.lifecycle == "saved" and not self.recording_page)
+            )
+
+    def show_export(self):
+        from .export_dialog import ExportDialog
+
+        meeting = self.meeting_page.meeting if self.meeting_page else self.selected
+        if meeting is not None and meeting.has_audio and meeting.lifecycle == "saved" and not self.recording_page:
+            if not self.export_dialog or self.export_dialog.closed:
+                try:
+                    self.export_dialog = ExportDialog(self, meeting)
+                except OSError as error:
+                    self.toast(_("Could not export: {error}").format(error=str(error)))
+                    return
+            self.export_dialog.present(self)
 
     def protect_text_input(self, widget):
         controller = Gtk.EventControllerFocus()
@@ -134,11 +173,16 @@ class LibraryWindow(Adw.ApplicationWindow):
         if close:
             menu = Gio.Menu()
             menu.append(text("common.legacy.browserMeetings"), "app.browser-meetings")
+            # Existing, undrawn GNOME primary-menu copy is retained (HARMONY 11).
+            menu.append(_("Open…"), "app.open")
+            menu.append(text("common.exportEllipsis"), "win.export")
             button = Gtk.MenuButton(
                 icon_name="open-menu-symbolic", menu_model=menu, tooltip_text=text("common.mainMenu"), primary=True
             )
             button.update_property([Gtk.AccessibleProperty.LABEL], [text("common.mainMenu")])
             header.pack_end(button)
+            if not record:
+                header.pack_end(Gtk.Button(label=text("common.exportEllipsis"), action_name="win.export"))
         return header
 
     def _build_empty(self):
@@ -254,7 +298,24 @@ class LibraryWindow(Adw.ApplicationWindow):
             "row-activated", lambda _rows, row: self.open_meeting(row.meeting) if hasattr(row, "meeting") else None
         )
         self._selection_handler = self.rows.connect("row-selected", self._selected)
-        sidebar.set_content(Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, child=self.rows, vexpand=True))
+        list_content = vertical()
+        list_content.append(self.rows)
+        self.received_hint = label(
+            text("received.libraryHint"),
+            "small",
+            "dim-label",
+            wrap=True,
+            xalign=0,
+            margin_start=20,
+            margin_end=20,
+            margin_top=14,
+            margin_bottom=14,
+            visible=False,
+        )
+        list_content.append(self.received_hint)
+        sidebar.set_content(
+            Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, child=list_content, vexpand=True)
+        )
         self.split.set_sidebar(Adw.NavigationPage.new(sidebar, text("library.listPane.a11y")))
         content = Adw.ToolbarView()
         content.add_top_bar(self._header())
@@ -410,6 +471,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             meeting.transcript,
             meeting.error,
             tuple(t.start_offset_ms for t in meeting.tracks),
+            (meeting.metadata.get("received") or {}).get("originalFolderName"),
         )
 
     def _signature(self, snapshot):
@@ -465,7 +527,11 @@ class LibraryWindow(Adw.ApplicationWindow):
                     self._stop_playback()
                 self.meeting_page.update(current)
         self._update_live()
-        if self._signature(snapshot) == self._list_signature:
+        self._refresh_export()
+        self.received_hint.set_visible(
+            bool(snapshot.meetings) and all(m.origin == "received" for m in snapshot.meetings)
+        )
+        if not self._pending_selection and self._signature(snapshot) == self._list_signature:
             current = {m.key: m for m in snapshot.meetings}
             row = self.rows.get_first_child()
             while row:
@@ -476,7 +542,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                 self.selected = current.get(self.selected.key)
             self._pending = False
             return
-        old = self.selected.key if self.selected else None
+        old = self._pending_selection or (self.selected.key if self.selected else None)
         self.rows.handler_block(self._selection_handler)
         self.rows.remove_all()
         self._live_badges = {}
@@ -507,6 +573,8 @@ class LibraryWindow(Adw.ApplicationWindow):
                     ):
                         selected = row
             self.rows.select_row(selected or self.rows.get_row_at_index(1))
+            if selected:
+                self._pending_selection = None
         self.rows.handler_unblock(self._selection_handler)
         self._selected(self.rows, self.rows.get_selected_row())
         self._list_signature = self._signature(snapshot)
@@ -558,6 +626,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                 self._loaded_key = None
         self._preview_key = row.meeting.key
         self.selected = meeting = row.meeting
+        self._refresh_export()
         self._list_signature = self._signature(self.snapshot)
         signature = self._preview_signature(meeting)
         if signature == self._preview_signature_value:
@@ -585,6 +654,18 @@ class LibraryWindow(Adw.ApplicationWindow):
             )
         )
         self.preview.append(headline)
+        folder = (meeting.metadata.get("received") or {}).get("originalFolderName")
+        if meeting.origin == "received" and isinstance(folder, str) and folder:
+            card = Gtk.Box(spacing=12, css_classes=["received-folder"], valign=Gtk.Align.START)
+            card.append(
+                Gtk.Image(
+                    icon_name="folder-symbolic", valign=Gtk.Align.START, accessible_role=Gtk.AccessibleRole.PRESENTATION
+                )
+            )
+            body = label("", wrap=True, xalign=0, hexpand=True)
+            body.set_markup(text("received.folderCard", folder="<b>" + GLib.markup_escape_text(folder) + "</b>"))
+            card.append(body)
+            self.preview.append(card)
         self.recording_lines = vertical(visible=False)
         self._recording_line_signature = None
         self.preview.append(self.recording_lines)
@@ -734,6 +815,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._connect_player()
         self.meeting_page = MeetingPage(self, meeting)
         self.navigation.push(self.meeting_page)
+        self._refresh_export()
 
     def back_to_library(self, *_):
         if self.recording_page:
@@ -746,6 +828,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._stop_playback()
             self.monitor.refresh()
         self.navigation.pop()
+        self._refresh_export()
 
     def _page_popped(self, _navigation, page):
         if page is self.recording_page:
@@ -759,20 +842,39 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.monitor.refresh()
 
     def open_file(self, file):
-        from .open_meeting import load_open_meeting
+        from pathlib import Path
 
-        future = self.monitor._executor.submit(load_open_meeting, file.get_path(), self.monitor.scanner.root)
+        from .open_meeting import load_open_meeting
+        from .received import import_received
+
+        def opened():
+            if not file.get_path():
+                raise ValueError("The recording is not available as a local file")
+            path = Path(file.get_path())
+            if path.is_dir() or path.name == "session.json":
+                return load_open_meeting(path, self.monitor.scanner.root), False
+            return import_received(path, self.monitor.scanner.root), True
+
+        self._opening_files += 1
+        future = self.monitor._executor.submit(opened)
         future.add_done_callback(lambda f: GLib.idle_add(self._opened_file, f, file))
 
     def _opened_file(self, future, file):
+        self._opening_files -= 1
         if self.monitor._closed:
             return False
         try:
-            meeting = future.result()
-            watched = meeting.directory.parent == self.monitor.scanner.root.resolve() and meeting.id == meeting_id(
-                meeting.directory
-            )
-            self.open_meeting(meeting, external=not watched)
+            meeting, imported = future.result()
+            if imported:
+                if self.meeting_page or self.recording_page:
+                    self.back_to_library()
+                self._pending_selection = meeting.key
+                self.monitor.refresh_now()
+            else:
+                watched = meeting.directory.parent == self.monitor.scanner.root.resolve() and meeting.id == meeting_id(
+                    meeting.directory
+                )
+                self.open_meeting(meeting, external=not watched)
         except (OSError, ValueError):
             # Keep the existing failed-open presentation until its copy is drawn.
             window = self.get_application().new_window()
@@ -784,6 +886,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         if self.get_application().confirm_capture_close(self):
             return True
         self.get_application().window_closing(self)
+        if self.export_dialog and not self.export_dialog.closed:
+            self.export_dialog.cancel()
         if self.recording_page:
             self.recording_page.close()
             self.recording_page = None

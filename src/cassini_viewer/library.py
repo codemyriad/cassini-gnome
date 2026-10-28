@@ -196,6 +196,8 @@ class Meeting(MeetingState):
     metadata_editable: bool = True
     diagnostics: tuple[Diagnostic, ...] = ()
     metadata: dict = field(default_factory=dict, compare=False, repr=False)
+    notes: tuple[dict, ...] = ()
+    extensions: dict = field(default_factory=dict, compare=False, repr=False)
 
     @property
     def key(self):
@@ -610,6 +612,10 @@ class LibraryScanner:
             metadata_editable=not unsupported,
             diagnostics=tuple(diagnostics),
             metadata=raw,
+            notes=tuple(metadata.get("notes", [])),
+            extensions=embedded.manifest.get("x", {})
+            if embedded and embedded.manifest and isinstance(embedded.manifest.get("x"), dict)
+            else {},
         )
 
     def _preview(self, name, words):
@@ -698,6 +704,11 @@ class LibraryScanner:
             return (), "damaged", None, actionable
         if status is None:
             status = "done" if readable else "none"
+        if origin == "received" and status == "done" and readable and not words:
+            from .portable_context import empty_word_transcripts
+
+            if empty_word_transcripts(embedded, embedded_words):
+                status = "none"
         return (() if status == "none" else words), status, None, error
 
 

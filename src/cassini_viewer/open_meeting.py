@@ -8,6 +8,7 @@ from uuid import NAMESPACE_URL, uuid5
 from . import portable
 from .library import LibraryScanner, Meeting, _date, _opus, _speakers, library_root
 from .meeting_text import reading_turns
+from .portable_context import embedded_notes, empty_word_transcripts
 
 
 def load_open_meeting(path, root=None):
@@ -36,7 +37,20 @@ def load_open_meeting(path, root=None):
         )
     except ValueError:
         words = ()
-    state = "done" if words else "none" if embedded.state == portable.State.PLAIN_AUDIO else "damaged"
+    state = "damaged"
+    if (
+        embedded.state == portable.State.PLAIN_AUDIO
+        or trusted
+        and embedded.is_readable
+        and empty_word_transcripts(embedded)
+    ):
+        state = "none"
+    elif trusted and embedded.is_readable:
+        try:
+            portable.load_words(embedded, embedded.default_transcript_id)
+            state = "done"
+        except ValueError:
+            pass
     return Meeting(
         id=str(uuid5(NAMESPACE_URL, path.as_uri())),
         directory=path.parent,
@@ -51,4 +65,8 @@ def load_open_meeting(path, root=None):
         turns=reading_turns(sorted(words, key=lambda w: w.start_ms)),
         speakers=_speakers(words, [], embedded),
         metadata_editable=False,
+        notes=embedded_notes(embedded),
+        extensions=embedded.manifest.get("x", {})
+        if embedded.manifest and isinstance(embedded.manifest.get("x"), dict)
+        else {},
     )

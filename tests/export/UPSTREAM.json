@@ -1,0 +1,13 @@
+{
+  "coordinator": "7cdb0effa2bc31208b0079b3670882daa739eb1c",
+  "format": "867f68c56292ada9464b8516dc2797003d5af9eb",
+  "sha256": {
+    "MARKDOWN.md": "15d0ab1b00a94ecb4b81eccec48a370fe9cdb3e2a332d98a35770817092545c7",
+    "markdown-cases.json": "16541a9fc08815064000fc935c0d2d0e4b1933c8bbf2d7046232e1a8882bd5da",
+    "export-vectors.json": "698e445c11c1c81c333f54074efd6770a06bbb353559db6527d5c115b8cc30ba",
+    "budget-review.md": "a25e0ee9bd9f49d2184b8a6705aaa80aa9550a79e5f5d80099d5dcfcab289f67",
+    "cassini-read-pure.py": "b4a4c94b9ec9682bc1cffb2fb200ce28c9730f12d4f7a71a45ece2abe08b37ce",
+    "manifest.schema.json": "3c25d04c0742928f0713d0cd1bac33fe5c60f5224643046ddf16aa98dd304b9b",
+    "LICENSE-CC0-1.0.txt": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+  }
+}
