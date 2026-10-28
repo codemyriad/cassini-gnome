@@ -45,6 +45,7 @@ def capture(application_id, version, profile):
     opened_record_first = False
     opened_recording = False
     opened_search = False
+    selected_search = False
     while time.monotonic() < deadline:
         while context.pending():
             context.iteration(False)
@@ -112,6 +113,13 @@ def capture(application_id, version, profile):
             continue
         if window.search_page and opened_search and len(window.search_page.hits) != 4:
             raise RuntimeError("Search fixture must have four places in three meetings")
+        if window.search_page and opened_search and not selected_search:
+            # D14 orders the early hit first. Select the board's later point
+            # explicitly, keeping its three-turn context comparable with Mac.
+            index = next(i for i, hit in enumerate(window.search_page.hits) if hit.position_ms == 872000)
+            window.search_page.selection.set_selected(index)
+            selected_search = True
+            settled_frame = None
         if getattr(window, "_pending", False):
             settled_frame = None
         elif settled_frame is None:
