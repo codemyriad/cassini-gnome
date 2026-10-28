@@ -55,7 +55,7 @@ class NativeRecorder(GObject.Object):
         return {self.session.manifest["id"]: "saving" if self.stopping else "recording"}
 
     def start(self, parent, *, test=False):
-        if self.pipeline is not None or self.starting:
+        if self.pipeline is not None or self.starting or self.stopping:
             raise RuntimeError("Already recording")
         self.starting = True
         self._stop_requested = False

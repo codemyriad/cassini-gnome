@@ -148,4 +148,6 @@ class RecordingWindow(Adw.ApplicationWindow):
             if not self.recorder.stopping:
                 self._clicked()
             return True
+        if not self._choosing:
+            self.get_application().window_closing(self)
         return self._choosing

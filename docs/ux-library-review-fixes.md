@@ -57,6 +57,22 @@ import-date fallback, no quote/names and no source-file writes. Published format
 conformance vectors still pass unchanged. S-3a's independent verifier now checks
 all required producer descriptors, without relying on either app reader.
 
+The #20–#24 follow-up close guard owns one hold until all captures finish and
+queued metadata is committed. Starting, stopping and metadata finalization all
+count as busy. An encoder error releases the guard, presents the diagnostic
+window, and permits a later close; another close during saving cannot bypass the
+guard. Keep recording rechecks capture state before hiding, and its background
+hold ends when a window is presented or capture ends. Hidden windows close once
+capture has finished. Every retained legacy window uses the same last-window
+cleanup as the Library.
+
+`tests/ui/quit.py` runs eleven separate application processes in private Xvfb and
+D-Bus, including keep/reactivate/stop/close, keep after completion, completion
+while hidden, close during delayed finalization, stop failure, zero-frame start
+cancellation and disabled writing down. The metadata tests require reads and
+updates under the shared queue lock and verify that a running sidecar reference
+and zero-frame capture cannot be replaced with stale queued intent. Signal-only
+UI responses explicitly dismiss the dialog to reproduce real button activation.
 A pushed Meeting owns the shared player. Library refresh and sidebar selection
 still update the underlying list/preview, but never stop that player's audio.
 Missing audio in the pushed, watched meeting itself still stops it normally.

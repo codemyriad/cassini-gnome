@@ -206,7 +206,7 @@ with tempfile.TemporaryDirectory() as temporary:
     recording = Adw.ApplicationWindow(application=app)
 
     class Controller(GObject.Object):
-        __gsignals__ = {"finished": (GObject.SignalFlags.RUN_LAST, None, (str,))}
+        __gsignals__ = {name: (GObject.SignalFlags.RUN_LAST, None, (str,)) for name in ("finished", "error")}
         pipeline = object()
 
         def stop(self):
@@ -219,12 +219,16 @@ with tempfile.TemporaryDirectory() as temporary:
     until(recording.get_mapped)
     app.on_quit()
     assert app._capture_confirmation
-    app._capture_confirmation.emit("response", "keep")
+    dialog = app._capture_confirmation
+    dialog.emit("response", "keep")
+    dialog.force_close()
     assert recorder.pipeline is not None and not window.get_visible()
     app.activate()
     assert window.get_visible()
     app.on_quit()
-    app._capture_confirmation.emit("response", "stop")
+    dialog = app._capture_confirmation
+    dialog.emit("response", "stop")
+    dialog.force_close()
     try:
         until(lambda: not app.get_windows())
     except AssertionError:

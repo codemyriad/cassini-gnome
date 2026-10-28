@@ -49,6 +49,8 @@ class CassiniApplication(Adw.Application):
         self._transcription_holds = 0
         self._transcription_generation = 0
         self._quitting = False
+        self._capture_background = False
+        self._capture_confirmation = None
         # Screenshot runs keep the "Write it down" actions visible but never
         # start the engine. Otherwise both need the bundle and its runtime.
         screenshot = os.environ.get("CASSINI_SCREENSHOT_ISOLATED") == "1"
@@ -122,6 +124,9 @@ class CassiniApplication(Adw.Application):
         if window is None:
             window = LibraryWindow(self)
         window.present()
+        from .capture_guard import refresh_capture_background
+
+        refresh_capture_background(self)
 
     def do_open(self, files, _n_files, _hint):
         for file in files:
@@ -209,7 +214,7 @@ class CassiniApplication(Adw.Application):
             self.recorder.connect("finished", self._native_finished)
             self.recorder.connect("error", self._native_error)
             self.recorder.connect("changed", self._native_changed)
-        if self.recorder.pipeline is not None or self.recorder.starting:
+        if self.recorder.pipeline is not None or self.recorder.starting or self.recorder.stopping:
             return
         self.recording_error = None
         for window in self.get_windows():
@@ -374,7 +379,9 @@ class CassiniApplication(Adw.Application):
             self.begin_exit()
 
     def _capture_background_active(self):
-        return getattr(self, "_capture_background", False) and not self._quitting
+        from .capture_guard import capture_targets
+
+        return getattr(self, "_capture_background", False) and not self._quitting and any(capture_targets(self))
 
     def do_shutdown(self):
         self.begin_exit()

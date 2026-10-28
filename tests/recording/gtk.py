@@ -74,6 +74,13 @@ sys.excepthook = callback_error
 
 def diagnostics():
     return {
+        "capture": dict(
+            error=app.recording_error,
+            guard=bool(app._capture_confirmation),
+            background=app._capture_background,
+            pipeline=bool(app.recorder and app.recorder.pipeline),
+            stopping=bool(app.recorder and app.recorder.stopping),
+        ),
         "players": [
             dict(
                 playing=w.player.playing,
@@ -159,7 +166,9 @@ try:
         before = min(w.frames for w in recorder.session.writers.values())
         app.on_quit()
         assert app._capture_confirmation
-        app._capture_confirmation.emit("response", "keep")
+        dialog = app._capture_confirmation
+        dialog.emit("response", "keep")
+        dialog.force_close()
         wait_until(
             lambda: all(w.frames >= before + 48000 * 0.4 for w in recorder.session.writers.values()),
             "Keep recording actually keeps writing",
@@ -230,7 +239,9 @@ try:
         wait_until(captured, "quit test captures actual PCM", diagnostics=diagnostics)
         app.on_quit()
         assert app._capture_confirmation
-        app._capture_confirmation.emit("response", "stop")
+        dialog = app._capture_confirmation
+        dialog.emit("response", "stop")
+        dialog.force_close()
         wait_until(
             lambda: recorder.pipeline is None and not app.get_windows(),
             "quit flushes and closes windows",

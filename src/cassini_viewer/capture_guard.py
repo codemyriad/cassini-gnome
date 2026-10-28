@@ -3,55 +3,90 @@
 
 from concurrent.futures import ThreadPoolExecutor
 
-from gi.repository import Adw, GLib
-
 from .strings import text
 
 
-def confirm_capture_close(app, window, *, quitting=False):
-    if getattr(app, "_capture_close_allowed", False):
-        return False
-    native = [w for w in app.get_windows() if getattr(w, "recorder", None) and w.recorder.pipeline is not None]
-    if getattr(app, "recorder", None) and (app.recorder.pipeline is not None or app.recorder.starting):
+def recorder_busy(recorder):
+    return recorder is not None and bool(
+        recorder.pipeline is not None
+        or getattr(recorder, "starting", False)
+        or getattr(recorder, "stopping", False)
+        or getattr(recorder, "_finishing", False)
+    )
+
+
+def capture_targets(app):
+    native = [w for w in app.get_windows() if recorder_busy(getattr(w, "recorder", None))]
+    if recorder_busy(getattr(app, "recorder", None)):
         native.append(app)
     browser = any(getattr(w, "_activity_source", None) and w._activity_source.snapshot for w in app.get_windows())
     browser = browser or any(
         any(s.get("recording") for s in getattr(w, "_browser_snapshot", {}).get("statuses", []))
         for w in app.get_windows()
     )
-    if not native and not browser:
+    return native, bool(browser)
+
+
+def refresh_capture_background(app):
+    """Own the background hold only while a hidden capture actually needs it."""
+    if not getattr(app, "_capture_background", False):
         return False
+    windows = app.get_windows()
+    native, browser = capture_targets(app)
+    if not any(w.get_visible() for w in windows) and (native or browser):
+        return True
+    app._capture_background = False
+    app.release()
+    if not native and not browser and windows and not any(w.get_visible() for w in windows):
+        finish_close(app, windows)
+    return False
+
+
+def confirm_capture_close(app, window, *, quitting=False):
+    from gi.repository import Adw, GLib
+
+    if getattr(app, "_capture_close_allowed", False):
+        return False
+    # The guard covers the dialog AND all asynchronous finalization, including
+    # the interval after pipelines disappear but before metadata is saved.
     if getattr(app, "_capture_confirmation", None):
         return True
+    native, browser = capture_targets(app)
+    if not native and not browser:
+        return False
     dialog = Adw.AlertDialog(heading=text("confirm.recordingRunning.title"), body=text("confirm.recordingRunning.body"))
     dialog.add_response("keep", text("confirm.recordingRunning.secondary"))
     dialog.add_response("stop", text("confirm.recordingRunning.primary"))
     dialog.set_default_response("stop")
     dialog.set_close_response("keep")
     app._capture_confirmation = dialog
+    responded = False
 
     def response(_dialog, choice):
-        app._capture_confirmation = None
+        nonlocal responded
+        if responded:
+            return
+        responded = True
         targets = list(app.get_windows()) if quitting else [window]
         if choice == "keep":
+            app._capture_confirmation = None
+            # The capture may have finished behind the dialog. Escape then
+            # dismisses it without hiding the last window or acquiring a hold.
+            if not any(capture_targets(app)):
+                return
             if not getattr(app, "_capture_background", False):
                 app.hold()
                 app._capture_background = True
+                GLib.timeout_add(100, refresh_capture_background, app)
             for target in targets:
                 target.set_visible(False)
             return
+        app._capture_confirmation = True  # Finalization guard; release the closed dialog itself.
         exiting = quitting or not any(w not in targets for w in app.get_windows())
         if exiting:
             app.begin_exit()
-        # Keep windows and a guard hold until every capture has finished writing.
         app.hold()
-        # A capture can finish (for example at the disk reserve) while the
-        # confirmation is open. Never wait for its already-delivered signal.
-        active_native = [
-            target
-            for target in native
-            if target.recorder.pipeline is not None or getattr(target.recorder, "starting", False)
-        ]
+        active_native = [target for target in native if recorder_busy(target.recorder)]
         waiting = {id(target.recorder) for target in active_native}
         browser_done = not browser
         paths = [
@@ -60,16 +95,36 @@ def confirm_capture_close(app, window, *, quitting=False):
             if target not in active_native and getattr(target.recorder, "session", None)
         ]
         completing = False
+        completed = False
+        handlers = {}
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-close-save")
+
+        def disconnect():
+            for recorder, signals in handlers.values():
+                for signal in signals:
+                    recorder.disconnect(signal)
+            handlers.clear()
+
+        def abort():
+            nonlocal completed
+            if completed:
+                return
+            completed = True
+            disconnect()
+            executor.shutdown(wait=False, cancel_futures=True)
+            app._capture_confirmation = None
+            app._quitting = False
+            window.present()
+            app.release()
 
         def ready():
             nonlocal completing
-            if waiting or not browser_done or completing:
+            if waiting or not browser_done or completing or completed:
                 return
             completing = True
 
             def finish_saved():
-                if exiting:
+                if exiting and app.transcription_enabled:
                     for path in paths:
                         queue_saved_for_later(path)
 
@@ -79,17 +134,22 @@ def confirm_capture_close(app, window, *, quitting=False):
                 executor.shutdown(wait=False)
 
                 def close_saved():
+                    nonlocal completed
+                    if completed:
+                        return False
                     try:
                         result.result()
-                    except (OSError, ValueError):
+                    except Exception:
                         # Audio is finalized; keep the window for diagnosis.
-                        app._quitting = False
-                        window.present()
+                        abort()
                     else:
+                        completed = True
+                        disconnect()
+                        app._capture_confirmation = None
                         finish_close(app, targets)
                         if exiting:
                             app.quit()
-                    app.release()
+                        app.release()
                     return False
 
                 GLib.idle_add(close_saved)
@@ -100,32 +160,40 @@ def confirm_capture_close(app, window, *, quitting=False):
             recorder = target.recorder
             target.open_result = False
 
-            def finished(active, path, *, recorder=recorder):
-                active.disconnect(handlers.pop(id(active)))
+            def finished(active, path):
                 waiting.discard(id(active))
                 paths.append(path)
                 ready()
 
-            handlers[id(recorder)] = recorder.connect("finished", finished)
+            def failed(_active, _message):
+                abort()
+
+            handlers[id(recorder)] = (
+                recorder,
+                [recorder.connect("finished", finished), recorder.connect("error", failed)],
+            )
         for target in active_native:
-            target.recorder.stop()
-        if browser:
+            try:
+                target.recorder.stop()
+            except Exception:
+                abort()
+                break
+        if browser and not completed:
             future = executor.submit(stop_browser_captures)
 
             def stopped(result):
                 def delivered():
                     nonlocal browser_done
-                    try:
-                        completed = result.result()
-                    except (OSError, ValueError):
-                        executor.shutdown(wait=False)
-                        app._quitting = False
-                        window.present()
-                        app.release()
+                    if completed:
                         return False
-                    paths.extend(completed)
-                    if not exiting and getattr(app, "transcription_enabled", False):
-                        for path in completed:
+                    try:
+                        captured = result.result()
+                    except Exception:
+                        abort()
+                        return False
+                    paths.extend(captured)
+                    if not exiting and app.transcription_enabled:
+                        for path in captured:
                             app.write_down(path)
                     browser_done = True
                     ready()
@@ -136,7 +204,6 @@ def confirm_capture_close(app, window, *, quitting=False):
             future.add_done_callback(stopped)
         ready()
 
-    handlers = {}
     dialog.connect("response", response)
     dialog.present(window)
     return True
@@ -177,29 +244,30 @@ def queue_saved_for_later(path):
     from pathlib import Path
 
     from .library import library_root, meeting_id
-    from .meeting_store import read_metadata, update_metadata
+    from .meeting_store import LOCK, read_metadata, update_metadata
 
     if not path:
         return
     directory = Path(path).resolve()
     if directory.parent != library_root().resolve() or not meeting_id(directory):
         return
-    value = read_metadata(directory)
-    if value["transcript"]["status"] in ("none", "failed"):
-        from .library import LibraryScanner
+    with LOCK:
+        value = read_metadata(directory)
+        if value["transcript"]["status"] in ("none", "failed"):
+            from .library import LibraryScanner
 
-        meeting = next(
-            (
-                m
-                for m in LibraryScanner(directory.parent).scan(changed_directories={directory}).meetings
-                if m.directory == directory
-            ),
-            None,
-        )
-        if meeting and meeting.has_audio:
-            update_metadata(
-                directory,
-                transcript=dict(status="queued", reference=value["transcript"]["reference"]),
-                etaMinutes=None,
-                error=None,
+            meeting = next(
+                (
+                    m
+                    for m in LibraryScanner(directory.parent).scan(changed_directories={directory}).meetings
+                    if m.directory == directory
+                ),
+                None,
             )
+            if meeting and meeting.has_audio and (meeting.origin != "own" or any(t.frames for t in meeting.tracks)):
+                update_metadata(
+                    directory,
+                    transcript=dict(status="queued", reference=value["transcript"]["reference"]),
+                    etaMinutes=None,
+                    error=None,
+                )

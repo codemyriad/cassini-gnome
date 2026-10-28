@@ -338,6 +338,9 @@ class CassiniWindow(Adw.ApplicationWindow):
             self.maximize()
 
     def _on_close_request(self, *_args):
+        if self.get_application().confirm_capture_close(self):
+            return True
+        self.get_application().window_closing(self)
         width, height = self.get_default_size()
         self.settings.set_int("window-width", width)
         self.settings.set_int("window-height", height)

@@ -104,4 +104,30 @@ result["oneChildReused"] = True
 result["childReaped"] = True
 args.output.write_text(json.dumps(result, indent=2) + "\n")
 print(json.dumps(result, indent=2))
+if failures:
+    # Installed-package smoke checks may truncate stdout. Keep the actual text
+    # mismatch and CPU on stderr as well, without relaxing the shared contract.
+    print(
+        json.dumps(
+            dict(
+                cpu=cpu,
+                failures=[
+                    dict(
+                        golden=case["golden"],
+                        exactSegments=case["exactSegments"],
+                        wordCountMatches=case["wordCountMatches"],
+                        segmentInputHashesMatch=case["segmentInputHashesMatch"],
+                        maxBoundaryDeltaMs=case["maxBoundaryDeltaMs"],
+                        textDifferences=[
+                            d for d in case["differences"] if d["actual"]["text"] != d["expected"]["text"]
+                        ],
+                    )
+                    for case in result["cases"]
+                    if case["golden"] in failures
+                ],
+            ),
+            indent=2,
+        ),
+        file=sys.stderr,
+    )
 assert not failures, "D11.3 golden mismatch: " + str(failures)
