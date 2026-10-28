@@ -150,6 +150,32 @@ with tempfile.TemporaryDirectory() as tmp:
     saved = json.loads((live.directory / "meeting.json").read_text())["notes"]
     assert saved[-2]["text"].endswith(" updated")
     assert not window.recording_page
+    # The sidebar and header share the native monotonic clock even when the
+    # wall clock moves a full day forwards or backwards.
+    from types import SimpleNamespace
+
+    original_now = window._fixed_now
+    original_badge = window._live_badges[live.key]
+    app.recorder = SimpleNamespace(
+        session=SimpleNamespace(directory=live.directory),
+        pipeline=object(),
+        _start_us=GLib.get_monotonic_time() - 65_500_000,
+        levels=[0.2, 0.4],
+        line=None,
+        minutes_left=50,
+        stopping=False,
+    )
+    for shift in (-86_400_000, 86_400_000):
+        window._fixed_now = original_now + shift
+        window._row(live)
+        assert window._live_badges[live.key].get_label() == "Recording 1:05"
+        window._update_live()
+        assert window._live_badges[live.key].get_label() == "Recording 1:05"
+        assert all(c["timer"].get_label() == "1:05" for c in window._capture_headers)
+    app.recorder = None
+    window._fixed_now = original_now
+    window._live_badges[live.key] = original_badge
+    window._update_live()
     # GNotification travels over the private bus, not a mocked Python method.
     window.open_meeting(live)
     window.set_visible(False)
