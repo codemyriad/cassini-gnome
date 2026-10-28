@@ -73,3 +73,13 @@ cancellation and disabled writing down. The metadata tests require reads and
 updates under the shared queue lock and verify that a running sidecar reference
 and zero-frame capture cannot be replaced with stale queued intent. Signal-only
 UI responses explicitly dismiss the dialog to reproduce real button activation.
+A pushed Meeting owns the shared player. Library refresh and sidebar selection
+still update the underlying list/preview, but never stop that player's audio.
+Missing audio in the pushed, watched meeting itself still stops it normally.
+Standalone Opus files are separate opens even inside a Library subfolder or
+Recording folder; folder name alone cannot attach one to a watched meeting.
+`tests/ui/refresh.py` decodes and plays real Opus through a private fakesink while
+empty/offline/rebuilt scans and unplayable sidebar rows are delivered, including
+actual monitor callbacks. It covers outside files, Library exports, and an extra
+Opus inside a Recording. The Meeting GUI proof also checks that Play returns to
+the active timed turn after scrolling away while paused.

@@ -346,10 +346,15 @@ class MeetingPage(Adw.NavigationPage):
     def _position(self, _player=None, property=None):
         index = bisect_right(self._starts, self.player.position) - 1
         explicit_seek = property is not None and property.name == "position" and not self.player.playing
-        if index >= 0 and (index != self._reading_index or explicit_seek):
+        resumed = self.player.playing and not getattr(self, "_was_playing", False)
+        self._was_playing = self.player.playing
+        if (
+            index >= 0
+            and (self.player.playing or explicit_seek)
+            and (index != self._reading_index or explicit_seek or resumed)
+        ):
             self._reading_index = index
-            if self.player.playing or explicit_seek:
-                self.list.scroll_to(index + 1, Gtk.ListScrollFlags.NONE, None)
+            self.list.scroll_to(index + 1, Gtk.ListScrollFlags.NONE, None)
         self._updating = True
         self.elapsed.set_label(fmt.position(self.player.position))
         self.seek.set_value(self.player.position)
