@@ -3,6 +3,7 @@
 """Prepare both native hosts for a disposable development browser profile."""
 
 import argparse
+import base64
 import hashlib
 import json
 from pathlib import Path
@@ -11,7 +12,8 @@ from pathlib import Path
 def prepare(root, profile, recordings):
     root, profile, recordings = Path(root).resolve(), Path(profile).resolve(), Path(recordings).resolve()
     extension = root / "browser-extension"
-    digest = hashlib.sha256(str(extension).encode()).hexdigest()[:32]
+    manifest = json.loads((extension / "manifest.json").read_text())
+    digest = hashlib.sha256(base64.b64decode(manifest["key"], validate=True)).hexdigest()[:32]
     identifier = "".join(chr(ord("a") + int(value, 16)) for value in digest)
     hosts = profile / "NativeMessagingHosts"
     hosts.mkdir(parents=True, exist_ok=True)

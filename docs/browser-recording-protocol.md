@@ -37,3 +37,8 @@ Settings hides Move until a document-portal location is proved durable across
 restart. No broad home permission is granted. W6-F follows What is recorded and will
 provide host browser launch/registration and an app relay; no additional Flatpak
 permission is added by UX10.
+
+Run the pinned Node unit/conformance suite with
+`node --test browser-protocol/extension/tests/*.test.cjs`. Its optional independent
+vectors live beside that canonical tree. The installed `browser-extension` copy
+is proved byte-identical first by `verify.py`; real browser tests load that copy.

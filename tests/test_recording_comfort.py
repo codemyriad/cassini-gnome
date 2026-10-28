@@ -5,9 +5,13 @@ import time
 from dataclasses import replace
 from types import SimpleNamespace
 
-import gi
+import pytest
 
-gi.require_version("Gtk", "4.0")
+gi = pytest.importorskip("gi")
+try:
+    gi.require_version("Gtk", "4.0")
+except ValueError:
+    pytest.skip("Recording observations run in the GTK-enabled Recording and distro jobs", allow_module_level=True)
 from gi.repository import GLib  # noqa: E402
 
 from cassini_viewer.recording_comfort import RecordingComfort  # noqa: E402
