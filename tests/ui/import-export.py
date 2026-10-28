@@ -115,11 +115,29 @@ with tempfile.TemporaryDirectory() as temporary:
     window.monitor.refresh_now()
     assert window.player.playing
     window.meeting_page.play.emit("clicked")
-    window.meeting_page.export_button.emit("clicked")
+    from unittest.mock import patch
+
+    assert received.audio_size_bytes == received.audio_file.stat().st_size
+    with patch.object(Path, "stat", side_effect=AssertionError("Export dialog performed GTK-thread stat")):
+        window.show_export()
     until(lambda: window.export_dialog is not None)
     dialog = window.export_dialog
     assert dialog.cassini.get_active() and not dialog.markdown.get_active()
     assert dialog.names.get_text() == "The file carries the names in this meeting. Voiceprints are never exported."
+    from cassini_viewer.meeting_store import update_metadata
+
+    update_metadata(
+        received.directory,
+        title="Updated while Export is open",
+        titleSource="user",
+        notes=[dict(atMs=2, text="New note while Export is open")],
+    )
+    window.monitor.refresh_now()
+    until(lambda: dialog.meeting.title == "Updated while Export is open")
+    assert dialog.meeting.notes == (dict(atMs=2, text="New note while Export is open"),)
+    assert "Updated while Export is open" in dialog.get_title()
+    assert dialog.heading.get_text() == dialog.get_title()
+
     dialog.destination = tmp / "Exports"
     dialog._update_folder()
     dialog.export_button.emit("clicked")
@@ -127,6 +145,8 @@ with tempfile.TemporaryDirectory() as temporary:
     exported = portable.read_meeting(str(dialog.output))
     assert portable.verify_audio(str(dialog.output), exported).state == portable.State.OK
     assert len(portable.load_words(exported, exported.default_transcript_id)) == 2
+    assert exported.manifest["meeting"]["title"] == "Updated while Export is open"
+    assert exported.manifest["x"]["gocassini.com"]["notes"] == [dict(atMs=2, text="New note while Export is open")]
     # The same GAction serves the header, menu and Ctrl+Shift+E.
     window.lookup_action("export").activate(None)
     until(lambda: window.export_dialog is not dialog)

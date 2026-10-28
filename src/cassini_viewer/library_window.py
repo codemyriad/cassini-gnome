@@ -559,6 +559,10 @@ class LibraryWindow(Adw.ApplicationWindow):
                 if not current.has_audio:
                     self._stop_playback()
                 self.meeting_page.update(current)
+        if self.export_dialog and not self.export_dialog.closed:
+            current = next((m for m in snapshot.meetings if m.key == self.export_dialog.meeting.key), None)
+            if current and not (self.meeting_page and self._external_meeting):
+                self.export_dialog.update(current)
         self._update_live()
         self._refresh_export()
         self.received_hint.set_visible(

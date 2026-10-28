@@ -71,3 +71,11 @@ is converted to the export dialog's cancellation type only when its cancel event
 is set; unrelated IO interruptions remain errors. Empty embedded speaker IDs are
 unreadable, and a successfully written empty sidecar stays done even if the
 original portable file contained an empty transcript.
+
+The scanner carries a received file's byte size into its immutable Meeting model;
+Export does not stat that file on the GTK thread. An open idle Export dialog
+tracks fresh Library metadata, title and recognised-name disclosure. Pressing
+Export takes the current Meeting-page/Library snapshot; an export already in
+progress retains its chosen immutable input. The isolated GUI proof rejects
+Python stat calls during dialog construction, changes real metadata while the
+dialog is open, and checks the updated title and note in the resulting file.
