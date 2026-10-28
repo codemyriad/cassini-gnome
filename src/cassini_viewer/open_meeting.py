@@ -31,7 +31,7 @@ def load_open_meeting(path, root=None):
         if path.is_dir() or path.name == "session.json":
             raise ValueError("Recording folder cannot be read")
     with path.open("rb") as stream:
-        embedded, duration, trusted, _ = _opus(stream, path.stat())
+        embedded, duration, trusted, _, audio_size = _opus(stream, path.stat())
     try:
         words = (
             tuple(portable.load_words(embedded, embedded.default_transcript_id))
@@ -63,6 +63,7 @@ def load_open_meeting(path, root=None):
         origin="received",
         transcript=state,
         audio_file=path,
+        audio_size_bytes=audio_size,
         has_audio=duration is not None,
         words=words,
         turns=reading_turns(sorted(words, key=lambda w: w.start_ms)),

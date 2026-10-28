@@ -38,10 +38,12 @@ class ExportDialog(Adw.Dialog):
         self.cancelled = threading.Event()
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-export")
         self.closed = False
+        self.busy = False
         self.output = None
         outer = vertical(22, margin_start=28, margin_end=28, margin_top=26, margin_bottom=26)
         heading = vertical(10)
-        heading.append(label(self.get_title(), "export-heading", wrap=True, justify=Gtk.Justification.CENTER))
+        self.heading = label(self.get_title(), "export-heading", wrap=True, justify=Gtk.Justification.CENTER)
+        heading.append(self.heading)
         heading.append(label(text("export.subtitle"), "dim-label", wrap=True, justify=Gtk.Justification.CENTER))
         outer.append(heading)
         choices = vertical(css_classes=["export-choices"], accessible_role=Gtk.AccessibleRole.GROUP)
@@ -50,7 +52,7 @@ class ExportDialog(Adw.Dialog):
         self.markdown = Gtk.CheckButton()
         self.markdown.set_group(self.cassini)
         if meeting.audio_file:
-            estimate = meeting.audio_file.stat().st_size
+            estimate = meeting.audio_size_bytes
         else:
             choice = encode_choice(
                 [
@@ -65,7 +67,7 @@ class ExportDialog(Adw.Dialog):
                 self.cassini,
                 "export.cassiniFile.label",
                 "export.cassiniFile.description",
-                fmt.size(estimate, approx=True),
+                fmt.size(estimate, approx=True) if estimate is not None else None,
             ),
             (self.markdown, "export.markdown.label", "export.markdown.description", None),
         ):
@@ -144,7 +146,23 @@ class ExportDialog(Adw.Dialog):
             self.destination = Path(folder.get_path())
             self._update_folder()
 
+    def update(self, meeting):
+        if self.busy or self.closed or meeting.key != self.meeting.key:
+            return
+        self.meeting = meeting
+        self.set_title(text("export.title", title=meeting.title))
+        self.heading.set_label(self.get_title())
+        self.names.set_markup(speaker_names_markup(meeting))
+
     def _export(self, *_):
+        page = self.window.meeting_page
+        if page and page.meeting.key == self.meeting.key:
+            self.update(page.meeting)
+        elif self.window.snapshot:
+            latest = next((m for m in self.window.snapshot.meetings if m.key == self.meeting.key), None)
+            if latest:
+                self.update(latest)
+        self.busy = True
         self.export_button.set_sensitive(False)
         self.choose.set_sensitive(False)
         self.cassini.set_sensitive(False)
@@ -167,6 +185,7 @@ class ExportDialog(Adw.Dialog):
         except CancelledError:
             self.force_close()
         except Exception as error:
+            self.busy = False
             self.window.toast(_("Could not export: {error}").format(error=str(error)))
             for control in (self.export_button, self.choose, self.cassini, self.markdown):
                 control.set_sensitive(True)
