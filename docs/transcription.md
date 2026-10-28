@@ -133,3 +133,24 @@ IDs use distinct audio filenames. Source labels are assigned only to known mic
 and system sources. Mixed/unknown browser streams stay unnamed. Progress rereads
 app-owned speaker metadata and preserves user/recognised names changed while the
 job was queued or running, including unknown speaker fields.
+
+## Bounded publication and reading work
+
+The first nonempty segment is published promptly. Later growing snapshots are
+at least one second apart and require at least 12.5% more words (minimum 32),
+with a final snapshot on completion or cancellation. This bounds cumulative
+full-sidecar writes to roughly ten times the final word count rather than one
+whole transcript per segment. Recomputed resumed work does not replace a longer
+partial transcript until it catches up; a complete result can replace it.
+Metadata is rewritten only when ETA, speaker data or status actually changes.
+
+The Library preview bounds the legacy aside/overlap grouper to 32 speaker
+fragments, preserving long monologues, and caches the result. The separate timed
+reading model retains every word. Preview labels show at most three wrapped lines
+per excerpt. The Meeting list splices changed paragraphs into stable existing
+rows, follows position during playback/explicit seeks, and leaves a paused
+reader's visible row in place. Speaker colours rebind on a live theme change;
+decorative meters are hidden from accessibility and transport icons are named.
+
+Sequential received-audio rereads also send heartbeats while skipping long quiet
+spans, so useful decode progress cannot look like a silent worker timeout.

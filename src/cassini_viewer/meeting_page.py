@@ -35,6 +35,9 @@ class MeetingPage(Adw.NavigationPage):
         self._signature = None
         self._reading_index = -1
         self._starts = []
+        self._turns = ()
+        self._theme = None
+        self._speaker_signature = None
         self.settings = Gio.Settings.new(window.get_application().settings_schema)
         outer = box()
         self.set_child(outer)
@@ -57,6 +60,7 @@ class MeetingPage(Adw.NavigationPage):
             css_classes=["flat"],
             action_name="win.back-library",
         )
+        back.update_property([Gtk.AccessibleProperty.LABEL], [text("common.backToLibrary")])
         header.pack_start(back)
         self.capture = window.capture_controls()
         header.pack_end(self.capture)
@@ -75,14 +79,14 @@ class MeetingPage(Adw.NavigationPage):
         self.headline = Adw.WindowTitle()
         header.set_title_widget(self.headline)
         export = Gtk.Button(label=text("common.exportEllipsis"), sensitive=False)
-        header.pack_end(
-            Gtk.Button(
-                icon_name="view-more-symbolic",
-                tooltip_text=text("meeting.moreActions"),
-                sensitive=False,
-                css_classes=["flat"],
-            )
+        more = Gtk.Button(
+            icon_name="view-more-symbolic",
+            tooltip_text=text("meeting.moreActions"),
+            sensitive=False,
+            css_classes=["flat"],
         )
+        more.update_property([Gtk.AccessibleProperty.LABEL], [text("meeting.moreActions")])
+        header.pack_end(more)
         header.pack_end(export)
         self.write_button = Gtk.Button(label=text("common.writeDown"), visible=False)
         self.write_button.connect("clicked", lambda *_: window.get_application().write_down(self.meeting))
@@ -106,6 +110,8 @@ class MeetingPage(Adw.NavigationPage):
         split.set_content(Adw.NavigationPage.new(content, meeting.title))
         self._companion = self._companion_card()
         self._build_player(outer)
+        self._style_manager = Adw.StyleManager.get_default()
+        self._style_signal = self._style_manager.connect("notify::dark", lambda *_: self.update(self.meeting))
         self._signals = [
             self.player.connect("notify::" + name, self._position) for name in ("position", "playing", "duration")
         ]
@@ -147,7 +153,6 @@ class MeetingPage(Adw.NavigationPage):
 
     def _build_player(self, outer):
         bar = Gtk.Box(spacing=14, css_classes=["meeting-player"], margin_start=0)
-        bar.update_property([Gtk.AccessibleProperty.LABEL], [text("player.a11y")])
         self.transport_buttons = []
         for name, icon, action in [
             ("player.back10", "media-seek-backward-symbolic", "win.skip-back"),
@@ -161,6 +166,7 @@ class MeetingPage(Adw.NavigationPage):
                 css_classes=["circular", "flat"],
                 valign=Gtk.Align.CENTER,
             )
+            button.update_property([Gtk.AccessibleProperty.LABEL], [text(name)])
             if name == "common.play":
                 self.play = button
                 button.add_css_class("suggested-action")
@@ -267,7 +273,8 @@ class MeetingPage(Adw.NavigationPage):
         self.seek.set_sensitive(can_play)
         source = self.window._activity_source
         self.set_connected(source.connected if source else False)
-        signature = (id(meeting.words), meeting.speakers, meeting.transcript, meeting.error)
+        dark = self._style_manager.get_dark()
+        signature = (id(meeting.words), meeting.speakers, meeting.transcript, meeting.error, dark)
         if signature == self._signature:
             return
         self._signature = signature
@@ -314,19 +321,31 @@ class MeetingPage(Adw.NavigationPage):
                     callback=(lambda: retry(meeting)) if retry and meeting.metadata_editable else None,
                 )
             )
-        self.store.remove_all()
-        self.store.append(TurnItem(None))
+        if not self.store.get_n_items():
+            self.store.append(TurnItem(None))
+        common = 0
+        if self._theme == dark and self._speaker_signature == meeting.speakers:
+            for before, after in zip(self._turns, meeting.turns, strict=False):
+                if before != after:
+                    break
+                common += 1
+        removed = len(self._turns) - common
+        additions = [TurnItem(turn) for turn in meeting.turns[common:]]
+        if removed or additions:
+            self.store.splice(common + 1, removed, additions)
+        self._turns = meeting.turns
+        self._theme = dark
+        self._speaker_signature = meeting.speakers
         self._starts = [turn.start_ms for turn in meeting.turns]
-        self._reading_index = -1
-        for turn in meeting.turns:
-            self.store.append(TurnItem(turn))
         self._position()
 
-    def _position(self, *_):
+    def _position(self, _player=None, property=None):
         index = bisect_right(self._starts, self.player.position) - 1
-        if index >= 0 and index != self._reading_index:
+        explicit_seek = property is not None and property.name == "position" and not self.player.playing
+        if index >= 0 and (index != self._reading_index or explicit_seek):
             self._reading_index = index
-            self.list.scroll_to(index + 1, Gtk.ListScrollFlags.NONE, None)
+            if self.player.playing or explicit_seek:
+                self.list.scroll_to(index + 1, Gtk.ListScrollFlags.NONE, None)
         self._updating = True
         self.elapsed.set_label(fmt.position(self.player.position))
         self.seek.set_value(self.player.position)
@@ -334,7 +353,9 @@ class MeetingPage(Adw.NavigationPage):
         self.play.set_icon_name(
             "media-playback-pause-symbolic" if self.player.playing else "media-playback-start-symbolic"
         )
-        self.play.set_tooltip_text(text("player.pause" if self.player.playing else "common.play"))
+        play_name = text("player.pause" if self.player.playing else "common.play")
+        self.play.set_tooltip_text(play_name)
+        self.play.update_property([Gtk.AccessibleProperty.LABEL], [play_name])
         for turn, words, _row in list(self.bound.values()):
             words.set_markup(item_markup(turn.words, self.player.position))
 
@@ -342,6 +363,9 @@ class MeetingPage(Adw.NavigationPage):
         self.play.set_sensitive(False)
 
     def close(self):
+        if self._style_signal:
+            self._style_manager.disconnect(self._style_signal)
+            self._style_signal = 0
         if self.capture._controls in self.window._capture_headers:
             self.window._capture_headers.remove(self.capture._controls)
         for handler in self._signals:

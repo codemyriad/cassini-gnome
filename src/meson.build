@@ -57,6 +57,7 @@ install_data(
   'cassini_viewer/meeting_text.py',
   'cassini_viewer/meeting_store.py',
   'cassini_viewer/transcription.py',
+  'cassini_viewer/transcript_publish.py',
   'cassini_viewer/whistle_client.py',
   'cassini_viewer/whistle_worker.py',
   'cassini_viewer/speech_pipeline.py',

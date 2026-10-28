@@ -96,12 +96,16 @@ def audio_chunks(track):
         yield from resampled_chunks(track["path"])
 
 
-def audio_segments(track, segments):
+def audio_segments(track, segments, heartbeat=None, *, clock=None):
     """Second sequential decode pass: retain at most one speech segment, no WAV."""
     if track.get("format") != "opus":
         for segment in segments:
             yield np.concatenate(list(resampled_chunks(track["path"], segment["startSample"], segment["endSample"])))
         return
+    import time
+
+    clock = clock or time.monotonic
+    last_notice = clock()
     with closing(audio_chunks(track)) as source:
         current, cursor = np.empty(0, dtype="<f4"), 0
         for segment in segments:
@@ -114,6 +118,9 @@ def audio_segments(track, segments):
                     current = next(source, None)
                     if current is None:
                         raise ValueError("Received audio ended before its planned segment")
+                if heartbeat is not None and clock() - last_notice >= 1:
+                    heartbeat()
+                    last_notice = clock()
                 take = min(len(current), end - cursor)
                 offset = max(0, start - cursor)
                 if offset < take:
@@ -329,7 +336,11 @@ def process_tracks(model, tracks, vad_model, notify):
     for _order, grouped in groupby(plan, key=lambda entry: entry[0]):
         entries = list(grouped)
         track = entries[0][1]
-        with closing(audio_segments(track, [entry[2] for entry in entries])) as source:
+        with closing(
+            audio_segments(
+                track, [entry[2] for entry in entries], lambda track=track: notify("planning", trackId=track["id"])
+            )
+        ) as source:
             for (order, track, segment, offset), samples in zip(entries, source, strict=True):
                 started = time.monotonic()
                 value, words, language, input_hash = recognise_segment(
