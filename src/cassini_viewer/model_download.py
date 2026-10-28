@@ -175,7 +175,18 @@ class ModelStore:
         self.timeout = timeout
         self.opener = urllib.request.build_opener(_Redirect(origin))
 
+    def _check_directories(self, path):
+        # root was canonicalized at construction, but a previously missing
+        # component (or root itself) can subsequently become a symlink.
+        path.relative_to(self.root)
+        for directory in (*reversed(path.parents), path):
+            if directory.is_symlink():
+                raise ValueError("Model storage directories must not be symbolic links")
+            if directory.exists() and not directory.is_dir():
+                raise ValueError("Model storage path is not a directory")
+
     def _mkdir(self, path):
+        self._check_directories(path)
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         current = self.root
         for part in path.relative_to(self.root).parts:
@@ -186,8 +197,7 @@ class ModelStore:
 
     def _directory(self, model_id, revision):
         path = self.root / identifier(model_id) / digest(revision)
-        if path.parent.is_symlink() or path.is_symlink():
-            raise ValueError("Model revision directories must not be symbolic links")
+        self._check_directories(path)
         return path
 
     @contextmanager
@@ -247,16 +257,18 @@ class ModelStore:
         return Manifest(self._small("manifest.json", cancelled), origin=self.origin)
 
     def plan(self, model, *, cancelled=None):
+        self._check_directories(self.root)
         directory = self.root
         while not directory.exists() and directory != directory.parent:
             directory = directory.parent
         usage = self.disk_usage(directory)
         reserve = max(1024**3, usage.total // 50)
         remaining, expanded = 0, 0
-        if not self.installed(model.id, model.source_sha256, cancelled=cancelled):
+        if not self.installed(model.id, model.source_sha256, model=model, cancelled=cancelled):
             staging = self.root / ".downloads" / model.id / model.source_sha256
             for file in model.files:
                 artifact = file.artifact
+                self._check_directories((staging / "files" / file.path).parent)
                 try:
                     _verify(
                         staging / "files" / file.path,
@@ -273,11 +285,23 @@ class ModelStore:
         needed = remaining + expanded + 2 * SMALL_LIMIT
         return SpacePlan(model.download_bytes, model.installed_bytes, remaining, needed, reserve, usage.free)
 
-    def installed(self, model_id, revision, *, cancelled=None):
+    def installed(self, model_id, revision, *, model=None, cancelled=None):
         final = self._directory(model_id, revision)
         try:
             receipt = _read_json(final / RECEIPT)
             if (receipt["id"], receipt["source_sha256"]) != (model_id, revision) or not receipt["files"]:
+                return False
+            records = receipt["files"]
+            paths = {relative_path(file["path"]) for file in records}
+            if len(paths) != len(records) or self._tree_paths(final) != paths | {NOTICE, RECEIPT}:
+                return False
+            if model is not None and sorted(records, key=lambda f: f["path"]) != sorted(
+                [
+                    dict(path=f.path, size=f.artifact.uncompressed_size, sha256=f.artifact.uncompressed_sha256)
+                    for f in model.files
+                ],
+                key=lambda f: f["path"],
+            ):
                 return False
             for file in receipt["files"]:
                 path = relative_path(file["path"])
@@ -295,8 +319,11 @@ class ModelStore:
 
     def download(self, model_id, revision, *, manifest=None, cancelled=None, progress=lambda *_: None):
         final = self._directory(model_id, revision)
+        if manifest is not None and manifest.origin != self.origin:
+            raise ValueError("Manifest and downloader origins differ")
+        model = manifest.model(model_id, revision) if manifest is not None else None
         with self._lock(model_id, revision, cancelled):
-            if self.installed(model_id, revision, cancelled=cancelled):
+            if self.installed(model_id, revision, model=model, cancelled=cancelled):
                 return final
             if final.exists():
                 raise IntegrityError("Remove the damaged model revision before downloading it again")
@@ -316,6 +343,7 @@ class ModelStore:
                 _cancelled(cancelled)
                 target = files / file.path
                 artifact = file.artifact
+                self._check_directories(target.parent)
                 try:
                     _verify(target, artifact.uncompressed_size, artifact.uncompressed_sha256, cancelled)
                 except (OSError, IntegrityError):
@@ -365,24 +393,32 @@ class ModelStore:
             )
             _cancelled(cancelled)
             self._mkdir(final.parent)
-            # About links to a local copy, never a network request on opening it.
-            _write(self.root / "NOTICE.txt", notice)
             expected_paths = {record["path"] for record in records} | {NOTICE, RECEIPT}
-            actual_paths = set()
-            for directory, folders, names in os.walk(files, followlinks=False):
-                if any((Path(directory) / name).is_symlink() for name in folders):
-                    raise IntegrityError("Symbolic directory in staged model")
-                actual_paths.update(str((Path(directory) / name).relative_to(files)) for name in names)
-            if actual_paths != expected_paths:
+            if self._tree_paths(files) != expected_paths:
                 raise IntegrityError("Unchecked files in staged model")
+            # About links to a local copy, never a network request on opening it.
+            self._check_directories(self.root)
+            _write(self.root / "NOTICE.txt", notice)
             _cancelled(cancelled)
             _publish(files, final)
             shutil.rmtree(staging)
             progress("installed", model.id, model.download_bytes, model.download_bytes)
             return final
 
-    @staticmethod
-    def _resume(artifact, partial):
+    def _tree_paths(self, root):
+        self._check_directories(root)
+        paths = set()
+        for directory, folders, names in os.walk(root, followlinks=False):
+            for name in folders + names:
+                path = Path(directory) / name
+                mode = path.lstat().st_mode
+                if stat.S_ISLNK(mode) or not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+                    raise IntegrityError("Unchecked nonregular path in model")
+            paths.update(str((Path(directory) / name).relative_to(root)) for name in names)
+        return paths
+
+    def _resume(self, artifact, partial):
+        self._check_directories(partial.parent)
         try:
             info = partial.lstat()
             old = _read_json(partial.with_suffix(".json"))
@@ -439,7 +475,7 @@ class ModelStore:
                 length = response.headers.get("Content-Length")
                 if length is not None and (not length.isdigit() or int(length) != artifact.size - offset):
                     raise ValueError("Unexpected model response length")
-                _json(metadata, dict(url=artifact.url, sha256=artifact.sha256, etag=response.headers.get("ETag")))
+                self._check_directories(partial.parent)
                 fd = os.open(
                     partial,
                     os.O_CREAT | os.O_WRONLY | os.O_NOFOLLOW | os.O_NONBLOCK | (os.O_APPEND if offset else 0),
@@ -450,7 +486,14 @@ class ModelStore:
                     if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
                         raise ValueError("Model temporary files must be private regular files")
                     if not offset:
+                        # Never pair the old prefix with a new validator. A
+                        # crash before truncation retains the old pair; after
+                        # this removal a retry starts from zero.
+                        metadata.unlink(missing_ok=True)
+                        _sync_directory(metadata.parent)
                         os.ftruncate(output.fileno(), 0)
+                        os.fsync(output.fileno())
+                    _json(metadata, dict(url=artifact.url, sha256=artifact.sha256, etag=response.headers.get("ETag")))
                     count = offset
                     try:
                         while True:

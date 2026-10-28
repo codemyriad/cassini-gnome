@@ -17,3 +17,15 @@ Tests use a generated, two-frame seekable Zstandard object and a local HTTP serv
 Development reference for manifest shape and HTTP rules: gocassini's embedded schema-v2 catalog (`cassini-go-recorder/internal/modelstore/catalogue.json`, source commit `2cc2020118771a0e2ec8dbefcfee1d845853fe78`) and its optional-model-storage documentation. This is a schema reference, not a new speech-model pin; D16 still owns future row/revision selection. A metadata-only live check using the app User-Agent (`Cassini/0.2`) returned HTTP 200: the schema-v2 manifest parsed 12 revisions and 35 artifacts (manifest SHA256 `4b5a255b15ad7bc12d2597542426c0f18b839a7d9e8581bbceb94a03104a0bd3`, NOTICE SHA256 `8a153125fcc23e60ee52ec06a1af64436d568eaef0c8eeffc83c0f365f4621b8`). No live artifact transfer or resume behavior is claimed; those tests use the local fixture server.
 
 Packaging handoff: the core uses the system `libzstd.so.1` stable streaming API (no Python zstandard package or executable). Ensure the platform provides libzstd at runtime. No packaging manifest was edited.
+
+Storage checks include the canonical root and its ancestors, as well as staged
+subdirectories, before reading reused weights, calculating resume, or changing
+notices. Completed revisions reject unchecked regular files, symlinks and special
+files. Supplying a manifest also checks receipt records against that manifest's
+pinned raw sizes and hashes, including the installed-reuse path. On an HTTP 200
+restart after If-Range, the old validator is removed before truncating and syncing
+the old partial; only then is the new validator published. A failed truncation
+therefore cannot pair an old prefix with a new ETag.
+
+Cassini honours the user's system proxy. Request URLs and redirects remain
+restricted to dist.gocassini.com; the explicit loopback origin is test-only.
