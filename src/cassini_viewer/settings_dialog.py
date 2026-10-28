@@ -10,7 +10,7 @@ from gi.repository import Adw, Gio, GLib, Gtk
 
 from . import browser_service
 from .library import library_root
-from .strings import CATALOG, text
+from .strings import plural, text
 
 LOG = logging.getLogger(__name__)
 
@@ -146,12 +146,13 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.show_folder.connect("clicked", lambda *_: self._show_folder())
         self.move = Gtk.Button(label=text("settings.library.move"), valign=Gtk.Align.CENTER)
         self.move.connect("clicked", lambda *_: self._choose_folder())
-        self.move.set_sensitive(hasattr(self.app, "move_library"))
+        self.move.set_sensitive(True)
         self.folder.add_suffix(self.show_folder)
         self.folder.add_suffix(self.move)
         group.add(self.folder)
         self.move_lines = Adw.PreferencesGroup()
         self.pages["library"].add(self.move_lines)
+        self._move_rows = []
 
     def _browser(self):
         group = Adw.PreferencesGroup(description=text("settings.browser.description"))
@@ -241,7 +242,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         if self._snapshot.get("browsers"):
             if names:
                 self.browser.set_title(text("settings.browser.status.connected", browser=", ".join(names)))
-            elif "settings.browser.status.connectedGeneric" in CATALOG:
+            else:
                 self.browser.set_title(text("settings.browser.status.connectedGeneric"))
         else:
             self.browser.set_title(text("settings.browser.status.notSetUp"))
@@ -258,9 +259,41 @@ class SettingsDialog(Adw.PreferencesDialog):
             shortcut.trigger_description if shortcut else self.settings.get_string("record-shortcut-description")
         )
         self.change_shortcut.set_sensitive(bool(shortcut and shortcut.bound and shortcut.configure_supported))
-        self.folder.set_subtitle(path_caption(library_root()))
+        mover = self.app.library_relocator
+        self.render_moves(mover.state, moving=mover.running, error=mover._error)
         self._request()
         return GLib.SOURCE_CONTINUE
+
+    def render_moves(self, state, *, moving=False, error=None):
+        self.folder.set_subtitle(text("settings.library.move.moving") if moving else path_caption(library_root()))
+        self.move.set_sensitive(not moving)
+        for row in self._move_rows:
+            self.move_lines.remove(row)
+        self._move_rows = []
+        entries = state["pending"] if state else []
+        waiting = sum(entry["state"] == "waiting" for entry in entries)
+        if waiting:
+            row = Adw.ActionRow(title=plural("settings.library.move.waiting", waiting), use_markup=False)
+            self.move_lines.add(row)
+            self._move_rows.append(row)
+        folders = {}
+        for entry in entries:
+            if entry["state"] == "failed":
+                folder = Path(entry["source"]).parent
+                folders[folder] = folders.get(folder, 0) + 1
+        if error:
+            folders[error["folder"]] = error["count"]
+        for folder, count in folders.items():
+            row = Adw.ActionRow(
+                title=plural("settings.library.move.failed", count, folder=path_caption(folder)),
+                use_markup=False,
+                css_classes=["warning"],
+            )
+            retry = Gtk.Button(label=text("common.tryAgain"), valign=Gtk.Align.CENTER, sensitive=not moving)
+            retry.connect("clicked", lambda *_: self.app.library_relocator.retry())
+            row.add_suffix(retry)
+            self.move_lines.add(row)
+            self._move_rows.append(row)
 
     def _closed(self, *_):
         self.closed = True

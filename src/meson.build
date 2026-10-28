@@ -100,6 +100,8 @@ install_data(
   'cassini_viewer/global_shortcut.py',
   'cassini_viewer/settings_dialog.py',
   'cassini_viewer/library_move.py',
+  'cassini_viewer/library_location.py',
+  'cassini_viewer/library_relocator.py',
   'cassini_viewer/record_first.py',
   'cassini_viewer/recording_session.py',
   'cassini_viewer/browser_host.py',

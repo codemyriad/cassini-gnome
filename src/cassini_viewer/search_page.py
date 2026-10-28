@@ -219,7 +219,17 @@ class SearchPage(Adw.NavigationPage):
         signature = (
             snapshot.unavailable,
             tuple(
-                (m.key, id(m.words), m.speakers, m.title, m.started_at_ms, m.duration_ms, m.origin, m.has_audio)
+                (
+                    str(m.directory),
+                    m.key,
+                    id(m.words),
+                    m.speakers,
+                    m.title,
+                    m.started_at_ms,
+                    m.duration_ms,
+                    m.origin,
+                    m.has_audio,
+                )
                 for m in snapshot.meetings
             ),
         )
@@ -255,8 +265,12 @@ class SearchPage(Adw.NavigationPage):
         def work():
             if snapshot is None:
                 return (), (), {}, {}
+            if self._index is not None and getattr(self, "_index_root", None) != root:
+                self._index.close()
+                self._index = None
             if self._index is None:
                 self._index = SearchIndex(root, cancelled=self._cancelled)
+                self._index_root = root
             self._index.sync(snapshot)
             return (
                 self._index.query(query, **filters),

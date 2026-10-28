@@ -256,13 +256,14 @@ def queue_saved_for_later(path):
     """On explicit exit, publish resumable intent without starting inference."""
     from pathlib import Path
 
-    from .library import library_root, meeting_id
+    from .library_location import owned_directory
     from .meeting_store import LOCK, read_metadata, update_metadata
 
     if not path:
         return
-    directory = Path(path).resolve()
-    if directory.parent != library_root().resolve() or not meeting_id(directory):
+    try:
+        directory = owned_directory(Path(path))
+    except ValueError:
         return
     with LOCK:
         value = read_metadata(directory)

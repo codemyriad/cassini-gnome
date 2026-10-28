@@ -4062,6 +4062,100 @@
    "status": "harmony"
   },
   {
+   "id": "settings.browser.status.connectedGeneric",
+   "en": "Connected",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15.1). Browser companion status when a browser is connected but its name is unknown.",
+   "status": "harmony"
+  },
+  {
+   "id": "settings.library.move.moving",
+   "en": "Moving meetings…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15.1). Library tab folder-row subtitle while the move runs.",
+   "status": "harmony"
+  },
+  {
+   "id": "settings.library.move.waiting",
+   "en": "{n} meetings move when they are finished.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15.1). Library tab line (info) while meetings that are recording, saving or being written down wait to move.",
+   "status": "harmony",
+   "placeholders": {
+    "n": "count of waiting meetings"
+   },
+   "plural": {
+    "one": "1 meeting moves when it is finished.",
+    "other": "{n} meetings move when they are finished."
+   }
+  },
+  {
+   "id": "settings.library.move.failed",
+   "en": "{n} meetings could not be moved. They are still in {folder}.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8a",
+   "note": "Coordinator (D15.1). Library tab warn line after a move with failures. Action: common.tryAgain (retries only the failed ones).",
+   "status": "harmony",
+   "placeholders": {
+    "n": "count",
+    "folder": "old folder shown as on the folder row, e.g. Music › Cassini"
+   },
+   "plural": {
+    "one": "1 meeting could not be moved. It is still in {folder}.",
+    "other": "{n} meetings could not be moved. They are still in {folder}."
+   }
+  },
+  {
+   "id": "about.modelNotices",
+   "en": "Licences of downloaded models",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "About"
+   ],
+   "milestone": "UX8b",
+   "note": "Coordinator (D15.1). About dialog link (GNOME: AdwAboutDialog legal section / link; Mac: About window or Help menu). Opens the local NOTICE.txt shipped with downloaded models. Shown only when at least one model is downloaded.",
+   "status": "harmony"
+  },
+  {
    "id": "speakers.duplicate.question",
    "en": "Is this the same person?",
    "platforms": [

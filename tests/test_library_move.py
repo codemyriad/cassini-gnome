@@ -161,3 +161,56 @@ def test_full_destination_preserves_source_before_copy(tmp_path, monkeypatch):
     result = library_move.move_meetings(root, target)
     assert len(result.failed) == 1 and source.is_dir()
     assert not list(target.iterdir())
+
+
+def test_cross_device_copy_does_not_hold_the_metadata_lock_or_block_quit(tmp_path, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from cassini_viewer.meeting_store import LOCK
+
+    source = folder(tmp_path / "source")
+    target = tmp_path / "target"
+    target.mkdir()
+    cross_filesystem(monkeypatch, source)
+    entered, proceed = threading.Event(), threading.Event()
+    original = library_move._copy_file
+
+    def blocked(old, new):
+        entered.set()
+        assert proceed.wait(3)
+        return original(old, new)
+
+    monkeypatch.setattr(library_move, "_copy_file", blocked)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        moving = pool.submit(library_move.move_folder, source, target)
+        try:
+            assert entered.wait(2)
+            acquired = LOCK.acquire(timeout=0.25)
+            assert acquired, "GTK quit/final-note metadata must not wait behind a file copy"
+            LOCK.release()
+        finally:
+            proceed.set()
+        assert moving.result(timeout=3).destination == target / NAME
+
+
+def test_cancel_during_cross_device_copy_keeps_complete_original(tmp_path, monkeypatch):
+    import threading
+    from concurrent.futures import CancelledError
+
+    source = folder(tmp_path / "source")
+    target = tmp_path / "target"
+    target.mkdir()
+    cross_filesystem(monkeypatch, source)
+    event = threading.Event()
+    original = library_move._copy_file
+
+    def cancelled(old, new, **kwargs):
+        event.set()
+        return original(old, new, **kwargs)
+
+    monkeypatch.setattr(library_move, "_copy_file", cancelled)
+    with pytest.raises(CancelledError):
+        library_move.move_folder(source, target, cancelled=event)
+    assert (source / "track.wav").read_bytes() == bytes(range(256)) * 2000
+    assert not list(target.iterdir())

@@ -9,14 +9,14 @@ from pathlib import Path
 
 from gi.repository import Gio, GLib
 
-from .library import Diagnostic, LibraryScanner, LibrarySnapshot, meeting_id
+from .library import Diagnostic, LibraryCollectionScanner, LibraryScanner, LibrarySnapshot, meeting_id
 
 LOG = logging.getLogger(__name__)
 
 
 class LibraryMonitor:
     def __init__(self, callback, root=None, *, capture_activity=None, debounce_ms=250, max_wait_ms=2000):
-        self.scanner = LibraryScanner(root)
+        self.scanner = LibraryScanner(root) if root is not None else LibraryCollectionScanner()
         self.callback = callback
         self.capture_activity = capture_activity or (lambda: {})
         self.debounce_ms = debounce_ms
@@ -40,15 +40,17 @@ class LibraryMonitor:
         return path
 
     def _watch_roots(self):
-        root = self.scanner.root.absolute()
-        roots = {root}
-        targets = {self._ancestor(root), self._ancestor(root.parent)}
-        resolved = root
-        with contextlib.suppress(OSError, RuntimeError):
-            resolved = root.resolve()
-            roots.add(resolved)
-            targets.update((self._ancestor(resolved), self._ancestor(resolved.parent)))
-        return roots, targets, resolved
+        roots, targets, resolved_roots = set(), set(), []
+        for root in getattr(self.scanner, "roots", (self.scanner.root,)):
+            root = root.absolute()
+            roots.add(root)
+            targets.update((self._ancestor(root), self._ancestor(root.parent)))
+            with contextlib.suppress(OSError, RuntimeError):
+                resolved = root.resolve()
+                roots.add(resolved)
+                resolved_roots.append(resolved)
+                targets.update((self._ancestor(resolved), self._ancestor(resolved.parent)))
+        return roots, targets, tuple(resolved_roots)
 
     def _add_watches(self, paths, roots, existing, created):
         # Called on the scan worker before reads. Deliver events explicitly on
@@ -78,15 +80,16 @@ class LibraryMonitor:
             # Root watches already cover children created during this discovery.
             if changed is None:
                 directories = set()
-                try:
-                    with os.scandir(resolved) as entries:
-                        directories = {
-                            Path(entry.path)
-                            for entry in entries
-                            if meeting_id(Path(entry.name)) and entry.is_dir(follow_symlinks=False)
-                        }
-                except OSError:
-                    pass
+                for root in resolved:
+                    try:
+                        with os.scandir(root) as entries:
+                            directories.update(
+                                Path(entry.path)
+                                for entry in entries
+                                if meeting_id(Path(entry.name)) and entry.is_dir(follow_symlinks=False)
+                            )
+                    except OSError:
+                        pass
             self._add_watches(directories, roots, existing, created)
             snapshot = self.scanner.scan(capture_activity=activity, changed_directories=changed)
             new_roots, new_targets, _resolved = self._watch_roots()

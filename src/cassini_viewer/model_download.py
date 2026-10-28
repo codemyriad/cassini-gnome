@@ -57,6 +57,29 @@ def model_root():
     return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "cassini/models"
 
 
+def has_downloaded_models(root=None):
+    """Receipt presence signals an atomic completed download; never hash weights on GTK."""
+    root = Path(root or model_root())
+    if not root.exists():
+        return False
+    for model in root.iterdir():
+        if model.is_symlink() or not model.is_dir():
+            continue
+        for revision in model.iterdir():
+            if revision.is_symlink() or not revision.is_dir():
+                continue
+            try:
+                receipt = _read_json(revision / RECEIPT)
+                if (receipt["id"], receipt["source_sha256"]) == (model.name, revision.name) and any(
+                    (revision / relative_path(file["path"])).is_file() and not (revision / file["path"]).is_symlink()
+                    for file in receipt["files"]
+                ):
+                    return True
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+    return False
+
+
 def _cancelled(event):
     if event is not None and event.is_set():
         raise CancelledError()

@@ -15,16 +15,19 @@ def load_open_meeting(path, root=None):
     path = Path(path).resolve()
     directory = path if path.is_dir() else path.parent
     root = library_root(root).resolve()
-    if (
-        path.name == "session.json"
-        or path.is_dir()
-        or directory.parent == root
-        and directory.name.startswith("Received-")
-    ):
+    from .library_location import owned_directory
+
+    try:
+        owned = (
+            owned_directory(directory) == directory if root == library_root().resolve() else directory.parent == root
+        )
+    except ValueError:
+        owned = False
+    if path.name == "session.json" or path.is_dir() or owned and directory.name.startswith("Received-"):
         snapshot = LibraryScanner(directory.parent).scan(changed_directories={directory})
         meeting = next((m for m in snapshot.meetings if m.directory == directory), None)
         if meeting is not None and (path.is_dir() or path.name == "session.json" or meeting.audio_file == path):
-            return replace(meeting, metadata_editable=meeting.metadata_editable and directory.parent == root)
+            return replace(meeting, metadata_editable=meeting.metadata_editable and owned)
         if path.is_dir() or path.name == "session.json":
             raise ValueError("Recording folder cannot be read")
     with path.open("rb") as stream:

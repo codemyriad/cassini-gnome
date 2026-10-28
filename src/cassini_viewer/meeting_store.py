@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Atomic app-owned metadata; capture audio and session.json remain read-only."""
 
+import contextlib
 import json
 import os
 import tempfile
@@ -85,6 +86,11 @@ def read_metadata(directory):
 def update_metadata(directory, **changes):
     directory = Path(directory)
     with LOCK:
+        if not directory.exists():
+            from .library_location import owned_directory
+
+            with contextlib.suppress(ValueError):
+                directory = owned_directory(directory)
         value = read_metadata(directory)
         value.update(changes)
         value["revision"] += 1

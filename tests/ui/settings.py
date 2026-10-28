@@ -131,6 +131,13 @@ with tempfile.TemporaryDirectory() as temporary:
         assert "In use for new meetings" in labels(dialog)
         assert "To check for updates. No meeting data is sent." not in labels(dialog)
         stream.close()
+    with broker_connect(path) as unknown:
+        stream = unknown.makefile("rwb")
+        send_packet(stream, dict(role="extension"))
+        until(lambda: request(path=path)["browsers"] == 1)
+        dialog.refresh()
+        until(lambda: dialog.browser.get_title() == "Connected")
+        stream.close()
     dialog.force_close()
     until(lambda: dialog.closed)
     # The second dialog is closed before its initial status delivery. Its

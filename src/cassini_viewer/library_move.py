@@ -73,7 +73,7 @@ def _snapshot(root):
     return result
 
 
-def _copy_file(source, target):
+def _copy_file(source, target, *, cancelled=None):
     fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, "rb") as incoming:
         before = os.fstat(incoming.fileno())
@@ -82,6 +82,7 @@ def _copy_file(source, target):
         expected = hashlib.sha256()
         with open(target, "xb") as output:
             while block := incoming.read(BLOCK):
+                _check_cancelled(cancelled)
                 output.write(block)
                 expected.update(block)
             output.flush()
@@ -99,25 +100,42 @@ def _copy_file(source, target):
     return target
 
 
-def move_folder(source, destination):
+def _check_cancelled(event):
+    if event is not None and event.is_set():
+        from concurrent.futures import CancelledError
+
+        raise CancelledError()
+
+
+class MoveBusy(Exception):
+    """The meeting acquired a writer before publication; leave it pending."""
+
+
+def move_folder(source, destination, *, cancelled=None, ready=lambda: True):
     """Never overwrite. Cross-filesystem copies publish only after verification."""
     if not meeting_id(source) or not stat.S_ISDIR(source.lstat().st_mode):
         raise ValueError("Not a direct meeting folder")
+    from .meeting_store import LOCK
+
     target = destination / source.name
-    try:
-        _rename(source, target)
-    except OSError as error:
-        if error.errno != errno.EXDEV:
-            raise
-    else:
-        warning = None
+    _check_cancelled(cancelled)
+    with LOCK:
+        if not ready():
+            raise MoveBusy()
         try:
-            _sync(destination)
-            if source.parent != destination:
-                _sync(source.parent)
+            _rename(source, target)
         except OSError as error:
-            warning = str(error)
-        return Moved(source, target, warning=warning)
+            if error.errno != errno.EXDEV:
+                raise
+        else:
+            warning = None
+            try:
+                _sync(destination)
+                if source.parent != destination:
+                    _sync(source.parent)
+            except OSError as error:
+                warning = str(error)
+            return Moved(source, target, warning=warning)
     before = _snapshot(source)
     required = sum(row[2] for row in before.values() if stat.S_ISREG(row[0]))
     if shutil.disk_usage(destination).free < required + 65536:
@@ -125,35 +143,42 @@ def move_folder(source, destination):
     stage = Path(tempfile.mkdtemp(prefix=".cassini-moving-", dir=destination))
     published = False
     try:
-        shutil.copytree(source, stage, symlinks=True, dirs_exist_ok=True, copy_function=_copy_file)
-        if _snapshot(source) != before:
-            raise ValueError("Meeting changed during its move")
-        for directory, _folders, _names in os.walk(stage, topdown=False, followlinks=False):
-            _sync(directory)
-        _rename(stage, target)
-        published = True
-        retired = source.with_name(".cassini-moved-" + uuid4().hex)
-        try:
-            _sync(destination)
-            _rename(source, retired)
-        except OSError:
-            # Source is still complete. Revert this unpublished routing choice.
-            shutil.rmtree(target)
-            _sync(destination)
-            raise
-        warning = None
-        try:
-            _sync(source.parent)
-        except OSError as error:
-            warning = str(error)
-        cleanup = None
-        try:
-            shutil.rmtree(retired)
-        except OSError:
-            # The complete destination owns the meeting. A hidden old backup
-            # may need later cleanup, but no live/failed row points to fragments.
-            cleanup = retired
-        return Moved(source, target, cleanup, warning)
+        from functools import partial
+
+        copy = _copy_file if cancelled is None else partial(_copy_file, cancelled=cancelled)
+        shutil.copytree(source, stage, symlinks=True, dirs_exist_ok=True, copy_function=copy)
+        with LOCK:
+            if not ready():
+                raise MoveBusy()
+            if _snapshot(source) != before:
+                raise ValueError("Meeting changed during its move")
+            for directory, _folders, _names in os.walk(stage, topdown=False, followlinks=False):
+                _sync(directory)
+            _check_cancelled(cancelled)
+            _rename(stage, target)
+            published = True
+            retired = source.with_name(".cassini-moved-" + uuid4().hex)
+            try:
+                _sync(destination)
+                _rename(source, retired)
+            except OSError:
+                # Source is still complete. Revert this unpublished routing choice.
+                shutil.rmtree(target)
+                _sync(destination)
+                raise
+            warning = None
+            try:
+                _sync(source.parent)
+            except OSError as error:
+                warning = str(error)
+            cleanup = None
+            try:
+                shutil.rmtree(retired)
+            except OSError:
+                # The complete destination owns the meeting. A hidden old backup
+                # may need later cleanup, but no live/failed row points to fragments.
+                cleanup = retired
+            return Moved(source, target, cleanup, warning)
     finally:
         if not published:
             shutil.rmtree(stage, ignore_errors=True)

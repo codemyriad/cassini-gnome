@@ -6,7 +6,7 @@ import math
 import os
 import time
 
-from .library import LibraryScanner, library_root, meeting_id
+from .library import LibraryScanner, meeting_id
 from .library_files import regular
 from .meeting_store import LOCK, update_metadata
 
@@ -34,9 +34,7 @@ class SilenceClock:
 def edit_recording(directory, *, title=None, notes=None):
     from pathlib import Path
 
-    directory = Path(directory).resolve()
-    if directory.parent != library_root().resolve() or not meeting_id(directory):
-        raise ValueError("Recording edits may only write inside the configured Library")
+    directory = Path(directory).absolute()
     changes = {}
     if title is not None:
         value = title.strip()
@@ -44,6 +42,9 @@ def edit_recording(directory, *, title=None, notes=None):
     if notes is not None:
         changes["notes"] = notes
     with LOCK:
+        from .library_location import owned_directory
+
+        directory = owned_directory(directory)
         # update_metadata rereads immediately under the same lock, retaining
         # transcript progress, unknown fields and independent edits.
         return update_metadata(directory, **changes)
@@ -93,10 +94,10 @@ def live_meeting(directory, phase="recording"):
     """Read only a controller-reported capture, including without a Library window."""
     from pathlib import Path
 
-    directory = Path(directory).resolve()
+    from .library_location import owned_directory
+
+    directory = owned_directory(Path(directory))
     identifier = meeting_id(directory)
-    if directory.parent != library_root().resolve() or identifier is None:
-        raise ValueError("Live recording is outside the configured Library")
     return next(
         (
             m
