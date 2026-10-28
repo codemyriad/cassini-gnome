@@ -4,6 +4,7 @@
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -20,9 +21,21 @@ try:
 except FileNotFoundError:
     if args.offline:
         raise
-    store = ModelStore(args.cache)
+    print("D16 fixture cache miss; acquiring pinned test weights (90 s socket timeout)", flush=True)
+    # Hosted runners can spend over ten seconds in a dist TLS handshake. This
+    # is build-fixture acquisition only; the app's cancellable D4 timeout stays
+    # unchanged, and hash failures still fail without retry.
+    store = ModelStore(args.cache, timeout=90)
     manifest = store.fetch_manifest()
     check_manifest(manifest.model(MODEL_ID, REVISION))
-    store.download(MODEL_ID, REVISION, manifest=manifest)
+    last = [0.0, None]
+
+    def progress(phase, key, count, total):
+        now = time.monotonic()
+        if phase != last[1] or now - last[0] >= 5:
+            print(f"D16 fixture {phase}: {key} {count}/{total} bytes", flush=True)
+            last[:] = [now, phase]
+
+    store.download(MODEL_ID, REVISION, manifest=manifest, progress=progress)
     verify_model(path)
 print(path)
