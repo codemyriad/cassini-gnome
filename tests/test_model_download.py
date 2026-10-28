@@ -617,3 +617,16 @@ def test_crash_cleanup_does_not_follow_a_temporary_symlink(remote, tmp_path):
     with pytest.raises(IntegrityError, match="nonregular"):
         download(client, remote)
     assert not remote.requests and outside.read_bytes() == b"Keep outside data"
+
+
+def test_resumed_verified_expanded_files_contribute_to_progress(remote, tmp_path):
+    client = store(tmp_path, remote)
+    remote.notice_mode = "truncate"
+    with pytest.raises(DownloadInterrupted):
+        download(client, remote)
+    requests_before = remote.counts["/" + remote.key]
+    remote.notice_mode = "normal"
+    events = []
+    download(client, remote, progress=lambda *event: events.append(event))
+    assert remote.counts["/" + remote.key] == requests_before
+    assert ("verifying", "weights.onnx", len(remote.compressed), len(remote.compressed)) in events

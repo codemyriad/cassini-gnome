@@ -291,3 +291,75 @@ def test_cancel_explicit_download_keeps_controller_retryable(model_fixture, monk
     assert not models.snapshot()["error"] and models.snapshot()["selected"] == "whistle"
     monkeypatch.setattr(models.store, "fetch_manifest", original)
     downloaded(models)
+
+
+@pytest.mark.parametrize("damage", ["receipt", "notice", "extra", "weight"])
+def test_try_again_can_recover_a_damaged_published_revision(model_fixture, damage):
+    models, store, _, _ = model_fixture
+    downloaded(models)
+    directory = store.root / MODEL_ID / REVISION
+    name = {
+        "receipt": ".cassini-model.json",
+        "notice": ".cassini-NOTICE.txt",
+        "extra": "unexpected",
+        "weight": "weights.onnx",
+    }[damage]
+    (directory / name).write_bytes(b"damaged")
+    assert models.download()
+    until(lambda: not models.snapshot()["busy"])
+    assert models.snapshot()["error"] and not models.snapshot()["downloaded"]
+    assert not directory.exists()
+    downloaded(models)
+    assert store.installed(MODEL_ID, REVISION)
+
+
+@pytest.mark.parametrize("damage", ["receipt", "notice", "extra"])
+def test_initial_inspection_rejects_missing_attribution_or_unchecked_files(model_fixture, damage):
+    models, store, _, persisted = model_fixture
+    downloaded(models)
+    models.close()
+    directory = store.root / MODEL_ID / REVISION
+    if damage == "extra":
+        (directory / "unexpected").write_bytes(b"unchecked")
+    else:
+        (directory / {"receipt": ".cassini-model.json", "notice": ".cassini-NOTICE.txt"}[damage]).unlink()
+    second = SpeechModels(MODEL_ID, persisted.append, lambda: None, store=store)
+    try:
+        until(lambda: not second.snapshot()["busy"])
+        assert not second.snapshot()["downloaded"] and second.snapshot()["selected"] == "whistle"
+        assert not directory.exists()
+    finally:
+        second.close()
+
+
+def test_cancel_after_atomic_publish_keeps_completed_download_visible(model_fixture, monkeypatch):
+    models, store, _, _ = model_fixture
+    original = store.download
+
+    def publish(*args, **kwargs):
+        directory = original(*args, **kwargs)
+        kwargs["cancelled"].set()
+        return directory
+
+    monkeypatch.setattr(store, "download", publish)
+    downloaded(models)
+    assert store.installed(MODEL_ID, REVISION) and models.select(MODEL_ID)
+    assert models.remove()
+    until(lambda: not models.snapshot()["busy"])
+    assert not (store.root / MODEL_ID / REVISION).exists()
+
+
+def test_valid_revision_restores_about_notice_before_model_use(model_fixture):
+    from cassini_viewer.model_download import has_downloaded_models
+
+    models, store, _, _ = model_fixture
+    downloaded(models)
+    models.close()
+    (store.root / "NOTICE.txt").unlink()
+    second = SpeechModels(MODEL_ID, lambda _: None, lambda: None, store=store)
+    try:
+        until(lambda: not second.snapshot()["busy"])
+        assert second.snapshot()["downloaded"] and has_downloaded_models(store.root)
+        assert (store.root / "NOTICE.txt").read_bytes() == test_model_download.NOTICE
+    finally:
+        second.close()

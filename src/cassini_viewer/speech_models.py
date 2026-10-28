@@ -5,9 +5,12 @@ import logging
 import threading
 from concurrent.futures import CancelledError
 
-from .model_download import ModelStore
+from . import parakeet_model
+from .model_download import IntegrityError, ModelStore, _write
+from .model_manifest import NOTICE
 from .parakeet_client import ParakeetClient
-from .parakeet_model import DOWNLOAD_BYTES, MODEL_ID, REVISION, check_manifest, verify_model
+from .parakeet_model import DOWNLOAD_BYTES, MODEL_ID, REVISION, check_manifest
+from .received import regular_input
 from .sherpa_runtime import runtime_path
 
 LOG = logging.getLogger(__name__)
@@ -74,6 +77,24 @@ class SpeechModels:
         self._change(downloaded=False, notice="models.parakeetUltra.invalidFallback")
         self.store.remove(MODEL_ID, REVISION, cancelled=self.cancelled)
 
+    def _verified(self):
+        # Receipt, notice, complete tree and pinned model files form one
+        # installed revision. Check each weight once, against the D16 pins.
+        if not self.store.installed(
+            MODEL_ID,
+            REVISION,
+            expected_files={name: (size, sha) for name, (size, sha, _compressed) in parakeet_model.FILES.items()},
+            cancelled=self.cancelled,
+        ):
+            raise ValueError("Installed Parakeet revision is damaged")
+        directory = self.store._directory(MODEL_ID, REVISION)
+        # About uses the local root notice. Restore it from the verified
+        # revision before enabling the model, including after manual damage.
+        self.store._check_directories(self.store.root)
+        with regular_input(directory / NOTICE) as source:
+            _write(self.store.root / "NOTICE.txt", source.read())
+        return directory
+
     def _inspect(self):
         try:
             directory = self.store._directory(MODEL_ID, REVISION)
@@ -87,7 +108,7 @@ class SpeechModels:
         # Serialize inspection with a different process removing the revision.
         with self.store._lock(MODEL_ID, REVISION, self.cancelled):
             try:
-                verify_model(directory, cancelled=self.cancelled)
+                self._verified()
             except (OSError, ValueError):
                 invalid = True
             else:
@@ -121,12 +142,16 @@ class SpeechModels:
             value = min(99, int((sum(current.values()) + sum(completed.values())) * 100 / DOWNLOAD_BYTES))
             self._change(percent=max(self.snapshot()["percent"], value))
 
-        directory = self.store.download(MODEL_ID, REVISION, manifest=manifest, cancelled=event, progress=progress)
         try:
-            verify_model(directory, cancelled=event)
-        except (OSError, ValueError):
-            self._invalid()
+            self.store.download(MODEL_ID, REVISION, manifest=manifest, cancelled=event, progress=progress)
+        except IntegrityError:
+            # Try again must be able to repair a damaged published revision,
+            # rather than repeatedly asking for a terminal-only removal.
+            if self.store._directory(MODEL_ID, REVISION).exists():
+                self._invalid()
             raise
+        # ModelStore verified the exact manifest and notice before the atomic
+        # publish. There is no second cancellable pass after publication.
         # A completed explicit download never selects itself.
         self._change(downloaded=True, percent=100)
 
@@ -153,8 +178,7 @@ class SpeechModels:
                 return None
             with self.store._lock(MODEL_ID, REVISION, self.cancelled):
                 try:
-                    directory = self.store._directory(MODEL_ID, REVISION)
-                    verify_model(directory, cancelled=self.cancelled)
+                    directory = self._verified()
                 except (OSError, ValueError):
                     invalid = True
                 else:
