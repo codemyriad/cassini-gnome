@@ -26,7 +26,7 @@ def path_caption(path):
 
 class SettingsDialog(Adw.PreferencesDialog):
     def __init__(self, app, *, service_path=None):
-        super().__init__(title=text("settings.title"), search_enabled=False, content_width=700, content_height=640)
+        super().__init__(title=text("settings.title"), search_enabled=False, content_width=700, content_height=640, css_classes=["cassini-preferences"])
         self.app = app
         self.service_path = service_path
         self.closed = False
@@ -90,14 +90,29 @@ class SettingsDialog(Adw.PreferencesDialog):
             description=text("settings.transcription.speech.description"),
         )
         speech.update_property([Gtk.AccessibleProperty.LABEL], [text("settings.transcription.speech.a11y")])
-        self.whistle = Adw.ActionRow(
-            title=text("models.whistle.name"), subtitle=text("models.whistle.description"), use_markup=False
+        self.whistle = Adw.PreferencesRow(css_classes=["whistle-model"])
+        row = Gtk.Box(spacing=12, margin_top=12, margin_bottom=12, margin_start=16, margin_end=16)
+        self._speech_group = Gtk.CheckButton()
+        radio = Gtk.CheckButton(group=self._speech_group, active=True, focusable=False, can_target=False)
+        radio.update_property([Gtk.AccessibleProperty.LABEL], [text("models.whistle.name")])
+        row.append(radio)
+        details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True)
+        name = Gtk.Box(spacing=8)
+        name.append(Gtk.Label(label=text("models.whistle.name"), xalign=0, css_classes=["heading"]))
+        from .transcription import bundle_path
+        from .ux_formats import size
+
+        weights = bundle_path() / "whistle.cact"
+        if weights.is_file():
+            name.append(Gtk.Label(label=size(weights.stat().st_size), css_classes=["dim-label", "caption"]))
+        details.append(name)
+        details.append(
+            Gtk.Label(label=text("models.whistle.description"), wrap=True, xalign=0, css_classes=["dim-label", "caption"])
         )
-        self.whistle.add_prefix(Gtk.CheckButton(active=True, focusable=False, can_target=False))
-        status = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, valign=Gtk.Align.CENTER)
-        status.append(Gtk.Label(label=text("models.included"), css_classes=["dim-label"]))
-        status.append(Gtk.Label(label=text("models.status.inUse"), css_classes=["success", "caption"]))
-        self.whistle.add_suffix(status)
+        details.append(Gtk.Label(label=text("models.status.inUse"), xalign=0, css_classes=["success", "caption", "heading"]))
+        row.append(details)
+        row.append(Gtk.Label(label=text("models.included"), css_classes=["dim-label", "caption"]))
+        self.whistle.set_child(row)
         speech.add(self.whistle)
         page.add(speech)
         # Source/unsupported-architecture builds never claim an absent bundle.

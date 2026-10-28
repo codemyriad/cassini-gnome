@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Actual Search menus, phrase matching, context playback, refresh and Meeting navigation."""
+"""Actual Preferences switches, persisted portal binding and browser broker controls."""
 
 import json
 import os
