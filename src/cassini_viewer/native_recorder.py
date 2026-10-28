@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Separate native PCM tracks on one GStreamer clock, checkpointed off GTK."""
 
-import math
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -9,18 +8,10 @@ from pathlib import Path
 from gi.repository import GLib, GObject, Gst
 
 from .recorder import request_eos
+from .recording_details import space_left
 from .recording_session import RecordingSession
 
 RATE = 48000
-
-
-def space_left(path, byte_rate=RATE * 2 * 2, statvfs=None):
-    import os
-
-    value = (statvfs or os.statvfs)(path)
-    total, free = value.f_blocks * value.f_frsize, value.f_bavail * value.f_frsize
-    reserve = max(1024**3, math.ceil(total * 0.02))
-    return max(0, math.floor((free - reserve) / byte_rate / 60)), free <= reserve
 
 
 class NativeRecorder(GObject.Object):
@@ -112,7 +103,7 @@ class NativeRecorder(GObject.Object):
             self._start_us = GLib.get_monotonic_time()
             if self.minutes_left < 10:
                 self.line = "errors.diskLow.line"
-            self._disk_timer = GLib.timeout_add_seconds(5, self._check_disk)
+            self._disk_timer = GLib.timeout_add_seconds(1, self._check_disk)
             self.emit("started", str(self.session.directory))
             self.emit("changed")
             if reserve:
@@ -225,6 +216,7 @@ class NativeRecorder(GObject.Object):
 
     def _check_disk(self):
         if self.pipeline is None or self.stopping:
+            self._disk_timer = 0
             return False
         if self._disk_future is None:
             self._disk_future = self._executor.submit(space_left, self.session.directory)

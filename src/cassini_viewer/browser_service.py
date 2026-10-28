@@ -157,12 +157,22 @@ class BrowserService:
                             error=browser.error,
                         )
                     )
+            for meeting in meetings:
+                if meeting["recording"]:
+                    browser = self.browsers[meeting["id"].partition(":")[0]]
+                    meeting["path"] = browser.status.get("path")
             return dict(
                 browsers=len(self.browsers),
                 autoRecord=self.auto_record,
                 meetings=meetings,
                 recordings=list(self.recordings),
-                statuses=[dict(b.status) for b in self.browsers.values()],
+                statuses=[
+                    dict(
+                        b.status,
+                        **({"id": f"{b.id}:{b.status['tabId']}"} if type(b.status.get("tabId")) is int else {}),
+                    )
+                    for b in self.browsers.values()
+                ],
             )
 
     def configure(self, enabled):

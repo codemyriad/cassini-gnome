@@ -1,0 +1,106 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Private-bus doubles for the actual portal and GNotification wire protocols."""
+
+from gi.repository import Gio, GLib
+
+PORTAL_XML = """<node><interface name="org.freedesktop.portal.GlobalShortcuts">
+<method name="CreateSession"><arg type="a{sv}" direction="in"/><arg type="o" direction="out"/></method>
+<method name="BindShortcuts"><arg type="o" direction="in"/><arg type="a(sa{sv})" direction="in"/><arg type="s" direction="in"/><arg type="a{sv}" direction="in"/><arg type="o" direction="out"/></method>
+<signal name="Activated"><arg type="o"/><arg type="s"/><arg type="t"/><arg type="a{sv}"/></signal>
+</interface></node>"""
+NOTIFY_XML = """<node><interface name="org.gtk.Notifications">
+<method name="AddNotification"><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="a{sv}" direction="in"/></method>
+<method name="RemoveNotification"><arg type="s" direction="in"/><arg type="s" direction="in"/></method>
+</interface></node>"""
+SESSION_XML = """<node><interface name="org.freedesktop.portal.Session"><method name="Close"/></interface></node>"""
+
+
+class DesktopServices:
+    def __init__(self):
+        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        self.notifications = {}
+        self.history = []
+        self.calls = []
+        self.session = "/org/freedesktop/portal/desktop/session/cassini_test"
+        self.denied = False
+        self.closed = False
+        self.owners = [
+            Gio.bus_own_name_on_connection(self.bus, name, Gio.BusNameOwnerFlags.NONE, None, None)
+            for name in ("org.freedesktop.portal.Desktop", "org.gtk.Notifications")
+        ]
+        self.objects = [
+            self.bus.register_object(
+                "/org/freedesktop/portal/desktop", Gio.DBusNodeInfo.new_for_xml(PORTAL_XML).interfaces[0], self._portal
+            ),
+            self.bus.register_object(
+                "/org/gtk/Notifications", Gio.DBusNodeInfo.new_for_xml(NOTIFY_XML).interfaces[0], self._notification
+            ),
+            self.bus.register_object(
+                self.session, Gio.DBusNodeInfo.new_for_xml(SESSION_XML).interfaces[0], self._close
+            ),
+        ]
+
+    def _portal(self, _bus, sender, _path, _interface, method, parameters, invocation):
+        values = parameters.unpack()
+        self.calls.append(dict(method=method, values=values))
+        token = values[-1]["handle_token"]
+        path = f"/org/freedesktop/portal/desktop/request/{sender[1:].replace('.', '_')}/{token}"
+        if method == "CreateSession":
+            result = {"session_handle": GLib.Variant("s", self.session)}
+        else:
+            result = {
+                "shortcuts": GLib.Variant(
+                    "a(sa{sv})", [("record", {"trigger_description": GLib.Variant("s", "Ctrl+Alt+R")})]
+                )
+            }
+        invocation.return_value(GLib.Variant("(o)", (path,)))
+        # Deliberately emit immediately, before the method callback is handled.
+        self.bus.emit_signal(
+            sender,
+            path,
+            "org.freedesktop.portal.Request",
+            "Response",
+            GLib.Variant("(ua{sv})", (1 if self.denied else 0, result)),
+        )
+
+    def _notification(self, _bus, _sender, _path, _interface, method, parameters, invocation):
+        values = parameters.unpack()
+        if method == "AddNotification":
+            self.notifications[values[1]] = values[2]
+            self.history.append(dict(id=values[1], payload=values[2]))
+        else:
+            self.notifications.pop(values[1], None)
+        invocation.return_value(None)
+
+    def _close(self, *_args):
+        self.closed = True
+        _args[-1].return_value(None)
+
+    def app_action(self, app, action):
+        self.bus.call(
+            app.get_application_id(),
+            app.get_dbus_object_path(),
+            "org.gtk.Actions",
+            "Activate",
+            GLib.Variant("(sava{sv})", (action, [], {})),
+            None,
+            Gio.DBusCallFlags.NONE,
+            2000,
+            None,
+            None,
+        )
+
+    def activate(self, *, session=None, identifier="record"):
+        self.bus.emit_signal(
+            None,
+            "/org/freedesktop/portal/desktop",
+            "org.freedesktop.portal.GlobalShortcuts",
+            "Activated",
+            GLib.Variant("(osta{sv})", (session or self.session, identifier, 123, {})),
+        )
+
+    def close(self):
+        for identifier in self.objects:
+            self.bus.unregister_object(identifier)
+        for identifier in self.owners:
+            Gio.bus_unown_name(identifier)
