@@ -6,8 +6,10 @@
 # present: the app only warns about those, but a package must pull them in.
 #
 # --whistle GOLDENS (a copy of tests/whistle) also writes a meeting down the
-# way the installed app does: it checks the installed bundle's hashes and
-# that the app finds NumPy and ONNX Runtime, then runs the installed worker
+# way the installed app does: it checks the installed bundle's hashes, that
+# the package's private ONNX Runtime matches this Python and its wheel's
+# RECORD, and that the GTK process cannot import ONNX Runtime (the package
+# must not pull in the distribution's), then runs the installed worker
 # on both D11 goldens (tests/whistle/pipeline_probe.py): segments and word
 # texts exact, word times within 80 ms (D11.3). It refuses to run unless the
 # only network interface is loopback, so run it in a container started with
@@ -41,11 +43,19 @@ if missing:
 print("smoke test passed: " + ", ".join(runtime.all_elements()))
 
 if args.whistle:
+    import importlib.util  # noqa: E402
+
     from cassini_viewer.transcription import unavailable_reason  # noqa: E402
-    from cassini_viewer.whistle_worker import verify_bundle  # noqa: E402
+    from cassini_viewer.whistle_worker import onnxruntime_dir, verify_bundle, verify_onnxruntime  # noqa: E402
 
     bundle = args.datadir / "whistle"
     verify_bundle(bundle)  # every hash in manifest.json: nothing stripped or moved
+    runtime = onnxruntime_dir()
+    if runtime is None:
+        sys.exit("writing-down smoke test failed: no private ONNX Runtime for this Python")
+    verify_onnxruntime(runtime)  # every file against the wheel's RECORD
+    if importlib.util.find_spec("onnxruntime") is not None:
+        sys.exit("writing-down smoke test failed: this Python has its own onnxruntime; the package must not need it")
     reason = unavailable_reason(bundle)
     if reason:
         sys.exit(f"writing-down smoke test failed: {reason}")
@@ -68,9 +78,11 @@ if args.whistle:
             sys.exit("writing-down smoke test failed: the D11 goldens did not match")
         result = json.loads(report.read_text())
     import numpy
-    import onnxruntime
 
-    print(f"NumPy {numpy.__version__}, ONNX Runtime {onnxruntime.__version__}, {result['vad']['providers']}")
+    pinned = json.loads((bundle / "pins.json").read_text())["onnxruntime"]["version"]
+    if result["vad"]["version"] != pinned:
+        sys.exit(f"writing-down smoke test failed: the child ran ONNX Runtime {result['vad']['version']}, not {pinned}")
+    print(f"NumPy {numpy.__version__}, private ONNX Runtime {pinned} in {runtime}, {result['vad']['providers']}")
     for case in result["cases"]:
         print(
             f"{case['golden']}: {case['segments']} segments exact, {case['words']} words, "

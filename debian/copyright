@@ -39,6 +39,19 @@ Comment: Not in the source tree: Silero VAD v6.2.1, from
  sha256, in whistle/pins.json; fetched at build time and installed
  unmodified in /usr/share/cassini-viewer/whistle.
 
+Files: onnxruntime/*
+Copyright: Microsoft Corporation
+License: MIT
+Comment: Not in the source tree: ONNX Runtime 1.31.0, the PyPI wheel for the
+ package's Python, fetched at build time from the URL pinned, with its
+ sha256, in whistle/pins.json, and installed unpacked and unmodified (never
+ stripped) in /usr/lib/<multiarch>/cassini-viewer/python, without its
+ transformers, quantization, tools and backend subpackages or its C API
+ library.
+ The extension module includes third-party components under their own
+ licences; onnxruntime/ThirdPartyNotices.txt, installed with it, lists them.
+ Source: https://github.com/microsoft/onnxruntime
+
 License: GPL-3.0-or-later
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by

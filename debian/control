@@ -19,7 +19,6 @@ Build-Depends: debhelper-compat (= 13),
                gstreamer1.0-plugins-base <!nocheck>,
                gstreamer1.0-plugins-good <!nocheck>,
                python3-numpy <!nocheck>,
-               python3-onnxruntime <!nocheck>,
 Standards-Version: 4.7.0
 Homepage: https://github.com/codemyriad/cassini-gnome
 Vcs-Browser: https://github.com/codemyriad/cassini-gnome
@@ -30,7 +29,7 @@ Package: cassini-viewer
 Architecture: amd64
 Depends: ${misc:Depends},
          ${shlibs:Depends},
-         python3 (>= 3.11),
+         ${cassini:Python},
          python3-gi,
          gir1.2-gtk-4.0 (>= 4.18),
          gir1.2-adw-1 (>= 1.8),
@@ -38,7 +37,6 @@ Depends: ${misc:Depends},
          gstreamer1.0-plugins-base,
          gstreamer1.0-plugins-good,
          python3-numpy,
-         python3-onnxruntime,
 Recommends: pipewire-pulse | pulseaudio,
 Description: play and record meetings, and read along with their transcripts
  Cassini plays meeting recordings in the Cassini portable meeting format:
@@ -58,6 +56,6 @@ Description: play and record meetings, and read along with their transcripts
  .
  It writes recorded meetings down on this computer, without a network
  connection: the package includes the Whistle speech recognition weights and
- Needle engine (Apache-2.0) and the Silero voice activity detector (MIT),
- and runs them with NumPy and ONNX Runtime on the CPU. Nothing is
- downloaded and no telemetry is sent.
+ Needle engine (Apache-2.0), the Silero voice activity detector (MIT) and,
+ for the recognition process only, ONNX Runtime (MIT), and runs them with
+ NumPy on the CPU. Nothing is downloaded and no telemetry is sent.

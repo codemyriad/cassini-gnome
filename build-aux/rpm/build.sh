@@ -13,7 +13,7 @@ if [ "$VERSION" != "$SPEC_VERSION" ]; then
   echo "error: meson.build says $VERSION but the spec says $SPEC_VERSION" >&2
   exit 1
 fi
-# The pinned writing-down artifacts, the spec's Source1-4. rpmbuild itself
+# The pinned writing-down artifacts, the spec's Source1-5. rpmbuild itself
 # never downloads them.
 build-aux/whistle-cache.sh
 mkdir -p dist
@@ -26,7 +26,6 @@ container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z
   install -m 644 /in/build-aux/rpm/cassini-viewer.spec "$spec"
   if command -v dnf >/dev/null 2>&1; then
     dnf -y install rpm-build tar xz "dnf-command(builddep)"
-    # sympy, which onnxruntime needs, would pull TeX Live in as weak deps.
     dnf -y --setopt=install_weak_deps=False builddep "$spec"
     dnf -y install rpmlint || true
     install_rpm() { dnf -y --setopt=install_weak_deps=False install "$@"; }
@@ -39,11 +38,16 @@ container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z
     echo "error: no dnf or zypper in this image" >&2; exit 1
   fi
 
-  # Source1-4, named after their pinned URLs, from .whistle-cache.
+  # Source1-5, named after their pinned URLs, from .whistle-cache: every
+  # ONNX Runtime wheel, of which the spec takes the one for its Python.
   python3 -c "
 import json, shutil
-for name, info in json.load(open(\"/in/whistle/pins.json\"))[\"artifacts\"].items():
+pins = json.load(open(\"/in/whistle/pins.json\"))
+for name, info in pins[\"artifacts\"].items():
     shutil.copyfile(\"/in/.whistle-cache/\" + name, \"$top/SOURCES/\" + info[\"url\"].rsplit(\"/\", 1)[1])
+for info in pins[\"onnxruntime\"][\"wheels\"].values():
+    name = info[\"url\"].rsplit(\"/\", 1)[1]
+    shutil.copyfile(\"/in/.whistle-cache/\" + name, \"$top/SOURCES/\" + name)
 "
   cp -a /in/. "$src"
   cd "$src"
@@ -83,8 +87,7 @@ rpm_name=$(cat "dist/$name_file") && rm -f "dist/$name_file"
 # there with no network, writing the D11 goldens down offline.
 container_offline_smoke "$BASE" '
   if command -v dnf >/dev/null 2>&1; then
-    # Without weak deps: this checks that Requires alone are enough (and
-    # skips the TeX Live that sympy recommends).
+    # Without weak deps: this checks that Requires alone are enough.
     dnf -y -q --setopt=install_weak_deps=False install "/d/$RPM"
     dnf clean all >/dev/null
   else

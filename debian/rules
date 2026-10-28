@@ -1,5 +1,7 @@
 #!/usr/bin/make -f
 
+include /usr/share/dpkg/architecture.mk
+
 %:
 	dh $@ --buildsystem=meson
 
@@ -11,17 +13,29 @@ override_dh_auto_configure:
 
 # The app checks every file of the bundle against its pinned sha256 before it
 # loads anything, so nothing may rewrite it: not strip-nondeterminism (which
-# normalises the wrapper wheel's zip), dwz or strip. dh_strip runs last of
-# these, so the bundle is verified again right after it.
+# normalises the wrapper wheel's zip), dwz or strip. The same goes for the
+# private ONNX Runtime (the pinned upstream wheel, checked against its
+# RECORD). dh_strip runs last of these, so both are verified again after it.
+ORT_DIR = debian/cassini-viewer/usr/lib/$(DEB_HOST_MULTIARCH)/cassini-viewer/python
+
 override_dh_strip_nondeterminism:
-	dh_strip_nondeterminism -Xwhistle/
+	dh_strip_nondeterminism -Xwhistle/ -Xcassini-viewer/python/
 
 override_dh_dwz:
-	dh_dwz -Xwhistle/
+	dh_dwz -Xwhistle/ -Xcassini-viewer/python/
 
 override_dh_strip:
-	dh_strip -Xwhistle/
+	dh_strip -Xwhistle/ -Xcassini-viewer/python/
 	python3 whistle/verify.py debian/cassini-viewer/usr/share/cassini-viewer/whistle
+	python3 whistle/verify.py --onnxruntime $(ORT_DIR)
+
+# The private ONNX Runtime is built for this python3 (CPython ABI), like any
+# extension module: depend on exactly this Python version.
+PY_VERSION := $(shell python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+PY_NEXT := $(shell python3 -c 'import sys; print("%d.%d" % (sys.version_info[0], sys.version_info[1] + 1))')
+
+override_dh_gencontrol:
+	dh_gencontrol -- -Vcassini:Python="python3 (>= $(PY_VERSION)~), python3 (<< $(PY_NEXT))"
 
 override_dh_auto_test:
 ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
