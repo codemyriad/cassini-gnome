@@ -3496,6 +3496,86 @@
    "status": "drawn"
   },
   {
+   "id": "search.filter.speakerNone",
+   "en": "Speaker",
+   "note": "Coordinator (D14). The Speaker chip when no speaker is chosen. Opens the speaker menu.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "status": "harmony"
+  },
+  {
+   "id": "search.filter.anySpeaker",
+   "en": "Any speaker",
+   "note": "Coordinator (D14). First item of the speaker menu; clears the speaker filter.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "status": "harmony"
+  },
+  {
+   "id": "search.filter.date.today",
+   "en": "Today",
+   "note": "Coordinator (D14). Date menu item, and the chip text when chosen.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "status": "harmony"
+  },
+  {
+   "id": "search.filter.date.week",
+   "en": "Past 7 days",
+   "note": "Coordinator (D14). Date menu item and chip text: today and the 6 days before it, local time.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "status": "harmony"
+  },
+  {
+   "id": "search.filter.date.month",
+   "en": "Past 30 days",
+   "note": "Coordinator (D14). Date menu item and chip text: today and the 29 days before it, local time.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Search",
+    "Search-mac"
+   ],
+   "milestone": "UX12",
+   "status": "harmony"
+  },
+  {
    "id": "search.result.meta",
    "en": "{name} · {position}",
    "platforms": [

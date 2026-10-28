@@ -126,6 +126,8 @@ def preview_subtitle(at_ms, duration_ms, *, now_ms, tz, received=False):
 
 
 def search_date(at_ms, *, now_ms, tz):
+    if at_ms is None:
+        return day_group(at_ms, now_ms=now_ms, tz=tz)
     at, now, relative = _relative_date(at_ms, now_ms, tz)
     if relative:
         return relative

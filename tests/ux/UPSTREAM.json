@@ -69,12 +69,12 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "89b5520cbd5d6a9d65a46e420128383986383ce946a6a7b5ab39f085e35c38a7"
+    "strings.json": "a023d8dcce72b202101e62e9510c97d469210422ed259d3d18ab17204c7e4dd9"
   },
   "additionalSources": {
     "strings.json": {
-      "commit": "543159145296399f62964ce0857eaf5c0ed7709a",
-      "note": "Published speaker-names variants for Export; catalog remains v5"
+      "commit": "34318bbe91547b534d8bf61627e30cb2270db579",
+      "note": "D14 Search filter copy and menus"
     },
     "LIBRARY-RULES.md": {
       "commit": "81799a3ab2642a67139f799f857e8ad0e81135b6",

@@ -37,6 +37,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.snapshot = None
         self._observed_phases = None
         self.meeting_page = None
+        self.search_page = None
         self.recording_page = None
         self._external_meeting = False
         self.export_dialog = None
@@ -85,6 +86,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.connect("close-request", self._close)
         for name, callback in (
             ("back-library", self.back_to_library),
+            ("search", self.toggle_search),
             ("export", self.show_export),
             ("play-pause", self._play_selected),
             ("skip-back", lambda *_: self.player.skip(-10000)),
@@ -111,14 +113,26 @@ class LibraryWindow(Adw.ApplicationWindow):
         action = self.lookup_action("export")
         if action:
             action.set_enabled(
-                bool(meeting and meeting.has_audio and meeting.lifecycle == "saved" and not self.recording_page)
+                bool(
+                    meeting
+                    and meeting.has_audio
+                    and meeting.lifecycle == "saved"
+                    and not self.recording_page
+                    and not self.search_page
+                )
             )
 
     def show_export(self):
         from .export_dialog import ExportDialog
 
         meeting = self.meeting_page.meeting if self.meeting_page else self.selected
-        if meeting is not None and meeting.has_audio and meeting.lifecycle == "saved" and not self.recording_page:
+        if (
+            meeting is not None
+            and meeting.has_audio
+            and meeting.lifecycle == "saved"
+            and not self.recording_page
+            and not self.search_page
+        ):
             if not self.export_dialog or self.export_dialog.closed:
                 try:
                     self.export_dialog = ExportDialog(self, meeting)
@@ -292,6 +306,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         controls = self.capture_header._controls
         self.live_timer, self.live_levels, self.live_stop = controls["timer"], controls["levels"], controls["stop"]
         header.pack_start(self.capture_header)
+        header.pack_end(self.search_button())
         sidebar.add_top_bar(header)
         self.rows = Gtk.ListBox(selection_mode=Gtk.SelectionMode.BROWSE, css_classes=["library-rows"])
         self.rows.connect(
@@ -502,6 +517,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.get_application().observe_library(snapshot, self._observed_phases)
         self._observed_phases = {m.key: (m.lifecycle, m.capture_state) for m in snapshot.meetings}
         self.snapshot = snapshot
+        if self.search_page:
+            self.search_page.update(snapshot)
         if self.recording_page:
             current = next((m for m in snapshot.meetings if m.key == self.recording_page.meeting.key), None)
             if current and (current.lifecycle in ("recording", "saving") or self.get_application()._quitting):
@@ -548,11 +565,11 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._live_badges = {}
         self.selected = None
         if snapshot.unavailable:
-            if not self.meeting_page:
+            if not self.meeting_page and not self.search_page:
                 self._stop_playback(clear_selection=True)
             self.root_box.set_visible_child_name("offline")
         elif not snapshot.meetings:
-            if not self.meeting_page:
+            if not self.meeting_page and not self.search_page:
                 self._stop_playback(clear_selection=True)
             self.root_box.set_visible_child_name("empty")
         else:
@@ -618,7 +635,7 @@ class LibraryWindow(Adw.ApplicationWindow):
     def _selected(self, _rows, row):
         if row is None or not hasattr(row, "meeting"):
             return
-        if not self.meeting_page:
+        if not self.meeting_page and not self.search_page:
             if self._preview_key != row.meeting.key:
                 self._stop_playback()
             elif not row.meeting.has_audio:
@@ -750,6 +767,12 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.play_button.set_sensitive(False)
 
     def _play_selected(self):
+        if self.search_page:
+            if self.search_page.hit and self._loaded_key == self.search_page.hit.key:
+                self.player.toggle()
+            else:
+                self.search_page.play_from()
+            return
         meeting = self.meeting_page.meeting if self.meeting_page else self.selected
         if meeting is None or not meeting.has_audio:
             return
@@ -800,7 +823,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             and meeting.lifecycle in ("recording", "saving")
         ):
             return
-        if self.meeting_page or self.recording_page:
+        if self.meeting_page or self.recording_page or self.search_page:
             self.back_to_library()
         self._stop_playback()
         self._external_meeting = external
@@ -817,7 +840,34 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.navigation.push(self.meeting_page)
         self._refresh_export()
 
+    def search_button(self):
+        return Gtk.Button(
+            icon_name="system-search-symbolic",
+            action_name="win.search",
+            tooltip_text=text("common.search"),
+            css_classes=["flat"],
+        )
+
+    def toggle_search(self, *_):
+        from .search_page import SearchPage
+
+        if self.search_page:
+            self.back_to_library()
+            return
+        if self.meeting_page or self.recording_page:
+            self.back_to_library()
+        self._stop_playback()
+        self.search_page = SearchPage(self)
+        self.navigation.push(self.search_page)
+        self.search_page.entry.grab_focus()
+        self._update_live()
+        self._refresh_export()
+
     def back_to_library(self, *_):
+        if self.search_page:
+            self.search_page.close()
+            self.search_page = None
+            self._stop_playback()
         if self.recording_page:
             self.recording_page.close()
             self.recording_page = None
@@ -831,6 +881,11 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._refresh_export()
 
     def _page_popped(self, _navigation, page):
+        if page is self.search_page:
+            page.close()
+            self.search_page = None
+            self._stop_playback()
+            self._refresh_export()
         if page is self.recording_page:
             page.close()
             self.recording_page = None
@@ -866,7 +921,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         try:
             meeting, imported = future.result()
             if imported:
-                if self.meeting_page or self.recording_page:
+                if self.meeting_page or self.recording_page or self.search_page:
                     self.back_to_library()
                 self._pending_selection = meeting.key
                 self.monitor.refresh_now()
@@ -899,6 +954,9 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._activity_timer = 0
         if self._activity_source is not None:
             self._activity_source.close()
+        if self.search_page:
+            self.search_page.close()
+            self.search_page = None
         self.player.shutdown()
         self.monitor.close()
         return False

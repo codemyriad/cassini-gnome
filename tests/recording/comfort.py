@@ -3,6 +3,7 @@
 """Real Pulse capture and keyboard notes; private notification/shortcut wire services."""
 
 import argparse
+import faulthandler
 import json
 import os
 import shutil
@@ -53,6 +54,13 @@ app = None
 
 def diagnostics():
     native = app.recorder if app else None
+
+    def states(pipeline):
+        if pipeline is None:
+            return None
+        state = pipeline.get_state(0)
+        return [v.value_nick for v in state]
+
     return dict(
         errors=errors,
         notifications=services.notifications,
@@ -62,6 +70,16 @@ def diagnostics():
             levels=native.levels,
             line=native.line,
             minutes=native.minutes_left,
+            finishing=native._finishing,
+            problem=native._problem,
+            appError=app.recording_error,
+            manifest=native.session.manifest if native.session else None,
+            state=states(native.pipeline),
+            frames={key: writer.frames for key, writer in native.session.writers.items()} if native.session else {},
+            appendLocked=native._lock.locked(),
+            sinks={key: states(native.pipeline.get_by_name(key)) for key in ("microphone", "system")}
+            if native.pipeline
+            else {},
         )
         if native
         else None,
@@ -248,6 +266,17 @@ try:
     report["callbackErrors"] = errors
     print("PASS Recording page: real Pulse/keyboard, portal, hidden notifications, disk warning/reserve")
 finally:
+    if not report:
+        (artifacts / "comfort-failure.json").write_text(json.dumps(diagnostics(), indent=2) + "\n")
+        with (artifacts / "comfort-threads.log").open("w") as dump:
+            faulthandler.dump_traceback(file=dump)
+        if app and app.recorder and app.recorder.pipeline is not None:
+            (artifacts / "comfort-pipeline.dot").write_text(
+                Gst.debug_bin_to_dot_data(app.recorder.pipeline, Gst.DebugGraphDetails.ALL)
+            )
+        library = Path(private.name) / "Library"
+        if library.exists():
+            shutil.copytree(library, artifacts / "comfort-recordings")
     if app and app.recorder and app.recorder.pipeline is not None:
         app.stop_native()
         wait_until(lambda: app.recorder.pipeline is None, "failure cleanup finalizes capture", diagnostics=diagnostics)
