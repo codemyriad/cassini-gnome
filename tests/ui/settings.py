@@ -145,6 +145,12 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: second.closed and not service.auto_record)
     assert json.loads((tmp / "browser-config.json").read_text())["autoRecord"] is False
     app.global_shortcut.close()
+    app.global_shortcut = GlobalShortcut(app.on_global_record, connection=desktop.bus, settings=app.recording_settings)
+    until(lambda: app.global_shortcut.bound)
+    assert app.global_shortcut.trigger_description == "Ctrl+Shift+R"
+    binding = [c for c in desktop.calls if c["method"] == "BindShortcuts"][-1]
+    assert "preferred_trigger" not in binding["values"][1][0][1]
+    app.global_shortcut.close()
     desktop.close()
     window.close()
     app.do_shutdown()

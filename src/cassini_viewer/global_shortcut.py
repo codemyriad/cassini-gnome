@@ -115,16 +115,15 @@ class GlobalShortcut:
 
     def _created(self, result):
         self.session = result["session_handle"]
-        shortcuts = [
-            (
-                "record",
-                {
-                    "description": GLib.Variant("s", text("common.record")),
-                    "preferred_trigger": GLib.Variant("s", "CTRL+ALT+r"),
-                },
-            )
-        ]
-        self._request("BindShortcuts", "(oa(sa{sv})sa{sv})", (self.session, shortcuts, ""), self._bound)
+        self._request("ListShortcuts", "(oa{sv})", (self.session,), self._listed)
+
+    def _listed(self, result):
+        # Re-register the stable ID without replacing an existing desktop
+        # choice with our first-run preferred trigger.
+        properties = {"description": GLib.Variant("s", text("common.record"))}
+        if not any(identifier == "record" for identifier, _ in result.get("shortcuts", [])):
+            properties["preferred_trigger"] = GLib.Variant("s", "CTRL+ALT+r")
+        self._request("BindShortcuts", "(oa(sa{sv})sa{sv})", (self.session, [("record", properties)], ""), self._bound)
 
     def _bound(self, result):
         self.bound = any(identifier == "record" for identifier, _ in result.get("shortcuts", []))
