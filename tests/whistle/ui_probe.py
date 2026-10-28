@@ -124,9 +124,13 @@ try:
         native_hash = hashes(native.directory)
         # This is the production native finalisation hook; its audio writer and
         # Pulse sources are separately exercised by the recording integration job.
-        from types import SimpleNamespace
+        from cassini_viewer.native_recorder import NativeRecorder
 
-        app._native_finished(SimpleNamespace(session=native), str(native.directory))
+        recorder = NativeRecorder()
+        recorder.session = native
+        app.native_captures["native-proof"] = recorder
+        app._native_finished(recorder, str(native.directory))
+        assert not app.native_captures
         browser = capture(
             library,
             "Browser speech",
