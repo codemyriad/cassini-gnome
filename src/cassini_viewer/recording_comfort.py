@@ -11,6 +11,7 @@ from gi.repository import Gio, GLib, Gtk
 from . import ux_formats as fmt
 from .capture_guard import native_recorders, recorder_busy
 from .recording_details import SilenceClock, edit_recording, live_meeting, live_observation
+from .session_events import meeting_sources, source_state
 from .strings import CATALOG, text
 
 LOG = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ LOG = logging.getLogger(__name__)
 def notification_payload(meeting, elapsed, *, native=False):
     # Native copy is published by the coordinator; never claim a browser path.
     identifier = "hidden.notification.nativeBody" if native else "hidden.notification.body"
-    return dict(
+    payload = dict(
         title=text("hidden.status", liveBig=fmt.live_big(elapsed)),
         body=text(identifier, title=meeting.title) if identifier in CATALOG else meeting.title,
         buttons=[
@@ -28,6 +29,9 @@ def notification_payload(meeting, elapsed, *, native=False):
         ],
         defaultAction="app.open-recording",
     )
+    if meeting_sources(meeting).fallback:
+        payload["body"] += "\n" + text("errors.othersFallback.line")
+    return payload
 
 
 class RecordingComfort:
@@ -128,7 +132,15 @@ class RecordingComfort:
         native = self._native_for(meeting)
         if native:
             state.update(levels=list(native.levels), line=native.line, minutes=native.minutes_left)
+        if not self.sources(meeting).me:
+            state["silent"] = False
         return state
+
+    def sources(self, meeting):
+        native = self._native_for(meeting)
+        if native and native.session:
+            return source_state(native.session.manifest.get("events"), default_source="system")
+        return meeting_sources(self.known.get(meeting.key, meeting))
 
     def native_level(self):
         for native in native_recorders(self.app):
@@ -179,7 +191,11 @@ class RecordingComfort:
                 self.futures[key] = future
                 future.add_done_callback(lambda f, m=meeting: GLib.idle_add(self._observed, m, f))
             clock = self.clocks.setdefault(key, SilenceClock(now))
-            state["silent"] = clock.update(state["levels"][0], now)
+            if self.sources(meeting).me:
+                state["silent"] = clock.update(state["levels"][0], now)
+            else:
+                self.clocks.pop(key, None)
+                state["silent"] = False
             if state["line"]:
                 self._disk_notification(meeting, state["line"], state["minutes"])
         # Native stopped-at-reserve remains visible after finalization.
@@ -195,7 +211,14 @@ class RecordingComfort:
                 meetings.values(),
                 key=lambda m: (m.started_at_ms if m.started_at_ms is not None else float("inf"), m.key),
             )
-            payload = notification_payload(meeting, self.elapsed(meeting), native=meeting.capture_source == "gnome")
+            payload = notification_payload(
+                meeting, self.elapsed(meeting), native=self.sources(meeting).source != "browser"
+            )
+            if (
+                any(self.sources(m).fallback for m in meetings.values())
+                and text("errors.othersFallback.line") not in payload["body"]
+            ):
+                payload["body"] += "\n" + text("errors.othersFallback.line")
             self.last_payload = payload
             notification = Gio.Notification.new(payload["title"])
             notification.set_body(payload["body"])

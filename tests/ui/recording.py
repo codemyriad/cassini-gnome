@@ -157,7 +157,7 @@ with tempfile.TemporaryDirectory() as tmp:
     original_now = window._fixed_now
     original_badge = window._live_badges[live.key]
     app.recorder = SimpleNamespace(
-        session=SimpleNamespace(directory=live.directory),
+        session=SimpleNamespace(directory=live.directory, manifest={"events": []}),
         pipeline=object(),
         _start_us=GLib.get_monotonic_time() - 65_500_000,
         levels=[0.2, 0.4],

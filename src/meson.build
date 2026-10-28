@@ -87,6 +87,9 @@ install_data(
   'cassini_viewer/received.py',
 
   'cassini_viewer/capture_guard.py',
+  'cassini_viewer/capture_sources.py',
+  'cassini_viewer/session_events.py',
+  'cassini_viewer/what_is_recorded.py',
   'cassini_viewer/strings.py',
   'cassini_viewer/strings.json',
   'cassini_viewer/library.py',
@@ -145,7 +148,7 @@ pytest = python.find_installation('python3', modules: ['pytest'], required: fals
 if pytest.found()
   test('pytest',
     pytest,
-    args: ['-m', 'pytest', '-q', meson.project_source_root() / 'tests'],
+    args: ['-m', 'pytest', '-q', '--durations=20', meson.project_source_root() / 'tests'],
     env: ['PYTHONPATH=' + meson.current_source_dir()],
     workdir: meson.project_source_root(),
     # The suite re-runs both conformance suites as subprocesses, alongside

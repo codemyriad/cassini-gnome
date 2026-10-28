@@ -7,6 +7,13 @@ The browser protocol and source format are shared with Cassini for Mac.
 
 ## Layers
 
+`app-control.mjs` also drives the production What is recorded dialog through
+off/on choices, then reloads a tab and terminates/restarts its worker. It checks
+frozen ended WAVs, new spans with the same source identity, continuous microphone,
+actual system fallback tones, independent concurrent capture, the hidden info
+line and no duplicate folders or automatic switch back. `sources.py` separately
+proves native stream release/restart and asynchronous Stop during a source change.
+
 | Layer | Checks |
 |---|---|
 | Python unit/integration tests | Framing and partial reads, size bounds, invalid metadata, path traversal, sequence rejection, gap preservation, interruption recovery, Opus finalization and decoding |

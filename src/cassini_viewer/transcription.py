@@ -81,14 +81,14 @@ def prepare_tracks(meeting):
     for index, track in enumerate(meeting.tracks):
         if not track.frames:
             continue
-        identity = track.id or "recovered-" + str(uuid5(NAMESPACE_URL, track.path.name))
+        identity = track.source_track_id or track.id or "recovered-" + str(uuid5(NAMESPACE_URL, track.path.name))
         if len(identity) > 194:
             identity = str(uuid5(NAMESPACE_URL, identity))
         speaker, name, provenance = track_speaker(dict(id=identity, kind=track.kind))
         if len(speaker) > 200:
             raise ValueError("Capture speaker identifier exceeds metadata limit")
         tracks.append(dict(id=track.path.name, path=str(track.path), offsetMs=track.start_offset_ms, speaker=speaker))
-        speakers[speaker] = dict(id=speaker, name=name, provenance=provenance, colourIndex=index)
+        speakers.setdefault(speaker, dict(id=speaker, name=name, provenance=provenance, colourIndex=index))
     return tracks, speakers
 
 

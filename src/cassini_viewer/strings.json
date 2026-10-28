@@ -5164,6 +5164,22 @@
    "milestone": "UX11",
    "note": "Coordinator (D22). Body of the Why? dialog. For the 'missing at start' case the same text applies.",
    "status": "harmony"
+  },
+  {
+   "id": "whatIsRecorded.changeFailed",
+   "en": "Couldn’t change what is recorded. Your recording so far is kept.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX11",
+   "note": "Coordinator (D22). Warn line inside the WhatIsRecorded dialog when a selection can't be applied (device failure, track limit). Action: common.tryAgain. The dialog keeps the last applied selection; nothing already recorded changes. Never show the raw error.",
+   "status": "harmony"
   }
  ]
 }

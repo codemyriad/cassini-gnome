@@ -139,7 +139,10 @@ def remote():
         ],
     )
     state.model = lambda: Manifest(json.dumps(state.manifest).encode(), origin=state.origin)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    # The default half-second shutdown poll accumulates across the download
+    # cases. Poll only this private fixture more often; request timeouts and
+    # all download assertions stay unchanged.
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     thread.start()
     yield state
     server.shutdown()

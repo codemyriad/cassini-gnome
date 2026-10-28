@@ -35,7 +35,14 @@
     "library-vectors/assets/plain-untitled.opus": "ux/library-vectors/assets/plain-untitled.opus",
     "library-vectors/assets/build.py": "ux/library-vectors/assets/build.py",
     "strings.json": "src/cassini_viewer/strings.json",
-    "LIBRARY.md": "tests/ux/LIBRARY.md"
+    "LIBRARY.md": "tests/ux/LIBRARY.md",
+    "session-events/session.json": "tests/ux/session-events/session.json",
+    "session-events/expected.json": "tests/ux/session-events/expected.json",
+    "session-events/make.py": "tests/ux/session-events/make.py",
+    "session-events/README.md": "tests/ux/session-events/README.md",
+    "session-events/browser-off-on.session.json": "tests/ux/session-events/browser-off-on.session.json",
+    "session-events/browser-off-on.expected.json": "tests/ux/session-events/browser-off-on.expected.json",
+    "SESSION-EVENTS.md": "tests/ux/SESSION-EVENTS.md"
   },
   "sha256": {
     "format-vectors.json": "ee9c9b9585e76c42f09df54d7a8933e7167527fce2ea185e78b51b1059840e51",
@@ -70,13 +77,20 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "fff4557397b94861ed2154fb441bc7250943b4feb375db9af797e3537cb348ae",
-    "LIBRARY.md": "95d431461b51a73cf81bdec206e500fa7a40bcab4e9117e41f59a7e9c29bffbd"
+    "strings.json": "f080f0280f825dcbf5ff786b1f7b5cd90e3ac1d7b1d3ec02c24b51f1f18b9a7b",
+    "LIBRARY.md": "95d431461b51a73cf81bdec206e500fa7a40bcab4e9117e41f59a7e9c29bffbd",
+    "session-events/session.json": "6bcec60cf4024421b57683d86a44d7ffd92efdc84a3e5b67e24cb09fcfb55723",
+    "session-events/expected.json": "905ad1966fa3cac23aa348109d4f694a5606ea685f3a5689cc052cf092a8a920",
+    "session-events/make.py": "ae313621bfd29b514de6fe8f6015f09ac279a02dd7f15f79b88da743d0cc8f1e",
+    "session-events/README.md": "df0bc13f0f741613641e572df432a13ede5e1d8898b00f8c4765d72fa65b9144",
+    "session-events/browser-off-on.session.json": "d652f7296dd4e778adafc700e53543e62bc0c15693ea8e29ce848b98ed19b58c",
+    "session-events/browser-off-on.expected.json": "bf324a9af624c31cca085da73817957babd98bcccab2f9742595a63b9ecd11f0",
+    "SESSION-EVENTS.md": "c4a2d46cf7ea0ce5ab5e55d9c0a8b413496ed003e3d7a1b5991d1d4821d126cd"
   },
   "additionalSources": {
     "strings.json": {
-      "commit": "44e276adfa953fcdc1f6d4cf7eebe303e40fad37",
-      "note": "D22 companion setup, capture variants and concurrent auto-record copy"
+      "commit": "0fa190ebd9c007e0137e63c69659a2a92bc87cd0",
+      "note": "D22 UX11 source-change failure warn line and Try again"
     },
     "LIBRARY-RULES.md": {
       "commit": "81799a3ab2642a67139f799f857e8ad0e81135b6",
@@ -89,6 +103,34 @@
     "LIBRARY.md": {
       "commit": "7177f1f7cd3876a379042ac8bd2905a4c57a8422",
       "note": "D16 optional speech model and model fallback copy"
+    },
+    "session-events/session.json": {
+      "commit": "3349555b8e9bd5f47236cc5ce61b1edfee201d34",
+      "note": "S-6 shared fallback and browser off/on source identity fixtures"
+    },
+    "session-events/expected.json": {
+      "commit": "3349555b8e9bd5f47236cc5ce61b1edfee201d34",
+      "note": "S-6 shared fallback and browser off/on source identity fixtures"
+    },
+    "session-events/make.py": {
+      "commit": "3349555b8e9bd5f47236cc5ce61b1edfee201d34",
+      "note": "S-6 shared fallback and browser off/on source identity fixtures"
+    },
+    "session-events/README.md": {
+      "commit": "3349555b8e9bd5f47236cc5ce61b1edfee201d34",
+      "note": "S-6 shared fallback and browser off/on source identity fixtures"
+    },
+    "session-events/browser-off-on.session.json": {
+      "commit": "3349555b8e9bd5f47236cc5ce61b1edfee201d34",
+      "note": "S-6 shared fallback and browser off/on source identity fixtures"
+    },
+    "session-events/browser-off-on.expected.json": {
+      "commit": "3349555b8e9bd5f47236cc5ce61b1edfee201d34",
+      "note": "S-6 shared fallback and browser off/on source identity fixtures"
+    },
+    "SESSION-EVENTS.md": {
+      "commit": "87ddac2f2abd6b473848f7c252bc6fac12430200",
+      "note": "S-6 with approved optional sourceTrackId"
     }
   }
 }

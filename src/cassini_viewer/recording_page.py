@@ -165,6 +165,7 @@ class RecordingPage(Adw.NavigationPage):
         self._notes_dirty = False
         self._updating_title = False
         self._line_signature = None
+        self.sources_dialog = None
         self._dirty = False
         view = Adw.ToolbarView(css_classes=["recording-page"])
         self.set_child(view)
@@ -249,8 +250,9 @@ class RecordingPage(Adw.NavigationPage):
         self.check.connect("clicked", self._check_sound)
         self.mic_row.append(self.check)
         sources.append(self.mic_row)
-        sources.append(Gtk.Separator())
-        others = Gtk.Box(spacing=14, css_classes=["recording-source"])
+        self.source_separator = Gtk.Separator()
+        sources.append(self.source_separator)
+        others = self.others_row = Gtk.Box(spacing=14, css_classes=["recording-source"])
         others.append(Gtk.Image(icon_name="computer-symbolic"))
         others_labels = vertical(2, hexpand=True)
         others_labels.append(label(text("common.theOthers"), "heading", xalign=0))
@@ -264,14 +266,13 @@ class RecordingPage(Adw.NavigationPage):
         others.append(Gtk.Box(width_request=66))
         sources.append(others)
         sources.append(Gtk.Separator())
-        sources.append(
-            Gtk.Button(
-                label=text("recording.changeWhatIsRecorded"),
-                sensitive=False,
-                css_classes=["flat", "recording-change"],
-                halign=Gtk.Align.START,
-            )
+        self.change_sources = Gtk.Button(
+            label=text("recording.changeWhatIsRecorded"),
+            css_classes=["flat", "recording-change"],
+            halign=Gtk.Align.START,
         )
+        self.change_sources.connect("clicked", self._change_sources)
+        sources.append(self.change_sources)
         column.append(sources)
         note_box = vertical(6)
         note_box.append(label(text("recording.notes.label"), "small", "heading", "dim-label", xalign=0))
@@ -299,6 +300,13 @@ class RecordingPage(Adw.NavigationPage):
 
     def elapsed(self):
         return self.app.comfort.elapsed(self.meeting)
+
+    def _change_sources(self, *_):
+        from .what_is_recorded import WhatIsRecorded
+
+        if self.sources_dialog is None or self.sources_dialog.closed:
+            self.sources_dialog = WhatIsRecorded(self)
+        self.sources_dialog.present(self.window)
 
     def _check_sound(self, *_):
         # The desktop owns its sound preferences. No change to devices by Cassini.
@@ -359,6 +367,8 @@ class RecordingPage(Adw.NavigationPage):
 
     def update(self, meeting):
         self.meeting = meeting
+        if self.sources_dialog is not None:
+            self.sources_dialog.update(meeting)
         draft = self.app.comfort.draft(meeting)
         if not self._dirty and not self._saving and not self.title_entry.has_focus():
             self._updating_title = True
@@ -372,7 +382,10 @@ class RecordingPage(Adw.NavigationPage):
         self.update_status()
 
     def update_status(self):
+        from .what_is_recorded import explain_fallback
+
         status = self.app.comfort.status(self.meeting)
+        sources = self.app.comfort.sources(self.meeting)
         self.timer.set_label(fmt.live_big(self.elapsed()))
         stopping = self.app._browser_stops
         self.stop.set_sensitive(
@@ -380,29 +393,46 @@ class RecordingPage(Adw.NavigationPage):
             and None not in stopping
             and str(self.meeting.directory) not in stopping
         )
+        self.change_sources.set_sensitive(
+            self.stop.get_sensitive() and str(self.meeting.directory) not in self.app._source_changes
+        )
+        self.mic_row.set_visible(sources.me)
+        self.others_row.set_visible(sources.others)
+        self.source_separator.set_visible(sources.me and sources.others)
         silent = status["silent"]
         self.mic_warning.set_visible(silent)
         self.check.set_visible(silent)
         (self.mic_row.add_css_class if silent else self.mic_row.remove_css_class)("mic-silent")
         for bar, level in zip((self.mic_level, self.others_level), status["levels"], strict=True):
             bar.set_fraction(level)
-        browser = self.meeting.capture_source != "gnome"
+        browser = sources.source == "browser"
         self.others_caption.set_label(
             text("recording.others.browserVoices", n=status["voices"]) if browser else text("recordFirst.sound.title")
         )
-        signature = status["line"], status["minutes"]
+        signature = status["line"], status["minutes"], sources.fallback
         if signature != self._line_signature:
             self._line_signature = signature
             while child := self.lines.get_first_child():
                 self.lines.remove(child)
-            self.lines.set_visible(bool(signature[0]))
+            self.lines.set_visible(bool(signature[0] or signature[2]))
             if signature[0]:
                 self.lines.append(InlineLine(signature[0], n=signature[1]))
+            if signature[2]:
+                self.lines.append(
+                    InlineLine(
+                        "errors.othersFallback.line",
+                        action="errors.othersFallback.action",
+                        callback=lambda: explain_fallback(self.window),
+                        info=True,
+                    )
+                )
 
     def close(self):
         if self._closed:
             return
         self._closed = True
+        if self.sources_dialog is not None and not self.sources_dialog.closed:
+            self.sources_dialog.force_close()
         self.window._editor_focus(self.title_entry, False)
         self.window._editor_focus(self.notes_view, False)
         if self._save_timer:

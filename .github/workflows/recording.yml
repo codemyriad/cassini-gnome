@@ -67,6 +67,8 @@ jobs:
         run: CASSINI_TEST_BUILD="$CASSINI_RECORDING_BUILD" tests/recording/run.sh node tests/recording/app-control.mjs
       - name: Independent native microphone copies and per-session choice
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/browser-microphone.py
+      - name: Source changes release devices and retain exact recording spans
+        run: tests/recording/run.sh /usr/bin/python3 tests/recording/sources.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

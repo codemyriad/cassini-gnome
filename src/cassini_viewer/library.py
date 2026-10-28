@@ -19,6 +19,7 @@ from .library_schema import valid
 from .meeting_state import MeetingError, MeetingState
 from .meeting_text import reading_turns
 from .recording_session import KINDS, strict_json
+from .session_events import meeting_sources, read_events
 from .strings import text
 from .transcript import build_turns, visible_turns
 
@@ -153,6 +154,7 @@ class CaptureTrack:
     channels: int = 1
     id: str | None = None
     kind: str = "unknown"
+    source_track_id: str | None = None
 
     @property
     def display_end_ms(self):
@@ -192,6 +194,7 @@ class Meeting(MeetingState):
     tracks: tuple[CaptureTrack, ...] = ()
     capture_source: str | None = None
     capture_state: str | None = None
+    capture_events: tuple[dict, ...] = ()
     audio_file: Path | None = None
     audio_size_bytes: int | None = None
     legacy_transcript_file: Path | None = None
@@ -215,7 +218,10 @@ class Meeting(MeetingState):
     def row_texts(self):
         """R11 state-specific meta and second line; no capture labels become names."""
         if self.lifecycle == "recording":
-            if self.capture_source in ("chromium", "chrome", "firefox", "browser", "browser-host"):
+            state = meeting_sources(self)
+            if self.capture_source in ("chromium", "chrome", "firefox", "browser", "browser-host") and (
+                not self.capture_events or (state.others and state.source == "browser")
+            ):
                 return text("common.listeningInsideBrowser"), text("library.row.recording.line")
             return None, None
         if self.lifecycle == "saving":
@@ -517,8 +523,26 @@ class LibraryScanner:
                 kind = value.get("kind")
                 if not isinstance(kind, str) or kind not in KINDS:
                     kind = {"track-microphone.wav": "microphone", "track-system.wav": "system"}.get(name, "unknown")
+                source_identity = value.get("sourceTrackId")
+                if source_identity is not None and (
+                    not isinstance(source_identity, str) or not source_identity or len(source_identity.encode()) > 200
+                ):
+                    source_identity = None
+                    diagnostics.append(Diagnostic(directory / name, "source-track-identity-invalid"))
+                if kind in ("microphone", "local", "system"):
+                    source_identity = None
                 tracks.append(
-                    CaptureTrack(directory / name, frames, rate, offset, value.get("ended"), channels, identity, kind)
+                    CaptureTrack(
+                        directory / name,
+                        frames,
+                        rate,
+                        offset,
+                        value.get("ended"),
+                        channels,
+                        identity,
+                        kind,
+                        source_identity,
+                    )
                 )
             except (OSError, ValueError, TypeError):
                 diagnostics.append(Diagnostic(directory, "capture-track-unreadable"))
@@ -612,6 +636,7 @@ class LibraryScanner:
             tracks=tracks,
             capture_source=capture.get("source") if origin == "own" else None,
             capture_state=capture.get("state") if origin == "own" else None,
+            capture_events=read_events(capture.get("events")) if origin == "own" else (),
             audio_file=audio_file,
             audio_size_bytes=audio_size,
             legacy_transcript_file=legacy_transcript_file,

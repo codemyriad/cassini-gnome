@@ -20,6 +20,33 @@ recording enabled. A generation-bound application lease keeps automatic capture
 independent of window visibility and prevents a late handshake from undoing Quit.
 Legacy peers retain the original second-start refusal and v1 vectors.
 
+What is recorded changes only subsequent audio. Me, The others and Both release
+disabled native sources, finalise their WAVs and create fresh WAVs with offsets
+when enabled again. Browser packets are still checked for sequence and PCM
+geometry while their side is off; their samples are discarded. Optional
+`sourceTrackId` preserves a browser speaker across spans without using labels
+as identity. Native microphone/system spans retain Me/The others.
+
+The wave-6 S-6 contract is pinned in
+[SESSION-EVENTS.md](../tests/ux/SESSION-EVENTS.md). It uses version 1's optional
+fields: each `selection`/`othersSource` event shares one sync-and-rename checkpoint
+with the track change it explains, before acknowledgment or PCM use. Shared
+fallback/off-on fixtures and hand-written expectations live in
+[session-events](../tests/ux/session-events/README.md).
+
+A confirmed rejected browser Start uses a per-meeting system fallback; an
+unknown/timed-out command is not blindly retried as a second capture. Loss of the
+browser audio connection starts system capture in the same folder without
+restarting its microphone. It does not automatically switch back. The Recording
+page and hidden notification explain the fallback. A local browser-process hint
+(PID plus kernel start tick) retains existing tab/capture bindings across worker
+restarts. It is neither participant identity nor a change to the shared protocol.
+
+Native system sound monitors the sink **after** its volume/mute controls. It can
+be silent when speakers are muted, unlike the companion's source capture.
+Capturing per-application audio before sink volume is a later improvement, not
+part of wave 6. A system-source failure never silently switches to microphone-only.
+
 The approved extension ID is `pcafdaahfhjiolfpfnlhmljfgoabbaij`. Companion setup
 opens its Web Store URL in a detected browser and writes both per-user native
 host manifests with this exact origin. Add and Connect do not fabricate a
