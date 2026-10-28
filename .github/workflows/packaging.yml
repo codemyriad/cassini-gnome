@@ -38,3 +38,13 @@ jobs:
         env:
           CASSINI_PARAKEET_TEST_CACHE: ${{ runner.temp }}/parakeet-models
         run: build-aux/flatpak/smoke.sh cassini-viewer-devel.flatpak com.gocassini.Viewer.Devel
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flatpak-bridge-evidence
+          path: |
+            flatpak-companion-bridge.json
+            flatpak-library-persistence.json
+            flatpak-*-host.log
+            flatpak-sandbox.log
+          retention-days: 7

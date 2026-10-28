@@ -30,6 +30,11 @@ class StartRejected(ValueError):
 def service_path():
     runtime = os.environ.get("XDG_RUNTIME_DIR")
     parent = Path(runtime) if runtime else Path("/tmp") / f"cassini-{os.getuid()}"
+    application = os.environ.get("FLATPAK_ID")
+    if runtime and application in {"com.gocassini.Viewer", "com.gocassini.Viewer.Devel"}:
+        # Shared by separate native-host/UI sandboxes of this deployment, but
+        # distinct from native Cassini and the other Flatpak application ID.
+        parent = parent / "app" / application
     return parent / "cassini" / "browser-v2.sock"
 
 
@@ -73,8 +78,13 @@ def ensure_service(path=None, *, cancelled=None):
     # A filesystem lock in serve() elects one process if browser and app start together.
     env = dict(os.environ)
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
+    command = [sys.executable, "-m", "cassini_viewer.browser_service", "--serve", str(target)]
+    if os.environ.get("FLATPAK_ID") in {"com.gocassini.Viewer", "com.gocassini.Viewer.Devel"}:
+        from .flatpak_bridge import broker_command
+
+        command = broker_command(target)
     subprocess.Popen(
-        [sys.executable, "-m", "cassini_viewer.browser_service", "--serve", str(target)],
+        command,
         env=env,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
@@ -899,7 +909,7 @@ class BrowserService:
                     for pending in browser.pending.values():
                         pending["event"].set()
 
-    def serve(self, path, ready=None):
+    def serve(self, path, ready=None, *, idle_timeout=None):
         import fcntl
 
         path = Path(path)
@@ -919,6 +929,7 @@ class BrowserService:
                 server.settimeout(0.5)
                 if ready:
                     ready.set()
+                idle_since = time.monotonic()
                 try:
                     while not self.closed.is_set() and path.parent.is_dir():
                         try:
@@ -929,9 +940,21 @@ class BrowserService:
                             if uid != os.getuid():
                                 connection.close()
                                 continue
+                            idle_since = time.monotonic()
                             threading.Thread(target=self.handle, args=(connection,), daemon=True).start()
                         except TimeoutError:
                             self.policy()
+                        if idle_timeout is not None:
+                            with self.lock:
+                                active = (
+                                    self.browsers
+                                    or self.applications
+                                    or any(not capture.finished for capture in self.captures.values())
+                                )
+                            if active:
+                                idle_since = time.monotonic()
+                            elif time.monotonic() - idle_since >= idle_timeout:
+                                break
                 finally:
                     path.unlink(missing_ok=True)
                     with self.lock:
@@ -948,8 +971,11 @@ class BrowserService:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--serve", required=True)
+    parser.add_argument("--idle-timeout", type=float)
     args = parser.parse_args()
-    BrowserService(require_application=True).serve(args.serve)
+    if args.idle_timeout is not None and args.idle_timeout <= 0:
+        parser.error("idle timeout must be positive")
+    BrowserService(require_application=True).serve(args.serve, idle_timeout=args.idle_timeout)
 
 
 if __name__ == "__main__":

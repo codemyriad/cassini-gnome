@@ -26,12 +26,18 @@ def in_flatpak():
 
 
 def available():
-    # W6-F supplies the host bridge. Until then /app/bin and sandbox config
-    # paths cannot be offered to a native browser as usable host registrations.
-    return not in_flatpak()
+    if not in_flatpak():
+        return True
+    from .flatpak_bridge import available as host_available
+
+    return host_available()
 
 
-def installed_browsers(*, config=None, which=shutil.which):
+def installed_browsers(*, config=None, which=shutil.which, host=True):
+    if host and in_flatpak():
+        from .flatpak_bridge import installed_browsers as host_browsers
+
+        return host_browsers()
     config = Path(config or os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
     result = []
     for name, commands, directory in (
@@ -48,7 +54,12 @@ def installed_browsers(*, config=None, which=shutil.which):
 
 def open_add(browser, *, launch=subprocess.Popen):
     """The sole Add entry point; a click never means the extension is installed."""
-    return launch([browser.executable, ADD_URL], stdin=subprocess.DEVNULL, start_new_session=True)
+    command = [browser.executable, ADD_URL]
+    if in_flatpak():
+        from .flatpak_bridge import detached_command
+
+        command = detached_command(command)
+    return launch(command, stdin=subprocess.DEVNULL, start_new_session=True)
 
 
 def host_paths():
@@ -76,6 +87,10 @@ def host_paths():
 
 def register(*, browsers=None, hosts=None):
     """Atomically write both exact-origin manifests, only under user configs."""
+    if in_flatpak():
+        from .flatpak_bridge import register as host_register
+
+        return host_register(browsers)
     browsers = installed_browsers() if browsers is None else browsers
     hosts = host_paths() if hosts is None else hosts
     if not browsers:
