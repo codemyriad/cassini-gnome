@@ -466,7 +466,24 @@ class CassiniApplication(Adw.Application):
         # Translators: Replace "translator-credits" with your name/username, and optionally an email or URL.
         about.set_translator_credits(_("translator-credits"))
         about.add_link(_("Cassini Portable Meeting Format"), "https://format.gocassini.com/")
+        from .model_download import model_root
+
+        notice = model_root() / "NOTICE.txt"
+        if notice.is_file():
+            uri = notice.as_uri()
+            about.add_link(notice.name, uri)  # Actual local filename, not new product copy.
+
+            def local_notice(_dialog, target):
+                if target == uri:
+                    Gtk.FileLauncher(file=Gio.File.new_for_path(str(notice))).launch(
+                        self.get_active_window(), None, None
+                    )
+                    return True
+                return False
+
+            about.connect("activate-link", local_notice)
         about.present(self.get_active_window())
+        return about
 
 
 def main(application_id, version, profile):
