@@ -13,7 +13,7 @@ test -n "$ort_target"
 ort=$(realpath "$stage$ort_target")
 test -d "$ort/onnxruntime"
 mkdir -p "$output"
-docker build -q -f "$root/tests/whistle/Containerfile" -t cassini-whistle-test "$root"
+docker build -q -t cassini-whistle-test - < "$root/tests/whistle/Containerfile"
 docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
   --user "$(id -u):$(id -g)" --read-only --tmpfs /tmp:rw,exec,nosuid,nodev,size=64m \
   -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/source/src \
