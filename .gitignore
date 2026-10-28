@@ -29,3 +29,6 @@ __pycache__/
 /ux-artifacts/
 
 /.whistle-cache/
+
+# Local model-core validation installation
+/_install-models/

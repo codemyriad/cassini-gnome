@@ -190,6 +190,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             # Existing, undrawn GNOME primary-menu copy is retained (HARMONY 11).
             menu.append(_("Open…"), "app.open")
             menu.append(text("common.exportEllipsis"), "win.export")
+            menu.append(_("_About Cassini"), "app.about")
             button = Gtk.MenuButton(
                 icon_name="open-menu-symbolic", menu_model=menu, tooltip_text=text("common.mainMenu"), primary=True
             )

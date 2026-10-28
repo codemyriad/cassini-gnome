@@ -44,6 +44,7 @@ jobs:
           CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/recording.py ux-artifacts/recording-gui.png
           CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/import-export.py ux-artifacts/import-export-gui.png
           CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/search.py ux-artifacts/search-gui.png
+          CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/model-notices.py ux-artifacts/notices-gui.png
           python3 - <<'PY'
           import json,struct
           from pathlib import Path
