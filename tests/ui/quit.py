@@ -28,6 +28,7 @@ if len(sys.argv) == 1:
         "keep-hidden-finish",
         "keep-hidden-writing",
         "keep-browser-finish",
+        "keep-browser-player",
         "keep-two-windows",
         "keep-reopen-two",
         "stop-interrupted",
@@ -106,9 +107,9 @@ with tempfile.TemporaryDirectory() as tmp:
     os.environ["GSETTINGS_SCHEMA_DIR"] = str(schemas)
     app = CassiniApplication("com.gocassini.QuitTest" + mode.replace("-", ""), "test", "development")
     app.transcription_enabled = mode != "stop-after-finish" and (
-        not mode.startswith("keep-") or mode in ("keep-hidden-writing", "keep-browser-finish")
+        not mode.startswith("keep-") or mode in ("keep-hidden-writing", "keep-browser-finish", "keep-browser-player")
     )
-    if mode in ("keep-hidden-writing", "keep-browser-finish"):
+    if mode in ("keep-hidden-writing", "keep-browser-finish", "keep-browser-player"):
 
         class CompletedClient:
             def __init__(self, *args, **kwargs):
@@ -183,7 +184,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 closing_at = time.monotonic()
                 app.on_quit() if mode == "quit-writing" else window.close()
                 return False
-        elif mode == "keep-browser-finish":
+        elif mode in ("keep-browser-finish", "keep-browser-player"):
             if phase == 0:
                 browser_session = RecordingSession(tmp, source="chromium")
                 browser_session.add_track("remote", "Remote", "remote", 48000, 1)
@@ -194,13 +195,35 @@ with tempfile.TemporaryDirectory() as tmp:
                 window._activity_source = SimpleNamespace(close=lambda: None, connected=True, snapshot={})
                 window._activity_source.snapshot = {browser_session.manifest["id"]: "recording"}
                 window._browser_snapshot = dict(statuses=[dict(recording=True, path=str(browser_session.directory))])
-                app.on_quit()
+                if mode == "keep-browser-player":
+                    app.test_player_window = app.new_window()
+                    app.test_player_window.present()
+                    window.close()
+                else:
+                    app.on_quit()
                 respond("keep")
                 assert app._capture_background and not window.get_visible()
+                app.test_hidden_window = window
+                if mode == "keep-browser-player":
+                    from cassini_viewer.capture_guard import refresh_capture_background
+
+                    assert refresh_capture_background(app)
+                    assert window in app.get_windows(), "Only browser observer was orphaned"
+
                 browser_session.finish()
                 window._activity_source.snapshot = {}
                 window._browser_snapshot = {}
+                if mode == "keep-browser-player":
+                    phase = 1
+                    return True
                 closing_at = time.monotonic()
+                return False
+            if phase == 1 and app.test_hidden_window not in app.get_windows():
+                if read_metadata(app.test_browser_session.directory)["transcript"]["status"] != "done":
+                    return True
+                assert not app._capture_background and app.test_player_window.get_visible()
+                closing_at = time.monotonic()
+                app.on_quit()
                 return False
         elif mode == "stop-error":
             from cassini_viewer.recording_window import RecordingWindow
@@ -365,7 +388,7 @@ with tempfile.TemporaryDirectory() as tmp:
             "none" if mode == "stop-after-finish" else "queued"
         )
         assert app.transcriber is None, "Quit started hidden inference"
-    elif mode == "keep-browser-finish":
+    elif mode in ("keep-browser-finish", "keep-browser-player"):
         assert not app._capture_background
         assert read_metadata(app.test_browser_session.directory)["transcript"]["status"] == "done"
     elif mode.startswith("keep-"):
