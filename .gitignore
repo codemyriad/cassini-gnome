@@ -32,3 +32,5 @@ __pycache__/
 
 # Local model-core validation installation
 /_install-models/
+
+.sherpa-cache/

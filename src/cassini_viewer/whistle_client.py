@@ -16,6 +16,8 @@ from .whistle_worker import PRIVACY, verify_bundle
 
 
 class WhistleClient:
+    worker_name = "Whistle"
+
     def __init__(self, bundle, *, timeout=60):
         self.bundle = verify_bundle(bundle)
         self.timeout = timeout
@@ -26,13 +28,10 @@ class WhistleClient:
         self.cancelled = threading.Event()
         self._process_lock = threading.Lock()
 
-    def start(self):
-        if self.cancelled.is_set():
-            raise CancelledError()
-        if self.process is not None:
-            raise RuntimeError("Whistle worker is already started")
-        self._buffer = b""
-        self.ready = None
+    def worker_command(self):
+        return [sys.executable, str(Path(__file__).with_name("whistle_worker.py")), str(self.bundle)]
+
+    def worker_environment(self):
         env = dict(os.environ)
         env.update(PRIVACY)
         threads = int(env.get("CASSINI_WHISTLE_THREADS", "2"))
@@ -42,11 +41,21 @@ class WhistleClient:
         env["OPENBLAS_NUM_THREADS"] = "1"
         env["OMP_NUM_THREADS"] = "1"
         env["LD_PRELOAD"] = str(self.bundle / "libcassini_whistle_cpu.so")
+        return env
+
+    def start(self):
+        if self.cancelled.is_set():
+            raise CancelledError()
+        if self.process is not None:
+            raise RuntimeError(self.worker_name + " worker is already started")
+        self._buffer = b""
+        self.ready = None
+        env = self.worker_environment()
         with self._process_lock:
             if self.cancelled.is_set():
                 raise CancelledError()
             self.process = subprocess.Popen(
-                [sys.executable, str(Path(__file__).with_name("whistle_worker.py")), str(self.bundle)],
+                self.worker_command(),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
@@ -72,17 +81,17 @@ class WhistleClient:
                     continue
                 self.cancel()
                 self.close()
-                raise RuntimeError("Whistle worker timed out")
+                raise RuntimeError(self.worker_name + " worker timed out")
             data = os.read(self.process.stdout.fileno(), 65536)
             if not data or len(self._buffer) + len(data) > 1024 * 1024:
-                raise RuntimeError("Whistle worker exited or exceeded the reply limit")
+                raise RuntimeError(self.worker_name + " worker exited or exceeded the reply limit")
             self._buffer += data
         line, self._buffer = self._buffer.split(b"\n", 1)
         if self.cancelled.is_set():
             raise CancelledError()
         result = json.loads(line)
         if expected is not None and result.get("type") != expected:
-            raise RuntimeError("Whistle worker failed: " + str(result.get("message", "invalid reply")))
+            raise RuntimeError(self.worker_name + " worker failed: " + str(result.get("message", "invalid reply")))
         return result
 
     def transcribe(self, path):

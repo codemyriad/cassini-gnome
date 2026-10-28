@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "decision": "D16 (draft, strict option)",
+  "platform": "any",
+  "enginePins": {
+    "engine": "codemyriad sherpa-onnx v1.13.7-cassini.8",
+    "linuxCApiSha256": "9f461c6b5bb2c57567971cde1fc6fd7762a395427f4063d0ee9b8611c3e1fddc"
+  },
+  "exceptions": [
+    {
+      "golden": "parakeet-pipeline-golden.json",
+      "goldenSha256": "dbb556030e2c4ae8c6b981457a3341ce78dce7ec8c7d0c1be794374627b16534",
+      "segmentIndex": 6,
+      "startSample": 461312,
+      "endSample": 493056,
+      "segmentInputSha256": "f3a2daf45deef0d97b01f323e6d213826a50f067cda585fceeeb1141b58bd3f1",
+      "wordIndex": 50,
+      "expectedWord": "not",
+      "actualWord": "not.",
+      "allowedWords": [
+        "not",
+        "not."
+      ],
+      "evidence": [
+        "pipe-qemu-Nehalem.json",
+        "pipe-qemu-Haswell.json"
+      ]
+    },
+    {
+      "golden": "parakeet-pipeline-golden.json",
+      "goldenSha256": "dbb556030e2c4ae8c6b981457a3341ce78dce7ec8c7d0c1be794374627b16534",
+      "segmentIndex": 5,
+      "startSample": 318976,
+      "endSample": 458240,
+      "segmentInputSha256": "41bff288087c3ab5fb7d27b5a952b2f1d67e1083305872c513b99f2ce20e5210",
+      "wordIndex": 35,
+      "expectedWord": "you",
+      "actualWord": "you,",
+      "allowedWords": [
+        "you",
+        "you,"
+      ],
+      "evidence": [
+        "pipe-qemu-Haswell.json"
+      ]
+    },
+    {
+      "golden": "parakeet-pipeline-golden.json",
+      "goldenSha256": "dbb556030e2c4ae8c6b981457a3341ce78dce7ec8c7d0c1be794374627b16534",
+      "segmentIndex": 7,
+      "startSample": 495104,
+      "endSample": 598528,
+      "segmentInputSha256": "d4f440bbdf43764c04957bc6cd91d7e3425efa720f0c98f92100ee77a07cd9e0",
+      "wordIndex": 57,
+      "expectedWord": "you,",
+      "actualWord": "you",
+      "allowedWords": [
+        "you",
+        "you,"
+      ],
+      "evidence": [
+        "pipe-qemu-Haswell.json"
+      ]
+    }
+  ],
+  "note": "Punctuation-only flips from the same fork binaries under qemu-x86_64 (-cpu Nehalem = SSE4.2, -cpu Haswell-noTSX = AVX2). Letters/numbers never changed; segment input hashes identical."
+}

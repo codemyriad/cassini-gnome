@@ -330,7 +330,10 @@ def process_tracks(model, tracks, vad_model, notify):
         ):
             plan.append((order, track, segment, offset))
     remaining = sum((s["endSample"] - s["startSample"]) / RATE for _, _, s, _ in plan)
-    notify("planned", etaMinutes=math.ceil(remaining * 0.15 / 60), segments=len(plan), diagnostics=diagnostics)
+    initial_factor = getattr(model, "initial_realtime_factor", 0.15)
+    notify(
+        "planned", etaMinutes=math.ceil(remaining * initial_factor / 60), segments=len(plan), diagnostics=diagnostics
+    )
     elapsed = processed = 0.0
     language = "und"
     for _order, grouped in groupby(plan, key=lambda entry: entry[0]):
@@ -350,7 +353,7 @@ def process_tracks(model, tracks, vad_model, notify):
                 seconds = (segment["endSample"] - segment["startSample"]) / RATE
                 processed += seconds
                 remaining = max(0, remaining - seconds)
-                factor = elapsed / processed if processed else 0.15
+                factor = elapsed / processed if processed else initial_factor
                 notify(
                     "progress",
                     inputSha256=input_hash,

@@ -2765,6 +2765,38 @@
    "status": "drawn"
   },
   {
+   "id": "models.parakeetUltra.removedFallback",
+   "en": "Parakeet Ultra was removed. New meetings use Whistle.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "Coordinator (D16 §6). Info line under the speech group after Remove of the model in use.",
+   "status": "harmony"
+  },
+  {
+   "id": "models.parakeetUltra.invalidFallback",
+   "en": "Parakeet Ultra needs to be downloaded again. New meetings use Whistle until then.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX8b",
+   "note": "Coordinator (D16 §6). Info line under the speech group when the installed files fail their check before use; the bad files are deleted.",
+   "status": "harmony"
+  },
+  {
    "id": "player.a11y",
    "en": "Player",
    "platforms": [

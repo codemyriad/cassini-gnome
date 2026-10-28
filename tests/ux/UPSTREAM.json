@@ -34,13 +34,14 @@
     "library-vectors/assets/plain-title.opus": "ux/library-vectors/assets/plain-title.opus",
     "library-vectors/assets/plain-untitled.opus": "ux/library-vectors/assets/plain-untitled.opus",
     "library-vectors/assets/build.py": "ux/library-vectors/assets/build.py",
-    "strings.json": "src/cassini_viewer/strings.json"
+    "strings.json": "src/cassini_viewer/strings.json",
+    "LIBRARY.md": "tests/ux/LIBRARY.md"
   },
   "sha256": {
     "format-vectors.json": "ee9c9b9585e76c42f09df54d7a8933e7167527fce2ea185e78b51b1059840e51",
     "states-vectors.json": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
     "LIBRARY-RULES.md": "95a0e5068a08efa521f6eed73799b715ab50b2cf6aee374570b5337a6a3bdd2a",
-    "meeting.schema.json": "b848e53c11cad33e729dde8a12c75108f7b365fe3eb0c1cc9a45c536c9e70ed7",
+    "meeting.schema.json": "aed7704a3f6916d156f122cb60dd31c2cffe4a5701fcaebae691dd14dd5be03c",
     "library-vectors/verify.py": "2011c3a7fc8d6fd5c58a4f06b16e8397f081755f743725f2732e332e4d1767da",
     "library-vectors/README.md": "8e8cbbe91ab72bbf9f404a94ab3b83822f4e137cca8cbbb25afd493b78394b54",
     "library-vectors/cases.json": "80723c1274ac44d8b23d0a154daa7b6fc5e559a1fceb6491b8e52558c4a6ce2b",
@@ -69,20 +70,25 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "ee802a70862cf40d068eb263f7994a7654c4771c2f819986f37d0b9431fd35f6"
+    "strings.json": "766ad8b95c0ba86ce57ee0cceec17c4540aaea128b5a07c4845a532e6cd26f85",
+    "LIBRARY.md": "95d431461b51a73cf81bdec206e500fa7a40bcab4e9117e41f59a7e9c29bffbd"
   },
   "additionalSources": {
     "strings.json": {
-      "commit": "495ba4a9004321d489222fc914efb6ada5dee1b1",
-      "note": "D15.1 Library moves, connected status and downloaded-model licences"
+      "commit": "7177f1f7cd3876a379042ac8bd2905a4c57a8422",
+      "note": "D16 optional speech model and model fallback copy"
     },
     "LIBRARY-RULES.md": {
       "commit": "81799a3ab2642a67139f799f857e8ad0e81135b6",
       "note": "D11.2 source names and UX13 published action copy"
     },
     "meeting.schema.json": {
-      "commit": "81799a3ab2642a67139f799f857e8ad0e81135b6",
-      "note": "D11.2 source names and UX13 published action copy"
+      "commit": "7177f1f7cd3876a379042ac8bd2905a4c57a8422",
+      "note": "D16 optional speech model and model fallback copy"
+    },
+    "LIBRARY.md": {
+      "commit": "7177f1f7cd3876a379042ac8bd2905a4c57a8422",
+      "note": "D16 optional speech model and model fallback copy"
     }
   }
 }
