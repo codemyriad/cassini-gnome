@@ -28,7 +28,13 @@ jobs:
           bundle: cassini-viewer-devel.flatpak
           manifest-path: build-aux/flatpak/com.gocassini.Viewer.Devel.json
           cache-key: flatpak-builder-${{ github.sha }}
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/parakeet-models
+          key: parakeet-ultra-18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
       # The same offline check as the other packages: install the bundle and
       # write the D11 goldens down in a sandbox with --unshare=network.
       - name: Smoke-test the installed Flatpak offline
+        env:
+          CASSINI_PARAKEET_TEST_CACHE: ${{ runner.temp }}/parakeet-models
         run: build-aux/flatpak/smoke.sh cassini-viewer-devel.flatpak com.gocassini.Viewer.Devel

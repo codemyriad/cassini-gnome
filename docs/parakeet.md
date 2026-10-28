@@ -8,7 +8,8 @@ Model acquisition and model selection are separate operations.
 
 ## Packaging handoff
 
-Packaging recipes are owned by the coordinator. To enable this engine:
+D21 hands the sherpa additions in the package recipes to the GNOME agent.
+Debian, RPM, Arch and Flatpak enable this engine with the same pinned inputs:
 
 1. Fetch build inputs with `build-aux/sherpa-cache.sh`; set
    `CASSINI_SHERPA_CACHE` to the retained build cache. This fetches **only**
@@ -24,7 +25,9 @@ Packaging recipes are owned by the coordinator. To enable this engine:
    native sherpa runtime uses a separate pinned ONNX Runtime 1.27.1 library;
    these are intentionally distinct. No new system Python binding is needed.
 5. Run `tests/parakeet/run.sh WHISTLE_BUNDLE MODEL_DIR SHERPA_DIR OUTPUT_DIR`
-   against the installed tree. Preparing test weights uses
+   against the installed tree. The package smoke checks use its `--installed`
+   entry point inside the distribution or Flatpak sandbox with no network.
+   Preparing test weights uses
    `tests/parakeet/prepare_model.py --cache DISK_BACKED_DIRECTORY`; this is a
    test fixture, never an installed package payload.
 

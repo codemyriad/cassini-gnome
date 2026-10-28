@@ -9,7 +9,7 @@ include /usr/share/dpkg/architecture.mk
 # build-aux/deb/build.sh fills (build-aux/whistle-cache.sh) before building;
 # the build itself never downloads.
 override_dh_auto_configure:
-	dh_auto_configure -- -Dwhistle=enabled -Dwhistle_cache=.whistle-cache
+	dh_auto_configure -- -Dwhistle=enabled -Dwhistle_cache=.whistle-cache -Dsherpa=enabled -Dsherpa_cache=.sherpa-cache
 
 # The app checks every file of the bundle against its pinned sha256 before it
 # loads anything, so nothing may rewrite it: not strip-nondeterminism (which
@@ -19,15 +19,16 @@ override_dh_auto_configure:
 ORT_DIR = debian/cassini-viewer/usr/lib/$(DEB_HOST_MULTIARCH)/cassini-viewer/python
 
 override_dh_strip_nondeterminism:
-	dh_strip_nondeterminism -Xwhistle/ -Xcassini-viewer/python/
+	dh_strip_nondeterminism -Xwhistle/ -Xcassini-viewer/python/ -Xcassini-viewer/sherpa/
 
 override_dh_dwz:
-	dh_dwz -Xwhistle/ -Xcassini-viewer/python/
+	dh_dwz -Xwhistle/ -Xcassini-viewer/python/ -Xcassini-viewer/sherpa/
 
 override_dh_strip:
-	dh_strip -Xwhistle/ -Xcassini-viewer/python/
+	dh_strip -Xwhistle/ -Xcassini-viewer/python/ -Xcassini-viewer/sherpa/
 	python3 whistle/verify.py debian/cassini-viewer/usr/share/cassini-viewer/whistle
 	python3 whistle/verify.py --onnxruntime $(ORT_DIR)
+	python3 sherpa/fetch.py --cache .sherpa-cache --verify debian/cassini-viewer/usr/lib/$(DEB_HOST_MULTIARCH)/cassini-viewer/sherpa
 
 # The private ONNX Runtime is built for this python3 (CPython ABI), like any
 # extension module: depend on exactly this Python version.

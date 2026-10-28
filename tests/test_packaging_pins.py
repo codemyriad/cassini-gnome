@@ -10,6 +10,10 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 PINS = json.loads((ROOT / "whistle/pins.json").read_text())
 ARTIFACTS = PINS["artifacts"]
+SHERPA = json.loads((ROOT / "src/cassini_viewer/sherpa-pins.json").read_text())["sherpa-onnx-go-linux"]
+SHERPA_FILES = {Path(n).name: pin for n, pin in SHERPA["files"].items() if not n.endswith("cxx-api.so")}
+SHERPA_SUMS_SHA = "fa59734ebf92a17c5edc6793b74c8f8e0a184df640597d62f1208ceb0d66ca78"
+
 WHEELS = PINS["onnxruntime"]["wheels"]
 FLATPAK = [
     ROOT / "build-aux/flatpak" / name for name in ("com.gocassini.Viewer.json", "com.gocassini.Viewer.Devel.json")
@@ -61,9 +65,11 @@ def test_pkgbuild_checksums_follow_the_source_order():
     pkgbuild = (ROOT / "build-aux/arch/PKGBUILD").read_text()
     sources = ["".join(parts) for parts in _pkgbuild_array(pkgbuild, "source")]
     sums = ["".join(parts) for parts in _pkgbuild_array(pkgbuild, "sha256sums")]
-    assert len(sources) == len(sums) == len(ARTIFACTS) + 2
+    assert len(sources) == len(sums) == len(ARTIFACTS) + 2 + len(SHERPA_FILES) + 1
     pinned = {name: info["sha256"] for name, info in ARTIFACTS.items()}
     pinned.update({info["url"].rsplit("/", 1)[1]: info["sha256"] for info in WHEELS.values()})
+    pinned.update({name: pin["sha256"] for name, pin in SHERPA_FILES.items()})
+    pinned["CASSINI-SHA256SUMS"] = SHERPA_SUMS_SHA
     for source, digest in zip(sources[1:], sums[1:], strict=True):
         name = source.split("::")[0] if "::" in source else source.rsplit("/", 1)[1]
         assert pinned[name] == digest, name
@@ -107,7 +113,12 @@ def test_flatpak_bundles_whistle_and_matching_wheels_only_on_x86_64(path):
     assert all(s["only-arches"] == ["x86_64"] for s in cached.values())
     options = app["build-options"]
     assert options["no-debuginfo"]
-    assert options["arch"]["x86_64"]["config-opts"] == ["-Dwhistle=enabled", "-Dwhistle_cache=.whistle-cache"]
+    assert options["arch"]["x86_64"]["config-opts"] == [
+        "-Dwhistle=enabled",
+        "-Dwhistle_cache=.whistle-cache",
+        "-Dsherpa=enabled",
+        "-Dsherpa_cache=.sherpa-cache",
+    ]
     assert "-Dwhistle=enabled" not in app.get("config-opts", [])
 
 
@@ -119,7 +130,7 @@ def test_debian_package_is_amd64_and_keeps_the_bundle_unstripped():
     assert re.search(r"^\s+\$\{cassini:Python\},$", control, re.M) and "-Vcassini:Python=" in rules
     assert "-Dwhistle=enabled" in rules
     for helper in ("dh_strip", "dh_dwz", "dh_strip_nondeterminism"):
-        assert f"\t{helper} -Xwhistle/ -Xcassini-viewer/python/\n" in rules
+        assert f"\t{helper} -Xwhistle/ -Xcassini-viewer/python/ -Xcassini-viewer/sherpa/\n" in rules
     assert "verify.py --onnxruntime $(ORT_DIR)" in rules
 
 
@@ -131,3 +142,31 @@ def test_every_supported_python_has_a_pinned_onnxruntime_wheel():
         assert info["url"].startswith("https://files.pythonhosted.org/") and re.fullmatch(
             r"[0-9a-f]{64}", info["sha256"]
         )
+
+
+@pytest.mark.parametrize("path", FLATPAK, ids=lambda p: p.name)
+def test_flatpak_runtime_sources_match_d16_and_exclude_model_weights(path):
+    app = json.loads(path.read_text())["modules"][-1]
+    cached = {
+        s.get("dest-filename", s["url"].rsplit("/", 1)[1]): s
+        for s in app["sources"]
+        if s.get("dest") == ".sherpa-cache"
+    }
+    assert set(cached) == set(SHERPA_FILES) | {"CASSINI-SHA256SUMS"}
+    for name, source in cached.items():
+        expected = SHERPA_SUMS_SHA if name == "CASSINI-SHA256SUMS" else SHERPA_FILES[name]["sha256"]
+        assert source["sha256"] == expected
+        assert SHERPA["commit"] in source["url"]
+        assert source["only-arches"] == ["x86_64"]
+    assert not any("dist.gocassini.com" in s.get("url", "") for s in app["sources"])
+
+
+def test_rpm_runtime_sources_use_the_pinned_fork_without_model_weights():
+    spec = (ROOT / "build-aux/rpm/cassini-viewer.spec").read_text()
+    sources = dict(re.findall(r"^Source([6-8]):\s*(\S+)$", spec, re.M))
+    assert len(sources) == 3
+    assert all(SHERPA["commit"] in url for url in sources.values())
+    assert {url.rsplit("/", 1)[1] for url in sources.values()} == set(SHERPA_FILES) | {"CASSINI-SHA256SUMS"}
+    assert "dist.gocassini.com" not in spec
+    assert "sherpa/fetch.py --cache .sherpa-cache --verify" in spec
+    assert "%license %{_datadir}/licenses/%{name}/sherpa" in spec

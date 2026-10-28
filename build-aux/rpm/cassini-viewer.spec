@@ -37,6 +37,11 @@ Source5:        https://files.pythonhosted.org/packages/0d/ac/67ebbaab4b3083f2a6
 %if "%{?python3_version_nodots}" == "314"
 Source5:        https://files.pythonhosted.org/packages/30/2e/5c6ec7e26a097e97ee70f2dee68b8ca4d9d26701f2f33c3f8ab585cb89fe/onnxruntime-1.31.0-cp314-cp314-manylinux_2_28_x86_64.whl
 %endif
+
+# D16 Cassini C API and its private native ONNX Runtime; no model weights.
+Source6:        https://raw.githubusercontent.com/codemyriad/sherpa-onnx-go-linux/03a94bc4bfc1e1bd455cd2fa62b93e8d73817a85/lib/x86_64-unknown-linux-gnu/libonnxruntime.so
+Source7:        https://raw.githubusercontent.com/codemyriad/sherpa-onnx-go-linux/03a94bc4bfc1e1bd455cd2fa62b93e8d73817a85/lib/x86_64-unknown-linux-gnu/libsherpa-onnx-c-api.so
+Source8:        https://raw.githubusercontent.com/codemyriad/sherpa-onnx-go-linux/03a94bc4bfc1e1bd455cd2fa62b93e8d73817a85/CASSINI-SHA256SUMS
 # The engine is a pinned glibc x86_64 binary.
 ExclusiveArch:  x86_64
 
@@ -52,6 +57,10 @@ ExclusiveArch:  x86_64
 # libneedle3.so has the SONAME libneedle.so, and ONNX Runtime ships
 # libonnxruntime_providers_shared.so; both are private to the app.
 %global __provides_exclude_from ^(%{_datadir}/%{name}/whistle|%{_libdir}/%{name})/.*$
+# The C API's unversioned native ORT dependency is satisfied privately by
+# the hash-checked sibling, preloaded by the worker. Keep libc/libstdc++ and
+# other system dependencies generated normally.
+%global __requires_exclude ^libonnxruntime\\.so\\(\\)\\(64bit\\)$
 # The private dist-info is outside site-packages, so the Python dependency
 # generator skips it anyway; never let it read the METADATA, which lists
 # packages the app does not use (protobuf, flatbuffers, sympy extras).
@@ -152,14 +161,21 @@ cp -p %{SOURCE4} .whistle-cache/silero_vad.onnx
 %{!?SOURCE5:echo "No pinned ONNX Runtime wheel for Python %{python3_version}; see whistle/pins.json" >&2; exit 1}
 cp -p %{SOURCE5} .whistle-cache/
 
+mkdir -p .sherpa-cache
+cp -p %{SOURCE6} .sherpa-cache/libonnxruntime.so
+cp -p %{SOURCE7} .sherpa-cache/libsherpa-onnx-c-api.so
+cp -p %{SOURCE8} .sherpa-cache/CASSINI-SHA256SUMS
+
 %build
-%meson -Dwhistle=enabled -Dwhistle_cache=.whistle-cache
+%meson -Dwhistle=enabled -Dwhistle_cache=.whistle-cache -Dsherpa=enabled -Dsherpa_cache=.sherpa-cache
 %meson_build
 
 %install
 # openSUSE strips in its own brp scripts; see debug_package above.
 export NO_BRP_STRIP_DEBUG=true
 %meson_install
+mkdir -p %{buildroot}%{_datadir}/licenses/%{name}/sherpa
+cp -p sherpa/NOTICE.md sherpa/LICENSE-sherpa-Apache-2.0.txt sherpa/LICENSE-ONNXRuntime-MIT.txt %{buildroot}%{_datadir}/licenses/%{name}/sherpa/
 # Meson installs the launchers 0555; packaging policy wants 0755.
 chmod 0755 %{buildroot}%{_bindir}/%{name} %{buildroot}%{_bindir}/cassini-browser-host \
   %{buildroot}%{_bindir}/cassini-browser-control-host \
@@ -174,11 +190,13 @@ echo "%%dir %{_datadir}/%{name}" >> %{name}.lang
 # Catches anything that changed the installed bundle, such as stripping.
 python3 whistle/verify.py %{buildroot}%{_datadir}/%{name}/whistle
 python3 whistle/verify.py --onnxruntime %{buildroot}%{_libdir}/%{name}/python
+python3 sherpa/fetch.py --cache .sherpa-cache --verify %{buildroot}%{_libdir}/%{name}/sherpa
 
 %files -f %{name}.lang
 %license COPYING
 %license whistle/NOTICE.md whistle/LICENSE-Apache-2.0.txt whistle/LICENSE-Silero-MIT.txt
 %license whistle/LICENSE-ONNXRuntime-MIT.txt
+%license %{_datadir}/licenses/%{name}/sherpa
 %doc README.md NEWS
 %{_bindir}/%{name}
 %{_bindir}/cassini-browser-host

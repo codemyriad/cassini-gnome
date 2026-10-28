@@ -61,6 +61,23 @@ Comment: Not in the source tree: ONNX Runtime 1.31.0, the PyPI wheel for the
  licences; onnxruntime/ThirdPartyNotices.txt, installed with it, lists them.
  Source: https://github.com/microsoft/onnxruntime
 
+Files: sherpa/libsherpa-onnx-c-api.so
+Copyright: 2022-2026 Xiaomi Corporation and sherpa-onnx contributors
+License: Apache-2.0
+Comment: Not in the source tree: the Cassini fork C API at
+ https://raw.githubusercontent.com/codemyriad/sherpa-onnx-go-linux/03a94bc4bfc1e1bd455cd2fa62b93e8d73817a85/
+ fetched at build time, pinned by size and SHA256 in
+ src/cassini_viewer/sherpa-pins.json, installed unstripped in
+ /usr/lib/<multiarch>/cassini-viewer/sherpa. No model weights are packaged.
+ See sherpa/NOTICE.md and sherpa/LICENSE-sherpa-Apache-2.0.txt.
+
+Files: sherpa/libonnxruntime.so
+Copyright: Microsoft Corporation
+License: MIT
+Comment: Not in the source tree: the fork's native ONNX Runtime 1.27.1,
+ fetched and verified with the C API, kept separate from the Python 1.31
+ runtime used by Silero. See sherpa/LICENSE-ONNXRuntime-MIT.txt.
+
 License: GPL-3.0-or-later
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by

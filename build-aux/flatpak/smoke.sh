@@ -9,10 +9,20 @@ cd "$(dirname "$0")/../.."
 BUNDLE=$1 APP_ID=$2
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 flatpak install --user -y --noninteractive --reinstall --bundle "$BUNDLE"
+model_cache=${CASSINI_PARAKEET_TEST_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/cassini/package-test-models}
+if [ "$(uname -m)" = x86_64 ]; then
+  python3 tests/parakeet/prepare_model.py --cache "$model_cache"
+  model=$(realpath "$model_cache/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9")
+fi
 set -- -I "$PWD/build-aux/smoke-installed.py" /app/share/cassini-viewer
 if [ "$(uname -m)" = x86_64 ]; then
-  set -- "$@" --whistle "$PWD/tests/whistle"
+  set -- "$@" --whistle "$PWD/tests/whistle" --parakeet "$model" --parakeet-tests "$PWD/tests/parakeet"
+fi
+# --filesystem below grants only test fixture reads, not package payload.
+set -- --command=python3 "$APP_ID" "$@"
+if [ "$(uname -m)" = x86_64 ]; then
+  set -- --filesystem="$model:ro" "$@"
 fi
 flatpak run --unshare=network --no-documents-portal \
-  --filesystem="$PWD/build-aux:ro" --filesystem="$PWD/tests/whistle:ro" \
-  --command=python3 "$APP_ID" "$@"
+  --filesystem="$PWD/build-aux:ro" --filesystem="$PWD/tests:ro" \
+  "$@"

@@ -57,7 +57,9 @@
                     "x86_64": {
                         "config-opts": [
                             "-Dwhistle=enabled",
-                            "-Dwhistle_cache=.whistle-cache"
+                            "-Dwhistle_cache=.whistle-cache",
+                            "-Dsherpa=enabled",
+                            "-Dsherpa_cache=.sherpa-cache"
                         ]
                     }
                 }
@@ -87,7 +89,8 @@
                         "debian/cassini-viewer",
                         "tests/recording/node_modules",
                         "tests/recording/artifacts",
-                        ".whistle-cache"
+                        ".whistle-cache",
+                        ".sherpa-cache"
                     ]
                 },
                 {
@@ -135,6 +138,35 @@
                     "url": "https://files.pythonhosted.org/packages/0d/ac/67ebbaab4b3083f2a6b27ee6c4aa400c7f8d6c72b5499aac7e4cd6ba74f5/onnxruntime-1.31.0-cp313-cp313-manylinux_2_28_x86_64.whl",
                     "sha256": "37fd78cee5160c7a43a1730ccb3682ffd880af9c9e80385d625c0c2f8b125809",
                     "dest": ".whistle-cache",
+                    "only-arches": [
+                        "x86_64"
+                    ]
+                },
+                {
+                    "type": "file",
+                    "url": "https://raw.githubusercontent.com/codemyriad/sherpa-onnx-go-linux/03a94bc4bfc1e1bd455cd2fa62b93e8d73817a85/lib/x86_64-unknown-linux-gnu/libonnxruntime.so",
+                    "sha256": "c85f471e1bd5059a4556038f7f5288fa41141647613688452ae7de4879150903",
+                    "dest": ".sherpa-cache",
+                    "dest-filename": "libonnxruntime.so",
+                    "only-arches": [
+                        "x86_64"
+                    ]
+                },
+                {
+                    "type": "file",
+                    "url": "https://raw.githubusercontent.com/codemyriad/sherpa-onnx-go-linux/03a94bc4bfc1e1bd455cd2fa62b93e8d73817a85/lib/x86_64-unknown-linux-gnu/libsherpa-onnx-c-api.so",
+                    "sha256": "9f461c6b5bb2c57567971cde1fc6fd7762a395427f4063d0ee9b8611c3e1fddc",
+                    "dest": ".sherpa-cache",
+                    "dest-filename": "libsherpa-onnx-c-api.so",
+                    "only-arches": [
+                        "x86_64"
+                    ]
+                },
+                {
+                    "type": "file",
+                    "url": "https://raw.githubusercontent.com/codemyriad/sherpa-onnx-go-linux/03a94bc4bfc1e1bd455cd2fa62b93e8d73817a85/CASSINI-SHA256SUMS",
+                    "sha256": "fa59734ebf92a17c5edc6793b74c8f8e0a184df640597d62f1208ceb0d66ca78",
+                    "dest": ".sherpa-cache",
                     "only-arches": [
                         "x86_64"
                     ]
