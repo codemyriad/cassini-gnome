@@ -289,6 +289,7 @@ class SettingsDialog(Adw.PreferencesDialog):
 
     def _automatic_changed(self, *_):
         if not self._updating:
+            self.app.set_auto_recording_hold(self.automatic.get_active())
             self._request("configure", autoRecord=self.automatic.get_active())
 
     def _request(self, action="status", **values):

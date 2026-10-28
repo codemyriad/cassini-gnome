@@ -51,10 +51,12 @@ def host_paths():
         ("com.codemyriad.cassini.control", "control_host.py"),
     ):
         command = "cassini-browser-control-host" if name.endswith(".control") else "cassini-browser-host"
-        candidate = Path(bindir) / command if bindir else None
-        if candidate is None or not candidate.is_file():
+        if bindir:
+            candidate = Path(bindir) / command
+        else:
+            local = here.parents[1] / "browser-extension" / development
             executable = shutil.which(command)
-            candidate = Path(executable) if executable else here.parents[1] / "browser-extension" / development
+            candidate = local if local.is_file() else Path(executable) if executable else local
         candidate = candidate.resolve(strict=True)
         if not candidate.is_file() or not os.access(candidate, os.X_OK):
             raise OSError("Native messaging host is not executable")

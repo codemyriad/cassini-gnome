@@ -87,3 +87,13 @@ def test_add_opens_the_approved_store_url_in_the_chosen_browser_without_a_shell(
     ((args, kwargs),) = calls
     assert args == (["/chosen/brave", companion.ADD_URL],)
     assert "shell" not in kwargs
+
+
+def test_source_checkout_registers_its_own_hosts_before_any_installed_old_version(monkeypatch):
+    monkeypatch.setattr(companion.shutil, "which", lambda _: "/old/unrelated/native-host")
+    hosts = companion.host_paths()
+    root = Path(__file__).parents[1] / "browser-extension"
+    assert hosts == {
+        "com.codemyriad.cassini": root / "native_host.py",
+        "com.codemyriad.cassini.control": root / "control_host.py",
+    }

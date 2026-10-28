@@ -20,9 +20,20 @@ def main(
     host = BrowserHost(directory)
     logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
     try:
+        independent = False
         while (message := read_message(incoming)) is not None:
+            if (
+                message.get("type") == "start"
+                and message.get("independent") is True
+                and not independent
+                and host.session is None
+            ):
+                from .browser_audio_proxy import BrowserAudioProxy
+
+                host = BrowserAudioProxy()
+                independent = True
             result = host.handle(message)
-            if result["type"] == "stopped" and open_completed:
+            if result["type"] == "stopped" and open_completed and not independent:
                 try:
                     launcher(
                         [str(viewer_path or "cassini-viewer"), str(Path(result["path"]) / "session.json")],
