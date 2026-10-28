@@ -10,6 +10,8 @@ import pytest
 
 from cassini_viewer import worker_diarization as worker
 
+pytest.importorskip("numpy")  # Core/Whistle-light profiles need no PCM worker dependencies.
+
 
 def audio(path, frames=16000, sample=100):
     with wave.open(str(path), "wb") as stream:
