@@ -35,8 +35,12 @@ def regular_input(path):
 
 
 def import_received(path, root=None):
-    original = Path(path).resolve(strict=True)
-    if original.suffix.lower() not in (".opus", ".ogg") or not original.is_file():
+    original = Path(path).absolute()
+    if (
+        original.suffix.lower() not in (".opus", ".ogg")
+        or not original.name.rsplit(".", 1)[0].strip(".")
+        or not original.is_file()
+    ):
         raise ValueError("Choose an Ogg Opus recording")
     requested_root = root
     root = library_root(root).resolve()
@@ -46,9 +50,13 @@ def import_received(path, root=None):
         try:
             # The shared folder schema uses a lowercase .opus copy name even
             # for an .ogg or uppercase source. Keep the Opus bytes untouched.
-            copy_name = original.stem.replace("\\", "-") + ".opus"
+            stem = original.stem.replace("\\", "-").strip(".") or "recording"
+            # Linux NAME_MAX is in bytes; the Library schema also limits the
+            # resulting basename. Truncate only the copy name, never the audio.
+            stem = stem.encode("utf-8").decode("utf-8")
+            copy_name = stem.encode("utf-8")[:250].decode("utf-8", errors="ignore") + ".opus"
             copied = stage / copy_name
-            with regular_input(original.resolve(strict=True)) as source, copied.open("xb") as output:
+            with regular_input(original) as source, copied.open("xb") as output:
                 before = os.fstat(source.fileno())
                 os.chmod(copied, 0o600)
                 digest = hashlib.sha256()
@@ -107,8 +115,14 @@ def import_received(path, root=None):
                 quoteOverride=None,
                 received=dict(originalName=copy_name, importedAtMs=time.time_ns() // 1000000, sha256=sha),
             )
-            if original.parent.name and "\\" not in original.parent.name:
-                metadata["received"]["originalFolderName"] = original.parent.name
+            folder = original.parent.name
+            if folder and folder not in (".", "..") and "\\" not in folder and len(folder) <= 255:
+                try:
+                    folder.encode("utf-8")
+                except UnicodeEncodeError:
+                    pass
+                else:
+                    metadata["received"]["originalFolderName"] = folder
             if not valid(metadata):
                 raise ValueError("Received recording metadata is invalid")
             if (

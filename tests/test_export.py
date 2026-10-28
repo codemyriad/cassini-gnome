@@ -429,3 +429,39 @@ def test_reexport_keeps_explicit_recording_label_and_never_promotes_import_date(
     exported = export_meeting(received, tmp_path / "Documents", tz="Asia/Tokyo")
     result, _ = check_portable(exported)
     assert result["manifest"]["meeting"]["recordedAtLocal"] == label
+
+
+def test_received_import_rejects_final_symlink_before_copying(tmp_path):
+    private = tmp_path / "private-target"
+    private.mkdir()
+    source = private / "original.ogg"
+    source.write_bytes((ASSETS / "plain-title.opus").read_bytes())
+    link = tmp_path / "clip.opus"
+    link.symlink_to(source)
+    root = tmp_path / "Library"
+    with pytest.raises(OSError):
+        import_received(link, root)
+    assert not list(root.iterdir())
+    assert source.read_bytes() == (ASSETS / "plain-title.opus").read_bytes()
+
+
+@pytest.mark.parametrize("name", ["a" * 251 + ".ogg", "é" * 125 + ".ogg"])
+def test_received_import_keeps_copy_basename_within_filesystem_limits(tmp_path, name):
+    source = tmp_path / name
+    data = (ASSETS / "plain-title.opus").read_bytes()
+    source.write_bytes(data)
+    root = tmp_path / "Library"
+    meeting = import_received(source, root)
+    assert meeting.has_audio and meeting.audio_file.read_bytes() == data
+    assert len(meeting.audio_file.name.encode("utf-8")) <= 255
+    assert meeting.metadata["received"]["originalName"] == meeting.audio_file.name
+    assert not list(root.glob(".received-*"))
+
+
+def test_received_dot_only_stem_is_rejected_before_library_creation(tmp_path):
+    source = tmp_path / "..opus"
+    source.write_bytes((ASSETS / "plain-title.opus").read_bytes())
+    root = tmp_path / "Library"
+    with pytest.raises(ValueError, match="Choose an Ogg Opus"):
+        import_received(source, root)
+    assert not root.exists()
