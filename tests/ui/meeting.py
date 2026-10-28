@@ -129,6 +129,19 @@ with tempfile.TemporaryDirectory() as temporary:
     assert page.store.get_item(1) is stable
     after = visible_anchor()
     assert after[0] == anchor[0] and abs(after[1] - anchor[1]) < 2, (after, anchor)
+    # Resuming after reading elsewhere must return to the active turn, even
+    # when a paused model update already computed that same timed item.
+    page.play.emit("clicked")
+
+    def active_visible():
+        for turn, _words, row in page.bound.values():
+            if turn.index == page._reading_index:
+                success, bounds = row.compute_bounds(page.scroller)
+                return success and 0 <= bounds.get_y() < page.scroller.get_height()
+        return False
+
+    until(lambda: window.player.playing and active_visible())
+    page.play.emit("clicked")
     style = Adw.StyleManager.get_default()
     style.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
     until(lambda: page._theme is True)
