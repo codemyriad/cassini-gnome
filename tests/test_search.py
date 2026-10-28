@@ -226,7 +226,9 @@ def test_sql_failure_leaves_memory_and_removed_rows_consistent(index):
     index.db.execute("CREATE TRIGGER fail_sync BEFORE INSERT ON meetings BEGIN SELECT RAISE(ABORT,'injected'); END")
     with pytest.raises(sqlite3.DatabaseError, match="injected"):
         index.sync(LibrarySnapshot(meetings=(updated,)))
-    assert all(current is old for current, old in zip((index.turns, index.signatures, index.current), before, strict=True))
+    assert all(
+        current is old for current, old in zip((index.turns, index.signatures, index.current), before, strict=True)
+    )
     assert search(index, speaker="Marta") == expected
     index.db.execute("DROP TRIGGER fail_sync")
     index.sync(LibrarySnapshot(meetings=(updated,)))
