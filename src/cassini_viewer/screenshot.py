@@ -73,7 +73,11 @@ def capture(application_id, version, profile):
             )
             opened_recording = True
             settled_frame = None
-        if os.environ.get("CASSINI_SCREENSHOT_BOARD") == "meeting" and not window._pending and not opened_meeting:
+        if (
+            os.environ.get("CASSINI_SCREENSHOT_BOARD") in ("meeting", "export")
+            and not window._pending
+            and not opened_meeting
+        ):
             from .folder_player import FolderPlayer
 
             window.player.shutdown()
@@ -81,10 +85,18 @@ def capture(application_id, version, profile):
             sink.set_property("sync", True)
             window.player = FolderPlayer(audio_sink=sink)
             window._connect_player()
-            meeting = next(m for m in window.snapshot.meetings if m.title == "Client call, Rossi & Partners")
+            chosen = (
+                "Budget review"
+                if os.environ.get("CASSINI_SCREENSHOT_BOARD") == "export"
+                else "Client call, Rossi & Partners"
+            )
+            meeting = next(m for m in window.snapshot.meetings if m.title == chosen)
             window.open_meeting(meeting)
-            window.player.seek(192000)
-            window.player.play()
+            if os.environ.get("CASSINI_SCREENSHOT_BOARD") == "export":
+                window.show_export()
+            else:
+                window.player.seek(192000)
+                window.player.play()
             opened_meeting = True
             settled_frame = None
         if getattr(window, "_pending", False):

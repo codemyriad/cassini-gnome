@@ -25,6 +25,7 @@ from gi.repository import Gio, GLib, Gst  # noqa: E402
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
 from cassini_viewer.library_window import LibraryWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
+from cassini_viewer.open_meeting import load_open_meeting  # noqa: E402
 from cassini_viewer.player import Player  # noqa: E402
 
 
@@ -88,7 +89,9 @@ with tempfile.TemporaryDirectory() as temporary:
     extra = own.directory / "extra.opus"
     shutil.copyfile(opus, extra)
     for path in (opus, outside, extra):
-        app.open_in_new_window(Gio.File.new_for_path(str(path)))
+        # File Open now imports/selects a Received row (UX4). Exercise the
+        # retained read-only viewer directly; outside folders use it as well.
+        window.open_meeting(load_open_meeting(path, window.monitor.scanner.root), external=True)
         until(lambda path=path: window.meeting_page and window.meeting_page.meeting.audio_file == path)
         assert window._external_meeting and not window.meeting_page.meeting.metadata_editable
         page = window.meeting_page

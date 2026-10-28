@@ -69,5 +69,35 @@ report = dict(
     segmentInputSha256=[hashlib.sha256(v.tobytes()).hexdigest() for v in proof],
 )
 (output / "stream-linux.json").write_text(json.dumps(report, indent=2) + "\n")
+# Re-exporting a long received recording must preserve its compressed packets,
+# stereo shape and bounded memory, without another decoder or a /tmp WAV.
+from cassini_viewer import portable  # noqa: E402
+from cassini_viewer.exporting import export_meeting  # noqa: E402
+from cassini_viewer.open_meeting import load_open_meeting  # noqa: E402
+
+export_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+export_start = time.monotonic()
+model = load_open_meeting(received, output / "Library")
+with received.open("rb") as stream:
+    digest = portable.compute_audio_digest(stream)
+exported = export_meeting(model, output / "Documents")
+parsed = portable.read_meeting(str(exported))
+assert portable.verify_audio(str(exported), parsed).state == portable.State.OK
+assert parsed.channels == 2 and parsed.manifest["integrity"]["opusAudioSha256"] == digest["sha256"]
+assert parsed.manifest["audio"]["sampleCount"] == 7200 * 48000
+assert not list(Path("/tmp").rglob("*.wav"))
+export_peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+assert export_peak - export_before < 96 * 1024
+export_report = dict(
+    durationSeconds=7200,
+    compressedBytes=exported.stat().st_size,
+    seconds=time.monotonic() - export_start,
+    channels=parsed.channels,
+    unchangedOpusSha256=digest["sha256"],
+    noTemporaryWav=True,
+    incrementalPeakRssKiB=export_peak - export_before,
+)
+(output / "export-long-linux.json").write_text(json.dumps(export_report, indent=2) + "\n")
+exported.unlink()
 received.unlink()
 print(json.dumps(report, indent=2))

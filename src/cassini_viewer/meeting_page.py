@@ -78,16 +78,18 @@ class MeetingPage(Adw.NavigationPage):
         )
         self.headline = Adw.WindowTitle()
         header.set_title_widget(self.headline)
-        export = Gtk.Button(label=text("common.exportEllipsis"), sensitive=False)
-        more = Gtk.Button(
+        self.export_button = Gtk.Button(label=text("common.exportEllipsis"), action_name="win.export")
+        menu = Gio.Menu()
+        menu.append(text("common.exportEllipsis"), "win.export")
+        more = Gtk.MenuButton(
             icon_name="view-more-symbolic",
             tooltip_text=text("meeting.moreActions"),
-            sensitive=False,
+            menu_model=menu,
             css_classes=["flat"],
         )
         more.update_property([Gtk.AccessibleProperty.LABEL], [text("meeting.moreActions")])
         header.pack_end(more)
-        header.pack_end(export)
+        header.pack_end(self.export_button)
         self.write_button = Gtk.Button(label=text("common.writeDown"), visible=False)
         self.write_button.connect("clicked", lambda *_: window.get_application().write_down(self.meeting))
         header.pack_end(self.write_button)

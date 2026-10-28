@@ -1,0 +1,278 @@
+{
+ "version": 1,
+ "policy": "match-source",
+ "source": "gocassini cassini-go-recorder/internal/transcribe/opus_encode_test.go (origin/main f128f37f) TestMatchSourceSizesTheEncodeFromTheSources, verbatim, plus three desktop PCM cases (D8)",
+ "encoder": {
+  "channels": 1,
+  "sampleRate": 48000,
+  "vbr": true,
+  "complexity": 10,
+  "application": "audio"
+ },
+ "rule": "Bandwidth per track: opus (or unknown rate) -> 20000, else sampleRate/2 (integer). Take the widest over all tracks including empty ones; no tracks -> 20000. Band = the first band whose cutoff >= bandwidth, else the LAST (fullband) band. If at least one non-empty track exists and every non-empty track has speechBitrateBps > 0: bitrate = clamp(ceil(max speech * 4/3 / 1000) * 1000, floor, ceiling); otherwise the band ceiling. Record {policy, bitrateBps, cutoffHz, application:'audio', sourceBandwidthHz, sourceSpeechBitrateBps} in the manifest audioEncode.",
+ "bands": [
+  {
+   "cutoffHz": 4000,
+   "floorBps": 12000,
+   "ceilingBps": 16000
+  },
+  {
+   "cutoffHz": 6000,
+   "floorBps": 12000,
+   "ceilingBps": 20000
+  },
+  {
+   "cutoffHz": 8000,
+   "floorBps": 16000,
+   "ceilingBps": 32000
+  },
+  {
+   "cutoffHz": 12000,
+   "floorBps": 20000,
+   "ceilingBps": 48000
+  },
+  {
+   "cutoffHz": 20000,
+   "floorBps": 24000,
+   "ceilingBps": 64000
+  }
+ ],
+ "vectors": [
+  {
+   "name": "16 kHz AAC phone import is wideband at a third over its rate",
+   "sources": [
+    {
+     "codec": "aac",
+     "sampleRate": 16000,
+     "speechBitrateBps": 24000,
+     "empty": false
+    }
+   ],
+   "bitrateBps": 32000,
+   "cutoffHz": 8000
+  },
+  {
+   "name": "lossless 16 kHz source stops at the wideband ceiling",
+   "sources": [
+    {
+     "codec": "flac",
+     "sampleRate": 16000,
+     "speechBitrateBps": 156000,
+     "empty": false
+    }
+   ],
+   "bitrateBps": 32000,
+   "cutoffHz": 8000
+  },
+  {
+   "name": "Talk tracks at 32 kb/s follow the highest-rate track, fullband",
+   "sources": [
+    {
+     "codec": "opus",
+     "sampleRate": 48000,
+     "speechBitrateBps": 30900,
+     "empty": false
+    },
+    {
+     "codec": "opus",
+     "sampleRate": 48000,
+     "speechBitrateBps": 32900,
+     "empty": false
+    },
+    {
+     "codec": "opus",
+     "sampleRate": 48000,
+     "speechBitrateBps": 32000,
+     "empty": false
+    }
+   ],
+   "bitrateBps": 44000,
+   "cutoffHz": 20000
+  },
+  {
+   "name": "high-rate Opus sources keep the old 64k ceiling",
+   "sources": [
+    {
+     "codec": "opus",
+     "sampleRate": 48000,
+     "speechBitrateBps": 96000,
+     "empty": false
+    },
+    {
+     "codec": "opus",
+     "sampleRate": 48000,
+     "speechBitrateBps": 107000,
+     "empty": false
+    }
+   ],
+   "bitrateBps": 64000,
+   "cutoffHz": 20000
+  },
+  {
+   "name": "very low-rate sources are lifted to the band floor",
+   "sources": [
+    {
+     "codec": "opus",
+     "sampleRate": 48000,
+     "speechBitrateBps": 9000,
+     "empty": false
+    }
+   ],
+   "bitrateBps": 24000,
+   "cutoffHz": 20000
+  },
+  {
+   "name": "one fullband track makes the whole mix fullband",
+   "sources": [
+    {
+     "codec": "aac",
+     "sampleRate": 16000,
+     "speechBitrateBps": 24000,
+     "empty": false
+    },
+    {
+     "codec": "opus",
+     "sampleRate": 48000,
+     "speechBitrateBps": 20000,
+     "empty": false
+    }
+   ],
+   "bitrateBps": 32000,
+   "cutoffHz": 20000
+  },
+  {
+   "name": "8 kHz telephone audio is narrowband",
+   "sources": [
+    {
+     "codec": "pcm_mulaw",
+     "sampleRate": 8000,
+     "speechBitrateBps": 64000,
+     "empty": false
+    }
+   ],
+   "bitrateBps": 16000,
+   "cutoffHz": 4000
+  },
+  {
+   "name": "an unmeasured source gets the band ceiling",
+   "sources": [
+    {
+     "codec": "opus",
+     "sampleRate": 48000,
+     "speechBitrateBps": 32000,
+     "empty": false
+    },
+    {
+     "codec": "opus",
+     "sampleRate": 48000,
+     "speechBitrateBps": null,
+     "empty": false
+    }
+   ],
+   "bitrateBps": 64000,
+   "cutoffHz": 20000
+  },
+  {
+   "name": "an empty track does not set the rate",
+   "sources": [
+    {
+     "codec": "opus",
+     "sampleRate": 48000,
+     "speechBitrateBps": 32000,
+     "empty": false
+    },
+    {
+     "codec": "opus",
+     "sampleRate": 48000,
+     "speechBitrateBps": null,
+     "empty": true
+    }
+   ],
+   "bitrateBps": 43000,
+   "cutoffHz": 20000
+  },
+  {
+   "name": "an empty 24 kHz track still sets the bandwidth",
+   "sources": [
+    {
+     "codec": "aac",
+     "sampleRate": 16000,
+     "speechBitrateBps": 24000,
+     "empty": false
+    },
+    {
+     "codec": "flac",
+     "sampleRate": 24000,
+     "speechBitrateBps": null,
+     "empty": true
+    }
+   ],
+   "bitrateBps": 32000,
+   "cutoffHz": 12000
+  },
+  {
+   "name": "only empty tracks is the band ceiling",
+   "sources": [
+    {
+     "codec": "opus",
+     "sampleRate": 48000,
+     "speechBitrateBps": null,
+     "empty": true
+    }
+   ],
+   "bitrateBps": 64000,
+   "cutoffHz": 20000
+  },
+  {
+   "name": "no sources at all is the old fullband 64k",
+   "sources": [],
+   "bitrateBps": 64000,
+   "cutoffHz": 20000
+  },
+  {
+   "name": "desktop: 48 kHz PCM WAV tracks (unmeasured, bandwidth 24000 beyond every cutoff) are fullband at the ceiling",
+   "sources": [
+    {
+     "codec": "pcm_s16le",
+     "sampleRate": 48000,
+     "speechBitrateBps": null,
+     "empty": false
+    },
+    {
+     "codec": "pcm_s16le",
+     "sampleRate": 48000,
+     "speechBitrateBps": null,
+     "empty": false
+    }
+   ],
+   "bitrateBps": 64000,
+   "cutoffHz": 20000
+  },
+  {
+   "name": "desktop: a 16 kHz PCM microphone track is wideband at the ceiling",
+   "sources": [
+    {
+     "codec": "pcm_s16le",
+     "sampleRate": 16000,
+     "speechBitrateBps": null,
+     "empty": false
+    }
+   ],
+   "bitrateBps": 32000,
+   "cutoffHz": 8000
+  },
+  {
+   "name": "desktop: 8 kHz PCM is narrowband at the ceiling",
+   "sources": [
+    {
+     "codec": "pcm_s16le",
+     "sampleRate": 8000,
+     "speechBitrateBps": null,
+     "empty": false
+    }
+   ],
+   "bitrateBps": 16000,
+   "cutoffHz": 4000
+  }
+ ]
+}

@@ -171,6 +171,8 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: window.meeting_page is None)
     received = next(m for m in window.snapshot.meetings if m.origin == "received")
     app.open_in_new_window(Gio.File.new_for_path(str(received.audio_file)))
+    until(lambda: not window.meeting_page and window.selected and window.selected.key == received.key)
+    window.read_button.emit("clicked")
     until(lambda: window.meeting_page is not None)
     assert window.meeting_page.meeting.words
     assert len(app.get_windows()) == 1, "File opens belong to the pushed reading page"
