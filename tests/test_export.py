@@ -356,3 +356,76 @@ def test_received_import_cleans_published_folder_if_first_scan_fails(tmp_path, m
     with pytest.raises(ValueError, match="Synthetic scan failure"):
         import_received(ASSETS / "plain-title.opus", root)
     assert not list(root.iterdir())
+
+
+def test_recovered_session_exports_without_inventing_date_or_alignment(tmp_path):
+    from datetime import UTC, datetime
+
+    gst()
+    session = RecordingSession(tmp_path, "Lost capture metadata")
+    session.add_track("microphone", "Me", "microphone", 48000, 1)
+    samples = array.array("h", (round(8000 * math.sin(2 * math.pi * 440 * i / 48000)) for i in range(48000)))
+    if sys.byteorder != "little":
+        samples.byteswap()
+    session.append("microphone", samples.tobytes(), 1500)
+    session.finish()
+    (session.directory / "session.json").unlink()
+    before = {p.name: p.read_bytes() for p in session.directory.iterdir()}
+    meeting = LibraryScanner(tmp_path).scan().meetings[0]
+    assert meeting.started_at_ms is None and all(t.start_offset_ms is None for t in meeting.tracks)
+    start = datetime.now(UTC)
+    exported = export_meeting(meeting, tmp_path / "Documents")
+    stop = datetime.now(UTC)
+    result, value = check_portable(exported)
+    manifest = result["manifest"]
+    created = datetime.fromisoformat(manifest["meeting"]["createdAtUtc"])
+    assert start.timestamp() - 0.001 <= created.timestamp() <= stop.timestamp()
+    assert "recordedAtLocal" not in manifest["meeting"]
+    assert manifest["x"]["gocassini.com"]["recovery"] == {"offsetsAssumedZero": True}
+    assert abs(value.manifest["audio"]["sampleCount"] - 48000) <= 2
+    assert meeting.started_at_ms is None and all(t.start_offset_ms is None for t in meeting.tracks)
+    assert {p.name: p.read_bytes() for p in session.directory.iterdir()} == before
+    # Import/re-export carries the recovery namespace without interpreting it.
+    received = load_open_meeting(exported, tmp_path / "Library")
+    again = export_meeting(received, tmp_path / "Documents")
+    second, _ = check_portable(again)
+    assert second["manifest"]["x"] == manifest["x"]
+    assert received.started_at_ms is not None and "recordedAtLocal" not in second["manifest"]["meeting"]
+
+
+def test_export_stamp_is_current_and_known_meeting_start_is_only_recorded_at_local(tmp_path):
+    from datetime import UTC, datetime
+
+    from cassini_viewer.portable_writer import descriptors
+
+    meeting = replace(load_open_meeting(ASSETS / "plain-title.opus"), started_at_ms=1730611800000, origin="own")
+    with meeting.audio_file.open("rb") as audio:
+        digest = portable.compute_audio_digest(audio)
+    before = datetime.now(UTC)
+    tags, manifest = descriptors(meeting, digest, tz="America/New_York")
+    after = datetime.now(UTC)
+    created = datetime.fromisoformat(manifest["meeting"]["createdAtUtc"])
+    assert before.timestamp() - 0.001 <= created.timestamp() <= after.timestamp()
+    assert manifest["meeting"]["recordedAtLocal"] == "2024-11-03T01:30:00"
+    assert tags["CASSINI_CREATED_AT"] == manifest["meeting"]["createdAtUtc"]
+    assert "recovery" not in manifest.get("x", {}).get("gocassini.com", {})
+
+
+def test_reexport_keeps_explicit_recording_label_and_never_promotes_import_date(tmp_path):
+    from cassini_viewer.portable_writer import descriptors, rewrite_tags
+
+    model = replace(load_open_meeting(ASSETS / "plain-title.opus"), started_at_ms=1730611800000)
+    with model.audio_file.open("rb") as audio:
+        digest = portable.compute_audio_digest(audio)
+        tags, plain = descriptors(model, digest)
+        assert "recordedAtLocal" not in plain["meeting"], "Received Library date is not recording provenance"
+        label = "2024-11-03T01:30:00"
+        tags, _ = descriptors(model, digest, recorded_at_local=label)
+        audio.seek(0)
+        path = tmp_path / "labelled.opus"
+        with path.open("wb") as output:
+            rewrite_tags(audio, output, tags)
+    received = load_open_meeting(path)
+    exported = export_meeting(received, tmp_path / "Documents", tz="Asia/Tokyo")
+    result, _ = check_portable(exported)
+    assert result["manifest"]["meeting"]["recordedAtLocal"] == label
