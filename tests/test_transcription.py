@@ -313,6 +313,7 @@ def _available_platform(monkeypatch, bundle):
     monkeypatch.setattr(platform, "libc_ver", lambda: ("glibc", "2.42"))
     found = {"numpy", "onnxruntime"}
     monkeypatch.setattr(importlib.util, "find_spec", lambda name: object() if name in found else None)
+    monkeypatch.setattr(transcription, "onnxruntime_dir", lambda: None)
     bundle.mkdir(exist_ok=True)
     (bundle / "pins.json").write_text("{}")
     return transcription.unavailable_reason, found
@@ -321,6 +322,17 @@ def _available_platform(monkeypatch, bundle):
 def test_unavailable_reason_is_none_with_bundle_and_runtime_on_glibc_x86_64(monkeypatch, tmp_path):
     reason, _found = _available_platform(monkeypatch, tmp_path / "whistle")
     assert reason(tmp_path / "whistle") is None
+
+
+def test_unavailable_reason_accepts_the_private_onnxruntime_without_a_system_one(monkeypatch, tmp_path):
+    from cassini_viewer import transcription
+
+    reason, found = _available_platform(monkeypatch, tmp_path / "whistle")
+    found.discard("onnxruntime")
+    monkeypatch.setattr(transcription, "onnxruntime_dir", lambda: tmp_path / "python")
+    assert reason(tmp_path / "whistle") is None
+    found.discard("numpy")
+    assert reason(tmp_path / "whistle") == "Python cannot find numpy"
 
 
 def test_unavailable_reason_names_each_missing_requirement(monkeypatch, tmp_path):

@@ -101,6 +101,16 @@ install_data(
   install_dir: moduledir,
 )
 
+# Where the recognition child finds the app's private ONNX Runtime, if any
+# (whistle_worker.onnxruntime_dir); a source run has no paths.json.
+configure_file(
+  input: 'cassini_viewer/paths.json.in',
+  output: 'paths.json',
+  configuration: {'ONNXRUNTIME_DIR': onnxruntime_dir},
+  install: true,
+  install_dir: moduledir,
+)
+
 # pytest is optional: the Flatpak SDK, for one, does not ship it.
 pytest = python.find_installation('python3', modules: ['pytest'], required: false)
 if pytest.found()

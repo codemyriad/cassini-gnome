@@ -19,6 +19,13 @@ endif
 
 pkgdatadir = get_option('prefix') / get_option('datadir') / meson.project_name()
 moduledir = pkgdatadir / 'cassini_viewer'
+# The pinned ONNX Runtime wheel, unpacked (-Dwhistle=enabled): native code,
+# private to the app, and loaded only by the recognition child.
+if get_option('whistle').enabled()
+  onnxruntime_dir = get_option('prefix') / get_option('libdir') / meson.project_name() / 'python'
+else
+  onnxruntime_dir = ''
+endif
 
 # Runtime requirements, checked by gi.require_version() at startup:
 # GTK >= 4.18, libadwaita >= 1.8, GStreamer >= 1.20 with the Opus plugin.

@@ -28,5 +28,26 @@
     "wrapper.whl": "613b3401ad4e78b738b1bfb8fa1548ed5dd61abafe218fe0dc2cb7bf534e6b9a",
     "silero_vad.onnx": "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3"
   },
-  "vadRevision": "7e30209a3e901f9842f81b225f3e93d8199902b1"
+  "vadRevision": "7e30209a3e901f9842f81b225f3e93d8199902b1",
+  "onnxruntime": {
+    "version": "1.31.0",
+    "wheels": {
+      "cp311": {
+        "url": "https://files.pythonhosted.org/packages/a6/72/6c57163b63b5343853d7f0619c4f424a6e53ee762d7263667ff004bfede1/onnxruntime-1.31.0-cp311-cp311-manylinux_2_28_x86_64.whl",
+        "sha256": "d4092b78fc5bab77ce6522393098cdb2535423045ecdcff15cc0d022162d6b66"
+      },
+      "cp312": {
+        "url": "https://files.pythonhosted.org/packages/6c/44/1e9e762b95b7da0a8424913a1ed7c38cdaf88624a3c41ddba24ebac88bc9/onnxruntime-1.31.0-cp312-cp312-manylinux_2_28_x86_64.whl",
+        "sha256": "5e129d6c56abd53e659cb70f00a108d6824086470ff99c2e47a82e5786563db3"
+      },
+      "cp313": {
+        "url": "https://files.pythonhosted.org/packages/0d/ac/67ebbaab4b3083f2a6b27ee6c4aa400c7f8d6c72b5499aac7e4cd6ba74f5/onnxruntime-1.31.0-cp313-cp313-manylinux_2_28_x86_64.whl",
+        "sha256": "37fd78cee5160c7a43a1730ccb3682ffd880af9c9e80385d625c0c2f8b125809"
+      },
+      "cp314": {
+        "url": "https://files.pythonhosted.org/packages/30/2e/5c6ec7e26a097e97ee70f2dee68b8ca4d9d26701f2f33c3f8ab585cb89fe/onnxruntime-1.31.0-cp314-cp314-manylinux_2_28_x86_64.whl",
+        "sha256": "e4efa4a1a0bb0b5173c6a3292c181d518b8323f9d56e978635d0c09d38c94d1a"
+      }
+    }
+  }
 }

@@ -1,12 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """File-only Whistle spike worker. No engine import occurs in the GTK process."""
 
+import base64
+import csv
 import hashlib
 import importlib
 import json
 import os
 import platform
 import sys
+import sysconfig
 import time
 import wave
 from pathlib import Path
@@ -39,6 +42,61 @@ def verify_bundle(bundle):
     return bundle
 
 
+def onnxruntime_dir(config=None):
+    """The app's private ONNX Runtime for this Python, or None.
+
+    Packages install the pinned upstream wheel, unpacked, in a private
+    directory (meson writes its path to paths.json next to this module); only
+    the recognition child puts it on sys.path. Without one for this Python's
+    ABI (a source run, or a Python upgrade the package was not rebuilt for),
+    the child uses whatever onnxruntime the Python itself has. Import-free,
+    so the GTK process can ask too.
+    """
+    config = Path(config) if config else Path(__file__).with_name("paths.json")
+    try:
+        configured = json.loads(config.read_text())["onnxruntime"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not configured:
+        return None
+    path = Path(configured)
+    extension = path / "onnxruntime" / "capi" / ("onnxruntime_pybind11_state" + sysconfig.get_config_var("EXT_SUFFIX"))
+    return path if extension.is_file() else None
+
+
+def verify_onnxruntime(path):
+    """Check every file of the private ONNX Runtime against its wheel's RECORD."""
+    path = Path(path).resolve()
+    records = list(path.glob("onnxruntime-*.dist-info/RECORD"))
+    if len(records) != 1:
+        raise ValueError(f"Expected one onnxruntime dist-info RECORD in {path}")
+    record = records[0].relative_to(path).as_posix()
+    expected = {}
+    for row in csv.reader(records[0].read_text().splitlines()):
+        if row and row[0] != record:
+            algorithm, _, digest = row[1].partition("=")
+            if algorithm != "sha256":
+                raise ValueError(f"Unexpected ONNX Runtime RECORD hash for {row[0]}")
+            expected[row[0]] = digest
+    for file in sorted(path.rglob("*")):
+        # Byte-compiled caches are not in RECORD; a package may add them.
+        if file.is_dir() or "__pycache__" in file.parts:
+            continue
+        name = file.relative_to(path).as_posix()
+        if name == record:
+            continue
+        if name not in expected:
+            raise ValueError(f"Unexpected ONNX Runtime file: {name}")
+        digest = base64.urlsafe_b64encode(hashlib.sha256(file.read_bytes()).digest()).rstrip(b"=").decode()
+        if digest != expected[name]:
+            raise ValueError(f"ONNX Runtime SHA256 mismatch: {name}")
+    if not (path / "onnxruntime/__init__.py").is_file() or not list(
+        path.glob("onnxruntime/capi/onnxruntime_pybind11_state.*.so")
+    ):
+        raise ValueError(f"Incomplete ONNX Runtime in {path}")
+    return path
+
+
 def block_network(event, _args):
     if event.startswith("socket."):
         raise RuntimeError("Network access is disabled in the Whistle worker")
@@ -51,6 +109,9 @@ def emit(kind, **values):
 def main(bundle):
     # Guard wraps the actual wrapper/model constructor, not just the command entry.
     bundle = verify_bundle(bundle)
+    runtime = onnxruntime_dir()
+    if runtime is not None:
+        sys.path.insert(0, str(verify_onnxruntime(runtime)))
     os.environ["NEEDLE3_LIB_PATH"] = str(bundle / "libneedle3.so")
     sys.addaudithook(block_network)
     sys.path.insert(0, str(bundle / "wrapper.whl"))

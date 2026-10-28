@@ -5,12 +5,14 @@
 #     --all       build and runtime dependencies (default)
 #     --build     meson, ninja, gettext, glib tools, validators, pytest
 #     --runtime   python3, PyGObject, GTK 4, libadwaita, GStreamer plugins,
-#                 and NumPy and ONNX Runtime for writing meetings down
+#                 and NumPy for writing meetings down
 #     --yes       do not ask for confirmation
 #     --dry-run   print the install command instead of running it
 # The app needs GTK >= 4.18 and libadwaita >= 1.8; older distributions
 # install fine but cannot run it (see build-aux/check-distros.sh). Writing
-# down also needs the pinned engine (meson -Dwhistle=enabled, glibc x86_64).
+# down also needs the pinned engine (meson -Dwhistle=enabled, glibc x86_64),
+# which brings its own ONNX Runtime: the distributions' can pull in sympy
+# and, through its weak dependencies, hundreds of MB more.
 # shellcheck disable=SC2086 # $y is an optional flag, deliberately unquoted
 set -eu
 
@@ -75,34 +77,33 @@ case $family in
            python3-jsonschema python3-rfc3339-validator"
     runtime="python3 python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0
              gstreamer1.0-plugins-base gstreamer1.0-plugins-good
-             python3-numpy python3-onnxruntime" ;;
+             python3-numpy" ;;
   dnf)
     build="meson ninja-build python3 gettext glib2 glib2-devel
            desktop-file-utils appstream gtk4-devel-tools python3-pytest
            python3-jsonschema python3-rfc3339-validator"
     runtime="python3 python3-gobject gobject-introspection gtk4 libadwaita gstreamer1
              gstreamer1-plugins-base gstreamer1-plugins-good
-             python3-numpy python3-onnxruntime" ;;
+             python3-numpy" ;;
   zypper)
     build="meson ninja python3 gettext-tools glib2-tools glib2-devel
            desktop-file-utils AppStream gtk4-tools python3-pytest
            python3-jsonschema python3-rfc3339-validator"
-    # Tumbleweed has no python3-onnxruntime; these resolve to the primary
-    # Python flavour.
+    # Resolves to the primary Python flavour.
     runtime="python3 python3-gobject typelib-1_0-Gtk-4_0 typelib-1_0-Adw-1
              typelib-1_0-Gst-1_0 gstreamer-plugins-base gstreamer-plugins-good
-             python3dist(numpy) python3dist(onnxruntime)" ;;
+             python3dist(numpy)" ;;
   pacman)
     build="meson ninja python gettext glib2 glib2-devel desktop-file-utils
            appstream gtk4 python-pytest pkgconf
            python-jsonschema python-rfc3339-validator"
     runtime="python python-gobject gtk4 libadwaita gstreamer
-             gst-plugins-base gst-plugins-good python-numpy python-onnxruntime-cpu" ;;
+             gst-plugins-base gst-plugins-good python-numpy" ;;
   apk)
     build="meson samurai python3 gettext glib glib-dev desktop-file-utils
            appstream gtk4.0 py3-pytest
            py3-jsonschema py3-rfc3339-validator"
-    # No NumPy/ONNX Runtime: the pinned engine cannot run on musl, so
+    # No NumPy: the pinned engine cannot run on musl, so
     # writing down is not available on Alpine.
     runtime="python3 py3-gobject3 gtk4.0 libadwaita gstreamer
              gst-plugins-base gst-plugins-good" ;;
