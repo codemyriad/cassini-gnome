@@ -9,6 +9,7 @@ from gi.repository import Adw, Gio, GLib, Gtk, Pango
 from . import ux_formats as fmt
 from .capture_activity import BrowserActivity, recorder_activity
 from .folder_player import FolderPlayer
+from .library import meeting_id
 from .library_monitor import LibraryMonitor
 from .player import Player
 from .strings import text
@@ -376,10 +377,12 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._live_badges = {}
         self.selected = None
         if snapshot.unavailable:
-            self._stop_playback(clear_selection=True)
+            if not self.meeting_page:
+                self._stop_playback(clear_selection=True)
             self.root_box.set_visible_child_name("offline")
         elif not snapshot.meetings:
-            self._stop_playback(clear_selection=True)
+            if not self.meeting_page:
+                self._stop_playback(clear_selection=True)
             self.root_box.set_visible_child_name("empty")
         else:
             self.root_box.set_visible_child_name("library")
@@ -442,11 +445,12 @@ class LibraryWindow(Adw.ApplicationWindow):
     def _selected(self, _rows, row):
         if row is None or not hasattr(row, "meeting"):
             return
-        if self._preview_key != row.meeting.key:
-            self._stop_playback()
-        elif not row.meeting.has_audio:
-            self.player.stop()
-            self._loaded_key = None
+        if not self.meeting_page:
+            if self._preview_key != row.meeting.key:
+                self._stop_playback()
+            elif not row.meeting.has_audio:
+                self.player.stop()
+                self._loaded_key = None
         self._preview_key = row.meeting.key
         self.selected = meeting = row.meeting
         self._list_signature = self._signature(self.snapshot)
@@ -643,7 +647,10 @@ class LibraryWindow(Adw.ApplicationWindow):
             return False
         try:
             meeting = future.result()
-            self.open_meeting(meeting, external=meeting.directory.parent != self.monitor.scanner.root.resolve())
+            watched = meeting.directory.parent == self.monitor.scanner.root.resolve() and meeting.id == meeting_id(
+                meeting.directory
+            )
+            self.open_meeting(meeting, external=not watched)
         except (OSError, ValueError):
             # Keep the existing failed-open presentation until its copy is drawn.
             window = self.get_application().new_window()
