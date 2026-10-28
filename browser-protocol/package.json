@@ -1,6 +1,7 @@
 {
   "name": "cassini-browser-protocol",
   "private": true,
+  "license": "GPL-3.0-or-later",
   "scripts": {
     "test": "node --test extension/tests/*.test.cjs && node tests/product-topologies.mjs && node tests/worker-recovery.mjs"
   },

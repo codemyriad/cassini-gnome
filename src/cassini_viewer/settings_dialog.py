@@ -249,7 +249,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.pages["browserCompanion"].add(group)
         self.browser = Adw.ActionRow(title=text("settings.browser.status.notSetUp"), use_markup=False)
         setup = Gtk.Button(label=text("meeting.companionCard.setUp"), valign=Gtk.Align.CENTER)
-        setup.connect("clicked", lambda *_: self.app.on_browser_meetings())
+        setup.connect("clicked", lambda *_: self.app.on_companion_setup(parent=self))
         self.browser.add_suffix(setup)
         group.add(self.browser)
 
@@ -329,7 +329,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.automatic.set_sensitive(True)
         self._updating = False
         names = self._snapshot.get("browserNames", [])
-        if self._snapshot.get("browsers"):
+        if self._snapshot.get("connectedBrowsers", self._snapshot.get("browsers")):
             if names:
                 self.browser.set_title(text("settings.browser.status.connected", browser=", ".join(names)))
             else:

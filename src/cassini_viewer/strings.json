@@ -546,7 +546,7 @@
    "placeholders": {
     "browser": "display name of the browser where the extension was detected (sample: Chrome)"
    },
-   "note": "Step 1 caption once the extension is installed. Not drawn: the several-browsers and not-yet-added wording (HARMONY 11). Ask.",
+   "note": "Step 1 caption once the extension is installed. Several browsers: companion.addStep.doneSeveral; not yet added: companion.addStep.notAdded (D22).",
    "status": "drawn"
   },
   {
@@ -594,7 +594,7 @@
     "CompanionSetup-mac"
    ],
    "milestone": "UX10",
-   "note": "Accent-filled suggested button at the trailing edge of step 2. 'Connect failed' has no copy yet (HARMONY 5); keep the existing behaviour until strings.json has it.",
+   "note": "Accent-filled suggested button at the trailing edge of step 2. Failure copy: companion.connectStep.failed (D22).",
    "status": "drawn"
   },
   {
@@ -1068,7 +1068,7 @@
     "States-mac"
    ],
    "milestone": "UX2",
-   "note": "What it opens is not drawn (HARMONY 11); do not invent the explanation.",
+   "note": "It opens errors.othersFallback.why.* (D22).",
    "status": "drawn"
   },
   {
@@ -3677,7 +3677,7 @@
   },
   {
    "id": "settings.recording.autoRecord.subtitle",
-   "en": "Cassini records meetings you join later, even when this window is closed. Recordings stay on this computer. You can stop any recording. One meeting at a time per browser.",
+   "en": "Cassini records meetings you join later, even when this window is closed. Recordings stay on this computer. You can stop any recording. Each meeting is recorded on its own.",
    "platforms": [
     "gnome",
     "mac"
@@ -3686,7 +3686,7 @@
    "boards": [],
    "milestone": "UX8a",
    "status": "harmony",
-   "note": "D7 Q6: existing GNOME string, verbatim."
+   "note": "D7 Q6 GNOME string; last sentence changed for D17 (concurrent meetings, each its own Library meeting), coordinator D22. Live from UX10."
   },
   {
    "id": "settings.recording.autoRecord.title",
@@ -4896,6 +4896,274 @@
    "milestone": "UX11",
    "note": "h2 that labels the dialog (aria-labelledby). GNOME: centred. Mac: leading. The entry point is recording.changeWhatIsRecorded.",
    "status": "drawn"
+  },
+  {
+   "id": "companion.add",
+   "en": "Add",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "note": "Coordinator (D22). Step 1 trailing button while the extension is not added. Same style as companion.connect. What it opens is decided in D22.",
+   "status": "harmony"
+  },
+  {
+   "id": "companion.addStep.notAdded",
+   "en": "Not added yet",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "note": "Coordinator (D22). Step 1 caption until the extension is detected in any supported browser.",
+   "status": "harmony"
+  },
+  {
+   "id": "companion.addStep.doneSeveral",
+   "en": "Done. Cassini is in {browsers}.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "note": "Coordinator (D22). Step 1 caption when the extension is detected in more than one browser. {browsers} is a locale list (\"Chrome and Brave\"; \"Chrome, Edge and Brave\").",
+   "status": "harmony",
+   "placeholders": {
+    "browsers": "locale-joined list of browser display names"
+   }
+  },
+  {
+   "id": "companion.connectStep.connecting",
+   "en": "Connecting…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "note": "Coordinator (D22). Step 2 caption while Connect is working. The Connect button is insensitive meanwhile.",
+   "status": "harmony"
+  },
+  {
+   "id": "companion.connectStep.done",
+   "en": "Connected.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "note": "Coordinator (D22). Step 2 caption once the companion has actually reached Cassini. Step 2 then shows the green check like step 1.",
+   "status": "harmony"
+  },
+  {
+   "id": "companion.connectStep.failed",
+   "en": "Couldn’t connect. Make sure your browser is up to date, then try again.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "note": "Coordinator (D22). Step 2 caption after a failed Connect, in the warn colour. The step button becomes common.tryAgain. Never show the raw error (HARMONY 2).",
+   "status": "harmony"
+  },
+  {
+   "id": "companion.step.a11y.done",
+   "en": "Step {n}, done",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "note": "Coordinator (D22). Accessible name of a step's status badge.",
+   "status": "harmony",
+   "placeholders": {
+    "n": "step number"
+   }
+  },
+  {
+   "id": "companion.step.a11y.pending",
+   "en": "Step {n}, not done yet",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "note": "Coordinator (D22). Accessible name of a pending step's number badge.",
+   "status": "harmony",
+   "placeholders": {
+    "n": "step number"
+   }
+  },
+  {
+   "id": "companion.step.a11y.working",
+   "en": "Step {n}, in progress",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "CompanionSetup",
+    "CompanionSetup-mac"
+   ],
+   "milestone": "UX10",
+   "note": "Coordinator (D22). Accessible name while a step is working (Connecting…).",
+   "status": "harmony",
+   "placeholders": {
+    "n": "step number"
+   }
+  },
+  {
+   "id": "whatIsRecorded.othersHeard.system.title",
+   "en": "This computer’s sound",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX11",
+   "note": "Coordinator (D22). Capture-path card title when the others come from this computer's sound. Same words as recordFirst.sound.title.",
+   "status": "harmony"
+  },
+  {
+   "id": "whatIsRecorded.othersHeard.system.description",
+   "en": "Cassini records what this computer plays, so the others are heard together. With the browser companion, each person is heard on their own.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX11",
+   "note": "Coordinator (D22). Capture-path card text when there is no browser path from the start (no companion, or no meeting in the browser). Make no claim about muted speakers (D18 limitation on native capture).",
+   "status": "harmony"
+  },
+  {
+   "id": "whatIsRecorded.othersHeard.fallback.description",
+   "en": "Your meeting in the browser couldn’t be reached, so Cassini records the others from this computer’s sound until you stop.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX11",
+   "note": "Coordinator (D22). Capture-path card text after the Q4 fallback (S-6 othersSource missing/lost). No automatic switch back in wave 6.",
+   "status": "harmony"
+  },
+  {
+   "id": "whatIsRecorded.othersHeard.none.title",
+   "en": "Not recorded",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX11",
+   "note": "Coordinator (D22). Capture-path card title while 'Me' is chosen.",
+   "status": "harmony"
+  },
+  {
+   "id": "whatIsRecorded.othersHeard.none.description",
+   "en": "Only your microphone is recorded. Choose The others or Both to record them again.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "WhatIsRecorded",
+    "WhatIsRecorded-mac"
+   ],
+   "milestone": "UX11",
+   "note": "Coordinator (D22). Capture-path card text while 'Me' is chosen. 'The others' and 'Both' are the radio row titles.",
+   "status": "harmony"
+  },
+  {
+   "id": "errors.othersFallback.why.title",
+   "en": "Why the others sound different",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-title",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX11",
+   "note": "Coordinator (D22). Title of the small dialog (GNOME Adw.AlertDialog / Mac alert sheet) opened by errors.othersFallback.action (\"Why?\"). Its only button is common.close.",
+   "status": "harmony"
+  },
+  {
+   "id": "errors.othersFallback.why.body",
+   "en": "Cassini couldn’t reach your meeting in the browser. This happens when the meeting tab is reloaded or closed, or the browser quits. So nothing is lost, Cassini switched to this computer’s sound. Everyone is still recorded, but together, so telling speakers apart is less exact. This lasts until you stop.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-body",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "UX11",
+   "note": "Coordinator (D22). Body of the Why? dialog. For the 'missing at start' case the same text applies.",
+   "status": "harmony"
   }
  ]
 }

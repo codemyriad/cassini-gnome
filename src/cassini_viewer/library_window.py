@@ -187,7 +187,6 @@ class LibraryWindow(Adw.ApplicationWindow):
             header.pack_start(self.capture_controls())
         if close:
             menu = Gio.Menu()
-            menu.append(text("common.legacy.browserMeetings"), "app.browser-meetings")
             # Existing, undrawn GNOME primary-menu copy is retained (HARMONY 11).
             menu.append(_("Open…"), "app.open")
             menu.append(text("common.exportEllipsis"), "win.export")
@@ -241,6 +240,9 @@ class LibraryWindow(Adw.ApplicationWindow):
                 margin_top=8,
             )
         )
+        companion = Gtk.Button(label=text("meeting.companionCard.setUp"), css_classes=["flat"], halign=Gtk.Align.CENTER)
+        companion.connect("clicked", lambda *_: self.get_application().on_companion_setup(parent=self))
+        center.append(companion)
         outer.append(center)
         footer = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER, margin_bottom=18)
         footer.append(

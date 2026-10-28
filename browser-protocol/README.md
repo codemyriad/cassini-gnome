@@ -139,3 +139,9 @@ see [SPEC-CONTROL.md](SPEC-CONTROL.md). Its desktop-free VM corpus is
 `python3 conformance/control/run.py /absolute/host-launcher` against isolated test IPC.
 The audio protocol/corpus remain unchanged. App-side discovery uses counts without recording;
 GNOME owns page discovery, while background/relay and management transport are shared.
+
+## Licence
+
+This repository (the protocol, the browser extension and the conformance files) is free software under the GNU General Public License, version 3 or later
+(`GPL-3.0-or-later`); see [LICENSE](LICENSE). Cassini for GNOME and Cassini for Mac, which vendor
+these files, use the same licence.

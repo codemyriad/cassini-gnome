@@ -30,7 +30,7 @@ def read_browser_activity(path=None, with_connection=False, with_paths=False):
         connected = bool((value or {}).get("connectedBrowsers", (value or {}).get("browsers")))
         if with_paths:
             return result, connected, paths
-        return (result, bool((value or {}).get("browsers"))) if with_connection else result
+        return (result, connected) if with_connection else result
     except (OSError, ValueError, TypeError, AttributeError):
         return ({}, False, {}) if with_paths else (({}, False) if with_connection else {})
 

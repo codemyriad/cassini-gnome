@@ -137,3 +137,17 @@ checks the real native audio host. Schemas live in schemas/control-{extension,ho
 Chrome API basis: [Native Messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging),
 [tabs metadata permissions](https://developer.chrome.com/docs/extensions/reference/api/tabs),
 [alarms and pre-150 persistence](https://developer.chrome.com/docs/extensions/reference/api/alarms).
+
+
+## Extension identity
+
+`extension/manifest.json` pins the extension's public `key`, so the extension ID is the same however it is
+installed (unpacked, self-hosted or from a store):
+
+    pcafdaahfhjiolfpfnlhmljfgoabbaij
+
+- Native host manifests written by Cassini (per user, never system-wide) list exactly
+  `chrome-extension://pcafdaahfhjiolfpfnlhmljfgoabbaij/` in `allowed_origins`. There is no wildcard and no manual ID entry.
+- The matching private key is held by the project owner outside every repository. It is needed only to sign a
+  packaged extension or to keep this ID on a first store upload. Never commit it.
+- Tests that load the extension unpacked get this ID too. Tests may still read the ID at run time.

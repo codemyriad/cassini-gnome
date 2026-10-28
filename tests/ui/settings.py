@@ -124,7 +124,9 @@ with tempfile.TemporaryDirectory() as temporary:
     with broker_connect(path) as browser:
         stream = browser.makefile("rwb")
         send_packet(stream, dict(role="extension", browserName="Chromium"))
-        until(lambda: request(path=path)["browsers"] == 1)
+        send_packet(stream, dict(type="hello", version=1))
+        send_packet(stream, dict(type="status", recording=False))
+        until(lambda: request(path=path)["connectedBrowsers"] == 1)
         dialog.refresh()
         until(lambda: dialog.browser.get_title() == "Connected to Chromium")
         assert "Parakeet Ultra" not in labels(dialog) and "Tell speakers apart" not in labels(dialog)
@@ -134,7 +136,9 @@ with tempfile.TemporaryDirectory() as temporary:
     with broker_connect(path) as unknown:
         stream = unknown.makefile("rwb")
         send_packet(stream, dict(role="extension"))
-        until(lambda: request(path=path)["browsers"] == 1)
+        send_packet(stream, dict(type="hello", version=1))
+        send_packet(stream, dict(type="status", recording=False))
+        until(lambda: request(path=path)["connectedBrowsers"] == 1)
         dialog.refresh()
         until(lambda: dialog.browser.get_title() == "Connected")
         stream.close()

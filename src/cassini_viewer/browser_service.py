@@ -109,7 +109,7 @@ class BrowserConnection:
         self.write_lock = threading.Lock()
         self.meetings = {}
         self.status = {"recording": False}
-        self.status_seen = False
+        self.status_seen = self.hello_seen = False
         self.notification = None
         self.pending = {}
         self.attempted = set()
@@ -168,7 +168,14 @@ class BrowserService:
                     meeting["path"] = browser.status.get("path")
             return dict(
                 browsers=len(self.browsers),
-                browserNames=sorted({b.browser_name for b in self.browsers.values() if b.browser_name}),
+                connectedBrowsers=sum(b.hello_seen and b.status_seen for b in self.browsers.values()),
+                browserNames=sorted(
+                    {
+                        b.browser_name
+                        for b in self.browsers.values()
+                        if b.browser_name and b.hello_seen and b.status_seen
+                    }
+                ),
                 autoRecord=self.auto_record,
                 meetings=meetings,
                 recordings=list(self.recordings),
@@ -248,7 +255,11 @@ class BrowserService:
                     if isinstance(packet.get("status"), dict):
                         self._status(browser, packet["status"])
                     pending["event"].set()
-            elif kind != "hello":
+            elif kind == "hello":
+                if type(packet.get("version")) is not int or packet["version"] != 1:
+                    raise ValueError("Unsupported browser control version")
+                browser.hello_seen = True
+            else:
                 raise ValueError("Unknown browser control event")
         self.policy()
 

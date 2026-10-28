@@ -115,6 +115,8 @@ install_data(
   'cassini_viewer/browser_host.py',
   'cassini_viewer/browser_control_host.py',
   'cassini_viewer/browser_service.py',
+  'cassini_viewer/companion.py',
+  'cassini_viewer/companion_setup.py',
   'cassini_viewer/browser_window.py',
   'cassini_viewer/browser_notifications.py',
   'cassini_viewer/session_window.py',
@@ -131,7 +133,7 @@ install_data(
 configure_file(
   input: 'cassini_viewer/paths.json.in',
   output: 'paths.json',
-  configuration: {'ONNXRUNTIME_DIR': onnxruntime_dir, 'SHERPA_DIR': sherpa_dir},
+  configuration: {'ONNXRUNTIME_DIR': onnxruntime_dir, 'SHERPA_DIR': sherpa_dir, 'BINDIR': get_option('prefix') / get_option('bindir')},
   install: true,
   install_dir: moduledir,
 )

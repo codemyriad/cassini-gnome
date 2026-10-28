@@ -77,7 +77,6 @@ class CassiniApplication(Adw.Application):
         self._add_action("preferences", self.on_preferences, ["<primary>comma"])
         self._add_action("quit", self.on_quit, ["<primary>q"])
         self._add_action("record", self.on_record, ["<primary>r"])
-        self._add_action("browser-meetings", self.on_browser_meetings)
         self._add_action("stop-recording", self.on_stop_recording)
         self._add_action("open-recording", self.on_open_recording)
         self.set_accels_for_action("window.close", ["<primary>w"])
@@ -211,13 +210,14 @@ class CassiniApplication(Adw.Application):
         finish_close(self, list(self.get_windows()))
         self.quit()
 
-    def on_browser_meetings(self, *_args):
-        from .browser_window import BrowserMeetingsWindow
+    def on_companion_setup(self, *_args, parent=None):
+        from .companion_setup import CompanionSetup
 
-        window = next((w for w in self.get_windows() if isinstance(w, BrowserMeetingsWindow)), None)
-        if window is None:
-            window = BrowserMeetingsWindow(self)
-        window.present()
+        dialog = getattr(self, "companion_setup", None)
+        if dialog is None or dialog.closed:
+            dialog = self.companion_setup = CompanionSetup(self)
+        dialog.present(parent or self.get_active_window())
+        return dialog
 
     @property
     def recording_settings(self):
