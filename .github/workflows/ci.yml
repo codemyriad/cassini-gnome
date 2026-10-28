@@ -38,8 +38,9 @@ jobs:
     if: ${{ !cancelled() }}
     uses: ./.github/workflows/build.yml
     with:
-      boards: ${{ needs.changes.outputs.boards != 'false' }}
-      offline: ${{ needs.changes.outputs.offline != 'false' }}
+      # Failed detection must override even partially written false outputs.
+      boards: ${{ needs.changes.result != 'success' || needs.changes.outputs.boards != 'false' }}
+      offline: ${{ needs.changes.result != 'success' || needs.changes.outputs.offline != 'false' }}
   source:
     name: Source
     needs: changes

@@ -8,7 +8,8 @@ infrastructure changes run every area. Renames include both old and new paths.
 Missing bases, invalid events and failed diffs select everything. Main, nightly
 and dispatch never use PR path filtering. Legacy UX spike push branches are kept.
 
-Even a failed Changes job causes the build and area calls to default to running.
+Even a failed Changes job causes the build and area calls to default to running;
+partially written false outputs from that failed job are never trusted.
 A failed profile does not suppress other consumers of already-uploaded products;
 a missing product makes its consumer fail explicitly. Root calls use
 `!cancelled()` so detection failures run everything while manual cancellation
