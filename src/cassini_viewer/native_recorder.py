@@ -84,7 +84,7 @@ class NativeRecorder(GObject.Object):
                 source = (
                     f"audiotestsrc is-live=true freq={440 + index * 440}"
                     if test
-                    else f'pulsesrc device={device} client-name="Cassini Recording"'
+                    else f'pulsesrc device={device} client-name="Cassini Recording" provide-clock=false'
                 )
                 sources.append(
                     f"{source} ! queue ! audioconvert ! audioresample ! "
@@ -93,6 +93,10 @@ class NativeRecorder(GObject.Object):
                     f"appsink name={identifier} emit-signals=true sync=false max-buffers=8 drop=false"
                 )
             self.pipeline = Gst.parse_launch(" ".join(sources))
+            # Device clocks reset independently when Pulse streams start. Use
+            # one monotonic clock for both sources and their running-time/base
+            # mapping; keep the audio source's normal clock-slaving behaviour.
+            self.pipeline.use_clock(Gst.SystemClock.obtain())
             for identifier in ("microphone", "system"):
                 self.pipeline.get_by_name(identifier).connect("new-sample", self._sample, identifier)
             bus = self.pipeline.get_bus()

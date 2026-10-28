@@ -57,6 +57,17 @@ trace.hook_messages(native_recorder.NativeRecorder)
 trace.hook_appends(RecordingSession)
 
 
+def capture_clock(native):
+    clock = native.pipeline.get_clock()
+    running_ms = (clock.get_time() - native.pipeline.get_base_time()) / Gst.MSECOND
+    offsets = [track.get("startOffsetMs") for track in native.session.manifest["tracks"]]
+    assert isinstance(clock, Gst.SystemClock), "Independent Pulse sources must share the monotonic pipeline clock"
+    assert all(offset is not None and 0 <= offset <= running_ms + 1000 for offset in offsets), offsets
+    report.setdefault("captureClocks", []).append(
+        dict(clock=clock.get_name(), runningMs=running_ms, startOffsets=offsets)
+    )
+
+
 def diagnostics():
     native = app.recorder if app else None
 
@@ -146,6 +157,7 @@ try:
         lambda: window.recording_page is not None and all(level > 0.1 for level in native.levels),
         "live Recording page and actual meters",
     )
+    capture_clock(native)
     page = window.recording_page
     # Real key events: spaces belong to notes, not the global player action.
     page.notes_view.grab_focus()
@@ -223,6 +235,7 @@ try:
     until(lambda: native.pipeline is not None, "global shortcut starts next recording")
     assert native.minutes_left == 9 and native.line == "errors.diskLow.line", "low-space start was blocked or unwarned"
     until(lambda: all(w.frames >= 9600 for w in native.session.writers.values()), "low-space capture is allowed")
+    capture_clock(native)
     space[0] = (0, True)
     until(lambda: native.pipeline is None, "reserve automatically stops and keeps")
     assert native.session.manifest["state"] == "completed" and all(
@@ -240,6 +253,7 @@ try:
         lambda: window.recording_page is not None and all(w.frames >= 9600 for w in native.session.writers.values()),
         "last-edit capture has audio",
     )
+    capture_clock(native)
     services.app_action(app, "open-recording")
     until(window.get_visible, "open last-edit recording")
     final_directory = native.session.directory
