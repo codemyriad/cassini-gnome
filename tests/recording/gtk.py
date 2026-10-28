@@ -30,13 +30,16 @@ import gi  # noqa: E402
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
+gi.require_version("Gst", "1.0")
 from gi.repository import Gio, Gst  # noqa: E402
+from gst_evidence import GstEvidence  # noqa: E402
 from readiness import PCMProgress, wait_until  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-viewer.gresource")))
 from cassini_viewer.library_window import LibraryWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
+from cassini_viewer.native_recorder import NativeRecorder  # noqa: E402
 from cassini_viewer.recording_session import RecordingSession  # noqa: E402
 
 
@@ -61,6 +64,9 @@ artifacts.mkdir(parents=True, exist_ok=True)
 app = CassiniApplication("com.gocassini.RecordingTest", "test", "development")
 app.transcription_enabled = False  # Audio/permission harness; real ML is proved by the offline pipeline job.
 evidence = {"passed": False}
+trace = GstEvidence(artifacts)
+trace.hook_messages(NativeRecorder)
+trace.hook_appends(RecordingSession)
 callback_errors = []
 
 
@@ -74,6 +80,7 @@ sys.excepthook = callback_error
 
 def diagnostics():
     return {
+        "gstreamer": trace.snapshot(),
         "capture": dict(
             error=app.recording_error,
             guard=bool(app._capture_confirmation),
@@ -288,6 +295,8 @@ except BaseException:
     subprocess.run(["import", "-window", "root", str(artifacts / "failure.png")], check=False)
     raise
 finally:
+    trace.checkpoint("complete" if evidence["passed"] else "failed", app.recorder.pipeline if app.recorder else None)
+    trace.close()
     evidence["readiness"] = diagnostics()
     evidence["callbackErrors"] = callback_errors
     (artifacts / "results.json").write_text(json.dumps(evidence, indent=2) + "\n")

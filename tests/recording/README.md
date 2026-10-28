@@ -148,3 +148,10 @@ Every run retains per-process `gstreamer-<pid>.log`, `pulse-server.log` and
 document the `%p` log-file pattern; it prevents helper processes from overwriting
 one another's evidence. No readiness, duration, tone, bleed or disk threshold is
 relaxed, and failures are not retried into a passing result.
+
+The GTK recording probe uses the same passive message/appender fault hooks as the
+native and comfort probes. A GUI capture failure therefore retains the original
+append exception, track/offset/frame count, complete bus error and pre-disposal
+pipeline evidence in gst-evidence.json, in addition to results.json and raw GST
+logs. This also covers failures at the first native capture, before the comfort
+probe has run. No readiness, duration, tone or bleed thresholds differ.
