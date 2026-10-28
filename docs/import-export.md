@@ -81,3 +81,12 @@ removes the newly published folder. Failed imports leave the Library visible
 with the failure diagnostic instead of reopening the original in the legacy
 viewer. The isolated Open/drop probe covers both filename variants, deduplication
 and a header-readable stream missing its ending.
+||||||| parent of a41014d (Export the current meeting snapshot without GTK file IO)
+
+The scanner carries a received file's byte size into its immutable Meeting model;
+Export does not stat that file on the GTK thread. An open idle Export dialog
+tracks fresh Library metadata, title and recognised-name disclosure. Pressing
+Export takes the current Meeting-page/Library snapshot; an export already in
+progress retains its chosen immutable input. The isolated GUI proof rejects
+Python stat calls during dialog construction, changes real metadata while the
+dialog is open, and checks the updated title and note in the resulting file.

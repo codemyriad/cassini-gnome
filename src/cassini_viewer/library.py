@@ -134,7 +134,7 @@ def _opus(stream, info):
             )
         except ValueError:
             trusted = False
-    return embedded, duration, trusted, {}
+    return embedded, duration, trusted, {}, info.st_size
 
 
 @dataclass(frozen=True)
@@ -193,6 +193,7 @@ class Meeting(MeetingState):
     capture_source: str | None = None
     capture_state: str | None = None
     audio_file: Path | None = None
+    audio_size_bytes: int | None = None
     legacy_transcript_file: Path | None = None
     has_audio: bool = False
     metadata_editable: bool = True
@@ -531,6 +532,7 @@ class LibraryScanner:
             return None
         capture, tracks, embedded, audio_file = {}, (), None, None
         embedded_words = {}
+        audio_size = None
         duration, started, trusted = None, None, False
         lifecycle = active if origin == "own" and active in ("recording", "saving") else "saved"
         interrupted = None
@@ -556,7 +558,7 @@ class LibraryScanner:
             try:
                 name = basename(received["originalName"])
                 audio_file = directory / name
-                embedded, duration, trusted, embedded_words = self._load(fd, directory, name, "opus", _opus)
+                embedded, duration, trusted, embedded_words, audio_size = self._load(fd, directory, name, "opus", _opus)
                 created = _date(embedded.created_at)
                 if created is not None:
                     started = created
@@ -611,6 +613,7 @@ class LibraryScanner:
             capture_source=capture.get("source") if origin == "own" else None,
             capture_state=capture.get("state") if origin == "own" else None,
             audio_file=audio_file,
+            audio_size_bytes=audio_size,
             legacy_transcript_file=legacy_transcript_file,
             has_audio=bool(tracks) if origin == "own" else duration is not None,
             metadata_editable=not unsupported,
