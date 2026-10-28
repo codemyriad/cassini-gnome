@@ -24,6 +24,7 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
+from cassini_viewer.library_window import LibraryWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
 from cassini_viewer.settings_dialog import SettingsDialog  # noqa: E402
 
@@ -55,9 +56,24 @@ with tempfile.TemporaryDirectory() as temporary:
         GSETTINGS_SCHEMA_DIR=str(schemas),
         CASSINI_LIBRARY_DIR=str(fixtures / "empty/root"),
     )
-    with patch(
-        "cassini_viewer.browser_service.ensure_service",
-        side_effect=AssertionError("Sandbox tried unusable browser bridge"),
+    tick_status = []
+    original_tick = LibraryWindow._activity_tick
+
+    def activity_tick(window):
+        result = original_tick(window)
+        if window.recording_page:
+            page = window.recording_page
+            tick_status.append(
+                (page.timer.get_label(), page.mic_level.get_fraction(), page.others_level.get_fraction())
+            )
+        return result
+
+    with (
+        patch(
+            "cassini_viewer.browser_service.ensure_service",
+            side_effect=AssertionError("Sandbox tried unusable browser bridge"),
+        ),
+        patch.object(LibraryWindow, "_activity_tick", activity_tick),
     ):
         app = CassiniApplication("com.gocassini.CompanionSandboxTest", "test", "development")
         app.register(None)
@@ -65,6 +81,8 @@ with tempfile.TemporaryDirectory() as temporary:
         window = app.get_active_window()
         until(lambda: not window._pending)
         assert not app.browser_companion_available and app.browser_watch is None
+        activity_timer = window._activity_timer
+        assert activity_timer, "Native activity timer must run without a browser bridge"
         assert not window.first_companion.get_visible()
         assert app.on_companion_setup() is None
         dialog = SettingsDialog(app)
@@ -90,6 +108,9 @@ with tempfile.TemporaryDirectory() as temporary:
         )
         native = app.recorder
         assert {t["kind"] for t in native.session.manifest["tracks"]} == {"microphone", "system"}
+        until(lambda: len({row[0] for row in tick_status}) >= 2)
+        assert any(mic > 0 and others > 0 for _, mic, others in tick_status), tick_status
+        assert window._activity_source is None and window._activity_timer == activity_timer
         app.stop_native()
         until(lambda: native.pipeline is None and not native.stopping)
         assert native.session.manifest["state"] == "completed"
@@ -144,6 +165,7 @@ with tempfile.TemporaryDirectory() as temporary:
                 assert window.first_companion.get_visible()
                 assert settings.browser_setup.get_visible() and settings.automatic.get_visible()
                 assert window.meeting_page._companion.get_visible()
+                assert window._activity_timer == activity_timer, "Bridge changes must not duplicate the live timer"
         finally:
             release.set()
             GLib.source_remove(timer)
@@ -152,5 +174,5 @@ with tempfile.TemporaryDirectory() as temporary:
         window.close()
         app.do_shutdown()
     print(
-        "PASS Flatpak gate, native fallback, GTK responsiveness during blocked host probe and automatic retry enabling controls"
+        "PASS Flatpak gate, native recording clock/meters without bridge, responsive host probe and retry enabling controls"
     )
