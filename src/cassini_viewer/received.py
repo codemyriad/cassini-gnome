@@ -2,6 +2,7 @@
 """Copy a received Opus into the Library; publish last and deduplicate full bytes."""
 
 import hashlib
+import json
 import os
 import shutil
 import stat
@@ -13,6 +14,7 @@ from uuid import uuid4
 
 from . import portable
 from .library import LibraryScanner, library_root
+from .library_schema import valid
 from .meeting_store import atomic_json, read_metadata
 from .open_meeting import load_open_meeting
 
@@ -33,7 +35,7 @@ def regular_input(path):
 
 
 def import_received(path, root=None):
-    original = Path(path).absolute()
+    original = Path(path).resolve(strict=True)
     if original.suffix.lower() not in (".opus", ".ogg") or not original.is_file():
         raise ValueError("Choose an Ogg Opus recording")
     requested_root = root
@@ -42,7 +44,10 @@ def import_received(path, root=None):
     with IMPORT_LOCK:
         stage = Path(tempfile.mkdtemp(prefix=".received-", dir=root))
         try:
-            copied = stage / original.name
+            # The shared folder schema uses a lowercase .opus copy name even
+            # for an .ogg or uppercase source. Keep the Opus bytes untouched.
+            copy_name = original.stem.replace("\\", "-") + ".opus"
+            copied = stage / copy_name
             with regular_input(original.resolve(strict=True)) as source, copied.open("xb") as output:
                 before = os.fstat(source.fileno())
                 os.chmod(copied, 0o600)
@@ -83,7 +88,7 @@ def import_received(path, root=None):
             embedded = portable.read_meeting(str(copied))
             status = opened.transcript
             reference = (
-                dict(kind="embedded", file=original.name, transcriptId=embedded.default_transcript_id)
+                dict(kind="embedded", file=copy_name, transcriptId=embedded.default_transcript_id)
                 if status == "done"
                 else None
             )
@@ -100,24 +105,43 @@ def import_received(path, root=None):
                 etaMinutes=None,
                 error=dict(id="transcript-damaged", action=None) if status == "damaged" else None,
                 quoteOverride=None,
-                received=dict(originalName=original.name, importedAtMs=time.time_ns() // 1000000, sha256=sha),
+                received=dict(originalName=copy_name, importedAtMs=time.time_ns() // 1000000, sha256=sha),
             )
-            if original.parent.name:
+            if original.parent.name and "\\" not in original.parent.name:
                 metadata["received"]["originalFolderName"] = original.parent.name
+            if not valid(metadata):
+                raise ValueError("Received recording metadata is invalid")
+            if (
+                len(json.dumps(metadata, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode()) + 1
+                > 1024**2
+            ):
+                raise ValueError("Received recording metadata exceeds limit")
             atomic_json(stage / "meeting.json", metadata)
             published = _publish_import(stage, identifier, requested_root)
-            return _meeting(published)
+            try:
+                return _meeting(published)
+            except BaseException:
+                # A failed first scan must not leave an invisible, undedupable
+                # Received folder behind. This UUID was created by this import.
+                shutil.rmtree(published)
+                raise
         finally:
             if stage.exists():
                 shutil.rmtree(stage)
 
 
 def _meeting(directory):
-    return next(
-        m
-        for m in LibraryScanner(directory.parent).scan(changed_directories={directory}).meetings
-        if m.directory == directory
+    meeting = next(
+        (
+            m
+            for m in LibraryScanner(directory.parent).scan(changed_directories={directory}).meetings
+            if m.directory == directory
+        ),
+        None,
     )
+    if meeting is None:
+        raise ValueError("Imported recording could not be read")
+    return meeting
 
 
 def _publish_import(stage, identifier, root):

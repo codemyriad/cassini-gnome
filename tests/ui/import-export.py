@@ -90,7 +90,9 @@ with tempfile.TemporaryDirectory() as temporary:
     window = app.get_active_window()
     until(lambda: not window._pending)
     initial_received = sum(m.origin == "received" for m in window.snapshot.meetings)
-    app.open_in_new_window(Gio.File.new_for_path(str(incoming)))
+    ogg = incoming.with_suffix(".ogg")
+    shutil.copyfile(incoming, ogg)
+    app.open_in_new_window(Gio.File.new_for_path(str(ogg)))
     until(
         lambda: (
             window.selected
@@ -108,6 +110,20 @@ with tempfile.TemporaryDirectory() as temporary:
     assert window._drop_files(None, drop, 0, 0)
     until(lambda: not window._opening_files and not window._pending_selection)
     assert sum(m.origin == "received" for m in window.snapshot.meetings) == initial_received + 1
+    uppercase = incoming.with_suffix(".OPUS")
+    shutil.copyfile(incoming, uppercase)
+    window.open_file(Gio.File.new_for_path(str(uppercase)))
+    until(lambda: not window._opening_files and not window._pending_selection)
+    assert sum(m.origin == "received" for m in window.snapshot.meetings) == initial_received + 1
+    failures = []
+    toast = window.toast
+    window.toast = lambda message: (failures.append(message), toast(message))
+    broken = tmp / "incomplete.opus"
+    broken.write_bytes(incoming.read_bytes()[:-10])
+    window.open_file(Gio.File.new_for_path(str(broken)))
+    until(lambda: not window._opening_files)
+    assert failures and app.get_windows() == [window], "A failed import opened the legacy viewer"
+    assert not list(Path(os.environ["CASSINI_LIBRARY_DIR"]).glob(".received-*"))
     window.read_button.emit("clicked")
     until(lambda: window.meeting_page is not None and window.player._prerolled)
     window.meeting_page.play.emit("clicked")

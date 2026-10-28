@@ -313,3 +313,46 @@ def test_empty_default_does_not_claim_all_transcripts_are_empty(tmp_path, monkey
     assert opened.transcript == "done" and not opened.words
     imported = import_received(exported, tmp_path / "Library")
     assert imported.transcript == "done" and not imported.can_write_down
+
+
+@pytest.mark.parametrize("name", ["clip.ogg", "clip.OPUS", "a\\b.opus", "clip.opus"])
+def test_received_import_normalizes_copy_names_and_paths_without_changing_bytes(tmp_path, name):
+    source = tmp_path / "outside\\folder" / name
+    source.parent.mkdir()
+    data = (ASSETS / "plain-title.opus").read_bytes()
+    source.write_bytes(data)
+    detour = source.parent / "sub"
+    detour.mkdir()
+    received = import_received(detour / ".." / name, tmp_path / "Library")
+    assert received.audio_file.read_bytes() == data and source.read_bytes() == data
+    assert received.audio_file.suffix == ".opus" and "\\" not in received.audio_file.name
+    assert "originalFolderName" not in received.metadata["received"]
+    assert received.metadata["received"]["originalName"] == received.audio_file.name
+    assert len(LibraryScanner(tmp_path / "Library").scan().meetings) == 1
+    assert not list((tmp_path / "Library").glob(".received-*"))
+
+
+def test_received_import_rejects_oversized_notes_before_publication(tmp_path, monkeypatch):
+    from cassini_viewer import received
+
+    source = ASSETS / "plain-title.opus"
+    original = received.load_open_meeting
+    notes = [dict(atMs=0, text="🙂" * 100000) for _ in range(3)]
+    monkeypatch.setattr(received, "load_open_meeting", lambda *args: replace(original(*args), notes=notes))
+    root = tmp_path / "Library"
+    with pytest.raises(ValueError, match="exceeds limit"):
+        import_received(source, root)
+    assert not list(root.iterdir())
+
+
+def test_received_import_cleans_published_folder_if_first_scan_fails(tmp_path, monkeypatch):
+    from cassini_viewer import received
+
+    def fail(directory):
+        raise ValueError("Synthetic scan failure")
+
+    monkeypatch.setattr(received, "_meeting", fail)
+    root = tmp_path / "Library"
+    with pytest.raises(ValueError, match="Synthetic scan failure"):
+        import_received(ASSETS / "plain-title.opus", root)
+    assert not list(root.iterdir())
