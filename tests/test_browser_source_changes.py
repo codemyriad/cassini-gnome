@@ -103,3 +103,34 @@ def test_me_only_browser_loss_closes_local_span_and_publishes_activity(server): 
         capture.stop()
     finally:
         client.close()
+
+
+def test_retiring_source_error_cannot_stop_its_confirmed_replacement(server):  # noqa: F811
+    service, path, _ = server
+    client = BrowserAudioProxy(path=path)
+
+    class Retiring(Tap):
+        def __init__(self, kind, origin, append, failed, **kwargs):
+            super().__init__(kind, origin, append, failed, **kwargs)
+            self.failed = failed
+
+        def stop(self):
+            super().stop()
+            self.failed("Old device closed")
+
+    try:
+        start(client, "retiring-source", microphone=False)
+        capture = service.captures["retiring-source"]
+        capture.tap_factory = Retiring
+        capture.fallback()
+        events = []
+        original = capture.changed
+        capture.changed = lambda c, event: (events.append(event), original(c, event))
+        old = capture.native_taps["system"][1]
+        capture.select(True, False)
+        assert old.stopped and "error" not in events
+        assert not capture.error and not capture.finished and not capture.microphone.stopped
+        assert (capture.me, capture.others) == (True, False)
+        capture.stop()
+    finally:
+        client.close()

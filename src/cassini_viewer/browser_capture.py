@@ -161,7 +161,9 @@ class BrowserCapture:
         def failed(message):
             with self.lock:
                 state["error"] = message
-                active = state["active"]
+                active = state["active"] and not self.finished and not any(
+                    track["id"] == identifier and track.get("ended") for track in self.host.session.manifest["tracks"]
+                )
                 if active:
                     self.error = message
             if active:
