@@ -3,6 +3,26 @@
 %:
 	dh $@ --buildsystem=meson
 
+# The pinned writing-down artifacts come from .whistle-cache, which
+# build-aux/deb/build.sh fills (build-aux/whistle-cache.sh) before building;
+# the build itself never downloads.
+override_dh_auto_configure:
+	dh_auto_configure -- -Dwhistle=enabled -Dwhistle_cache=.whistle-cache
+
+# The app checks every file of the bundle against its pinned sha256 before it
+# loads anything, so nothing may rewrite it: not strip-nondeterminism (which
+# normalises the wrapper wheel's zip), dwz or strip. dh_strip runs last of
+# these, so the bundle is verified again right after it.
+override_dh_strip_nondeterminism:
+	dh_strip_nondeterminism -Xwhistle/
+
+override_dh_dwz:
+	dh_dwz -Xwhistle/
+
+override_dh_strip:
+	dh_strip -Xwhistle/
+	python3 whistle/verify.py debian/cassini-viewer/usr/share/cassini-viewer/whistle
+
 override_dh_auto_test:
 ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
 	meson test -C obj-$(DEB_HOST_GNU_TYPE) --print-errorlogs

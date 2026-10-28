@@ -1,12 +1,32 @@
 #!/usr/bin/env python3
 # Smoke-test an installed Cassini Viewer, for the package build scripts:
-#   python3 -I build-aux/smoke-installed.py [datadir]
+#   python3 -I build-aux/smoke-installed.py [datadir] [--whistle GOLDENS]
 # datadir defaults to /usr/share/cassini-viewer. Runs the launcher's startup
 # check, then fails unless every playback and recording GStreamer element is
 # present: the app only warns about those, but a package must pull them in.
+#
+# --whistle GOLDENS (a copy of tests/whistle) also writes a meeting down the
+# way the installed app does: it checks the installed bundle's hashes and
+# that the app finds NumPy and ONNX Runtime, then runs the installed worker
+# on both D11 goldens (tests/whistle/pipeline_probe.py): segments and word
+# texts exact, word times within 80 ms (D11.3). It refuses to run unless the
+# only network interface is loopback, so run it in a container started with
+# --network none (or flatpak run --unshare=network).
+import argparse
+import json
+import os
+import socket
+import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
-sys.path.insert(0, sys.argv[1] if len(sys.argv) > 1 else "/usr/share/cassini-viewer")
+parser = argparse.ArgumentParser()
+parser.add_argument("datadir", nargs="?", default="/usr/share/cassini-viewer", type=Path)
+parser.add_argument("--whistle", type=Path, metavar="GOLDENS", help="also run the offline D11 goldens")
+args = parser.parse_args()
+
+sys.path.insert(0, str(args.datadir))
 from cassini_viewer import runtime  # noqa: E402
 
 runtime.check()  # exits with a readable message if a library is missing or too old
@@ -19,3 +39,41 @@ missing = runtime.missing_gst_elements(Gst.ElementFactory.find, runtime.all_elem
 if missing:
     sys.exit("smoke test failed: missing GStreamer elements: " + ", ".join(missing))
 print("smoke test passed: " + ", ".join(runtime.all_elements()))
+
+if args.whistle:
+    from cassini_viewer.transcription import unavailable_reason  # noqa: E402
+    from cassini_viewer.whistle_worker import verify_bundle  # noqa: E402
+
+    bundle = args.datadir / "whistle"
+    verify_bundle(bundle)  # every hash in manifest.json: nothing stripped or moved
+    reason = unavailable_reason(bundle)
+    if reason:
+        sys.exit(f"writing-down smoke test failed: {reason}")
+    interfaces = {name for _, name in socket.if_nameindex()}
+    if interfaces != {"lo"}:
+        sys.exit(f"writing-down smoke test must run without a network, but this has {sorted(interfaces)}")
+    env = dict(os.environ, CASSINI_WHISTLE_NETWORK_NONE="1", PYTHONDONTWRITEBYTECODE="1")
+    with tempfile.TemporaryDirectory() as temporary:
+        report = Path(temporary) / "golden.json"
+        probe = subprocess.run(
+            [sys.executable, str(args.whistle / "pipeline_probe.py"), str(bundle), str(report)]
+            + ["--modules", str(args.datadir)],
+            env=env,
+            capture_output=True,
+            text=True,
+            cwd=temporary,
+        )
+        if probe.returncode != 0:
+            print(probe.stdout[-20000:], probe.stderr, sep="\n", file=sys.stderr)
+            sys.exit("writing-down smoke test failed: the D11 goldens did not match")
+        result = json.loads(report.read_text())
+    import numpy
+    import onnxruntime
+
+    print(f"NumPy {numpy.__version__}, ONNX Runtime {onnxruntime.__version__}, {result['vad']['providers']}")
+    for case in result["cases"]:
+        print(
+            f"{case['golden']}: {case['segments']} segments exact, {case['words']} words, "
+            f"text exact {case['wordTextMatches']}, max word time difference {case['maxBoundaryDeltaMs']} ms"
+        )
+    print("writing-down smoke test passed offline (D11.3)")

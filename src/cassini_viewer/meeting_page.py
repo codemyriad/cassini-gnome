@@ -258,7 +258,8 @@ class MeetingPage(Adw.NavigationPage):
             )
         )
         self.total.set_label(fmt.position(meeting.duration_ms or 0))
-        self.write_button.set_visible(meeting.can_write_down and meeting.transcript == "none")
+        writing = getattr(self.window.get_application(), "writing_available", True)
+        self.write_button.set_visible(writing and meeting.can_write_down and meeting.transcript == "none")
         self.seek.set_range(0, max(1, meeting.duration_ms or 1))
         if not self.window._playback_failed and self.window._loaded_key != meeting.key:
             self.window._ensure_player(meeting)
@@ -313,11 +314,14 @@ class MeetingPage(Adw.NavigationPage):
         if meeting.transcript == "damaged":
             self.lines.append(InlineLine("errors.transcriptDamaged.line"))
         elif meeting.transcript == "failed":
-            retry = getattr(self.window.get_application(), "write_down", None)
+            app = self.window.get_application()
+            retry = getattr(app, "write_down", None)
             self.lines.append(
                 InlineLine(
                     "errors.transcribeFailed.line",
-                    action="common.tryAgain" if meeting.metadata_editable else None,
+                    action="common.tryAgain"
+                    if meeting.metadata_editable and getattr(app, "writing_available", True)
+                    else None,
                     callback=(lambda: retry(meeting)) if retry and meeting.metadata_editable else None,
                 )
             )

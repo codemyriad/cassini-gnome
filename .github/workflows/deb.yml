@@ -26,13 +26,21 @@ jobs:
         base: ["ubuntu:26.04", "debian:testing"]
     steps:
       - uses: actions/checkout@v5
+      # The pinned writing-down artifacts (whistle/pins.json), downloaded once
+      # per pin set; the package builds read them and never download.
+      - uses: actions/cache@v4
+        with:
+          path: .whistle-cache
+          key: whistle-${{ hashFiles('whistle/pins.json') }}
+      - run: build-aux/whistle-cache.sh
       # The same script as `make deb`: checks the version, builds, runs
-      # lintian, installs the package and smoke-tests it in containers.
+      # lintian, installs the package in a fresh container and, with no
+      # network, smoke-tests it and writes the D11 goldens down with it.
       # Retried once because distribution mirrors occasionally time out.
       - run: build-aux/deb/build.sh "${{ matrix.base }}" || build-aux/deb/build.sh "${{ matrix.base }}"
-      # Both bases produce the same file name; release the Ubuntu build.
-      - if: matrix.base == 'ubuntu:26.04'
-        uses: actions/upload-artifact@v4
+      # Each base names its file (~ubuntu26.04, ~debian-testing), so the
+      # release carries both.
+      - uses: actions/upload-artifact@v4
         with:
           name: deb-${{ strategy.job-index }}
           path: dist/*.deb

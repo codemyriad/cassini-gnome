@@ -75,9 +75,11 @@ msginit -i po/cassini-viewer.pot -o po/<code>.po -l <code>
 
    The deb, RPM and Arch build scripts refuse to build when their version differs
    from `meson.build`.
-2. Tag `vX.Y.Z` and push the tag. The release workflow builds the .deb, the
-   Fedora and openSUSE RPMs, the Arch package and the Flatpak bundle, and
-   attaches them to a GitHub release.
+2. Tag `vX.Y.Z` and push the tag. The release workflow builds the Ubuntu 26.04
+   and Debian testing .debs (`cassini-viewer_X.Y.Z~ubuntu26.04_amd64.deb`,
+   `cassini-viewer_X.Y.Z~debian-testing_amd64.deb`), the Fedora and openSUSE
+   x86_64 RPMs, the Arch package and the Flatpak bundle, and attaches them to
+   a GitHub release.
 
 ## Build from source
 
@@ -120,20 +122,79 @@ Build Meson with the system Python, not one from a virtualenv: the launcher
 runs with the interpreter Meson found, and that interpreter needs PyGObject.
 Meson warns when it cannot import `gi`.
 
+A plain build cannot write meetings down: the offline engine is off by
+default (`-Dwhistle=disabled`), and the app then hides **Write it down** and
+logs why. To bundle it (Linux glibc x86_64 only), download the pinned files
+once and enable it; the build itself never downloads:
+
+```sh
+build-aux/whistle-cache.sh           # or: make whistle-cache
+meson setup _build -Dwhistle=enabled # reads .whistle-cache (-Dwhistle_cache=DIR)
+```
+
+The app's Python also needs NumPy and ONNX Runtime (`install-deps.sh`
+installs them, except on Alpine).
+
 ### Packages
 
 All of these write to `dist/`. The deb, rpm and arch targets build the
 package in a clean container with podman or docker (set `CONTAINER_ENGINE` to
-choose), install it there and smoke-test it:
+choose), then install it in a fresh container and smoke-test it there with
+`--network none` (see below):
 
 | Command | Builds |
 |---|---|
-| `make deb` | `.deb`, in Ubuntu 26.04 (`build-aux/deb/build.sh debian:testing` for Debian) |
-| `make rpm` | `.rpm` and `.src.rpm`, in Fedora |
-| `make rpm-opensuse` | `.rpm` and `.src.rpm`, in openSUSE Tumbleweed |
-| `make arch` | `.pkg.tar.zst`, in Arch Linux |
+| `make deb` | `cassini-viewer_X.Y.Z~ubuntu26.04_amd64.deb`, in Ubuntu 26.04 (`build-aux/deb/build.sh debian:testing` for `~debian-testing`) |
+| `make rpm` | `.x86_64.rpm` and `.src.rpm`, in Fedora |
+| `make rpm-opensuse` | `.x86_64.rpm` and `.src.rpm`, in openSUSE Tumbleweed |
+| `make arch` | `.pkg.tar.zst` (x86_64), in Arch Linux |
 | `make flatpak` | `cassini-viewer.flatpak` (`make flatpak-devel` for the development app) |
 | `make packages` | all of them |
+
+#### Writing down offline, in every package
+
+Every package writes meetings down offline from its first launch, so each one
+bundles the pinned **Whistle** weights, the **Needle** engine (glibc x86_64)
+and wrapper, and **Silero VAD**, under `share/cassini-viewer/whistle`, with
+their licences (Apache-2.0, MIT) and `NOTICE.md`. `whistle/pins.json` pins
+every URL and sha256; `tests/test_packaging_pins.py` checks that the spec,
+the PKGBUILD and both Flatpak manifests use exactly those.
+
+- **Download once, build offline.** `build-aux/whistle-cache.sh` downloads
+  the four files into `.whistle-cache/`, checking each sha256, with retries;
+  `make deb|rpm|arch|packages` run it first, and CI caches it per
+  `pins.json`. Meson (`-Dwhistle=enabled`) then runs `whistle/fetch.py
+  --offline`, which never downloads and stops on a missing file or a hash
+  mismatch, builds the small CPU-count bridge, and `whistle/verify.py` checks
+  the bundle. The RPM takes the files as `Source1`-`Source4`, the PKGBUILD as
+  `source=` with `sha256sums`, the Flatpak as `file` sources.
+- **x86_64 only.** The engine is a glibc x86_64 binary, so the .deb is
+  `amd64`, the RPM `ExclusiveArch: x86_64`, the Arch package `arch=(x86_64)`.
+  The Flatpak builds everywhere but bundles the engine and its Python wheels
+  only on x86_64. Elsewhere, and on Alpine (musl cannot load the engine), the
+  app hides **Write it down** and logs "Writing down is not available on this
+  computer" with the reason.
+- **Never strip the bundle.** The app checks every file against
+  `manifest.json` before it loads anything, so a stripped library would never
+  run: `dh_strip`/`dh_dwz -Xwhistle/`, no RPM debuginfo or brp-strip (and no
+  `libneedle.so` provide), `options=(!strip !debug)`, Flatpak `no-debuginfo`.
+  Each build verifies the installed bundle again after those steps.
+- **Runtime dependencies.** NumPy and ONNX Runtime (CPU) for the app's
+  Python: `python3-numpy`, `python3-onnxruntime` (Debian, Ubuntu universe);
+  `python3dist(numpy)`, `python3dist(onnxruntime)` (Fedora, openSUSE);
+  `python-numpy`, `python-onnxruntime` (Arch; pacman picks
+  `python-onnxruntime-cpu`). The Flatpak runtime has neither, so the
+  manifests install pinned cp313 wheels (NumPy 2.5.4, ONNX Runtime 1.31.0);
+  move them with `runtime-version`. Nothing is downloaded at run time, the
+  Flatpak has no network permission, and telemetry is off.
+- **The offline smoke test.** After installing the package in a fresh
+  container, each build script saves that container as a local image
+  (`cassini-pkgtest-installed:*`) and starts it with `--network none` and a
+  read-only root. There `build-aux/smoke-installed.py --whistle tests/whistle`
+  checks the bundle's hashes, then writes both D11 goldens down with the
+  installed worker: segments and word texts exact, word times within 80 ms
+  (D11.3). `build-aux/flatpak/build.sh --smoke` (and CI) does the same in the
+  installed Flatpak with `--unshare=network`.
 
 The Flatpak is built on the host. It needs `flatpak` and either `flatpak-builder`
 or the `org.flatpak.Builder` app. The script adds the Flathub remote to your

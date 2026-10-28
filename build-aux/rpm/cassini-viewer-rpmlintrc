@@ -1,0 +1,8 @@
+# rpmlint filters for cassini-viewer (build-aux/rpm/build.sh passes this file;
+# the openSUSE Build Service picks up *-rpmlintrc next to the spec).
+# The offline writing-down bundle: the app loads these libraries only in its
+# recognition child, from this directory, after checking every file against
+# the sha256 in manifest.json, so they cannot move to %{_libdir} or be
+# stripped. libneedle3.so is the pinned upstream engine binary.
+addFilter(r"arch-dependent-file-in-usr-share .*/cassini-viewer/whistle/")
+addFilter(r"devel-file-in-non-devel-package .*/cassini-viewer/whistle/cpu_limit.c")

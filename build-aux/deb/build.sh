@@ -16,12 +16,20 @@ if [ "$VERSION" != "${DEB_VERSION%%-*}" ]; then
   echo "error: meson.build says $VERSION but debian/changelog says $DEB_VERSION" >&2
   exit 1
 fi
-# dpkg-buildpackage names the package after debian/changelog.
-DEB=cassini-viewer_${DEB_VERSION}_all.deb
+# dpkg-buildpackage names the package after debian/changelog. The package
+# carries the x86_64 writing-down engine, so it is amd64 only.
+DEB=cassini-viewer_${DEB_VERSION}_amd64.deb
+# Each base gets its own file name in dist/ and in the release:
+# ubuntu:26.04 -> cassini-viewer_0.2.0~ubuntu26.04_amd64.deb,
+# debian:testing -> cassini-viewer_0.2.0~debian-testing_amd64.deb.
+BASE_TAG=$(echo "${BASE##*/}" | sed 's/:\([0-9]\)/\1/; s/[:@]/-/g')
+OUT=cassini-viewer_${DEB_VERSION}~${BASE_TAG}_amd64.deb
 TAG=cassini-viewer-deb:$(image_slug "$BASE")
+# The pinned writing-down artifacts; the package build itself is offline.
+build-aux/whistle-cache.sh
 container_build -q -f build-aux/deb/Dockerfile --build-arg BASE="$BASE" -t "$TAG" debian
 mkdir -p dist
-container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" -e DEB="$DEB" "$TAG" sh -ec '
+container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" -e DEB="$DEB" -e OUT="$OUT" "$TAG" sh -ec '
   mkdir -p /build/src && cd /build/src
   # Copy the tree without build output, caches and VCS data.
   tar -C /in -cf - --exclude=./.git --exclude=./.venv --exclude="./_build*" --exclude=./_install \
@@ -37,21 +45,19 @@ container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" -e DEB="$DEB" "$TAG" s
   apt-get install -y --no-install-recommends "../$DEB"
   cassini-viewer --help >/dev/null
   python3 -I /in/build-aux/smoke-installed.py
-  cp "../$DEB" /out/
+  cp "../$DEB" "/out/$OUT"
   # Docker writes as root; hand the file back to the owner of dist/.
   # Rootless podman already maps root to the caller, so this is a no-op there.
-  chown "$(stat -c %u:%g /out)" "/out/$DEB" 2>/dev/null || true
+  chown "$(stat -c %u:%g /out)" "/out/$OUT" 2>/dev/null || true
 '
 
 # The build container has every Build-Depends installed, which can hide a
-# missing Depends; install the package in a fresh container and check it.
-container_run -v "$PWD/dist:/d:ro$Z" -v "$PWD/build-aux:/aux:ro$Z" -e DEB="$DEB" \
-  -e DEBIAN_FRONTEND=noninteractive "$BASE" sh -ec '
+# missing Depends; install the package in a fresh container, then check it
+# there with no network, writing the D11 goldens down offline.
+container_offline_smoke "$BASE" '
   printf "Acquire::Retries \"3\";\nAcquire::http::Timeout \"15\";\n" > /etc/apt/apt.conf.d/80retries
   apt-get update -qq
-  apt-get install -y -qq --no-install-recommends "/d/$DEB" >/dev/null
-  cassini-viewer --help >/dev/null
-  python3 -I /aux/smoke-installed.py
-  echo "clean install smoke test passed"
-'
-ls -l "dist/$DEB"
+  apt-get install -y -qq --no-install-recommends "/d/$OUT" >/dev/null
+  rm -rf /var/lib/apt/lists/*
+' -v "$PWD/dist:/d:ro$Z" -e OUT="$OUT" -e DEBIAN_FRONTEND=noninteractive
+ls -l "dist/$OUT"

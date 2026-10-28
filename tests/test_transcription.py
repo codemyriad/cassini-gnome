@@ -299,3 +299,48 @@ def test_progress_keeps_speaker_edits_made_after_enqueue_and_between_segments(tm
     update_progress_metadata(session.directory, planned, etaMinutes=None)
     value = read_metadata(session.directory)
     assert value["speakers"] == [dict(id="me", name="Edited again", provenance="recognised", colourIndex=0)]
+
+
+def _available_platform(monkeypatch, bundle):
+    import importlib.util
+    import platform
+    import sys
+
+    from cassini_viewer import transcription
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(platform, "libc_ver", lambda: ("glibc", "2.42"))
+    found = {"numpy", "onnxruntime"}
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object() if name in found else None)
+    bundle.mkdir(exist_ok=True)
+    (bundle / "pins.json").write_text("{}")
+    return transcription.unavailable_reason, found
+
+
+def test_unavailable_reason_is_none_with_bundle_and_runtime_on_glibc_x86_64(monkeypatch, tmp_path):
+    reason, _found = _available_platform(monkeypatch, tmp_path / "whistle")
+    assert reason(tmp_path / "whistle") is None
+
+
+def test_unavailable_reason_names_each_missing_requirement(monkeypatch, tmp_path):
+    import platform
+
+    reason, found = _available_platform(monkeypatch, tmp_path / "whistle")
+    found.discard("onnxruntime")
+    assert reason(tmp_path / "whistle") == "Python cannot find onnxruntime"
+    found.discard("numpy")
+    assert reason(tmp_path / "whistle") == "Python cannot find numpy and onnxruntime"
+    assert "not installed" in reason(tmp_path / "missing")
+    monkeypatch.setattr(platform, "libc_ver", lambda: ("", ""))
+    assert "needs glibc" in reason(tmp_path / "whistle")
+    monkeypatch.setattr(platform, "machine", lambda: "aarch64")
+    assert "x86_64, not linux aarch64" in reason(tmp_path / "whistle")
+
+
+def test_unavailable_reason_defaults_to_the_configured_bundle(monkeypatch, tmp_path):
+    reason, _found = _available_platform(monkeypatch, tmp_path / "whistle")
+    monkeypatch.setenv("CASSINI_WHISTLE_BUNDLE", str(tmp_path / "whistle"))
+    assert reason() is None
+    monkeypatch.setenv("CASSINI_WHISTLE_BUNDLE", str(tmp_path / "elsewhere"))
+    assert "not installed" in reason()

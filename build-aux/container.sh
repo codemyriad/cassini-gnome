@@ -39,3 +39,38 @@ container_build() {
 image_slug() {
   echo "$1" | tr ':/@' '---'
 }
+
+# Run a container with no network at all: only loopback.
+container_run_offline() {
+  "$CONTAINER_ENGINE" run --rm --network none "$@"
+}
+
+# The clean-install smoke test of a built package: run INSTALL (a sh script)
+# in a fresh BASE container, with the network, to install the package and its
+# dependencies; keep the result as a local image (cassini-pkgtest-installed:*,
+# never pushed); then start that image with --network none and a read-only
+# root, and smoke-test the installed app there, including writing the D11
+# goldens down offline (build-aux/smoke-installed.py --whistle).
+#   container_offline_smoke BASE INSTALL [run options for the install step...]
+container_offline_smoke() {
+  smoke_base=$1 smoke_install=$2
+  shift 2
+  smoke_name=cassini-pkgtest-install-$(image_slug "$smoke_base")-$$
+  smoke_image=cassini-pkgtest-installed:$(image_slug "$smoke_base")-$$
+  "$CONTAINER_ENGINE" rm -f "$smoke_name" >/dev/null 2>&1 || true
+  if ! "$CONTAINER_ENGINE" run --name "$smoke_name" --network host "$@" "$smoke_base" sh -ec "$smoke_install"; then
+    "$CONTAINER_ENGINE" rm -f "$smoke_name" >/dev/null 2>&1 || true
+    return 1
+  fi
+  "$CONTAINER_ENGINE" commit "$smoke_name" "$smoke_image" >/dev/null
+  "$CONTAINER_ENGINE" rm "$smoke_name" >/dev/null
+  smoke_status=0
+  container_run_offline --read-only --tmpfs /tmp:rw,exec,nosuid,nodev -e HOME=/tmp \
+    -v "$PWD/build-aux:/aux:ro$Z" -v "$PWD/tests/whistle:/goldens:ro$Z" "$smoke_image" sh -ec '
+      cassini-viewer --help >/dev/null
+      python3 -I /aux/smoke-installed.py --whistle /goldens
+      echo "clean install smoke test passed, offline"
+    ' || smoke_status=$?
+  "$CONTAINER_ENGINE" rmi "$smoke_image" >/dev/null 2>&1 || true
+  return $smoke_status
+}

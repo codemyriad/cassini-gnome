@@ -2,3 +2,9 @@
 # stdin/stdout, so there is nothing for a user to read in a manual page.
 no-manual-page [usr/bin/cassini-browser-host]
 no-manual-page [usr/bin/cassini-browser-control-host]
+# The offline writing-down bundle: the app loads these two libraries only in
+# its recognition child, from this directory, after checking every file
+# against the sha256 in manifest.json. They cannot move to a library
+# directory or be stripped; the engine is the pinned upstream binary.
+arch-dependent-file-in-usr-share [usr/share/cassini-viewer/whistle/libcassini_whistle_cpu.so]
+arch-dependent-file-in-usr-share [usr/share/cassini-viewer/whistle/libneedle3.so]

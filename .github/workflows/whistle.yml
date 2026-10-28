@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'whistle/**'
+      - 'meson.build'
+      - 'meson_options.txt'
       - 'src/cassini_viewer/whistle_*.py'
       - 'src/cassini_viewer/speech_pipeline.py'
       - 'src/cassini_viewer/opus_input.py'
@@ -31,17 +33,21 @@ jobs:
       - name: Install build-only dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3 meson ninja-build gcc libc6-dev
+          sudo apt-get install -y python3 meson ninja-build gcc libc6-dev gettext libglib2.0-bin libglib2.0-dev-bin desktop-file-utils appstream
+      - uses: actions/cache@v4
+        with:
+          path: /tmp/whistle-cache
+          key: whistle-${{ hashFiles('whistle/pins.json') }}
       - name: Fetch and verify exact build-time artifacts
         run: |
-          python3 whistle/fetch.py /tmp/whistle-bundle --cache /tmp/whistle-cache
-          python3 whistle/fetch.py /tmp/whistle-bundle --cache /tmp/whistle-cache
-      - name: Stage with separate Meson integration
+          CASSINI_WHISTLE_CACHE=/tmp/whistle-cache build-aux/whistle-cache.sh
+          CASSINI_WHISTLE_CACHE=/tmp/whistle-cache build-aux/whistle-cache.sh
+      - name: Build and stage the app with the bundle, offline
         run: |
-          meson setup _whistle-build whistle -Dbundle=/tmp/whistle-bundle --prefix=/usr
-          DESTDIR=$PWD/_whistle-stage meson install -C _whistle-build
+          meson setup _build --prefix=/usr -Dwhistle=enabled -Dwhistle_cache=/tmp/whistle-cache
+          DESTDIR=$PWD/_stage meson install -C _build
       - name: Native constructor guard, both goldens and real GTK queue without network
-        run: tests/whistle/run.sh "$PWD/_whistle-stage/usr/share/cassini-viewer/whistle" "$PWD/whistle-artifacts"
+        run: tests/whistle/run.sh "$PWD/_stage/usr/share/cassini-viewer/whistle" "$PWD/whistle-artifacts"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

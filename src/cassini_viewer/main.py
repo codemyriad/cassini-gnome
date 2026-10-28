@@ -17,6 +17,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import logging
 import os
 import sys
 from gettext import gettext as _
@@ -48,7 +49,11 @@ class CassiniApplication(Adw.Application):
         self._transcription_holds = 0
         self._transcription_generation = 0
         self._quitting = False
-        self.transcription_enabled = os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1"
+        # Screenshot runs keep the "Write it down" actions visible but never
+        # start the engine. Otherwise both need the bundle and its runtime.
+        screenshot = os.environ.get("CASSINI_SCREENSHOT_ISOLATED") == "1"
+        self.writing_unavailable = None if screenshot else self._writing_unavailable()
+        self.transcription_enabled = not screenshot and self.writing_unavailable is None
         self.recorder = None
         self._native_held = False
         self._recording_cookie = 0
@@ -280,6 +285,21 @@ class CassiniApplication(Adw.Application):
             GLib.idle_add(delivered)
 
         future.add_done_callback(done)
+
+    @staticmethod
+    def _writing_unavailable():
+        from .transcription import unavailable_reason
+
+        reason = unavailable_reason()
+        if reason:
+            # The action is hidden; this is the only place the reason shows.
+            logging.getLogger(__name__).warning("Writing down is not available on this computer: %s", reason)
+        return reason
+
+    @property
+    def writing_available(self):
+        """Whether to offer "Write it down" and "Try again" at all."""
+        return self.writing_unavailable is None
 
     def write_down(self, meeting, *, resume=False):
         if self._quitting:

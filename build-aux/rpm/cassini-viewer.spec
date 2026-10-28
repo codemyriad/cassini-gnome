@@ -1,13 +1,38 @@
 # RPM spec for Fedora and openSUSE. Build it with build-aux/rpm/build.sh,
-# which makes the source tarball from the working tree.
+# which makes the source tarball from the working tree and puts Source1-4
+# (from .whistle-cache) next to it.
 Name:           cassini-viewer
 Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Record meetings and read along with their transcripts
-License:        GPL-3.0-or-later
+License:        GPL-3.0-or-later AND Apache-2.0 AND MIT
 URL:            https://github.com/codemyriad/cassini-gnome
 Source0:        %{name}-%{version}.tar.xz
-BuildArch:      noarch
+# The offline writing-down bundle, pinned with its sha256 in whistle/pins.json
+# (keep these URLs equal to it; tests/test_packaging_pins.py checks). The
+# build never downloads: meson runs whistle/fetch.py --offline, which checks
+# every sha256 and stops on a mismatch.
+# Whistle weights (Apache-2.0)
+Source1:        https://huggingface.co/Cactus-Compute/whistle/resolve/ca5287601bef25af26dcf2e1b2bdc0843a7c19e5/whistle.cact
+# Needle 3.3.0 engine wheel, for libneedle3.so (Apache-2.0)
+Source2:        https://huggingface.co/Cactus-Compute/needle3/resolve/93e88ede867e4311c39151285e74df513e4b835b/python/cactus_needle-3.3.0-py3-none-manylinux2014_x86_64.whl
+# cactus-needle 3.2.0 Python wrapper (Apache-2.0)
+Source3:        https://files.pythonhosted.org/packages/e7/13/5f3a1c20b6643e83cd3f55c866217a0d539c343aaaf7de5253ce08ac16bf/cactus_needle-3.2.0-py3-none-any.whl
+# Silero VAD (MIT)
+Source4:        https://raw.githubusercontent.com/snakers4/silero-vad/7e30209a3e901f9842f81b225f3e93d8199902b1/src/silero_vad/data/silero_vad.onnx
+# The engine is a pinned glibc x86_64 binary.
+ExclusiveArch:  x86_64
+
+# The app checks every file of the bundle against its pinned sha256 before it
+# loads anything, so nothing in it may be stripped or split into debuginfo;
+# the rest of the package is Python.
+%global debug_package %{nil}
+%global __brp_strip %{nil}
+%global __brp_strip_comment_note %{nil}
+%global __brp_strip_static_archive %{nil}
+%global __brp_strip_lto %{nil}
+# libneedle3.so has the SONAME libneedle.so; it is private to the app.
+%global __provides_exclude_from ^%{_datadir}/%{name}/whistle/.*$
 
 BuildRequires:  meson >= 1.0
 BuildRequires:  python3 >= 3.11
@@ -22,6 +47,11 @@ BuildRequires:  glib2-devel
 # The player, recorder and library monitor tests need PyGObject and the
 # GStreamer elements; without them %%check skips those tests silently.
 BuildRequires:  python3-gobject
+# The CPU-count bridge of the writing-down bundle (whistle/cpu_limit.c)
+BuildRequires:  gcc
+# The speech pipeline tests (tests/test_speech_pipeline.py)
+BuildRequires:  python3dist(numpy)
+BuildRequires:  python3dist(onnxruntime)
 %if 0%{?suse_version}
 BuildRequires:  AppStream
 BuildRequires:  glib2-tools
@@ -39,6 +69,10 @@ BuildRequires:  gstreamer1-plugins-good
 
 Requires:       python3 >= 3.11
 Requires:       python3-gobject
+# Writing meetings down offline. Both Fedora and openSUSE provide these names;
+# on Tumbleweed only the primary Python flavour does, which is what we want.
+Requires:       python3dist(numpy)
+Requires:       python3dist(onnxruntime)
 %if 0%{?suse_version}
 # hicolor-icon-theme comes with GTK; openSUSE's rpmlint rejects requiring it.
 Requires:       typelib-1_0-Gtk-4_0 >= 4.18
@@ -76,14 +110,27 @@ word to play from there, see participants, search the transcript, read the
 summary, verify that the audio matches its transcript, and export the
 transcript as text or WebVTT subtitles.
 
+It writes recorded meetings down on this computer, without a network
+connection: the package includes the Whistle speech recognition weights and
+Needle engine (Apache-2.0) and the Silero voice activity detector (MIT), and
+runs them with NumPy and ONNX Runtime on the CPU. Nothing is downloaded and
+no telemetry is sent.
+
 %prep
 %autosetup -p1
+mkdir -p .whistle-cache
+cp -p %{SOURCE1} .whistle-cache/whistle.cact
+cp -p %{SOURCE2} .whistle-cache/engine.whl
+cp -p %{SOURCE3} .whistle-cache/wrapper.whl
+cp -p %{SOURCE4} .whistle-cache/silero_vad.onnx
 
 %build
-%meson
+%meson -Dwhistle=enabled -Dwhistle_cache=.whistle-cache
 %meson_build
 
 %install
+# openSUSE strips in its own brp scripts; see debug_package above.
+export NO_BRP_STRIP_DEBUG=true
 %meson_install
 # Meson installs the launchers 0555; packaging policy wants 0755.
 chmod 0755 %{buildroot}%{_bindir}/%{name} %{buildroot}%{_bindir}/cassini-browser-host \
@@ -96,9 +143,12 @@ echo "%%dir %{_datadir}/%{name}" >> %{name}.lang
 
 %check
 %meson_test
+# Catches anything that changed the installed bundle, such as stripping.
+python3 whistle/verify.py %{buildroot}%{_datadir}/%{name}/whistle
 
 %files -f %{name}.lang
 %license COPYING
+%license whistle/NOTICE.md whistle/LICENSE-Apache-2.0.txt whistle/LICENSE-Silero-MIT.txt
 %doc README.md NEWS
 %{_bindir}/%{name}
 %{_bindir}/cassini-browser-host

@@ -1,8 +1,9 @@
 #!/bin/sh
 # Build the Flatpak and write a single-file bundle to ./dist.
-#   build-aux/flatpak/build.sh [--devel] [--install]
+#   build-aux/flatpak/build.sh [--devel] [--install] [--smoke]
 #     --devel    build com.gocassini.Viewer.Devel -> dist/cassini-viewer-devel.flatpak
 #     --install  install the bundle for the current user afterwards
+#     --smoke    install it, then smoke-test it offline (build-aux/flatpak/smoke.sh)
 # Needs flatpak plus flatpak-builder (native, or the org.flatpak.Builder app).
 # The GNOME SDK and Platform are installed from Flathub (--user) if missing.
 # Scratch state goes to _flatpak/, .flatpak-builder/ and repo/.
@@ -12,11 +13,13 @@ cd "$(dirname "$0")/../.."
 APP_ID=com.gocassini.Viewer
 BUNDLE=cassini-viewer
 INSTALL=
+SMOKE=
 for arg in "$@"; do
   case $arg in
     --devel) APP_ID=com.gocassini.Viewer.Devel; BUNDLE=cassini-viewer-devel ;;
     --install) INSTALL=1 ;;
-    -h|--help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --smoke) SMOKE=1 ;;
+    -h|--help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -59,6 +62,9 @@ flatpak build-bundle \
   repo "dist/$BUNDLE.flatpak" "$APP_ID"
 ls -l "dist/$BUNDLE.flatpak"
 
+if [ -n "$SMOKE" ]; then
+  build-aux/flatpak/smoke.sh "dist/$BUNDLE.flatpak" "$APP_ID"
+fi
 if [ -n "$INSTALL" ]; then
   flatpak install --user -y --reinstall --bundle "dist/$BUNDLE.flatpak"
   echo "Run it with: flatpak run $APP_ID"

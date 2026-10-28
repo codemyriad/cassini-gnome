@@ -34,11 +34,18 @@ retry. Capture completion is checked independently of broker polling, so a new
 live folder cannot be transcribed prematurely while activity reporting catches
 up.
 
-## Packaging handoff
+## Packaging
 
-The coordinator owns existing packaging manifests; this change does not edit
-them. `whistle/fetch.py` and the separate `whistle/meson.build` prepare/install the
-bundle. Main Meson installs the app's queue, worker and pipeline Python modules.
+Every released package (Ubuntu 26.04 and Debian testing .debs, Fedora and
+openSUSE RPMs, Arch, Flatpak) bundles the engine and writes meetings down
+offline on first launch; CONTRIBUTING.md ("Writing down offline, in every
+package") describes how each format does it. In short: `build-aux/whistle-cache.sh`
+downloads the pinned artifacts once (sha256-checked, with retries); Meson
+with `-Dwhistle=enabled` runs `whistle/fetch.py --offline` (no download,
+fails closed), `whistle/verify.py`, and installs the bundle under
+`share/cassini-viewer/whistle`, never stripped. Main Meson always installs the
+app's queue, worker and pipeline Python modules. `-Dwhistle` defaults to
+disabled, for source builds, Alpine and other architectures.
 
 In addition to the pinned D5 assets, the bundle now contains **Silero VAD** from
 snakers4/silero-vad revision `7e30209a3e901f9842f81b225f3e93d8199902b1`, SHA256
@@ -48,22 +55,30 @@ dist or downloads at runtime. Add this immutable artifact to each package's buil
 sources/cache and ship LICENSE-Silero-MIT.txt alongside the existing notices.
 
 Runtime dependencies now include **NumPy and ONNX Runtime CPU** for the app's
-Python interpreter, alongside PyGObject/GStreamer for child-process Opus decoding. Ubuntu
-26.04's python3-numpy and python3-onnxruntime packages (ORT 1.23.2) pass both D11
-goldens; cassini-live's ORT 1.31.0 passes too. Other package formats need their
-equivalents, or pinned build-time vendoring where a system package is unavailable.
+Python interpreter, alongside PyGObject/GStreamer for child-process Opus decoding.
+Every package uses its distribution's own: with no network, both D11 goldens pass
+exactly (8/8 segments, 68/68 words, 0 ms) on Ubuntu 26.04 (ORT 1.23.2), Debian
+testing (1.23.2), Fedora 44 (1.22.2), Tumbleweed (1.31.0) and Arch (1.29.0).
+The Flatpak installs pinned cp313 wheels of NumPy 2.5.4 and ORT 1.31.0
+(cassini-live's version) into /app, x86_64 only. Alpine's ORT works but the
+glibc engine cannot load under musl, so Alpine stays a source/check target.
 ORT uses one intra-op and one inter-op thread and disables telemetry before
 import. The engine remains confined to the child; GTK imports neither Needle nor
 ORT. The spike's glibc x86_64 engine limitation remains until another pinned
 platform engine is independently validated.
 
-Install the separate bundle into the same prefix/staging root as the app, under
-`share/cassini-viewer/whistle`. Developers/tests can explicitly point
-CASSINI_WHISTLE_BUNDLE at that directory. The separate Meson project installs
-matching worker/pipeline modules too; use the same checkout revision for both.
-Without the bundle or runtime dependencies, writing down fails safely with Try
-again; audio remains usable. Packaging integration is required for first-launch
-offline operation in released packages.
+Developers/tests can explicitly point CASSINI_WHISTLE_BUNDLE at a bundle
+directory. Without a usable bundle (not installed, not Linux glibc x86_64) or
+without NumPy/ORT, the app hides **Write it down** and **Try again**, does not
+queue recordings, and logs "Writing down is not available on this computer"
+with the reason (`transcription.unavailable_reason`, which locates but never
+imports NumPy/ORT in GTK); audio remains usable. A user-facing line for this
+needs a new strings.json entry approved by the catalogue owner.
+
+Every package build's clean-install step runs the installed worker on both
+D11 goldens in a container with `--network none`
+(`build-aux/smoke-installed.py --whistle`), so a released package is proven
+to write down offline, with its own dependencies, before it is published.
 
 ## Evidence and tests
 

@@ -482,11 +482,12 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._recording_line(getattr(self.get_application(), "recorder", None))
         from .inline_line import InlineLine
 
+        writing = getattr(self.get_application(), "writing_available", True)
         if meeting.transcript == "failed":
             self.preview.append(
                 InlineLine(
                     "errors.transcribeFailed.line",
-                    action="common.tryAgain",
+                    action="common.tryAgain" if writing else None,
                     callback=lambda: self.get_application().write_down(meeting),
                 )
             )
@@ -512,7 +513,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
         self.read_button.connect("clicked", lambda *_: self._open_selected())
         actions.append(self.read_button)
-        if meeting.can_write_down and meeting.transcript == "none":
+        if writing and meeting.can_write_down and meeting.transcript == "none":
             write = Gtk.Button(label=text("common.writeDown"))
             write.connect("clicked", lambda *_: self.get_application().write_down(meeting))
             actions.insert_child_after(write, self.play_button)

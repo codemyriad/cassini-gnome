@@ -26,6 +26,9 @@ moduledir = pkgdatadir / 'cassini_viewer'
 subdir('data')
 subdir('src')
 subdir('po')
+if get_option('whistle').enabled()
+  subdir('whistle')
+endif
 
 # Distribution packages refresh these caches with triggers, so the tools are
 # often absent from build environments; skip a cache whose tool is missing
