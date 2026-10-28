@@ -19,7 +19,7 @@ def capture_pipeline(microphone=True, desktop=True, test=False):
             source = (
                 f"audiotestsrc is-live=true freq={440 + index * 440}"
                 if test
-                else f'pulsesrc device={device} client-name="Cassini Recording"'
+                else f'pulsesrc device={device} client-name="Cassini Recording" provide-clock=false'
             )
             sources.append(
                 f"{source} ! queue ! audioconvert ! audioresample ! "
@@ -84,6 +84,7 @@ class Recorder(GObject.Object):
         self.stopping = False
         try:
             self.pipeline = Gst.parse_launch(capture_pipeline(microphone, desktop, test))
+            self.pipeline.use_clock(Gst.SystemClock.obtain())
             fd, self._temporary = tempfile.mkstemp(
                 prefix=".cassini-", suffix=".opus", dir=os.path.dirname(os.path.abspath(path))
             )
