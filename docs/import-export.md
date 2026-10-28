@@ -62,3 +62,12 @@ existing read-only/networkless harness with 64 MiB /tmp, unchanged audio digest
 and channels, no temporary WAV and bounded memory (export-long-linux.json).
 Screenshots are received.png and export.png in the light/dark ux-boards artifact.
 No host desktop, audio device or browser profile is used by those checks.
+
+Export rechecks streaming read errors after a blocked sample pull before accepting
+EOS, so a failed WAV read cannot publish a truncated or missing-track success.
+Received audio headers are read through the same no-follow regular-file handle as
+the audio digest, avoiding symlink/FIFO header opens. Portable-reader cancellation
+is converted to the export dialog's cancellation type only when its cancel event
+is set; unrelated IO interruptions remain errors. Empty embedded speaker IDs are
+unreadable, and a successfully written empty sidecar stays done even if the
+original portable file contained an empty transcript.

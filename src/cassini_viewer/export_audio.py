@@ -49,6 +49,12 @@ def track_pcm(track, cancel=None):
                 raise ValueError(error.parse_error()[0].message)
             sample = sink.emit("try-pull-sample", Gst.SECOND)
             if sample is None:
+                # PCMSource posts its read error before EOS. EOS can wake a
+                # blocked pull after the check above, so it must not turn that
+                # failure into a successful (possibly empty) exported track.
+                error = pipeline.get_bus().pop_filtered(Gst.MessageType.ERROR)
+                if error:
+                    raise ValueError(error.parse_error()[0].message)
                 if sink.get_property("eos"):
                     break
                 if time.monotonic() - last_progress > 30:

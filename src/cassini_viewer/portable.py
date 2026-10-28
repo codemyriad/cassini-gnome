@@ -608,7 +608,7 @@ def load_words(meeting: Meeting, transcript_id: str) -> list[Word]:
         if not isinstance(item, dict):
             raise CassiniError("a transcript item is not an object", "json-invalid")
         speaker, start, end, text = item.get("speaker"), item.get("startMs"), item.get("endMs"), item.get("text")
-        if not isinstance(speaker, str) or not isinstance(text, str):
+        if not isinstance(speaker, str) or not speaker or not isinstance(text, str):
             raise CassiniError("a transcript item has no speaker or text", "json-invalid")
         if not isinstance(start, int) or not isinstance(end, int) or isinstance(start, bool) or isinstance(end, bool):
             raise CassiniError("a transcript item has no timing", "json-invalid")

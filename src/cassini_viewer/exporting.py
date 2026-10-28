@@ -80,8 +80,10 @@ def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
                     audio_path = meeting.audio_file
                     if audio_path is None:
                         raise ValueError("Meeting has no audio")
-                    original = portable.read_meeting(str(audio_path))
                 with regular_input(audio_path) as audio:
+                    if meeting.origin != "own":
+                        original = portable.interpret(*portable.read_header(audio))
+                        audio.seek(0)
                     digest = portable.compute_audio_digest(audio, cancelled=lambda: bool(cancel and cancel.is_set()))
                     if original and original.manifest:
                         integrity = original.manifest["integrity"]
@@ -114,6 +116,11 @@ def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
         finally:
             os.close(fd)
         return result
+    except InterruptedError:
+        # The portable reader uses InterruptedError for its cancellation hook;
+        # the export worker/dialog use concurrent.futures.CancelledError.
+        check_cancel(cancel)
+        raise
     finally:
         if stage:
             stage.unlink(missing_ok=True)
