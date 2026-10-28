@@ -1,0 +1,34 @@
+name: Packaging checks
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  CONTAINER_ENGINE: docker
+jobs:
+  deb:
+    name: Debian package
+    uses: ./.github/workflows/deb.yml
+
+  packages:
+    name: RPM and Arch packages
+    uses: ./.github/workflows/packages.yml
+
+  flatpak:
+    name: Flatpak
+    runs-on: ubuntu-26.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v5
+      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
+        with:
+          bundle: cassini-viewer-devel.flatpak
+          manifest-path: build-aux/flatpak/com.gocassini.Viewer.Devel.json
+          cache-key: flatpak-builder-${{ github.sha }}
+      # The same offline check as the other packages: install the bundle and
+      # write the D11 goldens down in a sandbox with --unshare=network.
+      - name: Smoke-test the installed Flatpak offline
+        run: build-aux/flatpak/smoke.sh cassini-viewer-devel.flatpak com.gocassini.Viewer.Devel

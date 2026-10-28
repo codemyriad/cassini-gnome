@@ -1,13 +1,12 @@
 name: Recording integration
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-  schedule:
-    - cron: "31 2 * * *"
+  workflow_call:
+    inputs:
+      product:
+        type: string
+        default: ""
   workflow_dispatch:
-
 permissions:
   contents: read
 
@@ -27,6 +26,22 @@ jobs:
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good xvfb xauth xdotool dbus-x11 \
             gir1.2-gtk-4.0 gir1.2-adw-1 imagemagick meson ninja-build gettext \
             libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream
+      - uses: actions/download-artifact@v5
+        if: inputs.product != ''
+        with:
+          name: ${{ inputs.product }}
+          path: _ci-download
+      - name: Use exact default-profile build product
+        if: inputs.product != ''
+        run: |
+          python3 build-aux/ci/product.py unpack _ci-core _ci-download/core.tar --commit "$GITHUB_SHA" --profile core
+          echo "CASSINI_RECORDING_BUILD=$PWD/_ci-core/build" >> "$GITHUB_ENV"
+      - name: Build default profile for standalone dispatch
+        if: inputs.product == ''
+        run: |
+          meson setup _recording-build
+          meson compile -C _recording-build
+          echo "CASSINI_RECORDING_BUILD=$PWD/_recording-build" >> "$GITHUB_ENV"
       - run: python3 browser-protocol/verify.py --pinned browser-extension
       - run: npm ci --prefix tests/recording
       - run: tests/recording/node_modules/.bin/playwright install --with-deps chromium
@@ -43,13 +58,11 @@ jobs:
         run: tests/recording/run.sh node tests/recording/browser.mjs
       - name: GTK recording and playback in a private display
         run: |
-          meson setup _recording-build
-          meson compile -C _recording-build
-          tests/recording/run.sh /usr/bin/python3 tests/recording/gtk.py --build _recording-build
+          tests/recording/run.sh /usr/bin/python3 tests/recording/gtk.py --build "$CASSINI_RECORDING_BUILD"
       - name: Recording page, keyboard notes, hidden controls and disk reserve
-        run: tests/recording/run.sh /usr/bin/python3 tests/recording/comfort.py --build _recording-build
+        run: tests/recording/run.sh /usr/bin/python3 tests/recording/comfort.py --build "$CASSINI_RECORDING_BUILD"
       - name: GNOME meeting list, app recording and automatic-recording Stop notification
-        run: CASSINI_TEST_BUILD="$PWD/_recording-build" tests/recording/run.sh node tests/recording/app-control.mjs
+        run: CASSINI_TEST_BUILD="$CASSINI_RECORDING_BUILD" tests/recording/run.sh node tests/recording/app-control.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

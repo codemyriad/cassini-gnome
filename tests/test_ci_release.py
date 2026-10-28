@@ -52,7 +52,7 @@ def test_release_requires_the_exact_commit_and_every_latest_main_workflow():
 
 def test_release_requires_all_unexpired_package_artifacts():
     policy = module("green_main")
-    good = [dict(name=name, expired=False) for name in policy.PACKAGES]
+    good = [dict(name=name, expired=False) for name in policy.PACKAGES | policy.BUILD_PRODUCTS]
     policy.validate_artifacts(good)
     for changed in (good[:-1], good + [good[0]], [dict(a, expired=True) for a in good]):
         with pytest.raises(ValueError):

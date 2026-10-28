@@ -1,0 +1,45 @@
+name: Source checks
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  CONTAINER_ENGINE: docker
+jobs:
+  lint-and-test:
+    name: Lint and test
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install ruff pytest
+      - run: ruff check src tests build-aux/ci
+      - run: ruff format --check src tests build-aux/ci
+      - name: Install system Python audio test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pytest python3-jsonschema python3-rfc3339-validator python3-gi gir1.2-gstreamer-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+      - run: /usr/bin/python3 -m pytest -q
+
+  distros:
+    name: Build and test on ${{ matrix.image }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - debian:testing
+          - ubuntu:26.04
+          - fedora:latest
+          - registry.opensuse.org/opensuse/tumbleweed:latest
+          - archlinux:latest
+          - alpine:edge
+    steps:
+      - uses: actions/checkout@v5
+      # Retried once because distribution mirrors occasionally time out.
+      - run: build-aux/check-distros.sh "${{ matrix.image }}" || build-aux/check-distros.sh "${{ matrix.image }}"
+
