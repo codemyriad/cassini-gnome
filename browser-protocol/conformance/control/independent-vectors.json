@@ -1,0 +1,62 @@
+[
+  {
+    "name": "two independent meetings and targeted idempotent Stop",
+    "commands": [
+      {"action":"start","tabId":2,"mode":"tracks","independent":true,"captureLocal":false,"microphone":true},
+      {"action":"start","tabId":3,"mode":"tracks","independent":true,"captureLocal":false,"microphone":false},
+      {"action":"stop","tabId":2,"independent":true},
+      {"action":"stop","tabId":2,"independent":true},
+      {"action":"stop","tabId":3,"independent":true}
+    ],
+    "expected": [
+      {"ok":true,"tabs":[2],"hosts":1},
+      {"ok":true,"tabs":[2,3],"hosts":2},
+      {"ok":true,"tabs":[3],"hosts":2},
+      {"ok":true,"tabs":[3],"hosts":2},
+      {"ok":true,"tabs":[],"hosts":2}
+    ]
+  },
+  {
+    "name": "duplicate tab does not create another host",
+    "commands": [
+      {"action":"start","tabId":2,"mode":"tracks","independent":true},
+      {"action":"start","tabId":2,"mode":"tracks","independent":true},
+      {"action":"stop","tabId":2,"independent":true}
+    ],
+    "expected": [
+      {"ok":true,"tabs":[2],"hosts":1},
+      {"ok":false,"tabs":[2],"hosts":1},
+      {"ok":true,"tabs":[],"hosts":1}
+    ]
+  },
+  {
+    "name": "idle targeted Stop cannot stop another tab",
+    "commands": [
+      {"action":"start","tabId":2,"mode":"tracks","independent":true},
+      {"action":"stop","tabId":3,"independent":true},
+      {"action":"stop","tabId":2,"independent":true}
+    ],
+    "expected": [
+      {"ok":true,"tabs":[2],"hosts":1},
+      {"ok":true,"tabs":[2],"hosts":1},
+      {"ok":true,"tabs":[],"hosts":1}
+    ]
+  },
+  {
+    "name": "legacy second-start refusal is preserved",
+    "commands": [
+      {"action":"start","tabId":2,"mode":"tracks","independent":true},
+      {"action":"start","tabId":3,"mode":"tracks"},
+      {"action":"start","tabId":3,"mode":"tracks","independent":true},
+      {"action":"stop","tabId":2,"independent":true},
+      {"action":"stop","tabId":3,"independent":true}
+    ],
+    "expected": [
+      {"ok":true,"tabs":[2],"hosts":1},
+      {"ok":false,"tabs":[2],"hosts":1},
+      {"ok":true,"tabs":[2,3],"hosts":2},
+      {"ok":true,"tabs":[3],"hosts":2},
+      {"ok":true,"tabs":[],"hosts":2}
+    ]
+  }
+]

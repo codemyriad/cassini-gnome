@@ -1,8 +1,8 @@
 // Persistent app management, independent of the per-recording PCM connection.
 export class AppControl {
-  constructor({ runtime, alarms, snapshot, command, connected = async () => {},
+  constructor({ runtime, alarms, snapshot, command, capabilities = [], cancelPending = () => {}, connected = async () => {},
                 later = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id) }) {
-    Object.assign(this, { runtime, alarms, snapshot, command, connected, later, cancel });
+    Object.assign(this, { runtime, alarms, snapshot, command, capabilities, cancelPending, connected, later, cancel });
     this.port = null;
     this.retry = null;
     this.delay = 1000;
@@ -55,7 +55,9 @@ export class AppControl {
     this.requests.clear(); this.completed.clear();
     port.onDisconnect.addListener(() => { void this.runtime.lastError; this.disconnected(port); });
     port.onMessage.addListener(message => this.receive(port, message));
-    this.send(port, { type: 'hello', version: 1 });
+    const hello = { type: 'hello', version: 1 };
+    if (this.capabilities.length) hello.capabilities = this.capabilities;
+    this.send(port, hello);
     Promise.resolve().then(() => this.connected()).then(() => {
       if (port !== this.port) return;
       this.alarms.clear('cassini-app-control').catch(() => {});
@@ -92,6 +94,9 @@ export class AppControl {
         this.send(port, { type: 'result', requestId: id, ok: false, error: 'Cassini has received too many commands. Reconnect and try again.' });
         return;
       }
+      const validOptions = ['independent', 'captureLocal', 'microphone'].every(key => message[key] === undefined || typeof message[key] === 'boolean');
+      if (message.independent === true && message.action === 'stop' && Number.isSafeInteger(message.tabId) && message.tabId >= 0 && validOptions)
+        this.cancelPending(message);
       const execute = async () => {
         if (port !== this.port) return null;
         try {
@@ -99,6 +104,10 @@ export class AppControl {
             throw new Error('Choose a meeting to record.');
           if (message.action === 'start' && message.mode !== 'tracks')
             throw new Error('To record the whole tab, click Record the whole tab in the browser.');
+          for (const key of ['independent', 'captureLocal', 'microphone']) {
+            if (message[key] !== undefined && typeof message[key] !== 'boolean')
+              throw new Error('Choose a meeting to record.');
+          }
           const status = await this.command(message);
           return { type: 'result', requestId: id, ok: true, status };
         } catch (error) {

@@ -153,7 +153,11 @@ class MeetingPage(Adw.NavigationPage):
         self.set_connected(False)
 
     def set_connected(self, connected):
-        visible = not connected and not self.settings.get_boolean("companion-card-dismissed")
+        visible = (
+            self.window.get_application().browser_companion_available
+            and not connected
+            and not self.settings.get_boolean("companion-card-dismissed")
+        )
         self._companion.set_visible(visible)
 
     def _build_player(self, outer):

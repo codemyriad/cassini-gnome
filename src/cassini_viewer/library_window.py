@@ -81,7 +81,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.root_box.set_visible_child_name("loading")
         self._activity = dict(self._fixture_activity)
         self.monitor = LibraryMonitor(self._updated, capture_activity=lambda: self._activity)
-        if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
+        if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" and self.get_application().browser_companion_available:
             self._activity_source = BrowserActivity(self._activity_tick)
             self._activity_timer = GLib.timeout_add_seconds(1, self._activity_tick)
         self.monitor.refresh()
@@ -241,7 +241,12 @@ class LibraryWindow(Adw.ApplicationWindow):
                 margin_top=8,
             )
         )
-        companion = Gtk.Button(label=text("meeting.companionCard.setUp"), css_classes=["flat"], halign=Gtk.Align.CENTER)
+        companion = self.first_companion = Gtk.Button(
+            label=text("companion.addStep.title"),
+            css_classes=["flat"],
+            halign=Gtk.Align.CENTER,
+            visible=self.get_application().browser_companion_available,
+        )
         companion.connect("clicked", lambda *_: self.get_application().on_companion_setup(parent=self))
         center.append(companion)
         outer.append(center)

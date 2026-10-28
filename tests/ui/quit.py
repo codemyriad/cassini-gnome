@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Actual GApplication process exits: busy inference, stop/save and start/stop race."""
 
+import faulthandler
 import json
 import os
 import selectors
@@ -58,6 +59,7 @@ from cassini_viewer.transcription import TranscriptionQueue  # noqa: E402
 from cassini_viewer.whistle_client import WhistleClient  # noqa: E402
 
 mode = sys.argv[1]
+faulthandler.dump_traceback_later(9)
 busy_writing = mode in ("quit-writing", "close-writing")
 started = time.monotonic()
 phase = 0
@@ -214,8 +216,10 @@ with tempfile.TemporaryDirectory() as tmp:
                 window._browser_snapshot = dict(statuses=[dict(recording=True, path=str(browser_session.directory))])
                 if mode in ("keep-browser-player", "keep-browser-companion"):
                     if mode == "keep-browser-companion":
-                        app.on_browser_meetings()
-                        app.test_player_window = app.get_active_window()
+                        companion = app.on_companion_setup(parent=window)
+                        companion.force_close()
+                        app.test_player_window = app.new_window()
+                        app.test_player_window.present()
                     else:
                         app.test_player_window = app.new_window()
                         app.test_player_window.present()
@@ -284,7 +288,9 @@ with tempfile.TemporaryDirectory() as tmp:
                 NativeRecorder._prepare = staticmethod(fail)
             app.start_native(test=True)
             if mode in ("keep-two-windows", "keep-reopen-two"):
-                app.on_browser_meetings()
+                from cassini_viewer.library_window import LibraryWindow
+
+                LibraryWindow(app).present()
             phase = 1
             if mode in ("stop-starting", "prepare-failed"):
                 closing_at = time.monotonic()
@@ -301,9 +307,12 @@ with tempfile.TemporaryDirectory() as tmp:
                 return False
         elif phase == 2 and mode == "stop-finishing":
             if app.recorder._finishing:
+                app.test_primary_recorder = app.recorder
                 finishing_session = app.recorder.session
                 app.start_native(test=True)
-                assert app.recorder.session is finishing_session and not app.recorder.starting
+                independent = next(r for r in app.native_captures.values() if r is not app.test_primary_recorder)
+                assert independent.starting and len(app.native_captures) == 2
+                assert app.test_primary_recorder.session is finishing_session
                 closing_at = time.monotonic()
                 respond("stop")
                 sentinel = app._capture_confirmation
@@ -365,7 +374,9 @@ with tempfile.TemporaryDirectory() as tmp:
                 original_begin = app.recorder._begin_finish
                 app.recorder._begin_finish = lambda problem=None: original_begin("Synthetic interrupted finalization")
             if mode == "stop-secondary-close":
-                app.on_browser_meetings()
+                from cassini_viewer.library_window import LibraryWindow
+
+                LibraryWindow(app).present()
                 secondary = app.get_active_window()
                 assert secondary is not window
                 secondary.close()
@@ -415,12 +426,13 @@ with tempfile.TemporaryDirectory() as tmp:
             time.sleep(0.005)
         assert child.poll() is not None
     elif mode in ("stop-save", "stop-after-finish", "stop-finishing", "stop-interrupted", "stop-secondary-close"):
-        assert app.recorder.pipeline is None
-        assert app.recorder.session.manifest["state"] == (
-            "interrupted" if mode == "stop-interrupted" else "completed"
-        ), app.recorder.session.manifest
-        assert all(t["frames"] >= 9600 for t in app.recorder.session.manifest["tracks"])
-        assert read_metadata(app.recorder.session.directory)["transcript"]["status"] == (
+        recorder = app.test_primary_recorder if mode == "stop-finishing" else app.recorder
+        assert recorder.pipeline is None and not app.native_captures
+        assert recorder.session.manifest["state"] == ("interrupted" if mode == "stop-interrupted" else "completed"), (
+            recorder.session.manifest
+        )
+        assert all(t["frames"] >= 9600 for t in recorder.session.manifest["tracks"])
+        assert read_metadata(recorder.session.directory)["transcript"]["status"] == (
             "none" if mode == "stop-after-finish" else "queued"
         )
         assert app.transcriber is None, "Quit started hidden inference"
@@ -440,4 +452,5 @@ with tempfile.TemporaryDirectory() as tmp:
         assert all(t["frames"] == 0 for t in app.recorder.session.manifest["tracks"])
         assert read_metadata(app.recorder.session.directory)["transcript"]["status"] == "none"
     assert not errors, errors
+    faulthandler.cancel_dump_traceback_later()
     print(json.dumps(dict(mode=mode, exitSeconds=time.monotonic() - closing_at, holds=app._transcription_holds)))

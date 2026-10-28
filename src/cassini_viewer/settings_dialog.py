@@ -80,6 +80,7 @@ class SettingsDialog(Adw.PreferencesDialog):
             subtitle=text("settings.recording.autoRecord.subtitle"),
             use_markup=False,
         )
+        self.automatic.set_visible(self.app.browser_companion_available)
         self.automatic.connect("notify::active", self._automatic_changed)
         group.add(self.automatic)
 
@@ -248,7 +249,11 @@ class SettingsDialog(Adw.PreferencesDialog):
         group = Adw.PreferencesGroup(description=text("settings.browser.description"))
         self.pages["browserCompanion"].add(group)
         self.browser = Adw.ActionRow(title=text("settings.browser.status.notSetUp"), use_markup=False)
-        setup = Gtk.Button(label=text("meeting.companionCard.setUp"), valign=Gtk.Align.CENTER)
+        setup = self.browser_setup = Gtk.Button(
+            label=text("meeting.companionCard.setUp"),
+            valign=Gtk.Align.CENTER,
+            visible=self.app.browser_companion_available,
+        )
         setup.connect("clicked", lambda *_: self.app.on_companion_setup(parent=self))
         self.browser.add_suffix(setup)
         group.add(self.browser)
@@ -294,6 +299,9 @@ class SettingsDialog(Adw.PreferencesDialog):
             self._request("configure", autoRecord=enabled, _preferenceToken=token)
 
     def _request(self, action="status", **values):
+        if not self.app.browser_companion_available:
+            self.browser.set_title(text("settings.browser.status.notSetUp"))
+            return
         if self.closed:
             return
         if self._future:

@@ -115,7 +115,7 @@ class CassiniApplication(Adw.Application):
         from .recording_comfort import RecordingComfort
 
         self.comfort = RecordingComfort(self, automatic=os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1")
-        if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
+        if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" and self.browser_companion_available:
             from .browser_watch import BrowserWatch
 
             self.browser_watch = BrowserWatch(self._browser_changed)
@@ -228,7 +228,15 @@ class CassiniApplication(Adw.Application):
         finish_close(self, list(self.get_windows()))
         self.quit()
 
+    @property
+    def browser_companion_available(self):
+        from .companion import available
+
+        return available()
+
     def on_companion_setup(self, *_args, parent=None):
+        if not self.browser_companion_available:
+            return None
         from .companion_setup import CompanionSetup
 
         dialog = getattr(self, "companion_setup", None)
@@ -360,6 +368,9 @@ class CassiniApplication(Adw.Application):
         from . import browser_service
 
         if self._record_start_future is not None or self._quitting:
+            return
+        if not self.browser_companion_available:
+            self.start_native()
             return
         self._record_start_generation += 1
         generation = self._record_start_generation

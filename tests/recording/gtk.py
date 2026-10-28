@@ -133,11 +133,10 @@ try:
         m.set_state(Gst.State.NULL)
     with tempfile.TemporaryDirectory() as directory:
         os.environ["CASSINI_LIBRARY_DIR"] = directory
-        # The first activation used an empty private default; reopen against this Library.
-        for w in list(app.get_windows()):
-            w.close()
-        app.activate()
+        # Route the live monitor to this private Library without ending and
+        # reusing a shut-down GApplication/executor in the same process.
         window = next(w for w in app.get_windows() if isinstance(w, LibraryWindow))
+        window.monitor.refresh_now()
         wait_until(lambda: not window._pending, "Library ready", diagnostics=diagnostics)
         app.on_record()
         dialog = app.record_first
@@ -240,8 +239,11 @@ try:
         app.on_record()
         assert not window.player.playing, "Recording must pause Cassini playback before capturing system sound"
         wait_until(
-            lambda: recorder.pipeline is not None, "skip-first preference starts recording", diagnostics=diagnostics
+            lambda: app.recorder is not recorder and app.recorder.pipeline is not None,
+            "skip-first preference starts recording",
+            diagnostics=diagnostics,
         )
+        recorder = app.recorder
         assert app.record_first is None
         wait_until(captured, "quit test captures actual PCM", diagnostics=diagnostics)
         app.on_quit()

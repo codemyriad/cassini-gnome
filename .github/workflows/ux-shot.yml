@@ -69,6 +69,8 @@ jobs:
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/search.py ux-artifacts/search-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/model-notices.py ux-artifacts/notices-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/settings.py ux-artifacts/settings-gui.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/companion.py ux-artifacts/companion-setup.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/companion-sandbox.py ux-artifacts/companion-sandbox.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/library-move.py ux-artifacts/library-move-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speech-models.py ux-artifacts/speech-models.png
           CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speech-models.py ux-artifacts/dark/speech-models.png
@@ -95,6 +97,8 @@ jobs:
           for folder in ['ux-artifacts', 'ux-artifacts/dark']:
               settings = json.loads(Path(folder, 'settings-transcription.json').read_text())
               assert settings['speechModels'] == ['whistle', 'parakeet-ultra-0.6b-int8'], settings
+          for state in ['pending', 'pending-dark', 'connected', 'connected-dark', 'failed']:
+              assert struct.unpack('>II',Path(f'ux-artifacts/companion-setup-{state}.png').read_bytes()[16:24]) == (1120,720)
           notification=json.loads(Path('ux-artifacts/notification.json').read_text())
           assert [button['action'] for button in notification['buttons']] == ['app.stop-recording','app.open-recording']
           info=json.loads(root.with_suffix('.json').read_text())

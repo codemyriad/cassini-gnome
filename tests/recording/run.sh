@@ -8,6 +8,9 @@ done
 if [[ " $* " == *" tests/recording/gtk.py "* || " $* " == *" tests/recording/app-control.mjs "* ]]; then
     command -v import >/dev/null || { echo "Missing ImageMagick import: install imagemagick for GTK screenshots" >&2; exit 1; }
 fi
+if [[ " $* " == *" tests/recording/app-control.mjs "* ]]; then
+    command -v pactl >/dev/null || { echo "Missing pactl: install pulseaudio-utils for the private muted-sink proof" >&2; exit 1; }
+fi
 [ "$#" -gt 0 ] || { echo "Usage: $0 command [args...]" >&2; exit 1; }
 # Resolve mise's interpreter before giving the child private XDG directories.
 if [ "$1" = node ]; then

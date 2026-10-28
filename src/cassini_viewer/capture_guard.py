@@ -217,7 +217,8 @@ def confirm_capture_close(app, window, *, quitting=False):
             app._record_start_generation += 1
         paths = list(remember_capture_paths(app))
         app.hold()
-        active_native = [target for target in native if recorder_busy(target.recorder)]
+        current_native, _current_browser = capture_targets(app)
+        active_native = [target for target in current_native if recorder_busy(target.recorder)]
         waiting = {id(target.recorder) for target in active_native}
         browser_stop = browser or exiting and watch is not None
         browser_done = not browser_stop

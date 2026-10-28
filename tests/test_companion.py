@@ -97,3 +97,8 @@ def test_source_checkout_registers_its_own_hosts_before_any_installed_old_versio
         "com.codemyriad.cassini": root / "native_host.py",
         "com.codemyriad.cassini.control": root / "control_host.py",
     }
+
+
+def test_flatpak_without_the_host_bridge_never_offers_setup(monkeypatch):
+    monkeypatch.setenv("FLATPAK_ID", "com.gocassini.Viewer")
+    assert not companion.available()

@@ -24,7 +24,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y python3-gi python3-pytest python3-jsonschema python3-rfc3339-validator gir1.2-gstreamer-1.0 \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good xvfb xauth xdotool dbus-x11 \
-            gir1.2-gtk-4.0 gir1.2-adw-1 imagemagick meson ninja-build gettext \
+            gir1.2-gtk-4.0 gir1.2-adw-1 imagemagick pulseaudio-utils meson ninja-build gettext \
             libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream
       - uses: actions/download-artifact@v5
         if: inputs.product != ''
@@ -61,8 +61,10 @@ jobs:
           tests/recording/run.sh /usr/bin/python3 tests/recording/gtk.py --build "$CASSINI_RECORDING_BUILD"
       - name: Recording page, keyboard notes, hidden controls and disk reserve
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/comfort.py --build "$CASSINI_RECORDING_BUILD"
-      - name: GNOME meeting list, app recording and automatic-recording Stop notification
+      - name: Library concurrent browser capture and native hidden controls
         run: CASSINI_TEST_BUILD="$CASSINI_RECORDING_BUILD" tests/recording/run.sh node tests/recording/app-control.mjs
+      - name: Independent native microphone copies and per-session choice
+        run: tests/recording/run.sh /usr/bin/python3 tests/recording/browser-microphone.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

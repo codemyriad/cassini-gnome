@@ -52,7 +52,9 @@ def shot(window, suffix):
     until(lambda: len(frames) >= 2)
     snapshot = Gtk.Snapshot.new()
     paintable.snapshot(snapshot, window.get_width(), window.get_height())
-    texture = window.get_renderer().render_texture(snapshot.to_node(), None)
+    node = snapshot.to_node()
+    texture = window.get_renderer().render_texture(node, node.get_bounds())
+    assert (texture.get_width(), texture.get_height()) == (1120, 720)
     assert texture.save_to_png(str(target.with_name(target.stem + suffix + ".png")))
 
 
@@ -62,8 +64,16 @@ with tempfile.TemporaryDirectory() as temporary:
     schemas.mkdir()
     shutil.copyfile(ROOT / "data/com.gocassini.Viewer.gschema.xml", schemas / "com.gocassini.Viewer.gschema.xml")
     subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
-    os.environ.update(GSETTINGS_SCHEMA_DIR=str(schemas), CASSINI_LIBRARY_DIR=str(tmp / "library"))
+    fixtures = tmp / "fixtures"
+    subprocess.run([sys.executable, str(ROOT / "ux/library-vectors/make.py"), str(fixtures)], check=True)
+    os.environ.update(
+        GSETTINGS_SCHEMA_DIR=str(schemas),
+        CASSINI_LIBRARY_DIR=str(fixtures / "main/root"),
+        CASSINI_SCREENSHOT_ACTIVITY=str(fixtures / "main/activity.json"),
+        CASSINI_SCREENSHOT_NOW="1793107080000",
+    )
     Gtk.Settings.get_default().props.gtk_enable_animations = False
+    Gtk.Settings.get_default().props.gtk_font_name = "Cantarell 11"
     Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
     service = BrowserService(tmp / "browser.json")
     ready = threading.Event()
@@ -75,6 +85,7 @@ with tempfile.TemporaryDirectory() as temporary:
     app.register(None)
     app.activate()
     window = app.get_active_window()
+    window.set_default_size(1130, 730)
     until(lambda: not window._pending)
     original = companion.installed_browsers
     browsers = original(config=tmp / "browser-config", which=lambda command: "/test/" + command)
@@ -85,6 +96,10 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog.present(window)
     until(lambda: dialog.future is None)
     assert not dialog.done.get_sensitive()
+    shot(window, "-pending")
+    Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
+    shot(window, "-pending-dark")
+    Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
     dialog.add_button.emit("clicked")
     until(lambda: len(launches) == 1)
     assert not dialog.done.get_sensitive() and dialog.add_caption.get_label() == "Not added yet"

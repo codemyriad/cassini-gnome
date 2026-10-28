@@ -598,6 +598,10 @@ class BrowserService:
                         return
             self.command(identifier, action)
             if action == "start":
+                if self.require_application:
+                    # The application owns the single live hidden notification
+                    # and its global Stop action, independent of window lifetime.
+                    return
                 browser_id, _, tab = identifier.partition(":")
                 with self.lock:
                     browser = self.browsers.get(browser_id)
