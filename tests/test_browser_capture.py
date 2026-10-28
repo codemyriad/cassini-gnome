@@ -425,3 +425,33 @@ def test_unbound_audio_client_is_not_mistaken_for_a_disconnected_call(server):
         assert capture.finished
     finally:
         client.close()
+
+
+def test_lost_page_draining_browser_audio_uses_recovery_grace_not_call_end(server):
+    from test_browser_service import meeting, wait_for
+    from test_browser_sessions import Extension
+
+    from cassini_viewer.browser_service import send_packet
+
+    service, path, _ = server
+    peer = Extension(path, (3,))
+    client = BrowserAudioProxy(path=path)
+    try:
+        start(client, "draining")
+        capture = service.captures["draining"]
+        bind_capture(peer, capture)
+        peer.sessions[3]["stopping"] = True  # Extension is draining a lost frame.
+        send_packet(peer.stream, dict(type="status", recording=True, sessions=list(peer.sessions.values())))
+        wait_for(lambda: next(iter(service.browsers.values())).states[3].get("stopping"))
+        send_packet(peer.stream, dict(type="meetings", meetings=[dict(meeting(), sourceCount=0)]))
+        peer.answer(peer.receive())
+        wait_for(lambda: capture.browser_lost)
+        assert not capture.finished and set(capture.native_taps) == {"microphone", "system"}
+        with service.lock:
+            service._capture_missing_since["draining"] = time.monotonic() - 2.01
+        service.policy()
+        assert not capture.finished and not capture.stop_requested.is_set()
+        capture.stop()
+    finally:
+        client.close()
+        peer.close()

@@ -712,7 +712,13 @@ class BrowserService:
             self._capture_observed.update(observed)
             self._capture_observed.intersection_update(self.captures)
             for key, capture in self.captures.items():
-                if capture.finished or capture.starting or key not in self._capture_observed:
+                if (
+                    capture.finished
+                    or capture.starting
+                    or capture.stopping
+                    or capture.stop_requested.is_set()
+                    or key not in self._capture_observed
+                ):
                     self._capture_missing_since.pop(key, None)
                     continue
                 peer = observed.get(key)
@@ -723,7 +729,12 @@ class BrowserService:
                 # A reachable, still-recording page with zero sources has hung
                 # up. An absent page/companion gets a bounded reconnection grace
                 # while Q4 keeps audio. Never switch a fallback back to browser.
-                ended = peer is not None and peer[2] is not None and not capture.browser_lost
+                ended = (
+                    peer is not None
+                    and peer[2] is not None
+                    and not capture.browser_lost
+                    and peer[0].states[peer[1]].get("stopping") is not True
+                )
                 identifier = f"{peer[0].id}:{peer[1]}" if peer is not None else None
                 action = None
                 if now - since >= (CALL_END_GRACE if ended else BROWSER_RETURN_GRACE):
