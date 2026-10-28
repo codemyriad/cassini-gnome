@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Saved-on-exit intent uses the same metadata transaction as the queue."""
 
+import pytest
 from test_library import capture, write_metadata
 
 from cassini_viewer.capture_guard import queue_saved_for_later
@@ -66,7 +67,8 @@ def test_concurrent_browser_stop_is_already_successful(tmp_path, monkeypatch):
     assert stop_browser_captures() == [path]
 
 
-def test_stop_waits_for_an_existing_browser_save(tmp_path, monkeypatch):
+@pytest.mark.parametrize("meeting_present", [True, False])
+def test_stop_waits_for_an_existing_browser_save(tmp_path, monkeypatch, meeting_present):
     from cassini_viewer import browser_service
     from cassini_viewer.capture_guard import stop_browser_captures
 
