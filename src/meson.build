@@ -53,6 +53,8 @@ install_data(
   'cassini_viewer/colors.py',
   'cassini_viewer/main.py',
   'cassini_viewer/library_window.py',
+  'cassini_viewer/search_index.py',
+  'cassini_viewer/search_page.py',
   'cassini_viewer/meeting_page.py',
   'cassini_viewer/meeting_text.py',
   'cassini_viewer/meeting_store.py',

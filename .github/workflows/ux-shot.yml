@@ -43,6 +43,7 @@ jobs:
           CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/refresh.py ux-artifacts/refresh-gui.png
           CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/recording.py ux-artifacts/recording-gui.png
           CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/import-export.py ux-artifacts/import-export-gui.png
+          CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/search.py ux-artifacts/search-gui.png
           python3 - <<'PY'
           import json,struct
           from pathlib import Path
@@ -58,6 +59,8 @@ jobs:
           assert struct.unpack('>II',Path('ux-artifacts/dark/recording.png').read_bytes()[16:24]) == (1120,720)
           assert struct.unpack('>II',Path('ux-artifacts/received.png').read_bytes()[16:24]) == (1120,720)
           assert struct.unpack('>II',Path('ux-artifacts/export.png').read_bytes()[16:24]) == (1120,720)
+          assert struct.unpack('>II',Path('ux-artifacts/search.png').read_bytes()[16:24]) == (1120,720)
+          assert struct.unpack('>II',Path('ux-artifacts/dark/search.png').read_bytes()[16:24]) == (1120,720)
           notification=json.loads(Path('ux-artifacts/notification.json').read_text())
           assert [button['action'] for button in notification['buttons']] == ['app.stop-recording','app.open-recording']
           info=json.loads(root.with_suffix('.json').read_text())

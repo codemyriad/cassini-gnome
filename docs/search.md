@@ -1,0 +1,9 @@
+# Search every meeting
+
+Use the magnifier in the Library or Ctrl+F. Search matches a literal phrase in a speaker turn, including phrases across adjacent timed items. Matching ignores case and uses SQLite's Unicode tokenizer. A place is a matching turn; Play from seeks its first matching timed item.
+
+Speaker lists the Library's named speakers once, alphabetically, and omits unnamed Speaker n entries. Any speaker clears it. Dates use meeting start dates in the local time zone: Today, today plus six preceding dates, or today plus 29 preceding dates. Recorded by me keeps own recordings. Filters combine with AND and reset when Search closes. Meetings appear newest first, with each meeting's hits in transcript order (D14).
+
+The rebuildable SQLite FTS5 index lives in `$XDG_CACHE_HOME/cassini/search-<root-hash>.sqlite3`, with mode 0600. It is never written into the Library. The scanner's validated snapshots are the sole source: removed or unavailable meetings are removed from the index. Corrupt cache databases are rebuilt. Unchanged transcripts cause no index writes. Indexing and queries run on a single worker, stale deliveries are discarded, and closing interrupts pending SQLite work. The result list creates widgets only for visible rows; excerpts bound text layout for long monologues.
+
+`tests/test_search.py` checks the actual FTS index, fixture counts/order, phrases, filters, local dates across DST, persistence, removal and corruption recovery. `tests/ui/search.py` drives native menus, playback through a Library refresh, timed Meeting navigation and reset under private Xvfb/D-Bus/HOME/XDG, using fakesink. `build-aux/ux-boards.sh` renders the real Search page at 1120×720 in both schemes. The fixture's four hits retain transcript order rather than the drawing's mock order, as D14 requires.
