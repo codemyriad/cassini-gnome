@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import pytest
+import test_model_download
 from test_library import capture
 from test_transcription import until
 
@@ -21,7 +22,12 @@ from cassini_viewer.parakeet_model import MODEL_ID, MODEL_TAG, REVISION
 from cassini_viewer.speech_models import SpeechModels
 from cassini_viewer.transcription import TranscriptionQueue
 
-pytest_plugins = ("test_model_download",)
+
+@pytest.fixture
+def remote():
+    # Explicit fixture ownership also works when pytest collected the source
+    # module before this module; late plugin registration is version-dependent.
+    yield from test_model_download.remote.__wrapped__()
 
 
 @pytest.fixture
