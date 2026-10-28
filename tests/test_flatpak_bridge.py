@@ -76,10 +76,10 @@ def test_actual_host_stub_keeps_binary_native_frames_and_selects_its_deployment(
         output = subprocess.run([manifest["path"]], input=data, capture_output=True, check=True, timeout=5)
         assert output.stdout == data and not output.stderr
         arguments = json.loads((host / "arguments.json").read_text())
-        assert arguments[:3] == ["run", "--arch=x86_64", "--branch=master"]
+        assert arguments[:4] == ["run", "--unshare=network", "--arch=x86_64", "--branch=master"]
         assert arguments[-1] == "com.gocassini.Viewer.Devel"
         command = "cassini-browser-control-host" if manifest["name"].endswith(".control") else "cassini-browser-host"
-        assert arguments[3] == "--command=" + command
+        assert arguments[4] == "--command=" + command
 
 
 def test_host_stub_passes_the_actual_browser_pid_and_start_tick_across_reconnects(host):
@@ -176,8 +176,16 @@ def test_both_flatpak_recipes_add_only_the_approved_bus_permission():
     for application in bridge.APPLICATIONS:
         recipe = json.loads((root / "build-aux/flatpak" / (application + ".json")).read_text())
         args = recipe["finish-args"]
-        assert [a for a in args if a.startswith("--talk-name=")] == ["--talk-name=org.freedesktop.Flatpak"]
-        assert [a for a in args if a.startswith("--filesystem=")] == ["--filesystem=xdg-music/Cassini:create"]
+        assert args == [
+            "--share=ipc",
+            "--share=network",
+            "--socket=fallback-x11",
+            "--socket=wayland",
+            "--device=dri",
+            "--socket=pulseaudio",
+            "--filesystem=xdg-music/Cassini:create",
+            "--talk-name=org.freedesktop.Flatpak",
+        ]
 
 
 def test_idle_broker_keeps_a_live_application_lease_then_exits(tmp_path):
@@ -216,6 +224,7 @@ def test_dedicated_broker_launch_returns_before_its_host_child_finishes(host):
     )
     fake.chmod(0o700)
     command = bridge.broker_command("/run/user/1000/app/com.gocassini.Viewer.Devel/cassini/browser-v2.sock")
+    assert "--unshare=network" in command
     try:
         completed = subprocess.run(command, capture_output=True, check=True, timeout=2)
         assert completed.stdout == b"" and completed.stderr == b""

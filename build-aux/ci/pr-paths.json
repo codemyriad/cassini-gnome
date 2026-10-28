@@ -17,7 +17,8 @@
       "build-aux/ux-boards.sh",
       "ux/library-vectors/**",
       "tests/ui/**",
-      ".github/workflows/ux-shot.yml"
+      ".github/workflows/ux-shot.yml",
+      "tests/**"
     ],
     "library": [
       "src/**",
