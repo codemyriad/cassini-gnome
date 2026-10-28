@@ -171,6 +171,7 @@ class BrowserService:
         self.captures = {}
         self.call_captures = {}
         self._capture_missing_since = {}
+        self._capture_observed = set()
         self._capture_policy_pending = set()
         self.capture_parent, self.tap_factory = capture_parent, tap_factory
         self.applications = {}
@@ -708,8 +709,10 @@ class BrowserService:
                 for tab, state in browser.states.items()
                 if state.get("recording")
             }
+            self._capture_observed.update(observed)
+            self._capture_observed.intersection_update(self.captures)
             for key, capture in self.captures.items():
-                if capture.finished or capture.starting:
+                if capture.finished or capture.starting or key not in self._capture_observed:
                     self._capture_missing_since.pop(key, None)
                     continue
                 peer = observed.get(key)

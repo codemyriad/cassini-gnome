@@ -388,11 +388,16 @@ def test_reload_fallback_survives_return_but_stops_when_call_does_not_return(ser
 
 def test_disconnected_fallback_is_saved_after_bounded_browser_return_grace(server):
     from test_browser_service import wait_for
+    from test_browser_sessions import Extension
 
     service, path, _ = server
+    peer = Extension(path, (3,))
     client = BrowserAudioProxy(path=path)
     start(client, "disconnected")
     capture = service.captures["disconnected"]
+    bind_capture(peer, capture)
+    peer.close()
+    wait_for(lambda: not service.browsers)
     client.close()
     wait_for(lambda: capture.browser_lost)
     service.policy()
@@ -403,3 +408,20 @@ def test_disconnected_fallback_is_saved_after_bounded_browser_return_grace(serve
     wait_for(lambda: capture.finished)
     assert all(tap.stopped for tap in Tap.instances)
     assert json.loads((capture.directory / "session.json").read_text())["state"] == "completed"
+
+
+def test_unbound_audio_client_is_not_mistaken_for_a_disconnected_call(server):
+    service, path, _ = server
+    client = BrowserAudioProxy(path=path)
+    try:
+        start(client, "unbound")
+        capture = service.captures["unbound"]
+        with service.lock:
+            service._capture_missing_since["unbound"] = time.monotonic() - 100
+        service.policy()
+        assert not capture.finished and not capture.browser_lost
+        assert "unbound" not in service._capture_missing_since
+        client.handle(dict(type="stop"))
+        assert capture.finished
+    finally:
+        client.close()
