@@ -8,23 +8,24 @@ Cassini is a GNOME desktop app for Linux that records your meetings, writes them
 
 ## What you can do
 
-- Record a meeting from your microphone and this computer's sound (the others) straight into your Library with one press of **Record**.
-- Write meetings down automatically on this computer, offline, using the speech model included in the app.
+- Record a meeting from your microphone and this computer's sound (the others) straight into your Library with one press of **Record**, and change whether you record **Me**, **The others**, or **Both** at any point during the meeting.
+- Write meetings down automatically on this computer, offline, using the included **Whistle** speech model or the optional **Parakeet Ultra** model (25 European languages), and optionally **Tell speakers apart** as **Speaker 1**, **Speaker 2**, and so on.
 - Read a meeting while you listen, with each word highlighted as it plays and any word clickable to play from that moment.
+- Name speakers in a meeting, listen to a short voice sample before naming, merge speakers who are the same person, and undo a merge if needed.
 - Search every meeting for a phrase and filter results by speaker, date, or meetings you recorded yourself.
 - Open Cassini `.opus` files from elsewhere on your computer to keep a copy in your Library as a **Received** meeting.
 - Export any meeting to share or back up, either as a portable Cassini `.opus` audio file or as a Markdown text file.
-- Record calls in Chrome or Chromium so each person in the call is kept apart in the transcript.
+- Record calls in Chrome, Chromium, Edge, or Brave so each person in the call is kept apart in the transcript.
 
 ## Get started
 
 ### Install
 
-Packages are on the [Releases page](https://github.com/codemyriad/cassini-gnome/releases). The latest release, [v0.2.0](https://github.com/codemyriad/cassini-gnome/releases/tag/v0.2.0), has `.deb`, Fedora `.rpm`, openSUSE Tumbleweed `.rpm`, Arch, and Flatpak packages, but it is the earlier viewer: the Library, Recording page, writing down, Search every meeting, Received meetings, and Export described here come with the next release. Until then, you can download test packages built from `main` on each successful [CI run](https://github.com/codemyriad/cassini-gnome/actions/workflows/ci.yml?query=branch%3Amain) (a GitHub account is needed to download them), or build from source ([CONTRIBUTING.md](CONTRIBUTING.md)).
+Packages are on the [Releases page](https://github.com/codemyriad/cassini-gnome/releases). The latest release, [v0.2.0](https://github.com/codemyriad/cassini-gnome/releases/tag/v0.2.0), has `.deb`, Fedora `.rpm`, openSUSE Tumbleweed `.rpm`, Arch, and Flatpak packages, but it is the earlier viewer: the Library, Recording page, writing down, naming speakers, Search every meeting, Received meetings, Export, Settings, and the in-app browser companion setup described here come with the next release. Until then, you can download test packages built from `main` on each successful [CI run](https://github.com/codemyriad/cassini-gnome/actions/workflows/ci.yml?query=branch%3Amain) (a GitHub account is needed to download them), or build from source ([CONTRIBUTING.md](CONTRIBUTING.md)).
 
 Native packages need GTK 4.18 and libadwaita 1.8 or newer (Debian testing, Ubuntu 26.04, Fedora 43 and later, openSUSE Tumbleweed, and Arch Linux). On older distributions (Debian 13, Ubuntu 24.04, openSUSE Leap, and RHEL), use the Flatpak. The test packages built from `main` are for 64-bit Intel and AMD (`x86_64`) computers: `.deb` packages for Ubuntu 26.04 and Debian testing, Fedora and openSUSE RPMs, an Arch package, and the Flatpak.
 
-- **Flatpak** (uses the GNOME 50 runtime from Flathub; browser recording is not available in the Flatpak):
+- **Flatpak** (uses the GNOME 50 runtime from Flathub):
 
   ```sh
   flatpak install --user cassini-viewer.flatpak
@@ -60,37 +61,60 @@ Native packages need GTK 4.18 and libadwaita 1.8 or newer (Debian testing, Ubunt
 
 *The Library before your first meeting.*
 
-Press **Record** in the Library (or press `Ctrl+R` anywhere in Cassini). Cassini starts recording your microphone and this computer's sound (the others) together, straight into the Library, without asking where to save a file.
+Press **Record** in the Library (or press `Ctrl+R` anywhere in Cassini). Cassini starts recording your microphone and this computer's sound (the others) together, straight into the Library, without asking where to save a file. If you have set up the browser companion and a browser meeting is open, **Record** records that browser meeting instead.
 
-The first time you record, a **Before your first recording** card reminds you that you are responsible for telling the people you record and explains what will be recorded. Choose **Don't show again** to hide the card next time. Your desktop may also ask you to allow Cassini to use your microphone.
+![The Before your first recording card](docs/screenshots/record-first.png)
+
+*The Before your first recording card shown the first time you press Record.*
+
+The first time you record, a **Before your first recording** card reminds you that you are responsible for telling the people you record and explains what will be recorded. Choose **Don't show again** to hide the card next time (you can turn it back on any time in **Preferences** > **Recording**). Your desktop may also ask you to allow Cassini to use your microphone.
 
 ![The Recording page during a sample meeting](docs/screenshots/recording.png)
 
-*The Recording page with a sample meeting. `Change what is recorded` is shown disabled and is not available yet.*
+*The Recording page during a sample meeting, with a silent-microphone warning and a time-pinned note.*
 
 While recording, the Recording page shows a large timer, live sound levels for your microphone and the others, an editable **Title**, and a **Notes** box. Each line you type in **Notes** is pinned to the moment you start typing it. If your microphone is silent for 20 seconds, Cassini shows a warning with a **Check** button that opens your sound settings.
 
-Recording keeps going if you return to the Library. If you close the window, Cassini asks whether to **Stop and keep it** or **Keep recording** in the background. While Cassini is hidden, a desktop notification shows the active recording with **Stop** and **Open Cassini** buttons. You can also press `Ctrl+Alt+R` to start or stop recording from anywhere on the desktop (GNOME asks you to allow this shortcut the first time). Your computer will not go to sleep while Cassini is recording. If disk space runs low, Cassini warns you; if it gets too low, Cassini stops recording and keeps everything recorded so far.
+![The What is recorded dialog during a recording](docs/screenshots/what-is-recorded.png)
 
-When the meeting ends, press **Stop** on the Recording page, in the red pill in the Library header, or in the desktop notification. The Library shows the meeting saving, and then begins writing it down.
+*Choosing what is recorded during a meeting.*
+
+Press **Change what is recorded** on the Recording page to choose **Me** (your microphone only), **The others** (the people you meet with), or **Both** at any point during the meeting. Changes apply from that moment on, and everything already recorded is kept. The dialog also shows how the others are heard: **Listening inside your browser** when recording a browser call, or **This computer's sound** when recording what your computer plays (which follows your speaker volume and mute). If a browser meeting can no longer be reached—for example, if the tab is reloaded or closed, or the browser quits—Cassini continues recording the others from this computer's sound until you stop, and shows a **Why?** button explaining what happened.
+
+Recording keeps going if you return to the Library. If you close the window, Cassini asks whether to **Stop and keep it** or **Keep recording** in the background. While Cassini is hidden, a desktop notification shows the active recording with **Stop** and **Open Cassini** buttons. You can also press `Ctrl+Alt+R` to start or stop recording from anywhere on the desktop (GNOME asks you to allow this shortcut the first time, and you can change the shortcut in **Preferences** > **Recording**). Your computer will not go to sleep while Cassini is recording. If disk space runs low, Cassini warns you; if it gets too low, Cassini stops recording and keeps everything recorded so far.
+
+When the meeting ends, press **Stop** on the Recording page, in the red pill in the Library header, or in the desktop notification (or hang up the call in your browser). The Library shows the meeting saving, and then begins writing it down.
 
 ### Read and search your meetings
 
 ![A sample meeting open for reading and playback](docs/screenshots/meeting.png)
 
-*A meeting page with a sample meeting. Speaker labels such as `Named by you`, `Recognised from saved voices`, and `auto` come from sample data and are not features yet.*
+*A meeting page with a sample meeting. `Recognised from saved voices` and the `auto` tag come from the sample data; recognising saved voices is not available yet.*
 
-When a recording stops, Cassini writes it down automatically on this computer, offline, using the included Whistle speech model. The Library shows progress and an estimate of the time left. If you close Cassini, it continues next time you open the app; if writing down fails, press **Try again**. Older recordings and Received meetings without a transcript have a **Write it down** button. Writing down is available on `x86_64` (64-bit Intel and AMD) computers in both the native packages and the Flatpak; on other computers, the **Write it down** button is hidden.
+When a recording stops, Cassini writes it down automatically on this computer, offline. The Library shows progress and an estimate of the time left. If you close Cassini, it continues next time you open the app; if writing down fails, press **Try again**. Older recordings and Received meetings without a transcript have a **Write it down** button. Writing down is available on `x86_64` (64-bit Intel and AMD) computers in both the native packages and the Flatpak; on other computers, the **Write it down** button is hidden.
 
-In a meeting recorded from your microphone and computer sound, words are attributed to **Me** and **The others**. In browser recordings, each person in the call is kept apart as **Speaker 1**, **Speaker 2**, and so on.
+![Preferences open to the Transcription tab](docs/screenshots/settings.png)
+
+*Preferences (`Ctrl+,`) on the Transcription tab. `Recognise saved voices` is shown disabled and is not available yet.*
+
+Open **Preferences** from the main menu or with `Ctrl+,` to see the **Recording**, **Transcription**, **Library**, and **Browser companion** tabs. In **Transcription**:
+
+- **Writing down what was said**: **Whistle** (16 MB) is included and used by default for English, German, French, Spanish, Italian, Dutch, and Polish. You can also download the optional **Parakeet Ultra** speech model (443 MB download, 25 European languages) and choose it for new meetings. Meetings already written down keep their transcript; if you remove Parakeet Ultra later, existing transcripts and speaker names stay and new meetings use Whistle again.
+- **Speakers**: Without extra speaker models, a meeting recorded from your microphone and computer sound attributes words to **Me** and **The others** (while browser recordings already keep each participant apart as **Speaker 1**, **Speaker 2**, and so on). Download **Tell speakers apart** (Nemotron, 62 MB download) to separate voices that share a microphone or computer sound source: once **On**, it labels each voice as **Speaker 1**, **Speaker 2**, and so on in meetings written down from then on, leaving existing transcripts as they are. **Recognise saved voices** is shown below it as disabled and is not available yet.
 
 In the Library, meetings are grouped by day with a quote, the speakers, and a short transcript preview. You can start playback straight from the preview, or open the meeting to see each speaker's share of the conversation and read the full transcript. As the meeting plays, words are highlighted and the transcript scrolls along. Click any word to play from that moment, use the player bar to skip 10 seconds back or forward, or press `Space` to play and pause.
 
+![Naming and merging a speaker in a sample meeting](docs/screenshots/speakers.png)
+
+*Naming a speaker in a meeting. In the meeting behind the dialog, `Recognised from saved voices` and the `auto` tag come from the sample data; recognising saved voices is not available yet.*
+
+To name someone in a meeting, click their row in the **Speakers** sidebar (or press **Name the speakers**). Press the play button in the dialog to listen to a short sample of their voice from the meeting, type their **Name**, and press **Save name**. You can also rename **Me** and **The others**, or clear a name to return to **Speaker 1**, **Speaker 2**, and so on. If one person was split into two speakers, choose **Merge into…** and pick the other speaker to combine their turns; to undo the last merge, open the meeting menu (the three-dots button in the meeting header) and choose **Undo merge**. Speaker names and merges apply everywhere in Cassini, including the Library, **Search every meeting**, and exported files.
+
 ![Searching across sample meetings](docs/screenshots/search.png)
 
-*Search every meeting with sample meetings. Filtering by speaker uses speaker names already stored in a meeting; naming speakers and `auto` voice recognition shown in the sample are not features yet.*
+*Search every meeting with sample meetings. The `auto` tag next to `Dario` comes from the sample data; recognising saved voices is not available yet.*
 
-To find something across all of your meetings, press the magnifier in the Library or press `Ctrl+F` to open **Search every meeting**. Type a phrase to find every matching moment. You can narrow results by speaker (when a meeting has named speakers), by date (**Today**, **Past 7 days**, or **Past 30 days**), and with **Recorded by me**. Each result shows the words around the match: press **Play from** to listen right there, or **Open the meeting here** to jump to that point in the full transcript. Filters reset when you close Search. The search index is private, kept in Cassini's cache folder, and never written into your Library.
+To find something across all of your meetings, press the magnifier in the Library or press `Ctrl+F` to open **Search every meeting**. Type a phrase to find every matching moment. You can narrow results by **Speaker** (when a meeting has named speakers), by date (**Today**, **Past 7 days**, or **Past 30 days**), and with **Recorded by me**. Each result shows the words around the match: press **Play from** to listen right there, or **Open the meeting here** to jump to that point in the full transcript. Filters reset when you close Search. The search index is private, kept in Cassini's cache folder, and never written into your Library.
 
 ### Open meetings you receive
 
@@ -106,7 +130,7 @@ Cassini copies the file into your Library and marks it as **Received**. Your ori
 
 ![The Export dialog on a sample meeting](docs/screenshots/export.png)
 
-*The Export dialog over a sample meeting. The note about recognised speakers comes from sample data; recognising voices is not a feature yet.*
+*The Export dialog over a sample meeting. `Recognised from saved voices` and the note that `Dario` was recognised automatically come from the sample data; recognising saved voices is not available yet.*
 
 To share a meeting or back it up elsewhere, press **Export…** in the Library header, in the meeting header, or in the main menu (or press `Ctrl+Shift+E`). You can export in two formats:
 
@@ -117,36 +141,34 @@ Cassini saves exported files to your **Documents** folder unless you choose anot
 
 ### Record meetings in your browser
 
-In Chrome and Chromium, Cassini can record calls directly from your browser so each person in the call is kept apart as **Speaker 1**, **Speaker 2**, and so on. Browser recording works with the native packages, not the Flatpak. Until the companion is set up, a meeting may suggest **Set up**, which opens **Browser meetings**.
+![Setting up the browser companion inside Cassini](docs/screenshots/companion-setup.png)
 
-The browser companion is set up per user, for your own browser profile, and never system-wide:
+*The two-step browser companion setup dialog.*
 
-1. In Chrome or Chromium, open `chrome://extensions`, turn on **Developer mode**, choose **Load unpacked**, and select `/usr/share/cassini-viewer/browser-extension`. Copy the extension ID shown on the card.
-2. Connect the companion for your user account:
+In **Chrome**, **Chromium**, **Edge**, and **Brave**, Cassini can record calls directly from your browser so each person in the call is heard on their own and kept apart as **Speaker 1**, **Speaker 2**, and so on. Browser recording works in both the native packages and the Flatpak.
 
-   ```sh
-   python3 /usr/share/cassini-viewer/browser-extension/install-host.py EXTENSION_ID --browser chromium
-   ```
+You set up the browser companion from inside Cassini—open **Preferences** (`Ctrl+,`) > **Browser companion** and press **Set up**, press **Set up** on the suggestion card in a meeting, or press **Add Cassini to your browser** on the empty Library screen before your first recording. Setup is per user, for your own browser profiles, and never system-wide:
 
-   For Google Chrome, pass `--browser google-chrome`.
+1. **Add Cassini to your browser**: press **Add** to open the Cassini Recorder page in the Chrome Web Store. *(The Chrome Web Store listing is not public yet; the extension will be available there with the next release. For local builds and developer testing before then, see the [browser companion guide](browser-extension/README.md).)*
+2. **Let the browser talk to Cassini**: press **Connect**. One click connects every supported browser installed on this computer (**Chrome**, **Chromium**, **Edge**, and **Brave**). When Cassini and the browser are connected, press **Done**.
 
-Then open the main menu in the Library and choose **Browser meetings…**. When you join a call, press **Record** on the meeting's row, and press **Stop** when you are done. You can also turn on **Record every browser meeting automatically** (off by default); a desktop notification with a **Stop** button appears whenever an automatic recording starts, even if the Cassini window is closed.
+Once connected, pressing **Record** in Cassini records every browser meeting that is currently open, saving each call as its own meeting in your Library. You can stop a call from its Recording page, or hang up the call in your browser to stop and save it automatically; pressing **Stop** in the Library header pill, in the desktop notification, or with `Ctrl+Alt+R` stops all active recordings.
+
+In **Preferences** (`Ctrl+,`) > **Recording**, you can also turn on **Record every browser meeting automatically** (off by default). Cassini then starts recording whenever you join a browser call, even if the Cassini window is closed, and shows a desktop notification with a **Stop** button.
 
 For local builds, whole-tab audio capture, and troubleshooting, see the [browser companion guide](browser-extension/README.md).
 
 ## Your meetings stay on this computer
 
-Cassini stores your Library in `Music/Cassini` inside your home folder (`~/Music/Cassini`), with one folder per meeting.
+Cassini stores your Library in `Music/Cassini` inside your home folder (`~/Music/Cassini`), with one folder per meeting. In **Preferences** (`Ctrl+,`) > **Library**, press **Show in Files** to open the folder in your file manager, or **Move…** (in the native packages) to move your Library to another folder.
 
-Everything happens on this computer: recording, writing meetings down offline with the included speech model, and searching across your Library. There is no account, no cloud service, and nothing is uploaded. **Export** is the only way a meeting leaves this computer, and only when you choose.
+Everything happens on this computer: recording, writing meetings down offline, telling speakers apart, and searching across your Library. Cassini only uses the network when you ask it to download an optional speech or speaker model in **Preferences** > **Transcription**. There is no account, no cloud service, and nothing is uploaded. **Export** is the only way a meeting leaves this computer, and only when you choose.
 
 Exported and Received [portable meetings](https://format.gocassini.com/) are ordinary `.opus` audio files that carry their transcript, speakers, and notes inside the file itself, and play in any audio player.
 
 ## What's coming
 
-- Naming speakers in a meeting, keeping those names for future meetings, and recognising saved voices.
-- Telling apart several people who share one microphone or one computer sound source.
-- Changing what is recorded before you start (for example, recording your microphone only).
+- Saving voices when you name a speaker and recognising saved voices automatically in future meetings.
 
 ## Help and feedback
 
