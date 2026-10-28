@@ -3,6 +3,7 @@
 
 import json
 import math
+import threading
 import time
 import traceback
 from collections import deque
@@ -40,6 +41,7 @@ def pipeline_state(pipeline):
 class GstEvidence:
     def __init__(self, directory):
         self.directory = directory
+        self._write_lock = threading.Lock()
         self.events = deque(maxlen=64)
         self.errors = []
         self.restores = []
@@ -60,7 +62,11 @@ class GstEvidence:
         self.persist()
 
     def persist(self):
-        (self.directory / "gst-evidence.json").write_text(json.dumps(self.snapshot(), indent=2, allow_nan=False) + "\n")
+        # Streaming-thread append faults and main-context bus faults can race.
+        with self._write_lock:
+            (self.directory / "gst-evidence.json").write_text(
+                json.dumps(self.snapshot(), indent=2, allow_nan=False) + "\n"
+            )
 
     def failed(self, record, pipeline=None):
         if pipeline is not None:

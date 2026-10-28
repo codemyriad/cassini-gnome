@@ -97,7 +97,8 @@ def until(condition, description):
         trace.healthy(description)
         return condition()
 
-    trace.checkpoint(description.replace(" ", "-")[:100], app.recorder.pipeline if app and app.recorder else None)
+    # Snapshot graphs only on faults; normal readiness must not gain graph IO.
+    trace.checkpoint(description.replace(" ", "-")[:100])
     return wait_until(checked, description, diagnostics=diagnostics)
 
 
