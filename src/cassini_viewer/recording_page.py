@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """UX6: pushed live recording page; app-owned titles and time-pinned notes."""
 
-import re
+import logging
 
 from gi.repository import Adw, Gio, GLib, Gtk
 
@@ -12,53 +12,91 @@ from .strings import text
 
 
 class TimedNotes:
+    """Edit note bodies; timestamps are display spans, never editable content."""
+
     def __init__(self, buffer, notes, elapsed, changed):
         self.buffer, self.elapsed, self.changed = buffer, elapsed, changed
-        self.guard = True
-        self.marks = []
-        self.prefix = buffer.create_tag("note-time", editable=False)
-        for note in notes:
-            if buffer.get_char_count():
-                buffer.insert(buffer.get_end_iter(), "\n")
-            self._prefix(buffer.get_end_iter(), note["atMs"])
-            buffer.insert(buffer.get_end_iter(), note["text"])
         self.guard = False
-        self.insert_signal = buffer.connect("insert-text", self._insert)
-        self.change_signal = buffer.connect("changed", lambda *_: changed() if not self.guard else None)
+        self.lines = [(n["atMs"], n["text"]) for n in notes] or [(None, "")]
+        self._render(0, 0)
+        buffer.connect("insert-text", self._insert)
+        buffer.connect("delete-range", self._delete)
 
-    def _prefix(self, iterator, at):
-        self.marks.append((self.buffer.create_mark(None, iterator, True), at))
-        self.buffer.insert_with_tags(iterator, fmt.position(at) + "  ", self.prefix)
+    @staticmethod
+    def _prefix(at):
+        return fmt.position(at) + "  " if at is not None else ""
+
+    def _point(self, offset):
+        base = 0
+        for index, (at, body) in enumerate(self.lines):
+            prefix = len(self._prefix(at))
+            end = base + prefix + len(body)
+            if offset <= end or index == len(self.lines) - 1:
+                return index, min(len(body), max(0, offset - base - prefix))
+            base = end + 1
+        raise AssertionError("Missing note line")
+
+    def _render(self, line, column):
+        value = "\n".join(self._prefix(at) + body for at, body in self.lines)
+        old = self.buffer.get_text(*self.buffer.get_bounds(), True)
+        # A minimal edit keeps Gtk's native user-action/undo grouping and avoids
+        # replacing every note when one character changes.
+        left = 0
+        while left < min(len(old), len(value)) and old[left] == value[left]:
+            left += 1
+        right = 0
+        while right < min(len(old), len(value)) - left and old[-right - 1] == value[-right - 1]:
+            right += 1
+        self.guard = True
+        self.buffer.begin_user_action()
+        try:
+            self.buffer.delete(self.buffer.get_iter_at_offset(left), self.buffer.get_iter_at_offset(len(old) - right))
+            self.buffer.insert(
+                self.buffer.get_iter_at_offset(left), value[left : len(value) - right if right else None]
+            )
+            offset = sum(len(self._prefix(at)) + len(body) + 1 for at, body in self.lines[:line])
+            offset += len(self._prefix(self.lines[line][0])) + column
+            self.buffer.place_cursor(self.buffer.get_iter_at_offset(offset))
+        finally:
+            self.buffer.end_user_action()
+            self.guard = False
 
     def _insert(self, buffer, iterator, value, _length):
         if self.guard:
             return
         buffer.stop_emission_by_name("insert-text")
-        self.guard = True
-        for index, part in enumerate(value.split("\n")):
-            if index:
-                buffer.insert(iterator, "\n")
-            if part:
-                if iterator.starts_line() and iterator.ends_line():
-                    self._prefix(iterator, self.elapsed())
-                buffer.insert(iterator, part)
-        self.guard = False
+        line, column = self._point(iterator.get_offset())
+        at, body = self.lines[line]
+        parts = value.split("\n")
+        now = int(self.elapsed())
+        replacement = [(at if at is not None else now, body[:column] + parts[0])]
+        replacement.extend((now, part) for part in parts[1:])
+        replacement[-1] = (replacement[-1][0], replacement[-1][1] + body[column:])
+        self.lines[line : line + 1] = replacement
+        self._render(line + len(parts) - 1, (column if len(parts) == 1 else 0) + len(parts[-1]))
+        self.changed()
+
+    def _delete(self, buffer, start, end):
+        if self.guard:
+            return
+        buffer.stop_emission_by_name("delete-range")
+        first, left = self._point(start.get_offset())
+        last, right = self._point(end.get_offset())
+        if (first, left) == (last, right):
+            return  # Deleting only a timestamp span never deletes the note.
+        at, body = self.lines[first]
+        self.lines[first : last + 1] = [(at, body[:left] + self.lines[last][1][right:])]
+        if len(self.lines) == 1 and not self.lines[0][1]:
+            self.lines = [(None, "")]
+        self._render(first, left)
         self.changed()
 
     def values(self):
-        values, seen = [], set()
-        for mark, at in self.marks:
-            start = self.buffer.get_iter_at_mark(mark)
-            if not start.starts_line() or start.get_offset() in seen:
-                continue
-            seen.add(start.get_offset())
-            end = start.copy()
-            end.forward_to_line_end()
-            value = self.buffer.get_text(start, end, False)
-            match = re.match(r"^\d+:\d{2}:\d{2}  (.*)$", value)
-            if match and match[1].strip():
-                values.append(dict(atMs=int(at), text=match[1]))
-        return values
+        return [dict(atMs=int(at), text=body) for at, body in self.lines if at is not None and body.strip()]
+
+    def reset(self, notes):
+        self.lines = [(n["atMs"], n["text"]) for n in notes] or [(None, "")]
+        self._render(0, 0)
 
 
 class RecordingPage(Adw.NavigationPage):
@@ -66,6 +104,7 @@ class RecordingPage(Adw.NavigationPage):
         super().__init__(title=meeting.title)
         self.window, self.meeting = window, meeting
         self.app = window.get_application()
+        draft = self.app.comfort.draft(meeting)
         self._save_timer = 0
         self._saving = 0
         self._closed = False
@@ -93,7 +132,8 @@ class RecordingPage(Adw.NavigationPage):
         self.capture = window.capture_controls(meeting)
         self.capture.set_tooltip_text(text("recording.pill.noSleep"))
         header.pack_start(self.capture)
-        self.headline = label(meeting.title, "heading")
+        self.headline = label(draft.get("title") or meeting.title, "heading")
+        self.set_title(self.headline.get_label())
         header.set_title_widget(self.headline)
         view.add_top_bar(header)
         column = vertical(22, margin_top=32, margin_bottom=32, margin_start=20, margin_end=20)
@@ -121,7 +161,9 @@ class RecordingPage(Adw.NavigationPage):
         column.append(self.lines)
         title_box = vertical(6)
         title_box.append(label(text("recording.title.label"), "small", "heading", "dim-label", xalign=0))
-        self.title_entry = Gtk.Entry(text=meeting.title, max_length=1000, css_classes=["recording-title"])
+        self.title_entry = Gtk.Entry(
+            text=draft.get("title") or meeting.title, max_length=500, css_classes=["recording-title"]
+        )
         self.title_entry.update_property([Gtk.AccessibleProperty.LABEL], [text("recording.title.label")])
         window.protect_text_input(self.title_entry)
         self.title_entry.connect("changed", self._title_changed)
@@ -192,7 +234,10 @@ class RecordingPage(Adw.NavigationPage):
         window.protect_text_input(self.notes_view)
         self.notes_view.update_property([Gtk.AccessibleProperty.LABEL], [text("recording.notes.label")])
         self.notes = TimedNotes(
-            self.notes_view.get_buffer(), meeting.metadata.get("notes", []), self.elapsed, self._notes_changed
+            self.notes_view.get_buffer(),
+            draft.get("notes", meeting.metadata.get("notes", [])),
+            self.elapsed,
+            self._notes_changed,
         )
         note_box.append(self.notes_view)
         note_box.append(label(text("recording.notes.caption"), "small", "dim-label", xalign=0))
@@ -204,9 +249,12 @@ class RecordingPage(Adw.NavigationPage):
 
     def _check_sound(self, *_):
         # The desktop owns its sound preferences. No change to devices by Cassini.
-        Gio.AppInfo.create_from_commandline("gnome-control-center sound", None, Gio.AppInfoCreateFlags.NONE).launch(
-            [], None
-        )
+        try:
+            Gio.AppInfo.create_from_commandline("gnome-control-center sound", None, Gio.AppInfoCreateFlags.NONE).launch(
+                [], None
+            )
+        except GLib.Error as error:
+            logging.getLogger(__name__).warning("Could not open desktop sound settings: %s", error)
 
     def _title_changed(self, *_):
         if self._updating_title:
@@ -240,32 +288,45 @@ class RecordingPage(Adw.NavigationPage):
         self._title_dirty = self._notes_dirty = False
         self._saving += 1
         future = self.app.comfort.edit(self.meeting.directory, **changes)
-        future.add_done_callback(lambda f: GLib.idle_add(self._saved, f))
+        future.add_done_callback(lambda f: GLib.idle_add(self._saved, f, changes))
         return False
 
-    def _saved(self, future):
+    def _saved(self, future, changes):
         self._saving -= 1
         try:
             future.result()
         except (OSError, ValueError) as error:
             self.app.recording_error = str(error)  # Keep existing behavior until error copy is published.
+            self._title_dirty |= "title" in changes
+            self._notes_dirty |= "notes" in changes
+            self._dirty = True
         if not self.window.monitor._closed:
             self.window.monitor.refresh({self.meeting.directory})
         return False
 
     def update(self, meeting):
         self.meeting = meeting
+        draft = self.app.comfort.draft(meeting)
         if not self._dirty and not self._saving and not self.title_entry.has_focus():
             self._updating_title = True
-            self.title_entry.set_text(meeting.title)
+            self.title_entry.set_text(draft.get("title") or meeting.title)
             self._updating_title = False
-            self.headline.set_label(meeting.title)
+            self.headline.set_label(self.title_entry.get_text())
+        if not self._notes_dirty and not self._saving and not self.notes_view.has_focus():
+            notes = draft.get("notes", meeting.metadata.get("notes", []))
+            if self.notes.values() != notes:
+                self.notes.reset(notes)
         self.update_status()
 
     def update_status(self):
         status = self.app.comfort.status(self.meeting)
         self.timer.set_label(fmt.live_big(self.elapsed()))
-        self.stop.set_sensitive(self.meeting.lifecycle == "recording")
+        stopping = self.app._browser_stops
+        self.stop.set_sensitive(
+            self.meeting.lifecycle == "recording"
+            and None not in stopping
+            and str(self.meeting.directory) not in stopping
+        )
         silent = status["silent"]
         self.mic_warning.set_visible(silent)
         self.check.set_visible(silent)
