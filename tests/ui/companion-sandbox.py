@@ -71,6 +71,7 @@ with tempfile.TemporaryDirectory() as temporary:
         assert dialog.browser.get_title() == "Not set up"
         assert not dialog.browser_setup.get_visible() and not dialog.automatic.get_visible()
         assert dialog._future is None
+        assert not dialog.move.get_visible(), "Unverified document-portal relocation must stay hidden"
         dialog.force_close()
         until(lambda: dialog.closed)
         # Use the real native recorder with synthetic sources on this private

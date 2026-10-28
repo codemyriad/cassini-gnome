@@ -30,6 +30,10 @@ installation flow.
 Until W6-F supplies the Flatpak host bridge, that build hides the first-run and
 Meeting setup links, the Settings setup button and browser-only automatic-record
 switch. Its Browser companion status remains Not set up. Record still captures
-the microphone and this computer's sound. W6-F follows What is recorded and will
+the microphone and this computer's sound. Both manifests grant only
+`xdg-music/Cassini:create` for the localized default Library; the installed
+package smoke verifies PCM/manifest persistence across two sandbox launches.
+Settings hides Move until a document-portal location is proved durable across
+restart. No broad home permission is granted. W6-F follows What is recorded and will
 provide host browser launch/registration and an app relay; no additional Flatpak
 permission is added by UX10.

@@ -20,8 +20,17 @@ def config_path():
     return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "cassini/library.json"
 
 
+def music_directory():
+    try:
+        from gi.repository import GLib
+    except ImportError:
+        return Path.home() / "Music"
+    return Path(GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_MUSIC) or Path.home() / "Music")
+
+
 def initial_root():
-    return Path(os.environ.get("CASSINI_LIBRARY_DIR", Path.home() / "Music/Cassini")).absolute()
+    override = os.environ.get("CASSINI_LIBRARY_DIR")
+    return Path(override).absolute() if override is not None else (music_directory() / "Cassini").absolute()
 
 
 def load():

@@ -238,6 +238,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.move = Gtk.Button(label=text("settings.library.move"), valign=Gtk.Align.CENTER)
         self.move.connect("clicked", lambda *_: self._choose_folder())
         self.move.set_sensitive(True)
+        self.move.set_visible(not self.app.in_flatpak)
         self.folder.add_suffix(self.show_folder)
         self.folder.add_suffix(self.move)
         group.add(self.folder)

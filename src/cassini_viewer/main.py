@@ -229,6 +229,12 @@ class CassiniApplication(Adw.Application):
         self.quit()
 
     @property
+    def in_flatpak(self):
+        from .companion import in_flatpak
+
+        return in_flatpak()
+
+    @property
     def browser_companion_available(self):
         from .companion import available
 

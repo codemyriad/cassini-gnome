@@ -21,10 +21,14 @@ class Browser:
     config: Path
 
 
+def in_flatpak():
+    return bool(os.environ.get("FLATPAK_ID") or Path("/.flatpak-info").is_file())
+
+
 def available():
     # W6-F supplies the host bridge. Until then /app/bin and sandbox config
     # paths cannot be offered to a native browser as usable host registrations.
-    return not (os.environ.get("FLATPAK_ID") or Path("/.flatpak-info").is_file())
+    return not in_flatpak()
 
 
 def installed_browsers(*, config=None, which=shutil.which):
