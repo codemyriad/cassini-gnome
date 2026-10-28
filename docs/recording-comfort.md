@@ -73,3 +73,10 @@ The private-Xvfb process-exit probe covers native and simulated browser hidden
 completion with a delayed writing-down job, Keep recording with two windows,
 reopening two hidden windows, and interrupted native finalization. The browser
 stop unit cases cover a concurrent completed stop and an already-running save.
+
+When the only visible window is a legacy player, it cannot take over browser
+polling from a hidden Library/Browser window. The hidden observer stays owned
+until capture saves, then the same saved-intent checkpoint runs before that
+window closes. A new capture started during the asynchronous checkpoint keeps
+its observer/windows. The process probe covers a browser-only hidden Library
+with a visible legacy player and verifies completed writing-down before exit.
