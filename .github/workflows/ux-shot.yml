@@ -1,22 +1,10 @@
 name: UX boards and Library interaction
 on:
-  push:
-    branches: [main, 'ux/shot-spike']
-  pull_request:
-    paths:
-      - 'meson.build'
-      - 'meson_options.txt'
-      - 'data/**'
-      - 'build-aux/ci/**'
-      - 'pyproject.toml'
-      - 'src/**'
-      - 'build-aux/ux-screenshot.sh'
-      - 'build-aux/ux-boards.sh'
-      - 'ux/library-vectors/**'
-      - 'tests/ui/**'
-      - '.github/workflows/ux-shot.yml'
-  schedule:
-    - cron: "51 2 * * *"
+  workflow_call:
+    inputs:
+      product:
+        type: string
+        default: ""
   workflow_dispatch:
 permissions:
   contents: read
@@ -34,28 +22,44 @@ jobs:
             libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream xvfb xauth dbus-x11 \
             locales fontconfig python3-pil python3-pytest libzstd1 fonts-cantarell=0.303.1-4 fonts-inter=4.1+ds-1
           sudo locale-gen en_GB.UTF-8
-      - name: Build a local installation
+      - name: Build a local installation for standalone dispatch
+        if: inputs.product == ''
         run: |
           meson setup _build-shot --prefix="$PWD/_install-shot" -Dprofile=development
           meson install -C _build-shot
+          echo "BOARD_APP=$PWD/_install-shot/bin/cassini-viewer" >> "$GITHUB_ENV"
+          echo "CASSINI_BOARD_BUILD=$PWD/_build-shot" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v5
+        if: inputs.product != ''
+        with:
+          name: ${{ inputs.product }}
+          path: _ci-download
+      - name: Use exact development-profile build product
+        if: inputs.product != ''
+        run: |
+          python3 build-aux/ci/product.py unpack _ci-boards _ci-download/boards.tar --commit "$GITHUB_SHA" --profile boards
+          test ! -e /tmp/cassini-ci-boards
+          cp -a _ci-boards/install /tmp/cassini-ci-boards
+          echo "BOARD_APP=/tmp/cassini-ci-boards/bin/cassini-viewer" >> "$GITHUB_ENV"
+          echo "CASSINI_BOARD_BUILD=$PWD/_ci-boards/build" >> "$GITHUB_ENV"
       - name: Render the real current window in private Xvfb
         run: |
           mkdir -p ux-artifacts
-          build-aux/ux-boards.sh _install-shot/bin/cassini-viewer ux-artifacts
-          CASSINI_SCREENSHOT_SCHEME=dark build-aux/ux-boards.sh _install-shot/bin/cassini-viewer ux-artifacts/dark
+          build-aux/ux-boards.sh "$BOARD_APP" ux-artifacts
+          CASSINI_SCREENSHOT_SCHEME=dark build-aux/ux-boards.sh "$BOARD_APP" ux-artifacts/dark
           python3 tests/ui/check-dark.py ux-artifacts/dark
-          CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/library.py ux-artifacts/gui.png
-          CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/meeting.py ux-artifacts/meeting-gui.png
-          CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/quit.py ux-artifacts/quit-gui.png
-          CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/refresh.py ux-artifacts/refresh-gui.png
-          CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/recording.py ux-artifacts/recording-gui.png
-          CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/import-export.py ux-artifacts/import-export-gui.png
-          CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/search.py ux-artifacts/search-gui.png
-          CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/model-notices.py ux-artifacts/notices-gui.png
-          CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/settings.py ux-artifacts/settings-gui.png
-          CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/library-move.py ux-artifacts/library-move-gui.png
-          CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/speech-models.py ux-artifacts/speech-models.png
-          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/speech-models.py ux-artifacts/dark/speech-models.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/library.py ux-artifacts/gui.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/meeting.py ux-artifacts/meeting-gui.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/quit.py ux-artifacts/quit-gui.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/refresh.py ux-artifacts/refresh-gui.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/recording.py ux-artifacts/recording-gui.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/import-export.py ux-artifacts/import-export-gui.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/search.py ux-artifacts/search-gui.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/model-notices.py ux-artifacts/notices-gui.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/settings.py ux-artifacts/settings-gui.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/library-move.py ux-artifacts/library-move-gui.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speech-models.py ux-artifacts/speech-models.png
+          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speech-models.py ux-artifacts/dark/speech-models.png
           python3 - <<'PY'
           import json,struct
           from pathlib import Path

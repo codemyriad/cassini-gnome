@@ -23,6 +23,7 @@ import numpy as np  # noqa: E402
 
 from cassini_viewer.speech_pipeline import resampled_chunks  # noqa: E402
 from cassini_viewer.whistle_client import WhistleClient  # noqa: E402
+from cassini_viewer.whistle_worker import onnxruntime_dir  # noqa: E402
 
 assert os.environ.get("CASSINI_WHISTLE_NETWORK_NONE") == "1"
 # The interfaces of this process's own network namespace: /sys/class/net can
@@ -54,6 +55,12 @@ with WhistleClient(args.bundle, timeout=120) as client:
             [dict(id="golden", path=str(root / golden["input"]), offsetMs=0)], events.append
         )
         result["vad"] = complete["vad"]
+        assert complete["vad"]["version"] == "1.31.0", complete["vad"]
+        private_ort = onnxruntime_dir()
+        maps = Path(f"/proc/{child.pid}/maps").read_text()
+        assert private_ort is not None and str(private_ort) in maps
+        assert "libneedle3.so" in maps and "libsherpa-onnx-c-api.so" not in maps
+        result["privateOrtFromInstalledTree"] = True
         assert complete["vad"]["providers"] == ["CPUExecutionProvider"]
         assert complete["vad"]["intraThreads"] == complete["vad"]["interThreads"] == 1
         progress = [e for e in events if e["type"] == "progress"]

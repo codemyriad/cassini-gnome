@@ -8,8 +8,9 @@ import re
 import subprocess
 from pathlib import Path
 
-WORKFLOWS = ("ci.yml", "recording.yml", "ux-shot.yml", "ux-library.yml", "whistle.yml")
+WORKFLOWS = ("ci.yml",)
 PACKAGES = {"deb-0", "deb-1", "rpm-fedora", "rpm-opensuse", "arch"}
+BUILD_PRODUCTS = {"ci-core", "ci-boards", "ci-offline"}
 
 
 def api(repo, path):
@@ -37,7 +38,7 @@ def select_runs(runs, commit):
 
 
 def validate_artifacts(artifacts):
-    for name in PACKAGES:
+    for name in PACKAGES | BUILD_PRODUCTS:
         matches = [a for a in artifacts if a.get("name") == name and not a.get("expired")]
         if len(matches) != 1:
             raise ValueError(f"Expected one unexpired {name} artifact from this exact main run")

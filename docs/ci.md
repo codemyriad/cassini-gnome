@@ -1,59 +1,84 @@
-# CI coverage and reuse (D20)
+# CI orchestration and reuse (D20)
 
-Standalone PR entry points and their path coverage stay in place. There is no
-central orchestrator. Source builds for six distributions, distro packages,
-development-profile boards and the installed offline-engine build have different
-configuration/runtime requirements; they are not interchangeable app products.
-The offline job builds its installed stage once and uses it for both engines,
-the actual queue and all the golden/GTK proofs.
+`ci.yml` is the single PR/main/nightly/dispatch entry point. Its Changes job uses
+`build-aux/ci/pr-paths.json`, a snapshot of the standalone PR coverage at f020705.
+Source, packaging and Recording still run on every PR. Boards, Library vectors
+and offline inference retain their existing positive path patterns; workflow/CI
+infrastructure changes run every area. Renames include both old and new paths.
+Missing bases, invalid events and failed diffs select everything. Main, nightly
+and dispatch never use PR path filtering. Legacy UX spike push branches are kept.
 
-All five check workflows now run on main, nightly and dispatch, including the
-full package and distro matrices via CI's reusable workflows. Existing PR path
-filters are retained and widened for schemas, Meson and CI helpers. The original
-per-PR cancellation rule remains; main, nightly and dispatch have distinct groups
-and are never automatically cancelled. Agents may manually cancel only their own
-superseded heads, never the last potentially mergeable head or a main/nightly run.
+Even a failed Changes job causes the build and area calls to default to running;
+partially written false outputs from that failed job are never trusted.
+A failed profile does not suppress other consumers of already-uploaded products;
+a missing product makes its consumer fail explicitly. Root calls use
+`!cancelled()` so detection failures run everything while manual cancellation
+still stops downstream work, following [GitHub status-check semantics](https://docs.github.com/en/actions/reference/workflows-and-actions/expressions#status-check-functions). No automatic cancellation remains. Agents may cancel their own superseded heads
+manually, never main/nightly or the last potentially mergeable head.
 
-Whistle/Needle/Silero and every pinned private Python ONNX Runtime wheel share
-the `.whistle-cache` location and pin-derived key across workflows. Native sherpa
-uses `.sherpa-cache`, keyed by its exact pins. Meson remains offline; each consumer
-checks the bytes. The Parakeet test-only weight cache stays keyed to its revision.
-Running the ML workflow on main makes those verified caches available to later PRs,
-rather than leaving successful PR-only caches isolated on pull-request refs.
+The PR checks list names the areas: Changed areas, Build, Source, Packaging,
+Recording, Boards, Library and Offline. Called workflows have `workflow_call`
+and `workflow_dispatch`, without duplicate PR/push/nightly entry points. Each
+can still run alone; standalone dispatch builds its own required profile.
 
-## Exact main packages, reused at release
+## Products and profiles
 
-Debian, RPM and Arch release products are identical to the five packages already
-built, installed and smoke-tested on main. Release downloads those artifacts
-instead of building them again. `green_main.py` requires the exact tag commit's
-latest main push run of every check workflow to have succeeded, every job to be
-green (including continue-on-error jobs), and all five artifacts to be unexpired.
-A PR, another branch, an older commit, a previous successful attempt hidden by a
-new failure or a missing/expired artifact cannot supply a release.
+One Linux build job produces the distinct configurations without conflating them:
 
-The release Flatpak remains a separate build: main produces the development
-profile, while a tag ships the default profile. No packaging recipes are changed.
-No tag or release is created to test this plumbing. The helper's rejection rules
-are unit tested; artifact download uses GitHub's digest-checking action. A real
-release still needs main to finish before the tag is pushed.
+| Product | Configuration | Consumers |
+| --- | --- | --- |
+| `ci-core` | Default profile, no bundled engines, normal `/usr/local` prefix | Meson validation/install/POT; Recording uses its compiled resource |
+| `ci-boards` | Development profile, engines disabled, `/tmp/cassini-ci-boards` | Light/dark boards and all native GUI flows |
+| `ci-offline` | Default profile, `/usr`, bundled Whistle/Silero/private Python ORT and sherpa | Both engines, goldens, ABI and real queue/GTK proofs |
 
-## Measurements
+The source-validation environment stays an Ubuntu 26.04 container without GI.
+It gains a compiler and Git to exercise ABI and diff integration tests, plus CA
+certificates for verified HTTPS and zstd for the same cache format as host jobs.
+The bundled profile pins the prior Ubuntu host multiarch libdir explicitly,
+rather than accepting the minimal container's `lib64` fallback. Whistle and
+Parakeet harnesses both mount the installed private Python ORT and assert 1.31.0;
+the Whistle GTK proof imports installed modules instead of bypassing paths.json. All
+original Meson/protocol/desktop/schema tests, POT and staged-install checks run.
+Distro and package builds remain separate: their OS/ABI/recipe tests are distinct.
+No packaging recipe is changed. All six source distros, five native packages,
+Flatpak and Recording scenarios remain enabled with their existing thresholds.
 
-Use `python3 build-aux/ci/measure_ci.py FULL_SHA --output report.json` with a
-read-only authenticated `gh`. It records every latest PR workflow attempt and
-job, execution duration and creation-to-start queue wait. Rounded Linux minutes
-are an estimate (each job rounds separately), not a billing invoice. The report
-also records GitHub's usage API totals separately; it reports zero billable
-minutes for the #51 control. Pending jobs
-remain explicitly incomplete. Compare complete, successful heads, and retain
-reports rather than attributing runner/network variance to a cache change.
+Tar products preserve executable bits. Before use, consumers check their exact
+GitHub commit, profile and every file digest; extraction rejects traversal, links
+and devices. The board install uses its configured fixed prefix and compiled
+schema; moving a launcher to a different prefix is never assumed to work.
+Recording and offline consumers do not rebuild products. Build and package jobs
+share the pin-keyed `.whistle-cache` (including private ORT wheels); native sherpa
+uses `.sherpa-cache`. The model fixture cache is revision-keyed, test-only, and
+prepared separately from runtime build inputs. Meson stays offline.
 
-The earlier engine PR #50 is retained as historical context in
-`ci/engine-baseline-pr50.json`: 18 jobs, 46.667 execution minutes, 55 estimated
-rounded Linux minutes, median 3 seconds queue wait. The model-selection PR #51
-is the closer before control: `ci/before-pr51.json` records 17 jobs, 47.95
-execution minutes, 56 estimated rounded Linux minutes and median 5 seconds queue
-wait. This PR's after report will be recorded after all checks finish. Per-PR job count is not intentionally
-reduced: the added paths can run an additional vector check. The guaranteed build
-saving is at release (five existing package products reused); cache benefits on
-PRs depend on main warming and current runner/network conditions.
+## Releases
+
+Release downloads the five Debian/RPM/Arch products already installed and
+smoke-tested by the exact main commit. `green_main.py` requires the latest main
+push orchestrator to succeed, every nested job green, all five package artifacts
+and all three full-run build products present and unexpired. A PR, another commit,
+a failed run or a partial/expired artifact set cannot supply a release. The
+release Flatpak is a separate default-profile build; main tests development.
+No tag or publication is created to validate this wiring.
+
+## Measurements and validation
+
+`python3 build-aux/ci/measure_ci.py FULL_SHA --output report.json` records latest
+PR attempts, every job's execution and creation-to-start queue wait, and GitHub's
+reported billable usage. Per-job rounded Linux minutes are a separate resource
+estimate, not a billing invoice. Pending jobs stay explicitly incomplete.
+
+The closest standalone-workflow control is #53's final 011c693, retained in
+`ci/before-orchestrator-pr53.json`: 18 jobs, 45.217 execution minutes, 54 estimated
+rounded Linux minutes, 0 GitHub-reported billable minutes, median 148 seconds queue.
+Earlier controls (#50 and #51) remain in `ci/` for context. The orchestrator's
+final-head comparison is written to coordination `STATUS-GNOME.md` after checks
+finish. Queue and network differences are reported without claiming causality.
+
+Tests cover hand-written area expectations, unknown history, invalid event files,
+actual Git renames, wrong-commit/profile products, corrupt digests, traversal and
+release provenance/expiration. Local restore proofs run the real native GTK/audio,
+light/dark boards and installed offline goldens from the archived products. Hosted
+CI checks artifact transfer and every matrix/profile again, then main verifies the
+full unfiltered graph. Standalone dispatch remains independently available.

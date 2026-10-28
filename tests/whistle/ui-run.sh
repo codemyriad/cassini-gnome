@@ -10,4 +10,4 @@ export CASSINI_SCREENSHOT_ISOLATED=1 ADW_DISABLE_PORTAL=1 GIO_USE_VFS=local GTK_
 export PULSE_SERVER=unix:/tmp/no-audio PIPEWIRE_REMOTE=cassini-no-audio
 unset WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY DBUS_SESSION_BUS_ADDRESS
 dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
-  /usr/bin/python3 tests/whistle/ui_probe.py /bundle /out/pipeline-ui.json --resource /out/pipeline-ui.gresource
+  /usr/bin/python3 tests/whistle/ui_probe.py /bundle /out/pipeline-ui.json --resource /out/pipeline-ui.gresource --modules /modules
