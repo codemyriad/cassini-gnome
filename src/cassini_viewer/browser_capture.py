@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """A broker-owned browser recording survives the native messaging proxy's exit."""
 
+import contextlib
+import logging
 import threading
 import time
 from datetime import UTC, datetime
@@ -109,10 +111,10 @@ class BrowserCapture:
             self.stop()
         return result
 
-    def _add_native(self, kind, at=None):
+    def _add_native(self, kind, at=None, *, identifier=None):
         from .strings import text
 
-        identifier = kind + "-" + str(uuid4())
+        identifier = identifier or kind + "-" + str(uuid4())
         session = self.host.session
         filename = f"track-{kind}.wav"
         if any(t["file"] == filename for t in session.manifest["tracks"]):
@@ -130,33 +132,49 @@ class BrowserCapture:
             session.manifest["tracks"][-1]["startOffsetMs"] = at
         return identifier
 
-    def _start_native(self, kind, identifier, at=0):
+    def _make_native(self, kind, identifier, at=0, *, active=False):
         factory = self.tap_factory
         if factory is None:
             from .native_tap import NativeTap
 
             factory = NativeTap
 
+        state = dict(active=active, at=at, error=None)
+
         def append(data, offset):
             with self.lock:
+                if not state["active"]:
+                    return  # Readiness PCM is not a committed recording span.
                 track = next(t for t in self.host.session.manifest["tracks"] if t["id"] == identifier)
                 if not self.finished and not track.get("ended"):
-                    selected, offset = selected_pcm(data, offset, 48000, 1, at)
+                    selected, offset = selected_pcm(data, offset, 48000, 1, state["at"])
                     if selected:
                         self.host.session.append(identifier, selected, offset)
 
         def level(value):
             with self.lock:
+                if not state["active"]:
+                    return
                 selected = self.me if kind == "microphone" else self.others
                 self.levels[0 if kind == "microphone" else 1] = value if selected else 0
 
         def failed(message):
-            self.error = message
-            self.changed(self, "error")
+            with self.lock:
+                state["error"] = message
+                active = state["active"] and not self.finished and not any(
+                    track["id"] == identifier and track.get("ended") for track in self.host.session.manifest["tracks"]
+                )
+                if active:
+                    self.error = message
+            if active:
+                self.changed(self, "error")
 
+        return factory(kind, self.origin_ms, append, failed, level=level), state
+
+    def _start_native(self, kind, identifier, at=0):
         if self.stop_requested.is_set():
             return
-        tap = factory(kind, self.origin_ms, append, failed, level=level)
+        tap, _state = self._make_native(kind, identifier, at, active=True)
         self.native_taps[kind] = identifier, tap
         if kind == "microphone":
             self.microphone = tap
@@ -173,12 +191,26 @@ class BrowserCapture:
         return self._change(self.me, self.others, fallback=reason)
 
     def _change(self, me, others, *, fallback=None):
-        try:
-            return self._apply_change(me, others, fallback=fallback)
-        except OSError as error:
-            self.error = str(error)
-            self.changed(self, "error")
-            raise
+        return self._apply_change(me, others, fallback=fallback)
+
+    def _events(self, me, others, lost, fallback, at):
+        old = source_state(self.host.session.manifest.get("events"))
+        events = []
+        if (me, others) != (self.me, self.others):
+            events.append(dict(atMs=at, type="selection", me=me, others=others, reason="user"))
+        if not others:
+            if self.others:
+                events.append(dict(atMs=at, type="othersSource", source="none", reason="user"))
+        elif not self.others or (lost and old.source != "system"):
+            events.append(
+                dict(
+                    atMs=at,
+                    type="othersSource",
+                    source="system" if lost else "browser",
+                    reason=fallback or ("lost" if lost else "user"),
+                )
+            )
+        return events
 
     def _apply_change(self, me, others, *, fallback=None):
         if self.starting and not self.ready.wait(12):
@@ -187,56 +219,59 @@ class BrowserCapture:
             with self.lock:
                 if self.finished or self.stopping or self.stop_requested.is_set():
                     raise ProtocolError("state", "No active recording")
-                old = source_state(self.host.session.manifest.get("events"))
                 lost = self.browser_lost or fallback is not None
-                source = "system" if lost else "browser"
-                events = []
-                at = change_time(self.host.session, self.elapsed_ms())
-                if (me, others) != (self.me, self.others):
-                    events.append(dict(atMs=at, type="selection", me=me, others=others, reason="user"))
-                if not others:
-                    if self.others:
-                        events.append(dict(atMs=at, type="othersSource", source="none", reason="user"))
-                elif not self.others or (lost and old.source != "system"):
-                    reason = fallback or ("lost" if lost else "user")
-                    events.append(dict(atMs=at, type="othersSource", source=source, reason=reason))
-                if not events:
-                    self.browser_lost = lost
+                if (me, others, lost) == (self.me, self.others, self.browser_lost):
                     return self.snapshot()
-                needed = self.streams.additions(me, others, browser=not lost)
-                needed += int(me and "microphone" not in self.native_taps)
-                needed += int(others and lost and "system" not in self.native_taps)
+                desired = {kind for kind, enabled in (("microphone", me), ("system", others and lost)) if enabled}
+                kinds = desired - self.native_taps.keys()
+                needed = self.streams.additions(me, others, browser=not lost) + len(kinds)
                 if len(self.host.session.writers) + needed > 64:
                     raise ProtocolError("limit", "A session supports at most 64 sources")
-                additions, removed = [], []
-                with self.host.session.change(events):
-                    self.streams.select(me, others, at, browser=not lost)
-                    for kind, enabled in (("microphone", me), ("system", others and lost)):
-                        current = self.native_taps.get(kind)
-                        if current and not enabled:
-                            self.host.session.end_track(current[0])
-                            removed.append((kind, current[1]))
-                        elif current is None and enabled:
-                            additions.append((kind, self._add_native(kind, at)))
-                self.me, self.others, self.browser_lost = me, others, lost
-                for kind, _tap in removed:
-                    self.native_taps.pop(kind)
-                    if kind == "microphone":
-                        self.microphone = None
-                    self.levels[0 if kind == "microphone" else 1] = 0
-            # Device state changes may wait for streaming threads. Never hold
-            # the PCM writer lock, and never run this transition on GTK.
+            prepared = {}
+            committed = False
             try:
-                for _kind, tap in removed:
-                    tap.stop()
-                for kind, identifier in additions:
-                    self._start_native(kind, identifier, at)
-            except Exception as error:
-                self.error = str(error)
-                self.changed(self, "error")
-                raise
-            self.changed(self, "sources")
-            return self.snapshot()
+                # Start/read the replacements while the old source remains live.
+                # No new PCM or event may reach the session until commit below.
+                for kind in sorted(kinds):
+                    identifier = kind + "-" + str(uuid4())
+                    tap, state = self._make_native(kind, identifier)
+                    prepared[kind] = identifier, tap, state
+                    tap.start()
+                with self.lock:
+                    if self.finished or self.stopping or self.stop_requested.is_set():
+                        raise ProtocolError("state", "No active recording")
+                    for _identifier, _tap, state in prepared.values():
+                        if state["error"]:
+                            raise OSError(state["error"])
+                    at = change_time(self.host.session, self.elapsed_ms())
+                    removed = {kind: value for kind, value in self.native_taps.items() if kind not in desired}
+                    with self.host.session.change(self._events(me, others, lost, fallback, at)):
+                        self.streams.select(me, others, at, browser=not lost)
+                        for identifier, _tap in removed.values():
+                            self.host.session.end_track(identifier)
+                        for kind, (identifier, _tap, _state) in prepared.items():
+                            self._add_native(kind, at, identifier=identifier)
+                    self.me, self.others, self.browser_lost = me, others, lost
+                    for kind in removed:
+                        self.native_taps.pop(kind)
+                        self.levels[0 if kind == "microphone" else 1] = 0
+                    for kind, (identifier, tap, state) in prepared.items():
+                        state.update(active=True, at=at)
+                        self.native_taps[kind] = identifier, tap
+                    self.microphone = self.native_taps.get("microphone", (None, None))[1]
+                    committed = True
+                for _identifier, tap in removed.values():
+                    try:
+                        tap.stop()
+                    except Exception:
+                        logging.getLogger(__name__).exception("Could not finish a deselected source")
+                self.changed(self, "sources")
+                return self.snapshot()
+            finally:
+                if not committed:
+                    for _identifier, tap, _state in prepared.values():
+                        with contextlib.suppress(Exception):
+                            tap.stop()
 
     def handle(self, message):
         if message.get("type") == "stop":
@@ -291,7 +326,12 @@ class BrowserCapture:
             if self.stop_requested.is_set():
                 self.stop()
             else:
-                self.fallback()
+                try:
+                    self.fallback()
+                except Exception as error:
+                    # Loss cannot leave an unowned microphone/session alive if
+                    # limits, durability or the replacement device reject Q4.
+                    self.stop(str(error))
 
     def elapsed_ms(self):
         return max(0.0, time.time_ns() / 1_000_000 - self.origin_ms)
