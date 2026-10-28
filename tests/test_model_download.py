@@ -484,3 +484,103 @@ def test_remove_refuses_symlinked_partial_parent_before_deleting_any_revision(re
     assert (redirected / "keep.txt").read_bytes() == b"Outside data must survive Remove"
     assert installed.is_dir() and client.installed(ID, REVISION)
     assert remote.requests == requests
+
+
+@pytest.mark.parametrize("component", ["root", "missing-parent"])
+def test_store_rejects_a_root_or_absent_ancestor_later_replaced_by_symlink(remote, tmp_path, component):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "NOTICE.txt").write_text("Keep this notice")
+    root = tmp_path / "models" if component == "root" else tmp_path / "missing" / "models"
+    client = ModelStore(root, origin=remote.origin, fixture=True)
+    anchor = root if component == "root" else root.parent
+    anchor.symlink_to(outside, target_is_directory=True)
+    for operation in (
+        lambda: download(client, remote),
+        lambda: client.remove(ID, REVISION),
+        lambda: client.plan(remote.model().model(ID, REVISION)),
+    ):
+        with pytest.raises(ValueError, match="symbolic"):
+            operation()
+    assert not remote.requests and (outside / "NOTICE.txt").read_text() == "Keep this notice"
+    assert sorted(p.name for p in outside.iterdir()) == ["NOTICE.txt"]
+
+
+def test_matching_staged_weight_beneath_symlink_is_rejected_before_reuse_or_notice_write(remote, tmp_path):
+    client = store(tmp_path, remote)
+    remote.manifest["models"][0]["files"][0]["path"] = "sub/weights.onnx"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "weights.onnx").write_bytes(remote.data)
+    files = client.root / ".downloads" / ID / REVISION / "files"
+    files.mkdir(parents=True)
+    (files / "sub").symlink_to(outside, target_is_directory=True)
+    for operation in (lambda: download(client, remote), lambda: client.plan(remote.model().model(ID, REVISION))):
+        with pytest.raises(ValueError, match="symbolic"):
+            operation()
+    assert not remote.requests and not (client.root / "NOTICE.txt").exists()
+    assert (outside / "weights.onnx").read_bytes() == remote.data
+
+
+@pytest.mark.parametrize("extra", ["regular", "symlink", "fifo"])
+def test_installed_revision_rejects_unchecked_extra_files(remote, tmp_path, extra):
+    import os
+
+    client = store(tmp_path, remote)
+    final = download(client, remote)
+    path = final / "unchecked"
+    if extra == "regular":
+        path.write_bytes(b"Not in receipt")
+    elif extra == "symlink":
+        path.symlink_to(final / "weights.onnx")
+    else:
+        os.mkfifo(path)
+    assert not client.installed(ID, REVISION)
+    with pytest.raises(IntegrityError, match="damaged"):
+        download(client, remote)
+
+
+def test_supplied_manifest_pins_win_over_a_self_consistent_forged_receipt(remote, tmp_path):
+    client = store(tmp_path, remote)
+    final = download(client, remote)
+    receipt_path = final / ".cassini-model.json"
+    receipt = json.loads(receipt_path.read_text())
+    replacement = b"Different self-consistent model bytes"
+    (final / "weights.onnx").write_bytes(replacement)
+    receipt["files"][0].update(size=len(replacement), sha256=sha(replacement))
+    receipt_path.write_text(json.dumps(receipt))
+    before = len(remote.requests)
+    assert not client.installed(ID, REVISION, model=remote.model().model(ID, REVISION))
+    with pytest.raises(IntegrityError, match="damaged"):
+        download(client, remote)
+    assert len(remote.requests) == before
+
+
+def test_200_restart_invalidates_validator_before_truncation_can_fail(remote, tmp_path, monkeypatch):
+    from cassini_viewer import model_download
+
+    client = store(tmp_path, remote)
+    remote.mode = "truncate"
+    with pytest.raises(DownloadInterrupted):
+        download(client, remote)
+    (partial,) = client.root.glob(".downloads/*/*/*.part")
+    metadata = partial.with_suffix(".json")
+    value = json.loads(metadata.read_text())
+    value["etag"] = '"old-etag"'
+    metadata.write_text(json.dumps(value))
+    old_bytes = partial.read_bytes()
+    remote.mode = "normal"
+
+    def fail(*args):
+        raise OSError("Synthetic crash before truncation")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(model_download.os, "ftruncate", fail)
+        with pytest.raises(OSError, match="Synthetic crash"):
+            download(client, remote)
+    assert partial.read_bytes() == old_bytes and not metadata.exists()
+    artifact = remote.model().model(ID, REVISION).files[0].artifact
+    assert client._resume(artifact, partial) == (0, None)
+    assert (download(client, remote) / "weights.onnx").read_bytes() == remote.data
+    requests = [headers for path, headers in remote.requests if path == "/" + remote.key]
+    assert "Range" not in requests[-1]
