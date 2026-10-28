@@ -26,12 +26,21 @@ jobs:
         base: ["ubuntu:26.04", "debian:testing"]
     steps:
       - uses: actions/checkout@v5
+      - run: echo "CASSINI_PARAKEET_TEST_CACHE=$RUNNER_TEMP/parakeet-models" >> "$GITHUB_ENV"
       # The pinned writing-down artifacts (whistle/pins.json), downloaded once
       # per pin set; the package builds read them and never download.
       - uses: actions/cache@v4
         with:
           path: .whistle-cache
           key: whistle-${{ hashFiles('whistle/pins.json') }}
+      - uses: actions/cache@v4
+        with:
+          path: .sherpa-cache
+          key: sherpa-${{ hashFiles('src/cassini_viewer/sherpa-pins.json') }}
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/parakeet-models
+          key: parakeet-ultra-18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
       - run: build-aux/whistle-cache.sh
       # The same script as `make deb`: checks the version, builds, runs
       # lintian, installs the package in a fresh container and, with no

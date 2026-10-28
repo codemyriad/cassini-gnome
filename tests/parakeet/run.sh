@@ -2,6 +2,17 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
+if [[ ${1:-} == --installed ]]; then
+  datadir=$(realpath "$2")
+  model=$(realpath "$3")
+  output=$(realpath -m "$4")
+  mkdir -p "$output"
+  runtime=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sherpa"])' "$datadir/cassini_viewer/paths.json")
+  export CASSINI_WHISTLE_NETWORK_NONE=1 PYTHONDONTWRITEBYTECODE=1
+  python3 "$root/tests/parakeet/pipeline_probe.py" --bundle "$datadir/whistle" --model "$model" --runtime "$runtime" --modules "$datadir" --output "$output/parakeet-linux.json"
+  python3 "$root/tests/parakeet/queue_probe.py" --bundle "$datadir/whistle" --model "$model" --runtime "$runtime" --modules "$datadir" --output "$output/parakeet-queue.json"
+  exit
+fi
 bundle=$(realpath "$1")
 model=$(realpath "$2")
 runtime=$(realpath "$3")

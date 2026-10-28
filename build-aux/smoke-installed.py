@@ -26,6 +26,8 @@ from pathlib import Path
 parser = argparse.ArgumentParser()
 parser.add_argument("datadir", nargs="?", default="/usr/share/cassini-viewer", type=Path)
 parser.add_argument("--whistle", type=Path, metavar="GOLDENS", help="also run the offline D11 goldens")
+parser.add_argument("--parakeet", type=Path, metavar="MODEL", help="also run D16 using cached fixture weights")
+parser.add_argument("--parakeet-tests", type=Path, metavar="TESTS", help="path to tests/parakeet")
 args = parser.parse_args()
 
 sys.path.insert(0, str(args.datadir))
@@ -89,3 +91,24 @@ if args.whistle:
             f"text exact {case['wordTextMatches']}, max word time difference {case['maxBoundaryDeltaMs']} ms"
         )
     print("writing-down smoke test passed offline (D11.3)")
+
+if args.parakeet:
+    from cassini_viewer.sherpa_runtime import runtime_path, verify_runtime
+
+    if not args.parakeet_tests:
+        parser.error("--parakeet requires --parakeet-tests")
+    verify_runtime(runtime_path())
+    # No model download, no distro engine, and no fallback to a source build.
+    with tempfile.TemporaryDirectory() as temporary:
+        subprocess.run(
+            [
+                "bash",
+                str(args.parakeet_tests / "run.sh"),
+                "--installed",
+                str(args.datadir),
+                str(args.parakeet),
+                temporary,
+            ],
+            check=True,
+        )
+    print("Parakeet package smoke passed offline: two goldens and two real FIFO jobs")

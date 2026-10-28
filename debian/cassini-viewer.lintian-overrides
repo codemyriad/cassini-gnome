@@ -15,3 +15,8 @@ arch-dependent-file-in-usr-share [usr/share/cassini-viewer/whistle/libneedle3.so
 # app never uses: it creates only CPUExecutionProvider sessions.
 embedded-library curl [usr/lib/x86_64-linux-gnu/cassini-viewer/python/onnxruntime/capi/onnxruntime_pybind11_state.cpython-*-x86_64-linux-gnu.so]
 embedded-library mbedtls [usr/lib/x86_64-linux-gnu/cassini-viewer/python/onnxruntime/capi/onnxruntime_pybind11_state.cpython-*-x86_64-linux-gnu.so]
+
+# D16 pins both private libraries byte for byte. Stripping would invalidate
+# their approved hashes and make the worker refuse to load them.
+unstripped-binary-or-object [usr/lib/x86_64-linux-gnu/cassini-viewer/sherpa/libonnxruntime.so]
+unstripped-binary-or-object [usr/lib/x86_64-linux-gnu/cassini-viewer/sherpa/libsherpa-onnx-c-api.so]

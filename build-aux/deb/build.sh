@@ -27,6 +27,7 @@ OUT=cassini-viewer_${DEB_VERSION}~${BASE_TAG}_amd64.deb
 TAG=cassini-viewer-deb:$(image_slug "$BASE")
 # The pinned writing-down artifacts; the package build itself is offline.
 build-aux/whistle-cache.sh
+build-aux/sherpa-cache.sh
 container_build -q -f build-aux/deb/Dockerfile --build-arg BASE="$BASE" -t "$TAG" debian
 mkdir -p dist
 container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" -e DEB="$DEB" -e OUT="$OUT" "$TAG" sh -ec '
