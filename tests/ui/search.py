@@ -93,6 +93,7 @@ with tempfile.TemporaryDirectory() as temporary:
     page.choose_speaker("Marta")
     until(lambda: not page.pending)
     assert page.count.get_text() == "4 places in 3 meetings"
+    assert page.store.get_item(0) is page.store.get_item(0)
     assert [hit.position_ms for hit in page.hits] == [4000, 872000, 1870000, 527000]
     assert "Any speaker" in labels(page.speaker_button.get_popover())
     assert [s for s in labels(page.date_button.get_popover())] == ["Any date", "Today", "Past 7 days", "Past 30 days"]
@@ -132,8 +133,10 @@ with tempfile.TemporaryDirectory() as temporary:
     page.play.emit("clicked")
     until(lambda: window.player.playing and window.player.position >= 872000)
     position = window.player.position
+    previous_snapshot = window.snapshot
     window.monitor.refresh_now()
-    until(lambda: not window._pending and not page.pending)
+    until(lambda: window.snapshot is not previous_snapshot)
+    until(lambda: not page.pending)
     assert window.player.playing and window.player.position >= position
     assert "Play from 00:14:32" in labels(page.context)
     page.open.emit("clicked")

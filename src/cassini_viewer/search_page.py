@@ -35,6 +35,7 @@ class HitModel(GObject.Object, Gio.ListModel):
         super().__init__()
         self.hits = ()
         self.meetings = {}
+        self._items = {}
 
     def do_get_item_type(self):
         return HitItem
@@ -43,14 +44,28 @@ class HitModel(GObject.Object, Gio.ListModel):
         return len(self.hits)
 
     def do_get_item(self, position):
-        if position < len(self.hits):
+        if position >= len(self.hits):
+            return None
+        reference = self._items.get(position)
+        result = reference() if reference else None
+        if result is None:
             hit = self.hits[position]
-            return HitItem(hit, self.meetings[hit.key])
-        return None
+            result = HitItem(hit, self.meetings[hit.key])
+
+            # GTK can retain the C object after its Python wrapper disappears.
+            # A GObject weak reference preserves identity across that boundary.
+            def finalized():
+                current = self._items.get(position)
+                if current is not None and current() is None:
+                    self._items.pop(position, None)
+
+            self._items[position] = result.weak_ref(finalized)
+        return result
 
     def replace(self, hits, meetings):
         old = len(self.hits)
         self.hits, self.meetings = hits, meetings
+        self._items.clear()
         self.items_changed(0, old, len(hits))
 
 
@@ -69,6 +84,7 @@ class SearchPage(Adw.NavigationPage):
         self._index = None
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-search")
         self._snapshot = window.snapshot
+        self._snapshot_signature = None
         self._meetings = {}
         self._turns = {}
         self.hit = None
@@ -200,7 +216,16 @@ class SearchPage(Adw.NavigationPage):
 
     def update(self, snapshot):
         self._snapshot = snapshot
-        self.request()
+        signature = (
+            snapshot.unavailable,
+            tuple(
+                (m.key, id(m.words), m.speakers, m.title, m.started_at_ms, m.duration_ms, m.origin, m.has_audio)
+                for m in snapshot.meetings
+            ),
+        )
+        if signature != self._snapshot_signature:
+            self._snapshot_signature = signature
+            self.request()
 
     def request(self):
         if self.closed:

@@ -73,7 +73,7 @@
   },
   "additionalSources": {
     "strings.json": {
-      "commit": "34318bb",
+      "commit": "34318bbe91547b534d8bf61627e30cb2270db579",
       "note": "D14 Search filter copy and menus"
     },
     "LIBRARY-RULES.md": {
