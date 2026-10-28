@@ -518,6 +518,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
 
     def _updated(self, snapshot):
+        fresh_scan = snapshot is not self.snapshot
         self.get_application().observe_library(snapshot, self._observed_phases)
         self._observed_phases = {m.key: (m.lifecycle, m.capture_state) for m in snapshot.meetings}
         self.snapshot = snapshot
@@ -564,7 +565,15 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.received_hint.set_visible(
             bool(snapshot.meetings) and all(m.origin == "received" for m in snapshot.meetings)
         )
-        if not self._pending_selection and self._signature(snapshot) == self._list_signature:
+        if (
+            self._pending_selection
+            and fresh_scan
+            and not self._opening_files
+            and not any(m.key == self._pending_selection for m in snapshot.meetings)
+        ):
+            self._pending_selection = None
+        pending_row = any(m.key == self._pending_selection for m in snapshot.meetings)
+        if not pending_row and self._signature(snapshot) == self._list_signature:
             current = {m.key: m for m in snapshot.meetings}
             row = self.rows.get_first_child()
             while row:

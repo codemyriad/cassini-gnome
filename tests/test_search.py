@@ -96,8 +96,9 @@ def test_reopen_reuses_persisted_index(index):
     expected = search(one, speaker="Marta")
     one.close()
     two = SearchIndex(root, cache)
+    before = two.db.total_changes
     two.sync(snapshot)
-    assert two.db.total_changes == 0
+    assert two.db.total_changes == before
     assert search(two, speaker="Marta") == expected
     two.close()
 
@@ -187,3 +188,91 @@ def test_received_items_are_ordered_by_start_with_file_order_ties(index):
     equal = replace(meeting, words=(Word("second", 100, 200, "budget two"), Word("first", 100, 200, "budget one")))
     index.sync(LibrarySnapshot(meetings=(equal,)))
     assert [index.turns[h.key][h.turn].speaker for h in search(index)] == ["second", "first"]
+
+
+def test_cancelled_sync_rolls_back_database_and_all_memory_then_can_retry(index, monkeypatch):
+    original = tuple(index.current.values())
+    old_hits = search(index, speaker="Marta")
+    old_turns, old_signatures, old_current = index.turns, index.signatures, index.current
+    updates = tuple(replace(m, words=(Word("new", 10, 20, "replacement"),)) for m in original)
+    calls = 0
+    check = index._check_cancelled
+
+    def cancel_second_meeting():
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise InterruptedError("Synthetic cancellation after first meeting SQL writes")
+
+    monkeypatch.setattr(index, "_check_cancelled", cancel_second_meeting)
+    with pytest.raises(InterruptedError):
+        index.sync(LibrarySnapshot(meetings=updates))
+    assert index.turns is old_turns and index.signatures is old_signatures and index.current is old_current
+    monkeypatch.setattr(index, "_check_cancelled", check)
+    assert search(index, speaker="Marta") == old_hits
+    index.sync(LibrarySnapshot(meetings=updates))
+    assert len(search(index, "replacement")) == len(updates)
+    assert not search(index, "budget")
+
+
+def test_sql_failure_leaves_memory_and_removed_rows_consistent(index):
+    import sqlite3
+
+    original = tuple(index.current.values())
+    meeting = next(m for m in original if m.title == "Budget review")
+    updated = replace(meeting, words=(Word("new", 0, 1, "new phrase"),))
+    before = index.turns, index.signatures, index.current
+    expected = search(index, speaker="Marta")
+    index.db.execute("CREATE TRIGGER fail_sync BEFORE INSERT ON meetings BEGIN SELECT RAISE(ABORT,'injected'); END")
+    with pytest.raises(sqlite3.DatabaseError, match="injected"):
+        index.sync(LibrarySnapshot(meetings=(updated,)))
+    assert all(
+        current is old for current, old in zip((index.turns, index.signatures, index.current), before, strict=True)
+    )
+    assert search(index, speaker="Marta") == expected
+    index.db.execute("DROP TRIGGER fail_sync")
+    index.sync(LibrarySnapshot(meetings=(updated,)))
+    assert len(search(index, "phrase")) == 1
+
+
+@pytest.mark.parametrize("kind", ["symlink", "hardlink", "journal-symlink"])
+def test_search_cache_cannot_follow_links_into_library(index, tmp_path, kind):
+    import os
+
+    root, cache = tmp_path / "Library", tmp_path / "cache-linked"
+    root.mkdir()
+    one = SearchIndex(root, cache)
+    path = one.path
+    one.close()
+    outside = root / "transcript.json"
+    outside.write_bytes(b"Keep these Library bytes")
+    before = outside.stat().st_mode
+    if kind == "journal-symlink":
+        path.with_name(path.name + "-journal").symlink_to(outside)
+    else:
+        path.unlink()
+        if kind == "symlink":
+            path.symlink_to(outside)
+        else:
+            os.link(outside, path)
+    with pytest.raises((OSError, ValueError)):
+        SearchIndex(root, cache)
+    assert outside.read_bytes() == b"Keep these Library bytes" and outside.stat().st_mode == before
+
+
+def test_corrupt_fts_shadow_tables_rebuild(index):
+    root = Path("/fts-corrupt-root")
+    cache = index.path.parent / "corrupt-fts"
+    one = SearchIndex(root, cache)
+    snapshot = LibrarySnapshot(meetings=tuple(index.current.values()))
+    one.sync(snapshot)
+    one.db.execute("DELETE FROM hits_idx")
+    one.db.execute("DELETE FROM hits_data")
+    one.db.commit()
+    # Some SQLite versions now check FTS in quick_check too; the explicit
+    # FTS integrity command also covers versions that only check B-trees.
+    one.close()
+    two = SearchIndex(root, cache)
+    two.sync(snapshot)
+    assert len(search(two, speaker="Marta")) == 4
+    two.close()
