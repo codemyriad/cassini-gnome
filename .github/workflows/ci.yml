@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "11 2 * * *"
   workflow_dispatch:
 
 permissions:
@@ -15,8 +17,8 @@ env:
   CONTAINER_ENGINE: docker
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint-and-test:
@@ -28,8 +30,8 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install ruff pytest
-      - run: ruff check src tests
-      - run: ruff format --check src tests
+      - run: ruff check src tests build-aux/ci
+      - run: ruff format --check src tests build-aux/ci
       - name: Install system Python audio test dependencies
         run: |
           sudo apt-get update

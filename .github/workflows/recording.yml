@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "31 2 * * *"
   workflow_dispatch:
 
 permissions:
@@ -34,6 +36,7 @@ jobs:
       - name: Repeat native capture readiness in three fresh isolated containers
         run: |
           for attempt in 1 2 3; do
+            printf 'Native readiness attempt %s/3\n' "$attempt"
             tests/recording/run.sh /usr/bin/python3 tests/recording/native.py
           done
       - name: Chromium WebRTC, lifecycle and tab capture through Native Messaging

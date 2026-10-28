@@ -1,15 +1,22 @@
 name: UX boards and Library interaction
 on:
   push:
-    branches: ['ux/shot-spike']
+    branches: [main, 'ux/shot-spike']
   pull_request:
     paths:
+      - 'meson.build'
+      - 'meson_options.txt'
+      - 'data/**'
+      - 'build-aux/ci/**'
+      - 'pyproject.toml'
       - 'src/**'
       - 'build-aux/ux-screenshot.sh'
       - 'build-aux/ux-boards.sh'
       - 'ux/library-vectors/**'
       - 'tests/ui/**'
       - '.github/workflows/ux-shot.yml'
+  schedule:
+    - cron: "51 2 * * *"
   workflow_dispatch:
 permissions:
   contents: read
