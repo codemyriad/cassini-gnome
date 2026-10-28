@@ -54,16 +54,44 @@ connection: Done requires the real hello/status handshake. The developer test
 browser can still load the pinned extension directly; that is not the end-user
 installation flow.
 
-Until W6-F supplies the Flatpak host bridge, that build hides the first-run and
-Meeting setup links, the Settings setup button and browser-only automatic-record
-switch. Its Browser companion status remains Not set up. Record still captures
-the microphone and this computer's sound. Both manifests grant only
-`xdg-music/Cassini:create` for the localized default Library; the installed
-package smoke verifies PCM/manifest persistence across two sandbox launches.
-Settings hides Move until a document-portal location is proved durable across
-restart. No broad home permission is granted. W6-F follows What is recorded and will
-provide host browser launch/registration and an app relay; no additional Flatpak
-permission is added by UX10.
+The Flatpak build uses `flatpak-spawn --host` to find and launch host browsers
+and to register both native hosts in the host's per-user configuration. Small
+host-side shell relays run the matching installed Flatpak application/branch;
+native-messaging frames stay on stdin/stdout, without a host Python dependency.
+The relays carry a local browser process/start-tick hint across the sandbox so
+worker reconnects retain their capture bindings. Native, regular Flatpak and
+development Flatpak brokers have separate runtime addresses.
+The broker runs in its own sandbox instance: a child broker would keep the UI
+or native-host `flatpak run` wrapper alive. Host browser launch is detached for
+the same reason. The dedicated broker exits after ten idle seconds with no
+browser, application lease or unfinished capture.
+
+This bridge uses only `--talk-name=org.freedesktop.Flatpak`, as approved in D23.
+When its effective permission or host service is unavailable, first-run/Meeting
+setup links, Settings setup and browser automatic-record stay hidden. Settings
+shows Not set up; Record still captures microphone/system sound. Both manifests
+retain exactly `xdg-music/Cassini:create` for the localized default Library;
+the installed smoke proves byte-identical PCM/manifest persistence across two
+launches. Settings still hides Move until document-portal relocation is proved
+durable across restart. No broad home permission is granted.
+
+`tests/flatpak/companion_bridge.py APP_ID --output evidence.json` tests the
+installed permission, actual host Add/registration and hello/status handshake,
+then two independent native pipes with 96,000 byte-exact PCM frames each and
+individual Stop. It uses a private HOME/XDG/session bus and no added grants.
+Host stderr and sandbox diagnostics sit beside its JSON evidence. The package
+smoke runs this after the Library restart proof. Unit tests additionally execute
+the real relay with shell metacharacters in host paths and verify browser process
+identity survives two relay launches.
+
+For an actual loaded-browser proof against a private installed bundle, use
+`env -u CASSINI_LIBRARY_DIR CASSINI_TEST_FLATPAK_ID=com.gocassini.Viewer.Devel tests/recording/run.sh node
+tests/recording/flatpak-companion.mjs` (set `FLATPAK_USER_DIR` for a private test
+installation). It loads the installed pinned extension, records two calls with
+their microphones off and both tabs/sink muted, checks original tone/bleed
+bounds, kills/wakes the worker, and verifies system fallback, the same folders
+and individual/global Stop. PCM/manifests and diagnostic JSON are kept in its
+isolated recording artifact. It never opens the real browser profile or desktop.
 
 Run the pinned Node unit/conformance suite with
 `node --test browser-protocol/extension/tests/*.test.cjs`. Its optional independent

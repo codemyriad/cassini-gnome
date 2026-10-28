@@ -123,6 +123,8 @@ install_data(
   'cassini_viewer/browser_control_host.py',
   'cassini_viewer/browser_service.py',
   'cassini_viewer/companion.py',
+  'cassini_viewer/flatpak_bridge.py',
+  'cassini_viewer/flatpak-native-host.sh',
   'cassini_viewer/companion_setup.py',
   'cassini_viewer/browser_notifications.py',
   'cassini_viewer/portable.py',

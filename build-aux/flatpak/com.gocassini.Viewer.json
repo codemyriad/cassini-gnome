@@ -11,7 +11,8 @@
         "--socket=wayland",
         "--device=dri",
         "--socket=pulseaudio",
-        "--filesystem=xdg-music/Cassini:create"
+        "--filesystem=xdg-music/Cassini:create",
+        "--talk-name=org.freedesktop.Flatpak"
     ],
     "cleanup": [
         "/include",

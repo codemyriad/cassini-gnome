@@ -10,6 +10,7 @@ BUNDLE=$1 APP_ID=$2
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 flatpak install --user -y --noninteractive --reinstall --bundle "$BUNDLE"
 python3 tests/flatpak/library_persistence.py "$APP_ID" --output "$PWD/flatpak-library-persistence.json"
+python3 tests/flatpak/companion_bridge.py "$APP_ID" --output "$PWD/flatpak-companion-bridge.json"
 model_cache=${CASSINI_PARAKEET_TEST_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/cassini/package-test-models}
 if [ "$(uname -m)" = x86_64 ]; then
   python3 tests/parakeet/prepare_model.py --cache "$model_cache"
