@@ -9,5 +9,6 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM"]
 ignore = ["E501"]
 
 [tool.pytest.ini_options]
+faulthandler_timeout = 30
 pythonpath = ["src"]
 testpaths = ["tests"]
