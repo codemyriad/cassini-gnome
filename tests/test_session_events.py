@@ -159,6 +159,7 @@ def test_failed_change_rolls_back_metadata_and_unused_new_wav(tmp_path):
 def test_process_crash_never_splits_event_from_track_checkpoint(tmp_path, crash):
     script = """import os,sys
 from pathlib import Path
+sys.path.insert(0,sys.argv[3])
 from cassini_viewer.recording_session import RecordingSession
 session=RecordingSession(Path(sys.argv[1]))
 replace=Path.replace
@@ -171,7 +172,11 @@ with session.change([dict(atMs=754210,type='othersSource',source='system',reason
     session.add_track('fallback','The others','system',48000,1)
     session.manifest['tracks'][-1]['startOffsetMs']=754210
 """
-    completed = subprocess.run([sys.executable, "-c", script, str(tmp_path), crash], check=False, timeout=5)
+    completed = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path), crash, str(Path(__file__).resolve().parents[1] / "src")],
+        check=False,
+        timeout=5,
+    )
     assert completed.returncode == (71 if crash == "before" else 72)
     (manifest,) = tmp_path.glob("Recording-*/session.json")
     value = json.loads(manifest.read_text())

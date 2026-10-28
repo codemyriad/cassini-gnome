@@ -457,6 +457,7 @@ class CassiniApplication(Adw.Application):
         if self._quitting or self._capture_exiting or key in self._source_changes:
             raise ValueError("A source change is not available")
         native = self.native_recorder_for(meeting.directory)
+        previous_me = self.comfort.sources(meeting).me
         self.hold()
         try:
             future = (
@@ -470,14 +471,22 @@ class CassiniApplication(Adw.Application):
             self.release()
             raise
         self._source_changes[key] = future
-        future.add_done_callback(lambda f: GLib.idle_add(self._recording_sources_changed, key, f))
+        future.add_done_callback(lambda f: GLib.idle_add(self._recording_sources_changed, key, f, previous_me))
         self._native_changed()
         return future
 
-    def _recording_sources_changed(self, key, future):
+    def _recording_sources_changed(self, key, future, previous_me):
         self._source_changes.pop(key, None)
         try:
-            future.result()
+            from .session_events import source_state
+
+            result = future.result()
+            current = source_state(result["events"]) if isinstance(result, dict) else result
+            if current.me != previous_me:
+                # A rapid browser off/on can finish before the next inventory
+                # poll observes the off state. Start a new 20-second silence
+                # interval from the acknowledged microphone choice anyway.
+                self.comfort.clocks.pop(Path(key).name, None)
         except Exception as error:
             logging.getLogger(__name__).warning("Could not change recording sources: %s", error)
         finally:
