@@ -6,9 +6,9 @@ import runpy
 from pathlib import Path
 from types import SimpleNamespace
 
-import gi
 import pytest
 
+gi = pytest.importorskip("gi")
 gi.require_version("Gst", "1.0")
 from gi.repository import GLib, Gst  # noqa: E402
 
