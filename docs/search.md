@@ -7,3 +7,13 @@ Speaker lists the Library's named speakers once, alphabetically, and omits unnam
 The rebuildable SQLite FTS5 index lives in `$XDG_CACHE_HOME/cassini/search-<root-hash>.sqlite3`, with mode 0600. It is never written into the Library. The scanner's validated snapshots are the sole source: removed or unavailable meetings are removed from the index. Corrupt cache databases are rebuilt. Unchanged transcripts cause no index writes. Indexing and queries run on a single worker, stale deliveries are discarded, and closing interrupts pending SQLite work. The result list creates widgets only for visible rows; excerpts bound text layout for long monologues.
 
 `tests/test_search.py` checks the actual FTS index, fixture counts/order, phrases, filters, local dates across DST, persistence, removal and corruption recovery. `tests/ui/search.py` drives native menus, playback through a Library refresh, timed Meeting navigation and reset under private Xvfb/D-Bus/HOME/XDG, using fakesink. `build-aux/ux-boards.sh` renders the real Search page at 1120×720 in both schemes. The fixture's four hits retain transcript order rather than the drawing's mock order, as D14 requires.
+
+Search publishes its in-memory turns, signatures and current meetings only after
+the SQLite transaction commits. Cancellation or SQL failure keeps both views on
+the previous snapshot, and the same instance can retry. Cache initialization
+rejects linked files (including SQLite journals), requires a private regular file,
+and checks the FTS index as well as SQLite's ordinary integrity probe before
+reusing it. A corrupt cache is rebuilt outside the Library. Selecting a different
+hit in the same meeting clears transport identity so Space starts at that hit;
+missing pending Library selections clear on a fresh scan without rebuilding rows
+on every activity tick.

@@ -119,5 +119,11 @@ with tempfile.TemporaryDirectory() as temporary:
         until(lambda previous=previous: window.snapshot is not previous)
         assert window.meeting_page is page and window.player.playing and window._loaded_key == loaded
         window.back_to_library()
+    first_row = window.rows.get_first_child()
+    window._pending_selection = "Received-deleted-before-scan"
+    window._updated(window.snapshot)
+    assert window._pending_selection and window.rows.get_first_child() is first_row
+    window._updated(replace(window.snapshot))
+    assert window._pending_selection is None and window.rows.get_first_child() is first_row
     window.close()
 print("PASS pushed external playback survives empty/offline/changed Library refreshes and silent sidebar rows")
