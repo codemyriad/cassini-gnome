@@ -369,6 +369,8 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.change_shortcut.set_sensitive(bool(shortcut and shortcut.bound and shortcut.configure_supported))
         mover = self.app.library_relocator
         self.render_moves(mover.state, moving=mover.running, error=mover._error)
+        self.browser_setup.set_visible(self.app.browser_companion_available)
+        self.automatic.set_visible(self.app.browser_companion_available)
         self._request()
         return GLib.SOURCE_CONTINUE
 
