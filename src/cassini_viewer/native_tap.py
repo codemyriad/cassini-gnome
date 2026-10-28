@@ -18,6 +18,7 @@ class NativeTap:
         self.test = test
         self.pipeline = None
         self.ended = threading.Event()
+        self.ready = threading.Event()
         self.closed = threading.Event()
         self.error = None
         self.thread = None
@@ -42,12 +43,23 @@ class NativeTap:
         self.pipeline.get_by_name("pcm").connect("new-sample", self._sample)
         self.thread = threading.Thread(target=self._messages, name="cassini-" + self.kind, daemon=True)
         self.thread.start()
-        if self.pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
-            raise OSError("Could not start native audio capture")
+        try:
+            if self.pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
+                raise OSError("Could not start native audio capture")
+            if not self.ready.wait(3):
+                raise OSError("Native audio capture did not produce a sample")
+            if self.error:
+                raise OSError(self.error)
+        except BaseException:
+            self.closed.set()
+            self.pipeline.set_state(Gst.State.NULL)
+            self.thread.join(timeout=1)
+            raise
 
     def _fail(self, error):
         if self.error is None and not self.closed.is_set():
             self.error = str(error)
+            self.ready.set()
             self.failed(self.error)
 
     def _sample(self, sink):
@@ -61,6 +73,7 @@ class NativeTap:
                 raise ValueError("Audio source has no clock timestamp")
             offset = self.anchor_wall - self.origin_ms + (base + buffer.pts - self.anchor_clock) / Gst.MSECOND
             self.append(buffer.extract_dup(0, buffer.get_size()), offset)
+            self.ready.set()
         except Exception as error:
             self._fail(error)
             return Gst.FlowReturn.ERROR
