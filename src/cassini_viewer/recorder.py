@@ -3,6 +3,7 @@
 
 import os
 import tempfile
+import threading
 from gettext import gettext as _
 
 from gi.repository import GLib, GObject, Gst
@@ -28,6 +29,39 @@ def capture_pipeline(microphone=True, desktop=True, test=False):
         "audiointerleave name=capture ! audioconvert ! opusenc bitrate=128000 ! "
         "oggmux ! filesink name=output " + " ".join(sources)
     )
+
+
+def request_eos(pipeline, rejected):
+    """End each independent source without taking stream locks on GTK.
+
+    Serial EOS delivery through a bin can wait on another interleave input.
+    Give each source its own sender so all inputs can finish independently.
+    The bus remains the authority for completed output; the existing watchdog
+    handles sources that do not respond. A late rejection belongs to this
+    pipeline only, never a subsequent recording.
+    """
+    iterator = pipeline.iterate_sources()
+    sources = []
+    while True:
+        result, source = iterator.next()
+        if result == Gst.IteratorResult.OK:
+            sources.append(source)
+        elif result == Gst.IteratorResult.RESYNC:
+            iterator.resync()
+            sources.clear()
+        else:
+            break
+
+    def send(source):
+        try:
+            handled = source.send_event(Gst.Event.new_eos())
+        except Exception:
+            handled = False
+        if not handled:
+            GLib.idle_add(rejected, pipeline)
+
+    for source in sources or [pipeline]:
+        threading.Thread(target=send, args=(source,), name="cassini-capture-eos", daemon=True).start()
 
 
 class Recorder(GObject.Object):
@@ -69,8 +103,12 @@ class Recorder(GObject.Object):
             return
         self.stopping = True
         self._timeout = GLib.timeout_add_seconds(10, self._timed_out)
-        if not self.pipeline.send_event(Gst.Event.new_eos()):
+        request_eos(self.pipeline, self._eos_rejected)
+
+    def _eos_rejected(self, pipeline):
+        if self.pipeline is pipeline and self.stopping:
             self._fail(_("Could not finish the recording."))
+        return False
 
     def _timed_out(self):
         self._timeout = 0
