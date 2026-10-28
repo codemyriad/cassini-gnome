@@ -61,6 +61,7 @@ class CassiniApplication(Adw.Application):
         self._recording_cookie = 0
         self.recording_error = None
         self.record_first = None
+        self.settings_dialog = None
         self.comfort = None
         self.global_shortcut = None
         self._pending_recording = None
@@ -68,6 +69,7 @@ class CassiniApplication(Adw.Application):
 
         self._add_action("open", self.on_open, ["<primary>o"])
         self._add_action("about", self.on_about)
+        self._add_action("preferences", self.on_preferences, ["<primary>comma"])
         self._add_action("quit", self.on_quit, ["<primary>q"])
         self._add_action("record", self.on_record, ["<primary>r"])
         self._add_action("browser-meetings", self.on_browser_meetings)
@@ -98,7 +100,7 @@ class CassiniApplication(Adw.Application):
         if not os.environ.get("CASSINI_SCREENSHOT_ISOLATED") and not os.environ.get("CASSINI_ISOLATED_AUDIO"):
             from .global_shortcut import GlobalShortcut
 
-            self.global_shortcut = GlobalShortcut(self.on_global_record)
+            self.global_shortcut = GlobalShortcut(self.on_global_record, settings=self.recording_settings)
 
     def _add_action(self, name, callback, accels=None):
         action = Gio.SimpleAction.new(name, None)
@@ -448,6 +450,13 @@ class CassiniApplication(Adw.Application):
             self.comfort.close()
         self.begin_exit()
         Adw.Application.do_shutdown(self)
+
+    def on_preferences(self, *_args):
+        from .settings_dialog import SettingsDialog
+
+        if self.settings_dialog is None or self.settings_dialog.closed:
+            self.settings_dialog = SettingsDialog(self)
+        self.settings_dialog.present(self.get_active_window())
 
     def on_about(self, *_args):
         about = Adw.AboutDialog(

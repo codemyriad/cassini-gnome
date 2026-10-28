@@ -104,7 +104,8 @@ def dispatch(packet, result, ready):
                 assert row.button.get_sensitive(), "Recording button is disabled"
                 row.button.emit("clicked")
             elif action == "auto":
-                window.automatic.set_active(packet["enabled"])
+                app.on_preferences()
+                app.settings_dialog.automatic.set_active(packet["enabled"])
             elif action == "close-window":
                 window.close()
                 if getattr(app, "_capture_confirmation", None):
@@ -116,7 +117,7 @@ def dispatch(packet, result, ready):
         result.update(
             dict(
                 status=window.status.get_label(),
-                auto=window.automatic.get_active(),
+                auto=getattr(window, "_browser_snapshot", {}).get("autoRecord", False),
                 rows=[
                     dict(
                         id=identifier,

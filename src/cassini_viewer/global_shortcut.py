@@ -17,8 +17,13 @@ INTERFACE = "org.freedesktop.portal.GlobalShortcuts"
 
 
 class GlobalShortcut:
-    def __init__(self, activate, *, connection=None):
+    def __init__(self, activate, *, connection=None, settings=None):
         self.activate = activate
+        self.settings = settings
+        self.trigger_description = (
+            settings.get_string("record-shortcut-description") if settings else text("common.shortcut.recordAnywhere")
+        )
+        self.configure_supported = True
         self.bus = connection
         self.session = None
         self.subscriptions = []
@@ -98,6 +103,11 @@ class GlobalShortcut:
     def _create(self):
         self.subscriptions.append(
             self.bus.signal_subscribe(
+                SERVICE, INTERFACE, "ShortcutsChanged", ROOT, None, Gio.DBusSignalFlags.NONE, self._shortcuts_changed
+            )
+        )
+        self.subscriptions.append(
+            self.bus.signal_subscribe(
                 SERVICE, INTERFACE, "Activated", ROOT, None, Gio.DBusSignalFlags.NONE, self._activated
             )
         )
@@ -118,6 +128,46 @@ class GlobalShortcut:
 
     def _bound(self, result):
         self.bound = any(identifier == "record" for identifier, _ in result.get("shortcuts", []))
+        for identifier, properties in result.get("shortcuts", []):
+            if identifier == "record" and properties.get("trigger_description"):
+                self.trigger_description = properties["trigger_description"]
+                if self.settings:
+                    self.settings.set_string("record-shortcut-description", self.trigger_description)
+
+    def _shortcuts_changed(self, _bus, _sender, _path, _interface, _signal, parameters):
+        session, shortcuts = parameters.unpack()
+        if not self.closed and session == self.session and any(key == "record" for key, _ in shortcuts):
+            self._bound(dict(shortcuts=shortcuts))
+
+    def configure(self):
+        """The desktop owns the persisted binding; we cache its display description.
+
+        ConfigureShortcuts is a v2 method with no Request response. Changes
+        arrive through ShortcutsChanged, including when the desktop edits it.
+        Every new session re-registers the same stable 'record' action ID.
+        """
+        if not self.bus or not self.bound or self.closed:
+            return
+
+        def configured(bus, result):
+            try:
+                bus.call_finish(result)
+            except GLib.Error as error:
+                self.configure_supported = False
+                self._failed(error)
+
+        self.bus.call(
+            SERVICE,
+            ROOT,
+            INTERFACE,
+            "ConfigureShortcuts",
+            GLib.Variant("(osa{sv})", (self.session, "", {})),
+            None,
+            Gio.DBusCallFlags.NONE,
+            5000,
+            None,
+            configured,
+        )
 
     def _activated(self, _bus, _sender, _path, _interface, _signal, parameters):
         session, identifier, _timestamp, _options = parameters.unpack()

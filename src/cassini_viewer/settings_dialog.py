@@ -1,0 +1,251 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""D15 native Preferences. Broker IO runs off GTK; every visible label is shared copy."""
+
+import logging
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from threading import Event
+
+from gi.repository import Adw, Gio, GLib, Gtk
+
+from . import browser_service
+from .library import library_root
+from .strings import CATALOG, text
+
+LOG = logging.getLogger(__name__)
+
+
+def path_caption(path):
+    path = Path(path)
+    try:
+        path = path.relative_to(Path.home())
+    except ValueError:
+        return str(path)
+    return " › ".join(path.parts)
+
+
+class SettingsDialog(Adw.PreferencesDialog):
+    def __init__(self, app, *, service_path=None):
+        super().__init__(title=text("settings.title"), search_enabled=False, content_width=700, content_height=640)
+        self.app = app
+        self.service_path = service_path
+        self.closed = False
+        self.cancelled = Event()
+        self._updating = False
+        self._future = None
+        self._queued = None
+        self._snapshot = {}
+        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-settings")
+        self.settings = app.recording_settings
+        self.pages = {}
+        for name, icon in [
+            ("recording", "audio-input-microphone-symbolic"),
+            ("transcription", "view-list-symbolic"),
+            ("library", "folder-symbolic"),
+            ("browserCompanion", "web-browser-symbolic"),
+        ]:
+            page = Adw.PreferencesPage(name=name, title=text("settings.tab." + name), icon_name=icon)
+            self.pages[name] = page
+            self.add(page)
+        self._recording()
+        self._transcription()
+        self._library()
+        self._browser()
+        self.set_visible_page_name("recording")
+        self.connect("closed", self._closed)
+        self.timer = GLib.timeout_add_seconds(1, self.refresh)
+        self.refresh()
+
+    def _recording(self):
+        group = Adw.PreferencesGroup()
+        self.pages["recording"].add(group)
+        self.shortcut = Adw.ActionRow(title=text("settings.recording.shortcut.title"), use_markup=False)
+        self.change_shortcut = Gtk.Button(label=text("settings.recording.changeShortcut"), valign=Gtk.Align.CENTER)
+        self.change_shortcut.connect(
+            "clicked", lambda *_: self.app.global_shortcut.configure() if self.app.global_shortcut else None
+        )
+        self.shortcut.add_suffix(self.change_shortcut)
+        group.add(self.shortcut)
+        self.explain = Adw.SwitchRow(title=text("settings.recording.firstRecord.title"), use_markup=False)
+        self.settings.bind("skip-record-first", self.explain, "active", Gio.SettingsBindFlags.INVERT_BOOLEAN)
+        group.add(self.explain)
+        self.automatic = Adw.SwitchRow(
+            title=text("settings.recording.autoRecord.title"),
+            subtitle=text("settings.recording.autoRecord.subtitle"),
+            use_markup=False,
+        )
+        self.automatic.connect("notify::active", self._automatic_changed)
+        group.add(self.automatic)
+
+    def _transcription(self):
+        page = self.pages["transcription"]
+        privacy = Adw.PreferencesGroup()
+        line = Gtk.Box(spacing=12)
+        line.append(Gtk.Image(icon_name="security-high-symbolic", css_classes=["success"], valign=Gtk.Align.START))
+        line.append(Gtk.Label(label=text("settings.transcription.privacy"), wrap=True, xalign=0, hexpand=True))
+        privacy.add(line)
+        page.add(privacy)
+        speech = Adw.PreferencesGroup(
+            title=text("settings.transcription.speech.heading"),
+            description=text("settings.transcription.speech.description"),
+        )
+        speech.update_property([Gtk.AccessibleProperty.LABEL], [text("settings.transcription.speech.a11y")])
+        self.whistle = Adw.ActionRow(
+            title=text("models.whistle.name"), subtitle=text("models.whistle.description"), use_markup=False
+        )
+        self.whistle.add_prefix(Gtk.CheckButton(active=True, focusable=False, can_target=False))
+        status = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, valign=Gtk.Align.CENTER)
+        status.append(Gtk.Label(label=text("models.included"), css_classes=["dim-label"]))
+        status.append(Gtk.Label(label=text("models.status.inUse"), css_classes=["success", "caption"]))
+        self.whistle.add_suffix(status)
+        speech.add(self.whistle)
+        page.add(speech)
+        # Source/unsupported-architecture builds never claim an absent bundle.
+        self.whistle.set_visible(self.app.writing_available)
+        network = Adw.PreferencesGroup(title=text("settings.transcription.network.heading"))
+        network.add(
+            Gtk.Label(
+                label="• " + text("settings.transcription.network.download"),
+                wrap=True,
+                xalign=0,
+                css_classes=["dim-label"],
+            )
+        )
+        page.add(network)
+
+    def _library(self):
+        group = Adw.PreferencesGroup(description=text("settings.library.folder.description"))
+        self.pages["library"].add(group)
+        self.folder = Adw.ActionRow(title=text("settings.library.folder.title"), use_markup=False)
+        self.show_folder = Gtk.Button(label=text("settings.library.show"), valign=Gtk.Align.CENTER)
+        self.show_folder.connect("clicked", lambda *_: self._show_folder())
+        self.move = Gtk.Button(label=text("settings.library.move"), valign=Gtk.Align.CENTER)
+        self.move.connect("clicked", lambda *_: self._choose_folder())
+        self.move.set_sensitive(hasattr(self.app, "move_library"))
+        self.folder.add_suffix(self.show_folder)
+        self.folder.add_suffix(self.move)
+        group.add(self.folder)
+        self.move_lines = Adw.PreferencesGroup()
+        self.pages["library"].add(self.move_lines)
+
+    def _browser(self):
+        group = Adw.PreferencesGroup(description=text("settings.browser.description"))
+        self.pages["browserCompanion"].add(group)
+        self.browser = Adw.ActionRow(title=text("settings.browser.status.notSetUp"), use_markup=False)
+        setup = Gtk.Button(label=text("meeting.companionCard.setUp"), valign=Gtk.Align.CENTER)
+        setup.connect("clicked", lambda *_: self.app.on_browser_meetings())
+        self.browser.add_suffix(setup)
+        group.add(self.browser)
+
+    def _show_folder(self):
+        root = library_root()
+        future = self.executor.submit(root.mkdir, parents=True, exist_ok=True)
+
+        def ready(result):
+            def launch():
+                if not self.closed:
+                    try:
+                        result.result()
+                        Gtk.FileLauncher(file=Gio.File.new_for_path(str(root))).launch(
+                            self.app.get_active_window(), None, None
+                        )
+                    except OSError:
+                        LOG.exception("Could not open Library folder")
+                return False
+
+            GLib.idle_add(launch)
+
+        future.add_done_callback(ready)
+
+    def _choose_folder(self):
+        chooser = Gtk.FileDialog(
+            title=text("settings.library.move"), initial_folder=Gio.File.new_for_path(str(library_root()))
+        )
+        chooser.select_folder(self.app.get_active_window(), None, self._folder_chosen)
+
+    def _folder_chosen(self, chooser, result):
+        try:
+            file = chooser.select_folder_finish(result)
+        except GLib.Error:
+            return
+        if file.get_path():
+            self.app.move_library(Path(file.get_path()), self)
+
+    def _automatic_changed(self, *_):
+        if not self._updating:
+            self._request("configure", autoRecord=self.automatic.get_active())
+
+    def _request(self, action="status", **values):
+        if self.closed:
+            return
+        if self._future:
+            if action != "status":
+                self._queued = (action, values)
+                self.automatic.set_sensitive(False)
+            return
+        if action != "status":
+            self.automatic.set_sensitive(False)
+
+        self._future = self.executor.submit(self._call, action, values)
+        self._future.add_done_callback(lambda future: GLib.idle_add(self._received, future))
+
+    def _call(self, action, values):
+        target = browser_service.ensure_service(
+            self.service_path, cancelled=self.cancelled if action == "status" else None
+        )
+        with browser_service.connect(target, timeout=0.8) as connection, connection.makefile("rwb") as stream:
+            browser_service.send_packet(stream, dict(role="app", action=action, **values))
+            result = browser_service.read_packet(stream)
+            if result is None or result.get("error"):
+                raise ValueError("Browser connection unavailable")
+            return result
+
+    def _received(self, future):
+        self._future = None
+        if self.closed:
+            return False
+        try:
+            self._snapshot = future.result()
+        except (OSError, ValueError):
+            LOG.exception("Could not update browser preferences")
+        self._updating = True
+        self.automatic.set_active(self._snapshot.get("autoRecord", False))
+        self.automatic.set_sensitive(True)
+        self._updating = False
+        names = self._snapshot.get("browserNames", [])
+        if self._snapshot.get("browsers"):
+            if names:
+                self.browser.set_title(text("settings.browser.status.connected", browser=", ".join(names)))
+            elif "settings.browser.status.connectedGeneric" in CATALOG:
+                self.browser.set_title(text("settings.browser.status.connectedGeneric"))
+        else:
+            self.browser.set_title(text("settings.browser.status.notSetUp"))
+        if self._queued:
+            (action, values), self._queued = self._queued, None
+            self._request(action, **values)
+        return False
+
+    def refresh(self):
+        if self.closed:
+            return GLib.SOURCE_REMOVE
+        shortcut = self.app.global_shortcut
+        self.shortcut.set_subtitle(
+            shortcut.trigger_description if shortcut else self.settings.get_string("record-shortcut-description")
+        )
+        self.change_shortcut.set_sensitive(bool(shortcut and shortcut.bound and shortcut.configure_supported))
+        self.folder.set_subtitle(path_caption(library_root()))
+        self._request()
+        return GLib.SOURCE_CONTINUE
+
+    def _closed(self, *_):
+        self.closed = True
+        self.cancelled.set()
+        # Preserve the last explicit toggle even when the initial status read
+        # has not returned yet. Closing cancels observation, not that choice.
+        if self._queued:
+            (action, values), self._queued = self._queued, None
+            self.executor.submit(self._call, action, values)
+        if self.timer:
+            GLib.source_remove(self.timer)
+            self.timer = 0
+        self.executor.shutdown(wait=False)

@@ -6,6 +6,8 @@ from gi.repository import Gio, GLib
 PORTAL_XML = """<node><interface name="org.freedesktop.portal.GlobalShortcuts">
 <method name="CreateSession"><arg type="a{sv}" direction="in"/><arg type="o" direction="out"/></method>
 <method name="BindShortcuts"><arg type="o" direction="in"/><arg type="a(sa{sv})" direction="in"/><arg type="s" direction="in"/><arg type="a{sv}" direction="in"/><arg type="o" direction="out"/></method>
+<method name="ConfigureShortcuts"><arg type="o" direction="in"/><arg type="s" direction="in"/><arg type="a{sv}" direction="in"/></method>
+<signal name="ShortcutsChanged"><arg type="o"/><arg type="a(sa{sv})"/></signal>
 <signal name="Activated"><arg type="o"/><arg type="s"/><arg type="t"/><arg type="a{sv}"/></signal>
 </interface></node>"""
 NOTIFY_XML = """<node><interface name="org.gtk.Notifications">
@@ -23,6 +25,7 @@ class DesktopServices:
         self.calls = []
         self.session = "/org/freedesktop/portal/desktop/session/cassini_test"
         self.denied = False
+        self.shortcut_description = "Ctrl+Alt+R"
         self.closed = False
         self.owners = [
             Gio.bus_own_name_on_connection(self.bus, name, Gio.BusNameOwnerFlags.NONE, None, None)
@@ -43,6 +46,19 @@ class DesktopServices:
     def _portal(self, _bus, sender, _path, _interface, method, parameters, invocation):
         values = parameters.unpack()
         self.calls.append(dict(method=method, values=values))
+        if method == "ConfigureShortcuts":
+            invocation.return_value(None)
+            self.bus.emit_signal(
+                sender,
+                "/org/freedesktop/portal/desktop",
+                "org.freedesktop.portal.GlobalShortcuts",
+                "ShortcutsChanged",
+                GLib.Variant(
+                    "(oa(sa{sv}))",
+                    (self.session, [("record", {"trigger_description": GLib.Variant("s", self.shortcut_description)})]),
+                ),
+            )
+            return
         token = values[-1]["handle_token"]
         path = f"/org/freedesktop/portal/desktop/request/{sender[1:].replace('.', '_')}/{token}"
         if method == "CreateSession":
@@ -50,7 +66,7 @@ class DesktopServices:
         else:
             result = {
                 "shortcuts": GLib.Variant(
-                    "a(sa{sv})", [("record", {"trigger_description": GLib.Variant("s", "Ctrl+Alt+R")})]
+                    "a(sa{sv})", [("record", {"trigger_description": GLib.Variant("s", self.shortcut_description)})]
                 )
             }
         invocation.return_value(GLib.Variant("(o)", (path,)))

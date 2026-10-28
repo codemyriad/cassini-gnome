@@ -16,7 +16,7 @@ import subprocess
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
 from uuid import uuid4
 
@@ -49,21 +49,23 @@ def send_packet(stream, value):
     stream.flush()
 
 
-def connect(path=None):
+def connect(path=None, *, timeout=30):
     connection = socket.socket(socket.AF_UNIX)
-    connection.settimeout(30)
+    connection.settimeout(timeout)
     connection.connect(str(path or service_path()))
     return connection
 
 
-def ensure_service(path=None):
+def ensure_service(path=None, *, cancelled=None):
     target = Path(path or service_path())
     try:
-        connection = connect(target)
+        connection = connect(target, timeout=0.5)
         connection.close()
         return target
     except OSError:
         pass
+    if cancelled is not None and cancelled.is_set():
+        raise CancelledError()
     # A filesystem lock in serve() elects one process if browser and app start together.
     env = dict(os.environ)
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
@@ -77,8 +79,10 @@ def ensure_service(path=None):
     )
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline:
+        if cancelled is not None and cancelled.is_set():
+            raise CancelledError()
         try:
-            connection = connect(target)
+            connection = connect(target, timeout=0.5)
             connection.close()
             return target
         except OSError:
@@ -98,7 +102,8 @@ def request(action="status", *, path=None, **values):
 
 
 class BrowserConnection:
-    def __init__(self, stream):
+    def __init__(self, stream, browser_name=None):
+        self.browser_name = browser_name if isinstance(browser_name, str) and len(browser_name) <= 100 else None
         self.id = str(uuid4())
         self.stream = stream
         self.write_lock = threading.Lock()
@@ -163,6 +168,7 @@ class BrowserService:
                     meeting["path"] = browser.status.get("path")
             return dict(
                 browsers=len(self.browsers),
+                browserNames=sorted({b.browser_name for b in self.browsers.values() if b.browser_name}),
                 autoRecord=self.auto_record,
                 meetings=meetings,
                 recordings=list(self.recordings),
@@ -352,7 +358,7 @@ class BrowserService:
                 if not packet:
                     return
                 if packet.get("role") == "extension":
-                    browser = BrowserConnection(stream)
+                    browser = BrowserConnection(stream, packet.get("browserName"))
                     with self.lock:
                         self.browsers[browser.id] = browser
                     while (packet := read_packet(stream)) is not None:

@@ -6,11 +6,41 @@ import logging
 import os
 import sys
 import threading
+from pathlib import Path
 
 from .browser_service import connect, ensure_service, read_packet, send_packet
 from .recording_session import read_message, write_message
 
 LOG = logging.getLogger(__name__)
+
+
+def parent_browser_name():
+    """Optional local broker hint; never change the shared extension protocol."""
+    names = {
+        "chrome": "Chrome",
+        "google-chrome": "Chrome",
+        "google-chrome-stable": "Chrome",
+        "chromium": "Chromium",
+        "chromium-browser": "Chromium",
+        "brave": "Brave",
+        "brave-browser": "Brave",
+        "msedge": "Edge",
+        "microsoft-edge": "Edge",
+        "firefox": "Firefox",
+    }
+    pid = os.getppid()
+    for _ in range(5):
+        if pid <= 1:
+            break
+        try:
+            executable = Path(f"/proc/{pid}/exe").readlink().name.lower()
+            if executable in names:
+                return names[executable]
+            status = Path(f"/proc/{pid}/status").read_text()
+            pid = int(next(line.split()[1] for line in status.splitlines() if line.startswith("PPid:")))
+        except (OSError, ValueError, StopIteration):
+            break
+    return None
 
 
 def main(*, input_stream=None, output_stream=None, path=None):
@@ -24,7 +54,7 @@ def main(*, input_stream=None, output_stream=None, path=None):
         target = path or override or ensure_service()
         with connect(target) as connection, connection.makefile("rwb") as stream:
             if not override:
-                send_packet(stream, {"role": "extension"})
+                send_packet(stream, {"role": "extension", "browserName": parent_browser_name()})
             done = threading.Event()
             failed = []
 

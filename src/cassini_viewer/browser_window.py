@@ -23,7 +23,6 @@ class BrowserMeetingsWindow(Adw.ApplicationWindow):
         self._queued = None
         self._closed = False
         self._seen_saved_paths = None
-        self._updating = False
         self._signature = None
         self.rows = {}
         view = Adw.ToolbarView()
@@ -42,16 +41,6 @@ class BrowserMeetingsWindow(Adw.ApplicationWindow):
         content.append(Gtk.Label(label=_("Meetings in your browser"), css_classes=["title-1"], xalign=0))
         self.status = Gtk.Label(label=_("Connecting to browser…"), wrap=True, xalign=0)
         content.append(self.status)
-        preferences = Adw.PreferencesGroup()
-        self.automatic = Adw.SwitchRow(
-            title=_("Record every browser meeting automatically"),
-            subtitle=_(
-                "Cassini records meetings you join later, even when this window is closed. Recordings stay on this computer. You can stop any recording. One meeting at a time per browser."
-            ),
-        )
-        self.automatic.connect("notify::active", self._automatic_changed)
-        preferences.add(self.automatic)
-        content.append(preferences)
         self.error = Gtk.Label(wrap=True, xalign=0, css_classes=["error"], visible=False)
         content.append(self.error)
         self.list = Gtk.ListBox(
@@ -119,9 +108,6 @@ class BrowserMeetingsWindow(Adw.ApplicationWindow):
         self.get_application().observe_browser_recordings(snapshot, self._seen_saved_paths)
         self._seen_saved_paths = {r["path"] for r in snapshot.get("recordings", []) if isinstance(r.get("path"), str)}
         self._browser_snapshot = snapshot
-        self._updating = True
-        self.automatic.set_active(snapshot["autoRecord"])
-        self._updating = False
         count = snapshot["browsers"]
         self.status.set_label(
             _("Listening inside your browser") if count else _("Waiting for a browser with the Cassini extension")
@@ -135,7 +121,6 @@ class BrowserMeetingsWindow(Adw.ApplicationWindow):
         return GLib.SOURCE_REMOVE
 
     def _set_controls(self, enabled):
-        self.automatic.set_sensitive(enabled)
         for row in self.rows.values():
             row.button.set_sensitive(enabled and row.available)
 
@@ -184,10 +169,6 @@ class BrowserMeetingsWindow(Adw.ApplicationWindow):
             row.add_suffix(button)
             self.saved.append(row)
         self.saved.set_visible(bool(snapshot["recordings"]))
-
-    def _automatic_changed(self, *_args):
-        if not self._updating:
-            self._request("configure", autoRecord=self.automatic.get_active())
 
     def _close(self, *_args):
         if self.get_application().confirm_capture_close(self):
