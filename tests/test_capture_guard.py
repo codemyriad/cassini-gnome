@@ -86,3 +86,14 @@ def test_stop_waits_for_an_existing_browser_save(tmp_path, monkeypatch, meeting_
     monkeypatch.setattr(browser_service, "request", request)
     assert stop_browser_captures() == [path]
     assert len(attempts) == 2
+
+
+def test_remember_browser_paths_before_library_scan_finishes(tmp_path):
+    from types import SimpleNamespace
+
+    from cassini_viewer.capture_guard import remember_capture_paths
+
+    path = str(tmp_path / "Recording-new")
+    window = SimpleNamespace(_activity_source=SimpleNamespace(paths={"new": path}, snapshot={"new": "recording"}))
+    app = SimpleNamespace(get_windows=lambda: [window])
+    assert remember_capture_paths(app) == {path}
