@@ -36,6 +36,10 @@ and sizes are in `sherpa-pins.json`. The model is unmodified dist content,
 CC-BY-4.0, approximately 443 MB compressed and 640 MB installed. Production
 acquisition must use the existing dist-only D4 ModelStore, not the build fetcher.
 
+The Flatpak grants network access for the explicit model Download action; the
+D4 downloader still restricts requests and redirects to dist.gocassini.com.
+Recognition remains offline, and package proofs explicitly unshare networking.
+
 ## Validation
 
 `tests/test_parakeet.py` compares the size and every field offset of the ctypes
