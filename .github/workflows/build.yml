@@ -85,7 +85,7 @@ jobs:
       - name: Bundled-engine profile, offline configure and install
         if: inputs.offline
         run: |
-          meson setup _build-offline --prefix=/usr -Dwhistle=enabled -Dwhistle_cache="$PWD/.whistle-cache" -Dsherpa=enabled -Dsherpa_cache="$PWD/.sherpa-cache"
+          meson setup _build-offline --prefix=/usr --libdir=lib/x86_64-linux-gnu -Dwhistle=enabled -Dwhistle_cache="$PWD/.whistle-cache" -Dsherpa=enabled -Dsherpa_cache="$PWD/.sherpa-cache"
           DESTDIR=$PWD/products/offline/install meson install -C _build-offline
           python3 build-aux/ci/product.py pack products/offline offline.tar --commit "$GITHUB_SHA" --profile offline
       - uses: actions/upload-artifact@v4

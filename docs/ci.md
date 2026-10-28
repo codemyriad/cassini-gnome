@@ -32,7 +32,11 @@ One Linux build job produces the distinct configurations without conflating them
 
 The source-validation environment stays an Ubuntu 26.04 container without GI.
 It gains a compiler and Git to exercise ABI and diff integration tests, plus CA
-certificates for verified HTTPS and zstd for the same cache format as host jobs. All
+certificates for verified HTTPS and zstd for the same cache format as host jobs.
+The bundled profile pins the prior Ubuntu host multiarch libdir explicitly,
+rather than accepting the minimal container's `lib64` fallback. Whistle and
+Parakeet harnesses both mount the installed private Python ORT and assert 1.31.0;
+the Whistle GTK proof imports installed modules instead of bypassing paths.json. All
 original Meson/protocol/desktop/schema tests, POT and staged-install checks run.
 Distro and package builds remain separate: their OS/ABI/recipe tests are distinct.
 No packaging recipe is changed. All six source distros, five native packages,

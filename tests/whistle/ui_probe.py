@@ -18,11 +18,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument("bundle", type=Path)
 parser.add_argument("output", type=Path)
 parser.add_argument("--resource", type=Path, required=True)
+parser.add_argument("--modules", type=Path, required=True)
 args = parser.parse_args()
 assert os.environ.get("CASSINI_WHISTLE_NETWORK_NONE") == "1" and not os.environ.get("WAYLAND_DISPLAY")
 assert set(os.listdir("/sys/class/net")) == {"lo"}
 root = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(root / "src"))
+sys.path.insert(0, str(args.modules))
 import gi  # noqa: E402
 
 gi.require_version("Gtk", "4.0")
