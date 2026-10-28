@@ -50,6 +50,7 @@ class CassiniApplication(Adw.Application):
         self.settings_schema = "com.gocassini.Viewer"
         self.transcriber = None
         self.speech_models = None
+        self.diarization_models = None
         self._transcription_holds = 0
         self._transcription_generation = 0
         self._quitting = False
@@ -135,6 +136,10 @@ class CassiniApplication(Adw.Application):
                 lambda value: self.recording_settings.set_string("speech-model", value),
                 lambda: GLib.idle_add(self._models_changed),
             )
+            from .diarization_models import DiarizationModels
+            from .transcription import bundle_path
+
+            self.diarization_models = DiarizationModels(bundle_path(), lambda: GLib.idle_add(self._models_changed))
         from .library_relocator import LibraryRelocator
 
         self.library_relocator = LibraryRelocator(self)
@@ -663,7 +668,9 @@ class CassiniApplication(Adw.Application):
             def finished(_directory):
                 GLib.idle_add(self._transcription_finished, generation)
 
-            self.transcriber = TranscriptionQueue(changed, finished, models=self.speech_models)
+            self.transcriber = TranscriptionQueue(
+                changed, finished, models=self.speech_models, diarization_models=self.diarization_models
+            )
         directory = getattr(meeting, "directory", meeting)
         if self.transcriber.enqueue(directory, resume=resume):
             self._transcription_holds += 1
@@ -738,6 +745,8 @@ class CassiniApplication(Adw.Application):
         self._record_start_executor.shutdown(wait=False, cancel_futures=True)
         if self.speech_models:
             self.speech_models.close()
+        if self.diarization_models:
+            self.diarization_models.close()
         if self.library_relocator:
             self.library_relocator.close()
         self._transcription_generation += 1

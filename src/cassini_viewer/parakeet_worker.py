@@ -44,8 +44,32 @@ def main(bundle, model_path, runtime_path):
             for t in tracks
         ):
             raise ValueError("Invalid capture track")
-        summary = process_tracks(model, tracks, bundle / "silero_vad.onnx", emit)
+        from cassini_viewer.worker_diarization import complete, estimate
+
+        options = message.get("diarization")
+        summary = process_tracks(
+            model, tracks, bundle / "silero_vad.onnx", emit, extra_seconds=estimate(tracks, options)
+        )
+        summary = complete(summary, tracks, options, emit)
         emit("complete", model=MODEL_TAG, **summary)
+        return 0
+    finally:
+        model.close()
+
+
+def diarization_info(model_path, runtime_path):
+    if any(os.environ.get(key) != value for key, value in PRIVACY.items()):
+        raise RuntimeError("Speech privacy flags must be set before loading Nemotron")
+    sys.addaudithook(block_network)
+    from cassini_viewer.nemotron import Nemotron
+    from cassini_viewer.nemotron_model import MODEL_TAG
+
+    model = Nemotron(model_path, runtime_path)
+    try:
+        emit("ready", pid=os.getpid(), model=MODEL_TAG, version=model.version, sampleRate=16000)
+        line = sys.stdin.buffer.readline(257)
+        if len(line) > 256:
+            raise ValueError("Model-info request exceeds limit")
         return 0
     finally:
         model.close()
@@ -53,6 +77,8 @@ def main(bundle, model_path, runtime_path):
 
 if __name__ == "__main__":
     try:
+        if len(sys.argv) == 4 and sys.argv[1] == "--diarization-info":
+            sys.exit(diarization_info(*sys.argv[2:]))
         sys.exit(main(*sys.argv[1:]))
     except Exception as error:
         emit("error", message=str(error))

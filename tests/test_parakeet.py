@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer import parakeet_abi
+from cassini_viewer import diarization_abi, parakeet_abi
 from cassini_viewer.parakeet import round_ms, words_from_tokens
 
 HERE = Path(__file__).parent / "parakeet"
@@ -32,7 +32,12 @@ def test_all_used_struct_sizes_and_every_field_offset_match_the_approved_fork_he
     compiler = shutil.which("cc")
     if not compiler:
         pytest.skip("A C compiler is required in the explicit native-engine conformance job")
-    structs = [value for name, value in vars(parakeet_abi).items() if name.startswith("SherpaOnnx")]
+    structs = [
+        value
+        for module in (parakeet_abi, diarization_abi)
+        for name, value in vars(module).items()
+        if name.startswith("SherpaOnnx")
+    ]
     source = ["#include <stddef.h>", "#include <stdio.h>", '#include "c-api.h"', "int main(void) {"]
     expected = {}
     for struct in structs:

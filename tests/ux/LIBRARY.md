@@ -9,11 +9,13 @@ Music/Cassini/
     session.json, track-*.wav      # capture-owned; names come from session.json
     meeting.json                  # app-owned, schema alongside this document
     transcript.json               # optional app-owned cassini.words.v1 payload
+    speaker-turns.json            # optional app-owned D24 diarization turns
     .meeting.lock                 # app metadata writer lock, never removed
   Received-<uuid>/
     <original basename>.opus       # original bytes, immutable
     meeting.json                  # app-owned; received.originalName identifies that file
     transcript.json               # optional, if written down locally once
+    speaker-turns.json            # optional app-owned D24 diarization turns
 ```
 
 Both generated track-<uuid>.wav and named track-microphone.wav / track-system.wav are legal;
@@ -45,6 +47,14 @@ not appended in place. The optional `transcript.model` records the speech model 
 bytes before publishing meeting.json; a repeated full-file SHA identifies a duplicate (UX4).
 For legacy received labels without naming provenance, readers retain the label with unknown
 provenance in their derived model; do not invent automatic recognition or "named by you".
+
+## speaker-turns.json (D24)
+
+Optional app-owned `cassini.speaker-turns.v1` sidecar, atomically written alongside
+the transcript. D24 defines the pinned model, parameters and per-group turns. It
+allows reuse for unchanged audio groups so typed names retain their voice IDs.
+This cache is never exported; Cassini exports carry only the resulting words,
+speakers and names. Unknown optional cache fields may be ignored.
 
 ## Field sources (HARMONY §3)
 

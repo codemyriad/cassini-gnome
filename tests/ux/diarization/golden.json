@@ -1,0 +1,838 @@
+{
+  "format": "cassini.diarization.golden.v1",
+  "version": 1,
+  "decision": "D24",
+  "input": {
+    "file": "two-speaker.wav",
+    "sampleRate": 16000,
+    "channels": 1,
+    "frames": 651840,
+    "durationMs": 40740,
+    "sha256": "df49da0c9455ed507c04af0ad3819ad9619d42b7d08b7b016607687ced03f184",
+    "pcmSHA256": "2726c250b0998b9a28c3cf442e34025e41fe2d568fdcbdbdfce2df6a9cff500e",
+    "sourcePins": "fetch-pins.json"
+  },
+  "model": {
+    "id": "nemotron-3-diarization-int8",
+    "source_sha256": "47c221ea9b4d4e7f6c108bd098e769bc706cdc986c29f6133c93cae335fe6779",
+    "license": "OpenMDW-1.1",
+    "runtimeTag": "v1.13.7-cassini.8",
+    "nativeVersion": "1.13.7+cassini-parakeet-v3-reference-v1.nemotron-diarization-v2.parakeet-ultra-v1",
+    "onnxruntime": "1.27.1",
+    "provider": "cpu",
+    "numThreads": 2,
+    "params": {
+      "minDurationOn": 0.3,
+      "minDurationOff": 0.5
+    }
+  },
+  "wordSource": {
+    "engine": "Whistle",
+    "engineVersion": "Needle 3.3.0",
+    "weightsSHA256": "b6e02f048568ac5d01a2042556c658061e699acbc0aa2a1439f52f3d461dffeb",
+    "sileroSHA256": "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3",
+    "pythonORT": "1.31.0",
+    "language": null
+  },
+  "rawTurns": [
+    {
+      "start": 0.3499999940395355,
+      "end": 10.130000114440918,
+      "speaker": 0
+    },
+    {
+      "start": 11.460000038146973,
+      "end": 21.35999870300293,
+      "speaker": 1
+    },
+    {
+      "start": 19.779998779296875,
+      "end": 29.489999771118164,
+      "speaker": 0
+    },
+    {
+      "start": 30.84000015258789,
+      "end": 38.790000915527344,
+      "speaker": 1
+    },
+    {
+      "start": 39.30999755859375,
+      "end": 40.73999786376953,
+      "speaker": 1
+    }
+  ],
+  "expected": {
+    "groupId": "others",
+    "speakerCount": 2,
+    "voiceIds": [
+      "others~1",
+      "others~2"
+    ],
+    "turns": [
+      {
+        "speaker": 0,
+        "startMs": 349,
+        "endMs": 10130,
+        "speakerId": "others~1"
+      },
+      {
+        "speaker": 1,
+        "startMs": 11460,
+        "endMs": 21359,
+        "speakerId": "others~2"
+      },
+      {
+        "speaker": 0,
+        "startMs": 19779,
+        "endMs": 29489,
+        "speakerId": "others~1"
+      },
+      {
+        "speaker": 1,
+        "startMs": 30840,
+        "endMs": 38790,
+        "speakerId": "others~2"
+      },
+      {
+        "speaker": 1,
+        "startMs": 39309,
+        "endMs": 40739,
+        "speakerId": "others~2"
+      }
+    ],
+    "words": [
+      {
+        "startMs": 560,
+        "endMs": 800,
+        "text": "He",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 800,
+        "endMs": 1120,
+        "text": "hoped",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 1120,
+        "endMs": 1200,
+        "text": "there",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 1200,
+        "endMs": 1440,
+        "text": "would",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 1440,
+        "endMs": 1600,
+        "text": "be",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 1600,
+        "endMs": 1920,
+        "text": "stew",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 1920,
+        "endMs": 2080,
+        "text": "for",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 2080,
+        "endMs": 2320,
+        "text": "dinner,",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 2720,
+        "endMs": 3120,
+        "text": "turnips",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 3120,
+        "endMs": 3280,
+        "text": "and",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 3280,
+        "endMs": 3840,
+        "text": "carrots",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 3840,
+        "endMs": 4000,
+        "text": "and",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 4000,
+        "endMs": 4400,
+        "text": "bruised",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 4400,
+        "endMs": 5040,
+        "text": "potatoes",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 5040,
+        "endMs": 5280,
+        "text": "and",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 5280,
+        "endMs": 5600,
+        "text": "fat",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 5600,
+        "endMs": 6160,
+        "text": "mutton",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 6160,
+        "endMs": 6560,
+        "text": "pieces",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 6560,
+        "endMs": 6800,
+        "text": "to",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 6800,
+        "endMs": 6960,
+        "text": "be",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 6960,
+        "endMs": 7200,
+        "text": "laid",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 7200,
+        "endMs": 7520,
+        "text": "out",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 7520,
+        "endMs": 7840,
+        "text": "in",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 7840,
+        "endMs": 8160,
+        "text": "thick,",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 8320,
+        "endMs": 8800,
+        "text": "peppered,",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 8960,
+        "endMs": 9200,
+        "text": "flour",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 9200,
+        "endMs": 9440,
+        "text": "fat",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 9440,
+        "endMs": 9680,
+        "text": "and",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 9680,
+        "endMs": 10240,
+        "text": "sauce.",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 11584,
+        "endMs": 11904,
+        "text": "Alice",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 11904,
+        "endMs": 12064,
+        "text": "took",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 12064,
+        "endMs": 12224,
+        "text": "up",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 12224,
+        "endMs": 12384,
+        "text": "the",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 12384,
+        "endMs": 12624,
+        "text": "fan",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 12624,
+        "endMs": 12944,
+        "text": "and",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 12944,
+        "endMs": 13504,
+        "text": "gloves,",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 14064,
+        "endMs": 14224,
+        "text": "and",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 14224,
+        "endMs": 14544,
+        "text": "as",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 14544,
+        "endMs": 14704,
+        "text": "the",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 14704,
+        "endMs": 14944,
+        "text": "hall",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 14944,
+        "endMs": 15184,
+        "text": "was",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 15184,
+        "endMs": 15424,
+        "text": "very",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 15424,
+        "endMs": 15744,
+        "text": "hot,",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 16144,
+        "endMs": 16224,
+        "text": "she",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 16224,
+        "endMs": 16464,
+        "text": "kept",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 16464,
+        "endMs": 16784,
+        "text": "vanning",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 16784,
+        "endMs": 17264,
+        "text": "herself",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 17264,
+        "endMs": 17584,
+        "text": "all",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 17584,
+        "endMs": 17824,
+        "text": "the",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 17824,
+        "endMs": 18144,
+        "text": "time",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 18144,
+        "endMs": 18384,
+        "text": "she",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 18384,
+        "endMs": 18624,
+        "text": "went",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 18624,
+        "endMs": 18944,
+        "text": "on",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 18944,
+        "endMs": 19424,
+        "text": "talking.",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 19984,
+        "endMs": 20144,
+        "text": "He",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 20144,
+        "endMs": 20464,
+        "text": "hoped",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 20464,
+        "endMs": 20624,
+        "text": "that",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 20624,
+        "endMs": 20704,
+        "text": "we",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 20704,
+        "endMs": 20864,
+        "text": "were",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 20864,
+        "endMs": 21504,
+        "text": "stooped",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 21504,
+        "endMs": 21584,
+        "text": "in",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 21584,
+        "endMs": 21824,
+        "text": "her,",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 22144,
+        "endMs": 22464,
+        "text": "turnips",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 22464,
+        "endMs": 22704,
+        "text": "and",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 22704,
+        "endMs": 23184,
+        "text": "carrots",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 23184,
+        "endMs": 23424,
+        "text": "and",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 23424,
+        "endMs": 23824,
+        "text": "bruised",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 23824,
+        "endMs": 24384,
+        "text": "potatoes",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 24384,
+        "endMs": 24704,
+        "text": "and",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 24704,
+        "endMs": 25024,
+        "text": "fat",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 25024,
+        "endMs": 25504,
+        "text": "mutton",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 25504,
+        "endMs": 25904,
+        "text": "pieces",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 25904,
+        "endMs": 26144,
+        "text": "to",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 26144,
+        "endMs": 26224,
+        "text": "be",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 26224,
+        "endMs": 26224,
+        "text": "loved.",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 26352,
+        "endMs": 26752,
+        "text": "laidled",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 26752,
+        "endMs": 26992,
+        "text": "out",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 26992,
+        "endMs": 27232,
+        "text": "in",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 27232,
+        "endMs": 27552,
+        "text": "thick,",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 27712,
+        "endMs": 28192,
+        "text": "peppered,",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 28272,
+        "endMs": 28592,
+        "text": "flour",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 28592,
+        "endMs": 28832,
+        "text": "fat",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 28832,
+        "endMs": 28992,
+        "text": "and",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 28992,
+        "endMs": 29552,
+        "text": "sauce.",
+        "speakerId": "others~1"
+      },
+      {
+        "startMs": 30944,
+        "endMs": 31264,
+        "text": "Alice",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 31264,
+        "endMs": 31424,
+        "text": "took",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 31424,
+        "endMs": 31584,
+        "text": "up",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 31584,
+        "endMs": 31744,
+        "text": "the",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 31744,
+        "endMs": 31984,
+        "text": "fan",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 31984,
+        "endMs": 32304,
+        "text": "and",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 32304,
+        "endMs": 32864,
+        "text": "gloves,",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 33424,
+        "endMs": 33584,
+        "text": "and",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 33584,
+        "endMs": 33904,
+        "text": "as",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 33904,
+        "endMs": 34064,
+        "text": "the",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 34064,
+        "endMs": 34304,
+        "text": "hall",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 34304,
+        "endMs": 34544,
+        "text": "was",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 34544,
+        "endMs": 34784,
+        "text": "very",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 34784,
+        "endMs": 35104,
+        "text": "hot",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 35104,
+        "endMs": 35584,
+        "text": "she",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 35584,
+        "endMs": 35824,
+        "text": "kept",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 35824,
+        "endMs": 36064,
+        "text": "fanning",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 36064,
+        "endMs": 36704,
+        "text": "herself",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 36704,
+        "endMs": 36944,
+        "text": "all",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 36944,
+        "endMs": 37184,
+        "text": "the",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 37184,
+        "endMs": 37504,
+        "text": "time",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 37504,
+        "endMs": 37744,
+        "text": "she",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 37744,
+        "endMs": 37984,
+        "text": "went",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 37984,
+        "endMs": 38304,
+        "text": "on",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 38304,
+        "endMs": 39424,
+        "text": "talking:",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 39424,
+        "endMs": 39744,
+        "text": "\"Dear",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 39744,
+        "endMs": 40224,
+        "text": "dear,",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 40304,
+        "endMs": 40544,
+        "text": "how",
+        "speakerId": "others~2"
+      },
+      {
+        "startMs": 40544,
+        "endMs": 40704,
+        "text": "queen!\"",
+        "speakerId": "others~2"
+      }
+    ],
+    "wordCount": 113,
+    "wordsPerVoice": {
+      "others~1": 54,
+      "others~2": 59
+    }
+  },
+  "tolerance": {
+    "sameNumberOfVoices": true,
+    "minimumWordVoiceAgreement": 0.98,
+    "maxTurnBoundaryDeltaMs": 160
+  },
+  "provenance": {
+    "frozenOn": "Linux x86_64, AMD Ryzen AI 9 HX PRO 370,2CPU quota/2 inference threads",
+    "freshChildren": 3,
+    "identicalTurnsAcrossChildren": true,
+    "assignmentReference": "unchanged gocassini normalizeTurns/assignWordsToTurns/voiceOrdinals at e5746ec256b243fe5c3154b98c528d2fff32a3f0",
+    "recognitionSegments": [
+      {
+        "segment": {
+          "startSample": 5120,
+          "endSample": 172544,
+          "reason": "silence",
+          "text": "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be laid out in thick, peppered, flour fat and sauce."
+        },
+        "inputSha256": "714b337c474bf3a4c3b58be0fae098853a4859749c5385346f5bf35ed609b5e2"
+      },
+      {
+        "segment": {
+          "startSample": 180224,
+          "endSample": 420352,
+          "reason": "durationLimit",
+          "text": "Alice took up the fan and gloves, and as the hall was very hot, she kept vanning herself all the time she went on talking. He hoped that we were stooped in her, turnips and carrots and bruised potatoes and fat mutton pieces to be loved."
+        },
+        "inputSha256": "53e1c122bc3a5c5a3805a68b9d0aa03bbfbf602dba90f0d3bfb53569fd8628bd"
+      },
+      {
+        "segment": {
+          "startSample": 420352,
+          "endSample": 482304,
+          "reason": "silence",
+          "text": "laidled out in thick, peppered, flour fat and sauce."
+        },
+        "inputSha256": "654c30875beda4cc4f45f9a6218bf51ee23ba0022824f32a22f7aea31f507baa"
+      },
+      {
+        "segment": {
+          "startSample": 489984,
+          "endSample": 651840,
+          "reason": "flush",
+          "text": "Alice took up the fan and gloves, and as the hall was very hot she kept fanning herself all the time she went on talking: \"Dear dear, how queen!\""
+        },
+        "inputSha256": "63ee29549ba2be2feb10b5eb76786cd9f2a98de4f4cdfdebb512ef9a9ec8de1a"
+      }
+    ]
+  }
+}

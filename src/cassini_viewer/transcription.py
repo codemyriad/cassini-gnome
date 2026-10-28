@@ -82,12 +82,20 @@ def prepare_tracks(meeting):
         if not track.frames:
             continue
         identity = track.source_track_id or track.id or "recovered-" + str(uuid5(NAMESPACE_URL, track.path.name))
-        if len(identity) > 194:
-            identity = str(uuid5(NAMESPACE_URL, identity))
         speaker, name, provenance = track_speaker(dict(id=identity, kind=track.kind))
-        if len(speaker) > 200:
+        if len(speaker) > 256:
             raise ValueError("Capture speaker identifier exceeds metadata limit")
-        tracks.append(dict(id=track.path.name, path=str(track.path), offsetMs=track.start_offset_ms, speaker=speaker))
+        tracks.append(
+            dict(
+                id=track.path.name,
+                path=str(track.path),
+                offsetMs=track.start_offset_ms,
+                speaker=speaker,
+                kind=track.kind,
+                frames=track.frames,
+                sampleRate=track.sample_rate,
+            )
+        )
         speakers.setdefault(speaker, dict(id=speaker, name=name, provenance=provenance, colourIndex=index))
     return tracks, speakers
 
@@ -110,7 +118,17 @@ def update_progress_metadata(directory, speakers, **changes):
 
 
 class TranscriptionQueue:
-    def __init__(self, changed, finished, *, bundle=None, client_factory=WhistleClient, root=None, models=None):
+    def __init__(
+        self,
+        changed,
+        finished,
+        *,
+        bundle=None,
+        client_factory=WhistleClient,
+        root=None,
+        models=None,
+        diarization_models=None,
+    ):
         self.changed, self.finished = changed, finished
         self.bundle = Path(bundle) if bundle else bundle_path()
         self.root = library_root(root).absolute()
@@ -118,6 +136,7 @@ class TranscriptionQueue:
         self.client_factory = client_factory
         self.client = None
         self.models = models
+        self.diarization_models = diarization_models
         self.client_model = None
         self.preparer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-queue-metadata")
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-transcription")
@@ -268,7 +287,16 @@ class TranscriptionQueue:
             self.changed(directory)
         if meeting.origin == "received":
             tracks = [
-                dict(id="received", path=str(meeting.audio_file), format="opus", offsetMs=0, speaker="track-original")
+                dict(
+                    id="received",
+                    path=str(meeting.audio_file),
+                    format="opus",
+                    offsetMs=0,
+                    speaker="track-original",
+                    kind="original",
+                    frames=int((meeting.duration_ms or 0) * 16),
+                    sampleRate=16000,
+                )
             ]
             speakers = {"track-original": dict(id="track-original", name=None, provenance="unnamed", colourIndex=0)}
         else:
@@ -277,11 +305,40 @@ class TranscriptionQueue:
             raise ValueError("Meeting has no complete audio frames")
         by_track = {track["id"]: track for track in tracks}
         publisher = TranscriptPublisher(directory, existing_count=len(meeting.words))
+        diarization = (
+            self.diarization_models.request(directory, origin=meeting.origin) if self.diarization_models else None
+        )
+        self.client.diarization = diarization
+        turn_groups = {}
+        recognised_summary = None
 
         def progress(value):
+            nonlocal recognised_summary
             if self.closed:
                 raise CancelledError()
             if value["type"] == "planning":
+                return
+            if value["type"] == "recognised":
+                recognised_summary = value["summary"]
+            if value["type"] == "diarized":
+                from .worker_diarization import valid_group
+
+                group_id = value["groupId"]
+                if value["first"]:
+                    turn_groups[group_id] = dict(
+                        id=group_id,
+                        durationMs=value["durationMs"],
+                        inputSHA256=value["inputSHA256"],
+                        turns=[],
+                        final=False,
+                    )
+                group = turn_groups[group_id]
+                if len(group["turns"]) + len(value["turns"]) > 100000:
+                    raise ValueError("Diarization turn limit exceeded")
+                group["turns"].extend(value["turns"])
+                group["final"] = value["final"]
+                if group["final"] and not valid_group(group):
+                    raise ValueError("Invalid diarization result")
                 return
             if value["type"] == "progress":
                 track = by_track[value["trackId"]]
@@ -303,15 +360,53 @@ class TranscriptionQueue:
 
         completed = False
         try:
-            complete = self.client.process_tracks(tracks, progress)
+            try:
+                complete = self.client.process_tracks(tracks, progress)
+            except Exception as error:
+                if self.closed or isinstance(error, CancelledError) or recognised_summary is None:
+                    raise
+                # Recognition is already complete: a crashing/timed-out native
+                # diarizer cannot turn those saved words into a failed job.
+                LOG.warning("Diarization worker failed after recognition; keeping D11: %s", error)
+                complete = recognised_summary
+                self.client.close()
+                self.client = self.client_model = None
             completed = True
         finally:
             if publisher.flush(force=True, complete=completed):
                 self.changed(directory)
         if self.closed:
             raise CancelledError()
+        if diarization is not None and complete.get("diarization"):
+            from .diarization import apply_transcript
+            from .worker_diarization import FORMAT, valid_group
+
+            result = complete["diarization"]
+            self.diarization_models.measured(result.get("realtimeFactor"))
+            groups = [
+                {key: value for key, value in g.items() if key != "final"}
+                for identifier, g in turn_groups.items()
+                if identifier in result["groupIds"] and g["final"] and valid_group(g)
+            ]
+            if groups:
+                words, voices = apply_transcript(publisher.words, groups)
+                with LOCK:
+                    if self.closed:
+                        raise CancelledError()
+                    self._owned(directory)
+                    atomic_json(
+                        directory / "speaker-turns.json",
+                        dict(format=FORMAT, model=result["model"], params=result["params"], groups=groups),
+                    )
+                    if voices:
+                        speakers.update(voices)
+                        update_progress_metadata(directory, speakers)
+                        publisher.reassign(words)
+            complete.setdefault("diagnostics", []).extend(result.get("diagnostics", []))
         for diagnostic in complete.get("diagnostics", []):
             LOG.warning("Transcription diagnostic: %s", diagnostic)
+        if self.closed:
+            raise CancelledError()
         update_progress_metadata(
             directory,
             speakers,
