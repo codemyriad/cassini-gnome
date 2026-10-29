@@ -42,6 +42,13 @@ class DiarizationModels(SpeechModels):
         state.setdefault("ready", False)
         return state
 
+    def _supported(self, info):
+        return (
+            info.get("model") == self.pin.MODEL_TAG
+            and info.get("sampleRate") == 16000
+            and ".nemotron-diarization-v2" in info.get("version", "")
+        )
+
     def _check_runtime(self, directory):
         probe = None
         try:
@@ -52,12 +59,8 @@ class DiarizationModels(SpeechModels):
                 self._probe = probe
             probe.start()
             info = probe.ready
-            if (
-                info.get("model") != self.pin.MODEL_TAG
-                or info.get("sampleRate") != 16000
-                or ".nemotron-diarization-v2" not in info.get("version", "")
-            ):
-                raise ValueError("Runtime does not support the approved Nemotron model")
+            if not self._supported(info):
+                raise ValueError("Runtime does not support the approved speaker model")
             self._change(ready=True, error=False, runtime_error=False)
         except CancelledError:
             raise

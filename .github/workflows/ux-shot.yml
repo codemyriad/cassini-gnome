@@ -63,6 +63,10 @@ jobs:
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/library.py ux-artifacts/gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/meeting.py ux-artifacts/meeting-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speakers.py ux-artifacts/speakers-gui.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voices.py ux-artifacts/voices-gui.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voice-models.py ux-artifacts/voice-models.png
+          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voices.py ux-artifacts/dark/voices-gui.png
+          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voice-models.py ux-artifacts/dark/voice-models.png
           CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speakers.py ux-artifacts/dark/speakers-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/quit.py ux-artifacts/quit-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/refresh.py ux-artifacts/refresh-gui.png
@@ -98,13 +102,13 @@ jobs:
           assert struct.unpack('>II',Path('ux-artifacts/export.png').read_bytes()[16:24]) == (1120,720)
           assert struct.unpack('>II',Path('ux-artifacts/search.png').read_bytes()[16:24]) == (1120,720)
           assert struct.unpack('>II',Path('ux-artifacts/dark/search.png').read_bytes()[16:24]) == (1120,720)
-          for name in ['settings-recording','settings-transcription']:
+          for name in ['settings-recording','settings-transcription', 'saved-voices']:
               for folder in ['ux-artifacts','ux-artifacts/dark']:
                   assert struct.unpack('>II',Path(folder,f'{name}.png').read_bytes()[16:24]) == (1120,720)
           for folder in ['ux-artifacts', 'ux-artifacts/dark']:
               assert struct.unpack('>II',Path(folder,'speakers.png').read_bytes()[16:24]) == (1120,720)
               speakers = json.loads(Path(folder, 'speakers.json').read_text())
-              assert speakers['speakersDialog'] == dict(id='guest', name='Giulia', saveEnabled=True), speakers
+              assert speakers['speakersDialog'] == dict(id='guest', name='Giulia', saveEnabled=False, privatePrint=True, savedVoices=4), speakers
               settings = json.loads(Path(folder, 'settings-transcription.json').read_text())
               assert settings['speechModels'] == ['whistle', 'parakeet-ultra-0.6b-int8'], settings
               assert settings['diarizationOn'] is True, settings

@@ -44,12 +44,18 @@ jobs:
           key: nemotron-${{ hashFiles('src/cassini_viewer/models.json') }}
       - uses: actions/cache@v4
         with:
+          path: ${{ runner.temp }}/voice-models
+          key: campplus-357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b
+      - uses: actions/cache@v4
+        with:
           path: ${{ runner.temp }}/diarization-fixtures
           key: s11-audio-${{ hashFiles('tests/ux/diarization/fetch-pins.json') }}
       - name: Prepare pinned D24 model and reproducible S-11 input
         run: |
           python3 tests/diarization/prepare_model.py --cache "$RUNNER_TEMP/nemotron-models"
           python3 tests/ux/diarization/build.py --cache "$RUNNER_TEMP/diarization-fixtures" --output "$RUNNER_TEMP/diarization-input.wav"
+      - name: Prepare pinned D25 speaker embedding model
+        run: python3 tests/voices/prepare_model.py --cache "$RUNNER_TEMP/voice-models"
       - name: Prepare pinned D16 runtime for standalone dispatch
         if: inputs.product == ''
         run: CASSINI_SHERPA_CACHE=.sherpa-cache build-aux/sherpa-cache.sh
@@ -77,6 +83,14 @@ jobs:
         run: tests/parakeet/run.sh "$OFFLINE_STAGE/usr/share/cassini-viewer/whistle" "$RUNNER_TEMP/parakeet-models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9" "$OFFLINE_STAGE/usr/lib/x86_64-linux-gnu/cassini-viewer/sherpa" "$PWD/parakeet-artifacts"
       - name: D24 installed worker, S-11 golden and production queue reuse
         run: tests/diarization/run.sh "$OFFLINE_STAGE/usr/share/cassini-viewer/whistle" "$RUNNER_TEMP/nemotron-models" "$RUNNER_TEMP/diarization-input.wav" "$PWD/diarization-artifacts" "$OFFLINE_STAGE" "$RUNNER_TEMP/parakeet-models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"
+      - name: D25 installed extractor, S-9 vectors and model comparisons without network
+        run: tests/voices/run.sh "$OFFLINE_STAGE/usr/share/cassini-viewer/whistle" "$RUNNER_TEMP/voice-models" "$RUNNER_TEMP/diarization-input.wav" "$PWD/voice-artifacts" "$OFFLINE_STAGE" "$RUNNER_TEMP/nemotron-models" "$RUNNER_TEMP/parakeet-models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: voices-linux-x86_64
+          path: voice-artifacts/
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         if: always()
         with:

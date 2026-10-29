@@ -30,9 +30,10 @@ class SettingsDialog(Adw.PreferencesDialog):
             title=text("settings.title"),
             search_enabled=False,
             content_width=700,
-            content_height=640,
+            content_height=680,
             css_classes=["cassini-preferences"],
         )
+        self.saved_voices_page = None
         self.app = app
         self.service_path = service_path
         self.closed = False
@@ -175,7 +176,11 @@ class SettingsDialog(Adw.PreferencesDialog):
 
     def _speakers_models(self, page):
         if self.app.diarization_models is None:
-            return  # Whistle-only builds retain their runtime-independent profile.
+            group = Adw.PreferencesGroup(title=text("common.speakers"))
+            self._saved_voices_row(group)
+            page.add(group)
+            self.render_voices()
+            return  # Whistle-only builds can still forget private saved voices.
         from .nemotron_model import DOWNLOAD_BYTES
         from .ux_formats import size
 
@@ -226,16 +231,135 @@ class SettingsDialog(Adw.PreferencesDialog):
         group.add(self.nemotron)
         self.nemotron_line = Gtk.Label(wrap=True, xalign=0, css_classes=["dim-label"])
         group.add(self.nemotron_line)
-        recognise = Adw.ActionRow(
-            title=text("models.recogniseVoices.name"),
-            subtitle=text("models.recogniseVoices.description") + "\n" + text("models.status.needsTellApart"),
-            use_markup=False,
-            subtitle_lines=0,
+        self.recognise = Adw.PreferencesRow()
+        row = Gtk.Box(spacing=12, margin_top=12, margin_bottom=12, margin_start=16, margin_end=16)
+        details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True)
+        title = Gtk.Box(spacing=8)
+        title.append(Gtk.Label(label=text("models.recogniseVoices.name"), xalign=0, css_classes=["heading"]))
+        from .campplus_model import DOWNLOAD_BYTES as VOICE_BYTES
+
+        title.append(
+            Gtk.Label(
+                label=text("format.size.download", size=size(VOICE_BYTES)),
+                xalign=0,
+                css_classes=["dim-label", "caption"],
+            )
         )
-        recognise.add_suffix(Gtk.Button(label=text("models.download"), sensitive=False, valign=Gtk.Align.CENTER))
-        group.add(recognise)
+        details.append(title)
+        details.append(
+            Gtk.Label(
+                label=text("models.recogniseVoices.description"),
+                xalign=0,
+                wrap=True,
+                css_classes=["dim-label", "caption"],
+            )
+        )
+        self.voice_status = Gtk.Label(xalign=0)
+        self.voice_progress = Gtk.ProgressBar(visible=False)
+        self.voice_progress.update_property(
+            [Gtk.AccessibleProperty.LABEL], [text("models.downloading.a11y", model=text("models.recogniseVoices.name"))]
+        )
+        details.append(self.voice_status)
+        details.append(self.voice_progress)
+        row.append(details)
+        self.voice_remove = Gtk.Button(label=text("models.remove"), valign=Gtk.Align.CENTER, visible=False)
+        self.voice_remove.connect("clicked", lambda *_: self.app.voice_models.remove())
+        row.append(self.voice_remove)
+        self.voice_action = Gtk.Button(label=text("models.download"), valign=Gtk.Align.CENTER)
+        self.voice_action.connect("clicked", self._voice_action)
+        row.append(self.voice_action)
+        self.recognise.set_child(row)
+        group.add(self.recognise)
+        self.voice_line = Gtk.Label(wrap=True, xalign=0, css_classes=["dim-label"], visible=False)
+        group.add(self.voice_line)
+        self._saved_voices_row(group)
         page.add(group)
         self.render_diarization()
+
+    def _saved_voices_row(self, group):
+        self.saved_voices_row = Adw.ActionRow(title=text("common.savedVoices"), activatable=True, use_markup=False)
+        self.saved_voices_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+        self.saved_voices_row.connect("activated", self._show_voices)
+        group.add(self.saved_voices_row)
+
+    def _show_voices(self, *_):
+        from .saved_voices_page import SavedVoicesPage
+
+        if self.saved_voices_page is None:
+            self.saved_voices_page = SavedVoicesPage(self)
+        self.push_subpage(self.saved_voices_page)
+        self.saved_voices_page.refresh()
+
+    def _voice_action(self, *_):
+        models = self.app.voice_models
+        if models is None:
+            return
+        state = models.snapshot()
+        if state["downloading"]:
+            models.cancel_download()
+        elif state["downloaded"] and state["error"]:
+            models.retry()
+        elif state["downloaded"]:
+            models.remove()
+        else:
+            models.download()
+        self.render_voices()
+
+    def render_voices(self):
+        snapshot = self.app.voice_store.snapshot()
+        count = len(snapshot["voices"])
+        if hasattr(self, "saved_voices_row"):
+            self.saved_voices_row.set_subtitle(
+                plural("settings.transcription.savedVoices.summary", count)
+                if count
+                else text("settings.transcription.savedVoices.summary.none")
+            )
+        if self.saved_voices_page is not None:
+            self.saved_voices_page.refresh()
+        if not hasattr(self, "voice_action"):
+            return
+        models = self.app.voice_models
+        state = (
+            models.snapshot()
+            if models
+            else dict(downloaded=False, busy=False, downloading=False, percent=0, error=False, ready=False)
+        )
+        enabled = bool(self.app.diarization_models and self.app.diarization_models.snapshot().get("ready"))
+        if state["downloading"]:
+            status, action = text("models.status.downloading", percent=state["percent"]), text("common.cancel")
+        elif not enabled:
+            status, action = (
+                text("models.status.needsTellApart"),
+                text("models.remove" if state["downloaded"] else "models.download"),
+            )
+        elif state.get("ready"):
+            status, action = text("models.status.on"), text("models.remove")
+        elif state["downloaded"]:
+            status, action = (
+                text("models.status.downloaded"),
+                text("common.tryAgain" if state["error"] else "models.remove"),
+            )
+        else:
+            status, action = (
+                text("models.status.notDownloaded"),
+                text("common.tryAgain" if state["error"] else "models.download"),
+            )
+        self.voice_status.set_label(status)
+        self.voice_status.set_css_classes(
+            ["success", "caption", "heading"] if enabled and state.get("ready") else ["dim-label", "caption"]
+        )
+        self.voice_action.set_label(action)
+        self.voice_action.set_sensitive(
+            models is not None and (enabled or state["downloaded"]) and (not state["busy"] or state["downloading"])
+        )
+        self.voice_progress.set_visible(state["downloading"])
+        self.voice_progress.set_fraction(state["percent"] / 100)
+        self.voice_remove.set_visible(state["downloaded"] and state["error"])
+        self.voice_remove.set_sensitive(not state["busy"])
+        self.voice_line.set_visible(state["error"] and not state.get("runtime_error"))
+        self.voice_line.set_label(
+            text("errors.modelDownloadFailed.line", model=text("models.recogniseVoices.name")) if state["error"] else ""
+        )
 
     def _nemotron_action(self, *_):
         models = self.app.diarization_models
@@ -253,6 +377,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.render_diarization()
 
     def render_diarization(self):
+        self.render_voices()
         if not hasattr(self, "nemotron"):
             return
         models = self.app.diarization_models
@@ -531,4 +656,6 @@ class SettingsDialog(Adw.PreferencesDialog):
         if self.timer:
             GLib.source_remove(self.timer)
             self.timer = 0
+        if getattr(self, "saved_voices_page", None):
+            self.saved_voices_page.shutdown()
         self.executor.shutdown(wait=False)

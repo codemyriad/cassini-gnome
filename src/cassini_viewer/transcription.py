@@ -130,6 +130,8 @@ class TranscriptionQueue:
         root=None,
         models=None,
         diarization_models=None,
+        voice_models=None,
+        voice_store=None,
     ):
         self.changed, self.finished = changed, finished
         self.bundle = Path(bundle) if bundle else bundle_path()
@@ -139,10 +141,13 @@ class TranscriptionQueue:
         self.client = None
         self.models = models
         self.diarization_models = diarization_models
+        self.voice_models, self.voice_store = voice_models, voice_store
         self.client_model = None
         self.preparer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-queue-metadata")
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-transcription")
         self.pending = set()
+        self._voice_reruns = {}
+        self.voice_pending = set()
         self.lock = threading.Lock()
         self.closed = False
 
@@ -329,6 +334,16 @@ class TranscriptionQueue:
         diarization = (
             self.diarization_models.request(directory, origin=meeting.origin) if self.diarization_models else None
         )
+        voices_options, voice_generation = None, None
+        if diarization is not None and self.voice_models and self.voice_store:
+            try:
+                state = self.voice_store.refresh()
+                if not state["readOnly"]:
+                    voice_generation = state["generation"]
+                    voices_options = self.voice_models.request(directory, origin=meeting.origin)
+            except (OSError, ValueError):
+                LOG.exception("Saved voices unavailable; keeping ordinary speaker names")
+        self.client.keep_for_voices = voices_options is not None
         self.client.diarization = diarization
         turn_groups = {}
         recognised_summary = None
@@ -435,6 +450,49 @@ class TranscriptionQueue:
         # A completed transcript is published once, after optional attribution.
         # Until this succeeds the running job remains resumable after restart.
         publisher.flush(force=True, complete=True)
+        if voices_options and self.client is not None:
+            try:
+                with LOCK:
+                    history = read_metadata(directory).get("speakerMerges", [])
+                prints = self.client.voiceprints(
+                    tracks, dict(voices_options, directory=str(directory), speakerMerges=history), self._check_open
+                )
+                self._check_open()
+
+                def apply_names(names):
+                    with LOCK:
+                        self._check_open()
+                        self._owned(directory)
+                        current = read_metadata(directory)
+                        if current.get("speakerMerges", []) != history:
+                            raise ValueError("Speaker merges changed during voice extraction")
+                        entries = {s["id"]: dict(s) for s in current["speakers"]}
+                        for identifier, name in names.items():
+                            previous = entries.get(identifier, {})
+                            if (
+                                previous.get("provenance") != "user"
+                                and not previous.get("nameCleared")
+                                and identifier in speakers
+                            ):
+                                speakers[identifier] = dict(speakers[identifier], name=name, provenance="recognised")
+                                entries[identifier] = speakers[identifier]
+                        if list(entries.values()) != current["speakers"]:
+                            update_metadata(directory, speakers=list(entries.values()), before_commit=self._check_open)
+
+                def voice_active():
+                    self._check_open()
+                    if read_metadata(directory).get("speakerMerges", []) != history:
+                        raise ValueError("Speaker merges changed during voice extraction")
+
+                self.voice_store.commit_job(
+                    directory, prints, voice_generation, check_active=voice_active, apply_names=apply_names
+                )
+            except CancelledError:
+                raise
+            except Exception:
+                LOG.exception("Saved voice extraction failed; keeping the completed transcript")
+                self.client.close()
+                self.client = self.client_model = None
         update_progress_metadata(
             directory,
             speakers,
@@ -448,6 +506,93 @@ class TranscriptionQueue:
             self.client.close()
             self.client = None
             self.client_model = None
+
+    def recompute_voices(self, directory, affected, failed):
+        token = Path(directory).absolute()
+        with self.lock:
+            if self.closed or self.voice_models is None:
+                return False
+            if not self.voice_models.snapshot().get("ready") or not self.diarization_models.snapshot().get("ready"):
+                return False
+            if token in self.voice_pending:
+                previous, _callback = self._voice_reruns.get(token, (set(), failed))
+                self._voice_reruns[token] = previous | set(affected), failed
+                return False
+            self.voice_pending.add(token)
+            self.executor.submit(self._voice_job, token, set(affected), failed)
+        return True
+
+    def _voice_job(self, token, affected, failed):
+        directory = token
+        try:
+            self._check_open()
+            directory = self._owned(directory)
+            state = self.voice_store.refresh()
+            if state["readOnly"]:
+                return
+            meeting = next(
+                m
+                for m in LibraryScanner(directory.parent).scan(changed_directories={directory}).meetings
+                if m.directory == directory
+            )
+            if not meeting.metadata_editable:
+                return
+            options = self.voice_models.request(directory, origin=meeting.origin)
+            if not options:
+                return
+            tracks, _speakers = prepare_tracks(meeting)
+            if meeting.origin == "received":
+                tracks = [
+                    dict(
+                        id="received",
+                        path=str(meeting.audio_file),
+                        format="opus",
+                        offsetMs=0,
+                        speaker="track-original",
+                        kind="original",
+                        frames=int((meeting.duration_ms or 0) * 16),
+                        sampleRate=16000,
+                    )
+                ]
+            if self.client is not None:
+                self.client.close()
+                self.client = self.client_model = None
+            from .voice_models import VoiceJobClient
+
+            with LOCK:
+                history = read_metadata(directory).get("speakerMerges", [])
+            self._register_client(
+                VoiceJobClient(self.bundle, options["modelPath"], options["runtimePath"], timeout=120)
+            )
+            self.client.start()
+            prints = self.client.voiceprints(
+                tracks, dict(options, directory=str(directory), speakerMerges=history), self._check_open
+            )
+            self._check_open()
+
+            def current():
+                self._check_open()
+                if read_metadata(directory).get("speakerMerges", []) != history:
+                    raise CancelledError()
+
+            self.voice_store.recompute(directory, prints, affected, state["generation"], check_active=current)
+            self.changed(directory)
+        except Exception as error:
+            if not self.closed and not isinstance(error, CancelledError):
+                LOG.exception("Voice recomputation failed; keeping previous private prints")
+                failed(error)
+        finally:
+            if self.client is not None:
+                self.client.close()
+                self.client = self.client_model = None
+            with self.lock:
+                again = self._voice_reruns.pop(token, None) if not self.closed else None
+                if again is not None:
+                    self.executor.submit(self._voice_job, token, *again)
+            if again is None:
+                with self.lock:
+                    self.voice_pending.discard(token)
+                self.finished(token)
 
     def _check_open(self):
         if self.closed:

@@ -51,6 +51,12 @@ class CassiniApplication(Adw.Application):
         self.transcriber = None
         self.speech_models = None
         self.diarization_models = None
+        self.voice_models = None
+        self._voice_library_keys = None
+        self._voice_matches = frozenset()
+        from .voice_store import VoiceStore
+
+        self.voice_store = VoiceStore(changed=lambda: GLib.idle_add(self._voices_changed))
         self._transcription_holds = 0
         self._transcription_generation = 0
         self._quitting = False
@@ -141,6 +147,16 @@ class CassiniApplication(Adw.Application):
             from .transcription import bundle_path
 
             self.diarization_models = DiarizationModels(bundle_path(), lambda: GLib.idle_add(self._models_changed))
+            from .voice_models import VoiceModels
+
+            self.voice_models = VoiceModels(
+                bundle_path(),
+                lambda: GLib.idle_add(self._models_changed),
+                enabled=lambda: bool(self.diarization_models.snapshot().get("ready")),
+            )
+        import threading
+
+        threading.Thread(target=self._load_voices, name="cassini-voices-startup", daemon=True).start()
         from .library_relocator import LibraryRelocator
 
         self.library_relocator = LibraryRelocator(self)
@@ -656,9 +672,7 @@ class CassiniApplication(Adw.Application):
         """Whether to offer "Write it down" and "Try again" at all."""
         return self.writing_unavailable is None
 
-    def write_down(self, meeting, *, resume=False):
-        if self._quitting or self._capture_exiting:
-            return
+    def _ensure_transcriber(self):
         from .transcription import TranscriptionQueue
 
         if self.transcriber is None:
@@ -671,12 +685,63 @@ class CassiniApplication(Adw.Application):
                 GLib.idle_add(self._transcription_finished, generation)
 
             self.transcriber = TranscriptionQueue(
-                changed, finished, models=self.speech_models, diarization_models=self.diarization_models
+                changed,
+                finished,
+                models=self.speech_models,
+                diarization_models=self.diarization_models,
+                voice_models=self.voice_models,
+                voice_store=self.voice_store,
             )
+        return self.transcriber
+
+    def recompute_voices(self, directory, affected):
+        if self._quitting or self._capture_exiting:
+            return
+
+        def failed(_error):
+            def show():
+                from .strings import text
+
+                for window in self.get_windows():
+                    if hasattr(window, "toasts"):
+                        toast = Adw.Toast(
+                            title=GLib.markup_escape_text(text("savedVoices.changeFailed")),
+                            button_label=text("common.tryAgain"),
+                        )
+                        toast.connect("button-clicked", lambda *_: self.recompute_voices(directory, affected))
+                        window.toasts.add_toast(toast)
+                return False
+
+            GLib.idle_add(show)
+
+        queue = self._ensure_transcriber()
+        if queue.recompute_voices(directory, affected, failed):
+            self._transcription_holds += 1
+            self.hold()
+
+    def write_down(self, meeting, *, resume=False):
+        if self._quitting or self._capture_exiting:
+            return
+        self._ensure_transcriber()
         directory = getattr(meeting, "directory", meeting)
         if self.transcriber.enqueue(directory, resume=resume):
             self._transcription_holds += 1
             self.hold()
+
+    def _load_voices(self):
+        try:
+            self.voice_store.refresh()
+        except (OSError, ValueError):
+            logging.exception("Could not load private saved voices")
+
+    def _voices_changed(self):
+        if self.settings_dialog and not self.settings_dialog.closed:
+            self.settings_dialog.render_voices()
+        matches = self.voice_store.match_signature()
+        if matches != self._voice_matches:
+            self._voice_matches = matches
+            self._transcription_changed()
+        return False
 
     def _models_changed(self):
         if self.settings_dialog and not self.settings_dialog.closed:
@@ -699,6 +764,15 @@ class CassiniApplication(Adw.Application):
         return False
 
     def observe_library(self, snapshot, previous):
+        keys = frozenset(m.directory.name for m in snapshot.meetings)
+        if keys != self._voice_library_keys:
+            self._voice_library_keys = keys
+            for window in self.get_windows():
+                if hasattr(window, "monitor") and not window.monitor._closed:
+                    window.monitor._executor.submit(self.voice_store.sync_library, keys)
+                    break
+        if self.settings_dialog and not self.settings_dialog.closed and self.settings_dialog.saved_voices_page:
+            self.settings_dialog.saved_voices_page.refresh()
         if not self.transcription_enabled:
             return
         from .transcription import should_auto_write
@@ -750,6 +824,8 @@ class CassiniApplication(Adw.Application):
             self.speech_models.close()
         if self.diarization_models:
             self.diarization_models.close()
+        if self.voice_models:
+            self.voice_models.close()
         if self.library_relocator:
             self.library_relocator.close()
         self._transcription_generation += 1

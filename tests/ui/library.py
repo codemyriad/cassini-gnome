@@ -106,7 +106,7 @@ with tempfile.TemporaryDirectory() as tmp:
     until(lambda: window.player.playing)
     assert "Marta" in [w.get_label() for w in walk(window.preview) if isinstance(w, Gtk.Label)]
     auto = [w for w in walk(window.preview) if isinstance(w, Gtk.Label) and w.get_label() == "auto"]
-    assert auto and auto[0].get_tooltip_text() == text("common.autoTag.tooltip")
+    assert not auto  # an imported recognised name has no saved local voice
     app.activate()
     assert sum(isinstance(w, LibraryWindow) for w in app.get_windows()) == 1
     assert app.lookup_action("new-window") is None

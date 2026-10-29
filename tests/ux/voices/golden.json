@@ -1,0 +1,283 @@
+{
+  "format": "cassini.voices.golden.v1",
+  "version": 1,
+  "decision": "D25",
+  "input": {
+    "s11Golden": "../diarization/golden.json",
+    "s11GoldenSHA256": "221668f7db8d3435e6f2bfc22bdce291031387b3b5a219717fc967511782625a",
+    "file": "two-speaker.wav",
+    "sha256": "df49da0c9455ed507c04af0ad3819ad9619d42b7d08b7b016607687ced03f184",
+    "pcmSHA256": "2726c250b0998b9a28c3cf442e34025e41fe2d568fdcbdbdfce2df6a9cff500e",
+    "sampleRate": 16000,
+    "frames": 651840
+  },
+  "model": {
+    "id": "campplus-voxceleb-16k",
+    "source_sha256": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+    "name": "CAM++ speaker embedding (VoxCeleb)",
+    "license": "Apache-2.0",
+    "files": [
+      {
+        "path": "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx",
+        "artifact": {
+          "key": "models/files/c310f60acec22ce27d78bd37736e40015af6473a1e3482224e81434aca5557b0/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx.zst",
+          "url": "https://dist.gocassini.com/models/files/c310f60acec22ce27d78bd37736e40015af6473a1e3482224e81434aca5557b0/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx.zst",
+          "size": 27138478,
+          "sha256": "c310f60acec22ce27d78bd37736e40015af6473a1e3482224e81434aca5557b0",
+          "uncompressed_size": 29596978,
+          "uncompressed_sha256": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b"
+        },
+        "required": true
+      }
+    ],
+    "description": "Speaker identification embeddings, 512 dimensions, 16 kHz",
+    "source_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+  },
+  "runtime": {
+    "tag": "v1.13.7-cassini.8",
+    "nativeVersion": "1.13.7+cassini-parakeet-v3-reference-v1.nemotron-diarization-v2.parakeet-ultra-v1",
+    "onnxruntime": "1.27.1",
+    "provider": "cpu",
+    "numThreads": 2,
+    "dimension": 512
+  },
+  "selection": {
+    "source": "Unchanged Android Voiceprints.select at7068c58, S-11 frozen words and turns",
+    "edgeTrimMs": 200,
+    "minSegmentMs": 1500,
+    "maxWindowMs": 10000,
+    "maxSeconds": 45,
+    "minSeconds": 4.0
+  },
+  "prints": [
+    {
+      "id": "others~1/d25-full",
+      "voiceId": "others~1",
+      "windows": [
+        [
+          12160,
+          160640
+        ],
+        [
+          344944,
+          469632
+        ]
+      ],
+      "sampleCount": 273168,
+      "seconds": 17.073,
+      "inputSHA256": "5e1212bb98a78c2e4eed2bd0b93c0804357f51b3ce86a1af5bffe77cbb6930dd"
+    },
+    {
+      "id": "others~1/d25-window-1",
+      "voiceId": "others~1",
+      "windows": [
+        [
+          12160,
+          160640
+        ]
+      ],
+      "sampleCount": 148480,
+      "seconds": 9.28,
+      "inputSHA256": "4bb251bb12d4b36a3d66cda5bca7d0fa29b67d5d844489b46ee584d3cd6d6852"
+    },
+    {
+      "id": "others~1/d25-window-2",
+      "voiceId": "others~1",
+      "windows": [
+        [
+          344944,
+          469632
+        ]
+      ],
+      "sampleCount": 124688,
+      "seconds": 7.793,
+      "inputSHA256": "d23f2aceee6d4ad8249c7a1c59d83c1b43a769aeae67c3fba0d8faa00bbd6d18"
+    },
+    {
+      "id": "others~2/d25-full",
+      "voiceId": "others~2",
+      "windows": [
+        [
+          188544,
+          313264
+        ],
+        [
+          498304,
+          648064
+        ]
+      ],
+      "sampleCount": 274480,
+      "seconds": 17.155,
+      "inputSHA256": "f5bfc4bb4293c91e6d575d7fbe47d251aecd963c16b8f4121fecb00829b7b176"
+    },
+    {
+      "id": "others~2/d25-window-1",
+      "voiceId": "others~2",
+      "windows": [
+        [
+          188544,
+          313264
+        ]
+      ],
+      "sampleCount": 124720,
+      "seconds": 7.795,
+      "inputSHA256": "591a67b45612fc11ffcedf60a388c9448909391fd9480968e3fc4e7bf8d1cf45"
+    },
+    {
+      "id": "others~2/d25-window-2",
+      "voiceId": "others~2",
+      "windows": [
+        [
+          498304,
+          648064
+        ]
+      ],
+      "sampleCount": 149760,
+      "seconds": 9.36,
+      "inputSHA256": "dc7f83c782f663670f098860d30d2536247fecd023557f0f7439403bff50e51c"
+    }
+  ],
+  "comparisons": [
+    {
+      "a": "others~1/d25-full",
+      "b": "others~1/d25-window-1",
+      "sameVoice": true,
+      "cosine": 0.9351124167442322
+    },
+    {
+      "a": "others~1/d25-full",
+      "b": "others~1/d25-window-2",
+      "sameVoice": true,
+      "cosine": 0.7343181371688843
+    },
+    {
+      "a": "others~1/d25-full",
+      "b": "others~2/d25-full",
+      "sameVoice": false,
+      "cosine": 0.5046441555023193
+    },
+    {
+      "a": "others~1/d25-full",
+      "b": "others~2/d25-window-1",
+      "sameVoice": false,
+      "cosine": 0.2698698937892914
+    },
+    {
+      "a": "others~1/d25-full",
+      "b": "others~2/d25-window-2",
+      "sameVoice": false,
+      "cosine": 0.47940853238105774
+    },
+    {
+      "a": "others~1/d25-window-1",
+      "b": "others~1/d25-window-2",
+      "sameVoice": true,
+      "cosine": 0.7146071195602417
+    },
+    {
+      "a": "others~1/d25-window-1",
+      "b": "others~2/d25-full",
+      "sameVoice": false,
+      "cosine": 0.4546176791191101
+    },
+    {
+      "a": "others~1/d25-window-1",
+      "b": "others~2/d25-window-1",
+      "sameVoice": false,
+      "cosine": 0.29182156920433044
+    },
+    {
+      "a": "others~1/d25-window-1",
+      "b": "others~2/d25-window-2",
+      "sameVoice": false,
+      "cosine": 0.48353511095046997
+    },
+    {
+      "a": "others~1/d25-window-2",
+      "b": "others~2/d25-full",
+      "sameVoice": false,
+      "cosine": 0.14244669675827026
+    },
+    {
+      "a": "others~1/d25-window-2",
+      "b": "others~2/d25-window-1",
+      "sameVoice": false,
+      "cosine": 0.27974969148635864
+    },
+    {
+      "a": "others~1/d25-window-2",
+      "b": "others~2/d25-window-2",
+      "sameVoice": false,
+      "cosine": 0.1685653179883957
+    },
+    {
+      "a": "others~2/d25-full",
+      "b": "others~2/d25-window-1",
+      "sameVoice": true,
+      "cosine": 0.7524785995483398
+    },
+    {
+      "a": "others~2/d25-full",
+      "b": "others~2/d25-window-2",
+      "sameVoice": true,
+      "cosine": 0.9611814022064209
+    },
+    {
+      "a": "others~2/d25-window-1",
+      "b": "others~2/d25-window-2",
+      "sameVoice": true,
+      "cosine": 0.7531377673149109
+    }
+  ],
+  "matches": [
+    {
+      "id": "full",
+      "voices": {
+        "voice_reader1": "others~1/d25-window-1",
+        "voice_reader2": "others~2/d25-window-1"
+      },
+      "speakers": {
+        "others~1": "others~1/d25-full",
+        "others~2": "others~2/d25-full"
+      },
+      "expected": {
+        "others~1": {
+          "voiceId": "voice_reader1",
+          "state": "auto"
+        },
+        "others~2": {
+          "voiceId": "voice_reader2",
+          "state": "auto"
+        }
+      }
+    },
+    {
+      "id": "secondWindows",
+      "voices": {
+        "voice_reader1": "others~1/d25-window-1",
+        "voice_reader2": "others~2/d25-window-1"
+      },
+      "speakers": {
+        "others~1": "others~1/d25-window-2",
+        "others~2": "others~2/d25-window-2"
+      },
+      "expected": {
+        "others~1": {
+          "voiceId": "voice_reader1",
+          "state": "suggested"
+        },
+        "others~2": {
+          "voiceId": "voice_reader2",
+          "state": "auto"
+        }
+      }
+    }
+  ],
+  "tolerance": {
+    "cosineAbsolute": 0.02,
+    "dimensionExact": true,
+    "sampleIndicesExact": true,
+    "inputHashesExact": true,
+    "matchOutcomesExact": true
+  }
+}

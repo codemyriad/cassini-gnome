@@ -68,6 +68,7 @@ class LibraryRelocator:
         if transcriber:
             with transcriber.lock:
                 busy.update(transcriber.pending)
+                busy.update(getattr(transcriber, "voice_pending", ()))
         for window in self.app.get_windows():
             activity.update(getattr(window, "_activity", {}))
         editor = self.app.comfort.editor if self.app.comfort else None

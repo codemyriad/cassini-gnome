@@ -93,9 +93,9 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: not window.lookup_action("play-pause").get_enabled())
     assert dialog.heading.get_label() == "Speaker 3" and dialog.entry.get_text() == ""
     assert dialog.talk.get_label() == "Speaks for 11 s in this meeting"
-    assert not any(
-        "saved voice" in text.lower() or "Remember this voice" in text for text in labels(dialog.get_child())
-    )
+    assert any("Remember this voice" in value for value in labels(dialog.get_child()))
+    assert not dialog.remember.get_sensitive()  # no private print in this fixture
+
     assert dialog.merge_menu.get_n_items() == 2 and dialog.save.get_sensitive()
     for value in ("x" * 65, "x\u202ey"):
         dialog.entry.set_text(value)

@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import socket
 import sys
 import tempfile
@@ -20,6 +21,8 @@ parser.add_argument("model_cache", type=Path)
 parser.add_argument("audio", type=Path)
 parser.add_argument("output", type=Path)
 parser.add_argument("--modules", type=Path, required=True)
+parser.add_argument("--voices", type=Path)
+parser.add_argument("--parakeet", type=Path)
 args = parser.parse_args()
 sys.path.insert(0, str(args.modules))
 from cassini_viewer.diarization_models import DiarizationModels  # noqa: E402
@@ -57,7 +60,43 @@ with wave.open(str(args.audio)) as audio:
 session.finish()
 before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in session.directory.iterdir()}
 finished = []
-queue = TranscriptionQueue(lambda _: None, finished.append, root=library, bundle=args.bundle, diarization_models=models)
+voices = store = speech = None
+if args.voices:
+    from cassini_viewer.voice_models import VoiceModels
+    from cassini_viewer.voice_store import VoiceStore
+
+    store = VoiceStore(args.output / "private-voices")
+    voices = VoiceModels(
+        args.bundle, lambda: None, enabled=lambda: models.snapshot()["ready"], store=ModelStore(args.voices)
+    )
+    until(lambda: not voices.snapshot()["busy"])
+    assert voices.snapshot()["ready"], voices.snapshot()
+if args.parakeet:
+    from cassini_viewer.parakeet_client import ParakeetClient
+
+    class SelectedSpeech:
+        def snapshot(self):
+            return dict(selected="parakeet-ultra-0.6b-int8")
+
+        def start_parakeet(self, bundle, *, register):
+            from cassini_viewer.sherpa_runtime import runtime_path
+
+            client = ParakeetClient(bundle, args.parakeet, runtime_path())
+            register(client)
+            client.start()
+            return client
+
+    speech = SelectedSpeech()
+queue = TranscriptionQueue(
+    lambda _: None,
+    finished.append,
+    root=library,
+    bundle=args.bundle,
+    diarization_models=models,
+    voice_models=voices,
+    voice_store=store,
+    models=speech,
+)
 try:
     assert queue.enqueue(session.directory)
     until(lambda: len(finished) == 1)
@@ -69,6 +108,12 @@ try:
     cache = json.loads(cache_bytes)
     assert cache["groups"][0]["id"] == "others" and len(cache["groups"][0]["turns"]) == 5
     voice = meeting.speakers[0].id
+    if store is not None:
+        prints = store.meeting(session.directory)["speakers"]
+        assert set(prints) == {"others~1", "others~2"}
+        assert all(len(p["embedding"]) == 512 and p["seconds"] >= 4 for p in prints.values())
+        store.remember(session.directory, voice, "Alice")
+        assert store.snapshot()["voices"][0]["count"] == 1
     speakers = [dict(s, name="Alice", provenance="user") if s["id"] == voice else s for s in metadata["speakers"]]
     update_metadata(session.directory, speakers=speakers, transcript=dict(metadata["transcript"], status="failed"))
     assert queue.enqueue(session.directory)
@@ -77,6 +122,15 @@ try:
     assert retried.transcript == "done" and retried.speakers[0].id == voice
     assert retried.speakers[0].name == "Alice" and retried.speakers[0].provenance == "user"
     assert (session.directory / "speaker-turns.json").read_bytes() == cache_bytes
+    if store is not None:
+        prints = store.meeting(session.directory)["speakers"]
+        assert prints[voice]["match"]["state"] == "confirmed"
+        assert store.snapshot()["voices"][0]["count"] == 1
+        assert store.snapshot()["voices"][0]["meetings"] == [session.directory.name]
+        assert "embedding" not in (session.directory / "meeting.json").read_text()
+        assert "embedding" not in (session.directory / "transcript.json").read_text()
+        # Public reports contain no biometric cache, even for public test speech.
+        shutil.rmtree(store.root)
     assert before == {name: hashlib.sha256((session.directory / name).read_bytes()).hexdigest() for name in before}
     assert "libneedle3.so" not in Path("/proc/self/maps").read_text()
     assert "libsherpa-onnx-c-api" not in Path("/proc/self/maps").read_text()
@@ -96,8 +150,12 @@ try:
         + "\n"
     )
 finally:
+    if store is not None:
+        shutil.rmtree(store.root, ignore_errors=True)
     queue.close()
     models.close()
+    if voices:
+        voices.close()
     until(lambda: queue.client is None, timeout=5)
     until(
         lambda: not any(t.name.startswith("cassini-transcription") and t.is_alive() for t in threading.enumerate()),

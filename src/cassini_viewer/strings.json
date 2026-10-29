@@ -3368,7 +3368,7 @@
     "SavedVoices-mac"
    ],
    "milestone": "UX17",
-   "note": "Optional third line in amber text (#7a4d00, no tint), with no action. Shown for a weak or stale voiceprint (Luca in the fixture). The trigger condition is not specified; ask. en-GB 'recognising'.",
+   "note": "Optional third line in amber text (#7a4d00, no tint), with no action. Shown for a weak or stale voiceprint (Luca in the fixture). The trigger condition is not specified; ask. en-GB 'recognising'. Coordinator (D25): shown only for a stale voiceprint (model sha256 not the pinned one, or not 512 values). No 'weak' rule in this wave.",
    "status": "drawn"
   },
   {
@@ -5214,6 +5214,203 @@
    "milestone": "UX16",
    "status": "harmony",
    "note": "Coordinator (D24, GNOME question). Warn line when saving a name, a merge or Undo merge can't be written (for example a read-only or disconnected Library). Action: common.tryAgain. The Speakers dialog stays open and keeps the typed name."
+  },
+  {
+   "id": "speakers.rememberVoice.tooShort",
+   "en": "Cassini needs at least 4 seconds of this voice to remember it.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX17",
+   "status": "harmony",
+   "note": "Coordinator (D25). Replaces speakers.rememberVoice.description while the speaker has under 4 s of selected speech; the checkbox is insensitive."
+  },
+  {
+   "id": "settings.transcription.savedVoices.summary.none",
+   "en": "No one yet. Voiceprints stay on this computer.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Settings",
+    "Settings-mac"
+   ],
+   "milestone": "UX17",
+   "status": "harmony",
+   "note": "Coordinator (D25). Zero case of settings.transcription.savedVoices.summary."
+  },
+  {
+   "id": "savedVoices.empty",
+   "en": "No saved voices yet.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "SavedVoices",
+    "SavedVoices-mac"
+   ],
+   "milestone": "UX17",
+   "status": "harmony",
+   "note": "Coordinator (D25). Shown in place of the list card when there are no saved voices; savedVoices.howToAdd still follows. Forget everyone is hidden."
+  },
+  {
+   "id": "confirm.forgetEveryone.title",
+   "en": "Forget all saved voices?",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-title",
+   "boards": [
+    "SavedVoices",
+    "SavedVoices-mac"
+   ],
+   "milestone": "UX17",
+   "status": "harmony",
+   "note": "Coordinator (D25). Confirmation shaped like confirmation 2, opened by savedVoices.forgetEveryone."
+  },
+  {
+   "id": "confirm.forgetEveryone.body",
+   "en": "Cassini will no longer recognise anyone in new meetings. Names already in transcripts stay.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-body",
+   "boards": [
+    "SavedVoices",
+    "SavedVoices-mac"
+   ],
+   "milestone": "UX17",
+   "status": "harmony",
+   "note": "Coordinator (D25). en-GB 'recognise'. Secondary button common.cancel."
+  },
+  {
+   "id": "confirm.forgetEveryone.primary",
+   "en": "Forget everyone",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "SavedVoices",
+    "SavedVoices-mac"
+   ],
+   "milestone": "UX17",
+   "status": "harmony",
+   "note": "Coordinator (D25). Destructive primary (red fill), Return."
+  },
+  {
+   "id": "errors.micPermission.line",
+   "en": "Your microphone is not being recorded. Allow Cassini to use your microphone.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "Recording",
+    "Recording-mac"
+   ],
+   "milestone": "UX11",
+   "status": "harmony",
+   "note": "Coordinator (Mac question, UX10/UX11). Warn line on the Recording page (and the Library row meta) when microphone access is denied. Parallel to errors.othersPermission.line. Recording of the others continues. Mac action: errors.micPermission.action. GNOME: no action unless the portal offers one."
+  },
+  {
+   "id": "errors.micPermission.action",
+   "en": "Open System Settings",
+   "platforms": [
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Recording-mac"
+   ],
+   "milestone": "UX11",
+   "status": "harmony",
+   "note": "Coordinator (Mac question, UX10/UX11). Opens System Settings › Privacy & Security › Microphone. Same text as errors.othersPermission.action."
+  },
+  {
+   "id": "errors.recordFailed.line",
+   "en": "Couldn’t start recording.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "Main",
+    "Library-mac",
+    "Recording",
+    "Recording-mac"
+   ],
+   "milestone": "UX10",
+   "status": "harmony",
+   "note": "Coordinator (Mac question, UX10/UX11). Warn line when Record can't start at all (no source could be opened). Action common.tryAgain. Nothing is added to the Library."
+  },
+  {
+   "id": "errors.recordFailed.meeting",
+   "en": "Couldn’t start recording “{title}”.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "Main",
+    "Library-mac"
+   ],
+   "milestone": "UX10",
+   "status": "harmony",
+   "note": "Coordinator (Mac question, UX10/UX11). Warn line when one browser meeting fails to start while Record takes every browser meeting (D17); the other meetings keep recording. Action common.tryAgain, which retries only that meeting. Typographic quotes.",
+   "placeholders": {
+    "title": "the meeting's title as shown in its Library row"
+   }
+  },
+  {
+   "id": "savedVoices.changeFailed",
+   "en": "Couldn’t change saved voices. Names in your meetings are kept.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "SavedVoices",
+    "SavedVoices-mac",
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX17",
+   "status": "harmony",
+   "note": "Coordinator (D25, GNOME question). Warn line when remembering, forgetting or Forget everyone can't be written to the private voice store. Action common.tryAgain. The store keeps its previous state (atomic write); names in meetings are untouched. On the Speakers dialog the name itself is still saved (speakers.changeFailed covers that write). Never show the raw error."
+  },
+  {
+   "id": "savedVoices.newerVersion",
+   "en": "A newer version of Cassini saved these voices. Update Cassini to change them.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "SavedVoices",
+    "SavedVoices-mac"
+   ],
+   "milestone": "UX17",
+   "status": "harmony",
+   "note": "Coordinator (D25, GNOME question). Info line (not warn, no action) at the top of Saved voices when people.json has a version newer than this app understands. The store is read-only: Forget, Forget everyone and Remember this voice are disabled, and the file is never rewritten or migrated down. Voices it can still read may be listed and recognised; if none can be read, show savedVoices.empty below this line."
   }
  ]
 }

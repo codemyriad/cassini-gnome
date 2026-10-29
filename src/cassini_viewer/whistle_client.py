@@ -110,6 +110,8 @@ class WhistleClient:
         if self.process is None or self.process.poll() is not None:
             raise RuntimeError("Whistle worker is not running")
         message = dict(type="pipeline", tracks=tracks)
+        if getattr(self, "keep_for_voices", False):
+            message["keepForVoices"] = True
         if getattr(self, "diarization", None) is not None:
             message["diarization"] = self.diarization
         packet = json.dumps(message).encode() + b"\n"
@@ -127,6 +129,26 @@ class WhistleClient:
             if value.get("type") not in ("planning", "planned", "progress", "recognised", "diarizing", "diarized"):
                 raise RuntimeError("Whistle worker failed: " + str(value.get("message", "invalid reply")))
             progress(value)
+
+    def voiceprints(self, tracks, options, heartbeat=lambda: None):
+        packet = json.dumps(dict(type="voiceprints", tracks=tracks, options=options)).encode() + b"\n"
+        if len(packet) > 512 * 1024:
+            raise ValueError("Voice request exceeds limit")
+        self.process.stdin.write(packet)
+        self.process.stdin.flush()
+        result = {}
+        while True:
+            value = self._receive()
+            heartbeat()
+            if value.get("type") == "voices-complete":
+                return result
+            if value.get("type") == "voice-print":
+                speaker = value["speaker"]
+                if speaker in result or len(result) >= 512:
+                    raise ValueError("Duplicate or excess voice print")
+                result[speaker] = {k: value[k] for k in ("embedding", "seconds", "windows")}
+            elif value.get("type") != "voice-progress":
+                raise RuntimeError("Voice worker failed: " + str(value.get("message", "invalid reply")))
 
     def cancel(self):
         """Main-thread safe: signal only; the owning IO thread reaps/closes."""

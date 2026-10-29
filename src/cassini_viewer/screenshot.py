@@ -47,10 +47,27 @@ def capture(application_id, version, profile):
     opened_search = False
     selected_search = False
     opened_settings = False
+    seeded_voices = False
     board = os.environ.get("CASSINI_SCREENSHOT_BOARD", "")
     while time.monotonic() < deadline:
         while context.pending():
             context.iteration(False)
+        if (
+            board in ("speakers", "saved-voices", "settings-transcription")
+            and not window._pending
+            and not seeded_voices
+        ):
+            from .voice_board import seed
+
+            chosen = next(m for m in window.snapshot.meetings if m.title == "Client call, Rossi & Partners")
+            window.monitor._executor.submit(seed, app, chosen).result(timeout=5)
+            seeded_voices = True
+        if board == "saved-voices" and not window._pending and not opened_settings:
+            app.on_preferences()
+            app.settings_dialog.set_visible_page_name("transcription")
+            app.settings_dialog._show_voices()
+            opened_settings = True
+            settled_frame = None
         if (
             os.environ.get("CASSINI_SCREENSHOT_BOARD") == "record-first"
             and not window._pending
@@ -115,16 +132,30 @@ def capture(application_id, version, profile):
             settled_frame = None
         if board.startswith("settings-") and not window._pending and not opened_settings:
             if board == "settings-transcription" and app.diarization_models:
-                if app.diarization_models.snapshot()["busy"]:
+                if (
+                    app.diarization_models.snapshot()["busy"]
+                    or app.voice_models
+                    and app.voice_models.snapshot()["busy"]
+                ):
                     time.sleep(0.01)
                     continue
                 # The board fixture renders the accepted On state without
                 # downloading or shipping optional weights in screenshots.
                 app.diarization_models._change(downloaded=True, ready=True, busy=False, percent=100)
+                if app.voice_models:
+                    app.voice_models._change(downloaded=True, ready=True, busy=False, percent=100)
             app.on_preferences()
             app.settings_dialog.set_visible_page_name(board.removeprefix("settings-"))
             opened_settings = True
             settled_frame = None
+        if board == "speakers" and opened_meeting and not window.meeting_page.speakers_dialog.voices_loaded:
+            settled_frame = None
+            time.sleep(0.01)
+            continue
+        if board == "saved-voices" and opened_settings and app.settings_dialog.saved_voices_page._loading:
+            settled_frame = None
+            time.sleep(0.01)
+            continue
         if opened_settings and app.settings_dialog._future is not None:
             settled_frame = None
             time.sleep(0.01)
@@ -190,6 +221,8 @@ def capture(application_id, version, profile):
                         id=window.meeting_page.speakers_dialog.identifier,
                         name=window.meeting_page.speakers_dialog.entry.get_text(),
                         saveEnabled=window.meeting_page.speakers_dialog.save.get_sensitive(),
+                        privatePrint=window.meeting_page.speakers_dialog.voice_data is not None,
+                        savedVoices=len(window.meeting_page.speakers_dialog.voice_state["voices"]),
                     )
                     if board == "speakers"
                     else None

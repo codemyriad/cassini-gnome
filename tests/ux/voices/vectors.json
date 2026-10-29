@@ -1,0 +1,2411 @@
+{
+  "format": "cassini.voices.vectors.v1",
+  "version": 1,
+  "decision": "D25",
+  "provenance": {
+    "repo": "codemyriad/cassini-android",
+    "commit": "7068c5889c0a70dbb3f01742fc0963f24bfd299a",
+    "files": [
+      {
+        "path": "core/src/main/kotlin/org/cassini/core/models/ModelCatalog.kt",
+        "sha256": "5bb2ce07eeb489587bd259d4c172d393e4f1d46005a66a876793f5e8cd3c5d56"
+      },
+      {
+        "path": "core/src/main/kotlin/org/cassini/core/speakers/DefaultLabels.kt",
+        "sha256": "f6223f875fe67479d696cef4409e5ef49a0c73c344fba8946d372743156bafb0"
+      },
+      {
+        "path": "core/src/main/kotlin/org/cassini/core/speakers/NameMatch.kt",
+        "sha256": "3ebb511219c0a56d03c0eb5d93b0d47a17274f3a175009a3cf2daa220b048211"
+      },
+      {
+        "path": "core/src/main/kotlin/org/cassini/core/speakers/NoteVoiceCodec.kt",
+        "sha256": "dd7690856425a7cc4a1054bbe6f374e46ad9bdd8e302e0e90531de667213d48b"
+      },
+      {
+        "path": "core/src/main/kotlin/org/cassini/core/speakers/SpeakerAssignment.kt",
+        "sha256": "21abc962c232d4c020228e05c0073368777b5d300bfc6b66f79230859a471a6d"
+      },
+      {
+        "path": "core/src/main/kotlin/org/cassini/core/speakers/SpeakerBudget.kt",
+        "sha256": "d8964aa55276c5679507e3605d728fd95b597d6e73acdd5d7bc969f909d6aff9"
+      },
+      {
+        "path": "core/src/main/kotlin/org/cassini/core/speakers/SpeakerStats.kt",
+        "sha256": "d59e92c8aa5d02a0bbd0b066d07165e9a6d037c8104075ce28c3a2e31717d5c2"
+      },
+      {
+        "path": "core/src/main/kotlin/org/cassini/core/speakers/SpeakerTint.kt",
+        "sha256": "1720f438aa9c744268a7bf9234f04932b1cb5295cccc459d458baae520ba09d9"
+      },
+      {
+        "path": "core/src/main/kotlin/org/cassini/core/speakers/TurnHistory.kt",
+        "sha256": "f0c800e28f03b7549a2fab287d845969c1e004a669dabbd69c6b066889595660"
+      },
+      {
+        "path": "core/src/main/kotlin/org/cassini/core/speakers/VoiceClipCache.kt",
+        "sha256": "ee3d4f0a0b3756082af4017ff579ef426d0dd78777db5a3d80dd2a97c8630ca4"
+      },
+      {
+        "path": "core/src/main/kotlin/org/cassini/core/speakers/VoiceCodec.kt",
+        "sha256": "81d6ff8e5e7b344bc45ad2919d2716011f689e6cd403bb4c7cbf741d6ad84acd"
+      },
+      {
+        "path": "core/src/main/kotlin/org/cassini/core/speakers/VoiceMatcher.kt",
+        "sha256": "025b9c22eedfa358b8fbb907be2374a75a3bce1ee823bd64aaf597085b299965"
+      },
+      {
+        "path": "core/src/main/kotlin/org/cassini/core/speakers/VoiceStaleness.kt",
+        "sha256": "389562fb2cb63c8e95456c89561849e8042be31e9a6a0d6817a53f7f014929df"
+      },
+      {
+        "path": "core/src/main/kotlin/org/cassini/core/speakers/VoiceprintSelection.kt",
+        "sha256": "b6ef4a52796283e97d3ece14077831401959b62a43c7912d69b92ee9e80e3c38"
+      },
+      {
+        "path": "core/src/test/kotlin/org/cassini/core/speakers/DefaultLabelsTest.kt",
+        "sha256": "ffbfb70d4921560156c5973802b42ac6e020d728436310e1b8642d59c36e7241"
+      },
+      {
+        "path": "core/src/test/kotlin/org/cassini/core/speakers/DiarizationTest.kt",
+        "sha256": "0d845dac7438496a4a22852611b1133af914823e3dde9b86b81bc04db6be1e25"
+      },
+      {
+        "path": "core/src/test/kotlin/org/cassini/core/speakers/NameMatchTest.kt",
+        "sha256": "2bc9b60345726bdec7c98e6b45dacbb8417cbcbba393a3412b2eb78812bac854"
+      },
+      {
+        "path": "core/src/test/kotlin/org/cassini/core/speakers/NoteVoiceCodecTest.kt",
+        "sha256": "31219216b4179597c66f2d469e5f342160972b81a01b7067b8ef35bc746cf168"
+      },
+      {
+        "path": "core/src/test/kotlin/org/cassini/core/speakers/SpeakerBudgetTest.kt",
+        "sha256": "547717d896bc89a781a74393efc4d493a0fc06fdcb093f87d7f9ce912949eb67"
+      },
+      {
+        "path": "core/src/test/kotlin/org/cassini/core/speakers/SpeakerStatsTest.kt",
+        "sha256": "804ee8eb008c5eb7f535a91f772c4d7da9efb4b973f0cb337bb6579064481540"
+      },
+      {
+        "path": "core/src/test/kotlin/org/cassini/core/speakers/SpeakerTintTest.kt",
+        "sha256": "65644756879686efde78ce1bb279db3d85fbbccc81b68a519a438bcae3fa7b6c"
+      },
+      {
+        "path": "core/src/test/kotlin/org/cassini/core/speakers/TurnHistoryTest.kt",
+        "sha256": "b3da389bdf564d65de59a91234ced45cc9299f92a36ed9eb03a02028a2ebd25d"
+      },
+      {
+        "path": "core/src/test/kotlin/org/cassini/core/speakers/VoiceClipCacheTest.kt",
+        "sha256": "8e242aadecea2193e1edcfff291160e85324985ed8fffb4f119e298445c150a0"
+      },
+      {
+        "path": "core/src/test/kotlin/org/cassini/core/speakers/VoiceCodecTest.kt",
+        "sha256": "1c1d0a1a9fa892c2c3c4cd90459b47712c16fa59aa075c3cec233b3e8b3e22f8"
+      },
+      {
+        "path": "core/src/test/kotlin/org/cassini/core/speakers/VoiceMatcherTest.kt",
+        "sha256": "878ebcdf8943506c1e45239bb1f021382aa516a64b82ff29b1bc14ebad0c7444"
+      },
+      {
+        "path": "core/src/test/kotlin/org/cassini/core/speakers/VoiceStalenessTest.kt",
+        "sha256": "5060e29e843223754ab97a20f964dbd0e56532426df170d12fc29cc9dd86654c"
+      },
+      {
+        "path": "core/src/test/kotlin/org/cassini/core/speakers/VoiceprintSelectionTest.kt",
+        "sha256": "7736c5609fcf6553c79ef4a1a4692c09611752f5b270e93303b90aa25572257c"
+      },
+      {
+        "path": "engine/src/main/kotlin/org/cassini/engine/speakers/SortformerStream.kt",
+        "sha256": "11f66046cc2bf15307e76a8c7bdce8de6bb550d51346166b78e78620dcf1dc2e"
+      },
+      {
+        "path": "engine/src/main/kotlin/org/cassini/engine/speakers/VoiceprintExtractor.kt",
+        "sha256": "fbad3f11d81353767ee81ca7e86420c90cbfe2fb5933bca4532b41b78dfa9a33"
+      },
+      {
+        "path": "engine/src/test/kotlin/org/cassini/engine/speakers/SortformerStreamTest.kt",
+        "sha256": "b9d7c64c36857cf9da411bfb73291794c5965ddb7336f2b125f8dc1e3c79c98f"
+      },
+      {
+        "path": "core/src/main/kotlin/org/cassini/core/format/Transcript.kt",
+        "sha256": "e48125ff93aeb3e0871af73730a1447e45c01ac36712d403062d50f56cb844c0"
+      }
+    ]
+  },
+  "numberTolerance": 1e-06,
+  "specialFloatStrings": [
+    "NaN",
+    "Infinity",
+    "-Infinity"
+  ],
+  "cases": [
+    {
+      "id": "VoiceMatcher.cosineOfNormalisedVectorsIsTheDotProduct",
+      "sourceTest": "VoiceMatcherTest.cosineOfNormalisedVectorsIsTheDotProduct",
+      "checks": [
+        {
+          "operation": "cosine",
+          "input": {
+            "a": {
+              "near": 0.8,
+              "other": 1,
+              "dim": 4
+            },
+            "b": {
+              "axis": 0,
+              "dim": 4
+            }
+          },
+          "expected": 0.8
+        },
+        {
+          "operation": "cosine",
+          "input": {
+            "a": {
+              "axis": 1,
+              "dim": 4
+            },
+            "b": {
+              "axis": 0,
+              "dim": 4
+            }
+          },
+          "expected": 0
+        }
+      ]
+    },
+    {
+      "id": "VoiceMatcher.scoreDecidesAutoSuggestionOrNothing",
+      "sourceTest": "VoiceMatcherTest.scoreDecidesAutoSuggestionOrNothing",
+      "checks": [
+        {
+          "operation": "match",
+          "input": {
+            "speakers": {
+              "s": {
+                "near": 0.8,
+                "other": 1,
+                "dim": 4
+              }
+            },
+            "voices": [
+              {
+                "id": "anna",
+                "name": "anna",
+                "model": "m",
+                "mean": {
+                  "axis": 0,
+                  "dim": 4
+                }
+              }
+            ],
+            "model": "m",
+            "thresholds": {
+              "auto": 0.72,
+              "suggest": 0.5,
+              "margin": 0.08
+            },
+            "excluded": {}
+          },
+          "expected": {
+            "s": {
+              "voiceId": "anna",
+              "state": "auto"
+            }
+          }
+        },
+        {
+          "operation": "match",
+          "input": {
+            "speakers": {
+              "s": {
+                "near": 0.6,
+                "other": 1,
+                "dim": 4
+              }
+            },
+            "voices": [
+              {
+                "id": "anna",
+                "name": "anna",
+                "model": "m",
+                "mean": {
+                  "axis": 0,
+                  "dim": 4
+                }
+              }
+            ],
+            "model": "m",
+            "thresholds": {
+              "auto": 0.72,
+              "suggest": 0.5,
+              "margin": 0.08
+            },
+            "excluded": {}
+          },
+          "expected": {
+            "s": {
+              "voiceId": "anna",
+              "state": "suggested"
+            }
+          }
+        },
+        {
+          "operation": "match",
+          "input": {
+            "speakers": {
+              "s": {
+                "near": 0.4,
+                "other": 1,
+                "dim": 4
+              }
+            },
+            "voices": [
+              {
+                "id": "anna",
+                "name": "anna",
+                "model": "m",
+                "mean": {
+                  "axis": 0,
+                  "dim": 4
+                }
+              }
+            ],
+            "model": "m",
+            "thresholds": {
+              "auto": 0.72,
+              "suggest": 0.5,
+              "margin": 0.08
+            },
+            "excluded": {}
+          },
+          "expected": {}
+        }
+      ]
+    },
+    {
+      "id": "VoiceMatcher.closeSecondPersonDemotesToSuggestion",
+      "sourceTest": "VoiceMatcherTest.closeSecondPersonDemotesToSuggestion",
+      "checks": [
+        {
+          "operation": "match",
+          "input": {
+            "speakers": {
+              "s": {
+                "near": 0.85,
+                "other": 1,
+                "dim": 4
+              }
+            },
+            "voices": [
+              {
+                "id": "anna",
+                "name": "anna",
+                "model": "m",
+                "mean": {
+                  "axis": 0,
+                  "dim": 4
+                }
+              },
+              {
+                "id": "bruno",
+                "name": "bruno",
+                "model": "m",
+                "mean": {
+                  "normalise": [
+                    0.9,
+                    0.1,
+                    0,
+                    0
+                  ]
+                }
+              }
+            ],
+            "model": "m",
+            "thresholds": {
+              "auto": 0.72,
+              "suggest": 0.5,
+              "margin": 0.08
+            },
+            "excluded": {}
+          },
+          "expected": {
+            "s": {
+              "voiceId": "bruno",
+              "state": "suggested"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "VoiceMatcher.onePersonNamesAtMostOneSpeaker",
+      "sourceTest": "VoiceMatcherTest.onePersonNamesAtMostOneSpeaker",
+      "checks": [
+        {
+          "operation": "match",
+          "input": {
+            "speakers": {
+              "a": {
+                "near": 0.9,
+                "other": 1,
+                "dim": 4
+              },
+              "b": {
+                "near": 0.88,
+                "other": 2,
+                "dim": 4
+              }
+            },
+            "voices": [
+              {
+                "id": "anna",
+                "name": "anna",
+                "model": "m",
+                "mean": {
+                  "axis": 0,
+                  "dim": 4
+                }
+              }
+            ],
+            "model": "m",
+            "thresholds": {
+              "auto": 0.72,
+              "suggest": 0.5,
+              "margin": 0.08
+            },
+            "excluded": {}
+          },
+          "expected": {
+            "a": {
+              "voiceId": "anna",
+              "state": "suggested"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "VoiceMatcher.secondSpeakerMayTakeAnotherPerson",
+      "sourceTest": "VoiceMatcherTest.secondSpeakerMayTakeAnotherPerson",
+      "checks": [
+        {
+          "operation": "match",
+          "input": {
+            "speakers": {
+              "a": {
+                "axis": 0,
+                "dim": 4
+              },
+              "b": {
+                "axis": 1,
+                "dim": 4
+              }
+            },
+            "voices": [
+              {
+                "id": "anna",
+                "name": "anna",
+                "model": "m",
+                "mean": {
+                  "axis": 0,
+                  "dim": 4
+                }
+              },
+              {
+                "id": "bruno",
+                "name": "bruno",
+                "model": "m",
+                "mean": {
+                  "axis": 1,
+                  "dim": 4
+                }
+              }
+            ],
+            "model": "m",
+            "thresholds": {
+              "auto": 0.72,
+              "suggest": 0.5,
+              "margin": 0.08
+            },
+            "excluded": {}
+          },
+          "expected": {
+            "a": {
+              "voiceId": "anna",
+              "state": "auto"
+            },
+            "b": {
+              "voiceId": "bruno",
+              "state": "auto"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "VoiceMatcher.voicesOfAnotherModelAreIgnored",
+      "sourceTest": "VoiceMatcherTest.voicesOfAnotherModelAreIgnored",
+      "checks": [
+        {
+          "operation": "match",
+          "input": {
+            "speakers": {
+              "s": {
+                "axis": 0,
+                "dim": 4
+              }
+            },
+            "voices": [
+              {
+                "id": "anna",
+                "name": "anna",
+                "model": "old",
+                "mean": {
+                  "axis": 0,
+                  "dim": 4
+                }
+              }
+            ],
+            "model": "m",
+            "thresholds": {
+              "auto": 0.72,
+              "suggest": 0.5,
+              "margin": 0.08
+            },
+            "excluded": {}
+          },
+          "expected": {}
+        }
+      ]
+    },
+    {
+      "id": "VoiceMatcher.anExcludedVoiceIsNeverMatchedToThatSpeaker",
+      "sourceTest": "VoiceMatcherTest.anExcludedVoiceIsNeverMatchedToThatSpeaker",
+      "checks": [
+        {
+          "operation": "match",
+          "input": {
+            "speakers": {
+              "s": {
+                "near": 0.95,
+                "other": 1,
+                "dim": 4
+              }
+            },
+            "voices": [
+              {
+                "id": "anna",
+                "name": "anna",
+                "model": "m",
+                "mean": {
+                  "axis": 0,
+                  "dim": 4
+                }
+              }
+            ],
+            "model": "m",
+            "thresholds": {
+              "auto": 0.72,
+              "suggest": 0.5,
+              "margin": 0.08
+            },
+            "excluded": {
+              "s": [
+                "anna"
+              ]
+            }
+          },
+          "expected": {}
+        }
+      ]
+    },
+    {
+      "id": "VoiceMatcher.anExclusionHoldsOnlyForItsOwnSpeaker",
+      "sourceTest": "VoiceMatcherTest.anExclusionHoldsOnlyForItsOwnSpeaker",
+      "checks": [
+        {
+          "operation": "match",
+          "input": {
+            "speakers": {
+              "a": {
+                "near": 0.8,
+                "other": 1,
+                "dim": 4
+              },
+              "b": {
+                "near": 0.95,
+                "other": 2,
+                "dim": 4
+              }
+            },
+            "voices": [
+              {
+                "id": "anna",
+                "name": "anna",
+                "model": "m",
+                "mean": {
+                  "axis": 0,
+                  "dim": 4
+                }
+              }
+            ],
+            "model": "m",
+            "thresholds": {
+              "auto": 0.72,
+              "suggest": 0.5,
+              "margin": 0.08
+            },
+            "excluded": {
+              "b": [
+                "anna"
+              ]
+            }
+          },
+          "expected": {
+            "a": {
+              "voiceId": "anna",
+              "state": "auto"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "VoiceMatcher.anExcludedPairIsNoRival",
+      "sourceTest": "VoiceMatcherTest.anExcludedPairIsNoRival",
+      "checks": [
+        {
+          "operation": "match",
+          "input": {
+            "speakers": {
+              "s": {
+                "near": 0.85,
+                "other": 1,
+                "dim": 4
+              }
+            },
+            "voices": [
+              {
+                "id": "anna",
+                "name": "anna",
+                "model": "m",
+                "mean": {
+                  "axis": 0,
+                  "dim": 4
+                }
+              },
+              {
+                "id": "bruno",
+                "name": "bruno",
+                "model": "m",
+                "mean": {
+                  "normalise": [
+                    0.9,
+                    0.1,
+                    0,
+                    0
+                  ]
+                }
+              }
+            ],
+            "model": "m",
+            "thresholds": {
+              "auto": 0.72,
+              "suggest": 0.5,
+              "margin": 0.08
+            },
+            "excluded": {}
+          },
+          "expected": {
+            "s": {
+              "voiceId": "bruno",
+              "state": "suggested"
+            }
+          }
+        },
+        {
+          "operation": "match",
+          "input": {
+            "speakers": {
+              "s": {
+                "near": 0.85,
+                "other": 1,
+                "dim": 4
+              }
+            },
+            "voices": [
+              {
+                "id": "anna",
+                "name": "anna",
+                "model": "m",
+                "mean": {
+                  "axis": 0,
+                  "dim": 4
+                }
+              },
+              {
+                "id": "bruno",
+                "name": "bruno",
+                "model": "m",
+                "mean": {
+                  "normalise": [
+                    0.9,
+                    0.1,
+                    0,
+                    0
+                  ]
+                }
+              }
+            ],
+            "model": "m",
+            "thresholds": {
+              "auto": 0.72,
+              "suggest": 0.5,
+              "margin": 0.08
+            },
+            "excluded": {
+              "s": [
+                "bruno"
+              ]
+            }
+          },
+          "expected": {
+            "s": {
+              "voiceId": "anna",
+              "state": "auto"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "VoiceMatcher.anEmptyExclusionChangesNothing",
+      "sourceTest": "VoiceMatcherTest.anEmptyExclusionChangesNothing",
+      "checks": [
+        {
+          "operation": "match",
+          "input": {
+            "speakers": {
+              "a": {
+                "near": 0.9,
+                "other": 2,
+                "dim": 4
+              },
+              "b": {
+                "near": 0.6,
+                "other": 3,
+                "dim": 4
+              }
+            },
+            "voices": [
+              {
+                "id": "anna",
+                "name": "anna",
+                "model": "m",
+                "mean": {
+                  "axis": 0,
+                  "dim": 4
+                }
+              },
+              {
+                "id": "bruno",
+                "name": "bruno",
+                "model": "m",
+                "mean": {
+                  "axis": 1,
+                  "dim": 4
+                }
+              }
+            ],
+            "model": "m",
+            "thresholds": {
+              "auto": 0.72,
+              "suggest": 0.5,
+              "margin": 0.08
+            },
+            "excluded": {}
+          },
+          "expected": {
+            "a": {
+              "voiceId": "anna",
+              "state": "auto"
+            }
+          }
+        },
+        {
+          "operation": "match",
+          "input": {
+            "speakers": {
+              "a": {
+                "near": 0.9,
+                "other": 2,
+                "dim": 4
+              },
+              "b": {
+                "near": 0.6,
+                "other": 3,
+                "dim": 4
+              }
+            },
+            "voices": [
+              {
+                "id": "anna",
+                "name": "anna",
+                "model": "m",
+                "mean": {
+                  "axis": 0,
+                  "dim": 4
+                }
+              },
+              {
+                "id": "bruno",
+                "name": "bruno",
+                "model": "m",
+                "mean": {
+                  "axis": 1,
+                  "dim": 4
+                }
+              }
+            ],
+            "model": "m",
+            "thresholds": {
+              "auto": 0.72,
+              "suggest": 0.5,
+              "margin": 0.08
+            },
+            "excluded": {
+              "a": [],
+              "x": [
+                "anna"
+              ]
+            }
+          },
+          "expected": {
+            "a": {
+              "voiceId": "anna",
+              "state": "auto"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "VoiceprintSelection.edgesAreTrimmedAndConsecutiveWordsFormOneRun",
+      "sourceTest": "VoiceprintSelectionTest.edgesAreTrimmedAndConsecutiveWordsFormOneRun",
+      "checks": [
+        {
+          "operation": "select",
+          "input": {
+            "turns": [
+              {
+                "startMs": 0,
+                "endMs": 7000,
+                "speaker": 0
+              }
+            ],
+            "words": [
+              {
+                "speaker": "spk_1",
+                "startMs": 1000,
+                "endMs": 3000,
+                "text": "a"
+              },
+              {
+                "speaker": "spk_1",
+                "startMs": 3100,
+                "endMs": 6000,
+                "text": "b"
+              }
+            ],
+            "sampleRate": 16000,
+            "totalSamples": 9600000
+          },
+          "expected": {
+            "spk_1": [
+              [
+                19200,
+                92800
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "VoiceprintSelection.anotherSpeakersTurnIsCutOut",
+      "sourceTest": "VoiceprintSelectionTest.anotherSpeakersTurnIsCutOut",
+      "checks": [
+        {
+          "operation": "select",
+          "input": {
+            "turns": [
+              {
+                "startMs": 0,
+                "endMs": 10000,
+                "speaker": 0
+              },
+              {
+                "startMs": 4000,
+                "endMs": 5000,
+                "speaker": 1
+              },
+              {
+                "startMs": 20000,
+                "endMs": 30000,
+                "speaker": 1
+              }
+            ],
+            "words": [
+              {
+                "speaker": "spk_1",
+                "startMs": 0,
+                "endMs": 10000,
+                "text": "a"
+              },
+              {
+                "speaker": "spk_2",
+                "startMs": 20000,
+                "endMs": 30000,
+                "text": "b"
+              }
+            ],
+            "sampleRate": 16000,
+            "totalSamples": 9600000
+          },
+          "expected": {
+            "spk_1": [
+              [
+                3200,
+                60800
+              ],
+              [
+                83200,
+                156800
+              ]
+            ],
+            "spk_2": [
+              [
+                323200,
+                476800
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "VoiceprintSelection.shortSegmentsAndQuietSpeakersAreDropped",
+      "sourceTest": "VoiceprintSelectionTest.shortSegmentsAndQuietSpeakersAreDropped",
+      "checks": [
+        {
+          "operation": "select",
+          "input": {
+            "turns": [
+              {
+                "startMs": 0,
+                "endMs": 1800,
+                "speaker": 0
+              },
+              {
+                "startMs": 2000,
+                "endMs": 8000,
+                "speaker": 1
+              },
+              {
+                "startMs": 9000,
+                "endMs": 12000,
+                "speaker": 0
+              }
+            ],
+            "words": [
+              {
+                "speaker": "spk_1",
+                "startMs": 0,
+                "endMs": 1800,
+                "text": "a"
+              },
+              {
+                "speaker": "spk_2",
+                "startMs": 2000,
+                "endMs": 8000,
+                "text": "b"
+              },
+              {
+                "speaker": "spk_1",
+                "startMs": 9000,
+                "endMs": 12000,
+                "text": "c"
+              }
+            ],
+            "sampleRate": 16000,
+            "totalSamples": 9600000
+          },
+          "expected": {
+            "spk_2": [
+              [
+                35200,
+                124800
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "VoiceprintSelection.longRunsAreSplitIntoBoundedWindows",
+      "sourceTest": "VoiceprintSelectionTest.longRunsAreSplitIntoBoundedWindows",
+      "checks": [
+        {
+          "operation": "select",
+          "input": {
+            "turns": [
+              {
+                "startMs": 0,
+                "endMs": 30000,
+                "speaker": 0
+              }
+            ],
+            "words": [
+              {
+                "speaker": "spk_1",
+                "startMs": 0,
+                "endMs": 30000,
+                "text": "a"
+              }
+            ],
+            "sampleRate": 16000,
+            "totalSamples": 9600000
+          },
+          "expected": {
+            "spk_1": [
+              [
+                3200,
+                161056
+              ],
+              [
+                161056,
+                318928
+              ],
+              [
+                318928,
+                476800
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "VoiceprintSelection.speechIsCappedAndDrawnFromEachThird",
+      "sourceTest": "VoiceprintSelectionTest.speechIsCappedAndDrawnFromEachThird",
+      "checks": [
+        {
+          "operation": "select",
+          "input": {
+            "turns": [
+              {
+                "startMs": 1000,
+                "endMs": 10000,
+                "speaker": 0
+              },
+              {
+                "startMs": 10100,
+                "endMs": 10200,
+                "speaker": 1
+              },
+              {
+                "startMs": 11000,
+                "endMs": 20000,
+                "speaker": 0
+              },
+              {
+                "startMs": 20100,
+                "endMs": 20200,
+                "speaker": 1
+              },
+              {
+                "startMs": 21000,
+                "endMs": 30000,
+                "speaker": 0
+              },
+              {
+                "startMs": 30100,
+                "endMs": 30200,
+                "speaker": 1
+              },
+              {
+                "startMs": 31000,
+                "endMs": 40000,
+                "speaker": 0
+              },
+              {
+                "startMs": 40100,
+                "endMs": 40200,
+                "speaker": 1
+              },
+              {
+                "startMs": 41000,
+                "endMs": 50000,
+                "speaker": 0
+              },
+              {
+                "startMs": 50100,
+                "endMs": 50200,
+                "speaker": 1
+              },
+              {
+                "startMs": 51000,
+                "endMs": 60000,
+                "speaker": 0
+              },
+              {
+                "startMs": 60100,
+                "endMs": 60200,
+                "speaker": 1
+              },
+              {
+                "startMs": 61000,
+                "endMs": 70000,
+                "speaker": 0
+              },
+              {
+                "startMs": 70100,
+                "endMs": 70200,
+                "speaker": 1
+              },
+              {
+                "startMs": 71000,
+                "endMs": 80000,
+                "speaker": 0
+              },
+              {
+                "startMs": 80100,
+                "endMs": 80200,
+                "speaker": 1
+              },
+              {
+                "startMs": 81000,
+                "endMs": 90000,
+                "speaker": 0
+              },
+              {
+                "startMs": 90100,
+                "endMs": 90200,
+                "speaker": 1
+              },
+              {
+                "startMs": 91000,
+                "endMs": 100000,
+                "speaker": 0
+              },
+              {
+                "startMs": 100100,
+                "endMs": 100200,
+                "speaker": 1
+              },
+              {
+                "startMs": 300000,
+                "endMs": 305000,
+                "speaker": 0
+              },
+              {
+                "startMs": 305100,
+                "endMs": 305200,
+                "speaker": 1
+              },
+              {
+                "startMs": 550000,
+                "endMs": 555000,
+                "speaker": 0
+              },
+              {
+                "startMs": 555100,
+                "endMs": 555200,
+                "speaker": 1
+              }
+            ],
+            "words": [
+              {
+                "speaker": "spk_1",
+                "startMs": 1000,
+                "endMs": 10000,
+                "text": "x"
+              },
+              {
+                "speaker": "spk_2",
+                "startMs": 10100,
+                "endMs": 10200,
+                "text": "y"
+              },
+              {
+                "speaker": "spk_1",
+                "startMs": 11000,
+                "endMs": 20000,
+                "text": "x"
+              },
+              {
+                "speaker": "spk_2",
+                "startMs": 20100,
+                "endMs": 20200,
+                "text": "y"
+              },
+              {
+                "speaker": "spk_1",
+                "startMs": 21000,
+                "endMs": 30000,
+                "text": "x"
+              },
+              {
+                "speaker": "spk_2",
+                "startMs": 30100,
+                "endMs": 30200,
+                "text": "y"
+              },
+              {
+                "speaker": "spk_1",
+                "startMs": 31000,
+                "endMs": 40000,
+                "text": "x"
+              },
+              {
+                "speaker": "spk_2",
+                "startMs": 40100,
+                "endMs": 40200,
+                "text": "y"
+              },
+              {
+                "speaker": "spk_1",
+                "startMs": 41000,
+                "endMs": 50000,
+                "text": "x"
+              },
+              {
+                "speaker": "spk_2",
+                "startMs": 50100,
+                "endMs": 50200,
+                "text": "y"
+              },
+              {
+                "speaker": "spk_1",
+                "startMs": 51000,
+                "endMs": 60000,
+                "text": "x"
+              },
+              {
+                "speaker": "spk_2",
+                "startMs": 60100,
+                "endMs": 60200,
+                "text": "y"
+              },
+              {
+                "speaker": "spk_1",
+                "startMs": 61000,
+                "endMs": 70000,
+                "text": "x"
+              },
+              {
+                "speaker": "spk_2",
+                "startMs": 70100,
+                "endMs": 70200,
+                "text": "y"
+              },
+              {
+                "speaker": "spk_1",
+                "startMs": 71000,
+                "endMs": 80000,
+                "text": "x"
+              },
+              {
+                "speaker": "spk_2",
+                "startMs": 80100,
+                "endMs": 80200,
+                "text": "y"
+              },
+              {
+                "speaker": "spk_1",
+                "startMs": 81000,
+                "endMs": 90000,
+                "text": "x"
+              },
+              {
+                "speaker": "spk_2",
+                "startMs": 90100,
+                "endMs": 90200,
+                "text": "y"
+              },
+              {
+                "speaker": "spk_1",
+                "startMs": 91000,
+                "endMs": 100000,
+                "text": "x"
+              },
+              {
+                "speaker": "spk_2",
+                "startMs": 100100,
+                "endMs": 100200,
+                "text": "y"
+              },
+              {
+                "speaker": "spk_1",
+                "startMs": 300000,
+                "endMs": 305000,
+                "text": "x"
+              },
+              {
+                "speaker": "spk_2",
+                "startMs": 305100,
+                "endMs": 305200,
+                "text": "y"
+              },
+              {
+                "speaker": "spk_1",
+                "startMs": 550000,
+                "endMs": 555000,
+                "text": "x"
+              },
+              {
+                "speaker": "spk_2",
+                "startMs": 555100,
+                "endMs": 555200,
+                "text": "y"
+              }
+            ],
+            "sampleRate": 16000,
+            "totalSamples": 9600000
+          },
+          "expected": {
+            "spk_1": [
+              [
+                19200,
+                156800
+              ],
+              [
+                179200,
+                316800
+              ],
+              [
+                339200,
+                476800
+              ],
+              [
+                499200,
+                636800
+              ],
+              [
+                4803200,
+                4876800
+              ],
+              [
+                8803200,
+                8876800
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "VoiceprintSelection.windowsStayInsideTheAudio",
+      "sourceTest": "VoiceprintSelectionTest.windowsStayInsideTheAudio",
+      "checks": [
+        {
+          "operation": "select",
+          "input": {
+            "turns": [
+              {
+                "startMs": 0,
+                "endMs": 9000,
+                "speaker": 0
+              }
+            ],
+            "words": [
+              {
+                "speaker": "spk_1",
+                "startMs": 0,
+                "endMs": 9000,
+                "text": "a"
+              }
+            ],
+            "sampleRate": 16000,
+            "totalSamples": 80000
+          },
+          "expected": {
+            "spk_1": [
+              [
+                3200,
+                80000
+              ]
+            ]
+          }
+        },
+        {
+          "operation": "select",
+          "input": {
+            "turns": [],
+            "words": [],
+            "sampleRate": 16000,
+            "totalSamples": 9600000
+          },
+          "expected": {}
+        }
+      ]
+    },
+    {
+      "id": "VoiceprintSelection.printsAreNormalisedAndCompared",
+      "sourceTest": "VoiceprintSelectionTest.printsAreNormalisedAndCompared",
+      "checks": [
+        {
+          "operation": "normalise",
+          "input": {
+            "vector": [
+              3,
+              4
+            ]
+          },
+          "expected": [
+            0.6,
+            0.8
+          ]
+        },
+        {
+          "operation": "cosine",
+          "input": {
+            "a": {
+              "normalise": [
+                3,
+                4
+              ]
+            },
+            "b": {
+              "normalise": [
+                3,
+                4
+              ]
+            }
+          },
+          "expected": 1
+        },
+        {
+          "operation": "cosine",
+          "input": {
+            "a": {
+              "normalise": [
+                3,
+                4
+              ]
+            },
+            "b": {
+              "normalise": [
+                -4,
+                3
+              ]
+            }
+          },
+          "expected": 0
+        },
+        {
+          "operation": "normalise",
+          "input": {
+            "vector": [
+              0,
+              0
+            ]
+          },
+          "expected": null
+        },
+        {
+          "operation": "normalise",
+          "input": {
+            "vector": [
+              "NaN",
+              1
+            ]
+          },
+          "expected": null
+        }
+      ]
+    },
+    {
+      "id": "VoiceCodec.voicesRoundTripThroughVersionOne",
+      "sourceTest": "VoiceCodecTest.voicesRoundTripThroughVersionOne",
+      "checks": [
+        {
+          "operation": "voiceRoundtrip",
+          "input": {
+            "name": "Anna",
+            "model": "m",
+            "embedding": [
+              3,
+              4,
+              0
+            ],
+            "seconds": 12.5,
+            "now": 100
+          },
+          "expected": {
+            "version": 1,
+            "idPrefix": "voice_",
+            "name": "Anna",
+            "model": "m",
+            "dim": 3,
+            "mean": [
+              0.6,
+              0.8,
+              0
+            ],
+            "count": 1,
+            "seconds": 12.5,
+            "createdAt": 100,
+            "updatedAt": 100
+          }
+        }
+      ]
+    },
+    {
+      "id": "VoiceCodec.anotherVersionIsRefusedWithItsNumber",
+      "sourceTest": "VoiceCodecTest.anotherVersionIsRefusedWithItsNumber",
+      "checks": [
+        {
+          "operation": "decodeVersion",
+          "input": {
+            "version": 2,
+            "voices": []
+          },
+          "expected": {
+            "unsupportedVersion": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "VoiceCodec.unenrolInvertsTheRunningMean",
+      "sourceTest": "VoiceCodecTest.unenrolInvertsTheRunningMean",
+      "checks": [
+        {
+          "operation": "enrolUnenrol",
+          "input": {
+            "first": {
+              "axis": 0,
+              "dim": 3
+            },
+            "second": {
+              "axis": 1,
+              "dim": 3
+            },
+            "undo": {
+              "axis": 1,
+              "dim": 3
+            }
+          },
+          "expected": {
+            "mean": [
+              1,
+              0,
+              0
+            ],
+            "count": 1,
+            "seconds": 2.0
+          }
+        },
+        {
+          "operation": "enrolUnenrol",
+          "input": {
+            "first": {
+              "axis": 0,
+              "dim": 3
+            },
+            "second": {
+              "axis": 1,
+              "dim": 3
+            },
+            "undo": [
+              0,
+              0
+            ]
+          },
+          "expected": null
+        }
+      ]
+    },
+    {
+      "id": "NameMatch.normaliseStripsAccentsCaseAndSpaces",
+      "sourceTest": "NameMatchTest.normaliseStripsAccentsCaseAndSpaces",
+      "checks": [
+        {
+          "operation": "normaliseName",
+          "input": {
+            "name": "Élodie"
+          },
+          "expected": "elodie"
+        },
+        {
+          "operation": "normaliseName",
+          "input": {
+            "name": "  ELODIE "
+          },
+          "expected": "elodie"
+        },
+        {
+          "operation": "normaliseName",
+          "input": {
+            "name": "José"
+          },
+          "expected": "jose"
+        },
+        {
+          "operation": "normaliseName",
+          "input": {
+            "name": "José"
+          },
+          "expected": "jose"
+        },
+        {
+          "operation": "normaliseName",
+          "input": {
+            "name": " Anna \t Ricci "
+          },
+          "expected": "anna ricci"
+        },
+        {
+          "operation": "normaliseName",
+          "input": {
+            "name": "Niccolò"
+          },
+          "expected": "niccolo"
+        },
+        {
+          "operation": "normaliseName",
+          "input": {
+            "name": "Straße"
+          },
+          "expected": "strasse"
+        },
+        {
+          "operation": "normaliseName",
+          "input": {
+            "name": "   "
+          },
+          "expected": ""
+        }
+      ]
+    },
+    {
+      "id": "NameMatch.anAccentedNameMatchesItsPlainForm",
+      "sourceTest": "NameMatchTest.anAccentedNameMatchesItsPlainForm",
+      "checks": [
+        {
+          "operation": "nameCandidates",
+          "input": {
+            "typed": "elodie",
+            "voices": [
+              {
+                "id": "e",
+                "name": "Élodie",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              }
+            ]
+          },
+          "expected": [
+            "e"
+          ]
+        },
+        {
+          "operation": "nameCandidates",
+          "input": {
+            "typed": " ÉLODIE",
+            "voices": [
+              {
+                "id": "e",
+                "name": "Élodie",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              }
+            ]
+          },
+          "expected": [
+            "e"
+          ]
+        },
+        {
+          "operation": "nameCandidates",
+          "input": {
+            "typed": "Élodie",
+            "voices": [
+              {
+                "id": "p",
+                "name": "Elodie",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              }
+            ]
+          },
+          "expected": [
+            "p"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "NameMatch.aFirstNameMatchesTheFullName",
+      "sourceTest": "NameMatchTest.aFirstNameMatchesTheFullName",
+      "checks": [
+        {
+          "operation": "nameCandidates",
+          "input": {
+            "typed": "Anna",
+            "voices": [
+              {
+                "id": "a",
+                "name": "Anna Ricci",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              }
+            ]
+          },
+          "expected": [
+            "a"
+          ]
+        },
+        {
+          "operation": "nameCandidates",
+          "input": {
+            "typed": "anna ricci",
+            "voices": [
+              {
+                "id": "a",
+                "name": "Anna Ricci",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              }
+            ]
+          },
+          "expected": [
+            "a"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "NameMatch.aFullNameDoesNotMatchAShorterSavedName",
+      "sourceTest": "NameMatchTest.aFullNameDoesNotMatchAShorterSavedName",
+      "checks": [
+        {
+          "operation": "nameCandidates",
+          "input": {
+            "typed": "Anna Ricci",
+            "voices": [
+              {
+                "id": "a",
+                "name": "Anna",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              }
+            ]
+          },
+          "expected": []
+        },
+        {
+          "operation": "nameCandidates",
+          "input": {
+            "typed": "Anna",
+            "voices": [
+              {
+                "id": "a",
+                "name": "Anna",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              }
+            ]
+          },
+          "expected": [
+            "a"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "NameMatch.aPartOfAWordOrALaterWordIsNoMatch",
+      "sourceTest": "NameMatchTest.aPartOfAWordOrALaterWordIsNoMatch",
+      "checks": [
+        {
+          "operation": "nameCandidates",
+          "input": {
+            "typed": "Anna",
+            "voices": [
+              {
+                "id": "a",
+                "name": "Annalisa",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "b",
+                "name": "Maria Anna",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "c",
+                "name": "Ricci Anna",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              }
+            ]
+          },
+          "expected": []
+        },
+        {
+          "operation": "nameCandidates",
+          "input": {
+            "typed": "  ",
+            "voices": [
+              {
+                "id": "a",
+                "name": "Annalisa",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "b",
+                "name": "Maria Anna",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "c",
+                "name": "Ricci Anna",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              }
+            ]
+          },
+          "expected": []
+        }
+      ]
+    },
+    {
+      "id": "NameMatch.theHighestScoreIsPicked",
+      "sourceTest": "NameMatchTest.theHighestScoreIsPicked",
+      "checks": [
+        {
+          "operation": "namePick",
+          "input": {
+            "typed": "Anna",
+            "voices": [
+              {
+                "id": "b",
+                "name": "Anna Bianchi",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "r",
+                "name": "Anna Ricci",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              }
+            ],
+            "scores": {
+              "r": 0.61,
+              "b": 0.4
+            }
+          },
+          "expected": "r"
+        }
+      ]
+    },
+    {
+      "id": "NameMatch.aTieIsPickedAlphabetically",
+      "sourceTest": "NameMatchTest.aTieIsPickedAlphabetically",
+      "checks": [
+        {
+          "operation": "namePick",
+          "input": {
+            "typed": "Anna",
+            "voices": [
+              {
+                "id": "r",
+                "name": "Anna Ricci",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "b",
+                "name": "Anna Bianchi",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              }
+            ],
+            "scores": {
+              "r": 0.5,
+              "b": 0.5
+            }
+          },
+          "expected": "b"
+        },
+        {
+          "operation": "namePick",
+          "input": {
+            "typed": "Anna",
+            "voices": [
+              {
+                "id": "r",
+                "name": "Anna Ricci",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "b",
+                "name": "Anna Bianchi",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              }
+            ],
+            "scores": {}
+          },
+          "expected": "b"
+        },
+        {
+          "operation": "namePick",
+          "input": {
+            "typed": "elodie",
+            "voices": [
+              {
+                "id": "m",
+                "name": "Elodie Zanetti",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "e",
+                "name": "Élodie Martin",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              }
+            ],
+            "scores": {}
+          },
+          "expected": "e"
+        }
+      ]
+    },
+    {
+      "id": "NameMatch.aScoredCandidateBeatsAnUnscoredOne",
+      "sourceTest": "NameMatchTest.aScoredCandidateBeatsAnUnscoredOne",
+      "checks": [
+        {
+          "operation": "namePick",
+          "input": {
+            "typed": "Anna",
+            "voices": [
+              {
+                "id": "b",
+                "name": "Anna Bianchi",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "r",
+                "name": "Anna Ricci",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              }
+            ],
+            "scores": {
+              "r": 0.1
+            }
+          },
+          "expected": "r"
+        }
+      ]
+    },
+    {
+      "id": "NameMatch.noCandidateNoPick",
+      "sourceTest": "NameMatchTest.noCandidateNoPick",
+      "checks": [
+        {
+          "operation": "namePick",
+          "input": {
+            "typed": "Luca",
+            "voices": [
+              {
+                "id": "a",
+                "name": "Anna",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              }
+            ],
+            "scores": {}
+          },
+          "expected": null
+        }
+      ]
+    },
+    {
+      "id": "NameMatch.rankByScoreThenNameWithStaleVoicesLast",
+      "sourceTest": "NameMatchTest.rankByScoreThenNameWithStaleVoicesLast",
+      "checks": [
+        {
+          "operation": "rank",
+          "input": {
+            "print": {
+              "axis": 0,
+              "dim": 512
+            },
+            "voices": [
+              {
+                "id": "old",
+                "name": "Zeno",
+                "model": "0000000000000000000000000000000000000000000000000000000000000000",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "low",
+                "name": "Bruno",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "near": 0.3,
+                  "other": 2,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "top",
+                "name": "Paolo",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "near": 0.7,
+                  "other": 1,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "tie2",
+                "name": "Carla",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "near": 0.3,
+                  "other": 3,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "old2",
+                "name": "Aldo",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 192
+                }
+              }
+            ],
+            "suggest": 0.5,
+            "pinnedModel": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+            "dimension": 512
+          },
+          "expected": [
+            {
+              "id": "top",
+              "score": 0.7,
+              "stale": false,
+              "likely": true
+            },
+            {
+              "id": "low",
+              "score": 0.3,
+              "stale": false,
+              "likely": false
+            },
+            {
+              "id": "tie2",
+              "score": 0.3,
+              "stale": false,
+              "likely": false
+            },
+            {
+              "id": "old2",
+              "score": null,
+              "stale": true,
+              "likely": false
+            },
+            {
+              "id": "old",
+              "score": null,
+              "stale": true,
+              "likely": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "NameMatch.likelyNeedsTheSuggestThreshold",
+      "sourceTest": "NameMatchTest.likelyNeedsTheSuggestThreshold",
+      "checks": [
+        {
+          "operation": "rank",
+          "input": {
+            "print": {
+              "axis": 0,
+              "dim": 512
+            },
+            "voices": [
+              {
+                "id": "a",
+                "name": "Anna",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "near": 0.5,
+                  "other": 1,
+                  "dim": 512
+                }
+              }
+            ],
+            "suggest": 0.5,
+            "pinnedModel": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+            "dimension": 512
+          },
+          "expected": [
+            {
+              "id": "a",
+              "score": 0.5,
+              "stale": false,
+              "likely": true
+            }
+          ]
+        },
+        {
+          "operation": "rank",
+          "input": {
+            "print": {
+              "axis": 0,
+              "dim": 512
+            },
+            "voices": [
+              {
+                "id": "a",
+                "name": "Anna",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "near": 0.49,
+                  "other": 1,
+                  "dim": 512
+                }
+              }
+            ],
+            "suggest": 0.5,
+            "pinnedModel": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+            "dimension": 512
+          },
+          "expected": [
+            {
+              "id": "a",
+              "score": 0.49,
+              "stale": false,
+              "likely": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "NameMatch.atMostOneRowIsLikely",
+      "sourceTest": "NameMatchTest.atMostOneRowIsLikely",
+      "checks": [
+        {
+          "operation": "rank",
+          "input": {
+            "print": {
+              "axis": 0,
+              "dim": 512
+            },
+            "voices": [
+              {
+                "id": "a",
+                "name": "Anna",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "near": 0.9,
+                  "other": 1,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "b",
+                "name": "Bruno",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "near": 0.8,
+                  "other": 2,
+                  "dim": 512
+                }
+              }
+            ],
+            "suggest": 0.5,
+            "pinnedModel": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+            "dimension": 512
+          },
+          "expected": [
+            {
+              "id": "a",
+              "score": 0.9,
+              "stale": false,
+              "likely": true
+            },
+            {
+              "id": "b",
+              "score": 0.8,
+              "stale": false,
+              "likely": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "NameMatch.withoutAPrintTheListIsAlphabeticalAndNothingIsLikely",
+      "sourceTest": "NameMatchTest.withoutAPrintTheListIsAlphabeticalAndNothingIsLikely",
+      "checks": [
+        {
+          "operation": "rank",
+          "input": {
+            "print": null,
+            "voices": [
+              {
+                "id": "p",
+                "name": "paolo",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "s",
+                "name": "Zeno",
+                "model": "x",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "e",
+                "name": "Élodie",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              },
+              {
+                "id": "a",
+                "name": "Anna",
+                "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                "mean": {
+                  "axis": 0,
+                  "dim": 512
+                }
+              }
+            ],
+            "suggest": 0.5,
+            "pinnedModel": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+            "dimension": 512
+          },
+          "expected": [
+            {
+              "id": "a",
+              "score": null,
+              "stale": false,
+              "likely": false
+            },
+            {
+              "id": "e",
+              "score": null,
+              "stale": false,
+              "likely": false
+            },
+            {
+              "id": "p",
+              "score": null,
+              "stale": false,
+              "likely": false
+            },
+            {
+              "id": "s",
+              "score": null,
+              "stale": true,
+              "likely": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "NameMatch.noVoicesNoRows",
+      "sourceTest": "NameMatchTest.noVoicesNoRows",
+      "checks": [
+        {
+          "operation": "rank",
+          "input": {
+            "print": {
+              "axis": 0,
+              "dim": 512
+            },
+            "voices": [],
+            "suggest": 0.5,
+            "pinnedModel": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+            "dimension": 512
+          },
+          "expected": []
+        }
+      ]
+    },
+    {
+      "id": "VoiceStaleness.aVoiceOfThePinnedModelAndDimensionIsCurrent",
+      "sourceTest": "VoiceStalenessTest.aVoiceOfThePinnedModelAndDimensionIsCurrent",
+      "checks": [
+        {
+          "operation": "stale",
+          "input": {
+            "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+            "dimension": 512,
+            "pinnedModel": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+            "pinnedDimension": 512
+          },
+          "expected": false
+        }
+      ]
+    },
+    {
+      "id": "VoiceStaleness.anotherModelIsStale",
+      "sourceTest": "VoiceStalenessTest.anotherModelIsStale",
+      "checks": [
+        {
+          "operation": "stale",
+          "input": {
+            "model": "0000000000000000000000000000000000000000000000000000000000000000",
+            "dimension": 512,
+            "pinnedModel": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+            "pinnedDimension": 512
+          },
+          "expected": true
+        }
+      ]
+    },
+    {
+      "id": "VoiceStaleness.anotherDimensionIsStale",
+      "sourceTest": "VoiceStalenessTest.anotherDimensionIsStale",
+      "checks": [
+        {
+          "operation": "stale",
+          "input": {
+            "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+            "dimension": 192,
+            "pinnedModel": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+            "pinnedDimension": 512
+          },
+          "expected": true
+        },
+        {
+          "operation": "stale",
+          "input": {
+            "model": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+            "dimension": 513,
+            "pinnedModel": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+            "pinnedDimension": 512
+          },
+          "expected": true
+        }
+      ]
+    },
+    {
+      "id": "VoiceStaleness.thePinnedDimensionIs512",
+      "sourceTest": "VoiceStalenessTest.thePinnedDimensionIs512",
+      "checks": [
+        {
+          "operation": "dimension",
+          "input": {},
+          "expected": 512
+        }
+      ]
+    }
+  ]
+}

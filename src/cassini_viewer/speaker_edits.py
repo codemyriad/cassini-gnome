@@ -39,6 +39,10 @@ def save_name(directory, identifier, value, *, scanner=None):
         speakers = {s["id"]: dict(s) for s in metadata["speakers"]}
         entry = speakers.setdefault(identifier, dict(id=identifier, colourIndex=visible[identifier].colour_index))
         entry.update(name=value, provenance="user" if value is not None else "unnamed")
+        if value is None:
+            entry["nameCleared"] = True
+        else:
+            entry.pop("nameCleared", None)
         return update_metadata(meeting.directory, speakers=list(speakers.values()))
 
 
