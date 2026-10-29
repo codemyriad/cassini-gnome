@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Two real sandbox launches retain PCM in a private, localized XDG Music folder."""
+"""Real sandbox restarts retain PCM with localized, absent, disabled or revoked Music."""
 
 import argparse
 import json
@@ -50,54 +50,65 @@ assert {t["kind"] for t in manifest["tracks"]} == {"microphone","system"}
 assert all(t["frames"] == 9600 for t in manifest["tracks"])
 print(json.dumps({"library":str(root),"folder":folder.name,"sha256":{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.iterdir()}}))
 """
-with tempfile.TemporaryDirectory(prefix="cassini-flatpak-persistence-") as temporary:
-    private = Path(temporary)
-    config, home, music = (private / name for name in ("config", "home", "Musica"))
-    for directory in (config, home, music):
-        directory.mkdir()
-    (config / "user-dirs.dirs").write_text(f'XDG_MUSIC_DIR="{music}"\n')
-    env = dict(
-        os.environ,
-        HOME=str(home),
-        XDG_CONFIG_HOME=str(config),
-        XDG_DATA_HOME=str(private / "data"),
-        XDG_CACHE_HOME=str(private / "cache"),
-        FLATPAK_USER_DIR=repository,
-    )
-    env.pop("CASSINI_LIBRARY_DIR", None)
-    command = [
-        "flatpak",
-        "run",
-        "--user",
-        "--command=python3",
-        "--unshare=network",
-        "--unshare=ipc",
-        "--nosocket=wayland",
-        "--nosocket=x11",
-        "--nosocket=fallback-x11",
-        "--nosocket=pulseaudio",
-        "--no-documents-portal",
-    ]
-    if args.grant_for_local_proof:
-        command.append("--filesystem=xdg-music/Cassini:create")
-    if args.modules != Path("/app/share/cassini-viewer"):
-        command.append(f"--filesystem={args.modules.resolve()}:ro")
-    command += [args.application, "-I", "-c", inside, str(args.modules), str(music / "Cassini")]
-    reports = [
-        json.loads(subprocess.check_output(command + [phase], env=env, text=True, timeout=20))
-        for phase in ("write", "read")
-    ]
-    assert reports[0] == reports[1], "Restart lost or changed the Library's PCM/manifest bytes"
-    assert (music / "Cassini" / reports[0]["folder"] / "session.json").is_file()
-    # HOME remains a private fixture. The real user's Library is never opened.
-    result = dict(
-        installedManifestScope=scoped,
-        developmentGrant=args.grant_for_local_proof,
-        separateLaunches=2,
-        localizedMusic=True,
-        pcmAndManifestPreserved=True,
-        **reports[1],
-    )
+results = []
+for mode in ("localized-music", "unconfigured-music", "disabled-music", "revoked-music"):
+    # Keep HOME under home: Flatpak may bind /var/tmp, which masks this bug.
+    with tempfile.TemporaryDirectory(prefix="cassini-flatpak-persistence-", dir=Path.home()) as temporary:
+        private = Path(temporary)
+        config, home, music = (private / name for name in ("config", "home", "Musica"))
+        for directory in (config, home, music):
+            directory.mkdir()
+        if mode != "unconfigured-music":
+            configured = "$HOME" if mode == "disabled-music" else str(music)
+            (config / "user-dirs.dirs").write_text(f'XDG_MUSIC_DIR="{configured}"\n')
+        env = dict(
+            os.environ,
+            HOME=str(home),
+            XDG_CONFIG_HOME=str(config),
+            XDG_DATA_HOME=str(private / "data"),
+            XDG_CACHE_HOME=str(private / "cache"),
+            FLATPAK_USER_DIR=repository,
+        )
+        env.pop("CASSINI_LIBRARY_DIR", None)
+        command = [
+            "flatpak",
+            "run",
+            "--user",
+            "--command=python3",
+            "--unshare=network",
+            "--unshare=ipc",
+            "--nosocket=wayland",
+            "--nosocket=x11",
+            "--nosocket=fallback-x11",
+            "--nosocket=pulseaudio",
+            "--no-documents-portal",
+        ]
+        if args.grant_for_local_proof:
+            command.append("--filesystem=xdg-music/Cassini:create")
+        if mode == "revoked-music":
+            command.append("--nofilesystem=xdg-music/Cassini")
+        if args.modules != Path("/app/share/cassini-viewer"):
+            command.append(f"--filesystem={args.modules.resolve()}:ro")
+        expected = (
+            music / "Cassini"
+            if mode == "localized-music"
+            else home / ".var/app" / args.application / "data/cassini/Library"
+        )
+        command += [args.application, "-I", "-c", inside, str(args.modules), str(expected)]
+        reports = [
+            json.loads(subprocess.check_output(command + [phase], env=env, text=True, timeout=20))
+            for phase in ("write", "read")
+        ]
+        assert reports[0] == reports[1], "Restart lost or changed the Library's PCM/manifest bytes"
+        assert (expected / reports[0]["folder"] / "session.json").is_file()
+        # HOME remains a private fixture. The real user's Library is never opened.
+        results.append(dict(mode=mode, separateLaunches=2, pcmAndManifestPreserved=True, **reports[1]))
+result = dict(
+    installedManifestScope=scoped,
+    installedApplicationModules=args.modules == Path("/app/share/cassini-viewer"),
+    developmentGrant=args.grant_for_local_proof,
+    cases=results,
+)
 args.output.parent.mkdir(parents=True, exist_ok=True)
 args.output.write_text(json.dumps(result, indent=2) + "\n")
 print(json.dumps(result))
