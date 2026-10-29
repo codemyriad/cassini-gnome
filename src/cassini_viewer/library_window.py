@@ -43,6 +43,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.recording_page = None
         self._external_meeting = False
         self.export_dialog = None
+        self.recording_details_dialog = None
         self._pending_selection = None
         self._opening_files = 0
         self._list_signature = None
@@ -91,6 +92,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             ("back-library", self.back_to_library),
             ("search", self.toggle_search),
             ("export", self.show_export),
+            ("recording-details", self.show_recording_details),
             ("undo-speaker-merge", lambda *_: self.meeting_page.undo_speaker_merge() if self.meeting_page else None),
             ("play-pause", self._play_selected),
             ("skip-back", lambda *_: self.player.skip(-10000)),
@@ -106,6 +108,16 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def toast(self, message):
         self.toasts.add_toast(Adw.Toast(title=GLib.markup_escape_text(message)))
+
+    def show_recording_details(self):
+        from .capture_details_dialog import RecordingDetailsDialog
+
+        page = self.recording_page or self.meeting_page
+        meeting = page.meeting if page else self.selected
+        if meeting is not None:
+            if not self.recording_details_dialog or self.recording_details_dialog.closed:
+                self.recording_details_dialog = RecordingDetailsDialog(self, meeting)
+            self.recording_details_dialog.present(self)
 
     def _drop_files(self, _target, files, _x, _y):
         for file in files.get_files():
@@ -1035,6 +1047,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         if self.get_application().confirm_capture_close(self):
             return True
         self.get_application().window_closing(self)
+        if self.recording_details_dialog and not self.recording_details_dialog.closed:
+            self.recording_details_dialog.force_close()
         if self.export_dialog and not self.export_dialog.closed:
             self.export_dialog.cancel()
         if self.recording_page:

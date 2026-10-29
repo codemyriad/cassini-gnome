@@ -218,3 +218,7 @@
   background-color: alpha(@warning_bg_color, 0.12);
   border: 1px solid alpha(@warning_color, 0.35);
 }
+.details-side { padding: 12px; border: 1px solid alpha(currentColor, 0.15); border-radius: 12px; }
+.details-span { padding: 6px 0; }
+.details-marker { background: @accent_bg_color; border-radius: 3px; }
+.details-time { font-variant-numeric: tabular-nums; opacity: 0.75; }
