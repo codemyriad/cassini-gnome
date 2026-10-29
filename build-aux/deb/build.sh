@@ -20,8 +20,8 @@ fi
 # carries the x86_64 writing-down engine, so it is amd64 only.
 DEB=cassini-viewer_${DEB_VERSION}_amd64.deb
 # Each base gets its own file name in dist/ and in the release:
-# ubuntu:26.04 -> cassini-viewer_0.2.0~ubuntu26.04_amd64.deb,
-# debian:testing -> cassini-viewer_0.2.0~debian-testing_amd64.deb.
+# ubuntu:26.04 -> cassini-viewer_0.3.0~ubuntu26.04_amd64.deb,
+# debian:testing -> cassini-viewer_0.3.0~debian-testing_amd64.deb.
 BASE_TAG=$(echo "${BASE##*/}" | sed 's/:\([0-9]\)/\1/; s/[:@]/-/g')
 OUT=cassini-viewer_${DEB_VERSION}~${BASE_TAG}_amd64.deb
 TAG=cassini-viewer-deb:$(image_slug "$BASE")
@@ -46,11 +46,12 @@ container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" -e DEB="$DEB" -e OUT="
   apt-get install -y --no-install-recommends "../$DEB"
   cassini-viewer --help >/dev/null
   python3 -I /in/build-aux/smoke-installed.py
+  python3 -I /in/build-aux/ci/validate_installed.py "$1"
   cp "../$DEB" "/out/$OUT"
   # Docker writes as root; hand the file back to the owner of dist/.
   # Rootless podman already maps root to the caller, so this is a no-op there.
   chown "$(stat -c %u:%g /out)" "/out/$OUT" 2>/dev/null || true
-'
+' sh "$VERSION"
 
 # The build container has every Build-Depends installed, which can hide a
 # missing Depends; install the package in a fresh container, then check it

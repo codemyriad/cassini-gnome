@@ -69,6 +69,19 @@
   </screenshots>
 
   <releases>
+    <release version="0.3.0" date="2026-10-29">
+      <description>
+        <p>Keep recordings and received meetings in the Library, follow their transcripts,
+        search across meetings, and import or export audio and transcripts.</p>
+        <ul>
+          <li>Record browser meetings independently, choose what is recorded, and set up
+          the companion in native packages or Flatpak</li>
+          <li>Write meetings down locally with bundled Whistle or optional Parakeet Ultra</li>
+          <li>Tell speakers apart, name and merge speakers, and remember saved voices locally</li>
+          <li>Keep audio aligned through input interruptions without adding silence for gradual clock drift</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-10-27">
       <description>
         <p>Record meetings: the microphone and desktop audio, and browser meetings source by source

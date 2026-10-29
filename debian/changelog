@@ -1,3 +1,14 @@
+cassini-viewer (0.3.0) UNRELEASED; urgency=medium
+
+  * Add the meeting Library, import, export and search across meetings.
+  * Record independent browser meetings, choose sources and support the
+    companion through the Flatpak host bridge.
+  * Bundle offline writing down and offer optional Parakeet Ultra,
+    speaker separation and saved voices.
+  * Preserve native input gaps without accumulating device-clock drift.
+
+ -- Silvio Tomatis <silviot@gmail.com>  Thu, 29 Oct 2026 05:24:51 +0100
+
 cassini-viewer (0.2.0) unstable; urgency=medium
 
   * Record meetings: microphone and desktop audio, and browser meetings
