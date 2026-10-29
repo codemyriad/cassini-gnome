@@ -522,6 +522,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                 received=meeting.origin == "received",
             ),
             meeting.speakers,
+            tuple(self.get_application().voice_store.has_match(meeting.directory, s.id) for s in meeting.speakers),
             meeting.preview_turns,
             meeting.has_audio,
             meeting.legacy_transcript_file,
@@ -694,7 +695,11 @@ class LibraryWindow(Adw.ApplicationWindow):
     def _speaker(self, speaker, *, chip=False):
         box = Gtk.Box(spacing=6, css_classes=["speaker-chip"] if chip else [])
         box.append(label(speaker.name, "speaker-name"))
-        if speaker.provenance == "recognised":
+        if (
+            speaker.provenance == "recognised"
+            and self.selected
+            and self.get_application().voice_store.has_match(self.selected.directory, speaker.id)
+        ):
             tag = label(text("common.autoTag"), "auto-tag", tooltip_text=text("common.autoTag.tooltip"))
             tag.update_property([Gtk.AccessibleProperty.DESCRIPTION], [text("common.autoTag.tooltip")])
             box.append(tag)

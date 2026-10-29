@@ -10,8 +10,13 @@ from gi.repository import Adw, Gio, GLib, Gtk
 from . import speaker_edits, ux_formats
 from .meeting_text import COLOURS, DARK_COLOURS
 from .strings import text
+from .voices_logic import name_key, pick_name, ranked
 
 LOG = logging.getLogger(__name__)
+
+
+class VoiceWriteError(OSError):
+    pass
 
 
 class SpeakersDialog(Adw.Dialog):
@@ -23,16 +28,29 @@ class SpeakersDialog(Adw.Dialog):
         self._sample_position = None
         self.future = self.retry = None
         self.timer = 0
+        self.voices_loaded = False
+        self.voice_data = None
+        self.voice_state = dict(voices=[], readOnly=False)
+        self.chosen_voice = None
+        self.declined_duplicate = None
+        self.candidate = None
         self.connect("closed", self._closed)
         content = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
-            spacing=20,
-            margin_top=24,
-            margin_bottom=20,
+            spacing=8,
+            margin_top=20,
+            margin_bottom=16,
             margin_start=24,
             margin_end=24,
         )
-        self.set_child(content)
+        self.set_child(
+            Gtk.ScrolledWindow(
+                child=content,
+                hscrollbar_policy=Gtk.PolicyType.NEVER,
+                propagate_natural_height=True,
+                max_content_height=660,
+            )
+        )
         header = Gtk.Box(spacing=12)
         self.avatar = Gtk.Label(css_classes=["speaker-avatar"])
         header.append(self.avatar)
@@ -61,6 +79,39 @@ class SpeakersDialog(Adw.Dialog):
         field.append(name)
         field.append(self.entry)
         content.append(field)
+        self.voices_heading = Gtk.Label(
+            label=text("speakers.savedVoices.heading"), xalign=0, css_classes=["small", "heading"], visible=False
+        )
+        content.append(self.voices_heading)
+        self.voices_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"], visible=False)
+        self.voices_scroll = Gtk.ScrolledWindow(
+            child=self.voices_list,
+            hscrollbar_policy=Gtk.PolicyType.NEVER,
+            propagate_natural_height=True,
+            max_content_height=160,
+            visible=False,
+        )
+        content.append(self.voices_scroll)
+        self.duplicate = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=8, visible=False, css_classes=["speaker-duplicate"]
+        )
+        self.duplicate_title = Gtk.Label(xalign=0, wrap=True, css_classes=["heading"])
+        self.duplicate.append(self.duplicate_title)
+        self.duplicate.append(Gtk.Label(label=text("speakers.duplicate.question"), xalign=0))
+        answers = Gtk.Box(spacing=8)
+        self.same_person = Gtk.Button(label=text("speakers.duplicate.samePerson"))
+        self.someone_else = Gtk.Button(label=text("speakers.duplicate.someoneElse"))
+        self.same_person.connect("clicked", lambda *_: self._answer_duplicate(True))
+        self.someone_else.connect("clicked", lambda *_: self._answer_duplicate(False))
+        answers.append(self.same_person)
+        answers.append(self.someone_else)
+        self.duplicate.append(answers)
+        content.append(self.duplicate)
+        self.remember = Gtk.CheckButton(label=text("speakers.rememberVoice"), active=True, sensitive=False)
+        self.remember.connect("toggled", self._remember_changed)
+        content.append(self.remember)
+        self.remember_description = Gtk.Label(xalign=0, wrap=True, css_classes=["caption", "dim-label"])
+        content.append(self.remember_description)
         self.error = Gtk.Label(
             label=text("speakers.changeFailed"), xalign=0, wrap=True, visible=False, css_classes=["warning"]
         )
@@ -91,11 +142,13 @@ class SpeakersDialog(Adw.Dialog):
         value = raw.get("name")
         if value is None and selected.provenance != "unnamed" and not re.fullmatch(r"Speaker \d+", selected.name):
             value = selected.name
-        self.entry.set_text(value or "")
+        self.initial_name = value or ""
+        self.entry.set_text(self.initial_name)
         self.entry.connect("changed", self._changed)
         self._validate()
         self.set_default_widget(self.save)
         self.timer = GLib.timeout_add(50, self._tick)
+        self._load_voices()
 
     def update(self, meeting):
         self.meeting = meeting
@@ -117,7 +170,90 @@ class SpeakersDialog(Adw.Dialog):
                 self.merge_menu.append_item(item)
         self.merge.set_sensitive(not self.busy and len(meeting.speakers) > 1)
 
+    def _load_voices(self):
+        def load():
+            store = self.window.get_application().voice_store
+            state = store.refresh()
+            if state["readOnly"]:
+                return state, None
+            cache = store.meeting(self.meeting.directory)
+            return state, cache["speakers"].get(self.identifier)
+
+        future = self.window.monitor._executor.submit(load)
+        future.add_done_callback(lambda f: GLib.idle_add(self._voices_loaded, f))
+
+    def _voices_loaded(self, future):
+        try:
+            state, item = future.result()
+        except CancelledError:
+            return False
+        except (OSError, ValueError):
+            LOG.exception("Could not load private speaker print")
+            state, item = dict(voices=[], readOnly=False), None
+        if self.closed:
+            return False
+        self.voices_loaded = True
+        self.voice_state, self.voice_data = state, item
+        old = (item or {}).get("match", {})
+        voice = next((v for v in state["voices"] if v["id"] == old.get("voiceId")), None)
+        if voice and name_key(voice["name"]) == name_key(self.initial_name) == name_key(self.entry.get_text()):
+            self.chosen_voice = voice["id"]
+        self._voice_rows()
+        if state["voices"]:
+            self.set_content_height(660)
+        self._validate()
+        return False
+
+    def _voice_rows(self):
+        self.voices_list.remove_all()
+        rejected = set((self.voice_data or {}).get("rejected", []))
+        rows = ranked(
+            self.voice_data["embedding"] if self.voice_data else None,
+            [v for v in self.voice_state["voices"] if v["id"] not in rejected],
+        )
+        for value in rows:
+            voice = value["voice"]
+            if voice["id"] in rejected:
+                continue
+            row = Adw.ActionRow(title=voice["name"], use_markup=False, activatable=True)
+            if value["stale"]:
+                row.set_subtitle(text("savedVoices.row.stale"))
+            if value["likely"]:
+                row.add_suffix(Gtk.Label(label=text("speakers.savedVoices.likely"), css_classes=["success", "caption"]))
+            row.connect("activated", lambda _row, v=voice: self._pick_voice(v))
+            self.voices_list.append(row)
+        visible = bool(rows)
+        self.voices_heading.set_visible(visible)
+        self.voices_list.set_visible(visible)
+        self.voices_scroll.set_visible(visible)
+
+    def _pick_voice(self, voice):
+        if self.busy:
+            return
+        self.entry.set_text(voice["name"])
+        self.chosen_voice = voice["id"]
+        self._validate()
+
+    def _answer_duplicate(self, same):
+        if self.candidate is None:
+            return
+        if same:
+            self.chosen_voice = self.candidate["id"]
+            self.entry.set_text(self.candidate["name"])
+            self.chosen_voice = self.candidate["id"]
+        else:
+            self.declined_duplicate = name_key(self.entry.get_text())
+            self.chosen_voice = None
+        self._validate()
+
+    def _remember_changed(self, *_):
+        self.retry = None
+        self.save.set_label(text("speakers.saveName"))
+        self.error.set_visible(False)
+        self._validate()
+
     def _changed(self, *_):
+        self.chosen_voice = None
         self.retry = None
         self.save.set_label(text("speakers.saveName"))
         self.error.set_visible(False)
@@ -130,27 +266,69 @@ class SpeakersDialog(Adw.Dialog):
             valid = False
         else:
             valid = True
-        self.save.set_sensitive(not self.busy and (valid or self.retry is not None))
+        enough = bool(self.voice_data and self.voice_data["seconds"] >= 4 and self.identifier != "me")
+        writable = not self.voice_state["readOnly"]
+        self.remember.set_sensitive(enough and writable and not self.busy)
+        self.voices_list.set_sensitive(not self.busy)
+        self.duplicate.set_sensitive(not self.busy)
+        self.remember_description.set_label(
+            text("savedVoices.newerVersion")
+            if not writable
+            else text("speakers.rememberVoice.description", name=self.entry.get_text().strip())
+            if enough
+            else text("speakers.rememberVoice.tooShort")
+        )
+        self.candidate = None
+        if (
+            enough
+            and writable
+            and self.remember.get_active()
+            and self.chosen_voice is None
+            and name_key(self.entry.get_text()) != self.declined_duplicate
+        ):
+            scores = {
+                r["voice"]["id"]: r["score"]
+                for r in ranked(self.voice_data["embedding"], self.voice_state["voices"])
+                if r["score"] is not None
+            }
+            self.candidate = pick_name(self.entry.get_text(), self.voice_state["voices"], scores)
+        self.duplicate.set_visible(self.candidate is not None)
+        if self.candidate:
+            self.duplicate_title.set_label(text("speakers.duplicate.title", name=self.candidate["name"]))
+        self.save.set_sensitive(not self.busy and (valid and self.candidate is None or self.retry is not None))
 
     def _save(self, *_):
         if self.retry is not None:
             operation = self.retry
         else:
             value = self.entry.get_text()
+            remember = self.remember.get_sensitive() and self.remember.get_active()
+            voice_id = self.chosen_voice
 
             def operation():
-                return speaker_edits.save_name(
+                result = speaker_edits.save_name(
                     self.meeting.directory, self.identifier, value, scanner=self.window.monitor.scanner
                 )
+                if self.voice_data is not None and not self.voice_state["readOnly"]:
+                    try:
+                        self.window.get_application().voice_store.remember(
+                            self.meeting.directory, self.identifier, value, voice_id=voice_id, remember=remember
+                        )
+                    except (OSError, ValueError) as error:
+                        raise VoiceWriteError(str(error)) from error
+                return result
 
         self._submit(operation)
 
     def _merge(self, target):
-        self._submit(
-            lambda: speaker_edits.merge_into(
+        def operation():
+            result = speaker_edits.merge_into(
                 self.meeting.directory, self.identifier, target, scanner=self.window.monitor.scanner
             )
-        )
+            self._recompute = (self.identifier, target)
+            return result
+
+        self._submit(operation)
 
     def _submit(self, operation):
         if self.closed or self.busy or self.window.monitor._closed:
@@ -161,6 +339,7 @@ class SpeakersDialog(Adw.Dialog):
         self.save.set_sensitive(False)
         self.merge.set_sensitive(False)
         self.entry.set_sensitive(False)
+        self._validate()
 
         def write():
             if self.closed:
@@ -176,16 +355,23 @@ class SpeakersDialog(Adw.Dialog):
             future.result()
         except CancelledError:
             return False
-        except (OSError, ValueError):
-            LOG.exception("Speaker edit failed; keeping names and merge history")
+        except (OSError, ValueError) as error:
+            LOG.exception("Speaker edit failed; retaining entered name")
             if not self.closed:
                 self.retry = operation
+                self.error.set_label(
+                    text("savedVoices.changeFailed" if isinstance(error, VoiceWriteError) else "speakers.changeFailed")
+                )
                 self.error.set_visible(True)
+                if isinstance(error, VoiceWriteError):
+                    self.window.monitor.refresh_now()
                 self.save.set_label(text("common.tryAgain"))
                 self.entry.set_sensitive(True)
                 self.update(self.meeting)
                 self._validate()
         else:
+            if getattr(self, "_recompute", None):
+                self.window.get_application().recompute_voices(self.meeting.directory, self._recompute)
             if not self.window.monitor._closed:
                 self.window.monitor.refresh_now()
             self.close()

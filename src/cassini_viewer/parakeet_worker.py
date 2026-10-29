@@ -52,9 +52,24 @@ def main(bundle, model_path, runtime_path):
         )
         summary = complete(summary, tracks, options, emit)
         emit("complete", model=MODEL_TAG, **summary)
+        if message.get("keepForVoices"):
+            model.close()
+            model = None
+            line = sys.stdin.buffer.readline(512 * 1024 + 1)
+            if len(line) > 512 * 1024:
+                raise ValueError("Voice request exceeds limit")
+            if line:
+                followup = json.loads(line)
+                if followup.get("type") == "voiceprints":
+                    from cassini_viewer.worker_voices import request
+
+                    request(followup, emit)
+                elif followup.get("type") != "quit":
+                    raise ValueError("Expected voiceprint request")
         return 0
     finally:
-        model.close()
+        if model is not None:
+            model.close()
 
 
 def diarization_info(model_path, runtime_path):
@@ -75,10 +90,57 @@ def diarization_info(model_path, runtime_path):
         model.close()
 
 
+def voice_job():
+    if any(os.environ.get(key) != value for key, value in PRIVACY.items()):
+        raise RuntimeError("Speech privacy flags must precede voice extraction")
+    sys.addaudithook(block_network)
+    emit("ready", pid=os.getpid())
+    line = sys.stdin.buffer.readline(512 * 1024 + 1)
+    if len(line) > 512 * 1024:
+        raise ValueError("Voice request exceeds limit")
+    message = json.loads(line)
+    if message.get("type") == "voiceprints":
+        from cassini_viewer.worker_voices import request
+
+        request(message, emit)
+    elif message.get("type") != "quit":
+        raise ValueError("Expected voiceprint request")
+    return 0
+
+
+def embedding_info(model_path, runtime_path):
+    if any(os.environ.get(key) != value for key, value in PRIVACY.items()):
+        raise RuntimeError("Speech privacy flags must precede native construction")
+    sys.addaudithook(block_network)
+    from cassini_viewer.campplus import SpeakerExtractor
+    from cassini_viewer.campplus_model import MODEL_TAG
+
+    model = SpeakerExtractor(model_path, runtime_path)
+    try:
+        emit(
+            "ready",
+            pid=os.getpid(),
+            model=MODEL_TAG,
+            version=model.version,
+            sampleRate=16000,
+            dimension=model.dimension,
+        )
+        line = sys.stdin.buffer.readline(257)
+        if len(line) > 256:
+            raise ValueError("Model-info request exceeds limit")
+        return 0
+    finally:
+        model.close()
+
+
 if __name__ == "__main__":
     try:
+        if sys.argv[1:] == ["--voices"]:
+            sys.exit(voice_job())
         if len(sys.argv) == 4 and sys.argv[1] == "--diarization-info":
             sys.exit(diarization_info(*sys.argv[2:]))
+        if len(sys.argv) == 4 and sys.argv[1] == "--embedding-info":
+            sys.exit(embedding_info(*sys.argv[2:]))
         sys.exit(main(*sys.argv[1:]))
     except Exception as error:
         emit("error", message=str(error))

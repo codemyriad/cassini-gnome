@@ -123,6 +123,11 @@ def main(bundle):
         message = json.loads(line)
         if message.get("type") == "quit":
             return 0
+        if message.get("type") == "voiceprints":
+            from cassini_viewer.worker_voices import request
+
+            request(message, emit)
+            continue
         if message.get("type") == "pipeline":
             tracks = message.get("tracks")
             if not isinstance(tracks, list) or not 1 <= len(tracks) <= 64:

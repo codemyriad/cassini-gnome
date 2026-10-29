@@ -50,7 +50,15 @@
     "diarization/build.py": "tests/ux/diarization/build.py",
     "diarization/fetch-pins.json": "tests/ux/diarization/fetch-pins.json",
     "diarization/golden.json": "tests/ux/diarization/golden.json",
-    "diarization/verify.py": "tests/ux/diarization/verify.py"
+    "diarization/verify.py": "tests/ux/diarization/verify.py",
+    "voices/AndroidOracle.kt": "tests/ux/voices/AndroidOracle.kt",
+    "voices/README.md": "tests/ux/voices/README.md",
+    "voices/SHA256SUMS": "tests/ux/voices/SHA256SUMS",
+    "voices/android-reference.py": "tests/ux/voices/android-reference.py",
+    "voices/desktop-vectors.json": "tests/ux/voices/desktop-vectors.json",
+    "voices/golden.json": "tests/ux/voices/golden.json",
+    "voices/vectors.json": "tests/ux/voices/vectors.json",
+    "voices/verify.py": "tests/ux/voices/verify.py"
   },
   "sha256": {
     "format-vectors.json": "ee9c9b9585e76c42f09df54d7a8933e7167527fce2ea185e78b51b1059840e51",
@@ -85,7 +93,7 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "b0588067ec372c8a753a64a0f81947d2f72c20e74927ad62d179c9b6f1ba429a",
+    "strings.json": "ef41a9106ffa8725f8ec8ea98800a563adfacafa47613b6f0e73463c726597da",
     "LIBRARY.md": "6cd4063cdd58567c75a4733c8862e9fe0983863df890b86a91e9a9bb17749751",
     "session-events/session.json": "6bcec60cf4024421b57683d86a44d7ffd92efdc84a3e5b67e24cb09fcfb55723",
     "session-events/expected.json": "905ad1966fa3cac23aa348109d4f694a5606ea685f3a5689cc052cf092a8a920",
@@ -101,24 +109,32 @@
     "diarization/build.py": "54bcb2ef10472899fc83441456100f46037144eea4a2230359cdddb2ae7aac3e",
     "diarization/fetch-pins.json": "303cba14363838dbfc50bbd9ebc236d0caeeaf1ba25afe9a07bbb5dcc2d25219",
     "diarization/golden.json": "221668f7db8d3435e6f2bfc22bdce291031387b3b5a219717fc967511782625a",
-    "diarization/verify.py": "1b94537cf3b13285c66cb559fa73d19553180bbc5064b45bd60e86bd6e2549f9"
+    "diarization/verify.py": "1b94537cf3b13285c66cb559fa73d19553180bbc5064b45bd60e86bd6e2549f9",
+    "voices/AndroidOracle.kt": "103262afcc097f8a466826a431c0852229a810923a44ad4d6d658eb3046a7d80",
+    "voices/README.md": "b05381437958eadc035bbffbe604fe1332cde091d0e083920197b9e49abd7651",
+    "voices/SHA256SUMS": "590ced037273f69a004cdb3fe4eaaed0bb5ffd9bb6817a31af2540cd08d2e224",
+    "voices/android-reference.py": "5709c0ff2aec4e490e15fcd4285a73b60f32e7394e0b0dd2f20a85a068e59266",
+    "voices/desktop-vectors.json": "0d3238c6667651ad2ee494ed496a7b39c7e31ff18cffe4368160d0df15c0bdf4",
+    "voices/golden.json": "36ede95f1e8906f6a50df0c039b4e1747d7cc7626616f6ad5bc91f8aead1f39f",
+    "voices/vectors.json": "30901226d9413060d7834f92665e26b908e8d91a3f2f66d8d457ce84e4bc4847",
+    "voices/verify.py": "6f30910aad10d84fa8c207c45b4e90cbb583007d0619645d71bbb34c26869641"
   },
   "additionalSources": {
     "strings.json": {
-      "commit": "46a149113bf3d2b3e9cf196155bee24502e728b0",
-      "note": "D24 UX16: version1, ordered merge history, explicit unnamed and failed edit copy"
+      "commit": "349fc5b",
+      "note": "D25 saved-voice failure and future-store copy"
     },
     "LIBRARY-RULES.md": {
-      "commit": "46a149113bf3d2b3e9cf196155bee24502e728b0",
-      "note": "D24 UX16: version1, ordered merge history, explicit unnamed and failed edit copy"
+      "commit": "c74460bc61ea498dcf821e628190266348486345",
+      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
     },
     "meeting.schema.json": {
-      "commit": "46a149113bf3d2b3e9cf196155bee24502e728b0",
-      "note": "D24 UX16: version1, ordered merge history, explicit unnamed and failed edit copy"
+      "commit": "c74460bc61ea498dcf821e628190266348486345",
+      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
     },
     "LIBRARY.md": {
-      "commit": "46a149113bf3d2b3e9cf196155bee24502e728b0",
-      "note": "D24 UX16: version1, ordered merge history, explicit unnamed and failed edit copy"
+      "commit": "c74460bc61ea498dcf821e628190266348486345",
+      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
     },
     "session-events/session.json": {
       "commit": "3349555b8e9bd5f47236cc5ce61b1edfee201d34",
@@ -179,6 +195,38 @@
     "diarization/verify.py": {
       "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
       "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
+    },
+    "voices/AndroidOracle.kt": {
+      "commit": "c74460bc61ea498dcf821e628190266348486345",
+      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
+    },
+    "voices/README.md": {
+      "commit": "c74460bc61ea498dcf821e628190266348486345",
+      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
+    },
+    "voices/SHA256SUMS": {
+      "commit": "c74460bc61ea498dcf821e628190266348486345",
+      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
+    },
+    "voices/android-reference.py": {
+      "commit": "c74460bc61ea498dcf821e628190266348486345",
+      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
+    },
+    "voices/desktop-vectors.json": {
+      "commit": "c74460bc61ea498dcf821e628190266348486345",
+      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
+    },
+    "voices/golden.json": {
+      "commit": "c74460bc61ea498dcf821e628190266348486345",
+      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
+    },
+    "voices/vectors.json": {
+      "commit": "c74460bc61ea498dcf821e628190266348486345",
+      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
+    },
+    "voices/verify.py": {
+      "commit": "c74460bc61ea498dcf821e628190266348486345",
+      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
     }
   }
 }

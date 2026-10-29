@@ -37,6 +37,19 @@
           "artifactSHA256": "794720a59892189484d38a186d2b350018b4194cae55292f501b2849d6313290"
         }
       }
+    },
+    "campplus-voxceleb-16k": {
+      "name": "CAM++ speaker embedding (VoxCeleb)",
+      "license": "Apache-2.0",
+      "source_sha256": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+      "files": {
+        "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx": {
+          "size": 29596978,
+          "sha256": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+          "downloadBytes": 27138478,
+          "artifactSHA256": "c310f60acec22ce27d78bd37736e40015af6473a1e3482224e81434aca5557b0"
+        }
+      }
     }
   }
 }

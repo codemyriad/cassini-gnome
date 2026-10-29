@@ -211,3 +211,10 @@
 .speakers-dialog { font-size: 15px; }
 .speakers-dialog .small { font-size: 13px; }
 .speaker-avatar { min-width: 40px; min-height: 40px; border-radius: 50%; background: alpha(@accent_color, 0.12); font-weight: 700; }
+
+.speaker-duplicate {
+  padding: 12px;
+  border-radius: 10px;
+  background-color: alpha(@warning_bg_color, 0.12);
+  border: 1px solid alpha(@warning_color, 0.35);
+}

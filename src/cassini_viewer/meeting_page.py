@@ -42,6 +42,7 @@ class MeetingPage(Adw.NavigationPage):
         self._turns = ()
         self._theme = None
         self._speaker_signature = None
+        self._match_signature = None
         self.settings = Gio.Settings.new(window.get_application().settings_schema)
         outer = box()
         self.set_child(outer)
@@ -226,7 +227,9 @@ class MeetingPage(Adw.NavigationPage):
         name = label("", "heading", xalign=0, wrap=True)
         name.set_markup(f'<span foreground="{self._colour(speaker)}">{GLib.markup_escape_text(speaker.name)}</span>')
         names.append(name)
-        if speaker.provenance == "recognised":
+        if speaker.provenance == "recognised" and self.window.get_application().voice_store.has_match(
+            self.meeting.directory, speaker.id
+        ):
             tag = label(
                 text("common.autoTag"), "auto-tag", halign=Gtk.Align.START, tooltip_text=text("common.autoTag.tooltip")
             )
@@ -302,7 +305,13 @@ class MeetingPage(Adw.NavigationPage):
         if undo:
             self.more_menu.append(text("meeting.undoMerge"), "win.undo-speaker-merge")
         dark = self._style_manager.get_dark()
+        matches = frozenset(
+            s.id
+            for s in meeting.speakers
+            if self.window.get_application().voice_store.has_match(meeting.directory, s.id)
+        )
         signature = (
+            matches,
             id(meeting.words),
             meeting.speakers,
             meeting.transcript,
@@ -375,7 +384,7 @@ class MeetingPage(Adw.NavigationPage):
         if not self.store.get_n_items():
             self.store.append(TurnItem(None))
         common = 0
-        if self._theme == dark and self._speaker_signature == meeting.speakers:
+        if self._theme == dark and self._speaker_signature == meeting.speakers and self._match_signature == matches:
             for before, after in zip(self._turns, meeting.turns, strict=False):
                 if before != after:
                     break
@@ -387,6 +396,7 @@ class MeetingPage(Adw.NavigationPage):
         self._turns = meeting.turns
         self._theme = dark
         self._speaker_signature = meeting.speakers
+        self._match_signature = matches
         self._starts = [turn.start_ms for turn in meeting.turns]
         self._position()
 
@@ -411,6 +421,8 @@ class MeetingPage(Adw.NavigationPage):
 
         directory = self.meeting.directory
         self.window.lookup_action("undo-speaker-merge").set_enabled(False)
+        history = self.meeting.metadata.get("speakerMerges", [])
+        self._undo_voice_ids = tuple(history[-1].values()) if history else ()
         self._speaker_future = self.window.monitor._executor.submit(
             undo_merge, directory, scanner=self.window.monitor.scanner
         )
@@ -436,6 +448,7 @@ class MeetingPage(Adw.NavigationPage):
                 self.window.lookup_action("undo-speaker-merge").set_enabled(True)
         else:
             if not self._closed:
+                self.window.get_application().recompute_voices(self.meeting.directory, self._undo_voice_ids)
                 self.window.monitor.refresh_now()
         return False
 

@@ -1,0 +1,97 @@
+{
+  "format": "cassini.voices.desktop-vectors.v1",
+  "version": 1,
+  "decision": "D25 coordinator clarifications 2026-10-29",
+  "cases": [
+    {
+      "id": "merged-native-voices-retain-their-own-speech",
+      "operation": "selectResolved",
+      "input": {
+        "sampleRate": 16000,
+        "totalSamples": 208000,
+        "speakers": [
+          "others~1",
+          "others~2"
+        ],
+        "speakerMerges": [
+          {
+            "from": "others~1",
+            "into": "others~2"
+          }
+        ],
+        "nativeSpeakerIds": {
+          "others~1": [
+            0
+          ],
+          "others~2": [
+            1
+          ]
+        },
+        "turns": [
+          {
+            "startMs": 0,
+            "endMs": 6000,
+            "speaker": 0
+          },
+          {
+            "startMs": 7000,
+            "endMs": 13000,
+            "speaker": 1
+          },
+          {
+            "startMs": 9000,
+            "endMs": 10000,
+            "speaker": 2
+          }
+        ],
+        "words": [
+          {
+            "speaker": "others~1",
+            "startMs": 0,
+            "endMs": 6000,
+            "text": "First"
+          },
+          {
+            "speaker": "others~2",
+            "startMs": 7000,
+            "endMs": 13000,
+            "text": "Second"
+          }
+        ]
+      },
+      "expected": {
+        "others~2": [
+          [
+            3200,
+            140800
+          ],
+          [
+            163200,
+            204800
+          ]
+        ]
+      }
+    },
+    {
+      "id": "recorded-and-received-uuid-are-distinct-voice-meetings",
+      "operation": "meetingKeys",
+      "input": {
+        "folders": [
+          "Recording-6a7a7ebc-46a3-4c15-aab1-b188ad68d365",
+          "Received-6a7a7ebc-46a3-4c15-aab1-b188ad68d365"
+        ]
+      },
+      "expected": {
+        "keys": [
+          "Recording-6a7a7ebc-46a3-4c15-aab1-b188ad68d365",
+          "Received-6a7a7ebc-46a3-4c15-aab1-b188ad68d365"
+        ],
+        "files": [
+          "Recording-6a7a7ebc-46a3-4c15-aab1-b188ad68d365.json",
+          "Received-6a7a7ebc-46a3-4c15-aab1-b188ad68d365.json"
+        ],
+        "distinctMeetingCount": 2
+      }
+    }
+  ]
+}
