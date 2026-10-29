@@ -4,7 +4,9 @@ UX17 follows coordination D25 and cassini-android `7068c58`. The immutable refer
 
 Merge/Undo recomputation keeps a confirmed person and their previous private print
 when there is no replacement (a merged-away voice or insufficient clean speech).
-Undo can therefore restore that enrolment. When replacing several prints for one
+Undo can therefore restore that enrolment. Other affected prints without a
+replacement are discarded, so merged-away automatic matches cannot retain meeting
+links or samples, and Undo cannot enrol a stale combined print. When replacing several prints for one
 person, all old contributions are removed before any new contribution is added,
 in sorted speaker order; the saved mean never depends on hash iteration order.
 

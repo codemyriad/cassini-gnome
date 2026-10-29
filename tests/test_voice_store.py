@@ -284,6 +284,83 @@ def test_no_replacement_print_keeps_previous_confirmed_person_and_cache(store):
     assert {p: p.read_bytes() for p in store.root.rglob("*.json")} == before
 
 
+def test_merge_drops_automatic_source_link_and_sample_when_only_target_has_a_print(store):
+    alice = enrol(store)
+    source = dict(embedding=embedding(), seconds=8, windows=[dict(startMs=0, endMs=8000)])
+    target = dict(embedding=embedding(1), seconds=8, windows=[dict(startMs=10000, endMs=18000)])
+    assert store.commit_job(RECEIVED, {"others~1": source, "others~2": target}, 0) == {"others~1": "Alice"}
+    assert set(store.snapshot()["voices"][0]["meetings"]) == {RECORDING, RECEIVED}
+    assert voice_store.sample_window(store.meeting(RECEIVED), alice["id"]) == (0, 8000)
+
+    assert store.recompute(RECEIVED, {"others~2": target}, {"others~1", "others~2"}, 0)
+    assert store.meeting(RECEIVED)["speakers"] == {
+        "others~2": dict(target, match=dict(voiceId=None, score=None, state="none"))
+    }
+    assert store.snapshot()["voices"] == [alice]
+    assert not store.has_match(RECEIVED, "others~1")
+    assert voice_store.sample_window(store.meeting(RECEIVED), alice["id"]) is None
+    restarted = VoiceStore(store.root)
+    assert restarted.refresh()["voices"] == [alice]
+    assert voice_store.sample_window(restarted.meeting(RECEIVED), alice["id"]) is None
+
+
+def test_undo_short_speakers_discards_combined_print_and_cannot_remember_it(store):
+    store.refresh()
+    store.commit_job(RECORDING, {}, 0)  # Each voice has only 2.5 seconds of clean speech.
+    combined = dict(embedding=embedding(), seconds=5, windows=[dict(startMs=0, endMs=5000)])
+    assert store.recompute(RECORDING, {"others~1": combined}, {"others~1", "others~2"}, 0)
+    assert store.meeting(RECORDING)["speakers"]["others~1"]["seconds"] == 5
+
+    assert store.recompute(RECORDING, {}, {"others~1", "others~2"}, 0)
+    assert store.meeting(RECORDING)["speakers"] == {}
+    assert not store.remember(RECORDING, "others~1", "Alice")
+    assert store.snapshot()["voices"] == []
+    restarted = VoiceStore(store.root)
+    assert restarted.meeting(RECORDING)["speakers"] == {}
+    assert not restarted.remember(RECORDING, "others~1", "Alice")
+
+
+@pytest.mark.parametrize("state", ["auto", "suggested", "none", "rejected", "confirmed"])
+def test_no_replacement_removes_unconfirmed_or_unknown_person_but_leaves_unaffected_print(store, state):
+    alice = enrol(store)
+    store.commit_job(RECEIVED, prints(), 0)
+    path = store.root / "meetings" / (RECEIVED + ".json")
+    value = json.loads(path.read_text())
+    value["speakers"]["others~1"]["match"] = dict(
+        voiceId="voice_missing" if state == "confirmed" else alice["id"], score=0.8, state=state
+    )
+    path.write_text(json.dumps(value))
+    untouched = store.meeting(RECORDING)
+    assert store.recompute(RECEIVED, {}, {"others~1"}, 0)
+    assert store.meeting(RECEIVED)["speakers"] == {}
+    assert store.meeting(RECORDING) == untouched
+    assert store.snapshot()["voices"] == [alice]
+
+
+def test_failed_pruning_preserves_automatic_print_link_and_sample(store, monkeypatch):
+    alice = enrol(store)
+    source = dict(embedding=embedding(), seconds=8, windows=[dict(startMs=0, endMs=8000)])
+    store.commit_job(RECEIVED, {"others~1": source}, 0)
+    before = {p: p.read_bytes() for p in store.root.rglob("*.json")}
+    snapshot = store.snapshot()
+    original = voice_store.atomic_json
+    failed = False
+
+    def fail(path, value, **kw):
+        nonlocal failed
+        if path.parent.name == "meetings" and not failed:
+            failed = True
+            raise OSError("no space")
+        return original(path, value, **kw)
+
+    monkeypatch.setattr(voice_store, "atomic_json", fail)
+    with pytest.raises(OSError, match="no space"):
+        store.recompute(RECEIVED, {}, {"others~1"}, 0)
+    assert {p: p.read_bytes() for p in store.root.rglob("*.json")} == before
+    assert store.snapshot() == snapshot
+    assert voice_store.sample_window(store.meeting(RECEIVED), alice["id"]) == (0, 8000)
+
+
 @pytest.mark.parametrize("affected", [("a", "b"), ("b", "a")])
 def test_replacing_same_person_prints_unenrols_all_before_enrolling_any(store, affected):
     from cassini_viewer.voices_logic import normalised
