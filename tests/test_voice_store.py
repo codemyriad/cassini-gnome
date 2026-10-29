@@ -492,6 +492,18 @@ def test_undivided_me_never_becomes_a_saved_voice(store):
     assert store.snapshot()["voices"] == []
 
 
+def test_preparation_distinguishes_missing_damaged_and_successfully_short(store):
+    cache, prepared = store.preparation(RECORDING)
+    assert not prepared and not cache["speakers"]
+    store.commit_job(RECORDING, {}, 0)  # Successful extraction, under 4 s.
+    cache, prepared = store.preparation(RECORDING)
+    assert prepared and not cache["speakers"]
+    path = store.root / "meetings" / (RECORDING + ".json")
+    path.write_text("{")
+    assert not store.preparation(RECORDING)[1]
+    assert list(path.parent.glob(path.name + ".corrupt-*"))
+
+
 def test_job_retry_preserves_confirmed_print_and_does_not_count_it_twice(store):
     alice = enrol(store)
     original = store.meeting(RECORDING)["speakers"]["others~1"]

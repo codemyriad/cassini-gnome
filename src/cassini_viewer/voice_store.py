@@ -369,6 +369,21 @@ class VoiceStore:
             self._publish(people)
             return result
 
+    def preparation(self, directory):
+        """Return the cache and whether extraction actually completed.
+
+        An absent entry is evidence of short speech only after a successful
+        extraction. Missing, damaged and obsolete caches are not that evidence.
+        """
+        key = _key(directory)
+        with self._locked():
+            people = self._people()
+            path = self.root / "meetings" / (key + ".json")
+            empty = dict(version=1, model=REVISION, generation=people["generation"], speakers={})
+            value = self._read(path, self._validate_meeting, empty)
+            prepared = path.is_file() and value.get("generation", people["generation"]) == people["generation"]
+            return (value if prepared else empty), prepared
+
     def commit_job(
         self, directory, prints, generation, *, check_active=lambda: None, apply_names=None, auto_eligible=None
     ):
