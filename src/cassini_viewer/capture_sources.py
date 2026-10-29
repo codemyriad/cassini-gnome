@@ -2,6 +2,7 @@
 """Keep a wire source's validation separate from its selected recording spans."""
 
 import math
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from uuid import uuid4
 
@@ -87,10 +88,19 @@ class BrowserStreams:
                 self.session.append(track.recorded, selected, selected_offset)
         track.start, track.frames = start, frames
 
-    def select(self, me, others, at, *, browser=True):
-        """Called inside the owner's atomic event/track change and capture lock."""
+    @contextmanager
+    def change(self):
+        """Roll back wire selection with the owner's event/track transaction."""
         previous = self.me, self.others, self.browser, {key: replace(t) for key, t in self.tracks.items()}
         try:
+            yield
+        except BaseException:
+            self.me, self.others, self.browser, self.tracks = previous
+            raise
+
+    def select(self, me, others, at, *, browser=True):
+        """Called inside the owner's atomic event/track change and capture lock."""
+        with self.change():
             self.me, self.others, self.browser = me, others, browser
             additions = sum(t.recorded is None and self.enabled(t) for t in self.tracks.values())
             if len(self.session.writers) + additions > 64:
@@ -101,6 +111,3 @@ class BrowserStreams:
                     track.recorded = None
                 elif track.recorded is None and self.enabled(track):
                     self._record(identifier, track, at)
-        except BaseException:
-            self.me, self.others, self.browser, self.tracks = previous
-            raise

@@ -250,9 +250,16 @@ class BrowserCapture:
                     for _identifier, _tap, state in prepared.values():
                         if state["error"]:
                             raise OSError(state["error"])
+                    # New wire tracks can arrive while native taps get ready.
+                    needed = self.streams.additions(me, others, browser=not lost) + len(prepared)
+                    if len(self.host.session.writers) + needed > 64:
+                        raise ProtocolError("limit", "A session supports at most 64 sources")
                     at = change_time(self.host.session, self.elapsed_ms())
                     removed = {kind: value for kind, value in self.native_taps.items() if kind not in desired}
-                    with self.host.session.change(self._events(me, others, lost, fallback, at)):
+                    with (
+                        self.host.session.change(self._events(me, others, lost, fallback, at)),
+                        self.streams.change(),
+                    ):
                         self.streams.select(me, others, at, browser=not lost)
                         for identifier, _tap in removed.values():
                             self.host.session.end_track(identifier)

@@ -271,6 +271,80 @@ def test_source_limit_failure_keeps_last_applied_choice_and_tracks(server):
         client.close()
 
 
+@pytest.mark.parametrize("failure", ["track-limit-race", "native-write"])
+@pytest.mark.parametrize("change", ["selection", "fallback"])
+def test_rejected_change_restores_browser_pcm_after_stream_selection(server, monkeypatch, failure, change):
+    from cassini_viewer.recording_session import ProtocolError
+
+    service, path, _ = server
+    client = BrowserAudioProxy(path=path)
+    entered, release = threading.Event(), threading.Event()
+
+    class ReadyTap(Tap):
+        def start(self):
+            entered.set()
+            assert release.wait(3)
+            super().start()
+
+    try:
+        start(client, "rollback", microphone=False)
+        remote(client, "remote")
+        capture = service.captures["rollback"]
+        capture.tap_factory = ReadyTap
+        session = capture.host.session
+        if failure == "track-limit-race":
+            with capture.lock:
+                for i in range(62):
+                    session.add_track(f"ended-{i}", "Old", "remote", 48000, 1)
+                    session.end_track(f"ended-{i}")
+        else:
+            add_native = capture._add_native
+
+            def fail_after_add(*args, **kwargs):
+                add_native(*args, **kwargs)
+                raise OSError("Native WAV write failed")
+
+            monkeypatch.setattr(capture, "_add_native", fail_after_add)
+        with ThreadPoolExecutor(1) as pool:
+            changing = (
+                pool.submit(capture.select, True, False) if change == "selection" else pool.submit(capture.fallback)
+            )
+            assert entered.wait(2)
+            if failure == "track-limit-race":
+                # The audio connection remains active during native readiness.
+                remote(client, "late")
+                assert len(session.writers) == 64
+            before = (capture.directory / "session.json").read_bytes()
+            files = set(capture.directory.iterdir())
+            release.set()
+            with pytest.raises((ProtocolError, OSError)):
+                changing.result(3)
+        assert capture.me is False and capture.others is True and not capture.browser_lost
+        assert not capture.finished and not capture.native_taps
+        assert capture.streams.me is False and capture.streams.others is True and capture.streams.browser
+        assert capture.streams.tracks["remote"].recorded == "remote"
+        assert (capture.directory / "session.json").read_bytes() == before
+        assert set(capture.directory.iterdir()) == files
+        assert all(t.stopped for t in Tap.instances)
+        client.handle(
+            dict(
+                type="audio",
+                id="remote",
+                sequence=1,
+                offsetMs=200 + 4 * 1000 / 48000,
+                pcm=base64.b64encode(b"\x02\x00" * 4).decode(),
+            )
+        )
+        assert next(t for t in session.manifest["tracks"] if t["id"] == "remote")["frames"] == 8
+        client.handle(dict(type="stop"))
+        track = next(t for t in session.manifest["tracks"] if t["id"] == "remote")
+        with wave.open(str(capture.directory / track["file"])) as wav:
+            assert wav.readframes(wav.getnframes()) == b"\x01\x00" * 4 + b"\x02\x00" * 4
+    finally:
+        release.set()
+        client.close()
+
+
 def test_stop_before_missing_browser_fallback_begins_cannot_create_a_late_folder(server, monkeypatch):
     from test_browser_sessions import Extension
 
