@@ -50,7 +50,7 @@ export class AppControl {
     if (this.stopped || this.port) return;
     this.cancel(this.retry); this.retry = null;
     let port;
-    try { port = this.runtime.connectNative('com.codemyriad.cassini.control'); }
+    try { port = this.runtime.connectNative('io.codemyriad.cassini.control'); }
     catch { this.reconnect(); return; }
     this.port = port;
     this.tabTails.clear();

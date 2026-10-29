@@ -129,6 +129,7 @@ class CassiniApplication(Adw.Application):
 
         self.comfort = RecordingComfort(self, automatic=os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1")
         if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
+            self._start_legacy_host_cleanup()
             if self.in_flatpak:
                 self._refresh_companion()
             else:
@@ -261,6 +262,11 @@ class CassiniApplication(Adw.Application):
         from .companion import in_flatpak
 
         return in_flatpak()
+
+    def _start_legacy_host_cleanup(self):
+        from .companion import start_legacy_cleanup
+
+        start_legacy_cleanup()
 
     @property
     def browser_companion_available(self):

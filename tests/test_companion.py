@@ -46,7 +46,7 @@ def test_registers_both_hosts_atomically_with_exact_origin_and_private_permissio
     executable = tmp_path / "host"
     executable.write_text("#!/bin/sh\nexit 0\n")
     executable.chmod(0o700)
-    hosts = {"com.codemyriad.cassini": executable, "com.codemyriad.cassini.control": executable}
+    hosts = {"io.codemyriad.cassini": executable, "io.codemyriad.cassini.control": executable}
     written = companion.register(browsers=browsers, hosts=hosts)
     assert len(written) == 8
     for path in written:
@@ -66,7 +66,7 @@ def test_failed_manifest_publication_preserves_old_registration_and_removes_temp
     executable.write_text("#!/bin/sh\n")
     executable.chmod(0o700)
     browser = companion.Browser("Chromium", "/bin/chromium", tmp_path / "config")
-    hosts = {"com.codemyriad.cassini": executable}
+    hosts = {"io.codemyriad.cassini": executable}
     (destination,) = companion.register(browsers=[browser], hosts=hosts)
     old = destination.read_bytes()
 
@@ -94,8 +94,8 @@ def test_source_checkout_registers_its_own_hosts_before_any_installed_old_versio
     hosts = companion.host_paths()
     root = Path(__file__).parents[1] / "browser-extension"
     assert hosts == {
-        "com.codemyriad.cassini": root / "native_host.py",
-        "com.codemyriad.cassini.control": root / "control_host.py",
+        "io.codemyriad.cassini": root / "native_host.py",
+        "io.codemyriad.cassini.control": root / "control_host.py",
     }
 
 

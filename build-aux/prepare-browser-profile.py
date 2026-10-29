@@ -6,6 +6,7 @@ import argparse
 import base64
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 
@@ -17,12 +18,16 @@ def prepare(root, profile, recordings):
     identifier = "".join(chr(ord("a") + int(value, 16)) for value in digest)
     hosts = profile / "NativeMessagingHosts"
     hosts.mkdir(parents=True, exist_ok=True)
+    sys.path.insert(0, str(root / "src"))
+    from cassini_viewer.companion import cleanup_legacy_directory
+
+    cleanup_legacy_directory(hosts)
     scripts = profile.parent / "hosts"
     scripts.mkdir(mode=0o700, parents=True, exist_ok=True)
     scripts.chmod(0o700)
     for name, module, arguments in [
-        ("com.codemyriad.cassini", "browser_host", f"directory={str(recordings)!r}, open_completed=False"),
-        ("com.codemyriad.cassini.control", "browser_control_host", ""),
+        ("io.codemyriad.cassini", "browser_host", f"directory={str(recordings)!r}, open_completed=False"),
+        ("io.codemyriad.cassini.control", "browser_control_host", ""),
     ]:
         script = scripts / f"{name}.py"
         script.write_text(

@@ -1,0 +1,25 @@
+{
+  "note": "Reader acceptance only. Current writers never emit the reserved restored reason.",
+  "session": {
+    "version": 1,
+    "id": "36b930cc-5c0d-40bd-9a38-edf5db71a5e9",
+    "createdAt": "2026-10-29T00:00:00Z",
+    "title": "Reserved restored reason, reader only",
+    "source": "chromium",
+    "state": "recording",
+    "tracks": [],
+    "events": [
+      {"atMs": 0, "type": "othersSource", "source": "browser", "reason": "start"},
+      {"atMs": 0, "type": "selection", "me": true, "others": true, "reason": "start"},
+      {"atMs": 1000, "type": "othersSource", "source": "system", "reason": "lost"},
+      {"atMs": 2000, "type": "othersSource", "source": "browser", "reason": "restored"}
+    ]
+  },
+  "states": [
+    {"atMs": 0, "me": true, "others": true, "source": "browser", "reason": "start", "sinceMs": 0, "fallback": false},
+    {"atMs": 1000, "me": true, "others": true, "source": "system", "reason": "lost", "sinceMs": 1000, "fallback": true},
+    {"atMs": 1999.5, "me": true, "others": true, "source": "system", "reason": "lost", "sinceMs": 1000, "fallback": true},
+    {"atMs": 2000, "me": true, "others": true, "source": "browser", "reason": "restored", "sinceMs": 2000, "fallback": false},
+    {"atMs": 3000, "me": true, "others": true, "source": "browser", "reason": "restored", "sinceMs": 2000, "fallback": false}
+  ]
+}

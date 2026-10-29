@@ -15,7 +15,7 @@ class SessionEventsTests(unittest.TestCase):
     def setUp(self):
         self.session = json.loads((annotations.FIXTURES / 'session.json').read_text())
 
-    def test_both_shared_fixtures_and_materialised_timelines(self):
+    def test_shared_fixtures_materialised_timelines_and_reserved_reader_vector(self):
         annotations.check_fixtures()
 
     def test_legacy_and_null_annotations_do_not_infer_a_fallback(self):
@@ -39,7 +39,8 @@ class SessionEventsTests(unittest.TestCase):
                       dict(atMs=0, type='selection', me=1, others=True, reason='start'),
                       dict(atMs=0, type='selection', me=True, reason='start'),
                       dict(atMs=0, type='othersSource', source='microphone', reason='lost'),
-                      dict(atMs=0, type='othersSource', source='browser', reason='restored'),
+                      dict(atMs=0, type='othersSource', source='browser', reason='unknown'),
+                      dict(atMs=0, type='selection', me=True, others=True, reason='restored'),
                       dict(atMs=0, type='othersSource', source='system')]:
             with self.subTest(event=event):
                 self.session['events'] = [event]

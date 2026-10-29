@@ -54,8 +54,8 @@ try {
   await writeFile(shim,`#!/usr/bin/python3\nimport importlib.util, sys, os\nopen(${JSON.stringify(path.join(artifacts,"host.pid"))},"w").write(str(os.getpid()))\nsys.stderr=open(${JSON.stringify(path.join(artifacts,'host.log'))},'a',buffering=1)\nspec=importlib.util.spec_from_file_location('host',${JSON.stringify(path.join(root,'browser-extension/native_host.py'))})\nmodule=importlib.util.module_from_spec(spec)\nspec.loader.exec_module(module)\nraise SystemExit(module.main(directory=${JSON.stringify(artifacts)},open_completed=False))\n`);
   await chmod(shim,0o700);
   await mkdir(path.join(profile,'NativeMessagingHosts'), {recursive:true});
-  await writeFile(path.join(profile,'NativeMessagingHosts/com.codemyriad.cassini.json'),JSON.stringify({
-    name:'com.codemyriad.cassini',description:'Cassini integration test',path:shim,type:'stdio',allowed_origins:[`chrome-extension://${id}/`]
+  await writeFile(path.join(profile,'NativeMessagingHosts/io.codemyriad.cassini.json'),JSON.stringify({
+    name:'io.codemyriad.cassini',description:'Cassini integration test',path:shim,type:'stdio',allowed_origins:[`chrome-extension://${id}/`]
   }));
   if (process.env.CASSINI_TALK_ONLY) {
     await (await import('./talk.mjs')).run({context,worker,id,artifacts,poll});

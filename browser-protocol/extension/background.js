@@ -44,7 +44,7 @@ class NativeHost {
   constructor(onFailure) {
     this.pending = [];
     this.closed = false;
-    this.port = chrome.runtime.connectNative("com.codemyriad.cassini");
+    this.port = chrome.runtime.connectNative("io.codemyriad.cassini");
     this.port.onMessage.addListener(message => {
       const request = this.pending.shift();
       if (request) {

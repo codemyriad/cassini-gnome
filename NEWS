@@ -1,6 +1,9 @@
 Unreleased
 ~~~~~~~~~~
 
+- Reconnect the browser companion with Connect in Cassini after updating.
+  Native host identifiers now use io.codemyriad; do not rerun install-host.py
+  with an old extension ID
 - Write meetings down offline from the first launch: every package (Debian,
   Ubuntu, Fedora, openSUSE, Arch Linux, Flatpak) bundles the pinned Whistle
   engine and Silero VAD and uses NumPy and ONNX Runtime; nothing is downloaded

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Real setup dialog, per-user writes, pending/failure/retry and handshake gating."""
 
+import json
 import os
 import shutil
 import subprocess
@@ -10,6 +11,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Use build-aux/ux-screenshot.sh")
@@ -81,8 +83,21 @@ with tempfile.TemporaryDirectory() as temporary:
     thread = threading.Thread(target=service.serve, args=(path, ready), daemon=True)
     thread.start()
     assert ready.wait(2)
+    legacy = Path(os.environ["XDG_CONFIG_HOME"]) / "chromium/NativeMessagingHosts/com.codemyriad.cassini.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(json.dumps(dict(name="com.codemyriad.cassini", path="/old/cassini-browser-host")))
     app = CassiniApplication("com.gocassini.CompanionTest", "test", "development")
-    app.register(None)
+    # Exercise actual startup against private configs, with the watcher and
+    # shortcut disabled so no real browser or desktop service is contacted.
+    os.environ.pop("CASSINI_SCREENSHOT_ISOLATED")
+    with (
+        patch.dict(os.environ, {"CASSINI_ISOLATED_AUDIO": "1"}),
+        patch.object(app, "_start_browser_watch", lambda: None),
+        patch.object(companion, "in_flatpak", lambda: False),
+    ):
+        app.register(None)
+        until(lambda: not legacy.exists())
+    os.environ["CASSINI_SCREENSHOT_ISOLATED"] = "1"
     app.activate()
     window = app.get_active_window()
     window.set_default_size(1130, 730)
@@ -112,7 +127,7 @@ with tempfile.TemporaryDirectory() as temporary:
     companion.register = real_register
     dialog.connect_button.emit("clicked")
     until(lambda: dialog.deadline is not None)
-    assert len(list((tmp / "browser-config").rglob("com.codemyriad.cassini*.json"))) == 8
+    assert len(list((tmp / "browser-config").rglob("io.codemyriad.cassini*.json"))) == 8
     assert not dialog.done.get_sensitive() and dialog.connect_caption.get_label() == "Connecting…"
     # The native host's socket connection alone is not an extension handshake.
     with connect(path) as connection, connection.makefile("rwb") as stream:

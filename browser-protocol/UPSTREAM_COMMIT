@@ -1,26 +1,26 @@
-tree d321cfa2352e122540c6ec8a7e356df7ba7e454a
-parent bba499aca8fab4795858bf1302f09ffd4964ccf2
-parent 3c65dc854598b076dba5260f336c07f6394e368d
-author Silvio Tomatis <silviot@gmail.com> 1793242362 +0100
-committer GitHub <noreply@github.com> 1793242362 +0100
+tree 1b2d32a8265e1cc23e6f128e05a827ec63286769
+parent 356248edd181d773b2d17dfa07681b5fb1563c6e
+parent 541124672158ff472213e422bb02ed45ca4fe0ff
+author Silvio Tomatis <silviot@gmail.com> 1793264645 +0100
+committer GitHub <noreply@github.com> 1793264645 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq4rT6CRC1aQ7uu5UhlAAAVG4QACTJ4pDALWwHDGdKPIcfO2uo
- MQC7gBbluojsaAB2800fAwAAf5Lq/aLtSaK/Y58IzGOhF7VxEp9xzngCLuGTxiog
- cK45CF/+rdupReK9xlfjvKTVJQZtunV4yWtbkXEmEIlXJsn8fPiHpEW7TqWZLrSX
- yNFEASZnL/O1o+xNMQd3XT9+jQvAddsrRBZy0arJjuY2vFLewIuMlzBgcZUDv1Uz
- 8mUruWewZ7JuC9jhUPQ1B0k1al9lMZFaQO1CoErKmYQeKvZFrTAmpZYj7kXjHbYI
- kC2SNziZM5QpZWa0GUJQLMDT7AlB65c/oe1kK3gDC6YKFd1MgXivDjq1aLqg56Yz
- cu/TCyXzDrrL3wlcaP6an6A+TrnCCCDpHiKoLLPuhlaCvar6jJh7O1lPPEaOB11s
- g/jKVcDD0hhcaBqR1DtALAscIv/bA+11RbzvvCKv+w8OsQzfDeApS3X2BkRgJ3Ro
- LOmgsiSq4fPa5djMfq7prH/JT9OMCKrhina3TCKLdUQdUDdxEkiPrEon/f7qzvXB
- oezDTwiXrjgqHc4EKZE9fpoqaLq7biw3bPHA3L5wNzUH+EqjNTPejZVJW4Bglxq8
- pSIObVeAJ4nWBt/fnoG55nEg17vL5aaw73AmxCBzVurgGm2gfp7JEqLZDQJeFmBM
- Kns7iv12WExuupN5HTbu
- =qZLp
+ wsFcBAABCAAQBQJq4wwFCRC1aQ7uu5UhlAAAm6gQAHb6+tAM/zglNr5rRQj5F95p
+ TGV9vDdbKgNl47GslXbNiiQ9gQ34NbEfPj8EGQkvGCSIA3svW/jf6S98A+MO7os/
+ 0/o5RYf0JtGiNetbVcXrR3xRCnfEfZttWkA6unEZxJJ4s7dUe21dBzJnPG+dErTO
+ /V26lcoLxCKtg75xlH429zfY+094m+BJhk5GuztixVzaEwKbYX/JhSp2dFkQRacJ
+ Fq7kdqpslYMgbmOGSz+oS/+6bUh9NvqXU/tmFyX0RwVEEjlgpvlVpWQJL0HvtT3Y
+ eEmEnuTxkQpDdcUbMdky0DGYPb6vneiemsHnBU3P4AtWPtB7GV8KdVou03va/1L8
+ FD+rfXqhDRrOP61CD/3pNifH3cXgP84WyFeAnfK47f1M8ifY0PbknC37x4VlyCiN
+ eCcGHZiYieabJUkBpZ11UlUfN7TJdesHPeiwnx/A6TTu1X37nDiP4fQ9wH1OcLYS
+ MrKz2ROvHNPmrM8aIFYVr7y+CwoxOiNWAE/I+Khp6k4uAaCTDeQxX8kyNamWjr5O
+ 5cBcm0OQRAV7e5rKVykc0wAWIFnA2Opb6jKVbO+XHRfVOZRVKSIfjuk0Qd922fU/
+ 6Zd80MZdpoedO3n8r8XXQjhvhGME0k7XM94x7tmEqFULj5pML7YsV+7MHHokrinJ
+ q7Sg6mN01pXY/CxuOKkl
+ =tsCi
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #7 from codemyriad/native-gap-clarification
+Merge pull request #19 from codemyriad/rename/io-codemyriad-hosts
 
-M2 N7: preserve native host-time gaps in the shared session format
+Name the native hosts after codemyriad.io

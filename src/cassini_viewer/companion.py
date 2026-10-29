@@ -2,16 +2,112 @@
 """Per-user companion registration; no root, shell commands or manual IDs."""
 
 import json
+import logging
 import os
 import shutil
+import stat
 import subprocess
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
 EXTENSION_ID = "pcafdaahfhjiolfpfnlhmljfgoabbaij"
 ADD_URL = "https://chromewebstore.google.com/detail/" + EXTENSION_ID
 ORIGIN = "chrome-extension://" + EXTENSION_ID + "/"
+MANIFEST_LIMIT = 65536
+LEGACY_HOSTS = {
+    "com.codemyriad.cassini": {"cassini-browser-host", "native_host.py", "com.codemyriad.cassini.py"},
+    "com.codemyriad.cassini.control": {
+        "cassini-browser-control-host",
+        "control_host.py",
+        "com.codemyriad.cassini.control.py",
+    },
+}
+CONFIG_DIRS = ("google-chrome", "chromium", "microsoft-edge", "BraveSoftware/Brave-Browser")
+
+
+def legacy_owned(filename, content):
+    """D27 ownership is name + JSON name + executable basename, never origin."""
+    name = filename.removesuffix(".json")
+    if filename != name + ".json" or name not in LEGACY_HOSTS or len(content) > MANIFEST_LIMIT:
+        return False
+
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("Ambiguous native host manifest")
+            value[key] = item
+        return value
+
+    try:
+        value = json.loads(content.decode("utf-8"), object_pairs_hook=unique)
+        return (
+            isinstance(value, dict)
+            and value.get("name") == name
+            and isinstance(value.get("path"), str)
+            and Path(value["path"]).name in LEGACY_HOSTS[name]
+        )
+    except (ValueError, TypeError, RecursionError):
+        return False
+
+
+def manifest_directories(*, config=None, browsers=None):
+    if browsers is not None:
+        return [b.config / "NativeMessagingHosts" for b in browsers]
+    config = Path(config or os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    return [config / directory / "NativeMessagingHosts" for directory in CONFIG_DIRS]
+
+
+def cleanup_legacy_directory(directory):
+    """Read bounded regular files without following symlinks; preserve changes."""
+    removed = []
+    for name in LEGACY_HOSTS:
+        path = Path(directory) / (name + ".json")
+        try:
+            with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
+                before = os.fstat(stream.fileno())
+                if not stat.S_ISREG(before.st_mode):
+                    continue
+                if not legacy_owned(path.name, stream.read(MANIFEST_LIMIT + 1)):
+                    continue
+                now = path.lstat()
+                if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
+                    now.st_dev,
+                    now.st_ino,
+                    now.st_size,
+                    now.st_mtime_ns,
+                ):
+                    continue
+                path.unlink()
+                removed.append(path)
+        except OSError:
+            continue  # Missing, inaccessible and non-owned files stay untouched.
+    return removed
+
+
+def cleanup_legacy(*, browsers=None):
+    if in_flatpak():
+        from .flatpak_bridge import cleanup_legacy as host_cleanup
+
+        return host_cleanup(browsers)
+    return [
+        path for directory in manifest_directories(browsers=browsers) for path in cleanup_legacy_directory(directory)
+    ]
+
+
+def start_legacy_cleanup():
+    def cleanup():
+        try:
+            cleanup_legacy()
+        except OSError:
+            logging.getLogger(__name__).warning("Could not clean legacy native hosts", exc_info=True)
+
+    # Host-side IO neither blocks GTK nor keeps Quit waiting.
+    thread = threading.Thread(target=cleanup, name="cassini-host-cleanup", daemon=True)
+    thread.start()
+    return thread
 
 
 @dataclass(frozen=True)
@@ -73,8 +169,8 @@ def host_paths():
     bindir = json.loads(paths.read_text()).get("bindir") if paths.is_file() else None
     result = {}
     for name, development in (
-        ("com.codemyriad.cassini", "native_host.py"),
-        ("com.codemyriad.cassini.control", "control_host.py"),
+        ("io.codemyriad.cassini", "native_host.py"),
+        ("io.codemyriad.cassini.control", "control_host.py"),
     ):
         command = "cassini-browser-control-host" if name.endswith(".control") else "cassini-browser-host"
         if bindir:
@@ -134,4 +230,5 @@ def register(*, browsers=None, hosts=None):
             finally:
                 if temporary is not None:
                     temporary.unlink(missing_ok=True)
+    cleanup_legacy(browsers=browsers)
     return written

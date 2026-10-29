@@ -10,6 +10,23 @@ both the Git snapshot and extension bytes. Update with
 shared change has landed upstream. Install `browser-protocol/requirements-test.txt`
 to run the request-derived stdio conformance suite.
 
+## Native host migration for 0.3.0
+
+Protocol `7f8c3e8` ships extension 0.2.1, using only
+`io.codemyriad.cassini` and `io.codemyriad.cassini.control`. The extension key,
+ID and store URL are unchanged. Reconnect through Connect in Cassini after
+updating; do not rerun the developer installer with an old extension ID.
+
+On startup, cleanup runs on a daemon worker, independently of Connect and without
+blocking GTK or Quit. Connect and the developer installers also clean old
+registrations. Cleanup requires an exact legacy file name, a matching JSON name
+and one of Cassini's own executable basenames. Allowed origins never determine
+ownership. Malformed, oversized, ambiguous, non-regular and symlink files stay
+untouched. Native cleanup checks file identity/mtime before removal; Flatpak
+reads and compares/deletes on the host through flatpak-spawn, without host Python
+or added permissions. A modified host file is preserved. Only the new io names
+are registered; there is no dual-registration switch.
+
 
 The GNOME app uses the optional `independent-sessions-v1` control capability.
 Library Record snapshots every currently active browser call. Each owns its
