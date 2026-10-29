@@ -25,6 +25,7 @@ class BrowserCapture:
         self.native_taps = {}
         self.me, self.others = True, True
         self.browser_lost = False
+        self.browser_lost_since = None
         self.streams = None
         self.stopping = self.starting = False
         self.finished = False
@@ -84,6 +85,7 @@ class BrowserCapture:
                 self.host.session.manifest["createdAt"] = created
                 self.me = microphone
                 self.browser_lost = others_source == "system"
+                self.browser_lost_since = time.monotonic() if self.browser_lost else None
                 self.streams = self.host.audio_sink = BrowserStreams(self.host.session, me=microphone)
                 self.streams.browser = not self.browser_lost
                 with self.host.session.change(
@@ -256,6 +258,8 @@ class BrowserCapture:
                             self.host.session.end_track(identifier)
                         for kind, (identifier, _tap, _state) in prepared.items():
                             self._add_native(kind, at, identifier=identifier)
+                    if lost and not self.browser_lost:
+                        self.browser_lost_since = time.monotonic()
                     self.me, self.others, self.browser_lost = me, others, lost
                     for kind in removed:
                         self.native_taps.pop(kind)

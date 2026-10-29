@@ -596,6 +596,7 @@ class BrowserService:
                     self._capture_changed, parent=self.capture_parent, tap_factory=self.tap_factory
                 )
                 capture.browser_lost = True
+                capture.browser_lost_since = time.monotonic()
                 self.captures[capture_id] = capture
                 browser.states[tab] = dict(recording=True, captureId=capture_id, tabId=tab)
                 if browser.browser_instance is not None:
@@ -718,6 +719,7 @@ class BrowserService:
                     or capture.stopping
                     or capture.stop_requested.is_set()
                     or key not in self._capture_observed
+                    and not capture.browser_lost
                 ):
                     self._capture_missing_since.pop(key, None)
                     continue
@@ -725,7 +727,13 @@ class BrowserService:
                 if peer is not None and peer[2] is not None and peer[2]["sourceCount"] > 0:
                     self._capture_missing_since.pop(key, None)
                     continue
-                since = self._capture_missing_since.setdefault(key, now)
+                # A lost audio/control peer can disappear before its first
+                # status was observed. Its native fallback still needs a
+                # bounded lifetime, measured from loss, not a later policy tick.
+                initial = now
+                if key not in self._capture_observed and capture.browser_lost:
+                    initial = capture.browser_lost_since if capture.browser_lost_since is not None else now
+                since = self._capture_missing_since.setdefault(key, initial)
                 # A reachable, still-recording page with zero sources has hung
                 # up. An absent page/companion gets a bounded reconnection grace
                 # while Q4 keeps audio. Never switch a fallback back to browser.
