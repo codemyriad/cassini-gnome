@@ -53,6 +53,7 @@ class CassiniApplication(Adw.Application):
         self.diarization_models = None
         self.voice_models = None
         self._voice_library_keys = None
+        self._voice_matches = frozenset()
         from .voice_store import VoiceStore
 
         self.voice_store = VoiceStore(changed=lambda: GLib.idle_add(self._voices_changed))
@@ -736,7 +737,10 @@ class CassiniApplication(Adw.Application):
     def _voices_changed(self):
         if self.settings_dialog and not self.settings_dialog.closed:
             self.settings_dialog.render_voices()
-        self._transcription_changed()
+        matches = self.voice_store.match_signature()
+        if matches != self._voice_matches:
+            self._voice_matches = matches
+            self._transcription_changed()
         return False
 
     def _models_changed(self):

@@ -75,6 +75,10 @@ class VoiceStore:
         with self._snapshot_lock:
             return copy.deepcopy(self._snapshot)
 
+    def match_signature(self):
+        with self._snapshot_lock:
+            return frozenset(self._auto)
+
     def has_match(self, directory, speaker):
         with self._snapshot_lock:
             return (Path(directory).name, speaker) in self._auto

@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Use build-aux/ux-screenshot.sh")
@@ -93,62 +94,66 @@ with tempfile.TemporaryDirectory() as temporary:
     assert page.play.get_tooltip_text() == "Pause"
     page.play.emit("clicked")
     assert not window.player.playing
-    # Growing transcripts splice stable rows and never drag a paused reader back.
-    from dataclasses import replace
+    # Synthetic growth owns its model until it is restored. Live Library
+    # notifications must not replace it with the on-disk fixture mid-assertion.
+    with patch.object(window.monitor, "callback", lambda _snapshot: None):
+        # Growing transcripts splice stable rows and never drag a paused reader back.
+        from dataclasses import replace
 
-    from cassini_viewer.meeting_text import DARK_COLOURS, reading_turns
-    from cassini_viewer.portable import Word
+        from cassini_viewer.meeting_text import DARK_COLOURS, reading_turns
+        from cassini_viewer.portable import Word
 
-    timed = tuple(
-        Word(meeting.speakers[i % len(meeting.speakers)].id, i * 1000, i * 1000 + 900, f"Item {i}") for i in range(400)
-    )
-    page.update(replace(meeting, words=timed, turns=reading_turns(timed)))
-    until(lambda: page.scroller.get_vadjustment().get_upper() > 5000)
-    adjustment = page.scroller.get_vadjustment()
-    adjustment.set_value(1500)
-    until(lambda: adjustment.get_value() > 1000)
-    frames = []
-    page.list.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 2)[1])
-    until(lambda: len(frames) >= 2)
+        timed = tuple(
+            Word(meeting.speakers[i % len(meeting.speakers)].id, i * 1000, i * 1000 + 900, f"Item {i}")
+            for i in range(400)
+        )
+        page.update(replace(meeting, words=timed, turns=reading_turns(timed)))
+        until(lambda: page.scroller.get_vadjustment().get_upper() > 5000)
+        adjustment = page.scroller.get_vadjustment()
+        adjustment.set_value(1500)
+        until(lambda: adjustment.get_value() > 1000)
+        frames = []
+        page.list.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 2)[1])
+        until(lambda: len(frames) >= 2)
 
-    def visible_anchor():
-        candidates = []
-        for turn, _words, row in page.bound.values():
-            success, bounds = row.compute_bounds(page.scroller)
-            if success and bounds.get_y() + bounds.get_height() > 0 and bounds.get_y() < page.scroller.get_height():
-                candidates.append((turn.index, bounds.get_y()))
-        return min(candidates)
-
-    stable = page.store.get_item(1)
-    anchor = visible_anchor()
-    grown = timed + (Word(meeting.speakers[0].id, 400000, 400900, "New words"),)
-    page.update(replace(meeting, words=grown, turns=reading_turns(grown)))
-    frames = []
-    page.list.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 2)[1])
-    until(lambda: len(frames) >= 2)
-    assert page.store.get_item(1) is stable
-    after = visible_anchor()
-    assert after[0] == anchor[0] and abs(after[1] - anchor[1]) < 2, (after, anchor)
-    # Resuming after reading elsewhere must return to the active turn, even
-    # when a paused model update already computed that same timed item.
-    page.play.emit("clicked")
-
-    def active_visible():
-        for turn, _words, row in page.bound.values():
-            if turn.index == page._reading_index:
+        def visible_anchor():
+            candidates = []
+            for turn, _words, row in page.bound.values():
                 success, bounds = row.compute_bounds(page.scroller)
-                return success and 0 <= bounds.get_y() < page.scroller.get_height()
-        return False
+                if success and bounds.get_y() + bounds.get_height() > 0 and bounds.get_y() < page.scroller.get_height():
+                    candidates.append((turn.index, bounds.get_y()))
+            return min(candidates)
 
-    until(lambda: window.player.playing and active_visible())
-    page.play.emit("clicked")
-    style = Adw.StyleManager.get_default()
-    style.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
-    until(lambda: page._theme is True)
-    assert page._colour(meeting.speakers[0]) == DARK_COLOURS[0]
-    assert any(DARK_COLOURS[0] in value for value in labels(page.speakers))
-    style.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
-    until(lambda: page._theme is False)
+        stable = page.store.get_item(1)
+        anchor = visible_anchor()
+        grown = timed + (Word(meeting.speakers[0].id, 400000, 400900, "New words"),)
+        page.update(replace(meeting, words=grown, turns=reading_turns(grown)))
+        frames = []
+        page.list.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 2)[1])
+        until(lambda: len(frames) >= 2)
+        assert page.store.get_item(1) is stable
+        after = visible_anchor()
+        assert after[0] == anchor[0] and abs(after[1] - anchor[1]) < 2, (after, anchor)
+        # Resuming after reading elsewhere must return to the active turn, even
+        # when a paused model update already computed that same timed item.
+        page.play.emit("clicked")
+
+        def active_visible():
+            for turn, _words, row in page.bound.values():
+                if turn.index == page._reading_index:
+                    success, bounds = row.compute_bounds(page.scroller)
+                    return success and 0 <= bounds.get_y() < page.scroller.get_height()
+            return False
+
+        until(lambda: window.player.playing and active_visible())
+        page.play.emit("clicked")
+        style = Adw.StyleManager.get_default()
+        style.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
+        until(lambda: page._theme is True)
+        assert page._colour(meeting.speakers[0]) == DARK_COLOURS[0]
+        assert any(DARK_COLOURS[0] in value for value in labels(page.speakers))
+        style.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
+        until(lambda: page._theme is False)
     page.update(meeting)
     assert page._companion.get_visible()
     page.set_connected(True)
