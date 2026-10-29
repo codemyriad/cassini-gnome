@@ -427,6 +427,61 @@ def test_unbound_audio_client_is_not_mistaken_for_a_disconnected_call(server):
         client.close()
 
 
+def test_unobserved_audio_disconnect_still_starts_bounded_fallback_grace(server):
+    from test_browser_service import wait_for
+
+    service, path, _ = server
+    client = BrowserAudioProxy(path=path)
+    try:
+        start(client, "unobserved-loss")
+        remote(client, "remote")
+        capture = service.captures["unobserved-loss"]
+        assert "unobserved-loss" not in service._capture_observed
+        client.close()
+        wait_for(lambda: capture.browser_lost)
+        service.policy()
+        assert "unobserved-loss" in service._capture_missing_since
+        assert service._capture_missing_since["unobserved-loss"] == capture.browser_lost_since
+        assert not capture.finished
+        with service.lock:
+            service._capture_missing_since.pop("unobserved-loss")
+            capture.browser_lost_since = time.monotonic() - 30.01
+        service.policy()
+        wait_for(lambda: capture.finished)
+        assert all(tap.stopped for tap in Tap.instances)
+        assert json.loads((capture.directory / "session.json").read_bytes())["state"] == "completed"
+    finally:
+        client.close()
+
+
+def test_initial_system_fallback_expires_when_control_left_before_first_policy(server):
+    from unittest.mock import patch
+
+    from test_browser_service import meeting, wait_for
+    from test_browser_sessions import Extension
+
+    service, path, _ = server
+    # Deterministically put both start and disconnect between policy ticks.
+    with patch.object(service, "policy"):
+        peer = Extension(path, (3,))
+        try:
+            identifier = request(path=path)["meetings"][0]["id"]
+            snapshot = service.start_fallback(identifier, meeting())
+            capture = service.captures[snapshot["captureId"]]
+            peer.close()
+            wait_for(lambda: not service.browsers)
+        finally:
+            peer.close()
+    key = capture.capture_id
+    assert key not in service._capture_observed and capture.browser_lost
+    with service.lock:
+        capture.browser_lost_since = time.monotonic() - 30.01
+    service.policy()
+    wait_for(lambda: capture.finished)
+    assert all(tap.stopped for tap in Tap.instances)
+    assert json.loads((capture.directory / "session.json").read_bytes())["state"] == "completed"
+
+
 def test_lost_page_draining_browser_audio_uses_recovery_grace_not_call_end(server):
     from test_browser_service import meeting, wait_for
     from test_browser_sessions import Extension
