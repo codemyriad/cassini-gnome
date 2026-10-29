@@ -81,6 +81,8 @@ with tempfile.TemporaryDirectory() as temporary:
         window = app.get_active_window()
         until(lambda: not window._pending)
         assert not app.browser_companion_available and app.browser_watch is None
+        until(lambda: app._companion_probe_future is None)
+        assert not app._companion_probe_timer, "Missing sandbox permission cannot recover through polling"
         activity_timer = window._activity_timer
         assert activity_timer, "Native activity timer must run without a browser bridge"
         assert not window.first_companion.get_visible()
@@ -154,6 +156,8 @@ with tempfile.TemporaryDirectory() as temporary:
                 app._refresh_companion()
                 until(lambda: entered.is_set() and len(beats) >= 8)
                 assert app._companion_probe_future and not app._companion_probe_future.done()
+                recording_worker = app._record_start_executor.submit(threading.get_ident).result(timeout=1)
+                assert recording_worker != threads[0], "Blocked host probe occupied the recording executor"
                 assert not app.browser_companion_available
                 assert not settings.browser_setup.get_visible() and not settings.automatic.get_visible()
                 assert not window.first_companion.get_visible()

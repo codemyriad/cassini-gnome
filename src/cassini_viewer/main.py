@@ -71,6 +71,7 @@ class CassiniApplication(Adw.Application):
         self._companion_ready = not self.in_flatpak
         self._companion_probe_future = None
         self._companion_probe_timer = 0
+        self._companion_probe_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-companion-probe")
         self._browser_seen_saved = None
         self._auto_recording_held = False
         self._auto_recording_pending = None
@@ -259,9 +260,9 @@ class CassiniApplication(Adw.Application):
         self._companion_probe_timer = 0
         if self._quitting or self._companion_ready or self._companion_probe_future is not None:
             return GLib.SOURCE_REMOVE
-        from .companion import available
+        from .companion import probe
 
-        future = self._record_start_executor.submit(available)
+        future = self._companion_probe_executor.submit(probe)
         self._companion_probe_future = future
         future.add_done_callback(lambda f: GLib.idle_add(self._companion_probed, f))
         return GLib.SOURCE_REMOVE
@@ -270,8 +271,9 @@ class CassiniApplication(Adw.Application):
         self._companion_probe_future = None
         if self._quitting:
             return GLib.SOURCE_REMOVE
+        retryable = True
         try:
-            self._companion_ready = bool(future.result())
+            self._companion_ready, retryable = future.result()
         except Exception:
             logging.getLogger(__name__).exception("Could not probe the host browser bridge")
         if self._companion_ready:
@@ -281,7 +283,7 @@ class CassiniApplication(Adw.Application):
                     window.companion_available_changed()
             if self.settings_dialog and not self.settings_dialog.closed:
                 self.settings_dialog.refresh()
-        else:
+        elif retryable:
             self._companion_probe_timer = GLib.timeout_add_seconds(5, self._refresh_companion)
         return GLib.SOURCE_REMOVE
 
@@ -743,6 +745,7 @@ class CassiniApplication(Adw.Application):
             self.browser_watch.close()
         self.set_auto_recording_hold(False)
         self._record_start_executor.shutdown(wait=False, cancel_futures=True)
+        self._companion_probe_executor.shutdown(wait=False, cancel_futures=True)
         if self.speech_models:
             self.speech_models.close()
         if self.diarization_models:
