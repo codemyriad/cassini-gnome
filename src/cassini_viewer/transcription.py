@@ -191,8 +191,10 @@ class TranscriptionQueue:
             and not any(t.frames for t in meeting.tracks)
         ):
             return None
-        if meeting.transcript not in ("none", "failed") and not (
-            resume and meeting.transcript in ("queued", "running")
+        if (
+            meeting.transcript not in ("none", "failed")
+            and not meeting.no_speech
+            and not (resume and meeting.transcript in ("queued", "running"))
         ):
             return None
         if not (directory / "transcript.json").exists():

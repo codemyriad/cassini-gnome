@@ -3307,7 +3307,7 @@
    ],
    "milestone": "UX17",
    "placeholders": {
-    "n": "number of meetings in which this voice was confirmed"
+    "n": "number of meetings still in the Library where this voice is linked as AUTO or CONFIRMED (D25 amendment)"
    },
    "plural": {
     "one": "1 meeting",
@@ -5411,6 +5411,40 @@
    "milestone": "UX17",
    "status": "harmony",
    "note": "Coordinator (D25, GNOME question). Info line (not warn, no action) at the top of Saved voices when people.json has a version newer than this app understands. The store is read-only: Forget, Forget everyone and Remember this voice are disabled, and the file is never rewritten or migrated down. Voices it can still read may be listed and recognised; if none can be read, show savedVoices.empty below this line."
+  },
+  {
+   "id": "transcript.noSpeech",
+   "en": "No speech was found in this meeting.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [
+    "Meeting",
+    "Meeting-mac",
+    "Main",
+    "Library-mac"
+   ],
+   "milestone": "D26",
+   "status": "harmony",
+   "note": "Coordinator (D26, Silvio's test). Dim info line where the transcript would be, and as the Library preview, when writing down finished with zero words. Action transcript.writeDownAgain."
+  },
+  {
+   "id": "transcript.writeDownAgain",
+   "en": "Write it down again",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "D26",
+   "status": "harmony",
+   "note": "Coordinator (D26). Shown only with transcript.noSpeech (status done, zero words, audio present, canWriteDown). Re-queues the normal write-down job with the current models. Nothing is lost because the transcript is empty."
   }
  ]
 }

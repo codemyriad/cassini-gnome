@@ -11,6 +11,45 @@ from .library_files import regular
 from .meeting_store import LOCK, update_metadata
 
 
+def ac_rms(samples, channels=1):
+    """Per-channel mean removal for observation only; PCM is never changed."""
+    energy = 0.0
+    for channel in range(channels):
+        values = samples[channel::channels]
+        count = len(values)
+        if count:
+            total = sum(values)
+            energy += max(0, sum(v * v for v in values) * count - total * total) / (count * count)
+    return math.sqrt(energy / channels) / 32768
+
+
+def pcm_ac_level(data, channels=1):
+    samples = array.array("h", data)
+    if os.sys.byteorder != "little":
+        samples.byteswap()
+    rms = ac_rms(samples, channels)
+    db = 20 * math.log10(rms) if rms else -60
+    return max(0.0, min(1.0, (db + 60) / 60))
+
+
+class ACMeter:
+    """100 ms PCM windows, independent of appsink buffer boundaries."""
+
+    def __init__(self, rate=48000, channels=1):
+        self.width = rate // 10 * channels * 2
+        self.channels = channels
+        self.pending = bytearray()
+        self.level = 0.0
+
+    def feed(self, data):
+        self.pending.extend(data)
+        changed = len(self.pending) >= self.width
+        while len(self.pending) >= self.width:
+            self.level = pcm_ac_level(self.pending[: self.width], self.channels)
+            del self.pending[: self.width]
+        return changed
+
+
 def space_left(path, byte_rate=48000 * 4, statvfs=None):
     import os
 
@@ -73,11 +112,7 @@ def recording_observation(meeting, *, freshness_seconds=1):
                     samples.byteswap()
                 width = max(1, track.sample_rate // 10 * track.channels)
                 powers = [
-                    math.sqrt(
-                        sum((v / 32768) ** 2 for v in samples[first : first + width])
-                        / len(samples[first : first + width])
-                    )
-                    for first in range(0, len(samples), width)
+                    ac_rms(samples[first : first + width], track.channels) for first in range(0, len(samples), width)
                 ]
                 rms = powers[-1] if powers else 0
                 if index == 0 and any(value > 10 ** (-55 / 20) for value in powers):

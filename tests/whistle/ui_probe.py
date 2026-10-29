@@ -176,8 +176,11 @@ try:
         assert len(model.words) == 136 and {s.name for s in model.speakers} == {"Me", "The others"}
         captions = [w.get_label() for w in walk(window.meeting_page.speakers) if isinstance(w, Gtk.Label)]
         assert "Your microphone" in captions and "This computer’s sound" in captions, captions
-        assert min(w.start_ms for w in model.words if w.speaker == "me") == 1396
-        assert min(w.start_ms for w in model.words if w.speaker == "others") == 896
+        first_word_ms = json.loads((root / "tests/whistle/pipeline/pipeline-golden.json").read_text())["words"][0][
+            "startMs"
+        ]
+        assert min(w.start_ms for w in model.words if w.speaker == "me") == 500 + first_word_ms
+        assert min(w.start_ms for w in model.words if w.speaker == "others") == first_word_ms
         other = next(m for m in window.snapshot.meetings if m.directory == browser.directory)
         assert len(other.words) == 204 and other.speaker_names == ("Speaker 1", "Speaker 2", "Me"), other.speaker_names
         assert [s.id for s in other.speakers] == ["track-alice", "track-bob", "me"]

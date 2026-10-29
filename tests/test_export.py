@@ -312,7 +312,7 @@ def test_empty_default_does_not_claim_all_transcripts_are_empty(tmp_path, monkey
     opened = load_open_meeting(exported)
     assert opened.transcript == "done" and not opened.words
     imported = import_received(exported, tmp_path / "Library")
-    assert imported.transcript == "done" and not imported.can_write_down
+    assert imported.transcript == "done" and imported.no_speech and imported.can_write_down
 
 
 @pytest.mark.parametrize("name", ["clip.ogg", "clip.OPUS", "a\\b.opus", "clip.opus"])

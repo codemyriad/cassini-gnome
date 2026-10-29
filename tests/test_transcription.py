@@ -37,6 +37,59 @@ def capture_hashes(session):
     }
 
 
+def test_done_empty_transcript_can_be_written_again_through_the_normal_queue(tmp_path):
+    from dataclasses import replace
+
+    session = capture(tmp_path)
+    from cassini_viewer.transcription import REFERENCE
+
+    write_metadata(session.directory, transcript=dict(status="done", reference=REFERENCE))
+    (session.directory / "transcript.json").write_text(
+        json.dumps(dict(format="cassini.words.v1", language="und", complete=True, items=[]))
+    )
+    meeting = LibraryScanner(tmp_path).scan().meetings[0]
+    assert meeting.no_speech and meeting.can_write_down
+    assert not replace(meeting, duration_ms=0).no_speech
+    assert not replace(meeting, transcript="none").no_speech
+    before = capture_hashes(session)
+    completed = []
+
+    class Client:
+        def __init__(self, *_args, **_kw):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            notify(dict(type="planned", etaMinutes=0, segments=1))
+            notify(
+                dict(
+                    type="progress",
+                    trackId=tracks[0]["id"],
+                    trackOrder=0,
+                    language="en",
+                    etaMinutes=0,
+                    words=[dict(startMs=0, endMs=100, text="Recovered")],
+                )
+            )
+            return dict(diagnostics=[])
+
+    queue = TranscriptionQueue(lambda _: None, completed.append, client_factory=Client, bundle=tmp_path)
+    try:
+        assert queue.enqueue(session.directory)
+        until(lambda: bool(completed))
+        updated = LibraryScanner(tmp_path).scan().meetings[0]
+        assert updated.transcript == "done" and [w.text for w in updated.words] == ["Recovered"]
+        assert not updated.no_speech and not updated.can_write_down
+        assert capture_hashes(session) == before
+    finally:
+        queue.close()
+
+
 def test_fifo_queue_marks_waiting_job_queued_and_preserves_capture_and_user_metadata(tmp_path):
     sessions = [capture(tmp_path), capture(tmp_path)]
     write_metadata(sessions[0].directory, futureMember={"keep": True}, title="Before", titleSource="user")

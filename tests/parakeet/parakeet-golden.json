@@ -1,17 +1,17 @@
 {
   "version": 1,
   "decision": "D16",
-  "note": "D16 golden (fork engine), same input and D11 segmentation as whistle-golden.json, segment boundaries identical; recognised per segment by the unmodified dist parakeet-ultra-0.6b-int8 with codemyriad sherpa-onnx v1.13.7-cassini.8 (C API). Word times = segment start (floor ms) + per-word ms from token timestamps: a token beginning with U+2581 or U+0020 starts a word; start = round(ts*1000) of the word's first piece; end = max round((ts+dur)*1000) over pieces holding a Unicode letter or number (punctuation stays attached but never extends the word); round half away from zero, in double from the engine's float32. Conformance: segments, segment inputSha256 and word count exact; words exact up to trailing , . ? ! (D16); startMs/endMs within 80 ms (D11.3) once hashes match.",
+  "note": "D16 golden (fork engine), same input and D11 segmentation as whistle-golden.json, segment boundaries identical; recognised per segment by the unmodified dist parakeet-ultra-0.6b-int8 with codemyriad sherpa-onnx v1.13.7-cassini.8 (C API). Word times = segment start (floor ms) + per-word ms from token timestamps: a token beginning with U+2581 or U+0020 starts a word; start = round(ts*1000) of the word's first piece; end = max round((ts+dur)*1000) over pieces holding a Unicode letter or number (punctuation stays attached but never extends the word); round half away from zero, in double from the engine's float32. Conformance: segments, segment inputSha256 and word count exact; words exact up to trailing , . ? ! (D16); startMs/endMs within 80 ms (D11.3) once hashes match. D26.1: silero-input-hpf-butter2-100hz-v1 filters VAD only; recognition PCM is unchanged.",
   "input": "segmentation-input.wav",
   "inputSha256": "1d93aacf85e8ef17c804ff11d910c24a4f38631ae267a49da056fd89fcb227dd",
   "sampleRate": 16000,
   "segments": [
     {
-      "startSample": 14336,
+      "startSample": 13824,
       "endSample": 58368,
       "reason": "silence",
       "text": "And so, my fellow Americans",
-      "inputSha256": "eceb2e1368c790aeaf56adf37fed778b18f510b87499848d719720105f6f7b6d"
+      "inputSha256": "949668835d7c21ad5ffb0f3d14793f96f0d5285af0fd9f12b106b589d27cfd67"
     },
     {
       "startSample": 61440,
@@ -65,28 +65,28 @@
   ],
   "words": [
     {
-      "startMs": 1056,
-      "endMs": 1376,
+      "startMs": 1024,
+      "endMs": 1344,
       "text": "And"
     },
     {
-      "startMs": 1376,
-      "endMs": 1616,
+      "startMs": 1344,
+      "endMs": 1584,
       "text": "so,"
     },
     {
-      "startMs": 1776,
-      "endMs": 2016,
+      "startMs": 1744,
+      "endMs": 1984,
       "text": "my"
     },
     {
-      "startMs": 2016,
-      "endMs": 2496,
+      "startMs": 1984,
+      "endMs": 2464,
       "text": "fellow"
     },
     {
-      "startMs": 2496,
-      "endMs": 3296,
+      "startMs": 2464,
+      "endMs": 3264,
       "text": "Americans"
     },
     {
@@ -427,5 +427,6 @@
     "feature_dim": 128,
     "dither": 0.0,
     "blank_penalty": 0.0
-  }
+  },
+  "vadInputStage": "silero-input-hpf-butter2-100hz-v1"
 }

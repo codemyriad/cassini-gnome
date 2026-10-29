@@ -36,6 +36,49 @@ def feed(recorder, identifier, data, pts):
     return recorder._sample(SimpleNamespace(emit=lambda _action: sample), identifier)
 
 
+@pytest.mark.parametrize("offset", [-2060, 4000])
+def test_native_meter_ignores_dc_and_original_pcm_is_saved(tmp_path, offset):
+    NativeRecorder, Gst = recorder_class()
+    session = RecordingSession(tmp_path)
+    session.add_track("microphone", "Me", "microphone", 48000, 1)
+    recorder = NativeRecorder()
+    recorder.session = session
+    pcm = offset.to_bytes(2, "little", signed=True) * 4800
+    try:
+        assert feed(recorder, "microphone", pcm, 0) == Gst.FlowReturn.OK
+        assert recorder.levels[0] == 0
+        message = SimpleNamespace(
+            type=Gst.MessageType.ELEMENT,
+            src=SimpleNamespace(get_name=lambda: "level-microphone"),
+            get_structure=lambda: SimpleNamespace(
+                get_name=lambda: "level", get_value=lambda _key: pytest.fail("Raw RMS hides silent DC")
+            ),
+        )
+        recorder._message(None, message)
+        assert recorder.levels[0] == 0
+        session.finish()
+        with wave.open(str(session.directory / session.manifest["tracks"][0]["file"])) as audio:
+            assert audio.readframes(audio.getnframes()) == pcm
+    finally:
+        session.finish()
+        recorder.close()
+
+
+def test_browser_native_tap_measures_ac_without_replacing_pcm():
+    _NativeRecorder, Gst = recorder_class()
+    from cassini_viewer.native_tap import NativeTap
+
+    received = []
+    tap = NativeTap("microphone", 0, lambda data, *_args, **_kw: received.append(data), pytest.fail)
+    tap.pipeline = SimpleNamespace(get_base_time=lambda: 0)
+    tap.anchor_wall = tap.anchor_clock = 0
+    pcm = (-2060).to_bytes(2, "little", signed=True) * 4800
+    buffer = SimpleNamespace(pts=0, get_size=lambda: len(pcm), extract_dup=lambda *_: pcm)
+    sample = SimpleNamespace(get_buffer=lambda: buffer)
+    assert tap._sample(SimpleNamespace(emit=lambda _: sample)) == Gst.FlowReturn.OK
+    assert tap._ac_meter.level == 0 and received == [pcm]
+
+
 def test_pinned_gnome_gap_fixture_through_native_input_callbacks(tmp_path, monkeypatch):
     NativeRecorder, Gst = recorder_class()
     expected = json.loads((FIXTURE / "session-gnome.json").read_text())
@@ -100,6 +143,10 @@ def test_ten_hours_smooth_device_drift_does_not_become_missing_audio(tmp_path):
     session.add_track("microphone", "Microphone", "microphone", 48000, 1)
     recorder = NativeRecorder()
     recorder.session = session
+    # This stress test models ten hours of clock stamps with a counting writer,
+    # not 1.7 billion samples of inference/metering. Real appsink AC windows and
+    # byte-identical saved PCM are exercised separately above.
+    recorder._ac_meters["microphone"] = SimpleNamespace(feed=lambda _data: False)
     data = bytes(48000 * 2)
     try:
         for second in range(36000):

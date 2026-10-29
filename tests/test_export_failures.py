@@ -99,7 +99,7 @@ def test_silent_received_sidecar_remains_done_after_write_down(tmp_path):
     atomic_json(received.directory / "transcript.json", dict(format=portable.WORDS_FORMAT, language="und", items=[]))
     update_metadata(received.directory, transcript=dict(status="done", reference=REFERENCE))
     meeting = LibraryScanner(received.directory.parent).scan().meetings[0]
-    assert meeting.transcript == "done" and not meeting.can_write_down and not meeting.words
+    assert meeting.transcript == "done" and meeting.no_speech and meeting.can_write_down and not meeting.words
 
 
 def test_empty_embedded_speaker_id_is_damaged_before_import_or_export(tmp_path, monkeypatch):
