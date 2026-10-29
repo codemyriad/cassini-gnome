@@ -33,6 +33,13 @@ model. Current writers do not persist writing duration or speech-segment count,
 so those facts remain explicitly unrecorded. This draft does not add bookkeeping
 to transcription or change either recognition pipeline.
 
+Facts use a grid so GTK can negotiate the height-for-width columns without asking
+for their width at a viewport height below their minimum. Unchanged reports (and
+unchanged read errors) do not touch the widget tree. Ordinary live updates reuse
+the existing labels and only change differing values; the body is rebuilt only
+when its visible structure changes, such as a new capture span or extra note.
+This keeps focus, text selection and scrolling stable during recording ticks.
+
 All reads run on a bounded, single-flight daemon worker, outside GTK. JSON reads
 are limited to 1 MiB per file; the transcript reads only a 64 KiB top-level header,
 stopping before the words array. Oversized or unsafe metadata leaves a visible note.
@@ -56,3 +63,12 @@ that released Cassini already writes it. Real GTK screenshots are emitted by
 - `recording-details-browser-fallback.png`
 - `recording-details-microphone.png`
 - `recording-details-no-events.png`
+
+The GTK interaction test covers long per-side timelines and a real NativeRecorder
+with generated live GStreamer sources (no host audio). It waits for three actual
+reader timer completions and checks that saved reports compare equal, live end
+times advance, body/label identities stay fixed, and focus/scroll position survive.
+A parent process replays the child's complete stderr and fails on any Gtk warning
+or critical between dialog-open/closed markers. Startup diagnostics outside those
+scopes are still printed. No G_DEBUG/log suppression is used. A mutation restoring
+the old facts box makes the new warning guard fail after the UI assertions pass.
