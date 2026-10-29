@@ -71,3 +71,28 @@ def test_unavailable_library_preserves_voice_meeting_lists_until_a_valid_scan(ap
     # A successful empty scan really does mean the meeting left the Library.
     application_class.observe_library(app, LibrarySnapshot(), None)
     assert writes == [frozenset()] and store.snapshot()["voices"][0]["meetings"] == []
+
+
+def test_windowless_observation_retries_voice_sync_when_a_monitor_becomes_available(application_class, tmp_path):
+    store = VoiceStore(tmp_path / "private")
+    enrol(store)
+    windows, calls = [], []
+    app = SimpleNamespace(
+        _voice_library_keys=None,
+        get_windows=lambda: windows,
+        voice_store=store,
+        settings_dialog=None,
+        transcription_enabled=False,
+    )
+    snapshot = LibrarySnapshot(meetings=(SimpleNamespace(directory=Path(RECORDING)),))
+    application_class.observe_library(app, snapshot, None)
+    assert app._voice_library_keys is None
+
+    def submit(operation, keys):
+        calls.append(keys)
+        operation(keys)
+
+    windows.append(SimpleNamespace(monitor=SimpleNamespace(_closed=False, _executor=SimpleNamespace(submit=submit))))
+    application_class.observe_library(app, snapshot, None)
+    assert calls == [frozenset([RECORDING])]
+    assert app._voice_library_keys == frozenset([RECORDING])

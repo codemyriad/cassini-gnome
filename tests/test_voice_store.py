@@ -357,6 +357,57 @@ def test_sample_uses_only_auto_and_confirmed_voice_links():
     assert sample_window(cache, "unknown") is None
 
 
+def test_recompute_keeps_automatic_link_and_rejections_without_rematching(store):
+    alice = enrol(store)
+    store.commit_job(RECEIVED, prints(), 0)
+    path = store.root / "meetings" / (RECEIVED + ".json")
+    value = json.loads(path.read_text())
+    value["speakers"]["others~1"]["rejected"] = ["voice_rejected"]
+    path.write_text(json.dumps(value))
+    assert store.recompute(RECEIVED, {"others~1": dict(embedding=embedding(1), seconds=9)}, {"others~1"}, 0)
+    item = store.meeting(RECEIVED)["speakers"]["others~1"]
+    assert item["match"] == dict(voiceId=alice["id"], state="auto", score=0.0)
+    assert item["rejected"] == ["voice_rejected"]
+    assert store.has_match(RECEIVED, "others~1")
+    assert set(store.snapshot()["voices"][0]["meetings"]) == {RECORDING, RECEIVED}
+
+
+def test_protected_names_only_get_suggestions_and_do_not_take_automatic_match_slots(store):
+    from cassini_viewer.voice_store import sample_window
+
+    alice = enrol(store)
+    protected = dict(embedding=embedding(), seconds=8, windows=[dict(startMs=0, endMs=8000)])
+    other = dict(embedding=embedding(), seconds=8, windows=[dict(startMs=10000, endMs=18000)])
+    names = store.commit_job(RECEIVED, {"cleared": protected, "other": other}, 0, auto_eligible=lambda: {"other"})
+    cache = store.meeting(RECEIVED)
+    assert names == {"other": "Alice"}
+    assert cache["speakers"]["cleared"]["match"]["state"] == "suggested"
+    assert not store.has_match(RECEIVED, "cleared") and store.has_match(RECEIVED, "other")
+    assert sample_window(cache, alice["id"]) == (10000, 18000)
+    store.commit_job(RECEIVED, {"cleared": protected}, 0, auto_eligible=lambda: set())
+    assert store.snapshot()["voices"][0]["meetings"] == [RECORDING]
+    assert sample_window(store.meeting(RECEIVED), alice["id"]) is None
+
+
+@pytest.mark.parametrize("operation", ["job", "remember", "recompute"])
+def test_current_meeting_updates_link_before_library_watcher_catches_up(store, operation):
+    alice = enrol(store)
+    if operation != "job":
+        store.commit_job(RECEIVED, prints(), 0)
+        if operation == "recompute":
+            store.remember(RECEIVED, "others~1", "Alice", voice_id=alice["id"])
+    store.sync_library([RECORDING])
+    assert not store.has_match(RECEIVED, "others~1")
+    if operation == "job":
+        store.commit_job(RECEIVED, prints(), 0)
+    elif operation == "remember":
+        store.remember(RECEIVED, "others~1", "Alice", voice_id=alice["id"])
+    else:
+        store.recompute(RECEIVED, prints(), {"others~1"}, 0)
+    assert store.has_match(RECEIVED, "others~1")
+    assert set(store.snapshot()["voices"][0]["meetings"]) == {RECORDING, RECEIVED}
+
+
 def test_undivided_me_never_becomes_a_saved_voice(store):
     store.refresh()
     with pytest.raises(ValueError):

@@ -768,10 +768,10 @@ class CassiniApplication(Adw.Application):
             return  # An unreadable Library is not evidence that meetings left it.
         keys = frozenset(m.directory.name for m in snapshot.meetings)
         if keys != self._voice_library_keys:
-            self._voice_library_keys = keys
             for window in self.get_windows():
                 if hasattr(window, "monitor") and not window.monitor._closed:
                     window.monitor._executor.submit(self.voice_store.sync_library, keys)
+                    self._voice_library_keys = keys
                     break
         if self.settings_dialog and not self.settings_dialog.closed and self.settings_dialog.saved_voices_page:
             self.settings_dialog.saved_voices_page.refresh()

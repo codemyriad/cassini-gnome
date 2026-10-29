@@ -120,9 +120,15 @@ def test_optional_voice_step_preserves_transcript_and_obeys_generation_and_cance
         elif failure == "manual":
             assert metadata["speakers"][0]["name"] == "Typed while extracting"
             assert metadata["speakers"][0]["provenance"] == "user"
+            assert store.meeting(directory)["speakers"]["others"]["match"]["state"] == "suggested"
+            assert not store.has_match(directory, "others")
+            assert directory.name not in store.snapshot()["voices"][0]["meetings"]
         elif failure in ("clear", "cleared-before"):
             assert metadata["speakers"][0]["name"] is None and metadata["speakers"][0]["provenance"] == "unnamed"
             assert metadata["speakers"][0]["nameCleared"] is True
+            assert store.meeting(directory)["speakers"]["others"]["match"]["state"] == "suggested"
+            assert not store.has_match(directory, "others")
+            assert directory.name not in store.snapshot()["voices"][0]["meetings"]
         else:
             assert metadata["speakers"][0]["name"] != "Alice"
     assert "embedding" not in json.dumps(metadata)
