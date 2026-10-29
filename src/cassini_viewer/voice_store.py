@@ -458,21 +458,31 @@ class VoiceStore:
                 return False
             meeting = self._meeting(key, generation)
             voices = {v["id"]: v for v in people["voices"]}
-            for speaker in affected:
+            # A merged-away voice (or one with too little clean speech) has no
+            # replacement. Keep its confirmed print and person for Undo.
+            replacements = {s: copy.deepcopy(prints[s]) for s in sorted(set(affected)) if s in prints}
+            confirmed = {}
+            for speaker in replacements:
                 old = meeting["speakers"].get(speaker)
-                previous = None
                 if old and old.get("match", {}).get("state") == "confirmed":
                     previous = voices.get(old["match"]["voiceId"])
                     if previous is not None:
-                        reduced = unenrol(previous, old["embedding"])
-                        if reduced is not None and reduced["count"] > 0:
-                            voices[previous["id"]] = reduced
-                        else:
-                            voices.pop(previous["id"], None)
-                item = copy.deepcopy(prints.get(speaker))
-                if item is None:
-                    meeting["speakers"].pop(speaker, None)
-                    continue
+                        confirmed[speaker] = copy.deepcopy(previous)
+
+            # Remove all replaced contributions first. Interleaving removal and
+            # insertion corrupts a shared running mean and depends on set order.
+            for speaker, previous in confirmed.items():
+                current = voices.get(previous["id"])
+                if current is not None:
+                    old = meeting["speakers"][speaker]
+                    reduced = unenrol(current, old["embedding"])
+                    if reduced is not None and reduced["count"] > 0:
+                        voices[previous["id"]] = reduced
+                    else:
+                        voices.pop(previous["id"], None)
+
+            for speaker, item in replacements.items():
+                previous = confirmed.get(speaker)
                 item["match"] = dict(voiceId=None, score=None, state="none")
                 if previous is not None:
                     # Preserve the confirmed identity, not an automatic match.
