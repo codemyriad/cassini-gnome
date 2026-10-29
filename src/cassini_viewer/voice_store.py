@@ -23,12 +23,14 @@ from .voices_logic import DIMENSION, REVISION, UnsupportedVersion, decode_people
 LOG = logging.getLogger(__name__)
 LOCK = threading.RLock()
 LIMIT = 16 * 1024 * 1024
+JOURNAL_LIMIT = 128 * 1024 * 1024
 
 
-def _load(path):
+def _load(path, *, limit=None):
+    limit = LIMIT if limit is None else limit
     with regular_input(path) as stream:
-        raw = stream.read(LIMIT + 1)
-    if len(raw) > LIMIT:
+        raw = stream.read(limit + 1)
+    if len(raw) > limit:
         raise ValueError("Saved voices file exceeds limit")
     return json.loads(raw, parse_constant=_invalid)
 
@@ -161,7 +163,7 @@ class VoiceStore:
             return copy.deepcopy(empty)
         except UnsupportedVersion:
             raise
-        except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
+        except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
             # Keep the original for diagnosis, never silently truncate it.
             stamp = int(time.time() * 1000)
             damaged = path.with_name(path.name + f".corrupt-{stamp}")
@@ -263,7 +265,13 @@ class VoiceStore:
         for relative in values:
             path = self.root / relative
             old[relative] = _load(path) if path.exists() else None
-        atomic_json(self.root / ".transaction.json", dict(version=1, rollback=old), before_commit=before_commit)
+        journal = dict(version=1, rollback=old)
+        if (
+            len(json.dumps(journal, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8"))
+            > JOURNAL_LIMIT
+        ):
+            raise ValueError("Saved voice edit exceeds the recovery size limit")
+        atomic_json(self.root / ".transaction.json", journal, before_commit=before_commit)
         try:
             for relative, value in values.items():
                 atomic_json(self.root / relative, value, before_commit=before_commit)
@@ -276,7 +284,7 @@ class VoiceStore:
         journal = self.root / ".transaction.json"
         if not journal.exists():
             return
-        value = _load(journal)
+        value = _load(journal, limit=JOURNAL_LIMIT)
         _version(value)
         # Never recover a transaction across an upgrade to an unknown format.
         for relative in value["rollback"]:

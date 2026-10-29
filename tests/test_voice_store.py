@@ -316,3 +316,25 @@ def test_job_retry_preserves_confirmed_print_and_does_not_count_it_twice(store):
     assert store.snapshot()["voices"][0]["count"] == 1
     assert store.snapshot()["voices"][0]["id"] == alice["id"]
     assert store.meeting(RECORDING)["speakers"]["another"]["match"]["state"] == "none"
+
+
+def test_recovery_journal_can_exceed_one_file_limit(store, monkeypatch):
+    enrol(store)
+    old = {str(p.relative_to(store.root)): json.loads(p.read_text()) for p in store.root.rglob("*.json")}
+    assert all(p.stat().st_size < 4096 for p in store.root.rglob("*.json"))
+    journal = store.root / ".transaction.json"
+    journal.write_text(json.dumps(dict(version=1, rollback=old)))
+    assert journal.stat().st_size > 4096
+    (store.root / "people.json").write_text(json.dumps(dict(version=1, generation=0, voices=[])))
+    monkeypatch.setattr(voice_store, "LIMIT", 4096)
+    assert VoiceStore(store.root).refresh()["voices"][0]["name"] == "Alice"
+    assert not journal.exists()
+
+
+def test_edit_never_installs_a_journal_it_cannot_recover(store, monkeypatch):
+    enrol(store)
+    before = {p: p.read_bytes() for p in store.root.rglob("*.json")}
+    monkeypatch.setattr(voice_store, "JOURNAL_LIMIT", 128)
+    with pytest.raises(ValueError, match="recovery size limit"):
+        store.remember(RECORDING, "others~1", "Bob")
+    assert {p: p.read_bytes() for p in store.root.rglob("*.json")} == before
