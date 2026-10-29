@@ -3,11 +3,12 @@
 
 import contextlib
 import json
+import os
 from collections import deque
 from pathlib import Path
 
 from .diarization import group_tracks, voice_ordinals
-from .library import _sidecar_words
+from .library import LibraryScanner, _sidecar_words
 from .meeting_store import read_metadata
 from .received import regular_input
 from .speaker_merges import resolve_merges
@@ -26,10 +27,28 @@ def read_words(path):
     return [dict(speaker=w.speaker, startMs=w.start_ms, endMs=w.end_ms) for w in _sidecar_words(value)]
 
 
-def group_words(group, words, turns, merges):
+def historical_words(directory):
+    # Use the validated reader for both embedded Received transcripts and
+    # sidecars. Long transcripts never cross the 512 KiB worker request pipe.
+    meeting = next(
+        m
+        for m in LibraryScanner(directory.parent).scan(changed_directories={directory}).meetings
+        if m.directory == directory
+    )
+    if meeting.transcript != "done" or not meeting.metadata_editable:
+        raise ValueError("Historical meeting is no longer ready for voices")
+    return [dict(speaker=w.speaker, startMs=w.start_ms, endMs=w.end_ms) for w in meeting.words]
+
+
+def group_words(group, words, turns, merges, *, all_words=False, excluded_groups=()):
     ordinals = voice_ordinals(turns)
     native_ids = {f"{group['id']}~{ordinal}": native for native, ordinal in ordinals.items()}
-    selected = [w for w in words if w["speaker"] == group["id"] or w["speaker"] in native_ids]
+    selected = [
+        w
+        for w in words
+        if (all_words or w["speaker"] == group["id"] or w["speaker"] in native_ids)
+        and not any(w["speaker"] == other or w["speaker"].startswith(other + "~") for other in excluded_groups)
+    ]
     labels = {}
     for word in selected:
         raw = word["speaker"]
@@ -63,7 +82,10 @@ def run(tracks, options, notify):
     from .diarization_audio import rejoin
 
     directory = Path(options["directory"])
-    words = read_words(directory / "transcript.json")
+    background = options.get("prepareMissing", False)
+    if background:
+        os.nice(10)
+    words = historical_words(directory) if background else read_words(directory / "transcript.json")
     metadata = read_metadata(directory)
     merges = resolve_merges(
         options.get("speakerMerges", metadata.get("speakerMerges", [])), {w["speaker"] for w in words}
@@ -74,19 +96,57 @@ def run(tracks, options, notify):
     total_frames = 0
     with contextlib.ExitStack() as stack:
         model = stack.enter_context(contextlib.closing(SpeakerExtractor(options["modelPath"], options["runtimePath"])))
-        for group in group_tracks(tracks, origin=options.get("origin", "own")):
-            turns = cached.get(group["id"], {}).get("turns", [])
-            selected, labels = group_words(group, words, turns, merges)
-            selected = [w for w in selected if w["speaker"] != "me"]
-            if not selected:
+        diarizer = None
+        groups = group_tracks(tracks, origin=options.get("origin", "own"))
+        for group in groups:
+            if group["id"] == "me" and "me" not in merges and not any(w["speaker"].startswith("me~") for w in words):
                 continue
-            stream, frames, _sha = stack.enter_context(
+            stream, frames, sha = stack.enter_context(
                 rejoin(
                     [tracks_by_id[t] for t in group["tracks"]],
                     scratch=options.get("scratch"),
                     heartbeat=lambda: notify("voice-progress"),
                 )
             )
+            previous = cached.get(group["id"], {})
+            turns = previous.get("turns", [])
+            if (
+                background
+                and group["eligible"]
+                and (previous.get("inputSHA256") != sha or previous.get("durationMs") != frames // 16)
+            ):
+                # Old meetings may predate Tell speakers apart as well. Obtain
+                # overlap evidence privately; do not reassign their saved words.
+                if diarizer is None:
+                    from .nemotron import Nemotron
+
+                    config = options["diarization"]
+                    diarizer = stack.enter_context(
+                        contextlib.closing(Nemotron(config["modelPath"], config["runtimePath"]))
+                    )
+                import numpy as np
+
+                samples = np.memmap(stream, dtype="<f4", mode="r", shape=(frames,))
+                try:
+                    turns = diarizer.infer(samples, lambda *_: notify("voice-progress"))["turns"]
+                finally:
+                    samples._mmap.close()
+            selected, labels = group_words(
+                group,
+                words,
+                turns,
+                merges,
+                excluded_groups=tuple(g["id"] for g in groups if g["id"] != group["id"]) if background else (),
+                all_words=background
+                and (
+                    options.get("origin") == "received"
+                    or group["id"] != "me"
+                    and sum(g["id"] != "me" for g in groups) == 1
+                ),
+            )
+            selected = [w for w in selected if w["speaker"] != "me"]
+            if not selected:
+                continue
             total_frames = max(total_frames, frames)
             for speaker, windows in select_windows(
                 turns, selected, 16000, frames, own_labels=labels, min_seconds=0, max_seconds=None

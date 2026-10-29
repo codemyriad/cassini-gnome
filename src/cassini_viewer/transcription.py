@@ -149,6 +149,7 @@ class TranscriptionQueue:
         self.pending = set()
         self._voice_reruns = {}
         self.voice_pending = set()
+        self._background_voices = {}
         self.lock = threading.RLock()
         self._idle = threading.Condition(self.lock)
         self._cancelled_meetings = set()
@@ -163,6 +164,8 @@ class TranscriptionQueue:
             if self.closed or directory in self.pending or directory in self._cancelled_meetings:
                 return False
             self.pending.add(directory)
+            if self._active_directory in self._background_voices and self.client:
+                self.client.cancel()
             future = self.preparer.submit(self._mark_queued, directory, resume)
             self._prepare_futures[directory] = future
         future.add_done_callback(lambda f: self._prepared(directory, f))
@@ -557,6 +560,31 @@ class TranscriptionQueue:
             self._submit_voice(token, set(affected), failed)
         return True
 
+    def backfill_voices(self, directory, finished):
+        """Admit one historical meeting only while the foreground queue is idle.
+
+        Background completion has no foreground app hold to release. Its
+        worker is cancelled if writing down arrives, and Trash uses the same
+        per-meeting exclusion as every other voice job.
+        """
+        token = Path(directory).absolute()
+        with self.lock:
+            if (
+                self.closed
+                or self.pending
+                or self.voice_pending
+                or token in self._cancelled_meetings
+                or self.voice_models is None
+                or self.diarization_models is None
+                or not self.voice_models.snapshot().get("ready")
+                or not self.diarization_models.snapshot().get("ready")
+            ):
+                return False
+            self._background_voices[token] = finished
+            self.voice_pending.add(token)
+            self._submit_voice(token, None, lambda error: LOG.warning("Historical voice preparation failed: %s", error))
+        return True
+
     def _submit_voice(self, token, affected, failed):
         future = self.executor.submit(self._voice_job, token, affected, failed)
         self._voice_futures[token] = future
@@ -569,8 +597,13 @@ class TranscriptionQueue:
             self.voice_pending.remove(token)
             self._voice_futures.pop(token, None)
             self._voice_reruns.pop(token, None)
+            background = self._background_voices.pop(token, None)
+            preempted = background is not None and bool(self.pending)
             self._idle.notify_all()
-        self.finished(token)
+        if background is None:
+            self.finished(token)
+        else:
+            background(token, preempted)
 
     def _voice_job(self, token, affected, failed):
         try:
@@ -594,9 +627,17 @@ class TranscriptionQueue:
             )
             if not meeting.metadata_editable:
                 return
+            background = affected is None
+            if background and (meeting.lifecycle != "saved" or meeting.transcript != "done" or not meeting.words):
+                return
             options = self.voice_models.request(directory, origin=meeting.origin)
             if not options:
                 return
+            if background:
+                diarization = self.diarization_models.request(directory, origin=meeting.origin)
+                if not diarization:
+                    return
+                options = dict(options, prepareMissing=True, diarization=diarization)
             tracks, _speakers = prepare_tracks(meeting)
             if meeting.origin == "received":
                 tracks = [
@@ -632,6 +673,11 @@ class TranscriptionQueue:
                 if read_metadata(directory).get("speakerMerges", []) != history:
                     raise CancelledError()
 
+            if background:
+                # No re-matching or transcript/name writes for historical meetings.
+                # Only missing prints are added; existing confirmed data/rejections stay.
+                cache = self.voice_store.meeting(directory)
+                affected = prints.keys() - cache["speakers"].keys()
             self.voice_store.recompute(directory, prints, affected, state["generation"], check_active=current)
             self.changed(directory)
         except Exception as error:
@@ -654,6 +700,7 @@ class TranscriptionQueue:
     @contextlib.contextmanager
     def _job_scope(self, directory, *, owner=False):
         self._context.directory = directory
+        self._context.background = owner and directory in self._background_voices
         try:
             with self.lock:
                 self._check_open()
@@ -665,6 +712,7 @@ class TranscriptionQueue:
                 if owner and self._active_directory == directory:
                     self._active_directory = None
                 self._context.directory = None
+                self._context.background = False
                 self._idle.notify_all()
 
     @contextlib.contextmanager
@@ -698,7 +746,12 @@ class TranscriptionQueue:
                 self._cancelled_meetings.discard(directory)
 
     def _check_open(self):
-        if self.closed or getattr(self._context, "directory", None) in self._cancelled_meetings:
+        if (
+            self.closed
+            or getattr(self._context, "directory", None) in self._cancelled_meetings
+            or getattr(self._context, "background", False)
+            and self.pending
+        ):
             raise CancelledError()
 
     def _register_client(self, client):

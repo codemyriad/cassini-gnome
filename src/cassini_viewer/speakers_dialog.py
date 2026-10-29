@@ -30,6 +30,8 @@ class SpeakersDialog(Adw.Dialog):
         self.timer = 0
         self.voices_loaded = False
         self.voice_data = None
+        self.voice_prepared = False
+        self._voices_loading = self._voices_again = False
         self.voice_state = dict(voices=[], readOnly=False)
         self.chosen_voice = None
         self.declined_duplicate = None
@@ -112,6 +114,14 @@ class SpeakersDialog(Adw.Dialog):
         content.append(self.remember)
         self.remember_description = Gtk.Label(xalign=0, wrap=True, css_classes=["caption", "dim-label"])
         content.append(self.remember_description)
+        self.voice_settings = Gtk.Button(
+            label=text("speakers.rememberVoice.settings"),
+            halign=Gtk.Align.START,
+            css_classes=["flat", "accent"],
+            visible=False,
+        )
+        self.voice_settings.connect("clicked", self._open_voice_settings)
+        content.append(self.voice_settings)
         self.error = Gtk.Label(
             label=text("speakers.changeFailed"), xalign=0, wrap=True, visible=False, css_classes=["warning"]
         )
@@ -171,29 +181,38 @@ class SpeakersDialog(Adw.Dialog):
         self.merge.set_sensitive(not self.busy and len(meeting.speakers) > 1)
 
     def _load_voices(self):
+        if self.closed or self.window.monitor._closed:
+            return
+        if self._voices_loading:
+            self._voices_again = True
+            return
+        self._voices_loading = True
+
         def load():
             store = self.window.get_application().voice_store
             state = store.refresh()
             if state["readOnly"]:
-                return state, None
-            cache = store.meeting(self.meeting.directory)
-            return state, cache["speakers"].get(self.identifier)
+                return state, None, False
+            cache, prepared = store.preparation(self.meeting.directory)
+            return state, cache["speakers"].get(self.identifier), prepared
 
         future = self.window.monitor._executor.submit(load)
         future.add_done_callback(lambda f: GLib.idle_add(self._voices_loaded, f))
 
     def _voices_loaded(self, future):
+        self._voices_loading = False
         try:
-            state, item = future.result()
+            state, item, prepared = future.result()
         except CancelledError:
             return False
         except (OSError, ValueError):
             LOG.exception("Could not load private speaker print")
-            state, item = dict(voices=[], readOnly=False), None
+            state, item, prepared = dict(voices=[], readOnly=False), None, False
         if self.closed:
             return False
         self.voices_loaded = True
         self.voice_state, self.voice_data = state, item
+        self.voice_prepared = prepared
         old = (item or {}).get("match", {})
         voice = next((v for v in state["voices"] if v["id"] == old.get("voiceId")), None)
         if voice and name_key(voice["name"]) == name_key(self.initial_name) == name_key(self.entry.get_text()):
@@ -202,7 +221,20 @@ class SpeakersDialog(Adw.Dialog):
         if state["voices"]:
             self.set_content_height(660)
         self._validate()
+        if self._voices_again:
+            self._voices_again = False
+            self._load_voices()
         return False
+
+    def refresh_voices(self):
+        self._validate()
+        self._load_voices()
+
+    def _open_voice_settings(self, *_):
+        app = self.window.get_application()
+        self.close()
+        app.on_preferences()
+        app.settings_dialog.set_visible_page_name("transcription")
 
     def _voice_rows(self):
         self.voices_list.remove_all()
@@ -268,6 +300,10 @@ class SpeakersDialog(Adw.Dialog):
             valid = True
         enough = bool(self.voice_data and self.voice_data["seconds"] >= 4 and self.identifier != "me")
         writable = not self.voice_state["readOnly"]
+        app = self.window.get_application()
+        ready = all(
+            model is not None and model.snapshot().get("ready") for model in (app.voice_models, app.diarization_models)
+        )
         self.remember.set_sensitive(enough and writable and not self.busy)
         self.voices_list.set_sensitive(not self.busy)
         self.duplicate.set_sensitive(not self.busy)
@@ -276,8 +312,16 @@ class SpeakersDialog(Adw.Dialog):
             if not writable
             else text("speakers.rememberVoice.description", name=self.entry.get_text().strip())
             if enough
+            else text("speakers.rememberVoice.modelsNeeded")
+            if not ready
+            else text("speakers.rememberVoice.notPrepared")
+            if not self.voice_prepared
             else text("speakers.rememberVoice.tooShort")
         )
+        self.voice_settings.set_visible(writable and not enough and not ready)
+        self.remember.set_visible(self.identifier != "me")
+        self.remember_description.set_visible(self.identifier != "me")
+        self.voice_settings.set_visible(self.voice_settings.get_visible() and self.identifier != "me")
         self.candidate = None
         if (
             enough

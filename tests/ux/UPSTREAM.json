@@ -96,7 +96,7 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "ca3544e2aff6ad2b1cfc92f4446fc7e7ec5c1d12f641660e33a9d98a76963f1d",
+    "strings.json": "c92985e5ecff76771d61976aa0061e4d809928fdc4d2d48266e4c55d8c5fe753",
     "LIBRARY.md": "6cd4063cdd58567c75a4733c8862e9fe0983863df890b86a91e9a9bb17749751",
     "session-events/session.json": "6bcec60cf4024421b57683d86a44d7ffd92efdc84a3e5b67e24cb09fcfb55723",
     "session-events/expected.json": "905ad1966fa3cac23aa348109d4f694a5606ea685f3a5689cc052cf092a8a920",
@@ -127,8 +127,19 @@
   },
   "additionalSources": {
     "strings.json": {
-      "commit": "d02b962",
-      "note": "D29 approved Move to Trash catalog"
+      "commit": "1830c33e50a9e519d2f926adbcebab7b558cb75d",
+      "note": "Selectively adopt only the three approved Saved voices reasons/actions. Preserve the exact D29 catalog bytes until queued D32 removes note UI/copy; D31 browser copy remains queued.",
+      "sourceSha256": "e789b0d9acac08fb89edea25c688201ba991d99b1f411b2e85e82ee7c3950863",
+      "additive": {
+        "baseCommit": "d02b962",
+        "baseSha256": "ca3544e2aff6ad2b1cfc92f4446fc7e7ec5c1d12f641660e33a9d98a76963f1d",
+        "ids": [
+          "speakers.rememberVoice.modelsNeeded",
+          "speakers.rememberVoice.notPrepared",
+          "speakers.rememberVoice.settings"
+        ],
+        "entriesSha256": "93ae0ea52d017b2191c341c20b9e68699cf29ad2319e8f0ea3a586af48ad294b"
+      }
     },
     "LIBRARY-RULES.md": {
       "commit": "c74460bc61ea498dcf821e628190266348486345",

@@ -24,6 +24,28 @@ def test_different_audio_groups_cannot_steal_words_with_similar_prefixes():
     assert selected == words[:1] and labels == {}
 
 
+def test_historical_group_preserves_embedded_ids_without_stealing_microphone_words():
+    words = [dict(speaker=s, startMs=0, endMs=6000) for s in ("guest", "me", "me~1")]
+    selected, labels = group_words(dict(id="others"), words, [], {}, all_words=True, excluded_groups=("me",))
+    assert selected == words[:1] and labels == {}
+
+
+def test_historical_reader_supports_embedded_received_transcripts_without_a_sidecar(tmp_path):
+    from test_library import fingerprint, received
+
+    from cassini_viewer.library import LibraryScanner
+    from cassini_viewer.worker_voices import historical_words
+
+    directory = received(tmp_path)
+    before = fingerprint(directory)
+    assert not (directory / "transcript.json").exists()
+    meeting = LibraryScanner(tmp_path).scan().meetings[0]
+    assert historical_words(directory) == [
+        dict(speaker=w.speaker, startMs=w.start_ms, endMs=w.end_ms) for w in meeting.words
+    ]
+    assert historical_words(directory) and fingerprint(directory) == before
+
+
 def test_one_merged_speaker_budget_alternates_groups_and_recording_thirds():
     from cassini_viewer.worker_voices import combined_windows
 

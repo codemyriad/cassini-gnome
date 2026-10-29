@@ -23,6 +23,101 @@ class Models:
         pass
 
 
+@pytest.mark.parametrize("during_probe", [False, True])
+def test_foreground_writing_preempts_historical_job_without_losing_its_hold(tmp_path, monkeypatch, during_probe):
+    import threading
+
+    from cassini_viewer import voice_models
+    from cassini_viewer.transcription import REFERENCE
+
+    old, foreground = meeting(tmp_path), meeting(tmp_path)
+    update_metadata(old, transcript=dict(status="done", reference=REFERENCE))
+    (old / "transcript.json").write_text(
+        json.dumps(
+            dict(
+                format="cassini.words.v1",
+                language="en",
+                items=[dict(speaker="others", text="Old speech", startMs=0, endMs=9000)],
+            )
+        )
+    )
+    store = VoiceStore(tmp_path / "private")
+    store.refresh()
+    entered, cancelled = threading.Event(), threading.Event()
+    completed, background = [], []
+    started = []
+
+    class ReadyModels(Models):
+        def snapshot(self):
+            return dict(ready=True)
+
+        def request(self, directory, *, origin):
+            if during_probe and directory == old:
+                entered.set()
+                assert cancelled.wait(4)
+            return super().request(directory, origin=origin)
+
+    class Background:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            started.append(type(self).__name__)
+
+        def close(self):
+            pass
+
+        def cancel(self):
+            cancelled.set()
+
+        def voiceprints(self, *_args):
+            entered.set()
+            assert cancelled.wait(4)
+            raise CancelledError()
+
+    class Foreground(Background):
+        def process_tracks(self, tracks, notify):
+            assert cancelled.is_set()
+            notify(
+                dict(
+                    type="progress",
+                    trackId=tracks[0]["id"],
+                    trackOrder=0,
+                    language="en",
+                    etaMinutes=1,
+                    words=[dict(text="New speech", startMs=0, endMs=9000)],
+                )
+            )
+            return dict(diagnostics=[])
+
+        def voiceprints(self, *_args):
+            return {"others": dict(embedding=embedding(), seconds=8)}
+
+    monkeypatch.setattr(voice_models, "VoiceJobClient", Background)
+    queue = TranscriptionQueue(
+        lambda _: None,
+        completed.append,
+        root=tmp_path,
+        client_factory=Foreground,
+        diarization_models=ReadyModels(),
+        voice_models=ReadyModels(),
+        voice_store=store,
+    )
+    try:
+        assert queue.backfill_voices(old, lambda *args: background.append(args))
+        assert entered.wait(3)
+        assert queue.enqueue(foreground)
+        if during_probe:
+            cancelled.set()
+        until(lambda: bool(completed))
+        assert ("Background" in started) != during_probe
+        assert background == [(old, True)] and completed == [foreground]
+        assert not store.preparation(old)[1] and store.preparation(foreground)[1]
+    finally:
+        cancelled.set()
+        queue.close()
+
+
 def meeting(tmp_path):
     session = RecordingSession(tmp_path, source="gnome")
     session.add_track("sound", "The others", "system", 16000, 1)
@@ -30,6 +125,95 @@ def meeting(tmp_path):
     session.append("sound", b"\0\0" * 80000, 5000)
     session.finish()
     return session.directory
+
+
+@pytest.mark.parametrize("result", ["print", "short", "failure", "forget", "trash"])
+def test_historical_preparation_preserves_words_names_and_private_identity(tmp_path, monkeypatch, result):
+    import threading
+
+    from cassini_viewer import voice_models
+    from cassini_viewer.transcription import REFERENCE
+
+    directory = meeting(tmp_path)
+    update_metadata(
+        directory,
+        transcript=dict(status="done", reference=REFERENCE),
+        speakers=[dict(id="others", name="Typed earlier", provenance="user", colourIndex=0)],
+    )
+    (directory / "transcript.json").write_text(
+        json.dumps(
+            dict(
+                format="cassini.words.v1",
+                language="en",
+                items=[dict(speaker="others", text="Earlier speech", startMs=0, endMs=9000)],
+            )
+        )
+    )
+    before = {p: p.read_bytes() for p in directory.iterdir()}
+    store = VoiceStore(tmp_path / "private")
+    store.refresh()
+    entered, release = threading.Event(), threading.Event()
+    foreground, background = [], []
+
+    class ReadyModels(Models):
+        def snapshot(self):
+            return dict(ready=True)
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            pass
+
+        def close(self):
+            pass
+
+        def cancel(self):
+            release.set()
+
+        def voiceprints(self, tracks, options, heartbeat):
+            assert options["prepareMissing"] and options["diarization"]
+            assert "words" not in options  # Long text stays out of the request pipe.
+            entered.set()
+            assert release.wait(4)
+            if result == "failure":
+                raise ValueError("model failed")
+            if result == "forget":
+                store.forget_everyone()
+            heartbeat()
+            return {} if result == "short" else {"others": dict(embedding=embedding(), seconds=8)}
+
+    monkeypatch.setattr(voice_models, "VoiceJobClient", Client)
+    queue = TranscriptionQueue(
+        lambda _: None,
+        foreground.append,
+        root=tmp_path,
+        diarization_models=ReadyModels(),
+        voice_models=ReadyModels(),
+        voice_store=store,
+    )
+    try:
+        assert queue.backfill_voices(directory, lambda *args: background.append(args))
+        assert entered.wait(3)
+        assert not queue.backfill_voices(directory, lambda *_: None)
+        if result == "trash":
+            with queue.cancel_meeting(directory):
+                assert not queue.voice_pending
+        else:
+            release.set()
+        until(lambda: bool(background))
+        assert not foreground  # Background work never releases a foreground hold.
+        assert all(p.read_bytes() == data for p, data in before.items())
+        cache, prepared = store.preparation(directory)
+        assert prepared == (result in ("print", "short"))
+        if result == "print":
+            assert cache["speakers"]["others"]["match"]["state"] == "none"
+            assert store.remember(directory, "others", "Typed earlier")
+            assert store.snapshot()["voices"][0]["name"] == "Typed earlier"
+    finally:
+        release.set()
+        queue.close()
 
 
 @pytest.mark.parametrize("failure", [None, "model", "forget", "cancel", "manual", "clear", "cleared-before"])

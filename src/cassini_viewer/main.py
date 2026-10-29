@@ -57,6 +57,7 @@ class CassiniApplication(Adw.Application):
         from .voice_store import VoiceStore
 
         self.voice_store = VoiceStore(changed=lambda: GLib.idle_add(self._voices_changed))
+        self.voice_backfill = None
         self._transcription_holds = 0
         self._transcription_generation = 0
         self._quitting = False
@@ -161,6 +162,9 @@ class CassiniApplication(Adw.Application):
         import threading
 
         threading.Thread(target=self._load_voices, name="cassini-voices-startup", daemon=True).start()
+        from .voice_backfill import VoiceBackfill
+
+        self.voice_backfill = VoiceBackfill(self)
         from .library_relocator import LibraryRelocator
 
         self.library_relocator = LibraryRelocator(self)
@@ -762,9 +766,20 @@ class CassiniApplication(Adw.Application):
     def _models_changed(self):
         if self.settings_dialog and not self.settings_dialog.closed:
             self.settings_dialog.render_models()
+        if self.voice_backfill:
+            self.voice_backfill.models_changed()
+        self._refresh_speaker_dialogs()
         return False
 
+    def _refresh_speaker_dialogs(self):
+        for window in self.get_windows():
+            page = getattr(window, "meeting_page", None)
+            dialog = getattr(page, "speakers_dialog", None)
+            if dialog is not None and not dialog.closed:
+                dialog.refresh_voices()
+
     def _transcription_changed(self):
+        self._refresh_speaker_dialogs()
         for window in self.get_windows():
             if hasattr(window, "monitor"):
                 window.monitor.refresh()
@@ -782,6 +797,8 @@ class CassiniApplication(Adw.Application):
     def observe_library(self, snapshot, previous):
         if snapshot.unavailable:
             return  # An unreadable Library is not evidence that meetings left it.
+        if self.voice_backfill:
+            self.voice_backfill.observe(snapshot)
         keys = frozenset(m.directory.name for m in snapshot.meetings)
         if keys != self._voice_library_keys:
             for window in self.get_windows():
@@ -863,6 +880,8 @@ class CassiniApplication(Adw.Application):
 
     def begin_exit(self):
         self._quitting = True
+        if self.voice_backfill:
+            self.voice_backfill.close()
         if self._companion_probe_timer:
             GLib.source_remove(self._companion_probe_timer)
             self._companion_probe_timer = 0

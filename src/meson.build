@@ -74,6 +74,7 @@ install_data(
   'cassini_viewer/campplus_model.py',
   'cassini_viewer/campplus.py',
   'cassini_viewer/voice_models.py',
+  'cassini_viewer/voice_backfill.py',
   'cassini_viewer/voice_store.py',
   'cassini_viewer/voice_board.py',
   'cassini_viewer/saved_voices_page.py',

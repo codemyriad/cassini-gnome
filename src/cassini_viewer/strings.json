@@ -5561,6 +5561,54 @@
    ],
    "milestone": "D29",
    "status": "harmony"
+  },
+  {
+   "id": "speakers.rememberVoice.modelsNeeded",
+   "en": "To remember voices, download and turn on Tell speakers apart and Recognise saved voices in Settings.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX17",
+   "status": "harmony",
+   "note": "Coordinator (saved-voices fix, 2026-10-29). Speakers dialog caption under “Remember this voice”, replacing the misleading tooShort when the cause is different. tooShort stays only for confirmed speech under 4 s."
+  },
+  {
+   "id": "speakers.rememberVoice.notPrepared",
+   "en": "Cassini hasn’t prepared this meeting’s voices yet. You can still save the name.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX17",
+   "status": "harmony",
+   "note": "Coordinator (saved-voices fix, 2026-10-29). Speakers dialog caption under “Remember this voice”, replacing the misleading tooShort when the cause is different. tooShort stays only for confirmed speech under 4 s."
+  },
+  {
+   "id": "speakers.rememberVoice.settings",
+   "en": "Open Settings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "Speakers",
+    "Speakers-mac"
+   ],
+   "milestone": "UX17",
+   "status": "harmony",
+   "note": "Coordinator (saved-voices fix, 2026-10-29). Speakers dialog caption under “Remember this voice”, replacing the misleading tooShort when the cause is different. tooShort stays only for confirmed speech under 4 s. Shown only with modelsNeeded."
   }
  ]
 }

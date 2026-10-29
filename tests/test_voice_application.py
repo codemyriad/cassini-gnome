@@ -58,6 +58,7 @@ def test_unavailable_library_preserves_voice_meeting_lists_until_a_valid_scan(ap
         _voice_library_keys=frozenset([RECORDING]),
         get_windows=lambda: [SimpleNamespace(monitor=monitor)],
         voice_store=store,
+        voice_backfill=None,
         settings_dialog=None,
         transcription_enabled=False,
     )
@@ -82,6 +83,7 @@ def test_windowless_observation_retries_voice_sync_when_a_monitor_becomes_availa
         _voice_library_keys=None,
         get_windows=lambda: windows,
         voice_store=store,
+        voice_backfill=None,
         settings_dialog=None,
         transcription_enabled=False,
     )
