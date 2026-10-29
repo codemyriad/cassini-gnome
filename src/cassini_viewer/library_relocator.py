@@ -60,7 +60,7 @@ class LibraryRelocator:
         self._operation_count = max(
             (len(w.snapshot.meetings) for w in self.app.get_windows() if getattr(w, "snapshot", None)), default=0
         )
-        activity, busy = {}, set()
+        activity, busy = {}, set(self.app.meeting_trash.hidden)
         recorder = self.app.recorder
         if recorder_busy(recorder) and recorder.session:
             busy.add(recorder.session.directory)

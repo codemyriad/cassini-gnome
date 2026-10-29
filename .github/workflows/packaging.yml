@@ -23,6 +23,8 @@ jobs:
       options: --privileged
     steps:
       - uses: actions/checkout@v5
+      - name: Prepare the pinned host Trash portal in the SDK
+        run: python3 tests/flatpak/prepare_trash_portal.py --output "$PWD/_ci-trash-portal"
       - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
         with:
           bundle: cassini-viewer-devel.flatpak
@@ -47,4 +49,6 @@ jobs:
             flatpak-library-persistence.json
             flatpak-*-host.log
             flatpak-sandbox.log
+            flatpak-trash.json
+            flatpak-trash-portal.log
           retention-days: 7

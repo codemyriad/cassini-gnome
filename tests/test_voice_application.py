@@ -106,6 +106,7 @@ def test_recompute_holds_follow_atomic_queue_acceptance(application_class):
         _quitting=False,
         _capture_exiting=False,
         _transcription_holds=0,
+        meeting_trash=SimpleNamespace(hides=lambda _: False),
         _ensure_transcriber=lambda: SimpleNamespace(recompute_voices=lambda *_: next(started)),
         hold=lambda: holds.append(True),
     )
@@ -154,3 +155,50 @@ def test_undo_recomputes_the_actual_popped_pair_even_after_navigating_back(appli
             assert current_meeting(directory).metadata["speakerMerges"] == [{"from": "a", "into": "b"}]
         finally:
             release.set()
+
+
+def test_removed_meeting_paths_cannot_be_resaved_by_hidden_callbacks(application_class, tmp_path):
+    gone, kept = tmp_path / RECORDING, tmp_path / ("Received-" + RECORDING.removeprefix("Recording-"))
+    gone_path, kept_path = str(gone), str(kept)
+    removed = SimpleNamespace(session=SimpleNamespace(directory=gone), pipeline=None)
+    retained = SimpleNamespace(session=SimpleNamespace(directory=kept), pipeline=None)
+    discarded = []
+    window = SimpleNamespace(
+        _pending_recording=gone_path, _browser_snapshot=dict(recordings=[dict(path=gone_path), dict(path=kept_path)])
+    )
+    window._activity_source = SimpleNamespace(
+        paths={"gone": gone_path, "kept": kept_path}, snapshot={"gone": "recording", "kept": "recording"}
+    )
+    app = SimpleNamespace(
+        _pending_recording=gone_path,
+        _capture_paths={gone_path, kept_path},
+        _browser_seen_saved={gone_path, kept_path},
+        _browser_snapshot=dict(
+            recordings=[dict(path=gone_path), dict(path=kept_path)],
+            statuses=[dict(path=gone_path), dict(path=kept_path)],
+        ),
+        native_captures={"gone": removed, "kept": retained},
+        _last_native=removed,
+        comfort=SimpleNamespace(discard_meeting=discarded.append),
+        get_windows=lambda: [window],
+        meeting_trash=SimpleNamespace(hides=lambda path: Path(path) == gone),
+        _quitting=False,
+        _capture_exiting=False,
+    )
+    application_class.discard_meeting_paths(app, gone)
+    assert app._pending_recording is None and window._pending_recording is None
+    assert app._browser_seen_saved == {kept_path} and app._last_native is None
+    assert app._capture_paths == {kept_path}
+    assert window._activity_source.paths == {"kept": kept_path}
+    assert window._activity_source.snapshot == {"kept": "recording"}
+    assert app.native_captures == {"kept": retained} and discarded == [gone]
+    assert app._browser_snapshot == dict(recordings=[dict(path=kept_path)], statuses=[dict(path=kept_path)])
+    assert window._browser_snapshot["recordings"] == [dict(path=kept_path)]
+    # No queue/model creation, hold or write is attempted for the removed path.
+    application_class.write_down(app, gone)
+    application_class.recompute_voices(app, gone, {"a"})
+    # Even a stale browser poll cannot put the removed path back in hidden saves.
+    from cassini_viewer.capture_guard import remember_capture_paths
+
+    window._activity_source.paths["stale"] = gone_path
+    assert remember_capture_paths(app) == {kept_path}

@@ -211,7 +211,9 @@ with tempfile.TemporaryDirectory() as temporary:
         created.append(player)
 
     voices.samples["broken"] = (
-        SimpleNamespace(origin="received", audio_file=root / "missing.opus", duration_ms=1000),
+        SimpleNamespace(
+            origin="received", directory=root / "broken-received", audio_file=root / "missing.opus", duration_ms=1000
+        ),
         0,
         500,
     )

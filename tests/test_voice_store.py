@@ -526,3 +526,39 @@ def test_edit_never_installs_a_journal_it_cannot_recover(store, monkeypatch):
     with pytest.raises(ValueError, match="recovery size limit"):
         store.remember(RECORDING, "others~1", "Bob")
     assert {p: p.read_bytes() for p in store.root.rglob("*.json")} == before
+
+
+def test_trash_removes_only_one_meetings_prints_without_unenrolment(store):
+    alice = enrol(store)
+    store.commit_job(RECEIVED, prints(), 0)
+    store.remember(RECEIVED, "others~1", "Alice", voice_id=alice["id"])
+    before = json.loads((store.root / "people.json").read_text())["voices"][0]
+    other_bytes = (store.root / "meetings" / (RECEIVED + ".json")).read_bytes()
+    store.remove_meeting(RECORDING)
+    assert not (store.root / "meetings" / (RECORDING + ".json")).exists()
+    assert (store.root / "meetings" / (RECEIVED + ".json")).read_bytes() == other_bytes
+    after = json.loads((store.root / "people.json").read_text())["voices"][0]
+    assert after["meetings"] == [RECEIVED]
+    assert {k: v for k, v in after.items() if k != "meetings"} == {k: v for k, v in before.items() if k != "meetings"}
+    assert store.snapshot()["voices"][0]["name"] == "Alice"
+    store.remove_meeting(RECORDING)  # A repeated notification remains harmless.
+
+
+def test_trash_cache_transaction_recovers_deletion_if_people_write_fails(store, monkeypatch):
+    enrol(store)
+    before = {p: p.read_bytes() for p in [store.root / "people.json", store.root / "meetings" / (RECORDING + ".json")]}
+    original = voice_store.atomic_json
+    failed = False
+
+    def fail_once(path, value, **kwargs):
+        nonlocal failed
+        if path.name == "people.json" and not failed:
+            failed = True
+            raise OSError("generated write failure")
+        return original(path, value, **kwargs)
+
+    monkeypatch.setattr(voice_store, "atomic_json", fail_once)
+    with pytest.raises(OSError):
+        store.remove_meeting(RECORDING)
+    assert all(p.read_bytes() == value for p, value in before.items())
+    assert not (store.root / ".transaction.json").exists()
