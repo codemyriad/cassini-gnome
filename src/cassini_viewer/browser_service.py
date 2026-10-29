@@ -585,6 +585,8 @@ class BrowserService:
                         or not self.auto_record
                         or self.require_application
                         and not any(self.applications.values())
+                        or "call-evidence-v1" in browser.capabilities
+                        and not self._auto_start_ready(browser, browser.meetings.get(int(raw_tab), {}))
                     )
                 )
             ):
@@ -882,7 +884,14 @@ class BrowserService:
                 browser = self.browsers.get(browser_id)
                 meeting = browser.meetings.get(int(tab)) if browser else None
                 active = not self.require_application or any(self.applications.values())
-                allowed = self.auto_record and active and not self._stopping_all.is_set()
+                evidence = (
+                    browser is None
+                    or "call-evidence-v1" not in browser.capabilities
+                    or self._auto_start_ready(browser, meeting or {})
+                )
+                allowed = self.auto_record and active and not self._stopping_all.is_set() and evidence
+                if action == "start" and browser is not None and not evidence:
+                    browser.attempted.discard(int(tab))
             if action == "start" and allowed and meeting is not None:
                 try:
                     self.start_fallback(identifier, meeting, automatic_generation=generation)

@@ -97,3 +97,38 @@ def test_each_independent_meeting_needs_its_own_evidence(policy):
     assert [args[0] for _, args in tasks] == [f"{browser.id}:4"]
     service.update(browser, dict(type="meetings", meetings=[meeting(heard=True), dict(meeting(heard=True), tabId=4)]))
     assert [args[0] for _, args in tasks] == [f"{browser.id}:4", f"{browser.id}:3"]
+
+
+def test_rejected_auto_start_cannot_fall_back_after_evidence_disappears(policy, monkeypatch):
+    from cassini_viewer.browser_service import StartRejected
+
+    service, browser, tasks = policy
+    fallbacks = []
+
+    def reject(*_args):
+        service.update(browser, dict(type="meetings", meetings=[meeting(heard=False)]))
+        raise StartRejected("Generated source disappeared during Start")
+
+    monkeypatch.setattr(service, "command", reject)
+    monkeypatch.setattr(service, "start_fallback", lambda *args, **kwargs: fallbacks.append(args))
+    service.update(browser, dict(type="meetings", meetings=[meeting(heard=True)]))
+    fn, args = tasks.pop()
+    fn(*args)
+    assert not fallbacks and not browser.attempted
+    service.update(browser, dict(type="meetings", meetings=[meeting(heard=True)]))
+    assert len(tasks) == 1, "a later genuine Join remains eligible"
+
+
+def test_auto_fallback_reservation_rechecks_capable_evidence(policy, monkeypatch):
+    from cassini_viewer import browser_capture
+
+    service, browser, _tasks = policy
+    service.update(browser, dict(type="meetings", meetings=[meeting(heard=False)]))
+    monkeypatch.setattr(
+        browser_capture,
+        "BrowserCapture",
+        lambda *_args, **_kwargs: pytest.fail("constructed a pre-join native capture"),
+    )
+    with pytest.raises(ValueError, match="cancelled"):
+        service.start_fallback(f"{browser.id}:3", meeting(heard=True), automatic_generation=service._stop_generation)
+    assert not service.captures
