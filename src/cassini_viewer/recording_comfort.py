@@ -53,12 +53,10 @@ class RecordingComfort:
         self.browser_cookie = 0
         self._browser_inhibit_requested = False
 
-    def edit(self, directory, **changes):
-        draft = dict(changes)
-        if "title" in draft:
-            draft["title"] = draft["title"].strip()[:500] or None
+    def edit(self, directory, *, title):
+        draft = dict(title=title.strip()[:500] or None)
         self.drafts.setdefault(str(directory), {}).update(draft)
-        return self.editor.submit(edit_recording, directory, **changes)
+        return self.editor.submit(edit_recording, directory, title=title)
 
     def draft(self, meeting):
         """Retain optimistic edits until the scanner has observed every field."""

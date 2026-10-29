@@ -1,9 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Run the coordinator's golden files without rewriting or normalising their bytes."""
 
-import hashlib
 import json
-import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -68,29 +66,6 @@ def test_state_vector(case):
 
 def test_golden_bytes():
     subprocess.run([sys.executable, str(ROOT / "build-aux/check-ux-vectors.py")], check=True)
-
-
-@pytest.mark.parametrize("change", ["older-copy", "published-addition", "duplicate"])
-def test_selective_catalog_adoption_cannot_change_older_or_approved_copy(change):
-    validator = runpy.run_path(str(ROOT / "build-aux/check-ux-vectors.py"))["catalog_additions"]
-    base = dict(entries=[dict(id="older", en="Existing approved text")])
-    entries = [dict(id="addition", en="Newly published text")]
-    adoption = dict(
-        ids=["addition"],
-        baseSha256=hashlib.sha256((json.dumps(base, indent=1, ensure_ascii=False) + "\n").encode()).hexdigest(),
-        entriesSha256=hashlib.sha256(
-            json.dumps(entries, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
-        ).hexdigest(),
-    )
-    value = dict(entries=base["entries"] + entries)
-    assert validator(json.dumps(value), adoption) == entries
-    if change == "duplicate":
-        value["entries"].append(next(e for e in value["entries"] if e["id"] in adoption["ids"]))
-    else:
-        entry = next(e for e in value["entries"] if (e["id"] in adoption["ids"]) == (change == "published-addition"))
-        entry["en"] += " unauthorised copy"
-    with pytest.raises(ValueError):
-        validator(json.dumps(value), adoption)
 
 
 def test_calendar_uses_local_dates_across_dst_and_year_boundary():

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""UX6: pushed live recording page; app-owned titles and time-pinned notes."""
+"""Live recording controls and app-owned title edits."""
 
 import logging
 
@@ -9,147 +9,6 @@ from . import ux_formats as fmt
 from .inline_line import InlineLine
 from .library_window import label, vertical
 from .strings import text
-
-
-class TimedNotes:
-    """Edit note bodies; timestamps are display spans, never editable content."""
-
-    def __init__(self, buffer, notes, elapsed, changed):
-        self.buffer, self.elapsed, self.changed = buffer, elapsed, changed
-        self.guard = False
-        self.lines = [(n["atMs"], n["text"]) for n in notes] or [(None, "")]
-        self.history = []
-        self.history_position = -1
-        buffer.begin_irreversible_action()
-        self._render(0, 0)
-        buffer.end_irreversible_action()
-        for action in ("undo", "redo"):
-            buffer.connect(action, self._history_begin)
-            buffer.connect_after(action, self._history_end, action)
-        buffer.connect("insert-text", self._insert)
-        buffer.connect("delete-range", self._delete)
-
-    @staticmethod
-    def _prefix(at):
-        return fmt.position(at) + "  " if at is not None else ""
-
-    def _point(self, offset):
-        base = 0
-        for index, (at, body) in enumerate(self.lines):
-            prefix = len(self._prefix(at))
-            end = base + prefix + len(body)
-            if offset <= end or index == len(self.lines) - 1:
-                return index, min(len(body), max(0, offset - base - prefix))
-            base = end + 1
-        raise AssertionError("Missing note line")
-
-    @staticmethod
-    def _text(lines):
-        return "\n".join(TimedNotes._prefix(at) + body for at, body in lines)
-
-    def _history_begin(self, _buffer):
-        # GTK replays rendered text, including timestamp prefixes. Let that
-        # replay finish without treating its inserts as newly typed notes.
-        self.guard = True
-
-    def _history_end(self, buffer, action):
-        value = buffer.get_text(*buffer.get_bounds(), True)
-        positions = (
-            range(self.history_position - 1, -1, -1)
-            if action == "undo"
-            else range(self.history_position + 1, len(self.history))
-        )
-        for position in positions:
-            if self._text(self.history[position]) == value:
-                self.history_position = position
-                self.lines = list(self.history[position])
-                break
-        else:
-            # An undo with no available action leaves the current text intact.
-            assert self._text(self.lines) == value, "Unknown note undo state"
-        self.guard = False
-        self.changed()
-
-    def _render(self, line, column):
-        value = self._text(self.lines)
-        if self.history_position < 0 or self.history[self.history_position] != self.lines:
-            del self.history[self.history_position + 1 :]
-            self.history.append(list(self.lines))
-            self.history_position = len(self.history) - 1
-        old = self.buffer.get_text(*self.buffer.get_bounds(), True)
-        # A minimal edit keeps Gtk's native user-action/undo grouping and avoids
-        # replacing every note when one character changes.
-        left = 0
-        while left < min(len(old), len(value)) and old[left] == value[left]:
-            left += 1
-        right = 0
-        while right < min(len(old), len(value)) - left and old[-right - 1] == value[-right - 1]:
-            right += 1
-        self.guard = True
-        self.buffer.begin_user_action()
-        try:
-            self.buffer.delete(self.buffer.get_iter_at_offset(left), self.buffer.get_iter_at_offset(len(old) - right))
-            self.buffer.insert(
-                self.buffer.get_iter_at_offset(left), value[left : len(value) - right if right else None]
-            )
-            offset = sum(len(self._prefix(at)) + len(body) + 1 for at, body in self.lines[:line])
-            offset += len(self._prefix(self.lines[line][0])) + column
-            self.buffer.place_cursor(self.buffer.get_iter_at_offset(offset))
-        finally:
-            self.buffer.end_user_action()
-            self.guard = False
-
-    def _insert(self, buffer, iterator, value, _length):
-        if self.guard:
-            return
-        buffer.stop_emission_by_name("insert-text")
-        line, column = self._point(iterator.get_offset())
-        at, body = self.lines[line]
-        parts = value.split("\n")
-        now = int(self.elapsed())
-        replacement = [(at if at is not None else now, body[:column] + parts[0])]
-        replacement.extend((now, part) for part in parts[1:])
-        replacement[-1] = (replacement[-1][0], replacement[-1][1] + body[column:])
-        if len(parts) > 1 and column == 0 and body:
-            # Inserting a blank line before an existing note keeps that note's
-            # pinned time; only newly typed content gets the current time.
-            replacement[0] = (now, replacement[0][1])
-            replacement[-1] = (at, replacement[-1][1])
-        self.lines[line : line + 1] = replacement
-        self._render(line + len(parts) - 1, (column if len(parts) == 1 else 0) + len(parts[-1]))
-        self.changed()
-
-    def _delete(self, buffer, start, end):
-        if self.guard:
-            return
-        buffer.stop_emission_by_name("delete-range")
-        first, left = self._point(start.get_offset())
-        last, right = self._point(end.get_offset())
-        if (first, left) == (last, right):
-            if first > 0 and left == 0 and end.get_offset() - start.get_offset() == 1:
-                # Backspace from the body start crosses the protected prefix.
-                # Merge with the previous body as a normal editor would.
-                first -= 1
-                left = len(self.lines[first][1])
-            else:
-                return  # Deleting only a timestamp span never deletes the note.
-        at, body = self.lines[first]
-        self.lines[first : last + 1] = [(at, body[:left] + self.lines[last][1][right:])]
-        if len(self.lines) == 1 and not self.lines[0][1]:
-            self.lines = [(None, "")]
-        self._render(first, left)
-        self.changed()
-
-    def values(self):
-        return [dict(atMs=int(at), text=body) for at, body in self.lines if at is not None and body.strip()]
-
-    def reset(self, notes):
-        self.buffer.begin_irreversible_action()
-        self.history = []
-        self.history_position = -1
-        self.lines = [(n["atMs"], n["text"]) for n in notes] or [(None, "")]
-        self._render(0, 0)
-        self.buffer.end_irreversible_action()
 
 
 class RecordingPage(Adw.NavigationPage):
@@ -162,7 +21,6 @@ class RecordingPage(Adw.NavigationPage):
         self._saving = 0
         self._closed = False
         self._title_dirty = False
-        self._notes_dirty = False
         self._updating_title = False
         self._line_signature = None
         self.sources_dialog = None
@@ -274,28 +132,6 @@ class RecordingPage(Adw.NavigationPage):
         self.change_sources.connect("clicked", self._change_sources)
         sources.append(self.change_sources)
         column.append(sources)
-        note_box = vertical(6)
-        note_box.append(label(text("recording.notes.label"), "small", "heading", "dim-label", xalign=0))
-        self.notes_view = Gtk.TextView(
-            wrap_mode=Gtk.WrapMode.WORD_CHAR,
-            height_request=88,
-            top_margin=10,
-            bottom_margin=10,
-            left_margin=12,
-            right_margin=12,
-            css_classes=["recording-notes"],
-        )
-        window.protect_text_input(self.notes_view)
-        self.notes_view.update_property([Gtk.AccessibleProperty.LABEL], [text("recording.notes.label")])
-        self.notes = TimedNotes(
-            self.notes_view.get_buffer(),
-            draft.get("notes", meeting.metadata.get("notes", [])),
-            self.elapsed,
-            self._notes_changed,
-        )
-        note_box.append(self.notes_view)
-        note_box.append(label(text("recording.notes.caption"), "small", "dim-label", xalign=0))
-        column.append(note_box)
         self.update_status()
 
     def elapsed(self):
@@ -326,10 +162,6 @@ class RecordingPage(Adw.NavigationPage):
         self.set_title(title)
         self._changed()
 
-    def _notes_changed(self):
-        self._notes_dirty = True
-        self._changed()
-
     def _changed(self):
         self._dirty = True
         if self._save_timer:
@@ -344,9 +176,7 @@ class RecordingPage(Adw.NavigationPage):
         changes = {}
         if self._title_dirty:
             changes["title"] = self.title_entry.get_text()
-        if self._notes_dirty:
-            changes["notes"] = self.notes.values()
-        self._title_dirty = self._notes_dirty = False
+        self._title_dirty = False
         self._saving += 1
         future = self.app.comfort.edit(self.meeting.directory, **changes)
         future.add_done_callback(lambda f: GLib.idle_add(self._saved, f, changes))
@@ -359,7 +189,6 @@ class RecordingPage(Adw.NavigationPage):
         except (OSError, ValueError) as error:
             self.app.recording_error = str(error)  # Keep existing behavior until error copy is published.
             self._title_dirty |= "title" in changes
-            self._notes_dirty |= "notes" in changes
             self._dirty = True
         if not self.window.monitor._closed:
             self.window.monitor.refresh({self.meeting.directory})
@@ -375,10 +204,6 @@ class RecordingPage(Adw.NavigationPage):
             self.title_entry.set_text(draft.get("title") or meeting.title)
             self._updating_title = False
             self.headline.set_label(self.title_entry.get_text())
-        if not self._notes_dirty and not self._saving and not self.notes_view.has_focus():
-            notes = draft.get("notes", meeting.metadata.get("notes", []))
-            if self.notes.values() != notes:
-                self.notes.reset(notes)
         self.update_status()
 
     def update_status(self):
@@ -434,7 +259,6 @@ class RecordingPage(Adw.NavigationPage):
         if self.sources_dialog is not None and not self.sources_dialog.closed:
             self.sources_dialog.force_close()
         self.window._editor_focus(self.title_entry, False)
-        self.window._editor_focus(self.notes_view, False)
         if self._save_timer:
             GLib.source_remove(self._save_timer)
             self._save_timer = 0
