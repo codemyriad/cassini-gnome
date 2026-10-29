@@ -1,5 +1,10 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.resolve(__dirname, '../..');
+const contract = fs.existsSync(path.join(root, 'conformance/control/independent-vectors.json')) ? root : path.join(root, 'browser-protocol');
 const { setup, until } = require('./support/app-control-harness.cjs');
 const command = (id, action, tabId, extra = {}) => ({type:'command',requestId:id,action,tabId,mode:'tracks',independent:true,...extra});
 async function twoMeetings() {
@@ -85,7 +90,7 @@ test('worker recovery reports all interrupted paths and never recreates capture'
     assert.equal(next.audio.length,0);assert.ok(status.interrupted.every(s=>s.recording===false));
   } finally {next?.close();app.close();}
 });
-for(const vector of require('../../conformance/control/independent-vectors.json'))test('independent conformance: '+vector.name,async()=>{
+for(const vector of JSON.parse(fs.readFileSync(path.join(contract, 'conformance/control/independent-vectors.json'))))test('independent conformance: '+vector.name,async()=>{
   const app=await twoMeetings();
   try {
     for(const [index,input] of vector.commands.entries()){
@@ -95,4 +100,118 @@ for(const vector of require('../../conformance/control/independent-vectors.json'
       assert.equal(app.audio.length,expected.hosts);
     }
   } finally {app.close();}
+});
+
+test('control commands for a healthy tab run while another tab lookup is pending', async () => {
+  const app = await twoMeetings(); let release;
+  try {
+    const get = app.chrome.tabs.get; let entered = false;
+    const gate = new Promise(resolve => release = resolve);
+    app.chrome.tabs.get = async id => { if (id === 2) { entered = true; await gate; } return get(id); };
+    const port = app.ports[0];
+    port.onMessage.emit(command('held-lookup', 'start', 2));
+    await until(() => entered);
+    // Exercise the real management path, not the exported start() test hook.
+    const second = await app.command(command('healthy-start', 'start', 3));
+    assert.equal(second.ok, true);
+    assert.equal(app.audio.length, 1);
+    assert.equal((await app.command(command('healthy-stop', 'stop', 3))).ok, true);
+    assert.equal(app.audio[0].closed, true);
+    assert.ok(!port.sent.some(m => m.type === 'result' && m.requestId === 'held-lookup'));
+    release();
+    await until(() => port.sent.some(m => m.type === 'result' && m.requestId === 'held-lookup'));
+    await app.command(command('release-stop', 'stop', 2));
+  } finally { release?.(); app.close(); }
+});
+
+test('a held independent Stop does not hold another tab Stop', async () => {
+  const app = await twoMeetings(); let release;
+  try {
+    await app.command(command('start-a', 'start', 2));
+    await app.command(command('start-b', 'start', 3));
+    const frame = app.pages[0], post = frame.postMessage;
+    let entered = false;
+    frame.postMessage = function (message) {
+      if (message.type === 'stop') { entered = true; release = () => this.onMessage.emit({type:'stopped'}); }
+      else post.call(this, message);
+    };
+    const port = app.ports[0];
+    port.onMessage.emit(command('held-stop', 'stop', 2));
+    await until(() => entered);
+    assert.equal((await app.command(command('other-stop', 'stop', 3))).ok, true);
+    assert.equal(app.audio[1].closed, true);
+    assert.equal(app.audio[0].closed, false);
+    release();
+    await until(() => port.sent.some(m => m.type === 'result' && m.requestId === 'held-stop'));
+  } finally { release?.(); app.close(); }
+});
+
+test('legacy commands remain global barriers between independent tab commands', async () => {
+  const app = await twoMeetings(); let release;
+  try {
+    const get = app.chrome.tabs.get; let entered = false;
+    const gate = new Promise(resolve => release = resolve);
+    app.chrome.tabs.get = async id => { if (id === 2) { entered = true; await gate; } return get(id); };
+    const port = app.ports[0];
+    port.onMessage.emit(command('before-barrier', 'start', 2));
+    await until(() => entered);
+    port.onMessage.emit(command('legacy-barrier', 'start', 3, {independent:false}));
+    port.onMessage.emit(command('after-barrier', 'start', 3));
+    // Drain runnable microtasks: the legacy barrier and following start must wait.
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(app.audio.length, 0);
+    release();
+    await until(() => port.sent.some(m => m.type === 'result' && m.requestId === 'after-barrier'));
+    const results = port.sent.filter(m => m.type === 'result');
+    assert.deepEqual(results.map(m => [m.requestId,m.ok]),
+      [['before-barrier',true],['legacy-barrier',false],['after-barrier',true]]);
+    await app.command(command('stop-before', 'stop', 2));
+    await app.command(command('stop-after', 'stop', 3));
+  } finally { release?.(); app.close(); }
+});
+
+for (const stage of ['relay', 'storage']) test('unexpected '+stage+' startup failure preserves an independent native owner', async () => {
+  const app = await twoMeetings();
+  try {
+    await app.command(command('healthy','start',3));
+    if (stage === 'relay') {
+      const frame = app.pages[0], post = frame.postMessage;
+      frame.postMessage = function (message) {
+        if (message.type === 'start') throw Error('Generated relay disconnection');
+        return post.call(this,message);
+      };
+    } else {
+      const set = app.chrome.storage.session.set;
+      app.chrome.storage.session.set = async value => {
+        if (value.cassiniSessions?.some(session => session.tabId === 2)) throw Error('Generated storage failure');
+        return set(value);
+      };
+    }
+    const result = await app.command(command('failed','start',2));
+    assert.equal(result.ok,false);
+    const failedHost = app.audio[1];
+    assert.equal(failedHost.sent[0].type,'start');
+    assert.equal(failedHost.sent.find(packet => packet.type === 'stop')?.failureReason,'lost');
+    assert.equal(failedHost.closed,true);
+    assert.equal(app.audio[0].closed,false);
+    assert.deepEqual(Array.from(app.api.controlStatus().sessions,session => session.tabId),[3]);
+    await app.command(command('stop-healthy','stop',3));
+  } finally { app.close(); }
+});
+test('explicit Stop during startup finalizes instead of requesting native fallback',async () => {
+  const app = await setup(); let release;
+  try {
+    const set = app.chrome.storage.session.set; let entered = false;
+    const gate = new Promise(resolve => release = resolve);
+    app.chrome.storage.session.set = async value => { entered = true; await gate; return set(value); };
+    const starting = app.api.start('tracks',2,{independent:true});
+    await until(() => entered);
+    const stopping = app.api.stop();
+    release();
+    await assert.rejects(starting,/could not start/);
+    await stopping;
+    assert.equal(app.audio.length,1);
+    assert.equal(app.audio[0].sent.find(packet => packet.type === 'stop')?.failureReason,undefined);
+    assert.equal(app.audio[0].closed,true);
+  } finally { release?.(); app.close(); }
 });

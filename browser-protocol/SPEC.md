@@ -128,6 +128,64 @@ An interrupted recording is recoverable from its WAVs. Without trustworthy metad
 must state that source labels/start offsets are unknown, not invent synchronization.
 Readers reject traversal or symlinks escaping the session directory. Recovery is read-only.
 
+## Optional session annotations (S-6, 2026-10-28)
+
+Session and wire versions remain 1. These are optional on-disk annotations, not
+new audio requests. Old folders without them remain valid; readers must not infer
+fallbacks, selection changes or source identity from labels or gaps.
+
+Each capture span has its own unique track ID and WAV. Turning a side off finalizes
+its tracks (`ended: true`, with `endOffsetMs`); turning it on creates new tracks with
+new IDs, WAVs and start offsets on the same session timeline. Never append another
+capture source to a previous track. Each concurrent meeting has its own session
+folder, events and microphone copy.
+
+A browser track may carry `sourceTrackId`, an opaque nonempty source ID of at most
+200 UTF-8 bytes. Resumed spans from the same still-connected source retain this
+value while receiving distinct track IDs/WAVs. Transcription groups spans with the
+same sourceTrackId into one speaker; absent IDs remain separate sources. Labels
+never establish identity. Writers omit sourceTrackId for microphone/system tracks,
+which already retain their Me/The others identity. As with other optional fields,
+writers omit absent values and readers accept null as absent.
+
+The optional `events` array has at most 1000 objects, in append-only,
+non-decreasing `atMs` order. `atMs` is a finite nonnegative number of milliseconds
+on the same timeline as track offsets, with zero at session start. Equal times
+are allowed. Unknown types and extra fields are ignored by readers.
+
+| type | Required event fields besides atMs/type | Values |
+| --- | --- | --- |
+| othersSource | source, reason | source: browser, system, none; reason: start, missing, lost, user |
+| selection | me, others, reason | me/others booleans, at least one true; reason: start, user |
+
+For UI roles, local/microphone tracks are Me; remote/media/tab/system/application
+tracks are The others. These are recording roles, not verified participant names.
+
+A browser path missing at start or lost later may fall back to computer sound:
+append `othersSource` with source=system and reason=missing/lost, and start a new
+system track at that event's atMs. Never fall back to the microphone. Once on
+system, stay there until Stop; reconnecting does not automatically switch back.
+The reason `restored` is reserved and is not written in this wave. Show the
+fallback explanation when the newest othersSource reason is missing or lost.
+
+Selection changes finalize/start the affected spans at atMs. Turning The others
+off also appends `othersSource` source=none, reason=user. A selection never turns
+both sides off. Folders without events have no inferred fallback line. Events are
+not copied into Cassini-file exports in this wave; the existing mix/offset and
+unknown-offset recovery policies remain in force.
+
+Checkpoint the event and track change together, before acknowledging or using
+the new track. If no track changes, write the event immediately. Sync audio, sync
+the temporary metadata, then rename atomically as above. A crash must not expose
+a new track without the event explaining it, or an event without its new track.
+Readers may lose events after the last fully synced checkpoint; they do not infer
+them from audio gaps.
+
+`conformance/session-events/` contains the coordinator/GNOME fallback and browser
+off/on fixtures, with hand-written reader expectations and a sparse silent-WAV
+generator. Their byte/timeline checks do not prove transactional crash durability
+or hardware capture; each host must test its real writer checkpoint boundary.
+
 ## Browser compatibility of this snapshot
 
 The native messaging/offscreen/tab-capture baseline remains Chrome 116. getContexts is used
@@ -182,3 +240,22 @@ An active recording's path/mode/tab/origin is held in extension session storage 
 host start acknowledgement. Worker restart reports interruption with that path and clears
 the stale badge; it does not claim that unacknowledged audio survived. A worker-crashed tab
 capture document is closed to release the capture stream.
+
+
+## Native host-time discontinuities (v1.1 clarification)
+
+After the first-buffer anchor, samples drive continuity. A forward jump between native
+input buffers of at least one second beyond the previous buffer's duration becomes counted
+silence. Compute `lagMs = currentHostMs - previousHostMs - previousInputFrames/rate*1000`,
+round its positive duration to sample frames, and insert it when at least `rate` frames.
+Use input-buffer host stamps, not callback delivery/arrival time. This per-buffer difference
+protects smooth device drift: comparing absolute session-start lag would incorrectly count
+10 hours at +50 ppm (1.8 seconds) as missing audio. Smaller/negative divergence is diagnostic;
+it must not reorder samples or silently compress a forward discontinuity.
+
+`gapFrames` and `droppedFrames` are optional per-track nonnegative integer counts, included
+in the final WAV/manifest frames. Gaps indicate missing input time; dropped frames indicate
+writer-queue overflow. Report only-gap loss with session problemKind=`gap`; writer loss takes
+problemKind=`io` if both occurred. Both preserve available audio and explicit silence.
+The complete `conformance/native-session-gap/` fixture contains continuous mic audio and a
+one-second system gap, with both macos/gnome manifest variants.

@@ -16,7 +16,7 @@ class SchemaTests(unittest.TestCase):
         for name in ['start','track','audio','stop']:
             request.validate(json.loads((ROOT / 'conformance/examples' / (name+'.json')).read_text()))
         for value in json.loads((ROOT / 'conformance/examples/responses.json').read_text()): response.validate(value)
-        for path in [ROOT/'conformance/examples/session.json',ROOT/'conformance/native-session/session.json',ROOT/'conformance/native-session/session-gnome.json',ROOT/'conformance/gnome-fractional.session.json']:
+        for path in [ROOT/'conformance/examples/session.json',ROOT/'conformance/native-session/session.json',ROOT/'conformance/native-session/session-gnome.json',ROOT/'conformance/gnome-fractional.session.json',ROOT/'conformance/native-session-gap/session.json',ROOT/'conformance/native-session-gap/session-gnome.json']:
             session.validate(json.loads(path.read_text()))
         partial = dict(response.schema); partial.pop('allOf',None)
         matcher = Draft202012Validator(partial)

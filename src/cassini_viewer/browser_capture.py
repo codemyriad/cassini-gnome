@@ -141,17 +141,23 @@ class BrowserCapture:
 
             factory = NativeTap
 
-        state = dict(active=active, at=at, error=None)
+        from .native_timing import NS, NativeTimeline
 
-        def append(data, offset):
+        state = dict(active=active, at=at, error=None, timeline=NativeTimeline(48000))
+
+        def append(data, offset, *, host_ns=None):
             with self.lock:
                 if not state["active"]:
                     return  # Readiness PCM is not a committed recording span.
                 track = next(t for t in self.host.session.manifest["tracks"] if t["id"] == identifier)
                 if not self.finished and not track.get("ended"):
+                    original_offset = offset
                     selected, offset = selected_pcm(data, offset, 48000, 1, state["at"])
                     if selected:
-                        self.host.session.append(identifier, selected, offset)
+                        skipped = (len(data) - len(selected)) // 2
+                        stamp = round(original_offset * 1_000_000) if host_ns is None else host_ns
+                        offset, gap = state["timeline"].map(stamp + skipped * NS // 48000, len(selected) // 2, offset)
+                        self.host.session.append_native(identifier, selected, offset, gap_frames=gap)
 
         def level(value):
             with self.lock:

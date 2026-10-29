@@ -65,7 +65,8 @@ Extension → host:
 {"type":"result","requestId":"bad-1","ok":false,"error":"Choose a meeting to record."}
 ```
 
-Commands execute in arrival order. A valid requestId always receives a result while connected;
+Legacy commands execute in arrival order. Independent-capability commands use
+the per-tab ordering described below. A valid requestId always receives a result while connected;
 an invalid command gets ok:false with an error, and no audio side effect. Missing/invalid
 requestIds cannot be correlated and are ignored. Duplicate IDs on the same connection reuse
 the original result, even while pending. Remember up to 128 requests, evicting only completed
@@ -163,7 +164,11 @@ Only apps that see that capability may request concurrent capture.
 An app may send `start` with `independent: true` for each active-call tab. Each
 recording has its own native audio connection, token, source clock, frames and
 persistent recovery entry. A pending start reserves its own tab; it cannot block
-another tab. A valid independent Stop marks that tab's pending start cancelled
+another tab. Independent commands for the same tab execute in arrival order;
+commands for different tabs may execute and return results concurrently. A legacy
+command waits for preceding independent commands, and later commands wait for that
+legacy command. Request IDs still correlate every result, including out-of-order
+results from different tabs. A valid independent Stop marks that tab's pending start cancelled
 immediately, while its result still follows the start result in arrival order.
 It cannot create a late host after Stop; invalid/duplicate stops have no new
 side effects. Starting the same tab twice is refused. There are at most 100 live

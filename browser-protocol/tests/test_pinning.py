@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 import hashlib
 import pathlib
 import subprocess
@@ -10,6 +11,15 @@ sys.path.insert(0, str(ROOT))
 from verify import verify
 
 class PinningTests(unittest.TestCase):
+    def test_vendored_extension_runs_its_node_suite(self):
+        commit = subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip()
+        with tempfile.TemporaryDirectory() as temp:
+            destination, extension = pathlib.Path(temp) / 'browser-protocol', pathlib.Path(temp) / 'BrowserExtension'
+            subprocess.run([sys.executable, str(ROOT / 'vendor.py'), commit, str(destination), str(extension)], check=True, capture_output=True)
+            scripts = sorted(str(path) for path in (extension / 'tests').glob('*.test.cjs'))
+            result = subprocess.run(['node', '--test', *scripts], capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_exact_commit_and_mutations(self):
         commit = subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip()
         with tempfile.TemporaryDirectory() as temp:

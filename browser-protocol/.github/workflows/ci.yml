@@ -16,6 +16,7 @@ jobs:
       - run: python3 -m pip install -r requirements-test.txt
       - run: python3 -m unittest discover -s tests -p "test_*.py"
       - run: python3 conformance/check-native-fixture.py
+      - run: python3 conformance/check-session-events.py
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - name: Isolated output device for generated tab tone

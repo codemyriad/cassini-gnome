@@ -52,3 +52,12 @@ CASSINI_NATIVE_HOST and CASSINI_CONTROL_NATIVE_HOST select actual app adapters;
 CASSINI_TEST_EXTENSION and PLAYWRIGHT_MODULE select a pinned installed extension
 and local Playwright. The generated launchers force all output into the private
 fixture Library. Failure artifacts keep recent control events and manifests.
+
+S-6 adds `conformance/session-events/`, copied unchanged from the coordination
+fixtures with their origin recorded. `python3 conformance/check-session-events.py`
+checks the schema, finite/ordered event times, the source-ID UTF-8 byte bound,
+hand-written reader expectations and generated sparse WAV timelines. Unit tests
+cover legacy/null annotations, unknown event types/fields, selection bounds and
+the 1000-event cap. Neither schema validation nor these silent files prove a
+writer's atomic event/track checkpoint: both apps must test crash/failure at
+their real writer boundary and read these same fixtures independently.

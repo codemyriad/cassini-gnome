@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Loaded extension, real WebRTC and native framing; private fixture control broker.
 // CASSINI_NATIVE_HOST/CASSINI_CONTROL_NATIVE_HOST can select the product adapters.
 import assert from 'node:assert/strict';
@@ -29,7 +30,7 @@ await new Promise(resolve=>web.listen(0,'127.0.0.1',resolve));
 const address=`http://127.0.0.1:${web.address().port}/`;
 async function until(check,label,timeout=20000){const end=Date.now()+timeout;while(Date.now()<end){const value=await check();if(value)return value;await new Promise(r=>setTimeout(r,25));}throw Error('Timed out: '+label);}
 let sequence=0;
-async function command(action,tabId,extra={}){const requestId='independent-'+(++sequence);control.write(JSON.stringify({type:'command',requestId,action,tabId,mode:'tracks',independent:true,captureLocal:false,microphone:false,...extra})+'\n');const result=await until(()=>events.find(e=>e.type==='result'&&e.requestId===requestId),requestId);assert.equal(result.ok,true,JSON.stringify(result));return result.status;}
+async function command(action,tabId,extra={},timeout=20000){const requestId='independent-'+(++sequence);control.write(JSON.stringify({type:'command',requestId,action,tabId,mode:'tracks',independent:true,captureLocal:false,microphone:false,...extra})+'\n');const result=await until(()=>events.find(e=>e.type==='result'&&e.requestId===requestId),requestId,timeout);assert.equal(result.ok,true,JSON.stringify(result));return result.status;}
 async function manifest(directory){return JSON.parse(await readFile(path.join(directory,'session.json')));}
 async function count(directory){try {return (await manifest(directory)).tracks.reduce((n,t)=>n+t.frames,0);}catch{return 0;}}
 function power(data,frequency,rate=48000){const n=12000,start=data.length/2-n;assert.ok(start>=0);let re=0,im=0;for(let i=0;i<n;i++){const sample=data.readInt16LE((start+i)*2)/32768;re+=sample*Math.cos(2*Math.PI*frequency*i/rate);im+=sample*Math.sin(2*Math.PI*frequency*i/rate);}return(re*re+im*im)/(n*n);}
@@ -70,7 +71,30 @@ try {
   pactl('set-sink-mute',sink,'1');assert.match(pactl('get-sink-mute',sink),/yes/);
   for(const meeting of meetings)await worker.evaluate(tabId=>chrome.tabs.update(tabId,{muted:true}),meeting.tabId);
   assert.ok(await worker.evaluate(async tabs=>(await Promise.all(tabs.map(id=>chrome.tabs.get(id)))).every(tab=>tab.mutedInfo.muted),meetings.map(m=>m.tabId)));
-  for(const meeting of meetings){const status=await command('start',meeting.tabId);meeting.directory=status.path;assert.ok(path.resolve(meeting.directory).startsWith(audioRoot+path.sep),'test capture must stay inside its private Library');}
+  // Block the actual management start for one tab, not merely the exported
+  // background start() helper used by the old VM reservation test. Another
+  // tab's command must complete without releasing this lookup.
+  await worker.evaluate(heldTab => {
+    const get = chrome.tabs.get.bind(chrome.tabs);
+    let release; const gate = new Promise(resolve => release = resolve);
+    globalThis.cassiniHeldLookupEntered = false;
+    globalThis.cassiniReleaseLookup = () => { chrome.tabs.get = get; release(); };
+    chrome.tabs.get = async id => {
+      if (id === heldTab) { globalThis.cassiniHeldLookupEntered = true; await gate; }
+      return get(id);
+    };
+  }, meetings[0].tabId);
+  const heldStart = command('start',meetings[0].tabId);
+  heldStart.catch(() => {}); // Preserve the original failure if a later assertion fails.
+  await until(() => worker.evaluate(() => globalThis.cassiniHeldLookupEntered),'held management lookup');
+  try {
+    const second = await command('start',meetings[1].tabId,{},5000);
+    meetings[1].directory = second.path;
+    assert.equal(await worker.evaluate(() => globalThis.cassiniHeldLookupEntered),true);
+    report.pendingLookupIsolation = true;
+  } finally { await worker.evaluate(() => globalThis.cassiniReleaseLookup()); }
+  meetings[0].directory = (await heldStart).path;
+  for(const meeting of meetings)assert.ok(path.resolve(meeting.directory).startsWith(audioRoot+path.sep),'test capture must stay inside its private Library');
   assert.notEqual(meetings[0].directory,meetings[1].directory,'independent native host creates distinct folders');
   await Promise.all(meetings.map(m=>until(async()=>await count(m.directory)>=96000,'complete samples while muted')));
   for(const meeting of meetings){const value=await manifest(meeting.directory);assert.equal(value.tracks.length,1,'receiver and its media clone share one source');const track=value.tracks[0];assert.equal(track.kind,'remote');const raw=(await readFile(path.join(meeting.directory,track.file))).subarray(44);const target=power(raw,meeting.frequency),other=power(raw,meeting.frequency===440?880:440);assert.ok(target>0.001,'muted source tone is present');assert.ok(other<target*0.01,'no bleed between independent meetings');report.cases.push({frequency:meeting.frequency,frames:track.frames,tonePower:target,otherPower:other,sinkMuted:true,tabMuted:true});}

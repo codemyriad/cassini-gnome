@@ -72,7 +72,7 @@ class NativeTap:
             if buffer.pts == Gst.CLOCK_TIME_NONE or base == Gst.CLOCK_TIME_NONE:
                 raise ValueError("Audio source has no clock timestamp")
             offset = self.anchor_wall - self.origin_ms + (base + buffer.pts - self.anchor_clock) / Gst.MSECOND
-            self.append(buffer.extract_dup(0, buffer.get_size()), offset)
+            self.append(buffer.extract_dup(0, buffer.get_size()), offset, host_ns=base + buffer.pts)
             self.ready.set()
         except Exception as error:
             self._fail(error)

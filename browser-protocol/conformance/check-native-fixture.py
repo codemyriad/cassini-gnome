@@ -13,3 +13,13 @@ for name, source in [('session.json', 'macos'), ('session-gnome.json', 'gnome')]
             assert audio.getsampwidth() == 2
         assert track['endOffsetMs'] == track['startOffsetMs'] + track['frames'] / track['sampleRate'] * 1000
     print('PASS native session fixture:', source)
+
+# A gap fixture is a completed/saved interrupted capture, not fabricated continuous input.
+gap = root.with_name('native-session-gap')
+for name, source in [('session.json','macos'),('session-gnome.json','gnome')]:
+    m=json.loads((gap/name).read_text())
+    assert m['source']==source and m['state']=='interrupted' and m['problemKind']=='gap'
+    assert m['tracks'][1]['gapFrames']==8000
+    with wave.open(str(gap/m['tracks'][1]['file'])) as audio:
+        assert audio.getnframes()==24000;audio.setpos(8000);assert not any(audio.readframes(8000))
+    print('PASS native gap fixture:',source)

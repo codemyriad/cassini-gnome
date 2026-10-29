@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "id": "b0000000-0000-4000-8000-000000000007",
+  "createdAt": "2026-10-28T11:00:00Z",
+  "title": "One browser speaker across off and on",
+  "source": "chromium",
+  "state": "completed",
+  "tracks": [
+    {"id": "mic", "label": "Me", "kind": "microphone", "file": "track-microphone.wav", "labelSource": "device", "sampleRate": 8000, "channels": 1, "frames": 160000, "startOffsetMs": 0, "endOffsetMs": 20000, "ended": true},
+    {"id": "span-one", "sourceTrackId": "remote-wire-1", "label": "Remote audio", "kind": "remote", "file": "track-before.wav", "labelSource": "browser", "sampleRate": 8000, "channels": 1, "frames": 40000, "startOffsetMs": 0, "endOffsetMs": 5000, "ended": true},
+    {"id": "span-two", "sourceTrackId": "remote-wire-1", "label": "A changed browser label", "kind": "remote", "file": "track-after.wav", "labelSource": "browser", "sampleRate": 8000, "channels": 1, "frames": 80000, "startOffsetMs": 10000, "endOffsetMs": 20000, "ended": true}
+  ],
+  "events": [
+    {"atMs": 0, "type": "othersSource", "source": "browser", "reason": "start"},
+    {"atMs": 0, "type": "selection", "me": true, "others": true, "reason": "start"},
+    {"atMs": 5000, "type": "selection", "me": true, "others": false, "reason": "user"},
+    {"atMs": 5000, "type": "othersSource", "source": "none", "reason": "user"},
+    {"atMs": 10000, "type": "selection", "me": true, "others": true, "reason": "user"},
+    {"atMs": 10000, "type": "othersSource", "source": "browser", "reason": "user"}
+  ]
+}

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Persistent app management, independent of the per-recording PCM connection.
 export class AppControl {
   constructor({ runtime, alarms, snapshot, command, capabilities = [], cancelPending = () => {}, connected = async () => {},
@@ -10,6 +11,7 @@ export class AppControl {
     this.requests = new Map();
     this.completed = new Set();
     this.tail = Promise.resolve();
+    this.tabTails = new Map();
     this.alarm = alarm => { if (alarm.name === 'cassini-app-control') this.connect(); };
   }
   start() {
@@ -51,6 +53,7 @@ export class AppControl {
     try { port = this.runtime.connectNative('com.codemyriad.cassini.control'); }
     catch { this.reconnect(); return; }
     this.port = port;
+    this.tabTails.clear();
     this.connectedAt = Date.now();
     this.requests.clear(); this.completed.clear();
     port.onDisconnect.addListener(() => { void this.runtime.lastError; this.disconnected(port); });
@@ -114,8 +117,20 @@ export class AppControl {
           return { type: 'result', requestId: id, ok: false, error: String(error.message || error).slice(0, 2000) };
         }
       };
-      result = this.tail.then(execute, execute);
-      this.tail = result.catch(() => {});
+      // Independent tabs must not wait on another tab's lookup, audio host or
+      // flush. Same-tab commands remain ordered; a legacy command is a global
+      // barrier, preserving the original single-slot arrival-order behavior.
+      const independent = message.independent === true && Number.isSafeInteger(message.tabId)
+        && message.tabId >= 0 && validOptions;
+      const predecessors = independent
+        ? [this.tail, this.tabTails.get(message.tabId)]
+        : [this.tail, ...this.tabTails.values()];
+      result = Promise.all(predecessors).then(execute, execute);
+      const tail = result.catch(() => {});
+      if (independent) {
+        this.tabTails.set(message.tabId, tail);
+        tail.then(() => { if (this.tabTails.get(message.tabId) === tail) this.tabTails.delete(message.tabId); });
+      } else this.tail = tail;
       this.requests.set(key, result);
       result.then(() => { if (port === this.port && this.requests.get(key) === result) this.completed.add(key); });
     }
