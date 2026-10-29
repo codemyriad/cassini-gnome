@@ -97,6 +97,9 @@ class CassiniApplication(Adw.Application):
         self.comfort = None
         self.global_shortcut = None
         self._pending_recording = None
+        from .meeting_trash import MeetingTrash
+
+        self.meeting_trash = MeetingTrash(self)
         self.set_option_context_parameter_string(_("[FILE…]"))
 
         self._add_action("open", self.on_open, ["<primary>o"])
@@ -250,6 +253,11 @@ class CassiniApplication(Adw.Application):
 
     def on_quit(self, *_args):
         if self.confirm_capture_close(self.get_active_window(), quitting=True):
+            return
+        self.finish_quit()
+
+    def finish_quit(self):
+        if self.meeting_trash.flush(self.finish_quit):
             return
         from .capture_guard import finish_close
 
@@ -701,7 +709,7 @@ class CassiniApplication(Adw.Application):
         return self.transcriber
 
     def recompute_voices(self, directory, affected):
-        if self._quitting or self._capture_exiting:
+        if self._quitting or self._capture_exiting or self.meeting_trash.hides(directory):
             return
 
         def failed(_error):
@@ -728,8 +736,10 @@ class CassiniApplication(Adw.Application):
     def write_down(self, meeting, *, resume=False):
         if self._quitting or self._capture_exiting:
             return
-        self._ensure_transcriber()
         directory = getattr(meeting, "directory", meeting)
+        if self.meeting_trash.hides(directory):
+            return
+        self._ensure_transcriber()
         if self.transcriber.enqueue(directory, resume=resume):
             self._transcription_holds += 1
             self.hold()
@@ -794,6 +804,40 @@ class CassiniApplication(Adw.Application):
                 self.write_down(meeting, resume=True)
             elif should_auto_write(meeting, previous):
                 self.write_down(meeting)
+
+    def discard_meeting_paths(self, directory):
+        """No completed recorder or hidden-window callback may re-save a trashed path."""
+        directory = Path(directory)
+        path = str(directory)
+        if self._pending_recording == path:
+            self._pending_recording = None
+        if self._browser_seen_saved is not None:
+            self._browser_seen_saved.discard(path)
+        if hasattr(self, "_capture_paths"):
+            self._capture_paths.discard(path)
+        for field in ("recordings", "statuses"):
+            self._browser_snapshot[field] = [v for v in self._browser_snapshot.get(field, []) if v.get("path") != path]
+        for key, recorder in list(self.native_captures.items()):
+            if recorder.session and recorder.session.directory == directory:
+                self.native_captures.pop(key, None)
+                if self._last_native is recorder:
+                    self._last_native = None
+        if self.comfort:
+            self.comfort.discard_meeting(directory)
+        for window in self.get_windows():
+            activity = getattr(window, "_activity_source", None)
+            if activity is not None:
+                for key, value in list(getattr(activity, "paths", {}).items()):
+                    if value == path:
+                        activity.paths.pop(key, None)
+                        activity.snapshot.pop(key, None)
+            if getattr(window, "_pending_recording", None) == path:
+                window._pending_recording = None
+            if hasattr(window, "_browser_snapshot"):
+                for field in ("recordings", "statuses"):
+                    window._browser_snapshot[field] = [
+                        v for v in window._browser_snapshot.get(field, []) if v.get("path") != path
+                    ]
 
     def observe_browser_recordings(self, snapshot, previous):
         if not self.transcription_enabled or previous is None:
@@ -868,9 +912,12 @@ class CassiniApplication(Adw.Application):
         if self.comfort:
             self.comfort.close()
         self.begin_exit()
+        self.meeting_trash.executor.shutdown(wait=False, cancel_futures=False)
         Adw.Application.do_shutdown(self)
 
     def move_library(self, destination, parent):
+        if self.meeting_trash.flush(lambda: self.move_library(destination, parent)):
+            return
         from .capture_guard import capture_targets
         from .strings import text
 

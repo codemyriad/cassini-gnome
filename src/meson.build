@@ -53,6 +53,8 @@ install_data(
   'cassini_viewer/colors.py',
   'cassini_viewer/main.py',
   'cassini_viewer/library_window.py',
+  'cassini_viewer/meeting_trash.py',
+  'cassini_viewer/trash_cleanup.py',
   'cassini_viewer/model_manifest.py',
   'cassini_viewer/model_download.py',
   'cassini_viewer/zstd_stream.py',

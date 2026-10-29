@@ -201,7 +201,9 @@ class SavedVoicesPage(Adw.NavigationPage):
         except (OSError, ValueError, CancelledError):
             samples = {}
         if not self.closed:
-            self.samples = samples
+            self.samples = {
+                key: value for key, value in samples.items() if not self.app.meeting_trash.hides(value[0].directory)
+            }
             self._tick()
             if self._samples_again:
                 self._samples_again = False
@@ -213,6 +215,7 @@ class SavedVoicesPage(Adw.NavigationPage):
             return
         self._stop_sample()
         meeting, start, end = self.samples[identifier]
+        self._sample_meeting = meeting.directory
         from .folder_player import FolderPlayer
         from .player import Player
 
@@ -253,7 +256,13 @@ class SavedVoicesPage(Adw.NavigationPage):
             self._stop_sample()
         return GLib.SOURCE_CONTINUE
 
+    def discard_meeting(self, directory):
+        if getattr(self, "_sample_meeting", None) == directory:
+            self._stop_sample()
+        self.samples = {key: value for key, value in self.samples.items() if value[0].directory != directory}
+
     def _stop_sample(self):
+        self._sample_meeting = None
         self._sample_pending = None
         if self.player:
             self.player.shutdown()
