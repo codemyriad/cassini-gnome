@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -134,7 +135,13 @@ with tempfile.TemporaryDirectory() as temporary:
     from unittest.mock import patch
 
     assert received.audio_size_bytes == received.audio_file.stat().st_size
-    with patch.object(Path, "stat", side_effect=AssertionError("Export dialog performed GTK-thread stat")):
+    original_stat, gtk_thread = Path.stat, threading.get_ident()
+
+    def background_stat(path, *args, **kwargs):
+        assert threading.get_ident() != gtk_thread, "Export dialog performed GTK-thread stat"
+        return original_stat(path, *args, **kwargs)
+
+    with patch.object(Path, "stat", background_stat):
         window.show_export()
     until(lambda: window.export_dialog is not None)
     dialog = window.export_dialog
