@@ -489,7 +489,14 @@ class VoiceStore:
             original_voices = dict(voices)
             # A merged-away voice (or one with too little clean speech) has no
             # replacement. Keep its confirmed print and person for Undo.
-            replacements = {s: copy.deepcopy(prints[s]) for s in sorted(set(affected)) if s in prints}
+            affected = sorted(set(affected))
+            for speaker in affected:
+                if speaker not in prints:
+                    old = meeting["speakers"].get(speaker, {})
+                    match = old.get("match", {})
+                    if match.get("state") != "confirmed" or match.get("voiceId") not in voices:
+                        meeting["speakers"].pop(speaker, None)
+            replacements = {s: copy.deepcopy(prints[s]) for s in affected if s in prints}
             confirmed = {}
             for speaker in replacements:
                 old = meeting["speakers"].get(speaker)
