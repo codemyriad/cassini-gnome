@@ -1,6 +1,6 @@
 Version 0.3.0
 ~~~~~~~~~~~~~
-Not released yet. Version and release date await confirmation.
+Released: 2026-10-29
 
 - Reconnect the browser companion with Connect in Cassini after updating.
   Native host identifiers now use io.codemyriad; do not rerun install-host.py
