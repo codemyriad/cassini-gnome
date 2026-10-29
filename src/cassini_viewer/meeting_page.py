@@ -417,15 +417,21 @@ class MeetingPage(Adw.NavigationPage):
     def undo_speaker_merge(self):
         if self._closed or self._speaker_future is not None or not self.meeting.metadata_editable:
             return
+        from .meeting_store import LOCK, read_metadata
         from .speaker_edits import undo_merge
 
         directory = self.meeting.directory
         self.window.lookup_action("undo-speaker-merge").set_enabled(False)
-        history = self.meeting.metadata.get("speakerMerges", [])
-        self._undo_voice_ids = tuple(history[-1].values()) if history else ()
-        self._speaker_future = self.window.monitor._executor.submit(
-            undo_merge, directory, scanner=self.window.monitor.scanner
-        )
+        self._undo_voice_app = self.window.get_application()
+
+        def undo():
+            with LOCK:
+                history = read_metadata(directory).get("speakerMerges", [])
+                undo_merge(directory, scanner=self.window.monitor.scanner)
+                affected = (history[-1]["from"], history[-1]["into"]) if history else ()
+                return directory, affected
+
+        self._speaker_future = self.window.monitor._executor.submit(undo)
         self._speaker_future.add_done_callback(lambda f: GLib.idle_add(self._merge_undone, f))
 
     def _merge_undone(self, future):
@@ -433,7 +439,7 @@ class MeetingPage(Adw.NavigationPage):
 
         self._speaker_future = None
         try:
-            future.result()
+            directory, affected = future.result()
         except CancelledError:
             pass
         except (OSError, ValueError):
@@ -447,8 +453,9 @@ class MeetingPage(Adw.NavigationPage):
                 )
                 self.window.lookup_action("undo-speaker-merge").set_enabled(True)
         else:
-            if not self._closed:
-                self.window.get_application().recompute_voices(self.meeting.directory, self._undo_voice_ids)
+            if affected:
+                self._undo_voice_app.recompute_voices(directory, affected)
+            if not self.window.monitor._closed:
                 self.window.monitor.refresh_now()
         return False
 

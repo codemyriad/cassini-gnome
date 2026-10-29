@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from test_speakers import meeting  # noqa: F401
 from test_voice_store import RECORDING, VoiceStore, enrol
 
 from cassini_viewer.library import LibrarySnapshot
@@ -96,3 +97,60 @@ def test_windowless_observation_retries_voice_sync_when_a_monitor_becomes_availa
     application_class.observe_library(app, snapshot, None)
     assert calls == [frozenset([RECORDING])]
     assert app._voice_library_keys == frozenset([RECORDING])
+
+
+def test_recompute_holds_follow_atomic_queue_acceptance(application_class):
+    holds = []
+    started = iter([True, False, True])
+    app = SimpleNamespace(
+        _quitting=False,
+        _capture_exiting=False,
+        _transcription_holds=0,
+        _ensure_transcriber=lambda: SimpleNamespace(recompute_voices=lambda *_: next(started)),
+        hold=lambda: holds.append(True),
+    )
+    for expected in (1, 1, 2):
+        application_class.recompute_voices(app, Path(RECORDING), {"a"})
+        assert app._transcription_holds == len(holds) == expected
+
+
+@pytest.mark.parametrize("navigated_back", [False, True])
+def test_undo_recomputes_the_actual_popped_pair_even_after_navigating_back(application_class, meeting, navigated_back):  # noqa: F811
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from test_library_monitor import spin_until
+
+    from cassini_viewer.meeting_page import MeetingPage
+    from cassini_viewer.speaker_edits import current_meeting, merge_into
+
+    directory = meeting.directory
+    merge_into(directory, "a", "b")
+    stale = current_meeting(directory)
+    calls, refreshed = [], []
+    app = SimpleNamespace(recompute_voices=lambda path, affected: calls.append((path, tuple(affected))))
+    release = threading.Event()
+    with ThreadPoolExecutor(1) as executor:
+        blocker = executor.submit(release.wait, 4)
+        monitor = SimpleNamespace(
+            _closed=False, _executor=executor, scanner=None, refresh_now=lambda: refreshed.append(True)
+        )
+        window = SimpleNamespace(
+            monitor=monitor,
+            get_application=lambda: app,
+            lookup_action=lambda _: SimpleNamespace(set_enabled=lambda _: None),
+        )
+        page = SimpleNamespace(_closed=False, _speaker_future=None, meeting=stale, window=window)
+        page._merge_undone = lambda future: MeetingPage._merge_undone(page, future)
+        try:
+            MeetingPage.undo_speaker_merge(page)
+            # A newer merge lands before the queued Undo; the UI remains stale.
+            merge_into(directory, "b", "c")
+            page._closed = navigated_back
+            release.set()
+            blocker.result(timeout=4)
+            spin_until(lambda: page._speaker_future is None)
+            assert calls == [(directory, ("b", "c"))] and refreshed == [True]
+            assert current_meeting(directory).metadata["speakerMerges"] == [{"from": "a", "into": "b"}]
+        finally:
+            release.set()
