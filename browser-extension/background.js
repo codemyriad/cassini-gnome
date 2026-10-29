@@ -286,13 +286,13 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   return true;
 });
 chrome.tabs.onRemoved.addListener(id => {
-  for (const frame of frames) if (frame.tabId === id) frame.sourceCount = 0;
+  for (const frame of frames) if (frame.tabId === id) { frame.sourceCount = 0; frame.heard = false; }
   const session = sessions.get(id);
   if (session) failure("The meeting tab was closed. The recording so far was saved.", session);
   notifyControl();
 });
 chrome.tabs.onUpdated.addListener((id, change) => {
-  if (change.status === "loading") for (const frame of frames) if (frame.tabId === id) frame.sourceCount = 0;
+  if (change.status === "loading") for (const frame of frames) if (frame.tabId === id) { frame.sourceCount = 0; frame.heard = false; }
   if (change.status || change.title !== undefined || change.url !== undefined) notifyControl();
 });
 

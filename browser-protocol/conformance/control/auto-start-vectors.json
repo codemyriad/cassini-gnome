@@ -1,0 +1,174 @@
+[
+  {
+    "name": "capable-missing-heard-manual-is-allowed",
+    "capabilities": [
+      "independent-sessions-v1",
+      "call-evidence-v1"
+    ],
+    "meeting": {
+      "tabId": 2,
+      "title": "Synthetic meeting",
+      "url": "https://meet.example/call",
+      "sourceCount": 3
+    },
+    "expect": {
+      "automatic": false,
+      "manual": true
+    }
+  },
+  {
+    "name": "capable-false-heard-manual-is-allowed",
+    "capabilities": [
+      "independent-sessions-v1",
+      "call-evidence-v1"
+    ],
+    "meeting": {
+      "tabId": 2,
+      "title": "Synthetic meeting",
+      "url": "https://meet.example/call",
+      "sourceCount": 3,
+      "heard": false
+    },
+    "expect": {
+      "automatic": false,
+      "manual": true
+    }
+  },
+  {
+    "name": "capable-true-heard-and-receivers",
+    "capabilities": [
+      "independent-sessions-v1",
+      "call-evidence-v1"
+    ],
+    "meeting": {
+      "tabId": 2,
+      "title": "Synthetic meeting",
+      "url": "https://meet.example/call",
+      "sourceCount": 3,
+      "heard": true
+    },
+    "expect": {
+      "automatic": true,
+      "manual": true
+    }
+  },
+  {
+    "name": "capable-true-heard-without-receivers",
+    "capabilities": [
+      "independent-sessions-v1",
+      "call-evidence-v1"
+    ],
+    "meeting": {
+      "tabId": 2,
+      "title": "Synthetic meeting",
+      "url": "https://meet.example/call",
+      "sourceCount": 0,
+      "heard": true
+    },
+    "expect": {
+      "automatic": false,
+      "manual": false
+    }
+  },
+  {
+    "name": "legacy-missing-heard",
+    "capabilities": [
+      "independent-sessions-v1"
+    ],
+    "meeting": {
+      "tabId": 2,
+      "title": "Synthetic meeting",
+      "url": "https://meet.example/call",
+      "sourceCount": 3
+    },
+    "expect": {
+      "automatic": true,
+      "manual": true
+    }
+  },
+  {
+    "name": "legacy-false-heard",
+    "capabilities": [
+      "independent-sessions-v1"
+    ],
+    "meeting": {
+      "tabId": 2,
+      "title": "Synthetic meeting",
+      "url": "https://meet.example/call",
+      "sourceCount": 3,
+      "heard": false
+    },
+    "expect": {
+      "automatic": true,
+      "manual": true
+    }
+  },
+  {
+    "name": "legacy-true-heard",
+    "capabilities": [
+      "independent-sessions-v1"
+    ],
+    "meeting": {
+      "tabId": 2,
+      "title": "Synthetic meeting",
+      "url": "https://meet.example/call",
+      "sourceCount": 3,
+      "heard": true
+    },
+    "expect": {
+      "automatic": true,
+      "manual": true
+    }
+  },
+  {
+    "name": "legacy-without-receivers",
+    "capabilities": [
+      "independent-sessions-v1"
+    ],
+    "meeting": {
+      "tabId": 2,
+      "title": "Synthetic meeting",
+      "url": "https://meet.example/call",
+      "sourceCount": 0
+    },
+    "expect": {
+      "automatic": false,
+      "manual": false
+    }
+  },
+  {
+    "name": "unrelated-capability-does-not-enable-evidence-gate",
+    "capabilities": [
+      "independent-sessions-v1"
+    ],
+    "meeting": {
+      "tabId": 2,
+      "title": "Synthetic meeting",
+      "url": "https://meet.example/call",
+      "sourceCount": 3,
+      "heard": false
+    },
+    "expect": {
+      "automatic": true,
+      "manual": true
+    }
+  },
+  {
+    "name": "independent-capable-receiver-bound",
+    "capabilities": [
+      "independent-sessions-v1",
+      "call-evidence-v1"
+    ],
+    "meeting": {
+      "tabId": 2,
+      "title": "Synthetic meeting",
+      "url": "https://meet.example/call",
+      "sourceCount": 64,
+      "heard": true
+    },
+    "expect": {
+      "automatic": true,
+      "manual": true
+    }
+  }
+]

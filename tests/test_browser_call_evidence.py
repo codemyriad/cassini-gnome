@@ -2,10 +2,16 @@
 """D30: connected receive slots are listed, but are not automatic start evidence."""
 
 import io
+import json
+from pathlib import Path
 
 import pytest
 
 from cassini_viewer.browser_service import BrowserConnection, BrowserService
+
+SHARED_AUTO_START_CASES = json.loads(
+    (Path(__file__).parents[1] / "browser-protocol/conformance/control/auto-start-vectors.json").read_text()
+)
 
 
 @pytest.fixture
@@ -132,3 +138,58 @@ def test_auto_fallback_reservation_rechecks_capable_evidence(policy, monkeypatch
     with pytest.raises(ValueError, match="cancelled"):
         service.start_fallback(f"{browser.id}:3", meeting(heard=True), automatic_generation=service._stop_generation)
     assert not service.captures
+
+
+@pytest.fixture
+def command_packets(policy, monkeypatch):
+    """Acknowledge transport commands; keep production policy/dispatch intact."""
+    service, browser, _tasks = policy
+    packets = []
+
+    def send(packet):
+        packets.append(packet)
+        service.update(
+            browser,
+            dict(type="result", requestId=packet["requestId"], ok=True, status=dict(recording=False)),
+        )
+
+    monkeypatch.setattr(browser, "send", send)
+    return packets
+
+
+@pytest.mark.parametrize("vector", SHARED_AUTO_START_CASES, ids=lambda case: case["name"])
+def test_shared_auto_start_vectors_schedule_and_dispatch(policy, command_packets, vector):
+    service, browser, tasks = policy
+    service.update(browser, dict(type="hello", version=1, capabilities=vector["capabilities"]))
+    service.update(browser, dict(type="meetings", meetings=[vector["meeting"]]))
+    assert bool(tasks) is vector["expect"]["automatic"]
+    if tasks:
+        assert len(tasks) == 1
+        worker, arguments = tasks.pop()
+        worker(*arguments)
+    assert bool(command_packets) is vector["expect"]["automatic"]
+    for packet in command_packets:
+        assert packet["action"] == "start" and packet["tabId"] == vector["meeting"]["tabId"]
+        assert packet["independent"] is True
+    service.policy()
+    assert not tasks, "replayed inventory cannot duplicate a scheduled start"
+
+
+@pytest.mark.parametrize("vector", SHARED_AUTO_START_CASES, ids=lambda case: case["name"])
+def test_shared_manual_start_vectors_use_record_candidates_and_dispatch(policy, command_packets, vector):
+    service, browser, tasks = policy
+    service.auto_record = False
+    service.update(browser, dict(type="hello", version=1, capabilities=vector["capabilities"]))
+    service.update(browser, dict(type="meetings", meetings=[vector["meeting"]]))
+    # Record uses the production candidate filter; zero-source entries are not
+    # candidates. Explicit starts for eligible tabs must also bypass heard.
+    result = service.start_all()
+    assert bool(result["attempted"]) is vector["expect"]["manual"]
+    assert not result["failures"] and not tasks
+    assert len(command_packets) == result["attempted"]
+    if result["attempted"]:
+        service.command(f"{browser.id}:{vector['meeting']['tabId']}", "start")
+        assert len(command_packets) == 2
+    for packet in command_packets:
+        assert packet["action"] == "start" and packet["tabId"] == vector["meeting"]["tabId"]
+        assert packet["independent"] is True

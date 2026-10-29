@@ -52,6 +52,22 @@ async function start(page, packets, errors) {
   });
   await page.waitForFunction(() => fixtureReady);
 }
+async function observePrejoin(page) {
+  await page.evaluate(() => {
+    clearInterval(window.prejoinClock);
+    const generation = window.prejoinGeneration = (window.prejoinGeneration || 0) + 1;
+    window.prejoinSamples = [];
+    window.prejoinClock = setInterval(async () => {
+      const peer = topologyPeer, stats = await peer.getStats();
+      if (generation !== window.prejoinGeneration || peer !== topologyPeer) return;
+      const inbound = [...stats.values()].filter(report => report.type === 'inbound-rtp' && report.kind === 'audio');
+      prejoinSamples.push(inbound.map(report => report.packetsReceived));
+      window.postMessage({channel:'cassini-control',type:'discover'}, '*');
+    }, 1000);
+  });
+  await page.waitForFunction(() => prejoinSamples.length >= 3 && discoveryEvidence.length >= 3);
+  return page.evaluate(() => ({ samples: prejoinSamples, evidence: discoveryEvidence.at(-1) }));
+}
 try {
   browser = await chromium.launch({ headless: true, args: ['--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns'] });
   console.log('Chromium', browser.version());
@@ -69,17 +85,7 @@ try {
     });
     await page.goto(address); await remote.goto(address);
     await connectReceiveSlots(page, remote, [[440], [660], [880]], { prejoin: true });
-    await page.evaluate(() => {
-      window.prejoinSamples = [];
-      window.prejoinClock = setInterval(async () => {
-        const stats = await topologyPeer.getStats();
-        const inbound = [...stats.values()].filter(report => report.type === 'inbound-rtp' && report.kind === 'audio');
-        prejoinSamples.push(inbound.map(report => report.packetsReceived));
-        window.postMessage({channel:'cassini-control',type:'discover'}, '*');
-      }, 1000);
-    });
-    await page.waitForFunction(() => prejoinSamples.length >= 3 && discoveryEvidence.length >= 3);
-    const before = await page.evaluate(() => ({ samples: prejoinSamples, evidence: discoveryEvidence.at(-1) }));
+    const before = await observePrejoin(page);
     assert.ok(before.samples.every(sample => sample.length === 0), 'pre-join receives no inbound audio RTP');
     assert.equal(before.evidence.sourceCount, 3, 'only three receivers; preview sender excluded');
     assert.equal(before.evidence.heard, false);
@@ -90,6 +96,27 @@ try {
     results.push({ model: 'Pre-join receive slots then inbound RTP', status: 'passed',
       chromium: browser.version(), prejoin: before, joined, liveProductTest: false });
     console.log('PASS pre-join has no heard evidence; inbound audio sets the latch');
+    // Same document, new pre-join peers after leaving: old evidence must not
+    // auto-record the next lobby. No navigation/reload can reset the page hook.
+    await page.evaluate(async () => {
+      clearInterval(prejoinClock); ++window.prejoinGeneration;
+      topologyPeer.close(); await topologyPreview.audio.close();
+      window.rejoinStarted = performance.now(); discoveryEvidence.length = 0;
+    });
+    await remote.evaluate(async () => { topologyRemote.peer.close(); await topologyRemote.audio.close(); });
+    await connectReceiveSlots(page, remote, [[440], [660], [880]], {prejoin:true});
+    const rejoin = await observePrejoin(page);
+    assert.ok(rejoin.samples.every(sample => sample.length === 0));
+    assert.equal(rejoin.evidence.sourceCount,3);assert.equal(rejoin.evidence.heard,false);
+    const sameDocument = await page.evaluate(() => ({elapsedMs:performance.now()-rejoinStarted,
+      allPositiveUnheard:discoveryEvidence.filter(d=>d.sourceCount>0).every(d=>d.heard===false)}));
+    assert.equal(sameDocument.allPositiveUnheard,true);
+    await switchReceiveSlot(remote,0,[440]);
+    await page.waitForFunction(() => discoveryEvidence.at(-1)?.heard===true);
+    results.push({model:'Same-document leave and new pre-join',status:'passed',
+      chromium:browser.version(),prejoin:rejoin,sameDocument,joined:await page.evaluate(()=>discoveryEvidence.at(-1)),liveProductTest:false});
+    console.log('PASS same-document rejoin stays unheard until fresh inbound evidence');
+
     await context.close();
   }
   for (const [name, frequencies] of [['Teams mixed receiver', [[440, 880]]], ['Meet three switching slots', [[440], [660], [880]]], ['Zoom PC-free path', null]]) {

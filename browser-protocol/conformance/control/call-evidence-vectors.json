@@ -10,55 +10,24 @@
         "heard": false
       },
       {
-        "packets": 1,
+        "packets": 0,
         "ticks": 1,
         "sourceCount": 3,
         "heard": false
       },
       {
-        "packets": 1,
+        "packets": 10,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": false
+      },
+      {
         "snapshots": 12,
         "sourceCount": 3,
         "heard": false
       },
       {
-        "packets": 2,
-        "ticks": 1,
-        "sourceCount": 3,
-        "heard": true
-      },
-      {
-        "handoff": true,
-        "ticks": 1,
-        "sourceCount": 3,
-        "heard": true
-      },
-      {
-        "close": true,
-        "ticks": 10,
-        "sourceCount": 0,
-        "heard": true
-      },
-      {
-        "ticks": 1,
-        "sourceCount": 0,
-        "heard": false
-      },
-      {
-        "handoff": true,
-        "packets": 10,
-        "ticks": 1,
-        "sourceCount": 3,
-        "heard": false
-      },
-      {
-        "packets": 10,
-        "ticks": 1,
-        "sourceCount": 3,
-        "heard": false
-      },
-      {
-        "packets": 11,
+        "packets": 20,
         "ticks": 1,
         "sourceCount": 3,
         "heard": true
@@ -66,23 +35,28 @@
     ]
   },
   {
-    "name": "two-of-last-three-and-first-appearance",
+    "name": "two-of-last-three-with-ten-packet-deltas",
     "receivers": 1,
     "steps": [
       {
-        "packets": 0,
+        "packets": 100,
         "ticks": 1,
         "sourceCount": 1,
         "heard": false
       },
       {
-        "packets": 0,
+        "packets": 110,
         "ticks": 1,
         "sourceCount": 1,
         "heard": false
       },
       {
-        "packets": 1,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 120,
         "ticks": 1,
         "sourceCount": 1,
         "heard": true
@@ -96,23 +70,34 @@
     ]
   },
   {
-    "name": "expired-first-vote-cannot-join-a-later-increase",
+    "name": "expired-vote-cannot-join-a-later-increase",
     "receivers": 1,
     "steps": [
       {
-        "packets": 1,
-        "ticks": 3,
-        "sourceCount": 1,
-        "heard": false
-      },
-      {
-        "packets": 2,
+        "packets": 0,
         "ticks": 1,
         "sourceCount": 1,
         "heard": false
       },
       {
-        "packets": 3,
+        "packets": 10,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "ticks": 3,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 20,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 30,
         "ticks": 1,
         "sourceCount": 1,
         "heard": true
@@ -120,7 +105,47 @@
     ]
   },
   {
-    "name": "short-zero-gap-preserves-document-latch",
+    "name": "zero-packet-peer-churn-never-votes",
+    "receivers": 3,
+    "steps": [
+      {
+        "packets": 0,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": false
+      },
+      {
+        "handoff": true,
+        "packets": 0,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": false
+      },
+      {
+        "handoff": true,
+        "packets": 0,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": false
+      },
+      {
+        "handoff": true,
+        "packets": 0,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": false
+      },
+      {
+        "handoff": true,
+        "packets": 0,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": false
+      }
+    ]
+  },
+  {
+    "name": "staggered-single-stray-packets-never-vote",
     "receivers": 1,
     "steps": [
       {
@@ -130,19 +155,247 @@
         "heard": false
       },
       {
-        "packets": 2,
+        "handoff": true,
+        "packets": 1,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "handoff": true,
+        "packets": 1,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      }
+    ]
+  },
+  {
+    "name": "missing-report-retains-counter-baseline",
+    "receivers": 1,
+    "steps": [
+      {
+        "packets": 0,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 10,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": null,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 10,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 20,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 30,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": true
+      }
+    ]
+  },
+  {
+    "name": "leave-and-open-prejoin-within-ten-seconds-stays-unheard",
+    "receivers": 3,
+    "steps": [
+      {
+        "packets": 0,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": false
+      },
+      {
+        "packets": 10,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": false
+      },
+      {
+        "packets": 20,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": true
+      },
+      {
+        "close": true,
+        "ticks": 2,
+        "sourceCount": 0,
+        "heard": false
+      },
+      {
+        "handoff": true,
+        "packets": 0,
+        "ticks": 6,
+        "sourceCount": 3,
+        "heard": false
+      },
+      {
+        "packets": 10,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": false
+      },
+      {
+        "packets": 20,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": true
+      }
+    ]
+  },
+  {
+    "name": "handoff-inherits-only-after-its-own-vote-within-five-seconds",
+    "receivers": 1,
+    "steps": [
+      {
+        "packets": 0,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 10,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 20,
         "ticks": 1,
         "sourceCount": 1,
         "heard": true
       },
       {
-        "close": true,
-        "ticks": 9,
-        "sourceCount": 0,
+        "handoff": true,
+        "packets": 0,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 10,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": true
+      }
+    ]
+  },
+  {
+    "name": "ten-second-zero-reset-even-when-owning-peer-stays-connected",
+    "receivers": 1,
+    "steps": [
+      {
+        "packets": 0,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 10,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 20,
+        "ticks": 1,
+        "sourceCount": 1,
         "heard": true
       },
       {
-        "handoff": true,
+        "endReceivers": true,
+        "ticks": 8,
+        "sourceCount": 0,
+        "heard": false
+      },
+      {
+        "restoreReceivers": true,
+        "packets": 100,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": true
+      },
+      {
+        "endReceivers": true,
+        "ticks": 11,
+        "sourceCount": 0,
+        "heard": false
+      },
+      {
+        "restoreReceivers": true,
+        "packets": 100,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 110,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 120,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": true
+      }
+    ]
+  },
+  {
+    "name": "sub-ten-packet-increases-do-not-accumulate-across-samples",
+    "receivers": 1,
+    "steps": [
+      {
+        "packets": 0,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 9,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 18,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 27,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 37,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 47,
         "ticks": 1,
         "sourceCount": 1,
         "heard": true

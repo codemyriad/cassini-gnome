@@ -22,7 +22,7 @@ test('worker disconnect drains old page requests before forwarding a new session
 });
 
 
-test('idle page discovery forwards count and evidence only and replays them after reconnect',()=>{
+test('idle discovery forwards only evidence and reconnect requires a fresh hook answer',()=>{
  const ports=[],page=[],runtime=event(),handlers=new Map();
  const window={postMessage:m=>page.push(m),addEventListener:(name,fn)=>handlers.set(name,fn)};
  const chrome={runtime:{getURL:x=>'extension://'+x,onMessage:runtime,connect(){const port={sent:[],onMessage:event(),onDisconnect:event(),postMessage(m){this.sent.push(m)}};ports.push(port);return port}}};
@@ -34,7 +34,19 @@ test('idle page discovery forwards count and evidence only and replays them afte
  send({type:'command',requestId:'page',action:'start',tabId:2,mode:'tracks'});
  assert.equal(ports[0].sent.length,1);
  ports[0].onDisconnect.emit();runtime.emit({type:'cassini-connect'},{},()=>{});
- assert.deepEqual(JSON.parse(JSON.stringify(ports[1].sent)),[{type:'discovery',sourceCount:3,heard:true}]);
+ assert.deepEqual(JSON.parse(JSON.stringify(ports[1].sent)),[],'reconnect cannot replay a cached latch');
+ send({type:'discovery',sourceCount:3,heard:false});
+ assert.deepEqual(JSON.parse(JSON.stringify(ports[1].sent)),[{type:'discovery',sourceCount:3,heard:false}]);
  assert.ok(page.some(m=>m.type==='discover'));
- handlers.get('pagehide')();assert.equal(ports[1].sent.at(-1).sourceCount,0);
+ handlers.get('pagehide')();assert.deepEqual(JSON.parse(JSON.stringify(ports[1].sent.at(-1))),{type:'discovery',sourceCount:0,heard:false});
+ const hiddenCount=ports[1].sent.length;
+ send({type:'discovery',sourceCount:3,heard:true});assert.equal(ports[1].sent.length,hiddenCount,'late hidden-page proof is ignored');
+ ports[1].onDisconnect.emit();handlers.get('pageshow')();
+ assert.deepEqual(JSON.parse(JSON.stringify(ports[2].sent)),[],'pageshow must wait for its forced hook answer');
+ send({type:'discovery',sourceCount:3,heard:false});
+ assert.deepEqual(JSON.parse(JSON.stringify(ports[2].sent)),[{type:'discovery',sourceCount:3,heard:false}]);
+ send({type:'discovery',sourceCount:3,heard:true});handlers.get('pagehide')();
+ const shownCount=ports[2].sent.length;handlers.get('pageshow')();
+ assert.equal(ports[2].sent.length,shownCount,'pageshow on the same port must not replay a cached count');
+ send({type:'discovery',sourceCount:3,heard:false});assert.equal(ports[2].sent.at(-1).heard,false);
 });

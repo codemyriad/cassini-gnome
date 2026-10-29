@@ -37,6 +37,17 @@ class ControlTests(unittest.TestCase):
             self.assertFalse(validator.is_valid(dict(type='meetings',meetings=[dict(row,heard=heard)])))
         self.assertTrue(validator.is_valid(dict(type='hello',version=1,capabilities=['call-evidence-v1'])))
 
+    def test_shared_desktop_auto_start_inputs_are_wire_valid(self):
+        validator=Draft202012Validator(json.loads((ROOT/'schemas/control-extension.schema.json').read_text()))
+        cases=json.loads((ROOT/'conformance/control/auto-start-vectors.json').read_text())
+        self.assertEqual(len({case['name'] for case in cases}),len(cases))
+        for case in cases:
+            with self.subTest(case=case['name']):
+                self.assertTrue(validator.is_valid(dict(type='hello',version=1,capabilities=case['capabilities'])))
+                self.assertTrue(validator.is_valid(dict(type='meetings',meetings=[case['meeting']])))
+                self.assertIs(type(case['expect']['automatic']),bool)
+                self.assertIs(type(case['expect']['manual']),bool)
+
     def test_host_schema_matches_valid_and_invalid_commands(self):
         validator=Draft202012Validator(json.loads((ROOT/'schemas/control-host.schema.json').read_text()))
         invalid={'invalid-action','invalid-tab-id','missing-mode','whole-tab-needs-browser-click'}
