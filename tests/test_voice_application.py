@@ -160,8 +160,8 @@ def test_undo_recomputes_the_actual_popped_pair_even_after_navigating_back(appli
 def test_removed_meeting_paths_cannot_be_resaved_by_hidden_callbacks(application_class, tmp_path):
     gone, kept = tmp_path / RECORDING, tmp_path / ("Received-" + RECORDING.removeprefix("Recording-"))
     gone_path, kept_path = str(gone), str(kept)
-    removed = SimpleNamespace(session=SimpleNamespace(directory=gone))
-    retained = SimpleNamespace(session=SimpleNamespace(directory=kept))
+    removed = SimpleNamespace(session=SimpleNamespace(directory=gone), pipeline=None)
+    retained = SimpleNamespace(session=SimpleNamespace(directory=kept), pipeline=None)
     discarded = []
     window = SimpleNamespace(
         _pending_recording=gone_path, _browser_snapshot=dict(recordings=[dict(path=gone_path), dict(path=kept_path)])
