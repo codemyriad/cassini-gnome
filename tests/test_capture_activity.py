@@ -36,6 +36,39 @@ def test_real_broker_reports_canonical_recording_and_clears_on_stop(service, tmp
         connection.close()
 
 
+def test_browser_watch_delivers_profile_changes_once_off_the_worker(service, monkeypatch):  # noqa: F811
+    import threading
+
+    from cassini_viewer import browser_watch, companion
+
+    now, profile = [0], ["profile-one"]
+    probes, notifications = [], []
+    main = threading.get_ident()
+
+    def inspect():
+        probes.append(threading.get_ident())
+        return profile[0]
+
+    monkeypatch.setattr(companion, "profile_inventory", inspect)
+    monkeypatch.setattr(
+        browser_watch, "time", SimpleNamespace(monotonic=lambda: now[0], monotonic_ns=browser_watch.time.monotonic_ns)
+    )
+    watcher = browser_watch.BrowserWatch(
+        lambda _: None, path=service[1], profiles_changed=lambda: notifications.append(threading.get_ident())
+    )
+    try:
+        spin_until(lambda: watcher.future is None)
+        assert notifications == [main]
+        for second, name, count in ((6, "profile-one", 1), (12, "profile-two", 2)):
+            now[0], profile[0] = second, name
+            watcher.poll()
+            spin_until(lambda: watcher.future is None)
+            assert len(notifications) == count
+        assert len(probes) == 3 and all(t != main for t in probes)
+    finally:
+        watcher.close()
+
+
 def test_slow_broker_is_bounded_and_does_not_block_main_context(tmp_path):
     import socket
     import threading

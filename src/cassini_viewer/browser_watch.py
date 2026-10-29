@@ -16,8 +16,11 @@ LOG = logging.getLogger(__name__)
 
 
 class BrowserWatch:
-    def __init__(self, changed, *, path=None):
+    def __init__(self, changed, *, path=None, profiles_changed=None):
         self.changed, self.path = changed, path
+        self.profiles_changed = profiles_changed
+        self._profiles = self._delivered_profiles = None
+        self._profile_checked = float("-inf")
         self.closed = threading.Event()
         self.lock = threading.Lock()
         self.lease = None
@@ -29,6 +32,17 @@ class BrowserWatch:
         self.poll()
 
     def _read(self):
+        if self.profiles_changed and time.monotonic() - self._profile_checked >= 5:
+            from .companion import profile_inventory
+
+            self._profile_checked = time.monotonic()
+            try:
+                self._profiles = profile_inventory()
+            except OSError:
+                # Notify once; the app's bridge setup then owns backoff. It
+                # suspends this watcher while host access is unavailable.
+                self._profiles = "unavailable"
+                LOG.debug("Could not inspect browser profiles", exc_info=True)
         target = self.path or browser_service.ensure_service(cancelled=self.closed)
         with self.lock:
             missing = self.lease is None
@@ -74,6 +88,9 @@ class BrowserWatch:
     def _received(self, future):
         self.future = None
         if not self.closed.is_set():
+            if self._profiles is not None and self._profiles != self._delivered_profiles:
+                self._delivered_profiles = self._profiles
+                self.profiles_changed()
             try:
                 value = future.result()
             except Exception:

@@ -5563,6 +5563,158 @@
    "status": "harmony"
   },
   {
+   "id": "browser.state.connected",
+   "en": "Connected to {browser}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D31",
+   "status": "harmony",
+   "note": "Coordinator (D31). Settings › Browser and the Library browser-meetings area; one state line at a time. Background setup never shows a toast or dialog.",
+   "placeholders": {
+    "browser": "browser display name, e.g. Google Chrome"
+   }
+  },
+  {
+   "id": "browser.state.connectedGeneric",
+   "en": "Connected",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D31",
+   "status": "harmony",
+   "note": "Coordinator (D31). Settings › Browser and the Library browser-meetings area; one state line at a time. Background setup never shows a toast or dialog."
+  },
+  {
+   "id": "browser.state.waiting",
+   "en": "Waiting for the Cassini Recorder extension",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D31",
+   "status": "harmony",
+   "note": "Coordinator (D31). Settings › Browser and the Library browser-meetings area; one state line at a time. Background setup never shows a toast or dialog."
+  },
+  {
+   "id": "browser.state.settingUp",
+   "en": "Setting up the connection…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D31",
+   "status": "harmony",
+   "note": "Coordinator (D31). Settings › Browser and the Library browser-meetings area; one state line at a time. Background setup never shows a toast or dialog."
+  },
+  {
+   "id": "browser.state.failed",
+   "en": "Couldn’t connect. {reason}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D31",
+   "status": "harmony",
+   "note": "Coordinator (D31). Settings › Browser and the Library browser-meetings area; one state line at a time. Background setup never shows a toast or dialog. Try again (common.tryAgain) appears only with browser.state.failed.",
+   "placeholders": {
+    "reason": "one of browser.state.reason.*, a full sentence"
+   }
+  },
+  {
+   "id": "browser.state.add",
+   "en": "Add to {browser}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D31",
+   "status": "harmony",
+   "note": "Coordinator (D31). Settings › Browser and the Library browser-meetings area; one state line at a time. Background setup never shows a toast or dialog.",
+   "placeholders": {
+    "browser": "browser display name"
+   }
+  },
+  {
+   "id": "browser.state.addGeneric",
+   "en": "Add the Cassini Recorder extension",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D31",
+   "status": "harmony",
+   "note": "Coordinator (D31). Settings › Browser and the Library browser-meetings area; one state line at a time. Background setup never shows a toast or dialog."
+  },
+  {
+   "id": "browser.state.reason.noBrowser",
+   "en": "No supported browser was found.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "D31",
+   "status": "harmony",
+   "note": "Coordinator (D31). Settings › Browser and the Library browser-meetings area; one state line at a time. Background setup never shows a toast or dialog."
+  },
+  {
+   "id": "browser.state.reason.unwritable",
+   "en": "The browser’s settings folder can’t be written to.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "D31",
+   "status": "harmony",
+   "note": "Coordinator (D31). Settings › Browser and the Library browser-meetings area; one state line at a time. Background setup never shows a toast or dialog."
+  },
+  {
+   "id": "browser.state.reason.unsafe",
+   "en": "The browser’s connection files couldn’t be updated safely.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "D31",
+   "status": "harmony",
+   "note": "Coordinator (D31). Settings › Browser and the Library browser-meetings area; one state line at a time. Background setup never shows a toast or dialog."
+  },
+  {
+   "id": "browser.state.reason.temporary",
+   "en": "The connection service isn’t available right now.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "D31",
+   "status": "harmony",
+   "note": "Coordinator (D31). Settings › Browser and the Library browser-meetings area; one state line at a time. Background setup never shows a toast or dialog."
+  },
+  {
    "id": "speakers.rememberVoice.modelsNeeded",
    "en": "To remember voices, download and turn on Tell speakers apart and Recognise saved voices in Settings.",
    "platforms": [
