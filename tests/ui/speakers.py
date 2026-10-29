@@ -91,6 +91,7 @@ with tempfile.TemporaryDirectory() as temporary:
     page.name_speakers("guest")
     dialog = page.speakers_dialog
     until(lambda: not window.lookup_action("play-pause").get_enabled())
+    until(lambda: dialog.voices_loaded and dialog.save.get_sensitive())
     assert dialog.heading.get_label() == "Speaker 3" and dialog.entry.get_text() == ""
     assert dialog.talk.get_label() == "Speaks for 11 s in this meeting"
     assert any("Remember this voice" in value for value in labels(dialog.get_child()))
@@ -133,6 +134,7 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog = page.speakers_dialog
     assert dialog.identifier == "guest" and dialog.entry.get_text() == "Giulia"
     dialog.entry.set_text("")
+    until(lambda: dialog.save.get_sensitive())
     dialog.save.emit("clicked")
     until(lambda: dialog.closed and next(s for s in page.meeting.speakers if s.id == "guest").name == "Speaker 3")
     # Merge menu invokes an action rather than changing the source transcript.
