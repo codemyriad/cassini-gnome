@@ -234,3 +234,33 @@ test('call evidence reaches control snapshots without restricting manual Record'
     assert.equal((await app.api.meetings()).meetings.length,0,'idle evidence does not keep a candidate listed');
   } finally {app.close();}
 });
+
+
+test('tab loading and removal clear each frame count and heard together',async()=>{
+  const app=await setup();
+  try {
+    const frame=[...app.api.frames][0];
+    app.pages[0].onMessage.emit({type:'discovery',sourceCount:3,heard:true});
+    assert.equal(frame.heard,true);
+    app.chrome.tabs.onUpdated.emit(2,{status:'loading'});
+    assert.equal(frame.sourceCount,0);assert.equal(frame.heard,false);
+    app.pages[0].onMessage.emit({type:'discovery',sourceCount:3,heard:true});
+    app.chrome.tabs.onRemoved.emit(2);
+    assert.equal(frame.sourceCount,0);assert.equal(frame.heard,false);
+  } finally {app.close();}
+});
+
+
+const autoStartCases=JSON.parse(fs.readFileSync(path.join(contract,'conformance/control/auto-start-vectors.json')));
+for(const vector of autoStartCases)test('desktop manual vector: '+vector.name,async()=>{
+  const app=await setup(vector.meeting.sourceCount);
+  try {
+    const expectedCapabilities=vector.capabilities.includes('call-evidence-v1')
+      ?app.ports[0].sent.find(packet=>packet.type==='hello').capabilities:['independent-sessions-v1'];
+    assert.deepEqual(vector.capabilities,expectedCapabilities,'vectors use a real compatible transport hello');
+    app.pages[0].onMessage.emit({type:'discovery',sourceCount:vector.meeting.sourceCount,heard:vector.meeting.heard});
+    const result=await app.command(command('vector-manual','start',vector.meeting.tabId));
+    assert.equal(result.ok,vector.expect.manual,vector.name);
+    if(result.ok)await app.command(command('vector-stop','stop',vector.meeting.tabId));
+  } finally {app.close();}
+});

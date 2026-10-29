@@ -1,7 +1,7 @@
 (() => {
   let port = null, token = null, drainingToken = null, pendingStart = null;
   const pending = new Set();
-  let sourceCount, heard = false;
+  let sourceCount, heard = false, hidden = false;
   const control = message => window.postMessage({ channel: "cassini-control", ...message,
     moduleURL: chrome.runtime.getURL("capture.js"), workletURL: chrome.runtime.getURL("pcm-worklet.js") }, "*");
   function receive(message) {
@@ -22,7 +22,7 @@
     const connected = chrome.runtime.connect({ name: "cassini-frame" });
     port = connected;
     connected.onMessage.addListener(receive);
-    if (sourceCount !== undefined) connected.postMessage({ type: "discovery", sourceCount, heard });
+    // Reconnect asks the hook for fresh evidence; never replay a stale latch.
     control({ type: "discover" });
     connected.onDisconnect.addListener(() => {
       if (port !== connected) return;
@@ -39,12 +39,18 @@
     connect(); control({ type: "discover" }); respond({ connected: true });
   });
   connect();
-  window.addEventListener("pagehide", () => { try { port?.postMessage({ type: "discovery", sourceCount: 0, heard }); } catch {} });
-  window.addEventListener("pageshow", () => { connect(); control({ type: "discover" }); });
+  window.addEventListener("pagehide", () => {
+    hidden = true; sourceCount = 0; heard = false;
+    try { port?.postMessage({ type: "discovery", sourceCount, heard }); } catch {}
+  });
+  window.addEventListener("pageshow", () => {
+    hidden = false; connect(); control({ type: "discover" });
+  });
   window.addEventListener("message", event => {
     if (event.source !== window || event.data?.channel !== "cassini-page") return;
     const { type, packet, request } = event.data;
     if (type === "discovery") {
+      if (hidden) return;
       const count = event.data.sourceCount;
       if (Number.isInteger(count) && count >= 0 && count <= 64) {
         sourceCount = count;

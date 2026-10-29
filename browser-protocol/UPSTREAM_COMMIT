@@ -1,26 +1,26 @@
-tree f26300e6c73120902119af8611ac6db42c8b6592
-parent 7f8c3e82b375456723083b791b4f4ff311ed39a8
-parent 4f816b226550b0d017bc4ddec163087782f80066
-author Silvio Tomatis <silviot@gmail.com> 1793298523 +0100
-committer GitHub <noreply@github.com> 1793298523 +0100
+tree 20d8ffbf4df323ec17f375b4be465ea13b5b0108
+parent 2bcd10d882b6db6248b33e47359e1891bd32e6f1
+parent e3ecf02c16cf527b0a4c19e6b960f2c212e8639c
+author Silvio Tomatis <silviot@gmail.com> 1793303066 +0100
+committer GitHub <noreply@github.com> 1793303066 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq45BbCRC1aQ7uu5UhlAAAFQYQAJg94DaON+PKLvX2RSGMba/9
- Oo950zTxm8/trsLtbghiwUwSRv8xCNHtqbNFkTIvlJPcRfnMta2LDQD95xk/9N3F
- S0yotizTzZ3qx+iXderyo3/C642OIDu6F1jGFV7RN9t05XysPQ+2WbuZfnMDfrSo
- j4gB/hYt+5J0EJdFLm8Jk4RtNvxRVss9/hzTsC1b83VGtUHeMtswTb5rLnA10Jpp
- O6TGVGYr8RrZjm19s9GRfU+zDRDfCXWCRU4f6/Yl+vJWIQhNYNLCCLE8UCjVWwG8
- 5igQPjbw/k3niPO06v+ZW47xuhoRNePDK68BGkVIeu3HK85XZITXLsTH3RVlGhge
- VbASzoW2TemUS+yNGeRTLkwJvgX/zeepbOXANfN1ai53ZPaReZPQriUQ0HvWrBp5
- 2fz7M9Lp4Ab2iOnlgU+lQkOZ8wITLOoY1EtLGghijTTFWkOHPc6aAv3vIA//KMrk
- +gCcLB/MENHuegn67eYNCz/WxhVf3+LQeQAthu/KEorOOlkKZW3v4WpUBAcyzmF3
- mSuu7hEQsVQX5ECT7DaCMX/VrphKJDtoQUlMX1R8YDK0m5vrzT5kdR40EUDH4etA
- X8CvtFKhJkwvt4urzQbY7YSu9c66v89whRmOrW5ABXMxqGvPie3g8gACemnWAEFR
- PDdNMc8WgOZ/r4xfCe5N
- =FmLU
+ wsFcBAABCAAQBQJq46IaCRC1aQ7uu5UhlAAAA7MQAKS1saTAmynPJQOMNbp8mFIx
+ MSojeqtrKvgCvdHTnRoOskbOkD/Wlmxde0ODMgWE9X645WFDBofRHBhRfX1yevcV
+ cewbdKTKLiRwZiy0r1Qwrc79bg1+cclxCfkyskuj/k41RaHYTUV703B6H0NDUbH5
+ nzrNRK1MB9pNDtcRCJwxuo4Zuna96z4w7CqpuRKUwzuIE5ZKvBdhFA36I5piuBkk
+ utaXgKfSVJdE81gl7QTbv60L7xem1BNqEycTIvPm1DMwiaw/7k3v/swbXBwZdzFN
+ CN4T6ZVZleXRKCpTx4Ynaq3etZRheTpkgnqEpu9/BunOoM/qDfvllwSRdDmG/aHH
+ pXUx3pzhE2yYv88frbqsf+eaU5P+YGpc5uxxPgL0yzH46Wk4gIKC/25wDDsRM5Ro
+ 3xcsTbp01K0dd5ZZaGUve1K13EYcnLpJezFWo7CNRSja8m+kT8qt4KIopqt8uReU
+ yQVzEvq+XWHz5nyjlXBL+ePTVPzJLRlK4jurkLn4CSQ3yDa+5AwS6G5YFk/wCcX7
+ pFQEG//EfENGjVLqZu9DibdlO6irN+HFpRZKcxmsMa1EwghJ/prJVc54egiDotD5
+ opxGcbQHWHrp18/UW8cwZNy5mWusDnuwJaJiY0xWZg6fWSKP2IsB84zEZfmLrnxI
+ 6XhBkxLu868cwUKGDRgd
+ =aH5U
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #20 from codemyriad/fix/prejoin-call-evidence
+Merge pull request #21 from codemyriad/fix/call-evidence-scope
 
-Prevent pre-join auto-record with inbound call evidence
+Scope call evidence to proven peers and sustained RTP progress

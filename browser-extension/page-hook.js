@@ -28,14 +28,21 @@
     peers.add(pc);
     pc.addEventListener("connectionstatechange", () => {
       if (pc.connectionState === "closed") peers.delete(pc);
+      discover();
     });
+    pc.addEventListener("iceconnectionstatechange", () => discover());
   };
   window.RTCPeerConnection = new Proxy(original, {
     construct(target, args, newTarget) { const pc = Reflect.construct(target, args, newTarget); remember(pc); return pc; }
   });
   if (window.webkitRTCPeerConnection === original) window.webkitRTCPeerConnection = window.RTCPeerConnection;
   const close = original.prototype.close;
-  original.prototype.close = function (...args) { peers.delete(this); return Reflect.apply(close, this, args); };
+  original.prototype.close = function (...args) {
+    peers.delete(this);
+    const value = Reflect.apply(close, this, args);
+    discover();
+    return value;
+  };
   // Recovery for connections created by a cached constructor or before the extension loaded.
   for (const name of ["getStats", "createOffer", "createAnswer", "setLocalDescription", "setRemoteDescription", "addTrack", "addTransceiver"]) {
     const method = original.prototype[name];
@@ -43,34 +50,48 @@
   }
   // Discovery is independent of capture: no AudioContext, cloned stream or PCM
   // is created until an explicit recording command arrives.
-  let lastSourceCount = -1, lastHeard = null, heard = false, zeroSince = null;
+  let lastSourceCount = -1, lastHeard = null, latched = false, zeroSince = null, orphanedSince = null;
   let previousStats = new WeakMap(), sampling = false;
-  const evidenceTicks = [];
+  const evidenceTicks = [], owners = new Set();
+  const connected = pc => pc.signalingState !== "closed" &&
+    (pc.connectionState === "connected" || ["connected", "completed"].includes(pc.iceConnectionState));
   function discoverySources() {
-    const sources = new Set(), receivers = new Set();
+    const sources = new Set(), receivers = new Map();
     for (const pc of peers) {
       if (pc.signalingState === "closed") { peers.delete(pc); continue; }
-      if (pc.connectionState !== "connected" && !["connected", "completed"].includes(pc.iceConnectionState)) continue;
+      if (!connected(pc)) continue;
       for (const transceiver of pc.getTransceivers()) {
         const track = transceiver.receiver?.track;
         if (["recvonly", "sendrecv"].includes(transceiver.currentDirection) && track?.kind === "audio" && track.readyState === "live") {
           sources.add(track);
-          receivers.add(transceiver.receiver);
+          receivers.set(transceiver.receiver, pc);
         }
       }
     }
     return { sourceCount: Math.min(64, sources.size), receivers };
   }
+  function resetEvidence() {
+    latched = false;
+    orphanedSince = null;
+    owners.clear();
+    evidenceTicks.length = 0;
+    previousStats = new WeakMap();
+  }
   function discover(force = false) {
-    const { sourceCount } = discoverySources();
+    const { sourceCount, receivers } = discoverySources();
     const now = performance.now();
     if (sourceCount > 0) zeroSince = null;
     else if (zeroSince === null) zeroSince = now;
-    else if (now - zeroSince >= 10000) {
-      heard = false;
-      evidenceTicks.length = 0;
-      previousStats = new WeakMap();
+    else if (now - zeroSince >= 10000) resetEvidence();
+    if (latched) {
+      // Expiry is authoritative even if an owner reconnects before this snapshot.
+      if (orphanedSince !== null && now - orphanedSince >= 5000) resetEvidence();
+      else if ([...owners].some(connected)) orphanedSince = null;
+      else if (orphanedSince === null) orphanedSince = now;
     }
+    // Retain a short handoff opportunity, but never lend an old peer's latch
+    // to new pre-join receivers that have not supplied their own packet vote.
+    const heard = latched && [...receivers.values()].some(pc => owners.has(pc));
     if (force || sourceCount !== lastSourceCount || heard !== lastHeard) {
       lastSourceCount = sourceCount;
       lastHeard = heard;
@@ -78,42 +99,49 @@
     }
     return sourceCount;
   }
-  // A forced snapshot is not a sampling tick. Only this one-second clock can
-  // establish evidence, and no audio/AudioContext is created for discovery.
+  // Forced snapshots cannot vote. Poll receivers even while latched so a new
+  // peer may prove a real handoff before the old owners' grace expires.
   async function sampleEvidence() {
     const sourceCount = discover();
-    if (heard) return; // The document latch survives peer hand-offs and silence.
-    const tick = { at: performance.now(), increased: false };
+    const tick = { at: performance.now(), voters: new Set() };
     evidenceTicks.push(tick);
     if (evidenceTicks.length > 3) evidenceTicks.shift();
     if (sampling || !sourceCount) return;
     sampling = true;
     try {
       const { receivers } = discoverySources();
-      const reports = await Promise.all([...receivers].map(receiver => new Promise(resolve => {
-        // An unresponsive receiver cannot stall discovery or replay late proof.
-        const timer = setTimeout(() => resolve([receiver, null]), 750);
+      const reports = await Promise.all([...receivers].map(([receiver, pc]) => new Promise(resolve => {
+        const timer = setTimeout(() => resolve([receiver, pc, null]), 750);
         Promise.resolve().then(() => receiver.getStats()).then(
-          stats => { clearTimeout(timer); resolve([receiver, stats]); },
-          () => { clearTimeout(timer); resolve([receiver, null]); }
+          stats => { clearTimeout(timer); resolve([receiver, pc, stats]); },
+          () => { clearTimeout(timer); resolve([receiver, pc, null]); }
         );
       })));
       if (!evidenceTicks.includes(tick) || performance.now() - tick.at >= 1000) return;
+      // Refresh grace/zero resets before consuming asynchronous reports.
+      discover();
+      if (!evidenceTicks.includes(tick)) return;
       const current = discoverySources();
-      for (const [receiver, stats] of reports) {
-        if (!current.receivers.has(receiver) || typeof stats?.forEach !== "function") continue;
+      for (const [receiver, pc, stats] of reports) {
+        if (current.receivers.get(receiver) !== pc || typeof stats?.forEach !== "function") continue;
         const previous = previousStats.get(receiver) || new Map();
-        const next = new Map();
         stats.forEach(report => {
           if (report?.type !== "inbound-rtp" || (report.kind ?? report.mediaType) !== "audio" ||
               typeof report.id !== "string" || !Number.isSafeInteger(report.packetsReceived) || report.packetsReceived < 0) return;
           const count = report.packetsReceived;
-          if (!previous.has(report.id) || count > previous.get(report.id)) tick.increased = true;
-          next.set(report.id, count);
+          if (previous.has(report.id) && count - previous.get(report.id) >= 10) tick.voters.add(pc);
+          previous.set(report.id, count);
         });
-        previousStats.set(receiver, next);
+        // Missing reports keep their last baseline; first appearance never votes.
+        previousStats.set(receiver, previous);
       }
-      if (current.sourceCount > 0 && evidenceTicks.filter(t => t.increased).length >= 2) heard = true;
+      const liveVoters = t => [...t.voters].filter(connected);
+      if (!latched && evidenceTicks.filter(t => liveVoters(t).length).length >= 2) {
+        latched = true;
+        for (const t of evidenceTicks) for (const pc of liveVoters(t)) owners.add(pc);
+      } else if (latched) {
+        for (const pc of tick.voters) owners.add(pc);
+      }
       discover();
     } finally { sampling = false; }
   }
