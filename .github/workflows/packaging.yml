@@ -34,6 +34,11 @@ jobs:
           key: parakeet-ultra-18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
       # The same offline check as the other packages: install the bundle and
       # write the D11 goldens down in a sandbox with --unshare=network.
+      - name: Install the host Trash portal for the private installed-app proof
+        run: |
+          if ! test -x /usr/libexec/xdg-desktop-portal && ! test -x /usr/lib/xdg-desktop-portal; then
+            dnf install -y xdg-desktop-portal
+          fi
       - name: Smoke-test the installed Flatpak offline
         env:
           CASSINI_PARAKEET_TEST_CACHE: ${{ runner.temp }}/parakeet-models
@@ -47,4 +52,6 @@ jobs:
             flatpak-library-persistence.json
             flatpak-*-host.log
             flatpak-sandbox.log
+            flatpak-trash.json
+            flatpak-trash-portal.log
           retention-days: 7

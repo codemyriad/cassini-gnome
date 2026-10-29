@@ -167,7 +167,7 @@ class ExportDialog(Adw.Dialog):
         self.choose.set_sensitive(False)
         self.cassini.set_sensitive(False)
         self.markdown.set_sensitive(False)
-        future = self.executor.submit(
+        future = self.future = self.executor.submit(
             export_meeting,
             self.meeting,
             self.destination,

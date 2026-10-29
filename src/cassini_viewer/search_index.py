@@ -122,6 +122,7 @@ class SearchIndex:
                 os.close(fd)
             db = sqlite3.connect(self.path)
             try:
+                db.execute("PRAGMA secure_delete=ON")
                 if db.execute("PRAGMA quick_check").fetchone() != ("ok",):
                     raise ValueError("Corrupt search cache")
                 db.executescript("""

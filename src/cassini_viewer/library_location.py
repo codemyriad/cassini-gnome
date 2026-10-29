@@ -211,6 +211,35 @@ def owned_directory(path):
     raise ValueError("Meeting is outside the configured Library")
 
 
+def forget_meeting(directory):
+    """Discard only the removed folder's routing aliases and pending moves."""
+    removed = {str(Path(directory).resolve())}
+    with routing():
+        value = load()
+        before = json.dumps(value, sort_keys=True)
+        while True:
+            extra = {source for source, target in value["aliases"].items() if target in removed}
+            extra.update(
+                path
+                for entry in value["pending"]
+                if entry["source"] in removed or entry["target"] in removed
+                for path in (entry["source"], entry["target"])
+            )
+            if extra <= removed:
+                break
+            removed.update(extra)
+        value["pending"] = [
+            entry for entry in value["pending"] if entry["source"] not in removed and entry["target"] not in removed
+        ]
+        value["aliases"] = {
+            source: target
+            for source, target in value["aliases"].items()
+            if source not in removed and target not in removed
+        }
+        if json.dumps(value, sort_keys=True) != before:
+            save(value)
+
+
 def request(destination):
     from .library import meeting_id
 
@@ -288,6 +317,12 @@ def process(*, busy=(), activity=None, retry=False, cancelled=None, changed=lamb
             value["pending"].remove(entry)
         except MoveBusy:
             continue
+        except FileNotFoundError as error:
+            if not source.exists() and not target.exists() and source.parent.is_dir() and target.parent.is_dir():
+                value["pending"].remove(entry)
+                value["aliases"].pop(str(source), None)
+            else:
+                entry.update(state="failed", error=str(error))
         except CancelledError:
             break
         except (OSError, ValueError) as error:

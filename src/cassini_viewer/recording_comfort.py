@@ -244,7 +244,7 @@ class RecordingComfort:
         except (OSError, ValueError) as error:
             LOG.warning("Could not read live browser capture: %s", error)
             return False
-        if meeting:
+        if meeting and not self.app.meeting_trash.hides(meeting.directory):
             self.known[key] = meeting
             self.tick()
         return False
@@ -292,6 +292,15 @@ class RecordingComfort:
         notification = Gio.Notification.new(text(line, n=minutes))
         notification.set_default_action("app.open-recording")
         self.app.send_notification("recording-space", notification)
+
+    def discard_meeting(self, directory):
+        key = directory.name
+        self.drafts.pop(str(directory), None)
+        for mapping in (self.known, self.states, self.clocks, self.futures, self.loading):
+            value = mapping.pop(key, None)
+            if hasattr(value, "cancel"):
+                value.cancel()
+        self.warning_shown.discard(key)
 
     def close(self):
         self.closed = True

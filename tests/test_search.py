@@ -276,3 +276,14 @@ def test_corrupt_fts_shadow_tables_rebuild(index):
     two.sync(snapshot)
     assert len(search(two, speaker="Marta")) == 4
     two.close()
+
+
+def test_trash_erases_removed_text_from_search_cache_pages(index):
+    meeting = next(iter(index.current.values()))
+    secret = "cassinitrashuniqueforensictext"
+    changed = replace(meeting, words=(Word(speaker="me", start_ms=0, end_ms=500, text=secret),))
+    index.sync(LibrarySnapshot(meetings=(changed,)))
+    assert secret.encode() in index.path.read_bytes()
+    index.sync(LibrarySnapshot())
+    assert not search(index, secret)
+    assert secret.encode() not in index.path.read_bytes(), "Trash left removed text in FTS/cache pages"

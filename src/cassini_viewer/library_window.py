@@ -37,6 +37,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._loaded_key = None
         self._loaded_directory = None
         self.snapshot = None
+        self._source_snapshot = None
         self._observed_phases = None
         self.meeting_page = None
         self.search_page = None
@@ -80,7 +81,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.root_box.add_named(self.loading, "loading")
         self.root_box.set_visible_child_name("loading")
         self._activity = dict(self._fixture_activity)
-        self.monitor = LibraryMonitor(self._updated, capture_activity=lambda: self._activity)
+        self.monitor = LibraryMonitor(self._library_scanned, capture_activity=lambda: self._activity)
         # Native clocks, meters and date grouping also need this tick when the
         # optional host browser bridge is unavailable or still being probed.
         self._activity_timer = GLib.timeout_add_seconds(1, self._activity_tick)
@@ -91,6 +92,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             ("back-library", self.back_to_library),
             ("search", self.toggle_search),
             ("export", self.show_export),
+            ("move-to-trash", self.move_to_trash),
             ("undo-speaker-merge", lambda *_: self.meeting_page.undo_speaker_merge() if self.meeting_page else None),
             ("play-pause", self._play_selected),
             ("skip-back", lambda *_: self.player.skip(-10000)),
@@ -102,6 +104,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         target = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
         target.connect("drop", self._drop_files)
         self.add_controller(target)
+        keys = Gtk.EventControllerKey()
+        keys.connect("key-pressed", self._trash_key)
+        self.add_controller(keys)
         self._refresh_export()
 
     def toast(self, message):
@@ -125,6 +130,91 @@ class LibraryWindow(Adw.ApplicationWindow):
                     and not self.search_page
                 )
             )
+
+        trash = self.lookup_action("move-to-trash")
+        if trash:
+            trash.set_enabled(self.get_application().meeting_trash.allowed(meeting, self) and not self._focused_editors)
+
+    def _library_scanned(self, snapshot):
+        self._source_snapshot = snapshot
+        self.get_application().meeting_trash.scanned(snapshot, self.monitor.scan_started)
+        self._updated(snapshot)
+
+    def move_to_trash(self):
+        meeting = self.meeting_page.meeting if self.meeting_page else self.selected
+        self.get_application().meeting_trash.request(meeting, self)
+
+    def trash_error_line(self, meeting):
+        from .inline_line import InlineLine
+
+        failure = self.get_application().meeting_trash.errors.get(meeting.directory)
+        if failure is None:
+            return None
+        if failure == "unsupported":
+
+            def show():
+                launcher = Gtk.FileLauncher(file=Gio.File.new_for_path(str(meeting.directory)))
+                launcher.open_containing_folder(self, None, None, None)
+
+            return InlineLine("meeting.trashUnsupported", action="meeting.showInFiles", callback=show)
+        return InlineLine(
+            "meeting.trashFailed",
+            action="common.tryAgain",
+            callback=lambda: self.get_application().meeting_trash.request(meeting, self),
+        )
+
+    def _text_focused(self):
+        widget = self.get_focus()
+        while widget:
+            if isinstance(widget, (Gtk.Editable, Gtk.TextView)):
+                return True
+            widget = widget.get_parent()
+        return bool(self._focused_editors)
+
+    def _trash_key(self, _keys, key, _code, modifiers):
+        if self._text_focused() or self.search_page or self.recording_page:
+            return False
+        focus = self.get_focus()
+        in_list = bool(focus and (focus is self.rows or focus.is_ancestor(self.rows)))
+        blocked = (
+            Gdk.ModifierType.CONTROL_MASK
+            | Gdk.ModifierType.ALT_MASK
+            | Gdk.ModifierType.SHIFT_MASK
+            | Gdk.ModifierType.SUPER_MASK
+        )
+        if (
+            key == Gdk.KEY_Delete
+            and not modifiers & blocked
+            and (self.meeting_page or in_list)
+            and self.lookup_action("move-to-trash").get_enabled()
+        ):
+            self.move_to_trash()
+            return True
+        if in_list and (key == Gdk.KEY_Menu or key == Gdk.KEY_F10 and modifiers & Gdk.ModifierType.SHIFT_MASK):
+            row = self.rows.get_selected_row()
+            if row and hasattr(row, "meeting"):
+                self._row_menu(row, 12, row.get_height() // 2)
+                return True
+        return False
+
+    def _row_menu(self, row, x, y):
+        self.rows.select_row(row)
+        menu = Gio.Menu()
+        menu.append(text("common.exportEllipsis"), "win.export")
+        if self.get_application().meeting_trash.allowed(row.meeting, self):
+            section = Gio.Menu()
+            from .meeting_trash import menu_item
+
+            section.append_item(menu_item())
+            menu.append_section(None, section)
+        popover = Gtk.PopoverMenu.new_from_model(menu)
+        popover.set_parent(row)
+        rectangle = Gdk.Rectangle()
+        rectangle.x, rectangle.y, rectangle.width, rectangle.height = int(x), int(y), 1, 1
+        popover.set_pointing_to(rectangle)
+        popover.connect("closed", lambda *_: popover.unparent())
+        popover.popup()
+        return popover
 
     def show_export(self):
         from .export_dialog import ExportDialog
@@ -160,6 +250,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             action = self.lookup_action(name)
             if action:
                 action.set_enabled(not self._focused_editors)
+        self._refresh_export()
 
     @property
     def now_ms(self):
@@ -394,7 +485,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.meeting_page.set_connected(self._activity_source.connected)
         # Re-group at local midnight without touching the filesystem.
         if self.snapshot is not None:
-            self._updated(self.snapshot)
+            self._updated(self._source_snapshot or self.snapshot)
         return GLib.SOURCE_CONTINUE
 
     def _update_live(self):
@@ -558,6 +649,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
 
     def _updated(self, snapshot):
+        snapshot = self.get_application().meeting_trash.project(snapshot)
         fresh_scan = snapshot is not self.snapshot
         self.get_application().observe_library(snapshot, self._observed_phases)
         self._observed_phases = {m.key: (m.lifecycle, m.capture_state) for m in snapshot.meetings}
@@ -690,6 +782,12 @@ class LibraryWindow(Adw.ApplicationWindow):
         if line:
             box.append(label(line, "small", "dim-label", xalign=0, ellipsize=Pango.EllipsizeMode.END))
         row.set_child(box)
+        secondary = Gtk.GestureClick(button=3)
+        secondary.connect("pressed", lambda _gesture, _n, x, y: self._row_menu(row, x, y))
+        row.add_controller(secondary)
+        long_press = Gtk.GestureLongPress()
+        long_press.connect("pressed", lambda _gesture, x, y: self._row_menu(row, x, y))
+        row.add_controller(long_press)
         return row
 
     def _speaker(self, speaker, *, chip=False, meeting=None):
@@ -764,7 +862,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         from .inline_line import InlineLine
 
         writing = getattr(self.get_application(), "writing_available", True)
-        if meeting.transcript == "failed":
+        trash_error = self.trash_error_line(meeting)
+        if trash_error:
+            self.preview.append(trash_error)
+        elif meeting.transcript == "failed":
             self.preview.append(
                 InlineLine(
                     "errors.transcribeFailed.line",
@@ -1031,8 +1132,23 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.toast(str(error))
         return False
 
+    def _close_after_trash(self):
+        app = self.get_application()
+        if app is None:
+            return
+        previous = (getattr(app, "_capture_close_allowed", False), app._closing_background_windows)
+        app._capture_close_allowed, app._closing_background_windows = self._trash_close_flags
+        try:
+            self.close()
+        finally:
+            app._capture_close_allowed, app._closing_background_windows = previous
+
     def _close(self, *_args):
         if self.get_application().confirm_capture_close(self):
+            return True
+        app = self.get_application()
+        self._trash_close_flags = (getattr(app, "_capture_close_allowed", False), app._closing_background_windows)
+        if app.meeting_trash.flush(self._close_after_trash):
             return True
         self.get_application().window_closing(self)
         if self.export_dialog and not self.export_dialog.closed:

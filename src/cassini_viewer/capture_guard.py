@@ -283,11 +283,14 @@ def confirm_capture_close(app, window, *, quitting=False):
                         disconnect()
                         app._capture_confirmation = None
                         app._capture_exiting = False
-                        if exiting:
-                            app.begin_exit()
-                        finish_close(app, targets)
-                        if exiting:
-                            app.quit()
+                        if exiting and hasattr(app, "finish_quit"):
+                            app.finish_quit()
+                        else:
+                            if exiting:
+                                app.begin_exit()
+                            finish_close(app, targets)
+                            if exiting:
+                                app.quit()
                         app.release()
                     return False
 

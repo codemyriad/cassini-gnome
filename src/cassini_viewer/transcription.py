@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """One FIFO per app, at most one speech child; no engine import in GTK."""
 
+import contextlib
 import importlib.util
 import logging
 import os
@@ -148,16 +149,22 @@ class TranscriptionQueue:
         self.pending = set()
         self._voice_reruns = {}
         self.voice_pending = set()
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
+        self._idle = threading.Condition(self.lock)
+        self._cancelled_meetings = set()
+        self._context = threading.local()
+        self._active_directory = None
+        self._prepare_futures, self._job_futures, self._voice_futures = {}, {}, {}
         self.closed = False
 
     def enqueue(self, directory, *, resume=False):
         directory = Path(directory).absolute()
         with self.lock:
-            if self.closed or directory in self.pending:
+            if self.closed or directory in self.pending or directory in self._cancelled_meetings:
                 return False
             self.pending.add(directory)
             future = self.preparer.submit(self._mark_queued, directory, resume)
+            self._prepare_futures[directory] = future
         future.add_done_callback(lambda f: self._prepared(directory, f))
         return True
 
@@ -174,7 +181,7 @@ class TranscriptionQueue:
     def _mark_queued(self, directory, resume):
         from .meeting_store import LOCK
 
-        with LOCK:
+        with self._job_scope(directory), LOCK:
             return self._mark_queued_locked(directory, resume)
 
     def _mark_queued_locked(self, directory, resume):
@@ -230,8 +237,9 @@ class TranscriptionQueue:
                 self._completed(directory)
             else:
                 with self.lock:
-                    if not self.closed:
+                    if not self.closed and directory not in self._cancelled_meetings:
                         future = self.executor.submit(self._job, directory, *prepared)
+                        self._job_futures[directory] = future
                         future.add_done_callback(lambda _f: self._completed(directory))
                         return
                 self._completed(directory)
@@ -241,10 +249,13 @@ class TranscriptionQueue:
             if directory not in self.pending:
                 return
             self.pending.remove(directory)
+            self._prepare_futures.pop(directory, None)
+            self._job_futures.pop(directory, None)
+            self._idle.notify_all()
         self.finished(directory)
 
     def _failed(self, directory, error):
-        if self.closed:
+        if self.closed or directory in self._cancelled_meetings:
             return
         LOG.warning("Meeting transcription failed: %s", error)
         try:
@@ -265,6 +276,13 @@ class TranscriptionQueue:
             LOG.exception("Could not preserve failed transcription state")
 
     def _job(self, directory, meeting, metadata):
+        try:
+            with self._job_scope(directory, owner=True):
+                self._job_body(directory, meeting, metadata)
+        except CancelledError:
+            self._completed(directory)
+
+    def _job_body(self, directory, meeting, metadata):
         try:
             if self.closed:
                 return
@@ -527,7 +545,7 @@ class TranscriptionQueue:
     def recompute_voices(self, directory, affected, failed):
         token = Path(directory).absolute()
         with self.lock:
-            if self.closed or self.voice_models is None:
+            if self.closed or token in self._cancelled_meetings or self.voice_models is None:
                 return False
             if not self.voice_models.snapshot().get("ready") or not self.diarization_models.snapshot().get("ready"):
                 return False
@@ -536,10 +554,32 @@ class TranscriptionQueue:
                 self._voice_reruns[token] = previous | set(affected), failed
                 return False
             self.voice_pending.add(token)
-            self.executor.submit(self._voice_job, token, set(affected), failed)
+            self._submit_voice(token, set(affected), failed)
         return True
 
+    def _submit_voice(self, token, affected, failed):
+        future = self.executor.submit(self._voice_job, token, affected, failed)
+        self._voice_futures[token] = future
+        future.add_done_callback(lambda f: self._voice_completed(token) if f.cancelled() else None)
+
+    def _voice_completed(self, token):
+        with self.lock:
+            if token not in self.voice_pending:
+                return
+            self.voice_pending.remove(token)
+            self._voice_futures.pop(token, None)
+            self._voice_reruns.pop(token, None)
+            self._idle.notify_all()
+        self.finished(token)
+
     def _voice_job(self, token, affected, failed):
+        try:
+            with self._job_scope(token, owner=True):
+                self._voice_job_body(token, affected, failed)
+        except CancelledError:
+            self._voice_completed(token)
+
+    def _voice_job_body(self, token, affected, failed):
         directory = token
         try:
             self._check_open()
@@ -604,23 +644,66 @@ class TranscriptionQueue:
                 self.client = self.client_model = None
             with self.lock:
                 again = self._voice_reruns.pop(token, None)
-                if self.closed:
+                if self.closed or token in self._cancelled_meetings:
                     again = None
                 if again is not None:
-                    self.executor.submit(self._voice_job, token, *again)
+                    self._submit_voice(token, *again)
                 else:
-                    self.voice_pending.discard(token)
-            if again is None:
-                self.finished(token)
+                    self._voice_completed(token)
+
+    @contextlib.contextmanager
+    def _job_scope(self, directory, *, owner=False):
+        self._context.directory = directory
+        try:
+            with self.lock:
+                self._check_open()
+                if owner:
+                    self._active_directory = directory
+            yield
+        finally:
+            with self.lock:
+                if owner and self._active_directory == directory:
+                    self._active_directory = None
+                self._context.directory = None
+                self._idle.notify_all()
+
+    @contextlib.contextmanager
+    def cancel_meeting(self, directory):
+        """Worker-only exclusion: cancel this meeting, wait, keep it blocked during Trash."""
+        directory = Path(directory).absolute()
+        with self.lock:
+            self._cancelled_meetings.add(directory)
+            futures = [
+                mapping.get(directory) for mapping in (self._prepare_futures, self._job_futures, self._voice_futures)
+            ]
+            # Cancel while holding the owner lock: a persistent client must not
+            # advance to another meeting between this identity check and cancel.
+            if self._active_directory == directory and self.client and hasattr(self.client, "cancel"):
+                self.client.cancel()
+        for future in futures:
+            if future is not None:
+                future.cancel()
+        try:
+            with self._idle:
+                self._idle.wait_for(
+                    lambda: (
+                        directory not in self.pending
+                        and directory not in self.voice_pending
+                        and self._active_directory != directory
+                    )
+                )
+            yield
+        finally:
+            with self.lock:
+                self._cancelled_meetings.discard(directory)
 
     def _check_open(self):
-        if self.closed:
+        if self.closed or getattr(self._context, "directory", None) in self._cancelled_meetings:
             raise CancelledError()
 
     def _register_client(self, client):
         with self.lock:
-            if self.closed:
-                raise CancelledError()
+            self._check_open()
             self.client = client
 
     def close(self):
