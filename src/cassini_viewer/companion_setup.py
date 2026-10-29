@@ -155,6 +155,8 @@ class CompanionSetup(Adw.Dialog):
             value = future.result()
             if action == "status" and self.app.browser_connection:
                 self.app.browser_connection.observe(value)
+            elif action == "add":
+                self.local_error = None
         except Exception as error:
             LOG.exception("Companion %s failed", action)
             if action != "status":
@@ -167,6 +169,8 @@ class CompanionSetup(Adw.Dialog):
     def render(self):
         controller = self.app.browser_connection
         state = controller.snapshot() if controller else dict(phase="settingUp", names=(), browser=None)
+        if state["phase"] == "connected":
+            self.local_error = None
         if self.local_error:
             state = dict(state, phase="failed", reason=self.local_error.reason)
         self.connected = state["phase"] == "connected"

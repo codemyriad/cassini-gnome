@@ -124,6 +124,18 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog.add_button.emit("clicked")
     until(lambda: len(launches) == 1)
     assert not dialog.done.get_sensitive() and dialog.add_caption.get_label() == "Not added yet"
+    opener = companion.open_add
+
+    def failed_open(_browser):
+        raise OSError("synthetic browser launch failure")
+
+    companion.open_add = failed_open
+    dialog.add_button.emit("clicked")
+    until(lambda: dialog.local_error is not None)
+    assert dialog.failed and dialog.connect_button.get_visible()
+    companion.open_add = opener
+    dialog.add_button.emit("clicked")
+    until(lambda: len(launches) == 2 and dialog.local_error is None and not dialog.failed)
     real_register = companion.register
 
     def read_only(**_kwargs):
