@@ -62,3 +62,56 @@ def test_stop_during_preparation_never_starts_audio_capture(tmp_path, monkeypatc
     assert events == ["finished"]
     assert recorder.pipeline is None and all(t["frames"] == 0 for t in session.manifest["tracks"])
     recorder._executor.shutdown()
+
+
+def test_stop_during_replacement_first_sample_keeps_the_confirmed_tracks(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    from test_recorder import spin_until
+
+    from cassini_viewer.native_recorder import NativeRecorder
+
+    recorder = NativeRecorder()
+    errors = []
+    recorder.connect("error", lambda _recorder, message: errors.append(message))
+    entered, release = threading.Event(), threading.Event()
+    try:
+        recorder.start(tmp_path, test=True)
+        spin_until(
+            lambda: (
+                recorder.session is not None and all(t["frames"] >= 9600 for t in recorder.session.manifest["tracks"])
+            )
+        )
+        first = recorder.select(True, False)
+        spin_until(lambda: first.done() and not recorder._changing_sources)
+        first.result()
+        session = recorder.session
+        events, tracks = list(session.manifest["events"]), set(session.writers)
+        sample = recorder._sample
+
+        def delayed_first_sample(sink, kind):
+            entered.set()
+            assert release.wait(3)
+            return sample(sink, kind)
+
+        monkeypatch.setattr(recorder, "_sample", delayed_first_sample)
+        replacement = recorder.select(False, True)
+        spin_until(entered.is_set)
+        assert not replacement.done()
+        started = time.monotonic()
+        recorder.stop()
+        assert time.monotonic() - started < 0.2
+        release.set()
+        spin_until(lambda: recorder.pipeline is None and not recorder._finishing)
+        with pytest.raises(ValueError, match="No source change"):
+            replacement.result()
+        assert session.manifest["events"] == events and set(session.writers) == tracks
+        assert session.manifest["state"] == "completed" and not errors
+        assert not recorder._pending_sources
+        assert len(list(session.directory.glob("track-*.wav"))) == len(tracks)
+    finally:
+        release.set()
+        recorder.stop()
+        spin_until(lambda: recorder.pipeline is None and not recorder._finishing)
+        recorder._executor.shutdown()

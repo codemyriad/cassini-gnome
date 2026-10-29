@@ -215,8 +215,9 @@ try:
         assert wanted > 0.001 and bleed < wanted * 0.01, (wanted, bleed, track)
         if track["id"] not in ("microphone", "system"):
             assert track["startOffsetMs"] > 2000, track
-    # A Stop during an accepted but queued transition stays asynchronous and
-    # finishes the newly selected sources before exposing the completed folder.
+    # Stop cancels an accepted but still queued transition asynchronously and
+    # saves only the last confirmed selection, without adding an event/span.
+    before_events = list(session.manifest["events"])
     entered, release = threading.Event(), threading.Event()
     blocker = native._executor.submit(lambda: (entered.set(), release.wait(5)))
     assert entered.wait(1)
@@ -231,12 +232,17 @@ try:
         "Stop joins source change and finalizes",
         diagnostics=diagnostics,
     )
-    future.result()
+    try:
+        future.result()
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Stop must cancel a queued source change")
     assert not errors and session.manifest["state"] == "completed"
     assert all(t["ended"] and t["endOffsetMs"] >= t["startOffsetMs"] for t in session.manifest["tracks"])
     saved = json.loads((session.directory / "session.json").read_text())
     assert saved == session.manifest
-    assert len(saved["events"]) == 9
+    assert saved["events"] == before_events and len(saved["events"]) == 7
     evidence.update(
         passed=True,
         releasedOffSources=True,

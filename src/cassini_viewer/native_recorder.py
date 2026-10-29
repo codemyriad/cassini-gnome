@@ -168,6 +168,8 @@ class NativeRecorder(GObject.Object):
         from .session_events import source_state
         from .strings import text
 
+        if self._stop_requested:
+            raise ValueError("No source change is available")
         desired = {kind for kind, enabled in (("microphone", me), ("system", others)) if enabled}
         removed, added = self._track_ids.keys() - desired, desired - self._track_ids.keys()
         if not removed and not added:
@@ -192,7 +194,7 @@ class NativeRecorder(GObject.Object):
             clock = pipeline.get_clock()
             elapsed = (clock.get_time() - pipeline.get_base_time()) / Gst.MSECOND
             with self._lock:
-                if self.pipeline is not pipeline or self.stopping or self._finishing:
+                if self.pipeline is not pipeline or self.stopping or self._finishing or self._stop_requested:
                     raise ValueError("No source change is available")
                 for attempt in prepared.values():
                     if attempt["error"]:
