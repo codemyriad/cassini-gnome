@@ -23,7 +23,7 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from details_fixture import build_library, write_json  # noqa: E402
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
 from cassini_viewer.main import CassiniApplication  # noqa: E402
@@ -109,6 +109,16 @@ with tempfile.TemporaryDirectory() as temporary:
         dialog = window.recording_details_dialog
         until(lambda dialog=dialog: dialog.report is not None)
         assert dialog.report.folder == str(paths[key])
+        if key != "fallback":
+            # Details and Trash share the Meeting menu after the main merge.
+            # Keep Trash in its last section, and never delete through a modal.
+            section = window.meeting_page.more_menu.get_item_link(
+                window.meeting_page.more_menu.get_n_items() - 1, Gio.MENU_LINK_SECTION
+            )
+            assert section.get_item_attribute_value(0, "action", None).unpack() == "win.move-to-trash"
+            assert window.lookup_action("move-to-trash").get_enabled()
+            assert not window._trash_key(None, Gdk.KEY_Delete, 0, Gdk.ModifierType(0))
+            assert paths[key].is_dir() and not app.meeting_trash.hides(paths[key])
         shot(window, {"fallback": "browser-fallback", "microphone": "microphone", "no-events": "no-events"}[key])
         body = dialog.report.plain_text()
         if key == "fallback":

@@ -157,3 +157,13 @@ def test_recovered_media_with_unknown_provenance_is_not_called_browser_audio(mee
     assert len(report.spans) == 1
     assert report.spans[0].source == "Audio source not recorded"
     assert report.spans[0].time == "Timing not recorded"
+
+
+def test_gap_frames_without_a_saved_rate_never_claim_zero_seconds(meetings):
+    meeting = meetings["microphone"]
+    path = meeting.directory / "session.json"
+    session = json.loads(path.read_text())
+    session["tracks"][0]["gapFrames"] = 4000
+    session["tracks"][0].pop("sampleRate")
+    write_json(path, session)
+    assert dict(read_details(meeting).health)["Gaps"] == "4,000 frames · duration not recorded"
