@@ -26,6 +26,39 @@ def test_silence_requires_twenty_seconds_and_sound_resets_clock():
     assert clock.update(0, 141)
 
 
+@pytest.mark.parametrize("offset", [-2060, 4000])
+def test_dc_offset_is_silent_but_offset_speech_is_sound_and_wavs_are_untouched(tmp_path, offset):
+    from cassini_viewer.recording_details import pcm_ac_level
+
+    session = RecordingSession(tmp_path)
+    session.add_track("mic", "Mic", "microphone", 48000, 1)
+    pcm = struct.pack("<h", offset) * 48000
+    assert pcm_ac_level(pcm) == 0
+    assert SilenceClock(0).update(pcm_ac_level(pcm), 20)
+    session.append("mic", pcm, 0)
+    meeting = LibraryScanner(tmp_path).scan(capture_activity={session.manifest["id"]: "recording"}).meetings[0]
+    path = session.directory / session.manifest["tracks"][0]["file"]
+    before = path.read_bytes()
+    state = recording_observation(meeting)
+    assert state["levels"][0] == 0 and not state["recent_sound"]
+    tone = b"".join(struct.pack("<h", offset + int(455 * math.sin(2 * math.pi * 440 * i / 48000))) for i in range(4800))
+    assert pcm_ac_level(tone) > 5 / 60
+    assert path.read_bytes() == before
+    session.finish()
+
+
+def test_ac_meter_uses_whole_hundred_ms_windows_across_buffer_boundaries():
+    from cassini_viewer.recording_details import ACMeter, pcm_ac_level
+
+    pcm = b"".join(struct.pack("<h", -2060 + (455 if i % 2 else -455)) for i in range(4800))
+    meter = ACMeter()
+    assert not meter.feed(pcm[:2000]) and meter.level == 0
+    assert not meter.feed(pcm[2000:8000]) and meter.level == 0
+    assert meter.feed(pcm[8000:]) and meter.level == pcm_ac_level(pcm)
+    assert not meter.pending
+    assert meter.feed(struct.pack("<h", 4000) * 4800) and meter.level == 0
+
+
 def test_live_edits_preserve_other_app_owned_fields_and_capture_bytes(tmp_path):
     session = RecordingSession(tmp_path, source="gnome")
     session.add_track("mic", "Mic", "microphone", 48000, 1)

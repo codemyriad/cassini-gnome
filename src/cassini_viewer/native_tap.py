@@ -9,6 +9,8 @@ import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
 
+from .recording_details import ACMeter  # noqa: E402
+
 
 class NativeTap:
     def __init__(self, kind, origin_ms, append, failed, *, level=lambda _: None, test=False):
@@ -22,6 +24,7 @@ class NativeTap:
         self.closed = threading.Event()
         self.error = None
         self.thread = None
+        self._ac_meter = ACMeter()
 
     def start(self):
         device = "@DEFAULT_SOURCE@" if self.kind == "microphone" else "@DEFAULT_MONITOR@"
@@ -33,7 +36,6 @@ class NativeTap:
         self.pipeline = Gst.parse_launch(
             source + " ! queue ! audioconvert ! audioresample ! "
             "audio/x-raw,format=S16LE,rate=48000,channels=1 ! "
-            "level interval=100000000 post-messages=true ! "
             "appsink name=pcm emit-signals=true sync=false max-buffers=8 drop=false"
         )
         self.clock = Gst.SystemClock.obtain()
@@ -72,7 +74,10 @@ class NativeTap:
             if buffer.pts == Gst.CLOCK_TIME_NONE or base == Gst.CLOCK_TIME_NONE:
                 raise ValueError("Audio source has no clock timestamp")
             offset = self.anchor_wall - self.origin_ms + (base + buffer.pts - self.anchor_clock) / Gst.MSECOND
-            self.append(buffer.extract_dup(0, buffer.get_size()), offset, host_ns=base + buffer.pts)
+            data = buffer.extract_dup(0, buffer.get_size())
+            if self._ac_meter.feed(data):
+                self.level(self._ac_meter.level)
+            self.append(data, offset, host_ns=base + buffer.pts)
             self.ready.set()
         except Exception as error:
             self._fail(error)
@@ -81,7 +86,7 @@ class NativeTap:
 
     def _messages(self):
         bus = self.pipeline.get_bus()
-        kinds = Gst.MessageType.ERROR | Gst.MessageType.EOS | Gst.MessageType.ELEMENT
+        kinds = Gst.MessageType.ERROR | Gst.MessageType.EOS
         try:
             while not self.closed.is_set():
                 message = bus.timed_pop_filtered(100 * Gst.MSECOND, kinds)
@@ -94,10 +99,6 @@ class NativeTap:
                 if message.type == Gst.MessageType.EOS:
                     self.ended.set()
                     return
-                value = message.get_structure()
-                if value is not None and value.get_name() == "level":
-                    db = value.get_value("rms")[0]
-                    self.level(max(0.0, min(1.0, (db + 60) / 60)))
         except Exception as error:
             self._fail(error)
             self.ended.set()

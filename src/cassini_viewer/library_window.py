@@ -790,7 +790,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         actions.append(self.play_button)
         self.read_button = Gtk.Button(
             label=text("library.preview.readTranscript"),
-            sensitive=bool(meeting.words) or meeting.transcript in ("queued", "running", "failed", "damaged"),
+            sensitive=bool(meeting.words)
+            or meeting.no_speech
+            or meeting.transcript in ("queued", "running", "failed", "damaged"),
         )
         self.read_button.connect("clicked", lambda *_: self._open_selected())
         actions.append(self.read_button)
@@ -801,6 +803,15 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.preview.append(actions)
         self.preview.append(Gtk.Separator(margin_top=4))
         self.preview.append(label(text("library.preview.transcriptHeading"), "small", "heading", "dim-label", xalign=0))
+        if meeting.no_speech:
+            self.preview.append(
+                InlineLine(
+                    "transcript.noSpeech",
+                    info=True,
+                    action="transcript.writeDownAgain" if writing and meeting.can_write_down else None,
+                    callback=lambda: self.get_application().write_down(meeting),
+                )
+            )
         speakers = {s.id: s for s in meeting.speakers}
         for turn in meeting.preview_turns:
             line = Gtk.Box(spacing=16)

@@ -22,7 +22,7 @@ def assess_words(actual, expected, actual_hashes, expected_hashes, tolerance_ms=
     )
 
 
-TEXT_EXCEPTIONS_SHA256 = "fde2d870983855c11833703772d3a5c0a0ad79f9b54752442b1d6131914f09a3"
+TEXT_EXCEPTIONS_SHA256 = "448aeaeaae178621e3296bc9cdc0463172bbdc35525aed74becdef31541c0b56"
 
 
 def load_text_exceptions(path=None):
