@@ -162,6 +162,8 @@ try:
     # Real key events stay in the title; the removed notes editor is absent.
     assert not hasattr(page, "notes_view")
     assert read_metadata(native.session.directory)["notes"] == []
+    assert page.title_entry.get_text() == ""
+    assert page.title_entry.get_placeholder_text() == "Untitled meeting"
     xid = GdkX11.X11Surface.get_xid(window.get_surface())
     subprocess.run(["xdotool", "windowfocus", "--sync", str(xid)], check=True)
     page.title_entry.grab_focus()
@@ -171,6 +173,30 @@ try:
     assert native.session.manifest["title"] == "", "Renaming modified capture metadata"
     assert read_metadata(native.session.directory)["notes"] == []
     assert not window.player.playing, "Typing a space started playback"
+    until(lambda: not page._dirty and not page._saving, "title debounce completed")
+    assert window.get_focus().is_ancestor(page.title_entry), "Inner GtkText must have focus"
+    subprocess.run(["xdotool", "key", "--clearmodifiers", "End"], check=True)
+    until(lambda: page.title_entry.get_position() == len("Team planning"), "caret at end")
+    page.update(page.meeting)
+    assert page.title_entry.get_position() == len("Team planning"), "Refresh reset the caret"
+    subprocess.run(["xdotool", "type", "--clearmodifiers", "a"], check=True)
+    until(lambda: read_metadata(native.session.directory)["title"] == "Team planninga", "first key saved")
+    until(lambda: not page._dirty and not page._saving, "first key debounce completed")
+    page.update(page.meeting)
+    subprocess.run(["xdotool", "type", "--clearmodifiers", "b"], check=True)
+    until(lambda: page.title_entry.get_text() == "Team planningab", "second key stays after the first")
+    until(lambda: not page._dirty and not page._saving, "second key debounce completed")
+    subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+a"], check=True)
+    until(lambda: page.title_entry.get_selection_bounds() == (0, len("Team planningab")), "title selected")
+    page.update(page.meeting)
+    assert page.title_entry.get_selection_bounds() == (0, len("Team planningab"))
+    subprocess.run(["xdotool", "key", "--clearmodifiers", "BackSpace"], check=True)
+    until(lambda: page.title_entry.get_text() == "" and not page._dirty and not page._saving, "title cleared")
+    page.update(page.meeting)
+    assert page.title_entry.get_text() == "", "Refresh restored the cleared title"
+    assert page.title_entry.get_placeholder_text() == "Untitled meeting"
+    subprocess.run(["xdotool", "type", "--clearmodifiers", "Team planning"], check=True)
+    until(lambda: read_metadata(native.session.directory)["title"] == "Team planning", "title restored")
     producers[0].get_by_name("tone").set_property("volume", 0)
     until(lambda: native.levels[0] == 0, "actual microphone PCM silent")
     app.comfort.clocks[native.session.directory.name].last_sound -= 20
@@ -273,6 +299,8 @@ try:
         actualPulse=True,
         portalStarts=True,
         keyboardTitleEdits=True,
+        refreshPreservesCaretAndSelection=True,
+        untitledIsPlaceholder=True,
         newMeetingsHaveNoNotes=True,
         silentMicAndRecovery=True,
         lowSpaceWarnsOnce=True,

@@ -74,7 +74,10 @@ class RecordingPage(Adw.NavigationPage):
         title_box = vertical(6)
         title_box.append(label(text("recording.title.label"), "small", "heading", "dim-label", xalign=0))
         self.title_entry = Gtk.Entry(
-            text=draft.get("title") or meeting.title, max_length=500, css_classes=["recording-title"]
+            text=self._editable_title(meeting, draft),
+            placeholder_text=text("library.untitled"),
+            max_length=500,
+            css_classes=["recording-title"],
         )
         self.title_entry.update_property([Gtk.AccessibleProperty.LABEL], [text("recording.title.label")])
         window.protect_text_input(self.title_entry)
@@ -194,16 +197,28 @@ class RecordingPage(Adw.NavigationPage):
             self.window.monitor.refresh({self.meeting.directory})
         return False
 
+    @staticmethod
+    def _editable_title(meeting, draft):
+        if "title" in draft:
+            return draft["title"] or ""
+        return "" if meeting.title_is_fallback else meeting.title
+
     def update(self, meeting):
         self.meeting = meeting
         if self.sources_dialog is not None:
             self.sources_dialog.update(meeting)
         draft = self.app.comfort.draft(meeting)
-        if not self._dirty and not self._saving and not self.title_entry.has_focus():
-            self._updating_title = True
-            self.title_entry.set_text(draft.get("title") or meeting.title)
-            self._updating_title = False
-            self.headline.set_label(self.title_entry.get_text())
+        focus = self.window.get_focus()
+        editing = focus is self.title_entry or (focus is not None and focus.is_ancestor(self.title_entry))
+        if not self._dirty and not self._saving and not editing:
+            title = self._editable_title(meeting, draft)
+            if self.title_entry.get_text() != title:
+                self._updating_title = True
+                self.title_entry.set_text(title)
+                self._updating_title = False
+            headline = title.strip() or meeting.title
+            self.headline.set_label(headline)
+            self.set_title(headline)
         self.update_status()
 
     def update_status(self):
