@@ -26,6 +26,7 @@ from details_fixture import build_library, write_json  # noqa: E402
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
+from cassini_viewer.library import LibraryScanner  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
 
 
@@ -150,6 +151,27 @@ with tempfile.TemporaryDirectory() as temporary:
         until(lambda dialog=dialog: dialog.closed)
         assert not dialog.timer
         window.back_to_library()
+    # An opened folder may share a UUID/basename with a Library copy. Details
+    # must stay bound to the actual external folder when the Library refreshes.
+    outside = private / "Outside" / paths["microphone"].name
+    shutil.copytree(paths["microphone"], outside)
+    outside_metadata = json.loads((outside / "meeting.json").read_text())
+    outside_metadata["title"] = "Opened outside this Library"
+    write_json(outside / "meeting.json", outside_metadata)
+    external = LibraryScanner(outside.parent).scan().meetings[0]
+    assert external.key in {m.key for m in window.snapshot.meetings}
+    window.open_meeting(external, external=True)
+    window.show_recording_details()
+    dialog = window.recording_details_dialog
+    until(lambda: dialog.report is not None)
+    assert dialog.report.folder == str(outside)
+    assert dialog.report.title == outside_metadata["title"]
+    assert not window.lookup_action("move-to-trash").get_enabled()
+    window._updated(window._source_snapshot)
+    assert dialog._current().directory == outside
+    dialog.close()
+    until(lambda: dialog.closed)
+    window.back_to_library()
     # Closing during a slow read must not retain a timer, touch closed widgets,
     # block GTK or take an application hold.
     from cassini_viewer import capture_details_dialog

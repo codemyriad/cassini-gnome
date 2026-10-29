@@ -23,6 +23,7 @@ class RecordingDetailsDialog(Adw.Dialog):
     def __init__(self, window, meeting):
         super().__init__(title="Recording details", content_width=900, content_height=620)
         self.window, self.meeting = window, meeting
+        self.external = window._external_meeting
         self.closed = self.busy = False
         self.report = None
         toolbar = Adw.ToolbarView()
@@ -61,7 +62,7 @@ class RecordingDetailsDialog(Adw.Dialog):
             self.timer = 0
 
     def _current(self):
-        if self.window.snapshot:
+        if not self.external and self.window.snapshot:
             self.meeting = next((m for m in self.window.snapshot.meetings if m.key == self.meeting.key), self.meeting)
         return self.meeting
 

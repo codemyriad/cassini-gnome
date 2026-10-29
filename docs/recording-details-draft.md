@@ -39,6 +39,8 @@ stopping before the words array. Oversized or unsafe metadata leaves a visible n
 Legacy transcripts whose language follows the word array leave that fact unknown.
 Files are opened as nonblocking regular files without following symlinks. The
 dialog never writes files, imports an engine or reads the saved-voice store.
+Externally opened folders stay bound to their actual location, even if the Library
+contains another meeting with the same UUID and folder name.
 Copy details is a plain-text whitelist of the displayed facts, including the
 folder path and recognised names, without voiceprints, embeddings or raw metadata.
 Long timelines show the first 20 spans per side, with the remainder in Copy details.
