@@ -140,3 +140,76 @@ def test_hidden_save_after_trash_is_a_removed_path_not_an_error(roots, tmp_path)
     trash_owned(session.directory, voices=store, trash=native)
     assert queue_saved_for_later(str(session.directory)) is None
     assert not session.directory.exists()
+
+
+def test_trash_drains_closed_speaker_and_export_writers_off_the_caller(tmp_path, monkeypatch):
+    import threading
+    from concurrent.futures import Future, ThreadPoolExecutor
+
+    from cassini_viewer import meeting_trash as module
+
+    class Writer(Future):
+        def __init__(self):
+            super().__init__()
+            self.waited = threading.Event()
+
+        def result(self, *args, **kwargs):
+            self.waited.set()
+            return super().result(*args, **kwargs)
+
+    speaker, export = Writer(), Writer()
+    meeting = SimpleNamespace(directory=tmp_path / "Recording-12345678-1234-4234-8234-123456789abc")
+    page = SimpleNamespace(
+        meeting=meeting, _speaker_future=None, speakers_dialog=SimpleNamespace(closed=True, future=speaker)
+    )
+    window = SimpleNamespace(
+        meeting_page=page,
+        _loaded_directory=None,
+        snapshot=None,
+        export_dialog=SimpleNamespace(closed=True, future=export, meeting=meeting),
+        back_to_library=lambda: None,
+    )
+    holds, removed = [], threading.Event()
+    app = SimpleNamespace(
+        get_windows=lambda: [window],
+        settings_dialog=None,
+        comfort=None,
+        transcriber=None,
+        hold=lambda: holds.append(True),
+        release=lambda: holds.pop(),
+        discard_meeting_paths=lambda _: None,
+    )
+    controller = module.MeetingTrash.__new__(module.MeetingTrash)
+    controller.app, controller.cleanup = app, None
+    controller.hidden, controller.operations, controller.errors = {}, {}, {}
+    controller.toast, controller.waiters, controller.failed_flush = None, [], False
+    controller.executor = ThreadPoolExecutor(1)
+    operation = module.PendingTrash(meeting, window, waits=controller._prepare(meeting))
+    controller.operations[meeting.directory] = operation
+
+    def native(*_args, **_kwargs):
+        assert speaker.done() and export.done(), "Trash ran before a closed writer finished"
+        removed.set()
+        return meeting.directory
+
+    monkeypatch.setattr(module, "trash_owned", native)
+    try:
+        # A pending writer must not block the UI-side commit call.
+        with ThreadPoolExecutor(1) as caller:
+            caller.submit(controller.commit, operation).result(timeout=2)
+        assert speaker.waited.wait(2) and not removed.is_set()
+        speaker.set_result(None)
+        assert export.waited.wait(2) and not removed.is_set()
+        export.set_exception(RuntimeError("generated already-closed export failure"))
+        assert removed.wait(2), "a failed-but-finished writer prevented Trash"
+        controller.executor.shutdown(wait=True)
+        context = GLib.MainContext.default()
+        while context.pending():
+            context.iteration(False)
+        assert not holds and not controller.operations
+    finally:
+        for future in (speaker, export):
+            if not future.done():
+                future.set_result(None)
+        caller.shutdown(wait=True)
+        controller.executor.shutdown(wait=True)

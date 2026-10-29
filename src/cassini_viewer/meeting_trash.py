@@ -4,7 +4,7 @@
 import contextlib
 import logging
 import time
-from concurrent.futures import CancelledError, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -161,12 +161,16 @@ class MeetingTrash:
             if page and page.meeting.directory == meeting.directory:
                 if page._speaker_future:
                     waits.append(page._speaker_future)
+                speakers = page.speakers_dialog
+                if speakers and speakers.future:
+                    waits.append(speakers.future)
                 window.back_to_library()
             if getattr(window, "_loaded_directory", None) == meeting.directory:
                 window._stop_playback(clear_selection=True)
             dialog = getattr(window, "export_dialog", None)
-            if dialog and not dialog.closed and dialog.meeting.directory == meeting.directory:
-                dialog.cancel()
+            if dialog and dialog.meeting.directory == meeting.directory:
+                if not dialog.closed:
+                    dialog.cancel()
                 if getattr(dialog, "future", None):
                     waits.append(dialog.future)
             if getattr(window, "snapshot", None):
@@ -211,8 +215,8 @@ class MeetingTrash:
 
         def work():
             for future in operation.waits:
-                with contextlib.suppress(CancelledError, OSError, ValueError):
-                    future.result()
+                with contextlib.suppress(Exception):
+                    future.result()  # Drain finished/failed writers; their own UI reports the error.
             return trash_owned(operation.meeting.directory, queue=queue, cleanup=self.cleanup)
 
         future = self.executor.submit(work)
