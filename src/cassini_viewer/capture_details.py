@@ -265,12 +265,12 @@ def _counter(tracks, field):
     if not rows:
         return UNKNOWN
     frames = sum(t[field] for t in rows)
-    milliseconds = sum(
-        t[field] * 1000 / t["sampleRate"]
-        for t in rows
-        if type(t.get("sampleRate")) is int and 8000 <= t["sampleRate"] <= 192000
-    )
-    result = f"{frames:,} frames · {milliseconds / 1000:g} s"
+    if all(type(t.get("sampleRate")) is int and 8000 <= t["sampleRate"] <= 192000 for t in rows):
+        milliseconds = sum(t[field] * 1000 / t["sampleRate"] for t in rows)
+        duration = f"{milliseconds / 1000:g} s"
+    else:
+        duration = "duration not recorded"
+    result = f"{frames:,} frames · {duration}"
     return result + (" (not all tracks report this)" if len(rows) != len(tracks) else "")
 
 
