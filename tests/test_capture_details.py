@@ -148,3 +148,12 @@ def test_fractional_known_offsets_are_displayed_rather_than_losing_the_span(meet
     track = replace(meeting.tracks[0], start_offset_ms=0.5, frames=8000)
     rows = timeline(replace(meeting, tracks=(track,), duration_ms=1000), {})
     assert len(rows) == 1 and (rows[0].start_ms, rows[0].end_ms) == (0, 1000)
+
+
+def test_recovered_media_with_unknown_provenance_is_not_called_browser_audio(meetings):
+    meeting = meetings["no-events"]
+    track = replace(meeting.tracks[0], kind="media", start_offset_ms=None)
+    report = read_details(replace(meeting, capture_source="recovered", tracks=(track,)))
+    assert len(report.spans) == 1
+    assert report.spans[0].source == "Audio source not recorded"
+    assert report.spans[0].time == "Timing not recorded"
