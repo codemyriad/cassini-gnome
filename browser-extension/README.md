@@ -79,9 +79,14 @@ No audio is uploaded. An interrupted tab/browser connection preserves audio
 already received and marks the session as interrupted. The tab capture path
 keeps normal meeting playback audible and continues when the popup closes.
 
-To remove the registration, delete
-`~/.config/chromium/NativeMessagingHosts/com.codemyriad.cassini.json`
-(or the equivalent `google-chrome` path), then remove the extension.
+To remove the registration, delete these files under
+`~/.config/chromium/NativeMessagingHosts/` (or the equivalent browser path),
+then remove the extension:
+
+- `io.codemyriad.cassini.json`
+- `io.codemyriad.cassini.control.json`
+- Legacy `com.codemyriad.cassini.json`, if present
+- Legacy `com.codemyriad.cassini.control.json`, if present
 
 ## What is captured
 

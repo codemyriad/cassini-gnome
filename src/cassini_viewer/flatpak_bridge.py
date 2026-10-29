@@ -39,6 +39,24 @@ cat > "$temporary"
 chmod "$2" "$temporary"
 mv -fT -- "$temporary" "$destination"
 """
+READ_LEGACY = """set -eu
+if [ -f "$1" ] && [ ! -L "$1" ] && [ -r "$1" ]; then
+    head -c 65537 -- "$1"
+fi
+"""
+DELETE_LEGACY = """set -eu
+umask 077
+destination=$1
+[ -f "$destination" ] && [ ! -L "$destination" ] || exit 0
+temporary=$(mktemp "${TMPDIR:-/tmp}/cassini-cleanup-XXXXXXXX")
+trap 'rm -f -- "$temporary"' 0
+trap 'exit 1' HUP INT TERM
+cat > "$temporary"
+if [ ! -L "$destination" ] && cmp -s -- "$destination" "$temporary"; then
+    rm -f -- "$destination"
+    printf 'removed\\n'
+fi
+"""
 
 
 @dataclass(frozen=True)
@@ -165,6 +183,45 @@ def _write(path, content, mode):
         raise OSError("Could not register the browser companion") from error
 
 
+def _cleanup_legacy_directories(directories):
+    from .companion import LEGACY_HOSTS, legacy_owned
+
+    removed = []
+    for directory in directories:
+        for name in LEGACY_HOSTS:
+            path = directory / (name + ".json")
+            try:
+                content = subprocess.run(
+                    host_command(["/bin/sh", "-c", READ_LEGACY, "cassini-cleanup", str(path)], watch=True),
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    check=True,
+                    timeout=2,
+                ).stdout
+                if not legacy_owned(path.name, content):
+                    continue
+                result = subprocess.run(
+                    host_command(["/bin/sh", "-c", DELETE_LEGACY, "cassini-cleanup", str(path)], watch=True),
+                    input=content,
+                    capture_output=True,
+                    check=True,
+                    timeout=2,
+                )
+                if result.stdout == b"removed\n":
+                    removed.append(path)
+            except (OSError, subprocess.SubprocessError):
+                return removed  # An unavailable host must not cause repeated timeouts.
+    return removed
+
+
+def cleanup_legacy(browsers=None):
+    from .companion import manifest_directories
+
+    deployment()
+    config, _, _, _ = host_info()
+    return _cleanup_legacy_directories(manifest_directories(config=config, browsers=browsers))
+
+
 def register(browsers=None):
     from .companion import ORIGIN
     from .companion import installed_browsers as detect
@@ -178,8 +235,8 @@ def register(browsers=None):
     template = Path(__file__).with_name("flatpak-native-host.sh").read_text()
     hosts = {}
     for name, command in (
-        ("com.codemyriad.cassini", "cassini-browser-host"),
-        ("com.codemyriad.cassini.control", "cassini-browser-control-host"),
+        ("io.codemyriad.cassini", "cassini-browser-host"),
+        ("io.codemyriad.cassini.control", "cassini-browser-control-host"),
     ):
         content = template
         for key, value in dict(
@@ -202,4 +259,5 @@ def register(browsers=None):
             )
             _write(destination, json.dumps(manifest, indent=2) + "\n", "600")
             written.append(destination)
+    _cleanup_legacy_directories([browser.config / "NativeMessagingHosts" for browser in browsers])
     return written

@@ -88,8 +88,8 @@ try {
  const id = [...createHash('sha256').update(Buffer.from(manifest.key, 'base64')).digest('hex').slice(0, 32)].map(c => String.fromCharCode(97 + parseInt(c, 16))).join('');
  assert.equal(id, 'pcafdaahfhjiolfpfnlhmljfgoabbaij');
  await mkdir(path.join(profile, 'NativeMessagingHosts'), {recursive: true});
- await hostManifest('com.codemyriad.cassini', `#!/usr/bin/python3\nimport sys\nsys.path.insert(0,${JSON.stringify(root + '/src')})\nfrom cassini_viewer.browser_host import main\nsys.exit(main(directory=${JSON.stringify(artifacts)},open_completed=False))\n`, id);
- await hostManifest('com.codemyriad.cassini.control', `#!/usr/bin/python3\nimport sys\nsys.path.insert(0,${JSON.stringify(root + '/src')})\nsys.stderr=open(${JSON.stringify(path.join(artifacts, 'control-host.log'))},'a',buffering=1)\nfrom cassini_viewer.browser_control_host import main\nsys.exit(main())\n`, id);
+ await hostManifest('io.codemyriad.cassini', `#!/usr/bin/python3\nimport sys\nsys.path.insert(0,${JSON.stringify(root + '/src')})\nfrom cassini_viewer.browser_host import main\nsys.exit(main(directory=${JSON.stringify(artifacts)},open_completed=False))\n`, id);
+ await hostManifest('io.codemyriad.cassini.control', `#!/usr/bin/python3\nimport sys\nsys.path.insert(0,${JSON.stringify(root + '/src')})\nsys.stderr=open(${JSON.stringify(path.join(artifacts, 'control-host.log'))},'a',buffering=1)\nfrom cassini_viewer.browser_control_host import main\nsys.exit(main())\n`, id);
  ui = spawn('/usr/bin/python3', [path.join(root, 'tests/recording/browser-ui.py'), '--build', build], {stdio: ['pipe', 'pipe', 'pipe'], env: {...process.env}});
  ui.stderr.pipe(createWriteStream(path.join(artifacts, 'gnome-ui.log')));
  createInterface({input: ui.stdout}).on('line', line => {try {pending.shift()?.(JSON.parse(line));} catch {evidence.console.push(line);}});

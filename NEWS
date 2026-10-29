@@ -2,6 +2,9 @@ Version 0.3.0
 ~~~~~~~~~~~~~
 Not released yet. Version and release date await confirmation.
 
+- Reconnect the browser companion with Connect in Cassini after updating.
+  Native host identifiers now use io.codemyriad; do not rerun install-host.py
+  with an old extension ID
 - Keep recordings and received meetings in the Library, play their transcripts,
   search across meetings, and import or export audio and transcripts
 - Record browser meetings independently, with a microphone choice for each one;

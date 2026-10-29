@@ -22,10 +22,10 @@ async function setup(sourceCount = 3, previous = {}) {
         const port = { name, sent: [], closed: false, onMessage: event(), onDisconnect: event(),
           postMessage(packet) {
             this.sent.push(JSON.parse(JSON.stringify(packet)));
-            if (name === 'com.codemyriad.cassini') queueMicrotask(() => this.onMessage.emit(packet.type === 'start' ? { type: 'started', path: '/test/Recording-example' } : packet.type === 'stop' ? { type: 'stopped', path: '/test/Recording-example' } : { type: 'ack' }));
+            if (name === 'io.codemyriad.cassini') queueMicrotask(() => this.onMessage.emit(packet.type === 'start' ? { type: 'started', path: '/test/Recording-example' } : packet.type === 'stop' ? { type: 'stopped', path: '/test/Recording-example' } : { type: 'ack' }));
           }, disconnect() { if (!this.closed) { this.closed = true; this.onDisconnect.emit(); } }
         };
-        (name === 'com.codemyriad.cassini.control' ? ports : audio).push(port); return port;
+        (name === 'io.codemyriad.cassini.control' ? ports : audio).push(port); return port;
       }
     },
     alarms: { onAlarm: event(), async create(name, value) { alarms.set(name, value); }, async clear(name) { alarms.delete(name); } },

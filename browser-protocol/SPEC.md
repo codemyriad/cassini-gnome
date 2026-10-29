@@ -11,8 +11,13 @@ same session directory contract; no automatic Opus encoding is required while re
 Canonical source: https://github.com/codemyriad/cassini-browser-protocol. Changes land here
 first; app repositories vendor an exact commit and verify both its Git identity and bytes.
 
-Normative contract for `com.codemyriad.cassini`. Independent of OS, implementation language,
+Normative contract for `io.codemyriad.cassini`. Independent of OS, implementation language,
 transport launch path, and the separate Cassini Ogg Opus format.
+
+Host names use the reverse domain of codemyriad.io. Pre-release builds used
+`com.codemyriad.cassini` and `com.codemyriad.cassini.control`. The extension never looks those up.
+A host installer SHOULD delete legacy manifests with those names that it wrote itself (same file
+name, same `name` field, `path` pointing to its own host executable) and leave any other file alone.
 
 ## Transport and lifecycle
 

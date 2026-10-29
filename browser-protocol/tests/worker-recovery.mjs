@@ -36,7 +36,7 @@ try {
   }
   const hosts = path.join(profile, 'NativeMessagingHosts');
   await mkdir(hosts, { recursive: true });
-  await writeFile(path.join(hosts, 'com.codemyriad.cassini.json'), JSON.stringify({ name: 'com.codemyriad.cassini', description: 'Cassini worker test', path: path.resolve(host), type: 'stdio', allowed_origins: [`chrome-extension://${id}/`] }));
+  await writeFile(path.join(hosts, 'io.codemyriad.cassini.json'), JSON.stringify({ name: 'io.codemyriad.cassini', description: 'Cassini worker test', path: path.resolve(host), type: 'stdio', allowed_origins: [`chrome-extension://${id}/`] }));
   const meetingPage = await context.newPage();
   const errors = [];
   meetingPage.on('pageerror', error => errors.push(error.message));
