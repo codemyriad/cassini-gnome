@@ -16,7 +16,7 @@ from .recording_session import strict_json
 LOCK = threading.RLock()
 
 
-def atomic_json(path, value):
+def atomic_json(path, value, *, before_commit=None):
     path = Path(path)
     with tempfile.NamedTemporaryFile(
         mode="w", encoding="utf-8", prefix="." + path.name + "-", dir=path.parent, delete=False
@@ -32,6 +32,8 @@ def atomic_json(path, value):
             temporary.unlink(missing_ok=True)
             raise
     try:
+        if before_commit is not None:
+            before_commit()
         temporary.replace(path)
         fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
         try:
@@ -83,7 +85,7 @@ def read_metadata(directory):
     )
 
 
-def update_metadata(directory, **changes):
+def update_metadata(directory, *, before_commit=None, **changes):
     directory = Path(directory)
     with LOCK:
         if not directory.exists():
@@ -96,5 +98,8 @@ def update_metadata(directory, **changes):
         value["revision"] += 1
         if not valid(value):
             raise ValueError("Invalid app-owned metadata update")
-        atomic_json(directory / "meeting.json", value)
+        if before_commit is None:
+            atomic_json(directory / "meeting.json", value)
+        else:
+            atomic_json(directory / "meeting.json", value, before_commit=before_commit)
         return value

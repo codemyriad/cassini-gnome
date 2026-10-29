@@ -100,8 +100,10 @@ def prepare_tracks(meeting):
     return tracks, speakers
 
 
-def update_progress_metadata(directory, speakers, **changes):
+def update_progress_metadata(directory, speakers, *, check_active=None, **changes):
     with LOCK:
+        if check_active is not None:
+            check_active()
         current = read_metadata(directory)
         existing = {speaker["id"]: speaker for speaker in current["speakers"]}
         merged = dict(existing)
@@ -113,7 +115,7 @@ def update_progress_metadata(directory, speakers, **changes):
         changes["speakers"] = list(merged.values())
         if all(current.get(key) == value for key, value in changes.items()):
             return False
-        update_metadata(directory, **changes)
+        update_metadata(directory, before_commit=check_active, **changes)
         return True
 
 
@@ -171,6 +173,7 @@ class TranscriptionQueue:
             return self._mark_queued_locked(directory, resume)
 
     def _mark_queued_locked(self, directory, resume):
+        self._check_open()
         canonical = self._owned(directory)
         directory = canonical
         scanner = LibraryScanner(canonical.parent)
@@ -188,12 +191,17 @@ class TranscriptionQueue:
         ):
             return None
         if not (directory / "transcript.json").exists():
-            atomic_json(directory / "transcript.json", dict(format="cassini.words.v1", language="und", items=[]))
+            atomic_json(
+                directory / "transcript.json",
+                dict(format="cassini.words.v1", language="und", items=[]),
+                before_commit=self._check_open,
+            )
         update_metadata(
             directory,
             transcript=dict(metadata["transcript"], status="queued", reference=REFERENCE),
             etaMinutes=None,
             error=None,
+            before_commit=self._check_open,
         )
         # Failed bodies are intentionally hidden by the Library. Once queued,
         # read the preserved sidecar through the normal validated reader so the
@@ -235,13 +243,17 @@ class TranscriptionQueue:
         try:
             directory = self._owned(directory)
             with LOCK:
+                self._check_open()
                 update_metadata(
                     directory,
                     transcript=dict(read_metadata(directory)["transcript"], status="failed", reference=REFERENCE),
                     etaMinutes=None,
                     error=dict(id="transcribe-failed", action="Try again"),
+                    before_commit=self._check_open,
                 )
             self.changed(directory)
+        except CancelledError:
+            return
         except (OSError, ValueError):
             LOG.exception("Could not preserve failed transcription state")
 
@@ -260,6 +272,7 @@ class TranscriptionQueue:
             self._completed(directory)
 
     def _run(self, meeting, metadata):
+        self._check_open()
         directory = meeting.directory
         # Select on this owner thread when the job starts, never at enqueue.
         from .parakeet_model import MODEL_ID, MODEL_TAG
@@ -267,7 +280,11 @@ class TranscriptionQueue:
         selected = self.models.snapshot()["selected"] if self.models else "whistle"
         tag = MODEL_TAG if selected == MODEL_ID else "whistle"
         update_metadata(
-            directory, transcript=dict(status="running", reference=REFERENCE, model=tag), etaMinutes=None, error=None
+            directory,
+            transcript=dict(status="running", reference=REFERENCE, model=tag),
+            etaMinutes=None,
+            error=None,
+            before_commit=self._check_open,
         )
         self.changed(directory)
         if self.client and (self.client_model != selected or selected == MODEL_ID):
@@ -283,7 +300,11 @@ class TranscriptionQueue:
             self.client.start()
         if self.client_model != selected:
             tag = "whistle"
-            update_metadata(directory, transcript=dict(status="running", reference=REFERENCE, model=tag))
+            update_metadata(
+                directory,
+                transcript=dict(status="running", reference=REFERENCE, model=tag),
+                before_commit=self._check_open,
+            )
             self.changed(directory)
         if meeting.origin == "received":
             tracks = [
@@ -304,7 +325,7 @@ class TranscriptionQueue:
         if not tracks:
             raise ValueError("Meeting has no complete audio frames")
         by_track = {track["id"]: track for track in tracks}
-        publisher = TranscriptPublisher(directory, existing_count=len(meeting.words))
+        publisher = TranscriptPublisher(directory, existing_count=len(meeting.words), check_active=self._check_open)
         diarization = (
             self.diarization_models.request(directory, origin=meeting.origin) if self.diarization_models else None
         )
@@ -354,11 +375,12 @@ class TranscriptionQueue:
                 published = publisher.flush()
             else:
                 published = False
-            updated = update_progress_metadata(directory, speakers, etaMinutes=value["etaMinutes"])
+            updated = update_progress_metadata(
+                directory, speakers, etaMinutes=value["etaMinutes"], check_active=self._check_open
+            )
             if published or updated:
                 self.changed(directory)
 
-        completed = False
         try:
             try:
                 complete = self.client.process_tracks(tracks, progress)
@@ -371,10 +393,12 @@ class TranscriptionQueue:
                 complete = recognised_summary
                 self.client.close()
                 self.client = self.client_model = None
-            completed = True
-        finally:
-            if publisher.flush(force=True, complete=completed):
+        except BaseException:
+            # Keep the useful partial snapshot on real errors. Cancellation
+            # retains the last published one and never starts a final write.
+            if not self.closed and publisher.flush(force=True):
                 self.changed(directory)
+            raise
         if self.closed:
             raise CancelledError()
         if diarization is not None and complete.get("diarization"):
@@ -397,28 +421,37 @@ class TranscriptionQueue:
                     atomic_json(
                         directory / "speaker-turns.json",
                         dict(format=FORMAT, model=result["model"], params=result["params"], groups=groups),
+                        before_commit=self._check_open,
                     )
                     if voices:
                         speakers.update(voices)
-                        update_progress_metadata(directory, speakers)
+                        update_progress_metadata(directory, speakers, check_active=self._check_open)
                         publisher.reassign(words)
             complete.setdefault("diagnostics", []).extend(result.get("diagnostics", []))
         for diagnostic in complete.get("diagnostics", []):
             LOG.warning("Transcription diagnostic: %s", diagnostic)
         if self.closed:
             raise CancelledError()
+        # A completed transcript is published once, after optional attribution.
+        # Until this succeeds the running job remains resumable after restart.
+        publisher.flush(force=True, complete=True)
         update_progress_metadata(
             directory,
             speakers,
             transcript=dict(status="done", reference=REFERENCE, model=tag),
             etaMinutes=None,
             error=None,
+            check_active=self._check_open,
         )
         self.changed(directory)
         if self.client_model == MODEL_ID:
             self.client.close()
             self.client = None
             self.client_model = None
+
+    def _check_open(self):
+        if self.closed:
+            raise CancelledError()
 
     def _register_client(self, client):
         with self.lock:

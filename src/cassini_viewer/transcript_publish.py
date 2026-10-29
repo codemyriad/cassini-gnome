@@ -8,7 +8,7 @@ from .meeting_store import atomic_json
 
 
 class TranscriptPublisher:
-    def __init__(self, directory, *, existing_count=0, clock=time.monotonic):
+    def __init__(self, directory, *, existing_count=0, clock=time.monotonic, check_active=None):
         self.directory = directory
         self.clock = clock
         self.existing_count = existing_count
@@ -16,6 +16,7 @@ class TranscriptPublisher:
         self.language = "und"
         self.published = 0
         self.last_flush = None
+        self.check_active = check_active
 
     def add(self, words, speaker, order, language):
         self.words.extend(dict(word, speaker=speaker, _order=order) for word in words)
@@ -24,9 +25,10 @@ class TranscriptPublisher:
     def reassign(self, words):
         self.words = words
         self.published = -1  # Same word count, but speaker IDs have changed.
-        return self.flush(force=True, complete=True)
 
     def flush(self, *, force=False, complete=False):
+        if self.check_active is not None:
+            self.check_active()
         count = len(self.words)
         if count == self.published and (not complete or self.last_flush is not None):
             return False
@@ -44,9 +46,13 @@ class TranscriptPublisher:
                 return False
         ordered = sorted(self.words, key=lambda word: (word["startMs"], word["_order"]))
         body = [{key: value for key, value in word.items() if key != "_order"} for word in ordered]
-        atomic_json(
-            self.directory / "transcript.json", dict(format="cassini.words.v1", language=self.language, items=body)
-        )
+        value = dict(format="cassini.words.v1", language=self.language, items=body)
+        if self.check_active is None:
+            atomic_json(self.directory / "transcript.json", value)
+        else:
+            # Serialization may take time for a long meeting. Recheck after
+            # staging/fsync, immediately before replacing the saved snapshot.
+            atomic_json(self.directory / "transcript.json", value, before_commit=self.check_active)
         self.published = count
         self.last_flush = now
         return True
