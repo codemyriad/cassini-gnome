@@ -81,6 +81,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.root_box.set_visible_child_name("loading")
         self._activity = dict(self._fixture_activity)
         self.monitor = LibraryMonitor(self._updated, capture_activity=lambda: self._activity)
+        # Native clocks, meters and date grouping also need this tick when the
+        # optional host browser bridge is unavailable or still being probed.
+        self._activity_timer = GLib.timeout_add_seconds(1, self._activity_tick)
         self.companion_available_changed()
         self.monitor.refresh()
         self.connect("close-request", self._close)
@@ -371,12 +374,11 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.first_companion.set_visible(available)
         if available and self._activity_source is None and os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
             self._activity_source = BrowserActivity(self._activity_tick)
-            self._activity_timer = GLib.timeout_add_seconds(1, self._activity_tick)
         if self.meeting_page:
             self.meeting_page.set_connected(self._activity_source.connected if self._activity_source else False)
 
     def _activity_tick(self):
-        activity = dict(self._activity_source.snapshot) if self._activity_source else {}
+        activity = dict(self._activity_source.snapshot) if self._activity_source else dict(self._fixture_activity)
         app = self.get_application()
         activity.update(recorder_activity(app.get_windows() + [app]))
         from .library import meeting_id
