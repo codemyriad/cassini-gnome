@@ -2,6 +2,12 @@
 
 UX17 follows coordination D25 and cassini-android `7068c58`. The immutable reference cases and model comparisons are in `tests/ux/voices/`. `UPSTREAM.json` records the copied bytes. The desktop additions keep all native voices of a merged speaker and distinguish `Recording-<uuid>` from `Received-<uuid>`.
 
+Merge/Undo recomputation keeps a confirmed person and their previous private print
+when there is no replacement (a merged-away voice or insufficient clean speech).
+Undo can therefore restore that enrolment. When replacing several prints for one
+person, all old contributions are removed before any new contribution is added,
+in sorted speaker order; the saved mean never depends on hash iteration order.
+
 CAM++ is an optional, verified dist download. It uses the packaged sherpa fork through its C API in the speech child, with two CPU threads. The UI process imports neither the engine nor NumPy. Extraction follows transcription and attribution; its failure preserves the completed transcript. Both optional models must be On when a new job starts. Historical meetings are not automatically rematched. Merge and Undo can recompute affected prints on the same job executor, preserving typed names and confirmed identities.
 
 `$XDG_DATA_HOME/cassini/voices/people.json` and `meetings/<full-folder-basename>.json` are private app data. Files are mode 0600, directories 0700. A file lock serialises instances. Atomic replacement and a private rollback journal protect multi-file edits; a restart rolls back an interrupted transaction. Newer versions are read-only. Damaged files are retained with a `.corrupt-…` suffix. Forget everyone commits a new generation before cleanup, so older jobs cannot restore prints. Names already written into meetings remain after forgetting. No print, match or audio copy is placed in a Library meeting or exported.
