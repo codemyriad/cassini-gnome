@@ -361,6 +361,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
         companion.connect("clicked", lambda *_: self.get_application().on_companion_setup(parent=self))
         center.append(companion)
+        from .browser_status import BrowserStatus
+
+        self.first_browser_status = BrowserStatus(self.get_application(), self)
+        center.append(self.first_browser_status)
         outer.append(center)
         footer = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER, margin_bottom=18)
         footer.append(
@@ -455,6 +459,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         sidebar.set_content(
             Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, child=list_content, vexpand=True)
         )
+        from .browser_status import BrowserStatus
+
+        self.browser_status = BrowserStatus(self.get_application(), self)
+        sidebar.add_bottom_bar(self.browser_status)
         self.split.set_sidebar(Adw.NavigationPage.new(sidebar, text("library.listPane.a11y")))
         content = Adw.ToolbarView()
         content.add_top_bar(self._header())
@@ -486,6 +494,11 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._activity_source = BrowserActivity(self._activity_tick)
         if self.meeting_page:
             self.meeting_page.set_connected(self._activity_source.connected if self._activity_source else False)
+        self.browser_connection_changed()
+
+    def browser_connection_changed(self):
+        self.first_browser_status.render()
+        self.browser_status.render()
 
     def _activity_tick(self):
         activity = dict(self._activity_source.snapshot) if self._activity_source else dict(self._fixture_activity)
