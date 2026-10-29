@@ -3,12 +3,14 @@
 """D29 real native menus/toast, exact deferred IO and failure/quit behaviour."""
 
 import ctypes
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
+from contextlib import suppress
 from pathlib import Path
 from unittest.mock import patch
 
@@ -104,6 +106,29 @@ def labels(widget):
     return result
 
 
+def widgets(widget):
+    yield widget
+    child = widget.get_first_child()
+    while child:
+        yield from widgets(child)
+        child = child.get_next_sibling()
+
+
+def activate_menu_item(popover, label):
+    until(popover.get_mapped)
+    candidates = [
+        child for child in widgets(popover) if child.__gtype__.name == "GtkModelButton" and label in labels(child)
+    ]
+    assert len(candidates) == 1, [
+        (child.__gtype__.name, labels(child)) for child in widgets(popover) if "Button" in child.__gtype__.name
+    ]
+    item = candidates[0]
+    assert item.get_mapped() and item.is_sensitive()
+    # Activate the native menu item, including its close-before-action handler.
+    # Calling the window action directly would bypass the lifetime regression.
+    assert item.activate()
+
+
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
     subprocess.run([sys.executable, str(ROOT / "ux/library-vectors/make.py"), str(root / "fixtures")], check=True)
@@ -134,6 +159,47 @@ with tempfile.TemporaryDirectory() as temporary:
     client = next(m for m in window.snapshot.meetings if m.title == "Client call, Rossi & Partners")
     live = next(m for m in window.snapshot.meetings if m.lifecycle == "recording")
     assert not controller.allowed(live, window)
+    outcomes = {}
+    for surface in ("row", "meeting"):
+        for action in ("win.export", "win.move-to-trash"):
+            if surface == "row":
+                row = next(w for w in widgets(window.rows) if getattr(w, "meeting", None) == budget)
+                popover = window._row_menu(row, 170, 20)
+            else:
+                window.open_meeting(budget)
+                menu = window.meeting_page.more_menu
+                button = next(
+                    w
+                    for w in widgets(window.meeting_page)
+                    if isinstance(w, Gtk.MenuButton) and w.get_menu_model() == menu
+                )
+                button.popup()
+                popover = button.get_popover()
+            activate_menu_item(popover, "Export…" if action == "win.export" else "Move to Trash")
+
+            def observed(action=action):
+                if action == "win.export":
+                    return bool(window.export_dialog and not window.export_dialog.closed)
+                return controller.hides(budget.directory) and controller.toast is not None
+
+            # Check all four routes before reporting the red/green matrix.
+            with suppress(AssertionError):
+                until(observed)
+            outcomes[f"{surface}:{action}"] = bool(observed())
+            if window.export_dialog and not window.export_dialog.closed:
+                assert window.export_dialog.meeting.directory == budget.directory
+                window.export_dialog.cancel()
+                until(lambda: window.get_visible_dialog() is None)
+            if controller.toast:
+                toast = controller.toast
+                toast.emit("button-clicked")
+                toast.dismiss()
+                until(lambda: not controller.operations)
+            popover.popdown()
+            if window.meeting_page:
+                window.back_to_library()
+    print("Native menu activation: " + json.dumps(outcomes), flush=True)
+    assert all(outcomes.values()), outcomes
     row = window.rows.get_first_child()
     while not hasattr(row, "meeting") or row.meeting.key != budget.key:
         row = row.get_next_sibling()
@@ -158,13 +224,6 @@ with tempfile.TemporaryDirectory() as temporary:
     menu = window.meeting_page.more_menu
     section = menu.get_item_link(menu.get_n_items() - 1, Gio.MENU_LINK_SECTION)
     assert section.get_item_attribute_value(0, "label", None).get_string() == "Move to Trash"
-
-    def widgets(widget):
-        yield widget
-        child = widget.get_first_child()
-        while child:
-            yield from widgets(child)
-            child = child.get_next_sibling()
 
     more = next(w for w in widgets(window.meeting_page) if isinstance(w, Gtk.MenuButton) and w.get_menu_model() == menu)
     more.popup()

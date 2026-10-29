@@ -223,7 +223,15 @@ class LibraryWindow(Adw.ApplicationWindow):
         rectangle = Gdk.Rectangle()
         rectangle.x, rectangle.y, rectangle.width, rectangle.height = int(x), int(y), 1, 1
         popover.set_pointing_to(rectangle)
-        popover.connect("closed", lambda *_: popover.unparent())
+
+        def unparent(menu):
+            if menu.get_parent() is not None:
+                menu.unparent()
+            return GLib.SOURCE_REMOVE
+
+        # GtkModelButton closes its popover before activating the item. Keep
+        # the window action group reachable until that activation has finished.
+        popover.connect("closed", lambda menu: GLib.idle_add(unparent, menu))
         popover.popup()
         return popover
 
