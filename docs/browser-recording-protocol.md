@@ -3,6 +3,9 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
+The current pin, `356248e`, accepts the reserved `othersSource.reason: restored`
+for readers. GNOME reads its explicit source state without rewriting the file;
+writers still reject this reason and never switch back automatically.
 
 Run `python3 browser-protocol/verify.py --pinned browser-extension` to verify
 both the Git snapshot and extension bytes. Update with

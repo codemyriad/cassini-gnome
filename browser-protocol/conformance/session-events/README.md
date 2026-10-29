@@ -22,3 +22,9 @@ case. The browser side is off from 5000 to 10000 ms. Its resumed span has a new
 ID and WAV but the same opaque `sourceTrackId`, so both spans write down as one
 speaker. The browser label deliberately changes: labels never establish identity.
 The microphone omits `sourceTrackId` and retains the source speaker Me.
+
+`restored.reader.json` is a reader-only schema/state vector with hand-written
+expectations. It accepts the reserved `othersSource.reason: restored` after an
+explicit event, leaves the prior fallback in force before that event, and shows
+no fallback afterwards. It is not a `make.py` case: current writers never emit
+`restored` or automatically switch back. Selection reasons remain start/user.

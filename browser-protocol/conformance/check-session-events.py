@@ -85,6 +85,14 @@ def check_fixtures():
                 assert track['endOffsetMs'] == track['startOffsetMs'] + track['frames'] / track['sampleRate'] * 1000
         print('PASS S-6 schema, reader expectations and sparse WAV timeline:', case)
 
+    # Reserved reader input stays separate from make.py: current writers must
+    # never emit restored or automatically switch a fallback back to browser.
+    vector = json.loads((FIXTURES / 'restored.reader.json').read_text())
+    validate(vector['session'])
+    for state in vector['states']:
+        assert state_at(vector['session'], state['atMs']) == state
+    print('PASS S-6 reserved restored reason: reader only')
+
 
 if __name__ == '__main__':
     check_fixtures()

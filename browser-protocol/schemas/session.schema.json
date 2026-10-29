@@ -274,8 +274,10 @@
                   "start",
                   "missing",
                   "lost",
-                  "user"
-                ]
+                  "user",
+                  "restored"
+                ],
+                "$comment": "Readers accept reserved restored for forward compatibility; current writers never emit it."
               }
             }
           }

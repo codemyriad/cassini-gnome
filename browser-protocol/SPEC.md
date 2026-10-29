@@ -155,7 +155,7 @@ are allowed. Unknown types and extra fields are ignored by readers.
 
 | type | Required event fields besides atMs/type | Values |
 | --- | --- | --- |
-| othersSource | source, reason | source: browser, system, none; reason: start, missing, lost, user |
+| othersSource | source, reason | source: browser, system, none; reason: start, missing, lost, user, restored (reader-only, reserved) |
 | selection | me, others, reason | me/others booleans, at least one true; reason: start, user |
 
 For UI roles, local/microphone tracks are Me; remote/media/tab/system/application
@@ -165,8 +165,10 @@ A browser path missing at start or lost later may fall back to computer sound:
 append `othersSource` with source=system and reason=missing/lost, and start a new
 system track at that event's atMs. Never fall back to the microphone. Once on
 system, stay there until Stop; reconnecting does not automatically switch back.
-The reason `restored` is reserved and is not written in this wave. Show the
-fallback explanation when the newest othersSource reason is missing or lost.
+Readers accept the reserved reason `restored` for forward compatibility. Current
+writers never emit it; reconnecting still does not automatically switch back.
+Show the fallback explanation only when the newest othersSource reason is missing
+or lost. `restored` is not a valid selection reason.
 
 Selection changes finalize/start the affected spans at atMs. Turning The others
 off also appends `othersSource` source=none, reason=user. A selection never turns
