@@ -87,3 +87,19 @@ def test_cancel_during_serialization_keeps_the_published_snapshot(tmp_path, monk
         publisher.flush(force=True, complete=True)
     assert path.read_bytes() == before
     assert not list(tmp_path.glob(".transcript.json-*"))
+
+
+@pytest.mark.parametrize(("identifier", "default_name"), [("me", "Me"), ("others", "The others")])
+def test_progress_and_completion_keep_a_source_speaker_explicitly_unnamed(tmp_path, identifier, default_name):
+    from cassini_viewer.meeting_store import read_metadata
+
+    session = capture(tmp_path)
+    cleared = dict(id=identifier, name=None, provenance="unnamed", colourIndex=0)
+    update_metadata(session.directory, speakers=[cleared], transcript=dict(status="running", reference=None))
+    planned = {identifier: dict(cleared, name=default_name, provenance="source")}
+    assert update_progress_metadata(session.directory, planned, etaMinutes=1)
+    assert read_metadata(session.directory)["speakers"] == [cleared]
+    assert update_progress_metadata(
+        session.directory, planned, transcript=dict(status="done", reference=None), etaMinutes=None
+    )
+    assert read_metadata(session.directory)["speakers"] == [cleared]
