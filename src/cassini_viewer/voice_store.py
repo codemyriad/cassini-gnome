@@ -18,7 +18,18 @@ from .meeting_store import atomic_json
 from .model_download import model_root
 from .received import regular_input
 from .speaker_edits import name_value
-from .voices_logic import DIMENSION, REVISION, UnsupportedVersion, decode_people, enrol, match, name_key, stale, unenrol
+from .voices_logic import (
+    DIMENSION,
+    REVISION,
+    UnsupportedVersion,
+    cosine,
+    decode_people,
+    enrol,
+    match,
+    name_key,
+    stale,
+    unenrol,
+)
 
 LOG = logging.getLogger(__name__)
 LOCK = threading.RLock()
@@ -101,7 +112,7 @@ class VoiceStore:
             kept = [key for key in voice["meetings"] if key in keys]
             voice["meetings"] = kept + sorted(keys - set(kept))
 
-    def _links(self, people, replacements=None):
+    def _links(self, people, replacements=None, *, current_key=None):
         replacements = replacements or {}
         existing = {v["id"] for v in people["voices"]}
         paths = {"meetings/" + p.name for p in (self.root / "meetings").glob("*.json")}
@@ -111,7 +122,7 @@ class VoiceStore:
             path = Path(relative)
             try:
                 key = _key(path.stem)
-                if self._library_keys is not None and key not in self._library_keys:
+                if self._library_keys is not None and key not in self._library_keys and key != current_key:
                     continue
                 cache = replacements[relative] if relative in replacements else self._meeting(key, people["generation"])
             except (OSError, ValueError):
@@ -257,14 +268,16 @@ class VoiceStore:
         # The generation also makes interrupted Forget-everyone cleanup safe.
         return result if result.get("generation", generation) == generation else empty
 
-    def _transaction(self, values, *, before_commit=None):
+    def _transaction(self, values, *, before_commit=None, current_key=None):
         for relative, value in values.items():
             if relative == "people.json":
                 self._validate_people(value)
             else:
                 self._validate_meeting(value)
         if "people.json" in values:
-            self._meeting_lists(values["people.json"], self._links(values["people.json"], values)[0])
+            self._meeting_lists(
+                values["people.json"], self._links(values["people.json"], values, current_key=current_key)[0]
+            )
         old = {}
         for relative in values:
             path = self.root / relative
@@ -283,6 +296,8 @@ class VoiceStore:
             self._recover()
             raise
         (self.root / ".transaction.json").unlink()
+        if current_key is not None and self._library_keys is not None:
+            self._library_keys = self._library_keys | {current_key}
 
     def _recover(self):
         journal = self.root / ".transaction.json"
@@ -330,7 +345,9 @@ class VoiceStore:
             self._publish(people)
             return result
 
-    def commit_job(self, directory, prints, generation, *, check_active=lambda: None, apply_names=None):
+    def commit_job(
+        self, directory, prints, generation, *, check_active=lambda: None, apply_names=None, auto_eligible=None
+    ):
         key = _key(directory)
         with self._locked(), METADATA_LOCK:
             people = self._people()
@@ -352,18 +369,29 @@ class VoiceStore:
                 and p["match"].get("voiceId") in current_voices
             }
             occupied = {p["match"]["voiceId"] for p in confirmed.values()}
+            eligible = set(prints) if auto_eligible is None else set(auto_eligible())
             matches = match(
-                {s: p["embedding"] for s, p in prints.items() if s not in confirmed},
+                {s: p["embedding"] for s, p in prints.items() if s not in confirmed and s in eligible},
                 [v for v in people["voices"] if v["id"] not in occupied],
                 excluded=excluded,
             )
+            # Explicit names/Clear may still receive a suggestion, but cannot
+            # consume another speaker's automatic match or link this meeting.
+            for speaker in prints.keys() - eligible - confirmed.keys():
+                suggestion = match({speaker: prints[speaker]["embedding"]}, people["voices"], excluded=excluded)
+                if speaker in suggestion:
+                    matches[speaker] = dict(suggestion[speaker], state="suggested")
             for speaker, item in value["speakers"].items():
                 item["match"] = matches.get(speaker, dict(voiceId=None, score=None, state="none"))
                 if excluded.get(speaker):
                     item["rejected"] = excluded[speaker]
             value["speakers"].update(copy.deepcopy(confirmed))
             check_active()
-            self._transaction({"people.json": people, "meetings/" + key + ".json": value}, before_commit=check_active)
+            self._transaction(
+                {"people.json": people, "meetings/" + key + ".json": value},
+                before_commit=check_active,
+                current_key=key,
+            )
             self._publish(people)
             names = {v["id"]: v["name"] for v in people["voices"]}
             names = {s: names[m["voiceId"]] for s, m in matches.items() if m["state"] == "auto"}
@@ -409,7 +437,7 @@ class VoiceStore:
                 )
                 item["rejected"] = [identifier for identifier in item.get("rejected", []) if identifier != voice["id"]]
             people["voices"] = list(voices.values())
-            self._transaction({"people.json": people, "meetings/" + key + ".json": meeting})
+            self._transaction({"people.json": people, "meetings/" + key + ".json": meeting}, current_key=key)
             self._publish(people)
             return True
 
@@ -458,22 +486,40 @@ class VoiceStore:
                 return False
             meeting = self._meeting(key, generation)
             voices = {v["id"]: v for v in people["voices"]}
-            for speaker in affected:
+            original_voices = dict(voices)
+            # A merged-away voice (or one with too little clean speech) has no
+            # replacement. Keep its confirmed print and person for Undo.
+            replacements = {s: copy.deepcopy(prints[s]) for s in sorted(set(affected)) if s in prints}
+            confirmed = {}
+            for speaker in replacements:
                 old = meeting["speakers"].get(speaker)
-                previous = None
                 if old and old.get("match", {}).get("state") == "confirmed":
                     previous = voices.get(old["match"]["voiceId"])
                     if previous is not None:
-                        reduced = unenrol(previous, old["embedding"])
-                        if reduced is not None and reduced["count"] > 0:
-                            voices[previous["id"]] = reduced
-                        else:
-                            voices.pop(previous["id"], None)
-                item = copy.deepcopy(prints.get(speaker))
-                if item is None:
-                    meeting["speakers"].pop(speaker, None)
-                    continue
+                        confirmed[speaker] = copy.deepcopy(previous)
+
+            # Remove all replaced contributions first. Interleaving removal and
+            # insertion corrupts a shared running mean and depends on set order.
+            for speaker, previous in confirmed.items():
+                current = voices.get(previous["id"])
+                if current is not None:
+                    old = meeting["speakers"][speaker]
+                    reduced = unenrol(current, old["embedding"])
+                    if reduced is not None and reduced["count"] > 0:
+                        voices[previous["id"]] = reduced
+                    else:
+                        voices.pop(previous["id"], None)
+
+            for speaker, item in replacements.items():
+                previous = confirmed.get(speaker)
+                old = meeting["speakers"].get(speaker, {})
+                if old.get("rejected"):
+                    item["rejected"] = copy.deepcopy(old["rejected"])
+                old_match = old.get("match", {})
+                old_voice = original_voices.get(old_match.get("voiceId"))
                 item["match"] = dict(voiceId=None, score=None, state="none")
+                if old_voice is not None:
+                    item["match"] = dict(old_match)
                 if previous is not None:
                     # Preserve the confirmed identity, not an automatic match.
                     voice = enrol(
@@ -494,9 +540,17 @@ class VoiceStore:
                     voices[voice["id"]] = voice
                     item["match"] = dict(voiceId=voice["id"], score=1.0, state="confirmed")
                 meeting["speakers"][speaker] = item
+            for item in replacements.values():
+                current_voice = voices.get(item["match"].get("voiceId"))
+                if item["match"]["state"] != "confirmed" and current_voice is not None and not stale(current_voice):
+                    item["match"]["score"] = cosine(item["embedding"], current_voice["mean"])
             self._validate_meeting(meeting)
             people["voices"] = list(voices.values())
-            self._transaction({"people.json": people, "meetings/" + key + ".json": meeting}, before_commit=check_active)
+            self._transaction(
+                {"people.json": people, "meetings/" + key + ".json": meeting},
+                before_commit=check_active,
+                current_key=key,
+            )
             self._publish(people)
             return True
 

@@ -484,8 +484,23 @@ class TranscriptionQueue:
                     if read_metadata(directory).get("speakerMerges", []) != history:
                         raise ValueError("Speaker merges changed during voice extraction")
 
+                def auto_eligible():
+                    # commit_job evaluates this under the same metadata lock
+                    # held through naming, so a concurrent Clear cannot race it.
+                    protected = {
+                        s["id"]
+                        for s in read_metadata(directory)["speakers"]
+                        if s.get("provenance") == "user" or s.get("nameCleared")
+                    }
+                    return prints.keys() - protected
+
                 self.voice_store.commit_job(
-                    directory, prints, voice_generation, check_active=voice_active, apply_names=apply_names
+                    directory,
+                    prints,
+                    voice_generation,
+                    check_active=voice_active,
+                    apply_names=apply_names,
+                    auto_eligible=auto_eligible,
                 )
             except CancelledError:
                 raise
@@ -586,12 +601,14 @@ class TranscriptionQueue:
                 self.client.close()
                 self.client = self.client_model = None
             with self.lock:
-                again = self._voice_reruns.pop(token, None) if not self.closed else None
+                again = self._voice_reruns.pop(token, None)
+                if self.closed:
+                    again = None
                 if again is not None:
                     self.executor.submit(self._voice_job, token, *again)
-            if again is None:
-                with self.lock:
+                else:
                     self.voice_pending.discard(token)
+            if again is None:
                 self.finished(token)
 
     def _check_open(self):

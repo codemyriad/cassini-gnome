@@ -8,8 +8,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
@@ -25,7 +27,7 @@ from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
 from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.meeting_store import read_metadata  # noqa: E402
+from cassini_viewer.meeting_store import read_metadata, update_metadata  # noqa: E402
 from cassini_viewer.settings_dialog import SettingsDialog  # noqa: E402
 from cassini_viewer.voice_board import seed  # noqa: E402
 
@@ -42,6 +44,23 @@ def until(check):
             return
         time.sleep(0.005)
     assert check(), "Saved voices GUI did not settle"
+
+
+def labels(widget):
+    values = [widget.get_text()] if isinstance(widget, Gtk.Label) else []
+    child = widget.get_first_child()
+    while child:
+        values += labels(child)
+        child = child.get_next_sibling()
+    return values
+
+
+def speaker_labels(page, identifier):
+    index = next(i for i, s in enumerate(page.meeting.speakers) if s.id == identifier)
+    child = page.speakers.get_first_child().get_next_sibling()
+    for _ in range(index):
+        child = child.get_next_sibling()
+    return labels(child)
 
 
 with tempfile.TemporaryDirectory() as temporary:
@@ -72,13 +91,39 @@ with tempfile.TemporaryDirectory() as temporary:
     before_audio = {
         p: p.read_bytes() for p in meeting.directory.iterdir() if p.name in ("session.json", "transcript.json")
     }
-    future = window.monitor._executor.submit(seed, app, meeting)
+
+    def seed_recognised_case():
+        seed(app, meeting)
+        speakers = read_metadata(meeting.directory)["speakers"]
+        next(s for s in speakers if s["id"] == "marta")["provenance"] = "recognised"
+        update_metadata(meeting.directory, speakers=speakers)
+
+    future = window.monitor._executor.submit(seed_recognised_case)
     until(future.done)
     future.result()
+    window.monitor.refresh_now()
+    until(
+        lambda: any(
+            m.key == meeting.key and next(s for s in m.speakers if s.id == "marta").provenance == "recognised"
+            for m in window.snapshot.meetings
+        )
+    )
+    meeting = next(m for m in window.snapshot.meetings if m.key == meeting.key)
     window.open_meeting(meeting)
     page = window.meeting_page
-    page.name_speakers("guest")
-    dialog = page.speakers_dialog
+    gate = threading.Event()
+    blocker = window.monitor._executor.submit(gate.wait, 6)
+    until(blocker.running)
+    try:
+        page.name_speakers("guest")
+        dialog = page.speakers_dialog
+        dialog.entry.set_text("Giulia")
+        before_name = (meeting.directory / "meeting.json").read_bytes()
+        assert not dialog.voices_loaded and not dialog.save.get_sensitive()
+        dialog.save.emit("clicked")
+        assert not dialog.busy and (meeting.directory / "meeting.json").read_bytes() == before_name
+    finally:
+        gate.set()
     until(lambda: dialog.voice_data is not None)
     assert dialog.remember.get_sensitive() and dialog.remember.get_active()
 
@@ -146,11 +191,40 @@ with tempfile.TemporaryDirectory() as temporary:
         original_init(player, audio_sink=sink)
 
     with patch.object(FolderPlayer, "__init__", private_player):
+        voices.samples[first] = (meeting, 0, 750)
         voices.rows[first][1].emit("clicked")
         until(lambda: voices.player is not None and voices.player.playing)
         assert voices.player._range_end <= voices.player.position + 10000
-        voices._stop_sample()
-        assert voices.player is None
+        player = voices.player
+        sources = list(player.sources)
+        assert sources and all(source.fd is not None for source in sources)
+        until(lambda: voices.player is None)
+        assert player._pipeline is None and all(source.fd is None for source in sources)
+    # A synchronous missing-plugin load error must also release its pipeline.
+    from cassini_viewer.player import Player
+
+    created = []
+    original_player_init = Player.__init__
+
+    def track_player(player):
+        original_player_init(player)
+        created.append(player)
+
+    voices.samples["broken"] = (
+        SimpleNamespace(origin="received", audio_file=root / "missing.opus", duration_ms=1000),
+        0,
+        500,
+    )
+    with (
+        patch.object(Player, "__init__", track_player),
+        patch("cassini_viewer.player.runtime.missing_gst_elements", return_value=["fixture-missing"]),
+    ):
+        voices._play("broken")
+    assert len(created) == 1 and created[0]._pipeline.get_state(0).state == Gst.State.NULL
+    assert not created[0]._pipeline.get_bus().handler_is_connected(created[0]._bus_handler)
+    assert voices.player is None and voices._sample_pending is None
+    del voices.samples["broken"]
+    assert "Recognised from saved voices" in speaker_labels(page, "marta")
     # Failed Forget retains the previous store, supports Retry, and keeps names.
     before = (app.voice_store.root / "people.json").read_bytes()
     with patch.object(app.voice_store, "forget", side_effect=OSError("unplugged")):
@@ -161,6 +235,8 @@ with tempfile.TemporaryDirectory() as temporary:
     voices.again.emit("clicked")
     until(lambda: not voices.busy and len(voices.rows) == 4)
     assert first not in voices.rows
+    until(lambda: "Recognised from saved voices" not in speaker_labels(page, "marta"))
+    assert next(s for s in page.meeting.speakers if s.id == "marta").name == "Marta"
     saved_names = (meeting.directory / "meeting.json").read_bytes()
     voices.confirm(None)
     voices.confirmation.emit("response", "forget")
