@@ -171,6 +171,18 @@ with tempfile.TemporaryDirectory() as temporary:
     until(more.get_popover().get_mapped)
     capture(window, "-meeting-menu")
     more.popdown()
+    dialog_button = Gtk.Button(label="Close")
+    dialog = Adw.Dialog(child=dialog_button)
+    dialog.present(window)
+    until(lambda: window.get_visible_dialog() is dialog)
+    dialog_button.grab_focus()
+    assert not window._trash_key(None, Gdk.KEY_Delete, 0, Gdk.ModifierType(0))
+    dialog.close()
+    until(lambda: window.get_visible_dialog() is None)
+    window.meeting_page.play.grab_focus()
+    with patch.object(window, "move_to_trash") as action:
+        assert window._trash_key(None, Gdk.KEY_Delete, 0, Gdk.ModifierType(0))
+        action.assert_called_once()
     window.back_to_library()
 
     calls, fail = [], []

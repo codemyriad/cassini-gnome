@@ -180,10 +180,13 @@ class LibraryWindow(Adw.ApplicationWindow):
         return bool(self._focused_editors)
 
     def _trash_key(self, _keys, key, _code, modifiers):
-        if self._text_focused() or self.search_page or self.recording_page:
+        if self._text_focused() or self.search_page or self.recording_page or self.get_visible_dialog():
             return False
         focus = self.get_focus()
         in_list = bool(focus and (focus is self.rows or focus.is_ancestor(self.rows)))
+        in_meeting = bool(
+            self.meeting_page and focus and (focus is self.meeting_page or focus.is_ancestor(self.meeting_page))
+        )
         blocked = (
             Gdk.ModifierType.CONTROL_MASK
             | Gdk.ModifierType.ALT_MASK
@@ -193,7 +196,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         if (
             key == Gdk.KEY_Delete
             and not modifiers & blocked
-            and (self.meeting_page or in_list)
+            and (in_meeting or in_list)
             and self.lookup_action("move-to-trash").get_enabled()
         ):
             self.move_to_trash()
