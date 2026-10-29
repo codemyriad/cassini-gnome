@@ -38,3 +38,25 @@ the previous sources to continue and the dialog to show its existing retry line.
 The isolated sources harness rejects a nonexistent real Pulse system device,
 checks unchanged events/track IDs and continuing microphone samples, then proves
 a successful retry and all existing tone, bleed and Stop conditions.
+
+Protocol pin `56814d5` adds native host-time discontinuity accounting. Each
+native span compares consecutive input buffer stamps, subtracts the previous
+buffer's frame duration, and rounds a positive remainder to the nearest frame.
+At least one second becomes silence counted in `gapFrames`. Smaller or backward
+skew is diagnostic only: sample counts drive continuity, so smooth device drift
+does not accumulate into missing audio. Native browser microphone and fallback
+system taps use the same rule. Callback arrival time does not detect gaps.
+
+The leading silence between a declared selection boundary and its first input
+buffer preserves alignment, without counting as a gap. Counted silence is
+included in both WAV and manifest frames. A recording with only input gaps ends
+as interrupted with `problemKind: gap`; a writer failure takes precedence as
+`io`. Native writes are synchronous, so no queued-writer loss counter is needed.
+
+`tests/test_native_timing.py` drives the real native input callback with the
+pinned GNOME fixture and compares the entire manifest and WAV bytes. It also
+simulates ten hours at +50 ppm without allocating the recording, and covers
+threshold rounding, backward skew, long gaps, selection alignment and a partial
+WAV-limit failure. Browser fallback tests independently exercise raw host stamps
+and concurrent sessions. The private Pulse harness retains its existing sample,
+duration, tone and bleed thresholds; it never connects to desktop audio.

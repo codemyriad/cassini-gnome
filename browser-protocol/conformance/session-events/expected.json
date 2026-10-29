@@ -1,0 +1,12 @@
+{
+  "states": [
+    {"atMs": 0, "me": true, "others": true, "source": "browser", "reason": "start", "sinceMs": 0, "fallback": false},
+    {"atMs": 754209, "me": true, "others": true, "source": "browser", "reason": "start", "sinceMs": 0, "fallback": false},
+    {"atMs": 754210, "me": true, "others": true, "source": "system", "reason": "lost", "sinceMs": 754210, "fallback": true},
+    {"atMs": 899999, "me": true, "others": true, "source": "system", "reason": "lost", "sinceMs": 754210, "fallback": true},
+    {"atMs": 900000, "me": true, "others": false, "source": "none", "reason": "user", "sinceMs": 900000, "fallback": false}
+  ],
+  "durationMs": 960000,
+  "trackRoles": {"microphone-1": "me", "browser-1": "others", "system-1": "others"},
+  "trackEndsMs": {"microphone-1": 960000, "browser-1": 754210, "system-1": 900000}
+}

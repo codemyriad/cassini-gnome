@@ -237,6 +237,7 @@ class RecordingSession:
             }
             self.writers = {}
             self.finished = False
+            self._native_io_error = None
             self._changing = False
             self._last_checkpoint = 0
             self.checkpoint()
@@ -341,6 +342,42 @@ class RecordingSession:
         if self.clock() - self._last_checkpoint >= 1:
             self.checkpoint()
 
+    def append_native(self, identifier, data, offset, *, gap_frames=0):
+        if self.finished or identifier not in self.writers:
+            raise ProtocolError("chunk", "Invalid native audio source")
+        writer = self.writers[identifier]
+        track = next(t for t in self.manifest["tracks"] if t["id"] == identifier)
+        if type(gap_frames) is not int or gap_frames < 0 or 0 < gap_frames < writer.rate or track.get("ended"):
+            raise ProtocolError("chunk", "Invalid native input gap")
+        # Validate before changing the WAV. Explicit native gaps can be longer
+        # than the browser wire's bounded timestamp padding allowance.
+        chunk_plan(writer.rate, writer.channels, writer.frames + gap_frames, track.get("startOffsetMs"), data, offset)
+        if gap_frames and track.get("startOffsetMs") is None:
+            raise ProtocolError("chunk", "A native gap needs a first-buffer anchor")
+        try:
+            # An S-6 span can declare its selection boundary before the first
+            # input arrives. Preserve that known prefix exactly, including
+            # sub-20 ms latency; it precedes the first-buffer gap anchor.
+            if not writer.frames and not gap_frames and track.get("startOffsetMs") is not None:
+                prefix = max(0, round((offset - track["startOffsetMs"]) * writer.rate / 1000))
+                if prefix:
+                    writer.silence(prefix)
+                    track["frames"] = writer.frames
+            if gap_frames:
+                before = writer.frames
+                try:
+                    writer.silence(gap_frames)
+                finally:
+                    written = writer.frames - before
+                    if written:
+                        track["gapFrames"] = track.get("gapFrames", 0) + written
+                    track["frames"] = writer.frames
+            self.append(identifier, data, offset)
+        except Exception as error:
+            self._native_io_error = str(error)
+            track["frames"] = writer.frames
+            raise
+
     def finish(self, problem=None, *, problem_kind=None):
         problem = optional_string(problem, None, "state") or None
         if self.finished:
@@ -356,6 +393,15 @@ class RecordingSession:
             track["ended"] = True
             if track.get("startOffsetMs") is not None:
                 track["endOffsetMs"] = track["startOffsetMs"] + track["frames"] * 1000 / track["sampleRate"]
+        gaps = [t for t in self.manifest["tracks"] if t.get("gapFrames", 0)]
+        if self._native_io_error:
+            problem, problem_kind = problem or self._native_io_error, "io"
+        elif not problem and gaps:
+            problem = " ".join(
+                f"{t['gapFrames'] * 1000 // t['sampleRate']} ms of {t['kind']} input time was preserved as silence."
+                for t in gaps
+            )
+            problem_kind = "gap"
         problem_kind = problem_kind or ("capture" if problem else None)
         if failure:
             problem, problem_kind = str(failure), "io"

@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "id": "ed5c8601-f20f-427e-bdd6-26ed3b5d971a",
+  "createdAt": "2026-10-27T10:00:00Z",
+  "title": "Synthetic native host-time gap",
+  "source": "gnome",
+  "state": "interrupted",
+  "problem": "1000 ms of system input time was preserved as silence.",
+  "problemKind": "gap",
+  "tracks": [
+    {
+      "id": "microphone",
+      "label": "Microphone",
+      "kind": "microphone",
+      "file": "track-microphone.wav",
+      "sampleRate": 8000,
+      "channels": 1,
+      "frames": 24000,
+      "startOffsetMs": 0,
+      "endOffsetMs": 3000,
+      "ended": true,
+      "labelSource": "device"
+    },
+    {
+      "id": "system",
+      "label": "System",
+      "kind": "system",
+      "file": "track-system.wav",
+      "sampleRate": 8000,
+      "channels": 2,
+      "frames": 24000,
+      "startOffsetMs": 0,
+      "endOffsetMs": 3000,
+      "ended": true,
+      "labelSource": "device",
+      "gapFrames": 8000
+    }
+  ]
+}

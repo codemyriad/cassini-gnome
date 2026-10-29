@@ -53,6 +53,7 @@
         "capture",
         "io",
         "recovery",
+        "gap",
         null
       ]
     },
@@ -144,10 +145,46 @@
               "recovered",
               null
             ]
+          },
+          "sourceTrackId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 200,
+            "$comment": "Opaque source identity, at most 200 UTF-8 bytes in addition to the Unicode length limit. Omit when unknown, and for microphone/system sources. Never derive identity from labels."
+          },
+          "gapFrames": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 2147483629
+          },
+          "droppedFrames": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 2147483629
           }
         },
         "additionalProperties": true
       }
+    },
+    "events": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "maxItems": 1000,
+      "items": {
+        "$ref": "#/$defs/sessionEvent"
+      },
+      "$comment": "S-6: optional append-only session timeline, ordered by non-decreasing finite atMs. Readers ignore unknown types/fields. The ordering and UTF-8 source-ID byte bound require checks beyond JSON Schema."
     }
   },
   "additionalProperties": true,
@@ -191,5 +228,105 @@
         }
       }
     }
-  ]
+  ],
+  "$defs": {
+    "sessionEvent": {
+      "type": "object",
+      "required": [
+        "atMs",
+        "type"
+      ],
+      "properties": {
+        "atMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "othersSource"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "source",
+              "reason"
+            ],
+            "properties": {
+              "source": {
+                "enum": [
+                  "browser",
+                  "system",
+                  "none"
+                ]
+              },
+              "reason": {
+                "enum": [
+                  "start",
+                  "missing",
+                  "lost",
+                  "user"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "selection"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "me",
+              "others",
+              "reason"
+            ],
+            "properties": {
+              "me": {
+                "type": "boolean"
+              },
+              "others": {
+                "type": "boolean"
+              },
+              "reason": {
+                "enum": [
+                  "start",
+                  "user"
+                ]
+              }
+            },
+            "anyOf": [
+              {
+                "properties": {
+                  "me": {
+                    "const": true
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "others": {
+                    "const": true
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
 }

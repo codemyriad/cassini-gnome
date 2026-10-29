@@ -195,6 +195,10 @@ async function start(mode, tabId = null, options = {}) {
     })();
     try { await session.starting; } catch (error) {
       session.problem ??= error.message;
+      // Once the app owns a folder, an unexpected startup failure is browser
+      // loss too. Preserve its native inputs/fallback just like a later relay
+      // failure. An explicit Stop during startup must still finalize normally.
+      if (session.independent && session.path && !session.stopping) session.loss = true;
       await stop(session);
       throw error;
     }

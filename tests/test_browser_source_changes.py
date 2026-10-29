@@ -2,12 +2,47 @@
 """Rejected source transitions retain the confirmed capture and release devices."""
 
 import json
+import wave
 
 import pytest
 from test_browser_capture import Tap, remote, server, start  # noqa: F401
 
 from cassini_viewer.browser_audio_proxy import BrowserAudioProxy
 from cassini_viewer.browser_service import request
+
+
+def test_fallback_uses_input_host_stamps_and_keeps_other_sessions_independent(server):  # noqa: F811
+    service, path, _ = server
+    one, two = BrowserAudioProxy(path=path), BrowserAudioProxy(path=path)
+    try:
+        start(one, "host-gap", microphone=False)
+        start(two, "unaffected", microphone=False)
+        remote(two, "remote-unaffected")
+        capture = service.captures["host-gap"]
+        capture.fallback()
+        identifier, tap = capture.native_taps["system"]
+        track = next(t for t in capture.host.session.manifest["tracks"] if t["id"] == identifier)
+        offset = track["startOffsetMs"] + 100
+        # The callback offset deliberately stays fixed. Only consecutive input
+        # host stamps may decide whether a buffer represents missing audio.
+        tap.append(b"\1\0" * 48000, offset, host_ns=10_000_000_000)
+        tap.append(b"\2\0" * 48000, offset, host_ns=12_000_000_000)
+        tap.append(b"\3\0" * 48000, offset, host_ns=13_000_050_000)
+        capture.stop()
+        assert capture.host.session.manifest["problemKind"] == "gap"
+        assert track["gapFrames"] == 48000 and track["frames"] == 4800 + 4 * 48000
+        with wave.open(str(capture.directory / track["file"])) as audio:
+            assert audio.readframes(4800) == bytes(9600)
+            assert audio.readframes(48000) == b"\1\0" * 48000
+            assert audio.readframes(48000) == bytes(96000)
+            assert audio.readframes(48000) == b"\2\0" * 48000
+            assert audio.readframes(48000) == b"\3\0" * 48000
+        assert not service.captures["unaffected"].finished
+        two.handle(dict(type="stop"))
+        assert service.captures["unaffected"].host.session.manifest["state"] == "completed"
+    finally:
+        one.close()
+        two.close()
 
 
 @pytest.mark.parametrize("via_callback", [False, True])

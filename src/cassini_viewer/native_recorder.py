@@ -10,6 +10,7 @@ from uuid import uuid4
 from gi.repository import GLib, GObject, Gst
 
 from .capture_sources import change_time, selected_pcm
+from .native_timing import NS, NativeTimeline
 from .recorder import request_eos
 from .recording_details import space_left
 from .recording_session import RecordingSession
@@ -48,6 +49,7 @@ class NativeRecorder(GObject.Object):
         self._branches = {}
         self._pending_sources = {}
         self._retired_branches = set()
+        self._timelines = {}
 
     @property
     def activity(self):
@@ -69,6 +71,7 @@ class NativeRecorder(GObject.Object):
         self._branches = {}
         self._pending_sources = {}
         self._retired_branches = set()
+        self._timelines = {}
         future = self._executor.submit(self._prepare, Path(parent) if parent is not None else None)
         future.add_done_callback(lambda f: GLib.idle_add(self._prepared, f, test))
 
@@ -269,9 +272,18 @@ class NativeRecorder(GObject.Object):
                     return Gst.FlowReturn.OK  # Uncommitted readiness PCM is discarded.
                 stored = self._track_ids.get(identifier)
                 if stored is not None:
-                    data, offset = selected_pcm(data, buffer.pts / Gst.MSECOND, RATE, 1, self._boundaries[identifier])
+                    writer = self.session.writers[stored]
+                    rate, channels = writer.rate, writer.channels
+                    original_frames = len(data) // (channels * 2)
+                    data, offset = selected_pcm(
+                        data, buffer.pts / Gst.MSECOND, rate, channels, self._boundaries[identifier]
+                    )
                     if data:
-                        self.session.append(stored, data, offset)
+                        frames = len(data) // (channels * 2)
+                        host_ns = buffer.pts + (original_frames - frames) * NS // rate
+                        timeline = self._timelines.setdefault(stored, NativeTimeline(rate))
+                        offset, gap = timeline.map(host_ns, frames, offset)
+                        self.session.append_native(stored, data, offset, gap_frames=gap)
         except Exception as error:
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
