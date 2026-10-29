@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import json
+from concurrent.futures import CancelledError
 
+import pytest
 from test_library import capture
 
 from cassini_viewer import transcript_publish
@@ -57,3 +59,31 @@ def test_repeated_eta_and_speakers_do_not_rewrite_metadata(tmp_path):
     for _ in range(100):
         assert not update_progress_metadata(session.directory, speakers, etaMinutes=1)
     assert (path.read_bytes(), path.stat().st_mtime_ns) == before
+
+
+def test_cancel_during_serialization_keeps_the_published_snapshot(tmp_path, monkeypatch):
+    from cassini_viewer import meeting_store
+
+    path = tmp_path / "transcript.json"
+    before = b'{"format":"cassini.words.v1","items":[]}\n'
+    path.write_bytes(before)
+    closed = False
+
+    def check_active():
+        if closed:
+            raise CancelledError()
+
+    dump = meeting_store.json.dump
+
+    def serialize_then_close(*args, **kwargs):
+        nonlocal closed
+        dump(*args, **kwargs)
+        closed = True
+
+    monkeypatch.setattr(meeting_store.json, "dump", serialize_then_close)
+    publisher = transcript_publish.TranscriptPublisher(tmp_path, check_active=check_active)
+    publisher.add([dict(text="Late", startMs=0, endMs=1)], "others", 0, "en")
+    with pytest.raises(CancelledError):
+        publisher.flush(force=True, complete=True)
+    assert path.read_bytes() == before
+    assert not list(tmp_path.glob(".transcript.json-*"))
