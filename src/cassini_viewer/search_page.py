@@ -218,6 +218,7 @@ class SearchPage(Adw.NavigationPage):
         self._snapshot = snapshot
         signature = (
             snapshot.unavailable,
+            self.window.get_application().voice_store.match_signature(),
             tuple(
                 (
                     str(m.directory),
@@ -404,7 +405,7 @@ class SearchPage(Adw.NavigationPage):
             row = Gtk.Box(spacing=16, css_classes=[] if index == hit.turn else ["dim-label"])
             name = box(6, width_request=110, valign=Gtk.Align.START)
             if speaker:
-                name.append(self.window._speaker(speaker))
+                name.append(self.window._speaker(speaker, meeting=meeting))
             if index == hit.turn:
                 name.append(label(fmt.position(hit.position_ms), "small", "dim-label", xalign=0))
             row.append(name)

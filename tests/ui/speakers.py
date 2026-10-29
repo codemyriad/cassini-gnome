@@ -91,6 +91,7 @@ with tempfile.TemporaryDirectory() as temporary:
     page.name_speakers("guest")
     dialog = page.speakers_dialog
     until(lambda: not window.lookup_action("play-pause").get_enabled())
+    until(lambda: dialog.voices_loaded and dialog.save.get_sensitive())
     assert dialog.heading.get_label() == "Speaker 3" and dialog.entry.get_text() == ""
     assert dialog.talk.get_label() == "Speaks for 11 s in this meeting"
     assert any("Remember this voice" in value for value in labels(dialog.get_child()))
@@ -133,6 +134,7 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog = page.speakers_dialog
     assert dialog.identifier == "guest" and dialog.entry.get_text() == "Giulia"
     dialog.entry.set_text("")
+    until(lambda: dialog.save.get_sensitive())
     dialog.save.emit("clicked")
     until(lambda: dialog.closed and next(s for s in page.meeting.speakers if s.id == "guest").name == "Speaker 3")
     # Merge menu invokes an action rather than changing the source transcript.
@@ -164,13 +166,8 @@ with tempfile.TemporaryDirectory() as temporary:
     words = tuple(Word(voice.id, i * 1000, i * 1000 + 100, "Spoken") for i, voice in enumerate(voices))
     page.update(replace(page.meeting, speakers=voices, words=words, turns=reading_turns(words)))
     # Outside folders are readable, but offer no name/edit controls.
-    frames = []
-    window.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 3)[1])
-    window.queue_draw()
-    until(lambda: len(frames) >= 3)
-    visible, bounds = page.name_speakers_button.compute_bounds(window)
     adjustment = page.speakers_scroller.get_vadjustment()
-    assert adjustment.get_upper() > adjustment.get_page_size()
+    until(lambda: adjustment.get_page_size() > 0 and adjustment.get_upper() > adjustment.get_page_size())
     adjustment.set_value(adjustment.get_upper() - adjustment.get_page_size())
 
     def last_speaker_action_reachable():
