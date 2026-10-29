@@ -25,12 +25,17 @@ def in_flatpak():
     return bool(os.environ.get("FLATPAK_ID") or Path("/.flatpak-info").is_file())
 
 
-def available():
+def probe():
+    """Return readiness and whether a failed host check may recover in place."""
     if not in_flatpak():
-        return True
-    from .flatpak_bridge import available as host_available
+        return True, False
+    from .flatpak_bridge import probe as host_probe
 
-    return host_available()
+    return host_probe()
+
+
+def available():
+    return probe()[0]
 
 
 def installed_browsers(*, config=None, which=shutil.which, host=True):

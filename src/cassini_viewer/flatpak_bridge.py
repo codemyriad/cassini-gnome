@@ -98,14 +98,21 @@ def host_info():
         raise OSError("Could not reach the host browser") from error
 
 
-def available():
-    """Probe from a worker; a transient failure must never become permanent."""
+def probe():
+    """Return (ready, retryable); sandbox permissions cannot change in place."""
     try:
         deployment()
-        host_info()
-        return True
     except OSError:
-        return False
+        return False, False
+    try:
+        host_info()
+        return True, False
+    except OSError:
+        return False, True
+
+
+def available():
+    return probe()[0]
 
 
 def installed_browsers():

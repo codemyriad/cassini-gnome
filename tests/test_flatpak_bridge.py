@@ -68,6 +68,28 @@ def test_host_inventory_and_registration_use_host_configs_and_shell_safe_paths(h
     assert not list(host.rglob(".cassini-*"))
 
 
+@pytest.mark.parametrize(
+    ("failure", "expected"), [("permission", (False, False)), ("host", (False, True)), (None, (True, False))]
+)
+def test_probe_retries_only_a_recoverable_host_failure(monkeypatch, failure, expected):
+    calls = []
+
+    def deployment():
+        if failure == "permission":
+            raise OSError("Sandbox host access is not granted")
+        return bridge.Deployment("com.gocassini.Viewer", "x86_64", "master")
+
+    def host_info():
+        calls.append(1)
+        if failure == "host":
+            raise OSError("Transient host timeout")
+
+    monkeypatch.setattr(bridge, "deployment", deployment)
+    monkeypatch.setattr(bridge, "host_info", host_info)
+    assert bridge.probe() == expected
+    assert len(calls) == (0 if failure == "permission" else 1)
+
+
 def test_actual_host_stub_keeps_binary_native_frames_and_selects_its_deployment(host):
     paths = bridge.register()
     data = bytes(range(256)) * 100 + b"\x00\x00\x00\xff"
