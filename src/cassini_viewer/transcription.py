@@ -110,7 +110,7 @@ def update_progress_metadata(directory, speakers, *, check_active=None, **change
         for identifier, planned in speakers.items():
             previous = existing.get(identifier, {})
             merged[identifier] = dict(previous, **planned)
-            if previous.get("provenance") in ("user", "recognised"):
+            if previous.get("provenance") in ("user", "recognised", "unnamed"):
                 merged[identifier] = previous
         changes["speakers"] = list(merged.values())
         if all(current.get(key) == value for key, value in changes.items()):
