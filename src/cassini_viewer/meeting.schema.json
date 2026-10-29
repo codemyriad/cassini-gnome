@@ -81,6 +81,11 @@
       "type": "integer",
       "minimum": 0,
       "maximum": 9007199254740991
+     },
+     "nameCleared": {
+      "type": "boolean",
+      "const": true,
+      "$comment": "D25 amendment (GNOME question). Optional; version stays 1. Written only by an explicit Clear in the Speakers dialog, only with provenance unnamed, and removed when a nonempty name is saved. While present, automatic recognition (AUTO) never names this speaker; SUGGESTED rows (Likely) may still be shown. Readers that don't know it ignore it."
      }
     },
     "required": [

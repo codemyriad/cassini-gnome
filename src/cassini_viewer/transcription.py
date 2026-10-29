@@ -469,7 +469,11 @@ class TranscriptionQueue:
                         entries = {s["id"]: dict(s) for s in current["speakers"]}
                         for identifier, name in names.items():
                             previous = entries.get(identifier, {})
-                            if previous.get("provenance") != "user" and identifier in speakers:
+                            if (
+                                previous.get("provenance") != "user"
+                                and not previous.get("nameCleared")
+                                and identifier in speakers
+                            ):
                                 speakers[identifier] = dict(speakers[identifier], name=name, provenance="recognised")
                                 entries[identifier] = speakers[identifier]
                         if list(entries.values()) != current["speakers"]:

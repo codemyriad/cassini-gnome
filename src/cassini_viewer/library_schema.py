@@ -53,7 +53,7 @@ def valid(value, schema=SCHEMA):
     }
     if types and not any(checks[kind] for kind in types):
         return False
-    if "const" in schema and (type(value) is bool or value != schema["const"]):
+    if "const" in schema and (isinstance(value, bool) != isinstance(schema["const"], bool) or value != schema["const"]):
         return False
     if "enum" in schema and value not in schema["enum"]:
         return False

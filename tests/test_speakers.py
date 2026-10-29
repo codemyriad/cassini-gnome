@@ -65,6 +65,9 @@ def test_trimmed_name_clear_and_revision_preserve_other_fields(meeting):
     assert cleared["revision"] == revision + 2
     assert cleared["speakers"][0]["name"] is None and cleared["speakers"][0]["provenance"] == "unnamed"
     assert current_meeting(meeting.directory).speaker_names[0] == "Speaker 1"
+    assert cleared["speakers"][0]["nameCleared"] is True
+    renamed = save_name(meeting.directory, "a", "Alicia")
+    assert "nameCleared" not in renamed["speakers"][0]
     assert hashes(meeting.directory) == before
 
 
@@ -231,3 +234,13 @@ def test_received_name_clear_uses_the_retained_scan_cache_without_rehashing(meet
     )
     assert cleared.speakers[0].name == "Speaker 1" and cleared.speakers[0].provenance == "unnamed"
     assert hashes(imported.directory) == before
+
+
+@pytest.mark.parametrize(
+    "value,const,expected",
+    [(True, True, True), (False, True, False), (1, True, False), (True, 1, False), (1.0, 1, True)],
+)
+def test_schema_boolean_constants_are_distinct_from_numbers(value, const, expected):
+    from cassini_viewer.library_schema import valid
+
+    assert valid(value, {"const": const}) is expected

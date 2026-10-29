@@ -32,7 +32,7 @@ def meeting(tmp_path):
     return session.directory
 
 
-@pytest.mark.parametrize("failure", [None, "model", "forget", "cancel", "manual"])
+@pytest.mark.parametrize("failure", [None, "model", "forget", "cancel", "manual", "clear", "cleared-before"])
 def test_optional_voice_step_preserves_transcript_and_obeys_generation_and_cancel(tmp_path, failure):
     directory = meeting(tmp_path)
     store = VoiceStore(tmp_path / "private")
@@ -41,6 +41,10 @@ def test_optional_voice_step_preserves_transcript_and_obeys_generation_and_cance
     store.commit_job(key, {"guest": dict(embedding=embedding(), seconds=8)}, 0)
     store.remember(key, "guest", "Alice")
     finished = []
+    if failure == "cleared-before":
+        update_metadata(
+            directory, speakers=[dict(id="others", name=None, provenance="unnamed", colourIndex=0, nameCleared=True)]
+        )
 
     class Client:
         def __init__(self, *_args, **_kwargs):
@@ -77,6 +81,11 @@ def test_optional_voice_step_preserves_transcript_and_obeys_generation_and_cance
                     directory,
                     speakers=[dict(id="others", name="Typed while extracting", provenance="user", colourIndex=0)],
                 )
+            if failure == "clear":
+                update_metadata(
+                    directory,
+                    speakers=[dict(id="others", name=None, provenance="unnamed", colourIndex=0, nameCleared=True)],
+                )
             if failure == "model":
                 raise RuntimeError("native model failed")
             if failure == "forget":
@@ -111,6 +120,9 @@ def test_optional_voice_step_preserves_transcript_and_obeys_generation_and_cance
         elif failure == "manual":
             assert metadata["speakers"][0]["name"] == "Typed while extracting"
             assert metadata["speakers"][0]["provenance"] == "user"
+        elif failure in ("clear", "cleared-before"):
+            assert metadata["speakers"][0]["name"] is None and metadata["speakers"][0]["provenance"] == "unnamed"
+            assert metadata["speakers"][0]["nameCleared"] is True
         else:
             assert metadata["speakers"][0]["name"] != "Alice"
     assert "embedding" not in json.dumps(metadata)
