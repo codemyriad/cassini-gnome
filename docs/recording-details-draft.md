@@ -24,6 +24,8 @@ The sample is limited to one second per microphone track and 512 KiB in total.
 Offsets of at least 512 PCM16 units are called out. This is an observation, not a
 measurement of the entire meeting; current speech detection compensates, WAVs are
 unchanged. A missing counter is unknown, not a claim of zero lost audio.
+If a saved counter lacks a valid sample rate, its frame count is shown without
+inventing a duration.
 
 Writing-down model and language come from saved metadata. Speaker separation uses
 the speaker-turns sidecar; recognised names come from the Library's resolved speaker

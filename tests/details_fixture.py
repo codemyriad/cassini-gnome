@@ -113,7 +113,7 @@ def build_library(root):
                 reference=dict(kind="sidecar", file="transcript.json", format="cassini.words.v1"),
                 model="whistle",
             ),
-            speakers=[dict(id="track-microphone", name="Me", provenance="source", colourIndex=0)],
+            speakers=[dict(id="me", name="Me", provenance="source", colourIndex=0)],
             notes=[],
             etaMinutes=None,
             error=None,
@@ -126,11 +126,7 @@ def build_library(root):
             dict(
                 format="cassini.words.v1",
                 language="en",
-                items=[
-                    dict(
-                        startMs=1000, endMs=2000, text="This is a synthetic design fixture.", speaker="track-microphone"
-                    )
-                ],
+                items=[dict(startMs=1000, endMs=2000, text="This is a synthetic design fixture.", speaker="me")],
             ),
         )
         meetings[key] = folder
