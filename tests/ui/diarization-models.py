@@ -112,17 +112,32 @@ try:
                 assert dialog.nemotron_action.get_label() == "Cancel" and dialog.nemotron_progress.get_visible()
                 dialog.nemotron_action.emit("clicked")
                 release.set()
-                until(lambda: not app.diarization_models.snapshot()["busy"])
+                until(
+                    lambda: (
+                        not app.diarization_models.snapshot()["busy"]
+                        and dialog.nemotron_action.get_label() == "Download"
+                    )
+                )
                 assert not app.diarization_models.snapshot()["downloaded"]
                 assert dialog.nemotron_action.get_label() == "Download"
             server.mode = "truncate"
             dialog.nemotron_action.emit("clicked")
-            until(lambda: not app.diarization_models.snapshot()["busy"])
+            until(
+                lambda: (
+                    not app.diarization_models.snapshot()["busy"] and dialog.nemotron_action.get_label() == "Try again"
+                )
+            )
             assert dialog.nemotron_action.get_label() == "Try again"
             assert "Nemotron" in dialog.nemotron_line.get_label()
             server.mode = "normal"
             dialog.nemotron_action.emit("clicked")
-            until(lambda: not app.diarization_models.snapshot()["busy"])
+            until(
+                lambda: (
+                    not app.diarization_models.snapshot()["busy"]
+                    and dialog.nemotron_status.get_label() == "On"
+                    and dialog.nemotron_action.get_label() == "Remove"
+                )
+            )
             assert dialog.nemotron_status.get_label() == "On" and dialog.nemotron_action.get_label() == "Remove"
             assert app.recording_settings.get_string("speech-model") == "whistle"
             assert (tmp / "models" / nemotron_model.MODEL_ID / nemotron_model.REVISION).is_dir()
@@ -130,10 +145,22 @@ try:
             until(lambda: dialog.nemotron_action.get_label() == "Try again")
             assert dialog.nemotron_remove.get_visible() and not dialog.nemotron_line.get_visible()
             dialog.nemotron_action.emit("clicked")
-            until(lambda: not app.diarization_models.snapshot()["busy"])
+            until(
+                lambda: (
+                    not app.diarization_models.snapshot()["busy"]
+                    and dialog.nemotron_status.get_label() == "On"
+                    and not dialog.nemotron_remove.get_visible()
+                )
+            )
             assert dialog.nemotron_status.get_label() == "On" and not dialog.nemotron_remove.get_visible()
             dialog.nemotron_action.emit("clicked")
-            until(lambda: not app.diarization_models.snapshot()["busy"])
+            until(
+                lambda: (
+                    not app.diarization_models.snapshot()["busy"]
+                    and dialog.nemotron_status.get_label() == "Not downloaded"
+                    and dialog.nemotron_action.get_label() == "Download"
+                )
+            )
             assert dialog.nemotron_status.get_label() == "Not downloaded"
             assert dialog.nemotron_action.get_label() == "Download"
             assert not (tmp / "models" / nemotron_model.MODEL_ID / nemotron_model.REVISION).exists()

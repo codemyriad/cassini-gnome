@@ -107,12 +107,20 @@ try:
             # A failed request stays retryable and never selects the model.
             server.mode = "truncate"
             dialog.parakeet_action.emit("clicked")
-            until(lambda: not app.speech_models.snapshot()["busy"])
+            until(
+                lambda: not app.speech_models.snapshot()["busy"] and dialog.parakeet_action.get_label() == "Try again"
+            )
             assert dialog.parakeet_action.get_label() == "Try again"
             assert "Could not download Parakeet Ultra" in dialog.model_line.get_label()
             server.mode = "normal"
             dialog.parakeet_action.emit("clicked")
-            until(lambda: not app.speech_models.snapshot()["busy"])
+            until(
+                lambda: (
+                    not app.speech_models.snapshot()["busy"]
+                    and dialog.parakeet_radio.get_sensitive()
+                    and dialog.parakeet_status.get_label() == "Downloaded"
+                )
+            )
             assert dialog.parakeet_radio.get_sensitive() and dialog.whistle_radio.get_active()
             assert dialog.parakeet_status.get_label() == "Downloaded"
             dialog.parakeet_radio.set_active(True)
@@ -122,7 +130,13 @@ try:
             capture(window, "-selected")
             dialog.parakeet_action.emit("clicked")
             assert app.recording_settings.get_string("speech-model") == "whistle"
-            until(lambda: not app.speech_models.snapshot()["busy"])
+            until(
+                lambda: (
+                    not app.speech_models.snapshot()["busy"]
+                    and not dialog.parakeet_radio.get_sensitive()
+                    and dialog.parakeet_action.get_label() == "Download"
+                )
+            )
             assert dialog.whistle_radio.get_active() and not dialog.parakeet_radio.get_sensitive()
             assert dialog.model_line.get_label() == "Parakeet Ultra was removed. New meetings use Whistle."
             assert not (tmp / "models" / MODEL_ID / REVISION).exists()
