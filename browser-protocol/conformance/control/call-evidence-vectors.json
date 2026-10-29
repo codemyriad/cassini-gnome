@@ -1,0 +1,152 @@
+[
+  {
+    "name": "connected-prejoin-three-recvonly-and-sendonly-mic",
+    "receivers": 3,
+    "steps": [
+      {
+        "packets": null,
+        "ticks": 5,
+        "sourceCount": 3,
+        "heard": false
+      },
+      {
+        "packets": 1,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": false
+      },
+      {
+        "packets": 1,
+        "snapshots": 12,
+        "sourceCount": 3,
+        "heard": false
+      },
+      {
+        "packets": 2,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": true
+      },
+      {
+        "handoff": true,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": true
+      },
+      {
+        "close": true,
+        "ticks": 10,
+        "sourceCount": 0,
+        "heard": true
+      },
+      {
+        "ticks": 1,
+        "sourceCount": 0,
+        "heard": false
+      },
+      {
+        "handoff": true,
+        "packets": 10,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": false
+      },
+      {
+        "packets": 10,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": false
+      },
+      {
+        "packets": 11,
+        "ticks": 1,
+        "sourceCount": 3,
+        "heard": true
+      }
+    ]
+  },
+  {
+    "name": "two-of-last-three-and-first-appearance",
+    "receivers": 1,
+    "steps": [
+      {
+        "packets": 0,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 0,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 1,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": true
+      },
+      {
+        "packets": null,
+        "ticks": 6,
+        "sourceCount": 1,
+        "heard": true
+      }
+    ]
+  },
+  {
+    "name": "expired-first-vote-cannot-join-a-later-increase",
+    "receivers": 1,
+    "steps": [
+      {
+        "packets": 1,
+        "ticks": 3,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 2,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 3,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": true
+      }
+    ]
+  },
+  {
+    "name": "short-zero-gap-preserves-document-latch",
+    "receivers": 1,
+    "steps": [
+      {
+        "packets": 1,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": false
+      },
+      {
+        "packets": 2,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": true
+      },
+      {
+        "close": true,
+        "ticks": 9,
+        "sourceCount": 0,
+        "heard": true
+      },
+      {
+        "handoff": true,
+        "ticks": 1,
+        "sourceCount": 1,
+        "heard": true
+      }
+    ]
+  }
+]

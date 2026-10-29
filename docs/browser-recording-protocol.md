@@ -3,7 +3,7 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `7f8c3e8`, accepts the reserved `othersSource.reason: restored`
+The current pin, `2bcd10d`, ships companion 0.2.2 and accepts the reserved `othersSource.reason: restored`
 for readers. GNOME reads its explicit source state without rewriting the file;
 writers still reject this reason and never switch back automatically.
 
@@ -39,6 +39,16 @@ notification and Quit stop all sessions. New calls join only with automatic
 recording enabled. A generation-bound application lease keeps automatic capture
 independent of window visibility and prevents a late handshake from undoing Quit.
 Legacy peers retain the original second-start refusal and v1 vectors.
+
+For companions advertising `call-evidence-v1`, automatic starts require both a
+positive receiver count and `heard: true`. The companion counts live audio
+receivers on connected peer connections, never microphone senders. Its per-page
+heard latch requires inbound audio RTP packet progress on two of the last three
+one-second ticks; connected pre-join receive slots alone do not qualify. Missing
+or malformed heard evidence fails closed. GNOME rechecks this rule for queued
+starts and before reserving a new automatic system fallback after a rejected
+browser Start. Manual Record, Record-all and legacy companion policy retain
+their existing behavior. This does not change when an existing recording ends.
 
 What is recorded changes only subsequent audio. Me, The others and Both release
 disabled native sources, finalise their WAVs and create fresh WAVs with offsets

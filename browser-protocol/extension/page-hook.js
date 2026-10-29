@@ -43,28 +43,81 @@
   }
   // Discovery is independent of capture: no AudioContext, cloned stream or PCM
   // is created until an explicit recording command arrives.
-  let lastSourceCount = -1;
-  function discover(force = false) {
-    const sources = new Set();
+  let lastSourceCount = -1, lastHeard = null, heard = false, zeroSince = null;
+  let previousStats = new WeakMap(), sampling = false;
+  const evidenceTicks = [];
+  function discoverySources() {
+    const sources = new Set(), receivers = new Set();
     for (const pc of peers) {
       if (pc.signalingState === "closed") { peers.delete(pc); continue; }
       if (pc.connectionState !== "connected" && !["connected", "completed"].includes(pc.iceConnectionState)) continue;
       for (const transceiver of pc.getTransceivers()) {
         const track = transceiver.receiver?.track;
-        if (["recvonly", "sendrecv"].includes(transceiver.currentDirection) && track?.kind === "audio" && track.readyState === "live") sources.add(track);
-      }
-      for (const sender of pc.getSenders()) {
-        const track = sender.track;
-        if (track?.kind === "audio" && track.readyState === "live") sources.add(track);
+        if (["recvonly", "sendrecv"].includes(transceiver.currentDirection) && track?.kind === "audio" && track.readyState === "live") {
+          sources.add(track);
+          receivers.add(transceiver.receiver);
+        }
       }
     }
-    const sourceCount = Math.min(64, sources.size);
-    if (force || sourceCount !== lastSourceCount) {
-      lastSourceCount = sourceCount;
-      window.postMessage({ channel: "cassini-page", type: "discovery", sourceCount }, "*");
-    }
+    return { sourceCount: Math.min(64, sources.size), receivers };
   }
-  setInterval(discover, 1000);
+  function discover(force = false) {
+    const { sourceCount } = discoverySources();
+    const now = performance.now();
+    if (sourceCount > 0) zeroSince = null;
+    else if (zeroSince === null) zeroSince = now;
+    else if (now - zeroSince >= 10000) {
+      heard = false;
+      evidenceTicks.length = 0;
+      previousStats = new WeakMap();
+    }
+    if (force || sourceCount !== lastSourceCount || heard !== lastHeard) {
+      lastSourceCount = sourceCount;
+      lastHeard = heard;
+      window.postMessage({ channel: "cassini-page", type: "discovery", sourceCount, heard }, "*");
+    }
+    return sourceCount;
+  }
+  // A forced snapshot is not a sampling tick. Only this one-second clock can
+  // establish evidence, and no audio/AudioContext is created for discovery.
+  async function sampleEvidence() {
+    const sourceCount = discover();
+    if (heard) return; // The document latch survives peer hand-offs and silence.
+    const tick = { at: performance.now(), increased: false };
+    evidenceTicks.push(tick);
+    if (evidenceTicks.length > 3) evidenceTicks.shift();
+    if (sampling || !sourceCount) return;
+    sampling = true;
+    try {
+      const { receivers } = discoverySources();
+      const reports = await Promise.all([...receivers].map(receiver => new Promise(resolve => {
+        // An unresponsive receiver cannot stall discovery or replay late proof.
+        const timer = setTimeout(() => resolve([receiver, null]), 750);
+        Promise.resolve().then(() => receiver.getStats()).then(
+          stats => { clearTimeout(timer); resolve([receiver, stats]); },
+          () => { clearTimeout(timer); resolve([receiver, null]); }
+        );
+      })));
+      if (!evidenceTicks.includes(tick) || performance.now() - tick.at >= 1000) return;
+      const current = discoverySources();
+      for (const [receiver, stats] of reports) {
+        if (!current.receivers.has(receiver) || typeof stats?.forEach !== "function") continue;
+        const previous = previousStats.get(receiver) || new Map();
+        const next = new Map();
+        stats.forEach(report => {
+          if (report?.type !== "inbound-rtp" || (report.kind ?? report.mediaType) !== "audio" ||
+              typeof report.id !== "string" || !Number.isSafeInteger(report.packetsReceived) || report.packetsReceived < 0) return;
+          const count = report.packetsReceived;
+          if (!previous.has(report.id) || count > previous.get(report.id)) tick.increased = true;
+          next.set(report.id, count);
+        });
+        previousStats.set(receiver, next);
+      }
+      if (current.sourceCount > 0 && evidenceTicks.filter(t => t.increased).length >= 2) heard = true;
+      discover();
+    } finally { sampling = false; }
+  }
+  setInterval(sampleEvidence, 1000);
   let active = null;
   const emit = (token, value) => window.postMessage({ channel: "cassini-page", token, ...value }, "*");
   window.addEventListener("message", async event => {
