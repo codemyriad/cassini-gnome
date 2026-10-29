@@ -33,7 +33,7 @@ function rpc(action='status', values={}) {
 const location = execFileSync('flatpak', ['info','--user','--show-location',application], {encoding:'utf8'}).trim();
 const extension = path.join(location,'files/share/cassini-viewer/browser-extension');
 const installed = inside("import json;from cassini_viewer import companion;assert companion.available();print(json.dumps([str(p) for p in companion.register()]))");
-assert.ok(installed.includes(path.join(config,'chromium/NativeMessagingHosts/com.codemyriad.cassini.json')));
+assert.ok(installed.includes(path.join(config,'chromium/NativeMessagingHosts/io.codemyriad.cassini.json')));
 const fixture = await readFile(path.join(root,'tests/recording/fixture.html'));
 const server = createServer((_q,res) => {res.setHeader('Content-Type','text/html');res.end(fixture);});
 await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));

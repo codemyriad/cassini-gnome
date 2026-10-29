@@ -7,7 +7,12 @@ import json
 import os
 import re
 import shutil
+import sys
 from pathlib import Path
+
+root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(root / "src" if (root / "src/cassini_viewer").is_dir() else root))
+from cassini_viewer.companion import cleanup_legacy_directory  # noqa: E402
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("extension_id")
@@ -52,11 +57,12 @@ def register(name, executable):
     print(destination)
 
 
-register("com.codemyriad.cassini", host)
+register("io.codemyriad.cassini", host)
 control = host.with_name("cassini-browser-control-host")
 if not control.is_file():
     control = Path(__file__).resolve().with_name("control_host.py")
 if control.is_file():
-    register("com.codemyriad.cassini.control", control)
+    register("io.codemyriad.cassini.control", control)
 else:
     print("Control host not installed; browser recordings can only be started from the popup")
+cleanup_legacy_directory(config / args.browser / "NativeMessagingHosts")

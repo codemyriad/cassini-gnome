@@ -23,7 +23,7 @@ common part lives here, so there is one copy of it instead of two drifting ones.
 * The extension streams that audio to a small local program through
   [Chrome native messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging)
   (length-prefixed JSON on stdin/stdout, nothing on the network). Each app ships its own
-  such program; both answer to the name `com.codemyriad.cassini`.
+  such program; both answer to the name `io.codemyriad.cassini`.
 * `SPEC.md` is the contract between the two: the messages, their types and limits, how
   timestamps and gaps are handled, and the on-disk result (a folder with one WAV per source
   and a `session.json`). `schemas/` holds the same thing as JSON Schema.
@@ -133,7 +133,7 @@ Either app runs the same adapter against its real host with
 output device and stays on DrMeyers rather than hosted macOS. The Mac loaded-extension and
 tab adapters also call `scenarios/worker-recovery.mjs`; GNOME adopts this adapter with its pin.
 
-App/browser management is a separate persistent host, `com.codemyriad.cassini.control`;
+App/browser management is a separate persistent host, `io.codemyriad.cassini.control`;
 see [SPEC-CONTROL.md](SPEC-CONTROL.md). Its desktop-free VM corpus is
 `node conformance/control/run-extension.cjs`; a real control-host test launcher can run
 `python3 conformance/control/run.py /absolute/host-launcher` against isolated test IPC.

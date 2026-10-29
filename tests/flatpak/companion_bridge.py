@@ -86,6 +86,27 @@ def worker(application, private, report):
     command.chmod(0o700)
     for name in ("chromium", "microsoft-edge", "brave-browser"):
         (command.parent / name).symlink_to(command.name)
+    # D27: exercise cleanup from the installed sandbox, against the host's
+    # private config. Matching origins alone must never delete another app.
+    legacy = private / "config/chromium/NativeMessagingHosts/com.codemyriad.cassini.json"
+    legacy.parent.mkdir(parents=True)
+    owned = json.dumps(dict(name=legacy.stem, path="/old/cassini-browser-host", allowed_origins=[]))
+    legacy.write_text(owned)
+    foreign = legacy.with_name("com.codemyriad.cassini.control.json")
+    foreign_bytes = json.dumps(
+        dict(
+            name=foreign.stem,
+            path="/foreign/other-host",
+            allowed_origins=["chrome-extension://pcafdaahfhjiolfpfnlhmljfgoabbaij/"],
+        )
+    ).encode()
+    foreign.write_bytes(foreign_bytes)
+    assert inside(
+        "import json;from cassini_viewer.companion import start_legacy_cleanup;"
+        "thread=start_legacy_cleanup();thread.join(10);print(json.dumps(not thread.is_alive()))"
+    )
+    assert not legacy.exists() and foreign.read_bytes() == foreign_bytes
+    legacy.write_text(owned)  # Connect must perform the same host-side cleanup.
     # Session-helper inherits this host PATH, not the sandbox's /app/bin PATH.
     # Activation happens only after these private executables are in place.
     info = inside(
@@ -97,6 +118,7 @@ def worker(application, private, report):
         "sandboxConfig=os.environ['XDG_CONFIG_HOME'])))"
     )
     assert info["browsers"] == ["Chrome", "Chromium", "Edge", "Brave"]
+    assert not legacy.exists() and foreign.read_bytes() == foreign_bytes
     assert info["sandboxConfig"] != os.environ["XDG_CONFIG_HOME"]
     until(lambda: (private / "add-url.txt").exists())
     assert (private / "add-url.txt").read_text().strip() == (
@@ -157,14 +179,14 @@ def worker(application, private, report):
         return process
 
     try:
-        control = launch("com.codemyriad.cassini.control")
+        control = launch("io.codemyriad.cassini.control")
         send(control, dict(type="hello", version=1, capabilities=["independent-sessions-v1"]))
         send(control, dict(type="status", recording=False, tabId=None))
         send(control, dict(type="meetings", meetings=[]))
         until(lambda: status()["connectedBrowsers"] == 1)
         directories, expected = [], {}
         for index, frequency in enumerate((880, 990)):
-            audio = launch("com.codemyriad.cassini")
+            audio = launch("io.codemyriad.cassini")
             send(
                 audio,
                 dict(

@@ -5,18 +5,17 @@ import math
 from dataclasses import dataclass
 
 
-def valid_event(event):
+def valid_event(event, *, allow_reserved=False):
     if not isinstance(event, dict):
         return False
     at = event.get("atMs")
     if type(at) not in (int, float) or not math.isfinite(at) or not 0 <= at <= 86400000:
         return False
     if event.get("type") == "othersSource":
-        return event.get("source") in ("browser", "system", "none") and event.get("reason") in (
-            "start",
-            "missing",
-            "lost",
-            "user",
+        return event.get("source") in ("browser", "system", "none") and (
+            event.get("reason") in ("start", "missing", "lost", "user")
+            or allow_reserved
+            and event.get("reason") == "restored"
         )
     if event.get("type") == "selection":
         return (
@@ -34,7 +33,7 @@ def read_events(value):
         return ()
     result, previous = [], 0
     for event in value[:1000]:
-        if valid_event(event) and event["atMs"] >= previous:
+        if valid_event(event, allow_reserved=True) and event["atMs"] >= previous:
             result.append(dict(event))
             previous = event["atMs"]
     return tuple(result)

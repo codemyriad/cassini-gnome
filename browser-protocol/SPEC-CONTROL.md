@@ -2,8 +2,8 @@
 
 This separate channel lets Cassini show and record meetings in the browser. It does not
 change the audio host, audio SPEC, or the 88 audio vectors. The extension maintains a
-persistent Native Messaging connection to **com.codemyriad.cassini.control**; PCM still
-uses **com.codemyriad.cassini**, one connection per recording. Either host may be missing
+persistent Native Messaging connection to **io.codemyriad.cassini.control**; PCM still
+uses **io.codemyriad.cassini**, one connection per recording. Either host may be missing
 without breaking the other. Losing control never stops or deletes a recording.
 
 ## Transport and trust

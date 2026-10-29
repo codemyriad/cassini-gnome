@@ -11,11 +11,15 @@ def test_development_profile_registers_both_hosts_for_loaded_extension(tmp_path)
     spec.loader.exec_module(module)
     profile = tmp_path / "profile"
     recordings = tmp_path / "recordings"
+    from test_host_migration import OLD, write_legacy
+
+    old = write_legacy(profile / "NativeMessagingHosts", command=OLD + ".py")
     identifier = module.prepare(root, profile, recordings)
+    assert not old.exists()
     assert identifier == "pcafdaahfhjiolfpfnlhmljfgoabbaij"
     for name, module_name in [
-        ("com.codemyriad.cassini", "browser_host"),
-        ("com.codemyriad.cassini.control", "browser_control_host"),
+        ("io.codemyriad.cassini", "browser_host"),
+        ("io.codemyriad.cassini.control", "browser_control_host"),
     ]:
         manifest = json.loads((profile / "NativeMessagingHosts" / f"{name}.json").read_text())
         assert manifest["name"] == name

@@ -39,8 +39,8 @@ const meetings=[];
 try {
   const hosts=path.join(profile,'NativeMessagingHosts');await mkdir(hosts);
   for(const [name,fixture,configured] of [
-    ['com.codemyriad.cassini','browser_host_fixture.py',process.env.CASSINI_NATIVE_HOST],
-    ['com.codemyriad.cassini.control','control_host_fixture.py',process.env.CASSINI_CONTROL_NATIVE_HOST],
+    ['io.codemyriad.cassini','browser_host_fixture.py',process.env.CASSINI_NATIVE_HOST],
+    ['io.codemyriad.cassini.control','control_host_fixture.py',process.env.CASSINI_CONTROL_NATIVE_HOST],
   ]){
     const host=path.join(temporary,name+'.py');
     const source=path.join(root,'tests',fixture);
