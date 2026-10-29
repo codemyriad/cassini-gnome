@@ -57,6 +57,7 @@ container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:r
   test -x /usr/bin/cassini-viewer
   cassini-viewer --help >/dev/null   # runs the installed launcher headless
   python3 -I /in/build-aux/smoke-installed.py
+  python3 -I /in/build-aux/ci/validate_installed.py "$1"
 
   cp "$pkg" /out/
   chown "$(stat -c %u:%g /out)" "/out/${pkg##*/}" 2>/dev/null || true

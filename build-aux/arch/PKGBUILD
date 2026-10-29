@@ -10,7 +10,7 @@
 #   _srcdir=cassini-gnome-$pkgver      # GitHub names the top directory after the repo
 
 pkgname=cassini-viewer
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc='Record meetings and read along with their transcripts in the Cassini portable meeting format'
 # The offline writing-down engine is a pinned glibc x86_64 binary.

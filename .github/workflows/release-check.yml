@@ -1,0 +1,77 @@
+name: Release preparation
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - meson.build
+      - NEWS
+      - data/**
+      - debian/**
+      - build-aux/arch/**
+      - build-aux/rpm/**
+      - build-aux/deb/**
+      - build-aux/flatpak/**
+      - build-aux/ci/release_metadata.py
+      - build-aux/ci/validate_installed.py
+      - tests/test_ci_release.py
+      - .github/workflows/release*.yml
+
+permissions:
+  contents: read
+
+jobs:
+  metadata:
+    name: Version and release metadata
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check every package version and the proposed tag name without creating it
+        run: |
+          version=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -n1)
+          python3 build-aux/ci/release_metadata.py --tag "v$version" --report release-metadata.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata
+          path: release-metadata.json
+          if-no-files-found: error
+
+  flatpak:
+    name: Stable Flatpak build, install and validation
+    needs: metadata
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'release/')
+    runs-on: ubuntu-26.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v5
+      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
+        with:
+          bundle: cassini-viewer.flatpak
+          manifest-path: build-aux/flatpak/com.gocassini.Viewer.json
+          cache-key: flatpak-builder-${{ github.sha }}
+      - name: Validate exported metadata and launcher in the SDK
+        run: |
+          version=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -n1)
+          flatpak build --unshare=network --filesystem="$PWD:ro" flatpak_app \
+            python3 "$PWD/build-aux/ci/validate_installed.py" "$version" --prefix /app
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/parakeet-models
+          key: parakeet-ultra-18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
+      - name: Install stable bundle and run the existing offline smoke checks
+        env:
+          CASSINI_PARAKEET_TEST_CACHE: ${{ runner.temp }}/parakeet-models
+        run: build-aux/flatpak/smoke.sh cassini-viewer.flatpak com.gocassini.Viewer
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-flatpak-evidence
+          path: |
+            flatpak-companion-bridge.json
+            flatpak-library-persistence.json
+            flatpak-*-host.log
+            flatpak-sandbox.log
+          retention-days: 7

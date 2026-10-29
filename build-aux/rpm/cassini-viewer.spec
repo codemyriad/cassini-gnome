@@ -2,7 +2,7 @@
 # which makes the source tarball from the working tree and puts Source1-5
 # (from .whistle-cache) next to it.
 Name:           cassini-viewer
-Version:        0.2.0
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Record meetings and read along with their transcripts
 License:        GPL-3.0-or-later AND Apache-2.0 AND MIT
@@ -221,6 +221,11 @@ python3 sherpa/fetch.py --cache .sherpa-cache --verify %{buildroot}%{_libdir}/%{
 %{_mandir}/man1/%{name}.1*
 
 %changelog
+* Thu Oct 29 2026 Silvio Tomatis <silviot@gmail.com> - 0.3.0-1
+- Add the meeting Library, independent browser capture and Flatpak companion.
+- Bundle writing down; offer Parakeet Ultra, speaker separation and saved voices.
+- Preserve native input gaps without accumulating device-clock drift.
+
 * Tue Oct 27 2026 Silvio Tomatis <silviot@gmail.com> - 0.2.0-1
 - Record meetings: microphone and desktop audio, and browser meetings
   per source through the companion extension and its native hosts.

@@ -16,6 +16,8 @@ jobs:
       run_id: ${{ steps.main.outputs.run_id }}
     steps:
       - uses: actions/checkout@v5
+      - name: Require the tag to match every source and package version
+        run: python3 build-aux/ci/release_metadata.py --tag "$GITHUB_REF_NAME"
       - name: Require all main checks and the five package artifacts
         id: main
         env:
@@ -66,21 +68,7 @@ jobs:
 
   flatpak:
     needs: main-inputs
-    runs-on: ubuntu-26.04
-    container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
-      options: --privileged
-    steps:
-      - uses: actions/checkout@v5
-      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
-        with:
-          bundle: cassini-viewer.flatpak
-          manifest-path: build-aux/flatpak/com.gocassini.Viewer.json
-          cache-key: flatpak-builder-${{ github.sha }}
-      # The same offline check as the other packages: install the bundle and
-      # write the D11 goldens down in a sandbox with --unshare=network.
-      - name: Smoke-test the installed Flatpak offline
-        run: build-aux/flatpak/smoke.sh cassini-viewer.flatpak com.gocassini.Viewer
+    uses: ./.github/workflows/release-check.yml
 
   publish:
     needs: [deb, packages, flatpak]

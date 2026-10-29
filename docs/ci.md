@@ -62,6 +62,21 @@ a failed run or a partial/expired artifact set cannot supply a release. The
 release Flatpak is a separate default-profile build; main tests development.
 No tag or publication is created to validate this wiring.
 
+`release-check.yml` validates the version across Meson, NEWS, metainfo, the man
+page and all native recipes. Release branches also build the stable Flatpak,
+validate its exported desktop/AppStream files and launcher version in the SDK,
+then install it and run the normal offline smoke checks. The tag workflow calls
+this same workflow, and rejects a tag that disagrees with any package version.
+Native package scripts validate the installed metadata and launcher after the
+package-manager install, in addition to their unchanged clean-container offline
+smoke tests. No validator error is suppressed.
+
+The draft `release/0.3.0` PR uses the coordinator-approved provisional metainfo
+date `2026-10-29`. The coordinator confirms the version and updates the date in
+that PR before tagging. Keep it a draft until then; running the version/tag-name
+check does not create a tag or publish a release. Review fixes for #76–#85 also
+land before the release is finalised.
+
 ## Measurements and validation
 
 `python3 build-aux/ci/measure_ci.py FULL_SHA --output report.json` records latest

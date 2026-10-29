@@ -1,11 +1,22 @@
-Unreleased
-~~~~~~~~~~
+Version 0.3.0
+~~~~~~~~~~~~~
+Not released yet. Version and release date await confirmation.
 
-- Write meetings down offline from the first launch: every package (Debian,
-  Ubuntu, Fedora, openSUSE, Arch Linux, Flatpak) bundles the pinned Whistle
-  engine and Silero VAD and uses NumPy and ONNX Runtime; nothing is downloaded
-- The packages are now x86_64 only (amd64 .debs, one per base); elsewhere,
-  and on Alpine, the app hides Write it down and logs why
+- Keep recordings and received meetings in the Library, play their transcripts,
+  search across meetings, and import or export audio and transcripts
+- Record browser meetings independently, with a microphone choice for each one;
+  optionally record meetings automatically while the window is closed
+- Choose What is recorded during a meeting; keep recording this computer's sound
+  if the browser connection is lost
+- Set up the browser companion from Cassini, including in the Flatpak
+- Write meetings down locally with bundled Whistle, or download the optional
+  Parakeet Ultra model; the packages include both engines on x86_64
+- Tell speakers apart with an optional model, name or clear their names, merge
+  speakers and undo merges
+- Remember saved voices locally, recognise them in new meetings, play samples,
+  and forget individual voices or everyone
+- Keep audio aligned when an input is interrupted, without adding silence for
+  gradual device-clock drift
 
 Version 0.2.0
 ~~~~~~~~~~~~~

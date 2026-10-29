@@ -76,6 +76,7 @@ for info in pins[\"onnxruntime\"][\"wheels\"].values():
   test -x /usr/bin/cassini-viewer
   head -n1 /usr/bin/cassini-viewer | grep -qx "#!/usr/bin/python3"
   python3 -I /in/build-aux/smoke-installed.py
+  python3 -I /in/build-aux/ci/validate_installed.py "$VERSION"
 
   cp $top/RPMS/x86_64/*.rpm $top/SRPMS/*.rpm /out/
   chown "$(stat -c %u:%g /out)" /out/*.rpm 2>/dev/null || true
