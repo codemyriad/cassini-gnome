@@ -109,7 +109,7 @@ def _json(fd, filename, notes, *, optional=False):
     return {}
 
 
-def _method(tracks, session):
+def _method(tracks, session, capture_source):
     kinds = {t.kind for t in tracks}
     if kinds <= {"microphone", "local"}:
         return "Microphone", ", ".join(
@@ -119,7 +119,8 @@ def _method(tracks, session):
             )
         ) or "Microphone input"
     sources = []
-    browser = [t for t in tracks if t.kind in ("remote", "tab", "media")]
+    browser_media = capture_source in ("chromium", "chrome", "firefox", "browser", "browser-host", "safari")
+    browser = [t for t in tracks if t.kind in ("remote", "tab") or t.kind == "media" and browser_media]
     if browser:
         count = len({t.source_track_id or t.id for t in browser})
         sources.append("Browser audio")
@@ -209,7 +210,7 @@ def timeline(meeting, session):
             off = bool(selections) and not selections[-1]["me" if side == "Me" else "others"]
             reason = ""
             if active:
-                source, method = _method(active, raw)
+                source, method = _method(active, raw, meeting.capture_source)
                 if side == "The others":
                     changes = [e for e in preceding if e["type"] == "othersSource"]
                     if changes:
@@ -240,7 +241,7 @@ def timeline(meeting, session):
             rows.append(span)
         for track in candidates:
             if track.start_offset_ms is None:
-                source, method = _method([track], raw)
+                source, method = _method([track], raw, meeting.capture_source)
                 rows.append(Span(side, source, method, None, None))
         spans.extend(rows)
     return tuple(spans)
@@ -287,10 +288,11 @@ def _offset(fd, meeting):
                     continue
                 stream.seek(44)
                 length = min(remaining, rate * channels * 2, frames * channels * 2)
-                values = array.array("h", stream.read(length - length % 2))
+                data = stream.read(length - length % 2)
+                remaining -= len(data)
+                values = array.array("h", data[: len(data) - len(data) % 2])
                 if sys.byteorder != "little":
                     values.byteswap()
-                remaining -= len(values) * 2
                 total += sum(values)
                 count += len(values)
         except (OSError, ValueError):

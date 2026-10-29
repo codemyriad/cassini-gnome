@@ -6,7 +6,8 @@ until Silvio approves the design and the coordinator publishes `details.*` copy.
 
 The timeline uses saved track offsets and lengths, split at source/selection events.
 Browser stream counts count audio sources, never participants. Unknown offsets
-have no displayed time range. Missing source-change events are explicitly noted;
+have no displayed time range. Missing source-change events are explicitly noted.
+Recovered media without browser provenance is not labelled as browser audio;
 track evidence does not establish why a source changed. In particular, today's
 `lost` event cannot distinguish reload, closed tab, crash or a connection problem.
 The meeting service/device name is shown only if it is actually recorded; a title
