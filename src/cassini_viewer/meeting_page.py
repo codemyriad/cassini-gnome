@@ -341,16 +341,17 @@ class MeetingPage(Adw.NavigationPage):
                 if speaker.provenance == "source"
                 else text("meeting.speakerCaption." + caption)
             )
-            row.append(
-                label(
-                    caption_text,
-                    "small",
-                    "dim-label",
-                    xalign=0,
-                    wrap=True,
-                    margin_start=18,
+            if speaker.provenance != "recognised" or speaker.id in matches:
+                row.append(
+                    label(
+                        caption_text,
+                        "small",
+                        "dim-label",
+                        xalign=0,
+                        wrap=True,
+                        margin_start=18,
+                    )
                 )
-            )
             if meeting.metadata_editable:
                 edit = Gtk.Button(child=row, css_classes=["flat", "speaker-edit"])
                 edit.update_property(

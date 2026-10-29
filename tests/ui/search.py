@@ -25,6 +25,7 @@ Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD
 from cassini_viewer.folder_player import FolderPlayer  # noqa: E402
 from cassini_viewer.library_window import LibraryWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
+from cassini_viewer.meeting_store import read_metadata, update_metadata  # noqa: E402
 from cassini_viewer.player import Player  # noqa: E402
 
 
@@ -98,6 +99,37 @@ with tempfile.TemporaryDirectory() as temporary:
     assert "Any speaker" in labels(page.speaker_button.get_popover())
     assert [s for s in labels(page.date_button.get_popover())] == ["Any date", "Today", "Past 7 days", "Past 30 days"]
     assert all(not s.startswith("Speaker ") for s in page.names)
+
+    # Search badges belong to the hit's meeting, independently of Library selection.
+    target = next(m for m in page._meetings.values() if m.title == "Budget review")
+    window.selected = next(m for m in window.snapshot.meetings if m.key != target.key)
+
+    def remember_target():
+        speakers = read_metadata(target.directory)["speakers"]
+        next(s for s in speakers if s["id"] == "marta")["provenance"] = "recognised"
+        update_metadata(target.directory, speakers=speakers)
+        store = app.voice_store
+        store.refresh()
+        store.commit_job(target.directory, {"marta": dict(embedding=[1.0] + [0.0] * 511, seconds=8)}, 0)
+        store.remember(target.directory, "marta", "Marta")
+        return store.snapshot()["voices"][0]["id"]
+
+    future = window.monitor._executor.submit(remember_target)
+    until(future.done)
+    voice_id = future.result()
+    until(
+        lambda: (
+            not page.pending
+            and next(s for s in page._meetings[target.key].speakers if s.id == "marta").provenance == "recognised"
+        )
+    )
+    page.selection.set_selected(next(i for i, h in enumerate(page.hits) if h.key == target.key))
+    until(lambda: "auto" in labels(page.context))
+    future = window.monitor._executor.submit(app.voice_store.forget, voice_id)
+    until(future.done)
+    future.result()
+    until(lambda: not page.pending and "auto" not in labels(page.context))
+    assert next(s for s in page._meetings[target.key].speakers if s.id == "marta").name == "Marta"
 
     # Exercise actual native popover choices, not only public setter helpers.
     def find_today(widget):

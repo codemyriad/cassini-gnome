@@ -295,9 +295,13 @@ class SpeakersDialog(Adw.Dialog):
         self.duplicate.set_visible(self.candidate is not None)
         if self.candidate:
             self.duplicate_title.set_label(text("speakers.duplicate.title", name=self.candidate["name"]))
-        self.save.set_sensitive(not self.busy and (valid and self.candidate is None or self.retry is not None))
+        self.save.set_sensitive(
+            self.voices_loaded and not self.busy and (valid and self.candidate is None or self.retry is not None)
+        )
 
     def _save(self, *_):
+        if not self.voices_loaded or self.closed or self.busy:
+            return
         if self.retry is not None:
             operation = self.retry
         else:

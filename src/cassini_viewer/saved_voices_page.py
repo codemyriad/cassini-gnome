@@ -225,12 +225,16 @@ class SavedVoicesPage(Adw.NavigationPage):
                 if not FolderPlayer.can_play(meeting):
                     return
                 self.player = FolderPlayer()
-                self.player.load_tracks(meeting.tracks, meeting.duration_ms)
             else:
                 self.player = Player()
-                self.player.load(meeting.audio_file.as_uri(), meeting.duration_ms)
-            self.player.connect("error", lambda *_: self._stop_sample())
-            self._sample_pending = start, end
+            player = self.player
+            player.connect("error", lambda *_: self._stop_sample())
+            if meeting.origin == "own":
+                player.load_tracks(meeting.tracks, meeting.duration_ms)
+            else:
+                player.load(meeting.audio_file.as_uri(), meeting.duration_ms)
+            if self.player is player:
+                self._sample_pending = start, end
         except (OSError, ValueError, RuntimeError):
             LOG.exception("Saved voice sample unavailable")
             self._stop_sample()
@@ -243,7 +247,10 @@ class SavedVoicesPage(Adw.NavigationPage):
         if self.player is not None and self._sample_pending and self.player._prerolled:
             start, end = self._sample_pending
             self._sample_pending = None
-            self.player.play_range(start, end)
+            if not self.player.play_range(start, end):
+                self._stop_sample()
+        if self.player is not None and self._sample_pending is None and not self.player.playing:
+            self._stop_sample()
         return GLib.SOURCE_CONTINUE
 
     def _stop_sample(self):
