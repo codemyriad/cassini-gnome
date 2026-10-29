@@ -91,6 +91,7 @@ class MeetingPage(Adw.NavigationPage):
         header.set_title_widget(self.headline)
         self.export_button = Gtk.Button(label=text("common.exportEllipsis"), action_name="win.export")
         menu = self.more_menu = Gio.Menu()
+        menu.append("Recording details…", "win.recording-details")
         menu.append(text("common.exportEllipsis"), "win.export")
         more = Gtk.MenuButton(
             icon_name="view-more-symbolic",
@@ -302,6 +303,7 @@ class MeetingPage(Adw.NavigationPage):
         undo = bool(meeting.metadata_editable and meeting.metadata.get("speakerMerges"))
         self.window.lookup_action("undo-speaker-merge").set_enabled(undo and self._speaker_future is None)
         self.more_menu.remove_all()
+        self.more_menu.append("Recording details…", "win.recording-details")
         self.more_menu.append(text("common.exportEllipsis"), "win.export")
         if undo:
             self.more_menu.append(text("meeting.undoMerge"), "win.undo-speaker-merge")
