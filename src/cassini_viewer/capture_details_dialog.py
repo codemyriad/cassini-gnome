@@ -144,15 +144,15 @@ class RecordingDetailsDialog(Adw.Dialog):
         self.body.append(captured)
         for note in report.notes:
             self.body.append(label(note, "small", "dim-label"))
-        facts = Gtk.Box(spacing=24, homogeneous=True)
+        facts = Gtk.Grid(column_spacing=24, column_homogeneous=True)
         left = column(14)
         ended = column(4)
         ended.append(label("How it ended", "heading"))
         ended.append(label(report.ended, "dim-label" if report.ended == UNKNOWN else "body"))
         left.append(ended)
         left.append(self._facts("Audio health", report.health))
-        facts.append(left)
-        facts.append(self._facts("Writing down", report.writing))
+        facts.attach(left, 0, 0, 1, 1)
+        facts.attach(self._facts("Writing down", report.writing), 1, 0, 1, 1)
         self.body.append(facts)
         if first:
             self.copy_button.grab_focus()
