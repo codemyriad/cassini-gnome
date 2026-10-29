@@ -45,14 +45,11 @@ if [ -f "$1" ] && [ ! -L "$1" ] && [ -r "$1" ]; then
 fi
 """
 DELETE_LEGACY = """set -eu
-umask 077
 destination=$1
 [ -f "$destination" ] && [ ! -L "$destination" ] || exit 0
-temporary=$(mktemp "${TMPDIR:-/tmp}/cassini-cleanup-XXXXXXXX")
-trap 'rm -f -- "$temporary"' 0
-trap 'exit 1' HUP INT TERM
-cat > "$temporary"
-if [ ! -L "$destination" ] && cmp -s -- "$destination" "$temporary"; then
+expected=$(base64)
+current=$(head -c 65537 -- "$destination" | base64)
+if [ ! -L "$destination" ] && [ "$expected" = "$current" ]; then
     rm -f -- "$destination"
     printf 'removed\\n'
 fi
