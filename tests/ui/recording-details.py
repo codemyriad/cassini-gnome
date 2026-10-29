@@ -4,6 +4,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,49 @@ from unittest.mock import patch
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Use build-aux/ux-screenshot.sh")
+# Preserve all stderr, but fail only on Gtk diagnostics in a dialog-open scope.
+# A parent process observes C/structured GTK logging as well as Python output.
+SCOPE_BEGIN, SCOPE_END = "CASSINI_DETAILS_OPEN", "CASSINI_DETAILS_CLOSED"
+if os.environ.get("CASSINI_DETAILS_TEST_CHILD") != "1":
+    result = subprocess.run(
+        [sys.executable, __file__],
+        env=dict(os.environ, CASSINI_DETAILS_TEST_CHILD="1"),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    opened, scopes, warnings = 0, 0, []
+    for line in result.stderr.splitlines():
+        if line == SCOPE_BEGIN:
+            opened += 1
+            scopes += 1
+        elif line == SCOPE_END:
+            opened -= 1
+        elif opened and re.search(r"Gtk-(?:WARNING|CRITICAL)\b", line):
+            warnings.append(line)
+    if result.returncode:
+        raise SystemExit(result.returncode)
+    if warnings:
+        raise SystemExit("Gtk warning/critical while Recording details was open:\n" + "\n".join(warnings))
+    assert opened == 0, "Unbalanced dialog warning scope"
+    target = Path(os.environ["CASSINI_SCREENSHOT_OUT"]).with_name("recording-details-checks.json")
+    checks = json.loads(target.read_text())
+    checks.update(warningScopes=scopes, gtkDiagnostics=[])
+    target.write_text(json.dumps(checks, indent=2) + "\n")
+    print(f"PASS Gtk warning/critical guard: no diagnostics during {scopes} dialog-open scopes")
+    raise SystemExit(0)
+
+
+def begin_details():
+    print(SCOPE_BEGIN, file=sys.stderr, flush=True)
+
+
+def end_details():
+    print(SCOPE_END, file=sys.stderr, flush=True)
+
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tests"))
@@ -22,7 +66,7 @@ import gi  # noqa: E402
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from details_fixture import build_library, write_json  # noqa: E402
+from details_fixture import build_library, build_many_spans, write_json  # noqa: E402
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
@@ -54,6 +98,42 @@ def shot(window, name):
     assert (texture.get_width(), texture.get_height()) == (1120, 720)
     target = Path(os.environ["CASSINI_SCREENSHOT_OUT"]).with_name(f"recording-details-{name}.png")
     assert texture.save_to_png(str(target))
+
+
+refresh_checks = []
+
+
+def check_stable_refreshes(dialog, *, changing):
+    first, bindings, report = dialog.body.get_first_child(), dict(dialog._bindings), dialog.report
+    value = bindings[("writing", 0)]
+    value.grab_focus()
+    until(lambda: dialog.window.get_focus() == value)
+    adjustment = dialog.scroller.get_vadjustment()
+    adjustment.set_value(max(0, adjustment.get_upper() - adjustment.get_page_size()))
+    position = adjustment.get_value()
+    with patch.object(dialog, "_loaded", wraps=dialog._loaded) as loaded:
+        until(lambda: loaded.call_count >= 3 and not dialog.busy)
+        reports = [call.args[1] for call in loaded.call_args_list]
+    assert all(r is not None for r in reports)
+    if changing:
+        assert any(r != report for r in reports), "Real recording did not advance"
+    else:
+        assert all(r == report for r in reports), "Saved report changed without a file change"
+    assert dialog.body.get_first_child() == first
+    assert dialog._bindings == bindings
+    assert dialog.window.get_focus() == value
+    assert abs(adjustment.get_value() - position) < 1
+    refresh_checks.append(
+        dict(
+            live=changing,
+            refreshes=len(reports),
+            changed=any(r != report for r in reports),
+            bodyRebuilds=0,
+            bindingsReused=True,
+            focusPreserved=True,
+            scrollDelta=adjustment.get_value() - position,
+        )
+    )
 
 
 with tempfile.TemporaryDirectory() as temporary:
@@ -96,6 +176,7 @@ with tempfile.TemporaryDirectory() as temporary:
         meeting = next(m for m in window.snapshot.meetings if m.directory == paths[key])
         window.open_meeting(meeting)
         window._update_live()
+        begin_details()
         if key == "fallback":
             assert window.recording_page
             window.recording_page.details_button.emit("clicked")
@@ -150,6 +231,7 @@ with tempfile.TemporaryDirectory() as temporary:
         dialog.close()
         until(lambda dialog=dialog: dialog.closed)
         assert not dialog.timer
+        end_details()
         window.back_to_library()
     # An opened folder may share a UUID/basename with a Library copy. Details
     # must stay bound to the actual external folder when the Library refreshes.
@@ -161,6 +243,7 @@ with tempfile.TemporaryDirectory() as temporary:
     external = LibraryScanner(outside.parent).scan().meetings[0]
     assert external.key in {m.key for m in window.snapshot.meetings}
     window.open_meeting(external, external=True)
+    begin_details()
     window.show_recording_details()
     dialog = window.recording_details_dialog
     until(lambda: dialog.report is not None)
@@ -171,7 +254,47 @@ with tempfile.TemporaryDirectory() as temporary:
     assert dialog._current().directory == outside
     dialog.close()
     until(lambda: dialog.closed)
+    end_details()
     window.back_to_library()
+    many = build_many_spans(private / "Library", paths["microphone"])
+    window.monitor.refresh_now()
+    until(lambda: any(m.directory == many for m in window.snapshot.meetings))
+    meeting = next(m for m in window.snapshot.meetings if m.directory == many)
+    window.open_meeting(meeting)
+    begin_details()
+    window.show_recording_details()
+    dialog = window.recording_details_dialog
+    until(lambda: dialog.report is not None)
+    assert len(dialog.report.spans) >= 40
+    check_stable_refreshes(dialog, changing=False)
+    shot(window, "many-spans")
+    dialog.close()
+    until(lambda: dialog.closed)
+    end_details()
+    window.back_to_library()
+
+    # Real appsink/WAV recording, generated sources only; never host devices.
+    app.transcription_enabled = False
+    app.start_native(test=True)
+    native = app.recorder
+    until(lambda: native.session is not None and sum(w.frames for w in native.session.writers.values()) > 96000)
+    directory = native.session.directory
+    until(lambda: any(m.directory == directory and m.lifecycle == "recording" for m in window.snapshot.meetings))
+    meeting = next(m for m in window.snapshot.meetings if m.directory == directory)
+    window.open_meeting(meeting)
+    begin_details()
+    window.show_recording_details()
+    dialog = window.recording_details_dialog
+    until(lambda: dialog.report is not None and dialog.report.live)
+    check_stable_refreshes(dialog, changing=True)
+    shot(window, "live-generated")
+    dialog.close()
+    until(lambda: dialog.closed)
+    end_details()
+    app.stop_native()
+    until(lambda: native.pipeline is None and not native._finishing)
+    window.back_to_library()
+
     # Closing during a slow read must not retain a timer, touch closed widgets,
     # block GTK or take an application hold.
     from cassini_viewer import capture_details_dialog
@@ -185,6 +308,7 @@ with tempfile.TemporaryDirectory() as temporary:
         return original(meeting)
 
     with patch.object(capture_details_dialog, "read_details", blocked), patch.object(app, "hold") as hold:
+        begin_details()
         window.show_recording_details()
         dialog = window.recording_details_dialog
         until(entered.is_set)
@@ -193,7 +317,10 @@ with tempfile.TemporaryDirectory() as temporary:
         assert dialog.timer == 0 and dialog.report is None
         assert not hold.called
         release.set()
+        end_details()
     window.monitor.close()
     window.destroy()
     app.quit()
-print("PASS D28 menu/link, real read-only fixtures, live refresh, clipboard and 3x1120x720 screenshots")
+target = Path(os.environ["CASSINI_SCREENSHOT_OUT"]).with_name("recording-details-checks.json")
+target.write_text(json.dumps(dict(refreshes=refresh_checks), indent=2) + "\n")
+print("PASS Details: menu/link, read-only facts, many spans, live capture, stable refresh/focus/scroll and screenshots")

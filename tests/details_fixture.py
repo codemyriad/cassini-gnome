@@ -131,3 +131,60 @@ def build_library(root):
         )
         meetings[key] = folder
     return meetings
+
+
+def build_many_spans(root, template):
+    """Forty source changes: long timelines and a real scrollable facts area."""
+    import wave
+
+    identifier = "d2800000-0000-4000-8000-000000000004"
+    folder = Path(root) / ("Recording-" + identifier)
+    folder.mkdir()
+    session = dict(
+        version=1,
+        id=identifier,
+        title="Many source changes",
+        source="gnome",
+        state="completed",
+        createdAt="2026-10-29T09:00:00Z",
+        tracks=[],
+        events=[],
+    )
+    for index in range(20):
+        for kind in ("microphone", "system"):
+            start = index * 2000 + (1000 if kind == "system" else 0)
+            track = f"{kind}-{index}"
+            filename = f"track-{track}.wav"
+            with wave.open(str(folder / filename), "wb") as audio:
+                audio.setnchannels(1)
+                audio.setsampwidth(2)
+                audio.setframerate(8000)
+                audio.writeframes(bytes(16000))
+            session["tracks"].append(
+                dict(
+                    id=track,
+                    file=filename,
+                    kind=kind,
+                    label="Generated input",
+                    labelSource="device",
+                    sampleRate=8000,
+                    channels=1,
+                    frames=8000,
+                    startOffsetMs=start,
+                    endOffsetMs=start + 1000,
+                    ended=True,
+                    gapFrames=0,
+                    droppedFrames=0,
+                )
+            )
+        session["events"].extend(
+            [
+                dict(type="selection", atMs=index * 2000, me=True, others=False, reason="user"),
+                dict(type="selection", atMs=index * 2000 + 1000, me=False, others=True, reason="user"),
+            ]
+        )
+    metadata = json.loads((template / "meeting.json").read_text())
+    metadata.update(id=identifier, title=session["title"], transcript=None)
+    write_json(folder / "session.json", session)
+    write_json(folder / "meeting.json", metadata)
+    return folder

@@ -26,6 +26,9 @@ class RecordingDetailsDialog(Adw.Dialog):
         self.external = window._external_meeting
         self.closed = self.busy = False
         self.report = None
+        self._last_error = None
+        self._shape = None
+        self._bindings = {}
         toolbar = Adw.ToolbarView()
         self.set_child(toolbar)
         header = Adw.HeaderBar()
@@ -34,7 +37,8 @@ class RecordingDetailsDialog(Adw.Dialog):
         toolbar.add_top_bar(header)
         self.body = column(18, margin_start=24, margin_end=24, margin_top=12, margin_bottom=18)
         self.body.append(label("Reading recording details…", "dim-label"))
-        toolbar.set_content(Gtk.ScrolledWindow(child=self.body, hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True))
+        self.scroller = Gtk.ScrolledWindow(child=self.body, hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
+        toolbar.set_content(self.scroller)
         footer = column(8, margin_start=24, margin_end=24, margin_top=12, margin_bottom=18)
         footer.append(label("Files", "heading"))
         row = Gtk.Box(spacing=10)
@@ -90,6 +94,34 @@ class RecordingDetailsDialog(Adw.Dialog):
         threading.Thread(target=load, name="cassini-recording-details", daemon=True).start()
         return True
 
+    @staticmethod
+    def _presentation(report):
+        values = {("ended",): report.ended}
+        counts = []
+        for side in ("Me", "The others"):
+            spans = [span for span in report.spans if span.side == side]
+            counts.append((min(20, len(spans)), len(spans) > 20))
+            for index, span in enumerate(spans[:20]):
+                for name in ("source", "time", "method", "reason"):
+                    values[("span", side, index, name)] = getattr(span, name)
+        for index, note in enumerate(report.notes):
+            values[("note", index)] = note
+        for group, rows in (("health", report.health), ("writing", report.writing)):
+            for index, (_name, value) in enumerate(rows):
+                values[(group, index)] = value
+        shape = (
+            tuple(counts),
+            len(report.notes),
+            tuple(k for k, _ in report.health),
+            tuple(k for k, _ in report.writing),
+        )
+        return shape, values
+
+    def _bound(self, key, value, *classes, **kwargs):
+        widget = label(value, *classes, **kwargs)
+        self._bindings[key] = widget
+        return widget
+
     def _loaded(self, directory, report, error):
         self.busy = False
         if self.closed:
@@ -97,25 +129,53 @@ class RecordingDetailsDialog(Adw.Dialog):
         if directory != self._current().directory:
             self.refresh()
             return False
-        if report == self.report and error is None:
+        if report == self.report and error == self._last_error:
             return False
         first = self.report is None
-        self.report = report
-        while self.body.get_first_child():
-            self.body.remove(self.body.get_first_child())
+        self.report, self._last_error = report, error
         self.copy_button.set_sensitive(report is not None)
         self.open_button.set_sensitive(report is not None)
         if error:
+            self._shape = None
+            self._bindings.clear()
+            while self.body.get_first_child():
+                self.body.remove(self.body.get_first_child())
             self.body.append(label(error, "dim-label"))
             return False
-        self.heading.set_subtitle(report.title + (" · Live" if report.live else ""))
-        self.folder.set_label(report.folder)
-        self.folder.set_tooltip_text(report.folder)
+        shape, values = self._presentation(report)
+        if shape != self._shape:
+            self._shape = shape
+            self._bindings.clear()
+            self._build_body(report)
+        # Normal recording ticks only change values. Keep the widgets, focus,
+        # selection and scroll position instead of rebuilding the whole body.
+        for key, widget in self._bindings.items():
+            value = values[key]
+            if widget.get_label() != value:
+                widget.set_label(value)
+            if key[0] == "span" and key[-1] == "reason":
+                widget.set_visible(bool(value))
+            if key[0] in ("ended", "health", "writing"):
+                (widget.add_css_class if value == UNKNOWN else widget.remove_css_class)("dim-label")
+        subtitle = report.title + (" · Live" if report.live else "")
+        if self.heading.get_subtitle() != subtitle:
+            self.heading.set_subtitle(subtitle)
+        if self.folder.get_label() != report.folder:
+            self.folder.set_label(report.folder)
+            self.folder.set_tooltip_text(report.folder)
+        self.live_hint.set_visible(report.live)
+        if first:
+            self.copy_button.grab_focus()
+        return False
+
+    def _build_body(self, report):
+        while self.body.get_first_child():
+            self.body.remove(self.body.get_first_child())
         captured = column(10)
         caption = Gtk.Box(spacing=12)
         caption.append(label("How it was captured", "title-3", hexpand=True))
-        if report.live:
-            caption.append(label("Updates while recording", "small", "dim-label"))
+        self.live_hint = label("Updates while recording", "small", "dim-label")
+        caption.append(self.live_hint)
         captured.append(caption)
         sides = Gtk.Box(spacing=14, homogeneous=True)
         for side in ("Me", "The others"):
@@ -124,17 +184,24 @@ class RecordingDetailsDialog(Adw.Dialog):
             spans = [span for span in report.spans if span.side == side]
             if not spans:
                 panel.append(label("No source details recorded", "dim-label"))
-            for span in spans[:20]:
+            for index, span in enumerate(spans[:20]):
                 row = Gtk.Box(spacing=10, css_classes=["details-span"])
                 row.append(Gtk.Box(width_request=3, css_classes=["details-marker"], margin_top=4, margin_bottom=4))
                 content = column(2, hexpand=True)
                 title = Gtk.Box(spacing=8)
-                title.append(label(span.source, "heading", hexpand=True))
-                title.append(label(span.time, "small", "details-time", valign=Gtk.Align.START))
+                title.append(self._bound(("span", side, index, "source"), span.source, "heading", hexpand=True))
+                title.append(
+                    self._bound(
+                        ("span", side, index, "time"), span.time, "small", "details-time", valign=Gtk.Align.START
+                    )
+                )
                 content.append(title)
-                content.append(label(span.method, "small", "dim-label"))
-                if span.reason:
-                    content.append(label(span.reason, "small", "dim-label"))
+                content.append(self._bound(("span", side, index, "method"), span.method, "small", "dim-label"))
+                content.append(
+                    self._bound(
+                        ("span", side, index, "reason"), span.reason, "small", "dim-label", visible=bool(span.reason)
+                    )
+                )
                 row.append(content)
                 panel.append(row)
             if len(spans) > 20:
@@ -142,24 +209,22 @@ class RecordingDetailsDialog(Adw.Dialog):
             sides.append(panel)
         captured.append(sides)
         self.body.append(captured)
-        for note in report.notes:
-            self.body.append(label(note, "small", "dim-label"))
+        for index, note in enumerate(report.notes):
+            self.body.append(self._bound(("note", index), note, "small", "dim-label"))
+        # These height-for-width columns must be negotiated by a grid. A
+        # horizontal box asks them for width at the constrained viewport height.
         facts = Gtk.Grid(column_spacing=24, column_homogeneous=True)
         left = column(14)
         ended = column(4)
         ended.append(label("How it ended", "heading"))
-        ended.append(label(report.ended, "dim-label" if report.ended == UNKNOWN else "body"))
+        ended.append(self._bound(("ended",), report.ended, "body"))
         left.append(ended)
-        left.append(self._facts("Audio health", report.health))
+        left.append(self._facts("Audio health", report.health, "health"))
         facts.attach(left, 0, 0, 1, 1)
-        facts.attach(self._facts("Writing down", report.writing), 1, 0, 1, 1)
+        facts.attach(self._facts("Writing down", report.writing, "writing"), 1, 0, 1, 1)
         self.body.append(facts)
-        if first:
-            self.copy_button.grab_focus()
-        return False
 
-    @staticmethod
-    def _facts(title, rows):
+    def _facts(self, title, rows, group):
         content = column(8, valign=Gtk.Align.START)
         content.append(label(title, "heading"))
         grid = Gtk.Grid(column_spacing=12, row_spacing=7)
@@ -167,9 +232,7 @@ class RecordingDetailsDialog(Adw.Dialog):
             key = label(name, "small", "dim-label", valign=Gtk.Align.START, max_width_chars=18)
             key.set_size_request(110, -1)
             grid.attach(key, 0, index, 1, 1)
-            value_label = label(value, "small", hexpand=True, selectable=True, max_width_chars=35)
-            if value == UNKNOWN:
-                value_label.add_css_class("dim-label")
+            value_label = self._bound((group, index), value, "small", hexpand=True, selectable=True, max_width_chars=35)
             grid.attach(value_label, 1, index, 1, 1)
         content.append(grid)
         return content
