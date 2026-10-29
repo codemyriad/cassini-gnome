@@ -233,3 +233,70 @@ def test_merge_and_undo_coalesce_to_latest_print_without_releasing_hold_early(tm
     with queue.lock:
         assert not queue.voice_pending
     queue.close()
+
+
+def test_request_at_completion_boundary_runs_instead_of_stranding_a_rerun(tmp_path, monkeypatch):
+    import threading
+
+    from cassini_viewer import voice_models
+
+    directory = meeting(tmp_path)
+    store = VoiceStore(tmp_path / "private")
+    store.refresh()
+    captures, finished, failed, submitted = [], [], [], []
+    armed = False
+
+    class ReadyModels(Models):
+        def snapshot(self):
+            return dict(ready=True)
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            pass
+
+        def close(self):
+            nonlocal armed
+            armed = len(captures) == 1
+
+        def voiceprints(self, tracks, options, heartbeat):
+            captures.append(True)
+            return {"others": dict(embedding=embedding(len(captures)), seconds=8)}
+
+    class CompletionLock:
+        def __init__(self):
+            self.inner = threading.RLock()
+            self.fired = False
+
+        def __enter__(self):
+            self.inner.acquire()
+
+        def __exit__(self, *_args):
+            self.inner.release()
+            if armed and not self.fired:
+                self.fired = True
+                submitted.append(queue.recompute_voices(directory, {"others"}, failed.append))
+
+    monkeypatch.setattr(voice_models, "VoiceJobClient", Client)
+    queue = TranscriptionQueue(
+        lambda _: None,
+        finished.append,
+        bundle=tmp_path,
+        root=tmp_path,
+        diarization_models=ReadyModels(),
+        voice_models=ReadyModels(),
+        voice_store=store,
+    )
+    queue.lock = CompletionLock()
+    try:
+        assert queue.recompute_voices(directory, {"others"}, failed.append)
+        until(lambda: bool(finished))
+        queue.executor.submit(lambda: None).result(timeout=4)
+        assert submitted == [True] and len(captures) == 2
+        assert finished == [directory, directory] and not failed
+        assert not queue.voice_pending and not queue._voice_reruns
+        assert store.meeting(directory)["speakers"]["others"]["embedding"] == embedding(2)
+    finally:
+        queue.close()

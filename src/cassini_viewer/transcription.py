@@ -601,12 +601,14 @@ class TranscriptionQueue:
                 self.client.close()
                 self.client = self.client_model = None
             with self.lock:
-                again = self._voice_reruns.pop(token, None) if not self.closed else None
+                again = self._voice_reruns.pop(token, None)
+                if self.closed:
+                    again = None
                 if again is not None:
                     self.executor.submit(self._voice_job, token, *again)
-            if again is None:
-                with self.lock:
+                else:
                     self.voice_pending.discard(token)
+            if again is None:
                 self.finished(token)
 
     def _check_open(self):
