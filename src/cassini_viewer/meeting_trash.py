@@ -55,6 +55,10 @@ def trash_owned(directory, *, queue=None, voices=None, trash=None, cleanup=None)
                         with contextlib.suppress(OSError, ValueError):
                             cleanup.forget(directory)
                     raise
+            elif not directory.parent.is_dir():
+                raise FileNotFoundError("Library is unavailable")
+            elif cleanup:
+                cleanup.add(directory)  # An already-removed folder still needs durable private cleanup.
         if cleanup:
             try:
                 cleanup.finish(directory)

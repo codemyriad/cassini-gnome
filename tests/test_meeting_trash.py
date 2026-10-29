@@ -83,7 +83,8 @@ def test_busy_capture_cannot_be_trashed(roots):
         session.finish()
 
 
-def test_private_cleanup_failure_after_success_is_durable_and_retryable(roots, tmp_path, monkeypatch):
+@pytest.mark.parametrize("already_missing", [False, True])
+def test_private_cleanup_failure_after_success_is_durable_and_retryable(roots, tmp_path, monkeypatch, already_missing):
     library, store = roots
     session = capture(library)
     enrol(store, session.directory)
@@ -95,6 +96,8 @@ def test_private_cleanup_failure_after_success_is_durable_and_retryable(roots, t
         path.rename(tmp_path / "private-system-trash")
         return True
 
+    if already_missing:
+        session.directory.rename(tmp_path / "private-system-trash")
     trash_owned(session.directory, cleanup=cleanup, trash=native)
     assert not session.directory.exists()
     assert json.loads(cleanup.path.read_text())["pending"] == [str(session.directory)]
@@ -213,3 +216,15 @@ def test_trash_drains_closed_speaker_and_export_writers_off_the_caller(tmp_path,
                 future.set_result(None)
         caller.shutdown(wait=True)
         controller.executor.shutdown(wait=True)
+
+
+def test_unavailable_library_root_does_not_discard_private_prints(roots):
+    library, store = roots
+    session = capture(library)
+    enrol(store, session.directory)
+    cache = store.root / "meetings" / (session.directory.name + ".json")
+    before = cache.read_bytes()
+    library.rename(library.with_name("disconnected-library"))
+    with pytest.raises(FileNotFoundError, match="unavailable"):
+        trash_owned(session.directory, cleanup=TrashCleanup(store))
+    assert cache.read_bytes() == before
