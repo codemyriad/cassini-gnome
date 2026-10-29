@@ -87,6 +87,7 @@ def candidate(tmp_path):
         "build-aux/rpm/cassini-viewer.spec": "Version: 7.8.9\n",
         "build-aux/arch/PKGBUILD": "pkgver=7.8.9\n",
         "NEWS": "Version 7.8.9\n~~~~~~~~~~~~~\nNot released yet.\n",
+        "browser-extension/manifest.json": '{"version":"0.2.1"}\n',
         "data/cassini-viewer.1": '.TH CASSINI-VIEWER 1 "October 2026" "cassini-viewer 7.8.9" "User Commands"\n',
         "data/com.gocassini.Viewer.metainfo.xml.in": (
             '<component><releases><release version="7.8.9" date="2026-10-29"/></releases></component>'
@@ -102,6 +103,7 @@ def candidate(tmp_path):
 def test_release_metadata_accepts_a_consistent_candidate_without_creating_a_tag(candidate):
     result = module("release_metadata").check(candidate, "v7.8.9")
     assert result["version"] == "7.8.9" and result["date"] == "2026-10-29"
+    assert result["extensionVersion"] == "0.2.1"
     assert len(result["versions"]) == 7
     assert not (candidate / ".git").exists()
     with pytest.raises(ValueError, match="does not match"):
@@ -135,18 +137,26 @@ def test_release_metadata_requires_a_real_metainfo_date(candidate, replacement):
         module("release_metadata").check(candidate)
 
 
+def test_release_metadata_rejects_the_old_browser_companion(candidate):
+    (candidate / "browser-extension/manifest.json").write_text('{"version":"0.2.0"}\n')
+    with pytest.raises(ValueError, match="Browser companion version must be 0.2.1"):
+        module("release_metadata").check(candidate)
+
+
 def test_installed_metadata_validation_checks_the_packaged_files_and_both_validators(tmp_path):
     prefix = tmp_path / "usr"
     launcher = prefix / "bin/cassini-viewer"
     metainfo = prefix / "share/metainfo/com.gocassini.Viewer.metainfo.xml"
     desktop = prefix / "share/applications/com.gocassini.Viewer.desktop"
-    for path in (launcher, metainfo, desktop):
+    extension = prefix / "share/cassini-viewer/browser-extension/manifest.json"
+    for path in (launcher, metainfo, desktop, extension):
         path.parent.mkdir(parents=True, exist_ok=True)
     launcher.write_text('VERSION = "7.8.9"\n')
     metainfo.write_text(
         '<component><id>com.gocassini.Viewer</id><releases><release version="7.8.9"/></releases></component>'
     )
     desktop.write_text("[Desktop Entry]\n")
+    extension.write_text('{"version":"0.2.1"}\n')
     calls = []
 
     def run(command, *, check):
@@ -156,6 +166,7 @@ def test_installed_metadata_validation_checks_the_packaged_files_and_both_valida
     policy = module("validate_installed")
     result = policy.validate(prefix, "com.gocassini.Viewer", "7.8.9", run=run)
     assert result["version"] == "7.8.9" and result["appstream"] == result["desktop"] == "passed"
+    assert result["extensionVersion"] == "0.2.1"
     assert calls == [
         ["appstreamcli", "validate", "--no-net", str(metainfo)],
         ["desktop-file-validate", str(desktop)],
@@ -166,3 +177,8 @@ def test_installed_metadata_validation_checks_the_packaged_files_and_both_valida
         with pytest.raises(ValueError, match="version"):
             policy.validate(prefix, "com.gocassini.Viewer", "7.8.9", run=run)
         path.write_text(original)
+    calls.clear()
+    extension.write_text('{"version":"0.2.0"}\n')
+    with pytest.raises(ValueError, match="Installed browser companion version must be 0.2.1"):
+        policy.validate(prefix, "com.gocassini.Viewer", "7.8.9", run=run)
+    assert calls == []

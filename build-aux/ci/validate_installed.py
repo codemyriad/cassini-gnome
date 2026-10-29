@@ -11,6 +11,10 @@ from pathlib import Path
 
 
 def validate(prefix, app_id, version, *, run=subprocess.run):
+    extension = prefix / "share/cassini-viewer/browser-extension/manifest.json"
+    extension_version = json.loads(extension.read_text()).get("version")
+    if extension_version != "0.2.1":
+        raise ValueError("Installed browser companion version must be 0.2.1")
     launcher = (prefix / "bin/cassini-viewer").read_text()
     match = re.search(r'^VERSION = "([^"]+)"$', launcher, re.MULTILINE)
     if match is None or match[1] != version:
@@ -23,7 +27,14 @@ def validate(prefix, app_id, version, *, run=subprocess.run):
         raise ValueError("Installed metainfo ID/version does not match the source")
     run(["appstreamcli", "validate", "--no-net", str(metainfo)], check=True)
     run(["desktop-file-validate", str(desktop)], check=True)
-    return dict(version=version, appId=app_id, prefix=str(prefix), appstream="passed", desktop="passed")
+    return dict(
+        version=version,
+        appId=app_id,
+        prefix=str(prefix),
+        appstream="passed",
+        desktop="passed",
+        extensionVersion=extension_version,
+    )
 
 
 def main():

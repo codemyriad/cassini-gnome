@@ -18,6 +18,9 @@ def value(root, path, pattern):
 
 
 def check(root, tag=None):
+    extension_version = json.loads((root / "browser-extension/manifest.json").read_text()).get("version")
+    if extension_version != "0.2.1":
+        raise ValueError("Browser companion version must be 0.2.1")
     versions = {
         "meson": value(root, "meson.build", r"^\s*version:\s*'([^']+)'"),
         "debian": value(root, "debian/changelog", r"\Acassini-viewer \(([^)]+)\)").split("-")[0],
@@ -39,7 +42,7 @@ def check(root, tag=None):
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", release_date):
         raise ValueError("Metainfo needs a valid release date")
     date.fromisoformat(release_date)
-    return dict(version=version, date=release_date, versions=versions, tag=tag)
+    return dict(version=version, date=release_date, versions=versions, tag=tag, extensionVersion=extension_version)
 
 
 def main():
