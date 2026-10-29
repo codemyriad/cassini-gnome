@@ -64,6 +64,12 @@ with tempfile.TemporaryDirectory() as temporary:
         if track["kind"] in ("microphone", "system"):
             track["ended"] = False
     write_json(paths["fallback"] / "session.json", live)
+    # Current production writes down after capture ends. A live fixture must
+    # not pretend it already has a finished transcript or selected ASR model.
+    live_metadata = json.loads((paths["fallback"] / "meeting.json").read_text())
+    live_metadata["transcript"] = None
+    write_json(paths["fallback"] / "meeting.json", live_metadata)
+    (paths["fallback"] / "transcript.json").unlink()
     write_json(private / "activity.json", {live["id"]: "recording"})
     schemas = private / "schemas"
     schemas.mkdir()
