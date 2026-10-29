@@ -210,7 +210,9 @@ with tempfile.TemporaryDirectory() as tmp:
     session.add_track("local", "Mic", "local", 48000, 1)
     session.add_track("one", "Remote", "remote", 48000, 1)
     session.append("local", bytes(96000), 0)
-    session.append("one", b"\x00\x20" * 48000, 0)
+    # D26.1 meters measure AC: constant PCM is DC-only silence, not a voice.
+    tone = (b"\x00\x20" * 60 + b"\x00\xe0" * 60) * 400  # 400 Hz, one second.
+    session.append("one", tone, 0)
     key = session.directory.name
     browser_window._browser_snapshot = dict(statuses=[dict(recording=True, path=str(session.directory))])
     browser_app.comfort.tick()
@@ -224,7 +226,7 @@ with tempfile.TemporaryDirectory() as tmp:
     assert len(browser_app.get_windows()) == 1 and not browser_window.get_visible()
     assert browser_app.comfort.states[key]["levels"][1] > 0
     session.add_track("two", "Joined later", "remote", 48000, 1)
-    session.append("two", b"\x00\x20" * 48000, 0)
+    session.append("two", tone, 0)
     before = {p.name: p.read_bytes() for p in session.directory.iterdir()}
     browser_app.comfort.tick()
     until(lambda: browser_app.comfort.states[key]["voices"] == 2)
