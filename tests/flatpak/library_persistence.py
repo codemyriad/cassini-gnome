@@ -95,10 +95,12 @@ for mode in ("localized-music", "unconfigured-music", "disabled-music", "revoked
             else home / ".var/app" / args.application / "data/cassini/Library"
         )
         command += [args.application, "-I", "-c", inside, str(args.modules), str(expected)]
-        reports = [
-            json.loads(subprocess.check_output(command + [phase], env=env, text=True, timeout=20))
-            for phase in ("write", "read")
-        ]
+        reports = [json.loads(subprocess.check_output(command + ["write"], env=env, text=True, timeout=20))]
+        if mode == "unconfigured-music":
+            # Installing/configuring a Music folder later must not hide the
+            # recordings already kept in the app-data Library.
+            (config / "user-dirs.dirs").write_text(f'XDG_MUSIC_DIR="{music}"\n')
+        reports.append(json.loads(subprocess.check_output(command + ["read"], env=env, text=True, timeout=20)))
         assert reports[0] == reports[1], "Restart lost or changed the Library's PCM/manifest bytes"
         assert (expected / reports[0]["folder"] / "session.json").is_file()
         # HOME remains a private fixture. The real user's Library is never opened.
