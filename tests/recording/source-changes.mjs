@@ -25,6 +25,9 @@ export async function run({context, call, join, recording, samples, power, poll,
   await hungUp.meeting.evaluate(() => meeting.pc.close());
   const savedHangup = await poll(async () => {
    const current = await samples(hungUpDirectory);
+   evidence.hangup = {directory: hungUpDirectory, state: current.manifest.state,
+    problem: current.manifest.problem, problemKind: current.manifest.problemKind,
+    tracks: current.tracks.map(t => ({kind: t.kind, frames: t.frames, ended: t.ended}))};
    return current.manifest.state === 'completed' && current;
   }, 'hang-up saves while the tab remains open');
   assert.ok(!hungUp.meeting.isClosed());

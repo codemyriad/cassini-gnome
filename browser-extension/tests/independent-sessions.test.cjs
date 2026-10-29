@@ -16,7 +16,7 @@ async function twoMeetings() {
 test('independent capability starts two tabs, routes packets and stops only one', async () => {
   const app = await twoMeetings();
   try {
-    assert.deepEqual(Array.from(app.ports[0].sent[0].capabilities), ['independent-sessions-v1']);
+    assert.deepEqual(Array.from(app.ports[0].sent[0].capabilities), ['independent-sessions-v1', 'call-evidence-v1']);
     assert.equal((await app.command(command('one','start',2,{captureLocal:false,microphone:true}))).ok,true);
     const second = await app.command(command('two','start',3,{captureLocal:false,microphone:false}));
     assert.equal(second.ok,true);assert.equal(app.audio.length,2);
@@ -214,4 +214,23 @@ test('explicit Stop during startup finalizes instead of requesting native fallba
     assert.equal(app.audio[0].sent.find(packet => packet.type === 'stop')?.failureReason,undefined);
     assert.equal(app.audio[0].closed,true);
   } finally { release?.(); app.close(); }
+});
+
+test('call evidence reaches control snapshots without restricting manual Record',async()=>{
+  const app=await setup();
+  try {
+    let row=(await app.api.meetings()).meetings[0];
+    assert.equal(row.sourceCount,3);assert.equal(row.heard,false);
+    const before=app.ports[0].sent.length;
+    app.pages[0].onMessage.emit({type:'discovery',sourceCount:3,heard:true});
+    await until(()=>app.ports[0].sent.slice(before).some(m=>m.type==='meetings'&&m.meetings.some(row=>row.heard===true)));
+    assert.equal((await app.api.meetings()).meetings[0].heard,true);
+    const idle=app.frame(2,0);idle.onMessage.emit({type:'discovery',sourceCount:0,heard:true});
+    app.pages[0].onMessage.emit({type:'discovery',sourceCount:3,heard:'true'});
+    assert.equal((await app.api.meetings()).meetings[0].heard,false,'idle frame cannot lend evidence to another document');
+    assert.equal((await app.command(command('manual-prejoin','start',2))).ok,true,'manual Record does not require heard');
+    await app.command(command('stop-prejoin','stop',2));
+    app.pages[0].onDisconnect.emit();
+    assert.equal((await app.api.meetings()).meetings.length,0,'idle evidence does not keep a candidate listed');
+  } finally {app.close();}
 });

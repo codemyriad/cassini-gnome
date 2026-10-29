@@ -27,6 +27,16 @@ class ControlTests(unittest.TestCase):
         # extension semantics and the same corpus are exercised by the VM runner.
         subprocess.run(['node', str(ROOT / 'conformance/control/run-extension.cjs')], check=True, stdout=subprocess.DEVNULL)
 
+    def test_call_evidence_is_optional_and_typed_for_legacy_readers(self):
+        validator=Draft202012Validator(json.loads((ROOT/'schemas/control-extension.schema.json').read_text()))
+        row=dict(tabId=2,title='Pre-join fixture',url='https://meet.example/call',sourceCount=3)
+        self.assertTrue(validator.is_valid(dict(type='meetings',meetings=[row])))
+        for heard in [True,False]:
+            self.assertTrue(validator.is_valid(dict(type='meetings',meetings=[dict(row,heard=heard)])))
+        for heard in ['true',1,None]:
+            self.assertFalse(validator.is_valid(dict(type='meetings',meetings=[dict(row,heard=heard)])))
+        self.assertTrue(validator.is_valid(dict(type='hello',version=1,capabilities=['call-evidence-v1'])))
+
     def test_host_schema_matches_valid_and_invalid_commands(self):
         validator=Draft202012Validator(json.loads((ROOT/'schemas/control-host.schema.json').read_text()))
         invalid={'invalid-action','invalid-tab-id','missing-mode','whole-tab-needs-browser-click'}

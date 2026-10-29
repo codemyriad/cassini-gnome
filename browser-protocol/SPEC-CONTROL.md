@@ -93,12 +93,38 @@ alarms (reconnect). The minimum remains Chrome 116.
 ## Page discovery interface (GNOME owns page-hook.js)
 
 Background/relay sends `{channel:"cassini-control",type:"discover"}` independent of any
-recording token. Page hook answers and publishes count changes with
-`window.postMessage({channel:"cassini-page",type:"discovery",sourceCount:N}, "*")`.
-N is an integer 0–64 per frame. It must scan without an AudioContext, capture or native audio
-session. Relay validates count, forwards only `{type:"discovery",sourceCount:N}`, caches it
-for reconnection, and never forwards page start/stop/management payloads. Publish zero when
-sources disappear. Until the page-hook implementation ships, the idle list stays empty.
+recording token. Page hook answers and publishes count or evidence changes with
+`window.postMessage({channel:"cassini-page",type:"discovery",sourceCount:N,heard:B}, "*")`.
+N is an integer 0–64 per document. Count distinct live audio receiver tracks in
+recvonly/sendrecv transceivers on connected peers (connectionState connected or ICE
+connected/completed). Do not count senders: a preview microphone is not call evidence.
+Muted receivers still count. Discovery creates no AudioContext, capture or native session.
+
+`heard` is a per-document boolean latch. Once each second, call `receiver.getStats()`
+for those connected audio receivers. A tick votes when any inbound-rtp audio report's
+`packetsReceived` increases; the first appearance of an entry also counts as an increase
+(including a first zero counter). Two votes in the last three ticks set the latch.
+Reports must carry a string id and a nonnegative safe-integer counter. Failed, missing,
+outbound and video reports do not vote. Forced discovery snapshots are not sampling ticks.
+Stats calls have a 750 ms deadline; late reports and receivers no longer eligible do not
+contribute evidence. A peer-connection handoff does not reset the document latch. Reset it
+and its sampling history only after sourceCount has remained zero for ten seconds, measured
+with the monotonic clock. Silence with live receivers does not reset it.
+
+Relay validates count and normalises heard to `=== true`, forwards only
+`{type:"discovery",sourceCount:N,heard:B}`, and caches both fields for reconnect. It never
+forwards page start/stop/management payloads. Publish zero when sources disappear.
+Background includes `heard` in each meetings entry: true if any contributing frame in that
+tab has positive sourceCount and a true latch. An idle frame cannot lend its latch to a
+different live document. Publish transitions even if the count did not change.
+
+The extension advertises `call-evidence-v1` in hello capabilities (alongside any other
+capabilities). For that capability, apps auto-start only when sourceCount is positive and
+heard is true. A missing/false heard is insufficient. Legacy companions without this
+capability retain their previous auto-start behavior. Listing, manual Record, Record-all,
+and all end-of-call/fallback rules are unchanged. A listed pre-join candidate may be
+recorded manually. This evidence is advisory and must not be presented as a participant count.
+The version-1 control envelope is unchanged; heard is optional for legacy readers.
 
 ## Product behavior shared by both apps
 
@@ -158,7 +184,7 @@ installed (unpacked, self-hosted or from a store):
 
 This additive capability preserves all v1 messages and legacy vectors. Without
 `independent: true`, the popup/app start retains the v1 single-slot refusal.
-The extension's hello now advertises `capabilities: ["independent-sessions-v1"]`.
+The extension's hello now advertises `capabilities: ["independent-sessions-v1", "call-evidence-v1"]`.
 Only apps that see that capability may request concurrent capture.
 
 An app may send `start` with `independent: true` for each active-call tab. Each
