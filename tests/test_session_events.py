@@ -73,6 +73,40 @@ def test_shared_browser_off_on_fixture_retains_one_speaker_and_each_span_offset(
     )
 
 
+def test_pinned_reserved_restored_vector_is_read_without_rewriting(tmp_path):
+    fixture = Path(__file__).resolve().parents[1] / "browser-protocol/conformance/session-events/restored.reader.json"
+    vector = json.loads(fixture.read_text())
+    path = tmp_path / "session.json"
+    path.write_text(json.dumps(vector["session"]))
+    before = path.read_bytes()
+    events = load_session(path)["events"]
+    assert list(read_events(events)) == events
+    for row in vector["states"]:
+        state = source_state([event for event in events if event["atMs"] <= row["atMs"]])
+        assert dict(
+            me=state.me,
+            others=state.others,
+            source=state.source,
+            reason=state.reason,
+            sinceMs=state.since_ms,
+            fallback=state.fallback,
+        ) == {key: value for key, value in row.items() if key != "atMs"}
+    assert path.read_bytes() == before
+
+
+def test_reserved_restored_remains_invalid_for_writing_and_selection():
+    manifest = dict(events=initial())
+    before = json.dumps(manifest)
+    for event in (
+        dict(atMs=1, type="othersSource", source="browser", reason="restored"),
+        dict(atMs=1, type="selection", me=True, others=True, reason="restored"),
+    ):
+        with pytest.raises(ValueError):
+            append_events(manifest, [event])
+        assert json.dumps(manifest) == before
+    assert read_events([event]) == ()  # selection.reason never reserves restored.
+
+
 def test_reader_uses_newest_known_events_without_inferring_or_rewriting():
     events = initial() + [
         dict(atMs=754210, type="othersSource", source="system", reason="lost", future=True),
