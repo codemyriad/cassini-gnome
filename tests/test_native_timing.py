@@ -143,6 +143,10 @@ def test_ten_hours_smooth_device_drift_does_not_become_missing_audio(tmp_path):
     session.add_track("microphone", "Microphone", "microphone", 48000, 1)
     recorder = NativeRecorder()
     recorder.session = session
+    # This stress test models ten hours of clock stamps with a counting writer,
+    # not 1.7 billion samples of inference/metering. Real appsink AC windows and
+    # byte-identical saved PCM are exercised separately above.
+    recorder._ac_meters["microphone"] = SimpleNamespace(feed=lambda _data: False)
     data = bytes(48000 * 2)
     try:
         for second in range(36000):
