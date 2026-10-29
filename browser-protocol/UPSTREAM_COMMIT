@@ -1,26 +1,26 @@
-tree 1b2d32a8265e1cc23e6f128e05a827ec63286769
-parent 356248edd181d773b2d17dfa07681b5fb1563c6e
-parent 541124672158ff472213e422bb02ed45ca4fe0ff
-author Silvio Tomatis <silviot@gmail.com> 1793264645 +0100
-committer GitHub <noreply@github.com> 1793264645 +0100
+tree f26300e6c73120902119af8611ac6db42c8b6592
+parent 7f8c3e82b375456723083b791b4f4ff311ed39a8
+parent 4f816b226550b0d017bc4ddec163087782f80066
+author Silvio Tomatis <silviot@gmail.com> 1793298523 +0100
+committer GitHub <noreply@github.com> 1793298523 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq4wwFCRC1aQ7uu5UhlAAAm6gQAHb6+tAM/zglNr5rRQj5F95p
- TGV9vDdbKgNl47GslXbNiiQ9gQ34NbEfPj8EGQkvGCSIA3svW/jf6S98A+MO7os/
- 0/o5RYf0JtGiNetbVcXrR3xRCnfEfZttWkA6unEZxJJ4s7dUe21dBzJnPG+dErTO
- /V26lcoLxCKtg75xlH429zfY+094m+BJhk5GuztixVzaEwKbYX/JhSp2dFkQRacJ
- Fq7kdqpslYMgbmOGSz+oS/+6bUh9NvqXU/tmFyX0RwVEEjlgpvlVpWQJL0HvtT3Y
- eEmEnuTxkQpDdcUbMdky0DGYPb6vneiemsHnBU3P4AtWPtB7GV8KdVou03va/1L8
- FD+rfXqhDRrOP61CD/3pNifH3cXgP84WyFeAnfK47f1M8ifY0PbknC37x4VlyCiN
- eCcGHZiYieabJUkBpZ11UlUfN7TJdesHPeiwnx/A6TTu1X37nDiP4fQ9wH1OcLYS
- MrKz2ROvHNPmrM8aIFYVr7y+CwoxOiNWAE/I+Khp6k4uAaCTDeQxX8kyNamWjr5O
- 5cBcm0OQRAV7e5rKVykc0wAWIFnA2Opb6jKVbO+XHRfVOZRVKSIfjuk0Qd922fU/
- 6Zd80MZdpoedO3n8r8XXQjhvhGME0k7XM94x7tmEqFULj5pML7YsV+7MHHokrinJ
- q7Sg6mN01pXY/CxuOKkl
- =tsCi
+ wsFcBAABCAAQBQJq45BbCRC1aQ7uu5UhlAAAFQYQAJg94DaON+PKLvX2RSGMba/9
+ Oo950zTxm8/trsLtbghiwUwSRv8xCNHtqbNFkTIvlJPcRfnMta2LDQD95xk/9N3F
+ S0yotizTzZ3qx+iXderyo3/C642OIDu6F1jGFV7RN9t05XysPQ+2WbuZfnMDfrSo
+ j4gB/hYt+5J0EJdFLm8Jk4RtNvxRVss9/hzTsC1b83VGtUHeMtswTb5rLnA10Jpp
+ O6TGVGYr8RrZjm19s9GRfU+zDRDfCXWCRU4f6/Yl+vJWIQhNYNLCCLE8UCjVWwG8
+ 5igQPjbw/k3niPO06v+ZW47xuhoRNePDK68BGkVIeu3HK85XZITXLsTH3RVlGhge
+ VbASzoW2TemUS+yNGeRTLkwJvgX/zeepbOXANfN1ai53ZPaReZPQriUQ0HvWrBp5
+ 2fz7M9Lp4Ab2iOnlgU+lQkOZ8wITLOoY1EtLGghijTTFWkOHPc6aAv3vIA//KMrk
+ +gCcLB/MENHuegn67eYNCz/WxhVf3+LQeQAthu/KEorOOlkKZW3v4WpUBAcyzmF3
+ mSuu7hEQsVQX5ECT7DaCMX/VrphKJDtoQUlMX1R8YDK0m5vrzT5kdR40EUDH4etA
+ X8CvtFKhJkwvt4urzQbY7YSu9c66v89whRmOrW5ABXMxqGvPie3g8gACemnWAEFR
+ PDdNMc8WgOZ/r4xfCe5N
+ =FmLU
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #19 from codemyriad/rename/io-codemyriad-hosts
+Merge pull request #20 from codemyriad/fix/prejoin-call-evidence
 
-Name the native hosts after codemyriad.io
+Prevent pre-join auto-record with inbound call evidence

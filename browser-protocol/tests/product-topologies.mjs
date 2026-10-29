@@ -55,6 +55,43 @@ async function start(page, packets, errors) {
 try {
   browser = await chromium.launch({ headless: true, args: ['--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns'] });
   console.log('Chromium', browser.version());
+  // Connected pre-join topology: receive slots exist, local preview sends RTP,
+  // but no inbound audio report exists until the synthetic Join action below.
+  {
+    const context = await browser.newContext(), page = await context.newPage(), remote = await context.newPage();
+    await page.addInitScript({ path: path.join(root, 'extension/page-hook.js') });
+    await page.addInitScript(() => {
+      window.discoveryEvidence = [];
+      addEventListener('message', event => {
+        if (event.source === window && event.data?.channel === 'cassini-page' && event.data.type === 'discovery')
+          discoveryEvidence.push(event.data);
+      });
+    });
+    await page.goto(address); await remote.goto(address);
+    await connectReceiveSlots(page, remote, [[440], [660], [880]], { prejoin: true });
+    await page.evaluate(() => {
+      window.prejoinSamples = [];
+      window.prejoinClock = setInterval(async () => {
+        const stats = await topologyPeer.getStats();
+        const inbound = [...stats.values()].filter(report => report.type === 'inbound-rtp' && report.kind === 'audio');
+        prejoinSamples.push(inbound.map(report => report.packetsReceived));
+        window.postMessage({channel:'cassini-control',type:'discover'}, '*');
+      }, 1000);
+    });
+    await page.waitForFunction(() => prejoinSamples.length >= 3 && discoveryEvidence.length >= 3);
+    const before = await page.evaluate(() => ({ samples: prejoinSamples, evidence: discoveryEvidence.at(-1) }));
+    assert.ok(before.samples.every(sample => sample.length === 0), 'pre-join receives no inbound audio RTP');
+    assert.equal(before.evidence.sourceCount, 3, 'only three receivers; preview sender excluded');
+    assert.equal(before.evidence.heard, false);
+    await switchReceiveSlot(remote, 0, [440]);
+    await page.waitForFunction(() => discoveryEvidence.at(-1)?.heard === true);
+    const joined = await page.evaluate(() => discoveryEvidence.at(-1));
+    assert.equal(joined.sourceCount, 3);
+    results.push({ model: 'Pre-join receive slots then inbound RTP', status: 'passed',
+      chromium: browser.version(), prejoin: before, joined, liveProductTest: false });
+    console.log('PASS pre-join has no heard evidence; inbound audio sets the latch');
+    await context.close();
+  }
   for (const [name, frequencies] of [['Teams mixed receiver', [[440, 880]]], ['Meet three switching slots', [[440], [660], [880]]], ['Zoom PC-free path', null]]) {
     const context = await browser.newContext(), page = await context.newPage(), remote = await context.newPage();
     const packets = [], errors = []; currentPackets = packets;

@@ -30,6 +30,7 @@ class LibraryMonitor:
         self._ready = False
         self._closed = False
         self._future = None
+        self.scan_started = 0.0
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-library")
         self._roots = {self.scanner.root.absolute()}
 
@@ -181,6 +182,9 @@ class LibraryMonitor:
         self._pending_dirs.clear()
         self._first_event = None
         self._ready = False
+        import time
+
+        self.scan_started = time.monotonic()
         self._future = self._executor.submit(
             self._scan_and_watch_paths, activity, changed, dict(self._monitors), set(self._directories)
         )

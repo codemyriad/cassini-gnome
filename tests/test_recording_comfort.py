@@ -30,6 +30,7 @@ def application(recorders, *, browser=None):
     notifications = []
     return SimpleNamespace(
         native_captures=recorders,
+        meeting_trash=SimpleNamespace(hides=lambda _: False),
         recorder=next(iter(recorders.values()), None),
         get_windows=lambda: [],
         get_active_window=lambda: None,

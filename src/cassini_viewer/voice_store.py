@@ -127,6 +127,8 @@ class VoiceStore:
                 cache = replacements[relative] if relative in replacements else self._meeting(key, people["generation"])
             except (OSError, ValueError):
                 continue
+            if cache is None:
+                continue
             for speaker, item in cache["speakers"].items():
                 m = item.get("match", {})
                 if m.get("voiceId") in existing and m.get("state") in ("auto", "confirmed"):
@@ -272,7 +274,7 @@ class VoiceStore:
         for relative, value in values.items():
             if relative == "people.json":
                 self._validate_people(value)
-            else:
+            elif value is not None:
                 self._validate_meeting(value)
         if "people.json" in values:
             self._meeting_lists(
@@ -291,7 +293,12 @@ class VoiceStore:
         atomic_json(self.root / ".transaction.json", journal, before_commit=before_commit)
         try:
             for relative, value in values.items():
-                atomic_json(self.root / relative, value, before_commit=before_commit)
+                if value is None:
+                    if before_commit is not None:
+                        before_commit()
+                    (self.root / relative).unlink(missing_ok=True)
+                else:
+                    atomic_json(self.root / relative, value, before_commit=before_commit)
         except BaseException:
             self._recover()
             raise
@@ -322,6 +329,23 @@ class VoiceStore:
             else:
                 atomic_json(path, previous)
         journal.unlink()
+
+    def remove_meeting(self, directory):
+        """D29 removes only this meeting's private prints; never unenrol a person."""
+        key = _key(Path(directory).name)
+        with self._locked():
+            relative = "meetings/" + key + ".json"
+            try:
+                people = self._people()
+            except UnsupportedVersion:
+                # Explicit removal can discard this private cache without
+                # interpreting or rewriting the newer people store.
+                (self.root / relative).unlink(missing_ok=True)
+                return
+            self._transaction({relative: None, "people.json": people})
+            if self._library_keys is not None:
+                self._library_keys = self._library_keys - {key}
+            self._publish(people)
 
     def refresh(self):
         with self._locked():

@@ -207,7 +207,7 @@ async function start(mode, tabId = null, options = {}) {
 
 chrome.runtime.onConnect.addListener(port => {
   if (port.name !== "cassini-frame" || port.sender?.id !== chrome.runtime.id || !port.sender.tab) return;
-  const frame = { port, tabId: port.sender.tab.id, sourceCount: 0 };
+  const frame = { port, tabId: port.sender.tab.id, sourceCount: 0, heard: false };
   frames.add(frame);
   port.postMessage({ type: "discover" });
   // Newly inserted frames may carry meeting tracks; they share the original session clock.
@@ -218,8 +218,10 @@ chrome.runtime.onConnect.addListener(port => {
   }
   port.onMessage.addListener(async message => {
     if (message.type === "discovery") {
-      if (Number.isInteger(message.sourceCount) && message.sourceCount >= 0 && message.sourceCount <= 64 && frame.sourceCount !== message.sourceCount) {
+      if (Number.isInteger(message.sourceCount) && message.sourceCount >= 0 && message.sourceCount <= 64 &&
+          (frame.sourceCount !== message.sourceCount || frame.heard !== (message.heard === true))) {
         frame.sourceCount = message.sourceCount;
+        frame.heard = message.heard === true;
         notifyControl();
       }
       return;
@@ -314,7 +316,8 @@ async function meetings() {
     try {
       const tab = await chrome.tabs.get(tabId);
       if (!/^https?:/.test(tab.url || "")) return null;
-      return { tabId, title: [...(tab.title || "Meeting")].slice(0, 200).join(""), url: new URL(tab.url).href.slice(0, 2048), sourceCount };
+      const heard = [...frames].some(frame => frame.tabId === tabId && frame.sourceCount > 0 && frame.heard);
+      return { tabId, title: [...(tab.title || "Meeting")].slice(0, 200).join(""), url: new URL(tab.url).href.slice(0, 2048), sourceCount, heard };
     } catch { return null; }
   }));
   return { type: "meetings", meetings: found.filter(Boolean) };
@@ -343,7 +346,7 @@ function cancelPendingStart(command) {
 }
 function notifyControl() { appControl.publish(); }
 const appControl = new AppControl({
-  runtime: chrome.runtime, alarms: chrome.alarms, capabilities: ["independent-sessions-v1"], cancelPending: cancelPendingStart,
+  runtime: chrome.runtime, alarms: chrome.alarms, capabilities: ["independent-sessions-v1", "call-evidence-v1"], cancelPending: cancelPendingStart,
   connected: async () => {
     await recovery;
     const tabs = await chrome.tabs.query({});

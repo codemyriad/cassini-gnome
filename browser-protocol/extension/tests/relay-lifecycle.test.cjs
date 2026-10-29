@@ -22,19 +22,19 @@ test('worker disconnect drains old page requests before forwarding a new session
 });
 
 
-test('idle page discovery forwards counts only and replays them after reconnect',()=>{
+test('idle page discovery forwards count and evidence only and replays them after reconnect',()=>{
  const ports=[],page=[],runtime=event(),handlers=new Map();
  const window={postMessage:m=>page.push(m),addEventListener:(name,fn)=>handlers.set(name,fn)};
  const chrome={runtime:{getURL:x=>'extension://'+x,onMessage:runtime,connect(){const port={sent:[],onMessage:event(),onDisconnect:event(),postMessage(m){this.sent.push(m)}};ports.push(port);return port}}};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../relay.js'),'utf8'),{window,chrome});
  const send=data=>handlers.get('message')({source:window,data:{channel:'cassini-page',...data}});
- send({type:'discovery',sourceCount:3,title:'Spoof',url:'https://spoof.invalid/',action:'start',path:'/spoof'});
- assert.deepEqual(JSON.parse(JSON.stringify(ports[0].sent)),[{type:'discovery',sourceCount:3}]);
+ send({type:'discovery',sourceCount:3,heard:true,title:'Spoof',url:'https://spoof.invalid/',action:'start',path:'/spoof'});
+ assert.deepEqual(JSON.parse(JSON.stringify(ports[0].sent)),[{type:'discovery',sourceCount:3,heard:true}]);
  for(const sourceCount of [-1,65,1.5,'2',true])send({type:'discovery',sourceCount});
  send({type:'command',requestId:'page',action:'start',tabId:2,mode:'tracks'});
  assert.equal(ports[0].sent.length,1);
  ports[0].onDisconnect.emit();runtime.emit({type:'cassini-connect'},{},()=>{});
- assert.deepEqual(JSON.parse(JSON.stringify(ports[1].sent)),[{type:'discovery',sourceCount:3}]);
+ assert.deepEqual(JSON.parse(JSON.stringify(ports[1].sent)),[{type:'discovery',sourceCount:3,heard:true}]);
  assert.ok(page.some(m=>m.type==='discover'));
  handlers.get('pagehide')();assert.equal(ports[1].sent.at(-1).sourceCount,0);
 });

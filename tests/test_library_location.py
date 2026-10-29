@@ -339,3 +339,30 @@ def test_default_capture_and_late_edits_follow_canonical_move_from_a_symlink(roo
     assert location.process()["pending"] == []
     edit_recording(link / directory.name, title="Edit queued at the old symlink")
     assert location.owned_directory(link / directory.name) == new / directory.name
+
+
+def test_trash_discards_its_pending_move_and_aliases_only(roots):
+    old, new = roots
+    removed, kept = session(old), session(old)
+    removed.finish()
+    kept.finish()
+    location.request(new)
+    value = location.load()
+    alias = str(old.parent / "earlier" / removed.directory.name)
+    value["aliases"][alias] = str(removed.directory)
+    location.save(value)
+    location.forget_meeting(removed.directory)
+    value = location.load()
+    assert [e["source"] for e in value["pending"]] == [str(kept.directory)]
+    assert alias not in value["aliases"]
+    assert removed.directory.exists(), "routing cleanup must never delete meeting files"
+
+
+def test_missing_removed_folder_is_not_a_failed_library_move(roots):
+    old, new = roots
+    removed = session(old)
+    removed.finish()
+    location.request(new)
+    removed.directory.rename(old / "outside-library-private-trash")
+    result = location.process()
+    assert not result["pending"] and not (new / removed.directory.name).exists()

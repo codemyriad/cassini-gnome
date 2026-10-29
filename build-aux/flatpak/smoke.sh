@@ -11,6 +11,11 @@ flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/fl
 flatpak install --user -y --noninteractive --reinstall --bundle "$BUNDLE"
 python3 tests/flatpak/library_persistence.py "$APP_ID" --output "$PWD/flatpak-library-persistence.json"
 python3 tests/flatpak/companion_bridge.py "$APP_ID" --output "$PWD/flatpak-companion-bridge.json"
+portal_prefix="$PWD/_ci-trash-portal"
+if [ ! -x "$portal_prefix/libexec/xdg-desktop-portal" ]; then
+  python3 tests/flatpak/prepare_trash_portal.py --output "$portal_prefix"
+fi
+python3 tests/flatpak/trash.py "$APP_ID" --output "$PWD/flatpak-trash.json" --portal-prefix "$portal_prefix"
 model_cache=${CASSINI_PARAKEET_TEST_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/cassini/package-test-models}
 if [ "$(uname -m)" = x86_64 ]; then
   python3 tests/parakeet/prepare_model.py --cache "$model_cache"

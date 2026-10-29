@@ -290,6 +290,7 @@ def test_request_at_completion_boundary_runs_instead_of_stranding_a_rerun(tmp_pa
         voice_store=store,
     )
     queue.lock = CompletionLock()
+    queue._idle = threading.Condition(queue.lock.inner)
     try:
         assert queue.recompute_voices(directory, {"others"}, failed.append)
         until(lambda: bool(finished))

@@ -426,6 +426,7 @@ class BrowserService:
                     ):
                         continue
                     meetings[value["tabId"]] = {key: value[key] for key in ("tabId", "title", "url", "sourceCount")}
+                    meetings[value["tabId"]]["heard"] = value.get("heard") is True
                     meetings[value["tabId"]]["title"] = value["title"][:200]
                     meetings[value["tabId"]]["url"] = value["url"][:2048]
                 browser.meetings = meetings
@@ -584,6 +585,8 @@ class BrowserService:
                         or not self.auto_record
                         or self.require_application
                         and not any(self.applications.values())
+                        or "call-evidence-v1" in browser.capabilities
+                        and not self._auto_start_ready(browser, browser.meetings.get(int(raw_tab), {}))
                     )
                 )
             ):
@@ -784,7 +787,7 @@ class BrowserService:
                     for tab, meeting in browser.meetings.items():
                         if (
                             tab not in browser.attempted
-                            and meeting["sourceCount"] > 0
+                            and self._auto_start_ready(browser, meeting)
                             and not browser.states.get(tab, {}).get("recording")
                         ):
                             browser.attempted.add(tab)
@@ -827,6 +830,12 @@ class BrowserService:
                 if browser_id in self.browsers:
                     self.browsers[browser_id].scheduled.discard(int(tab))
 
+    @staticmethod
+    def _auto_start_ready(browser, meeting):
+        return meeting.get("sourceCount", 0) > 0 and (
+            "call-evidence-v1" not in browser.capabilities or meeting.get("heard") is True
+        )
+
     def _automatic(self, identifier, action, generation=None):
         try:
             if action == "start":
@@ -837,6 +846,16 @@ class BrowserService:
                         or self.require_application
                         and not any(self.applications.values())
                     ):
+                        return
+                    browser_id, _, raw_tab = identifier.partition(":")
+                    browser = self.browsers.get(browser_id)
+                    if browser is None or (
+                        "call-evidence-v1" in browser.capabilities
+                        and not self._auto_start_ready(browser, browser.meetings.get(int(raw_tab), {}))
+                    ):
+                        # Evidence may disappear while this task waits for a worker.
+                        if browser is not None:
+                            browser.attempted.discard(int(raw_tab))
                         return
             self.command(identifier, action)
             if action == "start":
@@ -865,7 +884,14 @@ class BrowserService:
                 browser = self.browsers.get(browser_id)
                 meeting = browser.meetings.get(int(tab)) if browser else None
                 active = not self.require_application or any(self.applications.values())
-                allowed = self.auto_record and active and not self._stopping_all.is_set()
+                evidence = (
+                    browser is None
+                    or "call-evidence-v1" not in browser.capabilities
+                    or self._auto_start_ready(browser, meeting or {})
+                )
+                allowed = self.auto_record and active and not self._stopping_all.is_set() and evidence
+                if action == "start" and browser is not None and not evidence:
+                    browser.attempted.discard(int(tab))
             if action == "start" and allowed and meeting is not None:
                 try:
                     self.start_fallback(identifier, meeting, automatic_generation=generation)

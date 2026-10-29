@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {spawn, execFileSync} from 'node:child_process';
 import {createServer} from 'node:http';
-import {mkdtemp, mkdir, readFile, writeFile, chmod, rm} from 'node:fs/promises';
+import {mkdtemp, mkdir, readFile, readdir, writeFile, chmod, rm} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {createInterface} from 'node:readline';
@@ -164,7 +164,52 @@ try {
  await automatic(false);
  for (const pair of pairs) {await pair.meeting.evaluate(() => meeting.pc.close()); await pair.remote.evaluate(() => meeting.pc.close());}
  await poll(async () => !(await call()).meetings.length, 'inventory removes ended calls');
+ // Release completed fixtures and their Web Audio graphs before the next scenario.
+ for (const pair of pairs) {await pair.meeting.close(); await pair.remote.close();}
+ pairs.length = 0;
  evidence.scenarios.push({name: 'auto-record-hidden-native-notification-stop-all-new-call-reopen'});
+ // D30: the real app must not auto-record connected pre-join receive slots.
+ const {connectReceiveSlots, switchReceiveSlot} = await import(process.env.CASSINI_TEST_TOPOLOGIES || path.join(root, 'browser-protocol/scenarios/product-topologies.mjs'));
+ const prejoin = await context.newPage(), prejoinRemote = await remoteBrowser.newPage();
+ for (const page of [prejoin, prejoinRemote]) await page.goto(`http://127.0.0.1:${server.address().port}/`);
+ await prejoin.evaluate(() => {document.title = 'Pre-join evidence fixture';});
+ await automatic(true);
+ const previousFolders = (await readdir(artifacts, {withFileTypes: true}))
+  .filter(entry => entry.isDirectory() && entry.name.startsWith('Recording-')).map(entry => path.join(artifacts, entry.name)).sort();
+ await poll(async () => JSON.stringify((await call()).library.map(m => m.path).sort()) === JSON.stringify(previousFolders), 'saved Library observed before pre-join');
+ await connectReceiveSlots(prejoin, prejoinRemote, [[1100], [1320], [1540]], {prejoin: true});
+ await prejoin.evaluate(() => {
+  window.prejoinEvidenceSamples = [];
+  window.prejoinEvidenceClock = setInterval(async () => {
+   const stats = await topologyPeer.getStats();
+   prejoinEvidenceSamples.push([...stats.values()].filter(r => r.type === 'inbound-rtp' && r.kind === 'audio').map(r => r.packetsReceived));
+  }, 1000);
+ });
+ const candidate = await poll(async () => (await call()).meetings.find(m => m.title === 'Pre-join evidence fixture'), 'pre-join is listed');
+ assert.equal(candidate.sourceCount, 3, 'preview sender is not counted');
+ assert.equal(candidate.heard, false);
+ await poll(async () => {
+  const state = await call();
+  assert.ok(!state.statuses.some(s => s.recording), 'auto-record started before receiving call audio');
+  assert.deepEqual(state.library.map(m => m.path).sort(), previousFolders, 'pre-join created a Library folder');
+  return (await prejoin.evaluate(() => prejoinEvidenceSamples.length)) >= 3;
+ }, 'three actual pre-join stats samples without recording');
+ const beforeJoin = await prejoin.evaluate(() => prejoinEvidenceSamples);
+ assert.ok(beforeJoin.every(sample => sample.length === 0), 'pre-join has no inbound RTP report');
+ await switchReceiveSlot(prejoinRemote, 0, [1100]);
+ const joinedDirectory = await recording('Pre-join evidence fixture');
+ const heard = await poll(async () => (await call()).meetings.find(m => m.title === 'Pre-join evidence fixture' && m.heard === true), 'joined call evidence reaches Library');
+ assert.equal(heard.sourceCount, 3);
+ const joinedAudio = await samples(joinedDirectory);
+ assert.ok(joinedAudio.tracks.some(t => t.kind === 'remote' && power(t, 1100) > .001), 'joined remote audio recorded');
+ await call({action: 'stop', path: joinedDirectory});
+ await poll(async () => (await samples(joinedDirectory)).manifest.state === 'completed', 'joined evidence fixture saved');
+ await automatic(false);
+ await prejoin.close(); await prejoinRemote.close();
+ await poll(async () => !(await call()).meetings.length, 'pre-join scenario cleaned up');
+ evidence.scenarios.push({name: 'prejoin-receive-slots-do-not-auto-record-until-inbound-rtp', beforeJoin,
+  sourceCount: candidate.sourceCount, heardBefore: candidate.heard, heardAfter: heard.heard, directory: joinedDirectory});
+
  await (await import('./source-changes.mjs')).run({context, call, join, recording, samples, power, poll, automatic, id, artifacts, evidence});
  console.log('PASS real Library Record/individual Stop/global Stop; concurrent muted source capture and mic copies; windowless auto-record/native notification controls');
 } catch (error) {evidence.failure = error.stack; throw error;}

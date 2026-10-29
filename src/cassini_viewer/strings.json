@@ -5445,6 +5445,122 @@
    "milestone": "D26",
    "status": "harmony",
    "note": "Coordinator (D26). Shown only with transcript.noSpeech (status done, zero words, audio present, canWriteDown). Re-queues the normal write-down job with the current models. Nothing is lost because the transcript is empty."
+  },
+  {
+   "id": "common.moveToTrash",
+   "en": "Move to Trash",
+   "role": "menu-item",
+   "note": "Coordinator (D29). Library row context menu (after common.exportEllipsis and a separator), the last section of the Meeting More actions menu, the Mac File menu after Export…, and the shortcuts list. Hidden while the meeting records or saves, during a Library move, for external files and in Search; the Mac menu-bar item greys out instead. One meeting at a time.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [
+    "Trash",
+    "Trash-mac",
+    "TrashMeeting",
+    "TrashMeeting-mac"
+   ],
+   "milestone": "D29",
+   "status": "harmony"
+  },
+  {
+   "id": "common.shortcut.moveToTrash",
+   "en": "Delete",
+   "role": "label",
+   "note": "Coordinator (D29). HARMONY 8 row. Mac text: ⌘⌫. Never fires while a text field has focus.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [
+    "Trash",
+    "Trash-mac",
+    "TrashMeeting",
+    "TrashMeeting-mac"
+   ],
+   "milestone": "D29",
+   "status": "harmony"
+  },
+  {
+   "id": "meeting.trashedToast",
+   "en": "“{title}” moved to Trash",
+   "role": "toast",
+   "platforms": [
+    "gnome"
+   ],
+   "boards": [
+    "TrashAfter"
+   ],
+   "placeholders": {
+    "title": "the meeting title as in its Library row"
+   },
+   "note": "Coordinator (D29). GNOME only: AdwToast, default 5 s timeout (libadwaita default), action common.undo. The folder is trashed when the toast closes (dismissed, timed out, replaced or app quit), because the Flatpak Trash portal cannot restore. Undo puts the row back with nothing touched. Typographic quotes.",
+   "milestone": "D29",
+   "status": "harmony"
+  },
+  {
+   "id": "common.undo",
+   "en": "Undo",
+   "role": "button",
+   "boards": [
+    "TrashAfter"
+   ],
+   "note": "Coordinator (D29). Toast action on GNOME. On the Mac the Edit menu item reads \"Undo Move to Trash\" (system-provided from the undo action name common.moveToTrash).",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "milestone": "D29",
+   "status": "harmony"
+  },
+  {
+   "id": "meeting.trashFailed",
+   "en": "Couldn’t move this meeting to the Trash. It is still in your Library.",
+   "role": "line",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "note": "Coordinator (D29). Amber line under the Library preview H1 of the restored, reselected row, or the Meeting headline. Action common.tryAgain. Never the raw error.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "milestone": "D29",
+   "status": "harmony"
+  },
+  {
+   "id": "meeting.trashUnsupported",
+   "en": "This meeting’s drive has no Trash, so Cassini can’t move it there. It is still in your Library.",
+   "role": "line",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "note": "Coordinator (D29). Only when the volume cannot trash (GNOME G_IO_ERROR_NOT_SUPPORTED; Mac volumes without .Trashes). Action meeting.showInFiles. Cassini never deletes permanently.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "milestone": "D29",
+   "status": "harmony"
+  },
+  {
+   "id": "meeting.showInFiles",
+   "en": "Show in Files",
+   "role": "button",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "note": "Coordinator (D29). Mac text: \"Show in Finder\". Opens the folder containing the meeting with it selected.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "milestone": "D29",
+   "status": "harmony"
   }
  ]
 }

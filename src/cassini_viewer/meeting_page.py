@@ -99,6 +99,7 @@ class MeetingPage(Adw.NavigationPage):
             menu_model=menu,
             css_classes=["flat"],
         )
+        more.get_popover().set_halign(Gtk.Align.END)
         more.update_property([Gtk.AccessibleProperty.LABEL], [text("meeting.moreActions")])
         header.pack_end(more)
         header.pack_end(self.export_button)
@@ -306,6 +307,12 @@ class MeetingPage(Adw.NavigationPage):
         self.more_menu.append(text("common.exportEllipsis"), "win.export")
         if undo:
             self.more_menu.append(text("meeting.undoMerge"), "win.undo-speaker-merge")
+        if self.window.get_application().meeting_trash.allowed(meeting, self.window):
+            section = Gio.Menu()
+            from .meeting_trash import menu_item
+
+            section.append_item(menu_item())
+            self.more_menu.append_section(None, section)
         dark = self._style_manager.get_dark()
         matches = frozenset(
             s.id
@@ -370,7 +377,10 @@ class MeetingPage(Adw.NavigationPage):
             self.speakers.append(self.name_speakers_button)
         while child := self.lines.get_first_child():
             self.lines.remove(child)
-        if meeting.transcript == "damaged":
+        trash_error = self.window.trash_error_line(meeting)
+        if trash_error:
+            self.lines.append(trash_error)
+        elif meeting.transcript == "damaged":
             self.lines.append(InlineLine("errors.transcriptDamaged.line"))
         elif meeting.transcript == "failed":
             app = self.window.get_application()

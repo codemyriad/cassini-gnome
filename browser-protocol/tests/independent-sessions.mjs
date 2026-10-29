@@ -65,8 +65,9 @@ try {
     await page.evaluate(async()=>{const track=topologyPeer.getReceivers()[0].track;for(const value of [track,track.clone()]){const audio=document.createElement('audio');audio.srcObject=new MediaStream([value]);audio.autoplay=true;document.body.append(audio);await audio.play();}});
     meetings.push({page,frequency});
   }
-  await until(()=>events.find(e=>e.type==='hello'&&e.capabilities?.includes('independent-sessions-v1')),'capability handshake');
-  const inventory=await until(()=>events.filter(e=>e.type==='meetings').at(-1)?.meetings.filter(m=>m.title.startsWith('Independent meeting')&&m.sourceCount>0).length===2&&events.filter(e=>e.type==='meetings').at(-1),'two active calls');
+  const hello=await until(()=>events.find(e=>e.type==='hello'&&e.capabilities?.includes('independent-sessions-v1')),'capability handshake');
+  assert.ok(hello.capabilities.includes('call-evidence-v1'));
+  const inventory=await until(()=>events.filter(e=>e.type==='meetings').at(-1)?.meetings.filter(m=>m.title.startsWith('Independent meeting')&&m.sourceCount>0&&m.heard===true).length===2&&events.filter(e=>e.type==='meetings').at(-1),'two active calls');
   for(const [index,meeting] of meetings.entries())meeting.tabId=inventory.meetings.find(m=>m.title==='Independent meeting '+(index+1)).tabId;
   pactl('set-sink-mute',sink,'1');assert.match(pactl('get-sink-mute',sink),/yes/);
   for(const meeting of meetings)await worker.evaluate(tabId=>chrome.tabs.update(tabId,{muted:true}),meeting.tabId);
