@@ -150,6 +150,9 @@ def remember_capture_paths(app):
         for status in getattr(window, "_browser_snapshot", {}).get("statuses", ()):
             if status.get("recording") and isinstance(status.get("path"), str):
                 paths.add(status["path"])
+    trash = getattr(app, "meeting_trash", None)
+    if trash is not None:
+        paths = {path for path in paths if not trash.hides(path)}
     app._capture_paths = paths
     return paths
 
@@ -456,6 +459,8 @@ def queue_saved_for_later(path):
     except ValueError:
         return
     with LOCK:
+        if not directory.exists() and directory.parent.is_dir():
+            return  # D29: a removed meeting is not a failed hidden-window save.
         value = read_metadata(directory)
         if value["transcript"]["status"] in ("none", "failed"):
             from .library import LibraryScanner

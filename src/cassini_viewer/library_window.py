@@ -88,6 +88,14 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.companion_available_changed()
         self.monitor.refresh()
         self.connect("close-request", self._close)
+        self.connect(
+            "notify::visible",
+            lambda *_: (
+                self.get_application().meeting_trash.window_hidden(self)
+                if not self.get_visible() and self.get_application()
+                else None
+            ),
+        )
         for name, callback in (
             ("back-library", self.back_to_library),
             ("search", self.toggle_search),

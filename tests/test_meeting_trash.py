@@ -125,3 +125,18 @@ def test_cancellation_exclusion_spans_trash_and_private_cleanup(roots, tmp_path)
 
     trash_owned(session.directory, queue=SimpleNamespace(cancel_meeting=cancel), voices=store, trash=native)
     assert calls == ["cancelled-and-waited", "native-trash", "unblocked"]
+
+
+def test_hidden_save_after_trash_is_a_removed_path_not_an_error(roots, tmp_path):
+    from cassini_viewer.capture_guard import queue_saved_for_later
+
+    library, store = roots
+    session = capture(library)
+
+    def native(path):
+        path.rename(tmp_path / "private-system-trash")
+        return True
+
+    trash_owned(session.directory, voices=store, trash=native)
+    assert queue_saved_for_later(str(session.directory)) is None
+    assert not session.directory.exists()

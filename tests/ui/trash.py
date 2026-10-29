@@ -227,6 +227,18 @@ with tempfile.TemporaryDirectory() as temporary:
         until(lambda: not controller.operations)
         assert client.directory.exists()
 
+        # Keep recording hides windows directly: an invisible toast must not
+        # leave its pending removal stalled indefinitely.
+        controller.request(client, window)
+        window.set_visible(False)
+        until(lambda: not controller.operations)
+        assert not client.directory.exists() and not app._quitting
+        window.present()
+        until(lambda: client.directory in controller.absent)
+        (destination / client.directory.name).rename(client.directory)
+        window.monitor.refresh_now()
+        until(lambda: any(m.key == client.key for m in window.snapshot.meetings))
+
         # Failure restores selection and one published warning/action.
         fail.append(True)
         controller.request(client, window)

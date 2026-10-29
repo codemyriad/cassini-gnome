@@ -813,6 +813,8 @@ class CassiniApplication(Adw.Application):
             self._pending_recording = None
         if self._browser_seen_saved is not None:
             self._browser_seen_saved.discard(path)
+        if hasattr(self, "_capture_paths"):
+            self._capture_paths.discard(path)
         for field in ("recordings", "statuses"):
             self._browser_snapshot[field] = [v for v in self._browser_snapshot.get(field, []) if v.get("path") != path]
         for key, recorder in list(self.native_captures.items()):
@@ -823,6 +825,12 @@ class CassiniApplication(Adw.Application):
         if self.comfort:
             self.comfort.discard_meeting(directory)
         for window in self.get_windows():
+            activity = getattr(window, "_activity_source", None)
+            if activity is not None:
+                for key, value in list(getattr(activity, "paths", {}).items()):
+                    if value == path:
+                        activity.paths.pop(key, None)
+                        activity.snapshot.pop(key, None)
             if getattr(window, "_pending_recording", None) == path:
                 window._pending_recording = None
             if hasattr(window, "_browser_snapshot"):

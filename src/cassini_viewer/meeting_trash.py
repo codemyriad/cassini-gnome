@@ -183,6 +183,11 @@ class MeetingTrash:
             waits.append(self.app.comfort.editor.submit(lambda: None))
         return tuple(waits)
 
+    def window_hidden(self, window):
+        for operation in list(self.operations.values()):
+            if operation.window is window and operation.phase == "pending":
+                operation.toast.dismiss()
+
     def undo(self, operation):
         if operation.phase != "pending":
             return

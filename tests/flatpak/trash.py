@@ -13,11 +13,16 @@ import tempfile
 from pathlib import Path
 
 
-def worker(application, private, output):
+def worker(application, private, output, portal_prefix=None):
     assert str(private).startswith("/tmp/cassini-flatpak-trash-")
     assert Path(os.environ["HOME"]) == private / "home"
-    portal = next(
-        (Path(p) for p in ("/usr/libexec/xdg-desktop-portal", "/usr/lib/xdg-desktop-portal") if Path(p).is_file()), None
+    portal = (
+        portal_prefix / "libexec/xdg-desktop-portal"
+        if portal_prefix
+        else next(
+            (Path(p) for p in ("/usr/libexec/xdg-desktop-portal", "/usr/lib/xdg-desktop-portal") if Path(p).is_file()),
+            None,
+        )
     )
     assert portal is not None, "Installed Flatpak Trash proof needs the real xdg-desktop-portal host service"
     log = output.with_name("flatpak-trash-portal.log")
@@ -113,11 +118,12 @@ def main():
     parser.add_argument("application")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--worker", type=Path)
+    parser.add_argument("--portal-prefix", type=Path)
     args = parser.parse_args()
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     if args.worker:
-        worker(args.application, args.worker, output)
+        worker(args.application, args.worker, output, args.portal_prefix)
         return
     location = subprocess.check_output(
         ["flatpak", "info", "--user", "--show-location", args.application], text=True
@@ -138,8 +144,14 @@ def main():
             XDG_RUNTIME_DIR=str(private / "run"),
             FLATPAK_USER_DIR=repository,
         )
+        if args.portal_prefix:
+            prefix = args.portal_prefix.resolve()
+            environment["XDG_DATA_DIRS"] = (
+                str(prefix / "share") + ":" + environment.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share")
+            )
         for key in ("WAYLAND_DISPLAY", "WAYLAND_SOCKET", "DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "CASSINI_LIBRARY_DIR"):
             environment.pop(key, None)
+        portal_options = ["--portal-prefix", str(args.portal_prefix.resolve())] if args.portal_prefix else []
         subprocess.run(
             [
                 "dbus-run-session",
@@ -152,6 +164,7 @@ def main():
                 str(output),
                 "--worker",
                 str(private),
+                *portal_options,
             ],
             env=environment,
             check=True,
