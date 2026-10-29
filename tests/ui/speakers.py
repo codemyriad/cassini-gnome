@@ -166,13 +166,8 @@ with tempfile.TemporaryDirectory() as temporary:
     words = tuple(Word(voice.id, i * 1000, i * 1000 + 100, "Spoken") for i, voice in enumerate(voices))
     page.update(replace(page.meeting, speakers=voices, words=words, turns=reading_turns(words)))
     # Outside folders are readable, but offer no name/edit controls.
-    frames = []
-    window.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 3)[1])
-    window.queue_draw()
-    until(lambda: len(frames) >= 3)
-    visible, bounds = page.name_speakers_button.compute_bounds(window)
     adjustment = page.speakers_scroller.get_vadjustment()
-    assert adjustment.get_upper() > adjustment.get_page_size()
+    until(lambda: adjustment.get_page_size() > 0 and adjustment.get_upper() > adjustment.get_page_size())
     adjustment.set_value(adjustment.get_upper() - adjustment.get_page_size())
 
     def last_speaker_action_reachable():

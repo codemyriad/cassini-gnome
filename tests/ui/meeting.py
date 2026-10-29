@@ -76,10 +76,9 @@ with tempfile.TemporaryDirectory() as temporary:
     window.open_meeting(meeting)
     page = window.meeting_page
     until(lambda: len(page.bound) == 5 and window.player._prerolled)
-    assert all(
-        v in labels(page.speakers)
-        for v in ["43%", "36%", "21%", "Named by you", "Recognised from saved voices", "Not named yet"]
-    )
+    assert all(v in labels(page.speakers) for v in ["43%", "36%", "21%", "Named by you", "Not named yet"])
+    # Imported recognition metadata has no corresponding local saved voice.
+    assert "Recognised from saved voices" not in labels(page.speakers)
     window.player.seek(192000)
     current = next(row for row in page.bound.values() if row[0].speaker == "guest")
     assert "background=" in current[1].get_label()
