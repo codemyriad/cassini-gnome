@@ -9,7 +9,7 @@
   "exceptions": [
     {
       "golden": "parakeet-pipeline-golden.json",
-      "goldenSha256": "dbb556030e2c4ae8c6b981457a3341ce78dce7ec8c7d0c1be794374627b16534",
+      "goldenSha256": "8ded0bcea24bf93e93c713510afa4f9bd2ccfd9865e0c68061314b72749bcf4c",
       "segmentIndex": 6,
       "startSample": 461312,
       "endSample": 493056,
@@ -28,7 +28,7 @@
     },
     {
       "golden": "parakeet-pipeline-golden.json",
-      "goldenSha256": "dbb556030e2c4ae8c6b981457a3341ce78dce7ec8c7d0c1be794374627b16534",
+      "goldenSha256": "8ded0bcea24bf93e93c713510afa4f9bd2ccfd9865e0c68061314b72749bcf4c",
       "segmentIndex": 5,
       "startSample": 318976,
       "endSample": 458240,
@@ -46,7 +46,7 @@
     },
     {
       "golden": "parakeet-pipeline-golden.json",
-      "goldenSha256": "dbb556030e2c4ae8c6b981457a3341ce78dce7ec8c7d0c1be794374627b16534",
+      "goldenSha256": "8ded0bcea24bf93e93c713510afa4f9bd2ccfd9865e0c68061314b72749bcf4c",
       "segmentIndex": 7,
       "startSample": 495104,
       "endSample": 598528,

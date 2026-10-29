@@ -93,6 +93,41 @@ with tempfile.TemporaryDirectory() as temporary:
     assert page.play.get_tooltip_text() == "Pause"
     page.play.emit("clicked")
     assert not window.player.playing
+    # D26: both surfaces explain a completed empty transcript and run the
+    # normal write-down action. No real model, device or user Library is used.
+    with patch.object(window.monitor, "callback", lambda _snapshot: None):
+        from dataclasses import replace
+        from types import SimpleNamespace
+
+        empty = replace(meeting, words=(), turns=(), preview_turns=(), transcript="done", eta_minutes=None)
+        assert empty.no_speech and empty.can_write_down
+
+        def widgets(widget):
+            yield widget
+            child = widget.get_first_child()
+            while child:
+                yield from widgets(child)
+                child = child.get_next_sibling()
+
+        with patch.object(app, "write_down") as retry:
+            page.update(empty)
+            assert "No speech was found in this meeting." in labels(page.lines)
+            again = next(w for w in widgets(page.lines) if isinstance(w, Gtk.Button))
+            assert again.get_label() == "Write it down again"
+            again.emit("clicked")
+            retry.assert_called_once_with(empty)
+            retry.reset_mock()
+            window._selected(None, SimpleNamespace(meeting=empty))
+            assert "No speech was found in this meeting." in labels(window.preview)
+            again = next(
+                w
+                for w in widgets(window.preview)
+                if isinstance(w, Gtk.Button) and w.get_label() == "Write it down again"
+            )
+            again.emit("clicked")
+            retry.assert_called_once_with(empty)
+        page.update(meeting)
+        window._selected(None, SimpleNamespace(meeting=meeting))
     # Synthetic growth owns its model until it is restored. Live Library
     # notifications must not replace it with the on-disk fixture mid-assertion.
     with patch.object(window.monitor, "callback", lambda _snapshot: None):

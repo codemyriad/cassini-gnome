@@ -12,7 +12,7 @@
   "exceptions": [
     {
       "golden": "whistle-golden.json",
-      "goldenSha256": "25afea52f6cdc1865105be6feab7d2072e77d457e96bf94eabc22277731dc305",
+      "goldenSha256": "eda6baa7678bcd5e33436836e70aa84766b5d13f16f61104ebf7f4d33e3a5350",
       "segmentIndex": 5,
       "startSample": 318976,
       "endSample": 458240,

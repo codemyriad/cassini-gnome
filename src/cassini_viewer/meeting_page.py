@@ -382,6 +382,18 @@ class MeetingPage(Adw.NavigationPage):
                     callback=(lambda: retry(meeting)) if retry and meeting.metadata_editable else None,
                 )
             )
+        elif meeting.no_speech:
+            app = self.window.get_application()
+            self.lines.append(
+                InlineLine(
+                    "transcript.noSpeech",
+                    info=True,
+                    action="transcript.writeDownAgain"
+                    if meeting.can_write_down and getattr(app, "writing_available", True)
+                    else None,
+                    callback=lambda: app.write_down(meeting),
+                )
+            )
         if not self.store.get_n_items():
             self.store.append(TurnItem(None))
         common = 0

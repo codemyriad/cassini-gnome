@@ -12,7 +12,7 @@ from gi.repository import GLib, GObject, Gst
 from .capture_sources import change_time, selected_pcm
 from .native_timing import NS, NativeTimeline
 from .recorder import request_eos
-from .recording_details import space_left
+from .recording_details import ACMeter, space_left
 from .recording_session import RecordingSession
 
 RATE = 48000
@@ -50,6 +50,7 @@ class NativeRecorder(GObject.Object):
         self._pending_sources = {}
         self._retired_branches = set()
         self._timelines = {}
+        self._ac_meters = {}
 
     @property
     def activity(self):
@@ -72,6 +73,7 @@ class NativeRecorder(GObject.Object):
         self._pending_sources = {}
         self._retired_branches = set()
         self._timelines = {}
+        self._ac_meters = {}
         future = self._executor.submit(self._prepare, Path(parent) if parent is not None else None)
         future.add_done_callback(lambda f: GLib.idle_add(self._prepared, f, test))
 
@@ -150,7 +152,6 @@ class NativeRecorder(GObject.Object):
         branch = Gst.parse_bin_from_description(
             source + " ! queue ! audioconvert ! audioresample ! "
             "audio/x-raw,format=S16LE,rate=48000,channels=1 ! "
-            f"level name=level-{kind} interval=100000000 post-messages=true ! "
             f"appsink name={kind} emit-signals=true sync=false async=false max-buffers=8 drop=false",
             False,
         )
@@ -274,6 +275,10 @@ class NativeRecorder(GObject.Object):
                 if stored is not None:
                     writer = self.session.writers[stored]
                     rate, channels = writer.rate, writer.channels
+                    meter = self._ac_meters.setdefault(stored, ACMeter(rate, channels))
+                    if meter.feed(data):
+                        self.levels[0 if identifier == "microphone" else 1] = meter.level
+                        GLib.idle_add(self.emit, "changed")
                     original_frames = len(data) // (channels * 2)
                     data, offset = selected_pcm(
                         data, buffer.pts / Gst.MSECOND, rate, channels, self._boundaries[identifier]
@@ -310,15 +315,6 @@ class NativeRecorder(GObject.Object):
             self._begin_finish(problem)
         elif message.type == Gst.MessageType.EOS:
             self._begin_finish()
-        elif message.type == Gst.MessageType.ELEMENT:
-            value = message.get_structure()
-            if value is not None and value.get_name() == "level":
-                identifier = message.src.get_name()
-                index = 0 if identifier == "level-microphone" else 1
-                db = value.get_value("rms")[0]
-                kind = "microphone" if index == 0 else "system"
-                self.levels[index] = max(0.0, min(1.0, (db + 60) / 60)) if kind in self._track_ids else 0
-                self.emit("changed")
 
     def stop(self):
         if self.starting:

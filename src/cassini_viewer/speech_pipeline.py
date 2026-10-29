@@ -132,6 +132,7 @@ def audio_segments(track, segments, heartbeat=None, *, clock=None):
 
 class SpeechDetector:
     frame_size = 512
+    input_stage = "silero-input-hpf-butter2-100hz-v1"
 
     def __init__(self, model, session=None):
         if os.environ.get("ORT_DISABLE_TELEMETRY") != "1":
@@ -144,6 +145,7 @@ class SpeechDetector:
         options.intra_op_num_threads = 1
         self.session = session or ort.InferenceSession(str(model), options, providers=["CPUExecutionProvider"])
         self.runtime = dict(
+            inputStage=self.input_stage,
             version=ort.__version__,
             providers=self.session.get_providers(),
             intraThreads=self.session.get_session_options().intra_op_num_threads,
@@ -152,11 +154,31 @@ class SpeechDetector:
         self.reset()
 
     def reset(self):
+        self.hpf = (0.0, 0.0, 0.0, 0.0)
         self.state = np.zeros((2, 1, 128), dtype=np.float32)
         self.context = np.zeros((1, 64), dtype=np.float32)
 
     def probability(self, frame):
-        samples = np.concatenate((self.context, frame.reshape(1, -1)), axis=1)
+        # D26.1: WebRTC APM's capture high-pass, for Silero only. Preserve
+        # binary64 operation order; retain state through every frame in a track.
+        # The gate and every recogniser/diarizer/voiceprint still receive raw PCM.
+        x1, x2, y1, y2 = self.hpf
+        filtered = np.empty(len(frame), dtype="<f4")
+        for index, value in enumerate(frame):
+            x = float(value)
+            y = (
+                0.9726138984998437 * x
+                + -1.9452277969996874 * x1
+                + 0.9726138984998437 * x2
+                - -1.9444776577670935 * y1
+                - 0.9459779362322813 * y2
+            )
+            if -1e-25 < y < 1e-25:
+                y = 0.0
+            x2, x1, y2, y1 = x1, x, y1, y
+            filtered[index] = y
+        self.hpf = (x1, x2, y1, y2)
+        samples = np.concatenate((self.context, filtered.reshape(1, -1)), axis=1)
         output, self.state = self.session.run(
             None, dict(input=samples, state=self.state, sr=np.array(16000, dtype=np.int64))
         )
