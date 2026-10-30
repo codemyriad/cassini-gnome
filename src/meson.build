@@ -48,7 +48,10 @@ launcher = configure_file(
   install_mode: 'r-xr-xr-x',
 )
 
-install_symlink('cassini-viewer', pointing_to: 'cassini-talk', install_dir: get_option('bindir'))
+# Keep the old command as identical regular bytes: build products and the
+# installed identity verifier intentionally reject symbolic links.
+install_data(launcher, rename: 'cassini-viewer', install_dir: get_option('bindir'),
+  install_mode: 'r-xr-xr-x')
 
 viewer_sources = files(
   'cassini_viewer/__init__.py',
