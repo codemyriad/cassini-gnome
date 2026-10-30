@@ -17,8 +17,11 @@ Export has exactly Cassini file (default) and Markdown, through the header, menu
 and Ctrl+Shift+E. The old Ctrl+E/TXT/WebVTT paths and serializers are removed.
 The shared dialog discloses every automatically recognised name, with only the
 names semibold, no Oxford comma and no truncation; long content scrolls. Choose
-uses the native folder chooser, Documents is the initial destination, Cancel
-cancels a background job. Output files publish without replacing an existing
+uses the native/portal folder chooser. Documents is only its initial suggestion;
+until a folder has been chosen, Export opens that chooser before starting work.
+The returned folder URI is remembered in GSettings for later exports, and Choose
+updates it without opening a second chooser on Export. Cancel cancels an
+outstanding chooser or background job. Output files publish without replacing an existing
 file, use safe bounded names and append a number on collision. Failed exports
 retain the old error toast until new error copy is drawn.
 
@@ -95,3 +98,21 @@ unknown start remains absent. Export mixes unknown source offsets at zero using
 copies of the track descriptors and records the assumption in
 `x["gocassini.com"].recovery.offsetsAssumedZero`. Capture files and the Library's
 unknown offsets remain unchanged. Import/re-export carries that private marker.
+
+D35.1 completes the no-private-home path alongside the Library persistence fix
+(#104). Export rejects an unbacked Flatpak home destination before creating any
+folder or staging output; no broad filesystem permission is added. Its successful
+publication shows the catalog’s Exported… toast with Show, which opens the
+published file’s containing folder. Existing collision, verification and atomic
+publication rules are unchanged. Native GTK tests drive actual FileDialog folder
+selection, remembered destination, picker dismissal/cancellation, both formats,
+feedback and Show dispatch. They fail on any Gtk-WARNING/CRITICAL.
+
+The installed Flatpak persistence test covers localized, absent, disabled and
+revoked Music, two launches each. It verifies recording bytes and both exported
+formats survive, and rejects a writable private-home export. Its narrow per-run
+folder grant models the selected folder; it does not claim to test document-portal
+FUSE mounting. The roy host has no /dev/fuse. The native chooser proof and real
+sandbox/restart proof are separate; end-to-end document-portal mounting remains
+a desktop QA check. Main fails the same sandbox test by accepting the unsafe
+private-home export.
