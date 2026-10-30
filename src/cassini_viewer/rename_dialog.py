@@ -76,6 +76,9 @@ class RenameDialog(Adw.Dialog):
             return
         self.busy = True
         self.set_can_close(False)
+        # Let GtkText receive focus-out before disabling its parent EntryRow.
+        # Otherwise its cursor timer warns while an asynchronous save is pending.
+        self.confirm.grab_focus()
         self.entry.set_sensitive(False)
         self.cancel.set_sensitive(False)
         self._validate()
