@@ -137,6 +137,20 @@ with tempfile.TemporaryDirectory() as temporary:
     assert page.speakers_dialog is dialog and dialog.entry.get_text() == entered
     assert not dialog.voice_settings.get_visible()
     assert "Future meetings" in dialog.remember_description.get_label()
+    dialog.entry.set_text("The others")
+    assert not dialog.remember.get_sensitive() and not dialog.remember.get_active()
+    assert "Future meetings" not in dialog.remember_description.get_label()
+    dialog.entry.set_text("Speaker 7")
+    assert not dialog.remember.get_sensitive() and not dialog.remember.get_active()
+    assert "Future meetings" not in dialog.remember_description.get_label()
+    dialog.entry.set_text(entered)
+    assert dialog.remember.get_sensitive() and dialog.remember.get_active()
+    dialog.remember.set_active(False)
+    dialog.entry.set_text("Another person")
+    assert dialog.remember.get_sensitive() and not dialog.remember.get_active(), "Typing overwrote an explicit opt-out"
+    dialog.entry.set_text("The others")
+    dialog.entry.set_text(entered)
+    assert dialog.remember.get_active()
     dialog.save.emit("clicked")
     until(lambda: dialog.closed and app.voice_store.snapshot()["voices"])
     assert app.voice_store.snapshot()["voices"][0]["name"] == entered

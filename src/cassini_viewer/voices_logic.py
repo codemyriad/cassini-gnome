@@ -45,6 +45,16 @@ def name_key(name):
     return stripped.upper().lower()  # Kotlin's locale-independent case folding.
 
 
+def person_name(value, source_labels=()):
+    """D35: generated source labels must never become remembered people."""
+    value = name_key(value)
+    return bool(
+        value
+        and value not in {name_key(label) for label in source_labels}
+        and re.fullmatch(r"speaker \d+", value) is None
+    )
+
+
 def alphabetical(voice):
     return name_key(voice["name"]), voice["name"], voice["id"]
 

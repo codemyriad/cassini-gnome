@@ -10,7 +10,7 @@ from gi.repository import Adw, Gio, GLib, Gtk
 from . import speaker_edits, ux_formats
 from .meeting_text import COLOURS, DARK_COLOURS
 from .strings import text
-from .voices_logic import name_key, pick_name, ranked
+from .voices_logic import name_key, person_name, pick_name, ranked
 
 LOG = logging.getLogger(__name__)
 
@@ -36,6 +36,8 @@ class SpeakersDialog(Adw.Dialog):
         self.chosen_voice = None
         self.declined_duplicate = None
         self.candidate = None
+        self._remember_choice = True
+        self._updating_remember = False
         self.connect("closed", self._closed)
         content = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
@@ -109,7 +111,7 @@ class SpeakersDialog(Adw.Dialog):
         answers.append(self.someone_else)
         self.duplicate.append(answers)
         content.append(self.duplicate)
-        self.remember = Gtk.CheckButton(label=text("speakers.rememberVoice"), active=True, sensitive=False)
+        self.remember = Gtk.CheckButton(label=text("speakers.rememberVoice"), active=False, sensitive=False)
         self.remember.connect("toggled", self._remember_changed)
         content.append(self.remember)
         self.remember_description = Gtk.Label(xalign=0, wrap=True, css_classes=["caption", "dim-label"])
@@ -279,6 +281,9 @@ class SpeakersDialog(Adw.Dialog):
         self._validate()
 
     def _remember_changed(self, *_):
+        if self._updating_remember:
+            return
+        self._remember_choice = self.remember.get_active()
         self.retry = None
         self.save.set_label(text("speakers.saveName"))
         self.error.set_visible(False)
@@ -304,13 +309,23 @@ class SpeakersDialog(Adw.Dialog):
         ready = all(
             model is not None and model.snapshot().get("ready") for model in (app.voice_models, app.diarization_models)
         )
-        self.remember.set_sensitive(enough and writable and not self.busy)
+        personal = valid and person_name(self.entry.get_text(), (text("common.me"), text("common.theOthers")))
+        if self.entry.get_text().strip() and not personal:
+            self._remember_choice = True  # A genuine source label starts a new naming choice.
+        # GtkEditable.set_text can emit a temporary empty value. Keep an
+        # explicit opt-out through that delete/insert transaction.
+        self._updating_remember = True
+        try:
+            self.remember.set_active(personal and self._remember_choice)
+        finally:
+            self._updating_remember = False
+        self.remember.set_sensitive(enough and personal and writable and not self.busy)
         self.voices_list.set_sensitive(not self.busy)
         self.duplicate.set_sensitive(not self.busy)
         self.remember_description.set_label(
             text("savedVoices.newerVersion")
             if not writable
-            else text("speakers.rememberVoice.description", name=self.entry.get_text().strip())
+            else (text("speakers.rememberVoice.description", name=self.entry.get_text().strip()) if personal else "")
             if enough
             else text("speakers.rememberVoice.modelsNeeded")
             if not ready
@@ -320,11 +335,12 @@ class SpeakersDialog(Adw.Dialog):
         )
         self.voice_settings.set_visible(writable and not enough and not ready)
         self.remember.set_visible(self.identifier != "me")
-        self.remember_description.set_visible(self.identifier != "me")
+        self.remember_description.set_visible(self.identifier != "me" and bool(self.remember_description.get_label()))
         self.voice_settings.set_visible(self.voice_settings.get_visible() and self.identifier != "me")
         self.candidate = None
         if (
             enough
+            and personal
             and writable
             and self.remember.get_active()
             and self.chosen_voice is None
