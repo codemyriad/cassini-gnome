@@ -75,6 +75,7 @@ with tempfile.TemporaryDirectory() as temporary:
             side_effect=AssertionError("Sandbox tried unusable browser bridge"),
         ),
         patch.object(LibraryWindow, "_activity_tick", activity_tick),
+        patch("cassini_viewer.companion_bundle.store_listing_public", return_value=True),
     ):
         app = CassiniApplication("com.gocassini.CompanionSandboxTest", "test", "development")
         app.register(None)
@@ -94,6 +95,7 @@ with tempfile.TemporaryDirectory() as temporary:
         dialog.present(window)
         assert dialog.browser.get_title() == "Not set up"
         assert not dialog.browser_setup.get_visible() and not dialog.automatic.get_visible()
+        assert not dialog.browser_add.get_visible() and not dialog.browser_add_local.get_visible()
         assert dialog._future is None
         assert not dialog.move.get_visible(), "Unverified document-portal relocation must stay hidden"
         dialog.force_close()
@@ -163,6 +165,7 @@ with tempfile.TemporaryDirectory() as temporary:
                 assert recording_worker != threads[0], "Blocked host probe occupied the recording executor"
                 assert not app.browser_companion_available
                 assert not settings.browser_setup.get_visible() and not settings.automatic.get_visible()
+                assert not settings.browser_add.get_visible() and not settings.browser_add_local.get_visible()
                 assert not window.first_companion.get_visible()
                 release.set()
                 until(lambda: app.browser_connection.future is None)
