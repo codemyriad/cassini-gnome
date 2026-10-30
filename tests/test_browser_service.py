@@ -8,6 +8,19 @@ import pytest
 from cassini_viewer.browser_service import BrowserService, connect, read_packet, request, send_packet
 
 
+class SilentTap:
+    """Native fallback input that never opens a real microphone or speaker."""
+
+    def __init__(self, kind, origin, append, failed, *, level):
+        pass
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+
 @pytest.fixture
 def service(tmp_path):
     path = tmp_path / "private/browser.sock"
@@ -17,7 +30,15 @@ def service(tmp_path):
         notifications.append((title, stop))
         return lambda: None
 
-    service = BrowserService(tmp_path / "settings.json", command_timeout=0.3, notifier=notify)
+    # A rejected automatic start falls back to a native recording; keep it out
+    # of the user's library and away from real audio devices.
+    service = BrowserService(
+        tmp_path / "settings.json",
+        command_timeout=0.3,
+        notifier=notify,
+        capture_parent=tmp_path / "library",
+        tap_factory=SilentTap,
+    )
     service.notifications = notifications
     ready = threading.Event()
     thread = threading.Thread(target=service.serve, args=(path, ready), daemon=True)
@@ -142,6 +163,8 @@ def test_command_failure_is_visible_and_no_retry_loop(service):
         assert request(path=path)["meetings"][0]["error"] == "No accessible audio"
         server.policy()
         assert len(next(iter(server.browsers.values())).attempted) == 1
+        directory = wait_for(lambda: next((c.directory for c in server.captures.values() if c.directory), None))
+        assert directory.parent == server.capture_parent
     finally:
         stream.close()
         connection.close()
