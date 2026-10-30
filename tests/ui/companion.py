@@ -228,9 +228,18 @@ with tempfile.TemporaryDirectory() as temporary:
         dialog.render()
         settings.render_browser()
         assert dialog.local_add.get_visible() and settings.browser_add_local.get_visible()
-        previous_local = dialog.local_dialog
+        dialog.force_close()
+        until(lambda: dialog.closed)
+        settings.present(window)
+        until(settings.get_mapped)
         settings.browser_add_local.emit("clicked")
-        until(lambda: dialog.local_dialog is not previous_local and not dialog.local_dialog.closed)
+        dialog = app.companion_setup
+        dialog.service_path = path
+        until(dialog.get_mapped)
+        assert dialog.local_dialog is None and dialog.future is None, "Outer Add only presents the setup sheet"
+        assert dialog.add_button.get_visible() and dialog.add_button.get_label() == "Add from Cassini"
+        dialog.add_button.emit("clicked")
+        until(lambda: dialog.local_dialog is not None and not dialog.local_dialog.closed)
         assert dialog.local_dialog.done.get_sensitive(), "Only the real existing connection enables Done"
         dialog.local_dialog.force_close()
         shot(window, "-connected")
@@ -238,9 +247,10 @@ with tempfile.TemporaryDirectory() as temporary:
         shot(window, "-connected-dark")
     until(lambda: not dialog.done.get_sensitive())
     assert not dialog.connect_button.get_visible()
-    settings.force_close()
     dialog.force_close()
     until(lambda: dialog.closed)
+    settings.force_close()
+    until(lambda: settings.closed)
     reopened = app.on_companion_setup(parent=window)
     until(reopened.get_mapped)
     assert reopened.add_badge.get_label() == "✓" and not reopened.add_button.get_visible()

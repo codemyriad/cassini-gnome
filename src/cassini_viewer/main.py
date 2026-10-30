@@ -391,7 +391,13 @@ class CassiniApplication(Adw.Application):
         return dialog
 
     def on_companion_add(self, *_args, parent=None, local=None):
-        return self.on_companion_setup(parent=parent)
+        dialog = self.on_companion_setup(parent=parent)
+        if dialog:
+            # An outer entry only presents/configures the sheet. Its own
+            # first-step button starts preparation or opens the store.
+            dialog.prefer_local = bool(local)
+            dialog.render()
+        return dialog
 
     @property
     def recording_settings(self):

@@ -26,6 +26,7 @@ class CompanionSetup(Adw.Dialog):
         self.working = self.failed = self.add_requested = False
         self.local_error = None
         self.prepare_error = False
+        self.prefer_local = False
         self.local_dialog = None
         self.browser_names = []
         self.connected = False
@@ -123,7 +124,9 @@ class CompanionSetup(Adw.Dialog):
     def _add(self, *_, local=None):
         self.prepare_error = False
         self.local_error = None
-        self.add_requested = "local" if local or not companion_bundle.store_listing_public() else "store"
+        self.add_requested = (
+            "local" if local or self.prefer_local or not companion_bundle.store_listing_public() else "store"
+        )
         self.poll()
 
     def _launch_add(self, *, local=False):
@@ -229,6 +232,7 @@ class CompanionSetup(Adw.Dialog):
             self.future is not None,
             self.app.browser_companion_available,
             self.prepare_error,
+            self.prefer_local,
             companion_bundle.store_listing_public(),
         )
         if signature == self._render_signature:
@@ -236,7 +240,13 @@ class CompanionSetup(Adw.Dialog):
         self._render_signature = signature
         self.connected = state["phase"] == "connected"
         self.local_add.set_visible(
-            companion_bundle.store_listing_public() or state.get("everConnected", False) or self.connected or bool(self.browser_names)
+            not self.prefer_local
+            and (
+                companion_bundle.store_listing_public()
+                or state.get("everConnected", False)
+                or self.connected
+                or bool(self.browser_names)
+            )
         )
         self.local_add.set_sensitive(state["browser"] is not None and self.future is None)
         self.prepare_problem.set_visible(self.prepare_error)
@@ -253,9 +263,9 @@ class CompanionSetup(Adw.Dialog):
             self.add_caption.set_label(text(key, browser=self.browser_names[0], browsers=", ".join(self.browser_names)))
         else:
             self.add_caption.set_label(text("common.done") if added else text("companion.addStep.notAdded"))
-        self.add_button.set_visible(not added)
+        self.add_button.set_visible(not added or self.prefer_local)
         self.add_button.set_sensitive(state["browser"] is not None and self.future is None)
-        self.add_button.set_label(add_text(state))
+        self.add_button.set_label(text("companion.local.add") if self.prefer_local else add_text(state))
         self.connect_row.set_visible(added)
         self.add_retry.set_visible(not added and self.failed and self.app.browser_companion_available)
         if not added and self.failed:
@@ -271,7 +281,9 @@ class CompanionSetup(Adw.Dialog):
         self.connect_button.set_label(text("common.tryAgain"))
         self.done.set_sensitive(self.connected)
         self.set_default_widget(
-            self.done
+            self.add_button
+            if self.prefer_local and self.add_button.get_visible()
+            else self.done
             if self.connected
             else self.connect_button
             if self.connect_button.get_visible()

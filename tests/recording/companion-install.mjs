@@ -53,6 +53,7 @@ async function poll(check,label,timeout=20000) {
  throw new Error('Timed out: '+label);
 }
 async function launchBrowser() {
+ for (const property of ['IsEnabled','ScreenReaderEnabled']) execFileSync('gdbus',['call','--session','--dest','org.a11y.Bus','--object-path','/org/a11y/bus','--method','org.freedesktop.DBus.Properties.Set','org.a11y.Status',property,'<true>']);
  context = await chromium.launchPersistentContext(profile,{headless:false,ignoreDefaultArgs:['--disable-extensions'],
   args:['--no-sandbox','--force-renderer-accessibility'],viewport:{width:1100,height:720},env:environment});
  context.on('request',request=>{if(request.url().includes('chromewebstore.google.com')) evidence.storeRequests.push(request.url());});
@@ -70,7 +71,10 @@ try {
  await poll(async()=>['waiting','connected'].includes((await call()).phase),'background host registration');
  assert.equal((await call()).connected,false,'a copied folder is never an added/connected companion');
  await launchBrowser();
- await call('add');
+ const opened=await call('add');
+ assert.equal(opened.guide,false,'outer Add only presents setup; no preparation or browser launch');
+ await poll(async()=>(await call()).setupReady,'outer setup sheet maps before step 1');
+ await call('prepare');
  const state=await poll(async()=>{const state=await call();return state.guide&&state.copyReady ? state : null;},'Add from Cassini guide');
  assert.equal(state.primary,'Add from Cassini');
  assert.equal(state.done,false);
@@ -85,9 +89,17 @@ try {
  const newTab=await poll(()=>context.pages().find(page=>page.url().startsWith('chrome://new-tab-page')),'browser opens a new tab');
  await newTab.bringToFront();
  await call('address');
- execFileSync('xdotool',['key','--clearmodifiers','ctrl+l']);
+ const address = expected => JSON.parse(execFileSync('/usr/bin/python3',[
+  path.join(root,'tests/recording/companion-address.py'),...(expected ? [expected] : [])],{encoding:'utf8'}));
+ await poll(()=>{
+  execFileSync('xdotool',['key','--clearmodifiers','ctrl+l']);
+  const result=address();
+  evidence.addressFocus={...result,window:execFileSync('xdotool',['getwindowfocus','getwindowname'],{encoding:'utf8'}).trim()};
+  return result.ready;
+ },'native browser address field receives focus');
  execFileSync('xdotool',['key','--clearmodifiers','ctrl+v']);
- await poll(async()=>{execFileSync('xdotool',['key','--clearmodifiers','ctrl+a','ctrl+c']);const copied=await call('clipboard');evidence.lastAddressClipboard=copied;return !copied.local && copied.value==='chrome://extensions/';},'address paste accepted by the native browser');
+ const pasted=await poll(()=>{const value=address('chrome://extensions/');return value.ready ? value : null;},'address paste accepted by the native browser');
+ evidence.stages.push({address:pasted});
  execFileSync('xdotool',['key','--clearmodifiers','Return']);
  const page=await poll(()=>context.pages().find(page=>page.url().startsWith('chrome://extensions')),'user opens Extensions page');
  await page.waitForSelector('extensions-manager');

@@ -57,6 +57,11 @@ addition to the existing recording dependencies:
 CASSINI_TEST_BUILD="$PWD/_build" tests/recording/run.sh node tests/recording/companion-install.mjs
 ```
 
+The Recording integration gate runs this proof against its exact build product.
+The accessibility probe waits for the native address field to receive focus and
+accept its paste before Enter; it never substitutes debug-protocol navigation
+for that first installation.
+
 It retains the real guide screenshot, native picker/extension identity/version,
 connection evidence and stderr, and fails on Gtk/Adw warnings or criticals. No
 Chrome Web Store request is permitted. The user's desktop and browser profile

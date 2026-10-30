@@ -59,7 +59,10 @@ def dispatch(packet):
             settings.browser_add.emit("clicked")
         setup = getattr(app, "companion_setup", None)
         guide = getattr(setup, "local_dialog", None)
-        if action == "open":
+        if action == "prepare":
+            assert setup and setup.get_mapped() and setup.add_button.get_sensitive()
+            setup.add_button.emit("clicked")
+        elif action == "open":
             assert guide and not guide.closed and guide.open_button.get_sensitive()
             guide.open_button.emit("clicked")
         elif action == "copy":
@@ -71,6 +74,7 @@ def dispatch(packet):
         elif action == "address":
             # R44 test scaffolding until the published guide copy action lands.
             window.get_display().get_clipboard().set("chrome://extensions/")
+            window.get_display().sync()
         elif action == "quit":
             app.on_quit()
         elif action == "shot":
@@ -95,6 +99,7 @@ def dispatch(packet):
             phase=state["phase"] if state else None,
             connected=bool(state and state["phase"] == "connected"),
             guide=bool(guide and not guide.closed),
+            setupReady=bool(setup and not setup.closed and setup.get_mapped()),
             done=bool(guide and guide.done.get_sensitive()),
             folder=str(guide.folder) if guide else None,
             primary=setup.add_button.get_label() if setup else None,
