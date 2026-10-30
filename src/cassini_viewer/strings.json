@@ -5709,6 +5709,132 @@
    "milestone": "UX17",
    "status": "harmony",
    "note": "Coordinator (saved-voices fix, 2026-10-29). Speakers dialog caption under “Remember this voice”, replacing the misleading tooShort when the cause is different. tooShort stays only for confirmed speech under 4 s. Shown only with modelsNeeded."
+  },
+  {
+   "id": "meeting.renameEllipsis",
+   "en": "Rename…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "menu item",
+   "boards": [],
+   "milestone": "D35",
+   "status": "harmony",
+   "note": "Coordinator (D35, rename a meeting)."
+  },
+  {
+   "id": "meeting.rename.title",
+   "en": "Rename Meeting",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "D35",
+   "status": "harmony",
+   "note": "Coordinator (D35, rename a meeting)."
+  },
+  {
+   "id": "meeting.rename.field",
+   "en": "Name",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "D35",
+   "status": "harmony",
+   "note": "Coordinator (D35, rename a meeting)."
+  },
+  {
+   "id": "meeting.rename.confirm",
+   "en": "Rename",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D35",
+   "status": "harmony",
+   "note": "Coordinator (D35, rename a meeting)."
+  },
+  {
+   "id": "common.shortcut.rename",
+   "en": "F2",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "shortcut",
+   "boards": [],
+   "milestone": "D35",
+   "status": "harmony",
+   "note": "Coordinator (D35, rename a meeting)."
+  },
+  {
+   "id": "meeting.exported",
+   "en": "Exported “{title}” to {folder}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "toast",
+   "boards": [],
+   "milestone": "D35",
+   "status": "harmony",
+   "note": "Coordinator (D35)."
+  },
+  {
+   "id": "common.show",
+   "en": "Show",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D35",
+   "status": "harmony",
+   "note": "Coordinator (D35)."
+  },
+  {
+   "id": "recording.background.cancel",
+   "en": "Cancel",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D35",
+   "status": "harmony",
+   "note": "Coordinator (D35)."
+  },
+  {
+   "id": "recording.background.keep",
+   "en": "Keep Recording in Background",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D35",
+   "status": "harmony",
+   "note": "Coordinator (D35)."
+  },
+  {
+   "id": "recording.background.notification",
+   "en": "Cassini is recording",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "notification",
+   "boards": [],
+   "milestone": "D35",
+   "status": "harmony",
+   "note": "Coordinator (D35)."
   }
  ]
 }

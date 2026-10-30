@@ -44,6 +44,13 @@ def _publish(stage, directory, stem, suffix):
 
 def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
     directory = Path(directory).expanduser().absolute()
+    from .companion import in_flatpak
+    from .library_location import _host_storage
+
+    if in_flatpak() and not _host_storage(directory):
+        # A path can be writable yet live only in Flatpak's per-launch tmpfs.
+        # Only a portal/host-backed destination is an export destination.
+        raise PermissionError(errno.EACCES, os.strerror(errno.EACCES), directory)
     directory.mkdir(parents=True, exist_ok=True)
     check_cancel(cancel)
     stage = encoded = None

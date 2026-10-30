@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The shared two-format Export dialog, with native folder selection."""
 
+import errno
+import os
 import threading
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from gettext import gettext as _
@@ -32,9 +34,15 @@ class ExportDialog(Adw.Dialog):
         self.set_can_close(False)
         self.connect("close-attempt", self.cancel)
         self.window, self.meeting = window, meeting
-        self.destination = Path(
-            GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOCUMENTS) or Path.home() / "Documents"
+        self.settings = window.get_application().recording_settings
+        uri = self.settings.get_string("export-folder-uri")
+        self.destination = Gio.File.new_for_uri(uri) if uri else None
+        self.suggested_folder = Gio.File.new_for_path(
+            GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOCUMENTS) or str(Path.home() / "Documents")
         )
+        self.choosing = False
+        self.folder_cancel = None
+        self.success_toast = None
         self.cancelled = threading.Event()
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-export")
         self.closed = False
@@ -127,24 +135,51 @@ class ExportDialog(Adw.Dialog):
         self._update_folder()
 
     def _update_folder(self):
-        self.folder.set_markup(
-            text("export.saveTo", folder="<b>" + GLib.markup_escape_text(self.destination.name) + "</b>")
+        self.folder_name = (self.destination or self.suggested_folder).get_basename() or ""
+        self.folder.set_markup(text("export.saveTo", folder="<b>" + GLib.markup_escape_text(self.folder_name) + "</b>"))
+
+    def _controls(self, enabled):
+        for control in (self.export_button, self.choose, self.cassini, self.markdown):
+            control.set_sensitive(enabled)
+
+    def _choose(self, *_, export_after=False):
+        if self.busy or self.choosing or self.closed:
+            return
+        self.choosing = True
+        self._controls(False)
+        self.folder_cancel = Gio.Cancellable()
+        dialog = Gtk.FileDialog(title=text("common.choose"), initial_folder=self.destination or self.suggested_folder)
+        dialog.select_folder(
+            self.window,
+            self.folder_cancel,
+            lambda chooser, result: self._chosen(chooser, result, export_after),
         )
 
-    def _choose(self, *_):
-        dialog = Gtk.FileDialog(
-            title=text("common.choose"), initial_folder=Gio.File.new_for_path(str(self.destination))
-        )
-        dialog.select_folder(self.window, None, self._chosen)
-
-    def _chosen(self, dialog, result):
+    def _chosen(self, dialog, result, export_after=False):
+        self.choosing = False
+        self.folder_cancel = None
+        if not self.closed:
+            self._controls(True)
         try:
             folder = dialog.select_folder_finish(result)
-        except GLib.Error:
+        except GLib.Error as error:
+            if not self.closed and not (
+                error.matches(Gtk.dialog_error_quark(), Gtk.DialogError.DISMISSED)
+                or error.matches(Gtk.dialog_error_quark(), Gtk.DialogError.CANCELLED)
+                or error.matches(Gio.io_error_quark(), Gio.IOErrorEnum.CANCELLED)
+            ):
+                self._failed(error)
             return
-        if folder and folder.get_path():
-            self.destination = Path(folder.get_path())
-            self._update_folder()
+        if self.closed or self.cancelled.is_set() or folder is None:
+            return
+        if folder.get_path() is None:
+            self._failed(OSError(errno.ENOTSUP, os.strerror(errno.ENOTSUP)))
+            return
+        self.destination = folder  # Keep the portal-returned URI, not a guessed host path.
+        self.settings.set_string("export-folder-uri", folder.get_uri())
+        self._update_folder()
+        if export_after:
+            self._export()
 
     def update(self, meeting):
         if self.busy or self.closed or meeting.key != self.meeting.key:
@@ -155,6 +190,11 @@ class ExportDialog(Adw.Dialog):
         self.names.set_markup(speaker_names_markup(meeting))
 
     def _export(self, *_):
+        if self.busy or self.choosing or self.closed:
+            return
+        if self.destination is None:
+            self._choose(export_after=True)
+            return
         page = self.window.meeting_page
         if page and page.meeting.key == self.meeting.key:
             self.update(page.meeting)
@@ -163,14 +203,11 @@ class ExportDialog(Adw.Dialog):
             if latest:
                 self.update(latest)
         self.busy = True
-        self.export_button.set_sensitive(False)
-        self.choose.set_sensitive(False)
-        self.cassini.set_sensitive(False)
-        self.markdown.set_sensitive(False)
+        self._controls(False)
         future = self.future = self.executor.submit(
             export_meeting,
             self.meeting,
-            self.destination,
+            self.destination.get_path(),
             "markdown" if self.markdown.get_active() else "cassini",
             tz=self.window.tz,
             cancel=self.cancelled,
@@ -185,19 +222,45 @@ class ExportDialog(Adw.Dialog):
         except CancelledError:
             self.force_close()
         except Exception as error:
-            self.busy = False
-            self.window.toast(_("Could not export: {error}").format(error=str(error)))
-            for control in (self.export_button, self.choose, self.cassini, self.markdown):
-                control.set_sensitive(True)
+            self._failed(error)
         else:
+            self.success_toast = Adw.Toast(
+                title=GLib.markup_escape_text(
+                    text("meeting.exported", title=self.meeting.title, folder=self.folder_name)
+                ),
+                button_label=text("common.show"),
+                priority=Adw.ToastPriority.HIGH,
+            )
+            self.success_toast.connect("button-clicked", self._show_output)
+            self.window.toasts.add_toast(self.success_toast)
             self.force_close()
         return False
 
+    def _failed(self, error):
+        self.busy = False
+        self.window.toast(_("Could not export: {error}").format(error=str(error)))
+        self._controls(True)
+
+    def _show_output(self, *_):
+        launcher = Gtk.FileLauncher(file=Gio.File.new_for_path(str(self.output)))
+        launcher.open_containing_folder(self.window, None, self._shown)
+
+    def _shown(self, launcher, result):
+        try:
+            launcher.open_containing_folder_finish(result)
+        except GLib.Error as error:
+            if self.window.get_application() is not None:
+                self.window.toast(str(error))
+
     def cancel(self, *_):
         self.cancelled.set()
+        if self.folder_cancel:
+            self.folder_cancel.cancel()
         self.force_close()
 
     def _closed(self, *_):
         self.closed = True
         self.cancelled.set()
+        if self.folder_cancel:
+            self.folder_cancel.cancel()
         self.executor.shutdown(wait=False, cancel_futures=True)

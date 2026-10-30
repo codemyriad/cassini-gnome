@@ -34,6 +34,7 @@ sys.path.insert(0,sys.argv[1])
 from cassini_viewer.library_location import primary
 from cassini_viewer.recording_session import RecordingSession
 expected=Path(sys.argv[2]);root=primary()
+exports=Path(sys.argv[4])
 assert root == expected,(root,expected)
 if sys.argv[3] == "write":
     session=RecordingSession(None,source="gnome",title="Private persistence check")
@@ -48,15 +49,31 @@ manifest=json.loads((folder/"session.json").read_text())
 assert manifest["state"] == "completed"
 assert {t["kind"] for t in manifest["tracks"]} == {"microphone","system"}
 assert all(t["frames"] == 9600 for t in manifest["tracks"])
-print(json.dumps({"library":str(root),"folder":folder.name,"sha256":{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.iterdir()}}))
+from cassini_viewer.exporting import export_meeting
+from cassini_viewer.open_meeting import load_open_meeting
+from cassini_viewer import portable
+if sys.argv[3] == "write":
+    meeting=load_open_meeting(folder/"session.json")
+    unsafe=Path.home()/"Documents/Cassini-temporary-export"
+    try: export_meeting(meeting,unsafe,"markdown")
+    except PermissionError: pass
+    else: raise AssertionError("Export accepted Flatpak's temporary private home")
+    assert not unsafe.exists()
+    export_meeting(meeting,exports,"markdown")
+    export_meeting(meeting,exports,"cassini")
+files=sorted(exports.iterdir())
+assert {p.suffix for p in files} == {".md",".opus"}
+opus=next(p for p in files if p.suffix == ".opus")
+assert portable.verify_audio(str(opus),portable.read_meeting(str(opus))).state == portable.State.OK
+print(json.dumps({"library":str(root),"folder":folder.name,"sha256":{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.iterdir()},"exports":{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}))
 """
 results = []
 for mode in ("localized-music", "unconfigured-music", "disabled-music", "revoked-music"):
     # Keep HOME under home: Flatpak may bind /var/tmp, which masks this bug.
     with tempfile.TemporaryDirectory(prefix="cassini-flatpak-persistence-", dir=Path.home()) as temporary:
         private = Path(temporary)
-        config, home, music = (private / name for name in ("config", "home", "Musica"))
-        for directory in (config, home, music):
+        config, home, music, exports = (private / name for name in ("config", "home", "Musica", "Exports"))
+        for directory in (config, home, music, exports):
             directory.mkdir()
         if mode != "unconfigured-music":
             configured = "$HOME" if mode == "disabled-music" else str(music)
@@ -83,6 +100,9 @@ for mode in ("localized-music", "unconfigured-music", "disabled-music", "revoked
             "--nosocket=pulseaudio",
             "--no-documents-portal",
         ]
+        # A narrow per-launch fixture grant models only the folder the person
+        # selected. The native FileDialog/portal call is covered by the GUI test.
+        command.append(f"--filesystem={exports}:create")
         if args.grant_for_local_proof:
             command.append("--filesystem=xdg-music/Cassini:create")
         if mode == "revoked-music":
@@ -95,16 +115,30 @@ for mode in ("localized-music", "unconfigured-music", "disabled-music", "revoked
             else home / ".var/app" / args.application / "data/cassini/Library"
         )
         command += [args.application, "-I", "-c", inside, str(args.modules), str(expected)]
-        reports = [json.loads(subprocess.check_output(command + ["write"], env=env, text=True, timeout=20))]
+        reports = [
+            json.loads(subprocess.check_output(command + ["write", str(exports)], env=env, text=True, timeout=20))
+        ]
         if mode == "unconfigured-music":
             # Installing/configuring a Music folder later must not hide the
             # recordings already kept in the app-data Library.
             (config / "user-dirs.dirs").write_text(f'XDG_MUSIC_DIR="{music}"\n')
-        reports.append(json.loads(subprocess.check_output(command + ["read"], env=env, text=True, timeout=20)))
+        reports.append(
+            json.loads(subprocess.check_output(command + ["read", str(exports)], env=env, text=True, timeout=20))
+        )
         assert reports[0] == reports[1], "Restart lost or changed the Library's PCM/manifest bytes"
         assert (expected / reports[0]["folder"] / "session.json").is_file()
         # HOME remains a private fixture. The real user's Library is never opened.
-        results.append(dict(mode=mode, separateLaunches=2, pcmAndManifestPreserved=True, **reports[1]))
+        results.append(
+            dict(
+                mode=mode,
+                separateLaunches=2,
+                pcmAndManifestPreserved=True,
+                exportsPreserved=True,
+                privateHomeExportRejected=True,
+                selectedFolderFixtureGrant=True,
+                **reports[1],
+            )
+        )
 result = dict(
     installedManifestScope=scoped,
     installedApplicationModules=args.modules == Path("/app/share/cassini-viewer"),
