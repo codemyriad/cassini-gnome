@@ -27,7 +27,7 @@ def check(root, tag=None):
         "rpm": value(root, "build-aux/rpm/cassini-viewer.spec", r"^Version:\s*(\S+)"),
         "arch": value(root, "build-aux/arch/PKGBUILD", r"^pkgver=(\S+)"),
         "news": value(root, "NEWS", r"^Version (\d+\.\d+\.\d+)$"),
-        "man": value(root, "data/cassini-viewer.1", r'\A\.TH [^\n]*"cassini-viewer ([^"]+)"'),
+        "man": value(root, "data/cassini-talk.1", r'\A\.TH [^\n]*"cassini-talk ([^"]+)"'),
     }
     release = ET.parse(root / "data/io.codemyriad.CassiniTalk.metainfo.xml.in").find("releases/release")
     if release is None:

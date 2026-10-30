@@ -222,6 +222,7 @@ python3 sherpa/fetch.py --cache .sherpa-cache --verify %{buildroot}%{_libdir}/ca
 %dir %{_datadir}/dbus-1
 %dir %{_datadir}/dbus-1/services
 %{_datadir}/dbus-1/services/io.codemyriad.CassiniTalk.service
+%{_mandir}/man1/cassini-talk.1*
 %{_mandir}/man1/cassini-viewer.1*
 
 %changelog

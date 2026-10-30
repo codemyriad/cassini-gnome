@@ -88,7 +88,7 @@ def candidate(tmp_path):
         "build-aux/arch/PKGBUILD": "pkgver=7.8.9\n",
         "NEWS": "Version 7.8.9\n~~~~~~~~~~~~~\nNot released yet.\n",
         "browser-extension/manifest.json": '{"version":"0.2.2"}\n',
-        "data/cassini-viewer.1": '.TH CASSINI-VIEWER 1 "October 2026" "cassini-viewer 7.8.9" "User Commands"\n',
+        "data/cassini-talk.1": '.TH CASSINI-TALK 1 "October 2026" "cassini-talk 7.8.9" "User Commands"\n',
         "data/io.codemyriad.CassiniTalk.metainfo.xml.in": (
             '<component><releases><release version="7.8.9" date="2026-10-29"/></releases></component>'
         ),
@@ -118,7 +118,7 @@ def test_release_metadata_accepts_a_consistent_candidate_without_creating_a_tag(
         "build-aux/rpm/cassini-viewer.spec",
         "build-aux/arch/PKGBUILD",
         "NEWS",
-        "data/cassini-viewer.1",
+        "data/cassini-talk.1",
         "data/io.codemyriad.CassiniTalk.metainfo.xml.in",
     ],
 )

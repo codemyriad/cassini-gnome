@@ -70,4 +70,4 @@ configure_file(
   install_dir: get_option('datadir') / 'dbus-1' / 'services',
 )
 
-install_man('cassini-viewer.1')
+install_man('cassini-talk.1', 'cassini-viewer.1')
