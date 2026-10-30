@@ -51,6 +51,13 @@ class BrowserCapture:
                 captureId=self.capture_id,
                 path=str(self.directory),
                 levels=list(self.levels),
+                permittedSources=sorted(
+                    {
+                        t["kind"]
+                        for t in self.host.session.manifest["tracks"]
+                        if t["kind"] in ("microphone", "system") and t["frames"] > 0
+                    }
+                ),
                 line=self.line,
                 minutesLeft=self.minutes_left,
                 tracks=sum(

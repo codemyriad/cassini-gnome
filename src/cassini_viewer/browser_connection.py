@@ -54,7 +54,11 @@ def setup():
     browsers = companion.installed_browsers()
     if not browsers:
         raise companion.SetupError("noBrowser")
-    companion.register(browsers=browsers)
+    try:
+        companion.register(browsers=browsers)
+    except OSError as error:
+        error.browsers = tuple(browsers)
+        raise
     return tuple(browsers)
 
 
@@ -71,7 +75,16 @@ def classify(error):
 
 class BrowserConnection:
     def __init__(
-        self, changed, *, available=True, attempt=setup, later=None, post=None, cancel=None, jitter=random.uniform
+        self,
+        changed,
+        *,
+        available=True,
+        attempt=setup,
+        later=None,
+        post=None,
+        cancel=None,
+        jitter=random.uniform,
+        ever_connected=False,
     ):
         if later is None:
             from gi.repository import GLib
@@ -88,6 +101,7 @@ class BrowserConnection:
         self.backoff = Backoff(jitter)
         self.available = available
         self.closed = self.succeeded = self.connected = False
+        self.ever_connected = bool(ever_connected)
         self.error = None
         self.browsers = self.names = ()
         self.future = None
@@ -100,6 +114,8 @@ class BrowserConnection:
             if self.connected
             else "settingUp"
             if self.future is not None
+            else "needsBrowser"
+            if self.error and self.error.reason == "noBrowser"
             else "failed"
             if self.error
             else "waiting"
@@ -107,12 +123,19 @@ class BrowserConnection:
             else "settingUp"
         )
         browser = self.browsers[0] if self.browsers else None
-        return dict(phase=phase, names=self.names, browser=browser, reason=self.error.reason if self.error else None)
+        return dict(
+            phase=phase,
+            names=self.names,
+            browser=browser,
+            reason=self.error.reason if self.error else None,
+            everConnected=self.ever_connected,
+        )
 
     def observe(self, snapshot):
         if self.closed:
             return
         self.connected = bool(snapshot.get("connectedBrowsers", snapshot.get("browsers")))
+        self.ever_connected |= self.connected
         self.names = tuple(snapshot.get("browserNames", []))
         self.changed()
 
@@ -164,8 +187,14 @@ class BrowserConnection:
         try:
             self.browsers = future.result()
         except Exception as error:
-            LOG.warning("Background browser setup failed: %s", error)
             self.error = classify(error)
+            if self.error.reason == "noBrowser":
+                LOG.info("No supported browser is installed")
+            else:
+                LOG.warning("Background browser setup failed: %s", error)
+            self.browsers = getattr(error, "browsers", self.browsers)
+            if self.error.reason == "noBrowser":
+                self.browsers = ()
             self.available = self.error.available
             if self.error.retryable:
                 self.timer = self.later(self.backoff.next(), self._start)

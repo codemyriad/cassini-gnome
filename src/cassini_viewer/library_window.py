@@ -470,7 +470,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         header.pack_start(self.capture_header)
         header.pack_end(self.search_button())
         sidebar.add_top_bar(header)
-        self.rows = Gtk.ListBox(selection_mode=Gtk.SelectionMode.BROWSE, css_classes=["library-rows"])
+        self.rows = Gtk.ListBox(
+            selection_mode=Gtk.SelectionMode.BROWSE, activate_on_single_click=False, css_classes=["library-rows"]
+        )
         self.rows.connect(
             "row-activated", lambda _rows, row: self.open_meeting(row.meeting) if hasattr(row, "meeting") else None
         )
@@ -523,7 +525,7 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def companion_available_changed(self):
         available = self.get_application().browser_companion_available
-        self.first_companion.set_visible(available)
+        self.first_companion.set_visible(False)
         if available and self._activity_source is None and os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
             self._activity_source = BrowserActivity(self._activity_tick)
         if self.meeting_page:
@@ -685,6 +687,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             meeting.legacy_transcript_file,
             meeting.lifecycle,
             meeting.transcript,
+            meeting.eta_minutes,
             meeting.error,
             tuple(t.start_offset_ms for t in meeting.tracks),
             (meeting.metadata.get("received") or {}).get("originalFolderName"),
@@ -941,6 +944,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         trash_error = self.trash_error_line(meeting)
         if trash_error:
             self.preview.append(trash_error)
+        elif meeting.transcript in ("queued", "running"):
+            self.preview.append(label(meeting.badge().text, "dim-label", wrap=True, xalign=0))
         elif meeting.transcript == "failed":
             self.preview.append(
                 InlineLine(

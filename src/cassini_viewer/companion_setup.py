@@ -50,6 +50,9 @@ class CompanionSetup(Adw.Dialog):
         self.connect_row, self.connect_badge, self.connect_caption, self.connect_button = self._step(
             2, "companion.connectStep.title", "browser.state.settingUp", "common.tryAgain", self._connect
         )
+        self.add_retry = Gtk.Button(label=text("common.tryAgain"), valign=Gtk.Align.CENTER, visible=False)
+        self.add_retry.connect("clicked", self._connect)
+        self.add_row.get_child().append(self.add_retry)
         self.connect_button.add_css_class("suggested-action")
         steps.append(self.add_row)
         steps.append(self.connect_row)
@@ -185,10 +188,18 @@ class CompanionSetup(Adw.Dialog):
             self.add_caption.set_label(
                 text("settings.browser.status.connectedGeneric") if added else text("companion.addStep.notAdded")
             )
-        self.add_button.set_visible(not added and state["browser"] is not None)
+        self.add_button.set_visible(not added)
+        self.add_button.set_sensitive(state["browser"] is not None and self.future is None)
         self.add_button.set_label(add_text(state))
-        self.connect_caption.set_label(state_text(state))
-        self.connect_button.set_visible(self.failed and self.app.browser_companion_available)
+        self.connect_row.set_visible(added)
+        self.add_retry.set_visible(not added and self.failed and self.app.browser_companion_available)
+        if not added and self.failed:
+            self.add_caption.set_label(state_text(state))
+        self.connect_caption.set_label(state_text(state) if added else "")
+        self.connect_caption.set_visible(added)
+        if state["phase"] == "needsBrowser":
+            self.add_caption.set_label(state_text(state))
+        self.connect_button.set_visible(added and self.failed and self.app.browser_companion_available)
         self.connect_button.set_sensitive(not self.working)
         self.connect_button.set_label(text("common.tryAgain"))
         self.done.set_sensitive(self.connected)
@@ -197,13 +208,15 @@ class CompanionSetup(Adw.Dialog):
             if self.connected
             else self.connect_button
             if self.connect_button.get_visible()
+            else self.add_retry
+            if self.add_retry.get_visible()
             else self.add_button
             if self.add_button.get_visible()
             else None
         )
         for n, row, badge, done, working in (
             (1, self.add_row, self.add_badge, added, False),
-            (2, self.connect_row, self.connect_badge, self.connected, self.working),
+            (2, self.connect_row, self.connect_badge, self.connected, added and self.working),
         ):
             badge.set_label("✓" if done else str(n))
             badge.set_css_classes(["companion-step-badge"] + (["done"] if done else []))

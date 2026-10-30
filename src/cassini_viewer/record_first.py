@@ -34,6 +34,7 @@ class RecordFirst(Adw.Dialog):
         content.append(
             Gtk.Label(label=text("recordFirst.willRecord"), xalign=0, css_classes=["heading", "dim-label", "small"])
         )
+        self.permission_captions = {}
         for index, (icon, title, description, caption) in enumerate(
             [
                 (
@@ -63,7 +64,10 @@ class RecordFirst(Adw.Dialog):
             )
             body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
             for key, classes in [(title, ["heading"]), (description, ["dim-label"]), (caption, ["dim-label", "small"])]:
-                body.append(Gtk.Label(label=text(key), xalign=0, wrap=True, css_classes=classes))
+                value = Gtk.Label(label=text(key), xalign=0, wrap=True, css_classes=classes)
+                body.append(value)
+                if key == caption:
+                    self.permission_captions["microphone" if index == 0 else "system"] = (value, caption)
             row.append(body)
             content.append(row)
         buttons = Gtk.Box(spacing=10, homogeneous=True)
@@ -78,7 +82,12 @@ class RecordFirst(Adw.Dialog):
         buttons.append(self.start_button)
         content.append(buttons)
         self.set_default_widget(self.start_button)
+        self.refresh_permissions()
         self.present(parent)
+
+    def refresh_permissions(self):
+        for kind, (label, caption) in self.permission_captions.items():
+            label.set_label(text("recordFirst.allowed" if kind in self.app._permission_sources else caption))
 
     def _start(self, *_):
         self.close()

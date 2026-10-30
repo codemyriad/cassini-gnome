@@ -21,7 +21,7 @@ jobs:
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good meson ninja-build gettext \
             libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream xvfb xauth xdotool dbus-x11 \
             locales fontconfig python3-pil python3-pytest at-spi2-core gir1.2-atspi-2.0 libzstd1 fonts-cantarell=0.303.1-4 fonts-inter=4.1+ds-1
-          sudo locale-gen en_GB.UTF-8
+          sudo locale-gen en_GB.UTF-8 en_US.UTF-8
       - uses: actions/cache@v4
         if: inputs.product == ''
         with:
@@ -56,6 +56,7 @@ jobs:
           echo "CASSINI_BOARD_BUILD=$PWD/_ci-boards/build" >> "$GITHUB_ENV"
       - name: Render the real current window in private Xvfb
         run: |
+          python3 -m pytest tests/test_ux_vectors.py -k locale_clock_style -q
           mkdir -p ux-artifacts
           build-aux/ux-boards.sh "$BOARD_APP" ux-artifacts
           CASSINI_SCREENSHOT_SCHEME=dark build-aux/ux-boards.sh "$BOARD_APP" ux-artifacts/dark
@@ -82,6 +83,7 @@ jobs:
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/model-notices.py ux-artifacts/notices-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/settings.py ux-artifacts/settings-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/companion.py ux-artifacts/companion-setup.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/journey-parity.py ux-artifacts/journey-parity.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/companion-sandbox.py ux-artifacts/companion-sandbox.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/what-is-recorded.py ux-artifacts/what-is-recorded.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/library-move.py ux-artifacts/library-move-gui.png
