@@ -242,16 +242,21 @@ def test_missing_host_service_disables_companion(monkeypatch):
     assert companion.available(), "A transient host failure must be retried"
 
 
-def test_sandbox_add_uses_host_browser_without_sandbox_environment_overrides(monkeypatch, tmp_path):
+@pytest.mark.parametrize("local", [False, True])
+def test_sandbox_add_uses_host_browser_without_sandbox_environment_overrides(monkeypatch, tmp_path, local):
     monkeypatch.setenv("FLATPAK_ID", "com.gocassini.Viewer")
     monkeypatch.setattr(bridge.shutil, "which", lambda _: "/usr/bin/flatpak-spawn")
     calls = []
-    companion.open_add(
+    (companion.open_new_tab if local else companion.open_add)(
         companion.Browser("Chrome", "/host/google-chrome", tmp_path), launch=lambda *a, **kw: calls.append((a, kw))
     )
     ((args, options),) = calls
     assert args[0][:3] == ["/usr/bin/flatpak-spawn", "--host", "--directory=/"]
-    assert args[0][-2:] == ["/host/google-chrome", companion.ADD_URL]
+    assert (
+        args[0][-3:] == ["/host/google-chrome", "--new-tab", "about:blank"]
+        if local
+        else args[0][-2:] == ["/host/google-chrome", companion.ADD_URL]
+    )
     assert args[0][3:5] == ["/bin/sh", "-c"] and args[0][5].endswith(" &")
     assert "env" not in options and "shell" not in options
 

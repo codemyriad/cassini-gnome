@@ -89,12 +89,10 @@ try {
  await poll(async()=>{try {await access(path.join(out,'companion-local-guide.png'));return true;} catch {return false;}},'rendered guide screenshot');
  const screenshot=await readFile(path.join(out,'companion-local-guide.png'));
  assert.deepEqual([screenshot.readUInt32BE(16),screenshot.readUInt32BE(20)],[1120,720]);
- await call('open');
- // R44: pending catalog/spec amendment. Chromium rejects external chrome://
- // navigation; emulate the user's explicit address-bar navigation, never CDP.
- const newTab=await poll(()=>context.pages().find(page=>page.url().startsWith('chrome://new-tab-page')),'browser opens a new tab');
+ const beforeOpen=new Set(context.pages());
+ await call('copy-address-and-open');
+ const newTab=await poll(()=>context.pages().find(page=>!beforeOpen.has(page)&&page.url()==='about:blank'),'production action opens a new tab');
  await newTab.bringToFront();
- await call('address');
  await poll(async()=>{
   const value=await call('clipboard');evidence.clipboardBeforePaste=value;
   return value.local && value.value==='chrome://extensions/';
@@ -112,6 +110,10 @@ try {
  evidence.stages.push({address:pasted});
  execFileSync('xdotool',['key','--clearmodifiers','Return']);
  const page=await poll(()=>context.pages().find(page=>page.url().startsWith('chrome://extensions')),'user opens Extensions page');
+ const launchArgs=(await readFile(path.join(out,'browser-launch-args.txt'),'utf8')).split('\n');
+ assert.ok(launchArgs.includes('--new-tab')&&launchArgs.includes('about:blank'));
+ assert.ok(!launchArgs.some(value=>/^(?:chrome|edge|brave):/.test(value)),'production never launches an internal Extensions URL');
+ evidence.productionAddressAction=true;
  await page.waitForSelector('extensions-manager');
  const manager=page.locator('extensions-manager');
  const toggle=manager.locator('extensions-toolbar').locator('#devMode');

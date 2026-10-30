@@ -150,7 +150,15 @@ with tempfile.TemporaryDirectory() as temporary:
     settings.render_browser()
     assert dialog.add_button.get_label() == settings.browser_add.get_label() == "Add from Cassini"
     assert not dialog.local_add.get_visible() and not settings.browser_add_local.get_visible()
-    dialog.add_button.emit("clicked")
+    with patch.object(companion_bundle, "prepare", side_effect=OSError("synthetic unwritable companion folder")):
+        dialog.add_button.emit("clicked")
+        until(lambda: dialog.prepare_error and dialog.future is None)
+        assert dialog.prepare_problem.get_visible()
+        assert dialog.prepare_label.get_label() == "Couldn’t prepare the browser companion."
+        assert dialog.prepare_retry.get_label() == "Try again" and dialog.prepare_retry.get_sensitive()
+        assert dialog.local_dialog is None
+        shot(window, "-prepare-failed")
+    dialog.prepare_retry.emit("clicked")
     until(lambda: dialog.local_dialog is not None and not dialog.local_dialog.closed)
     local = dialog.local_dialog
     assert not local.done.get_sensitive() and not dialog.done.get_sensitive()
@@ -162,10 +170,28 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: bool(copy_values))
     assert copy_values[-1] == str(local.folder)
     extension_pages = []
-    companion.open_extensions = lambda browser: extension_pages.append(browser.name)
-    local.open_button.emit("clicked")
+    companion.open_new_tab = lambda browser: extension_pages.append(browser.name)
+    local.address_button.emit("clicked")
     until(lambda: bool(extension_pages) and not local.opening)
     assert extension_pages == ["Chrome"] and not local.done.get_sensitive()
+    copy_values.clear()
+    clipboard.read_text_async(None, lambda c, r: copy_values.append(c.read_text_finish(r)))
+    until(lambda: bool(copy_values))
+    assert copy_values[-1] == "chrome://extensions/"
+    assert local.address_button.get_label() == "Copy Address and Open Chrome"
+    with patch.object(companion, "open_new_tab", side_effect=OSError("synthetic new-tab launch failure")):
+        local.address_button.emit("clicked")
+        until(lambda: local.failed and not local.opening)
+        assert local.address_button.get_label() == "Try again" and local.address_button.get_sensitive()
+        assert local.problem.get_visible()
+        assert local.problem.get_label() == "Couldn’t open Chrome. Open it yourself and paste the address."
+        copy_values.clear()
+        clipboard.read_text_async(None, lambda c, r: copy_values.append(c.read_text_finish(r)))
+        until(lambda: bool(copy_values))
+        assert copy_values[-1] == "chrome://extensions/", "Launch failure must keep the copied address"
+        shot(window, "-open-failed")
+    local.address_button.emit("clicked")
+    until(lambda: len(extension_pages) == 2 and not local.opening and not local.failed)
     shot(window, "-local")
     local.force_close()
     companion_bundle.store_listing_public = lambda: True

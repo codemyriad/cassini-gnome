@@ -62,19 +62,15 @@ def dispatch(packet):
         if action == "prepare":
             assert setup and setup.get_mapped() and setup.add_button.get_sensitive()
             setup.add_button.emit("clicked")
-        elif action == "open":
-            assert guide and not guide.closed and guide.open_button.get_sensitive()
-            guide.open_button.emit("clicked")
+        elif action == "copy-address-and-open":
+            assert guide and not guide.closed and guide.address_button.get_sensitive()
+            guide.address_button.emit("clicked")
         elif action == "copy":
             assert guide and not guide.closed
             guide.copy_button.emit("clicked")
         elif action == "done":
             assert guide.done.get_sensitive()
             guide.done.emit("clicked")
-        elif action == "address":
-            # R44 test scaffolding until the published guide copy action lands.
-            window.get_display().get_clipboard().set("chrome://extensions/")
-            window.get_display().sync()
         elif action == "quit":
             app.on_quit()
         elif action == "shot":

@@ -6017,8 +6017,8 @@
    "role": "button",
    "boards": [],
    "milestone": "D39",
-   "status": "harmony",
-   "note": "Coordinator (D39). Opens chrome://extensions (or the browser equivalent) in the chosen browser."
+   "status": "retired",
+   "note": "Coordinator (D39). Opens chrome://extensions (or the browser equivalent) in the chosen browser. Retired by D39.1: browsers ignore chrome:// pages passed at launch; use companion.local.copyExtensions."
   },
   {
    "id": "companion.local.step2",
@@ -6100,6 +6100,77 @@
    "note": "Coordinator (D39). Dim caption at the bottom of the panel.",
    "placeholders": {
     "browser": "display name"
+   }
+  },
+  {
+   "id": "companion.local.copyExtensions",
+   "en": "Copy Address and Open {browser}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D39.1",
+   "status": "harmony",
+   "note": "Coordinator (D39.1). Replaces openExtensions in step 1. Copies the browser's own Extensions address (chrome://extensions/, edge://extensions/, brave://extensions/) and opens the browser at a new tab.",
+   "placeholders": {
+    "browser": "display name of the chosen supported browser"
+   }
+  },
+  {
+   "id": "companion.local.extensionsPasteHint",
+   "en": "Paste it into the address bar and press Enter.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "D39.1",
+   "status": "harmony",
+   "note": "Coordinator (D39.1). Under step 1, shown after copyExtensions was used."
+  },
+  {
+   "id": "companion.local.extensionsCopied",
+   "en": "Extensions page address copied",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "toast",
+   "boards": [],
+   "milestone": "D39.1",
+   "status": "harmony",
+   "note": "Coordinator (D39.1). After copyExtensions."
+  },
+  {
+   "id": "companion.local.prepareFailed",
+   "en": "Couldn’t prepare the browser companion.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "error",
+   "boards": [],
+   "milestone": "D39.1",
+   "status": "harmony",
+   "note": "Coordinator (D39.1). Inline in the guide when the stable companion folder can't be written or updated; action common.tryAgain."
+  },
+  {
+   "id": "companion.local.openFailed",
+   "en": "Couldn’t open {browser}. Open it yourself and paste the address.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "error",
+   "boards": [],
+   "milestone": "D39.1",
+   "status": "harmony",
+   "note": "Coordinator (D39.1). Inline under step 1 when launching the browser fails; the address is already copied; action common.tryAgain.",
+   "placeholders": {
+    "browser": "display name of the chosen supported browser"
    }
   },
   {

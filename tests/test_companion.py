@@ -176,3 +176,25 @@ def test_desktop_browser_with_absolute_executable_and_flatpak_profiles(tmp_path,
     calls = []
     companion.open_add(chromium, launch=lambda command, **kw: calls.append(command))
     assert calls == [["/usr/bin/flatpak", "run", "org.chromium.Chromium", companion.ADD_URL]]
+
+
+@pytest.mark.parametrize(
+    ("name", "address"),
+    [
+        ("Chrome", "chrome://extensions/"),
+        ("Chromium", "chrome://extensions/"),
+        ("Edge", "edge://extensions/"),
+        ("Brave", "brave://extensions/"),
+    ],
+)
+def test_local_install_address_is_specific_to_the_browser(tmp_path, name, address):
+    assert companion.extensions_address(companion.Browser(name, "/chosen/browser", tmp_path)) == address
+
+
+def test_local_install_opens_a_new_blank_tab_without_launching_an_internal_url(tmp_path):
+    calls = []
+    browser = companion.Browser("Chromium", "/usr/bin/flatpak", tmp_path, ("run", "org.chromium.Chromium"))
+    companion.open_new_tab(browser, launch=lambda *a, **kw: calls.append((a, kw)))
+    ((args, options),) = calls
+    assert args == (["/usr/bin/flatpak", "run", "org.chromium.Chromium", "--new-tab", "about:blank"],)
+    assert "shell" not in options

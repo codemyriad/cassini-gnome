@@ -1,4 +1,4 @@
-# Local browser companion setup (D39, work in progress)
+# Local browser companion setup (D39/D39.1)
 
 Cassini prepares its reviewed browser extension in the host data directory:
 `$XDG_DATA_HOME/cassini/browser-companion`, normally
@@ -23,28 +23,31 @@ opening a browser never marks setup complete: Done requires the actual native
 hello/status handshake. Both entry points remain hidden with an unavailable
 Flatpak bridge and disabled without a supported browser.
 
-## Remaining guide amendment
+## Explicit browser navigation
 
-R43/R44 in coordination's REPLIES-GNOME.md request the missing failure lines and
-an explicit **Copy Extensions page address** action. In Chromium 149, external
-`chrome://extensions/` arguments are rejected and open a New Tab. App mode and a
-trailing slash do not change that result. The source validates external launch
-URLs in [url_util.cc](https://github.com/chromium/chromium/blob/main/chrome/browser/ui/startup/url_util.cc).
-The current Open button must be replaced by the approved explicit copy/paste
-step before this work can ship. The catalog is not locally amended.
+D39.1’s **Copy Address and Open {browser}** action copies the browser’s Extensions
+address and opens a new `about:blank` tab in that browser. The user pastes into
+the address bar and presses Enter. Chrome/Chromium use `chrome://extensions/`,
+Edge uses `edge://extensions/`, and [Brave uses `brave://extensions/`](https://support.brave.app/hc/en-us/articles/360035025231-What-extensions-are-built-into-Brave).
+Chromium rejects internal URLs passed on the command line; the app never types
+into the browser or edits a profile/policy to bypass that restriction.
 
-The real-browser test currently models that proposed explicit address copy in
-its test driver, then uses actual address-bar keys, Developer mode, Load unpacked
-and the native folder picker's Open button through Alt+O. This temporary scaffolding is marked
-R44 and must become an activation of the production guide button when published.
-It never loads an extension through a command-line flag, a CDP install API or a
-profile edit. A private synthetic bundle version 0.2.3 checks stable-folder
-updates on app/browser restart; the shipping extension remains 0.2.2.
+The address is copied before launch. A launch failure keeps it available and
+shows the published inline failure line with Try again. A failed stable-folder
+preparation likewise shows its true failure and retry action. All copy comes
+from coordinator catalog 9ebdad477452046a54284df5be1c7b4d89d7643b verbatim.
+
+The real-browser gate activates that production button, verifies the resulting
+clipboard and actual new blank tab, then uses native address-bar keys, Developer
+mode, Load unpacked and the native picker’s Open mnemonic. It never installs via
+an extension-loading flag, a CDP install API, a profile edit or a test-only
+address-copy path. A private synthetic bundle version 0.2.3 checks stable-folder
+updates after app/browser restart; the shipping extension remains 0.2.2.
 
 ## Validation
 
 The source tests cover pinned identity, newer-only/idempotent writes, unsafe
-files, partial staging, rollback and crash recovery, concurrent versions, an
+files, partial staging, rollback and crash recovery, concurrent versions, a
 busy owner, crash-released kernel lock, a host-data path, and a minimal
 host PATH without Python or diffutils. The lock file remains in place so
 all contenders use the same inode; there is no PID-based stale-lock cleanup. The installed Flatpak bridge smoke also

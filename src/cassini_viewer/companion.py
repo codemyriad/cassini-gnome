@@ -226,13 +226,17 @@ def open_add(browser, *, launch=subprocess.Popen):
     return open_url(browser, ADD_URL, launch=launch)
 
 
-def open_extensions(browser, *, launch=subprocess.Popen):
-    url = "edge://extensions/" if browser.name == "Edge" else "chrome://extensions/"
-    return open_url(browser, url, launch=launch)
+def extensions_address(browser):
+    scheme = {"Edge": "edge", "Brave": "brave"}.get(browser.name, "chrome")
+    return f"{scheme}://extensions/"
 
 
-def open_url(browser, url, *, launch=subprocess.Popen):
-    command = [browser.executable, *browser.arguments, url]
+def open_new_tab(browser, *, launch=subprocess.Popen):
+    return open_url(browser, "about:blank", new_tab=True, launch=launch)
+
+
+def open_url(browser, url, *, new_tab=False, launch=subprocess.Popen):
+    command = [browser.executable, *browser.arguments, *(["--new-tab"] if new_tab else []), url]
     if in_flatpak():
         from .flatpak_bridge import detached_command
 

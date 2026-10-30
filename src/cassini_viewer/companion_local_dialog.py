@@ -34,9 +34,19 @@ class LocalCompanionDialog(Adw.Dialog):
                 Gtk.Label(label=f"{n}. " + text("companion.local." + key, browser=browser.name), wrap=True, xalign=0)
             )
             if n == 1:
-                self.open_button = Gtk.Button(label=text("companion.local.openExtensions"), halign=Gtk.Align.START)
-                self.open_button.connect("clicked", self._open)
-                content.append(self.open_button)
+                self.address_button = Gtk.Button(
+                    label=text("companion.local.copyExtensions", browser=browser.name), halign=Gtk.Align.START
+                )
+                self.address_button.connect("clicked", self._copy_extensions)
+                content.append(self.address_button)
+                content.append(
+                    Gtk.Label(
+                        label=text("companion.local.extensionsPasteHint"),
+                        wrap=True,
+                        xalign=0,
+                        css_classes=["caption", "dim-label"],
+                    )
+                )
                 self.problem = Gtk.Label(wrap=True, xalign=0, visible=False, css_classes=["warn-line"])
                 content.append(self.problem)
             elif n == 3:
@@ -69,22 +79,24 @@ class LocalCompanionDialog(Adw.Dialog):
         self.done.connect("clicked", self._done)
         actions.append(self.done)
         content.append(actions)
-        self.set_default_widget(self.open_button)
+        self.set_default_widget(self.address_button)
         self.connect("closed", lambda *_: setattr(self, "closed", True))
         self.render()
 
-    def _open(self, *_):
+    def _copy_extensions(self, *_):
         if self.opening or self.closed:
             return
+        self.get_display().get_clipboard().set(companion.extensions_address(self.browser))
+        self.toasts.add_toast(Adw.Toast.new(text("companion.local.extensionsCopied")))
         self.opening, self.failed = True, False
         self.render()
 
         def work():
             try:
-                companion.open_extensions(self.browser)
+                companion.open_new_tab(self.browser)
                 error = None
             except Exception as problem:
-                LOG.warning("Could not open the Extensions page: %s", problem)
+                LOG.warning("Could not open the browser: %s", problem)
                 error = problem
             GLib.idle_add(self._opened, error)
 
@@ -111,8 +123,10 @@ class LocalCompanionDialog(Adw.Dialog):
         connected = bool(state and state["phase"] == "connected")
         self.done.set_sensitive(connected)
         self.status.set_label(state_text(state))
-        self.open_button.set_sensitive(not self.opening and bool(state and state["browser"]))
-        self.open_button.set_label(text("common.tryAgain" if self.failed else "companion.local.openExtensions"))
+        self.address_button.set_sensitive(not self.opening and bool(state and state["browser"]))
+        self.address_button.set_label(
+            text("common.tryAgain" if self.failed else "companion.local.copyExtensions", browser=self.browser.name)
+        )
         self.problem.set_visible(self.failed)
         if self.failed:
             self.problem.set_label(text("companion.local.openFailed", browser=self.browser.name))
