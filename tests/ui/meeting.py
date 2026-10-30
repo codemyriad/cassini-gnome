@@ -99,6 +99,21 @@ with tempfile.TemporaryDirectory() as temporary:
         from dataclasses import replace
         from types import SimpleNamespace
 
+        # Queued/running meetings must explain the wait even before the first
+        # words arrive, and keep showing it alongside a growing transcript.
+        queued = replace(meeting, words=(), turns=(), preview_turns=(), transcript="queued", eta_minutes=None)
+        page.update(queued)
+        assert "Transcribing…" in labels(page.lines), "Queued without words must show progress immediately"
+        assert not page.write_button.get_visible()
+        running = replace(meeting, transcript="running", eta_minutes=3)
+        page.update(running)
+        assert "Transcribing, about 3 minutes left" in labels(page.lines)
+        assert page._turns == running.turns, "Progress must not hide already written words"
+        page.update(replace(running, eta_minutes=0))
+        assert "Transcribing, less than a minute left" in labels(page.lines), "ETA-only refresh must update"
+        page.update(replace(meeting, transcript="done", eta_minutes=None))
+        assert not any(value.startswith("Transcribing") for value in labels(page.lines))
+
         empty = replace(meeting, words=(), turns=(), preview_turns=(), transcript="done", eta_minutes=None)
         assert empty.no_speech and empty.can_write_down
 
