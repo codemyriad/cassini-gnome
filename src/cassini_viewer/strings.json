@@ -7674,6 +7674,48 @@
    "boards": [],
    "milestone": "D28A",
    "status": "harmony"
+  },
+  {
+   "id": "companion.opening",
+   "en": "Opening {browser}…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "fix-setup-speed",
+   "status": "harmony",
+   "note": "GNOME R45, published by the coordinator. Shown in setup step 1 until its browser-launch worker returns.",
+   "placeholders": {
+    "browser": "selected supported browser name"
+   }
+  },
+  {
+   "id": "player.speed.increase",
+   "en": "Increase playback speed",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "action",
+   "boards": [],
+   "milestone": "fix-setup-speed",
+   "status": "harmony",
+   "note": "GNOME R45, published by the coordinator. Keyboard Shortcuts, Ctrl+] (Mac ⌘])."
+  },
+  {
+   "id": "player.speed.decrease",
+   "en": "Decrease playback speed",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "action",
+   "boards": [],
+   "milestone": "fix-setup-speed",
+   "status": "harmony",
+   "note": "GNOME R45, published by the coordinator. Keyboard Shortcuts, Ctrl+[ (Mac ⌘[)."
   }
  ]
 }

@@ -96,7 +96,7 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "a6ca71e032e344d30baf71441bb4c98cf7bec0d449e28961b5c28f86ea8cc055",
+    "strings.json": "5936c0d43d771174c8d2a4d449bd8fb2b79832763414a30a4e774d85c94bb202",
     "LIBRARY.md": "6cd4063cdd58567c75a4733c8862e9fe0983863df890b86a91e9a9bb17749751",
     "session-events/session.json": "6bcec60cf4024421b57683d86a44d7ffd92efdc84a3e5b67e24cb09fcfb55723",
     "session-events/expected.json": "905ad1966fa3cac23aa348109d4f694a5606ea685f3a5689cc052cf092a8a920",
@@ -127,8 +127,8 @@
   },
   "additionalSources": {
     "strings.json": {
-      "commit": "6c497ba",
-      "note": "Approved D28 Part A Recording details: complete R41 catalog, with three coordinator edits"
+      "commit": "15cb9d6",
+      "note": "Coordinator-published R45 opening caption and playback speed shortcuts; exact shared catalog bytes"
     },
     "LIBRARY-RULES.md": {
       "commit": "c74460bc61ea498dcf821e628190266348486345",
