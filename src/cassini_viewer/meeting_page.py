@@ -322,6 +322,7 @@ class MeetingPage(Adw.NavigationPage):
             id(meeting.words),
             meeting.speakers,
             meeting.transcript,
+            meeting.eta_minutes,
             meeting.error,
             meeting.metadata_editable,
             dark,
@@ -378,6 +379,11 @@ class MeetingPage(Adw.NavigationPage):
         trash_error = self.window.trash_error_line(meeting)
         if trash_error:
             self.lines.append(trash_error)
+        elif meeting.transcript in ("queued", "running"):
+            progress = Gtk.Box(spacing=12, css_classes=["inline-line", "info-line"])
+            progress.append(Gtk.Spinner(spinning=True, accessible_role=Gtk.AccessibleRole.PRESENTATION))
+            progress.append(label(fmt.eta(meeting.eta_minutes), xalign=0, wrap=True, hexpand=True))
+            self.lines.append(progress)
         elif meeting.transcript == "damaged":
             self.lines.append(InlineLine("errors.transcriptDamaged.line"))
         elif meeting.transcript == "failed":
