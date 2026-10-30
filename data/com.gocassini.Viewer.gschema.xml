@@ -6,6 +6,7 @@
     <key name="record-shortcut-enabled" type="b"><default>false</default><summary>Global recording shortcut explicitly enabled</summary></key>
     <key name="record-shortcut-description" type="s"><default>'Ctrl+Alt+R'</default><summary>Desktop recording shortcut description</summary></key>
     <key name="skip-record-first" type="b"><default>false</default><summary>Skip recording introduction</summary></key>
+    <key name="export-folder-uri" type="s"><default>''</default><summary>Last folder selected for export</summary></key>
     <key name="companion-card-dismissed" type="b"><default>false</default><summary>Companion card dismissed</summary></key>
     <key name="window-width" type="i">
       <default>1200</default>

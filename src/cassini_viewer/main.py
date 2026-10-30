@@ -96,6 +96,9 @@ class CassiniApplication(Adw.Application):
         self.library_relocator = None
         self.comfort = None
         self.global_shortcut = None
+        from .background_recording import BackgroundRecording
+
+        self.background_recording = BackgroundRecording()
         self._pending_recording = None
         from .meeting_trash import MeetingTrash
 
@@ -116,6 +119,7 @@ class CassiniApplication(Adw.Application):
         self.set_accels_for_action("win.skip-forward", ["Right"])
         self.set_accels_for_action("win.back-library", ["<alt>Left"])
         self.set_accels_for_action("win.nudge-forward", ["<alt>Right"])
+        self.set_accels_for_action("win.rename", ["F2"])
         self.set_accels_for_action("win.search", ["<primary>f"])
         self.set_accels_for_action("win.next-match", ["<primary>g"])
         self.set_accels_for_action("win.previous-match", ["<primary><shift>g"])
@@ -950,6 +954,7 @@ class CassiniApplication(Adw.Application):
         return getattr(self, "_capture_background", False) and not self._quitting and any(capture_targets(self))
 
     def do_shutdown(self):
+        self.background_recording.close()
         if self.global_shortcut:
             self.global_shortcut.close()
         if self.comfort:
@@ -993,6 +998,7 @@ class CassiniApplication(Adw.Application):
                 identifier = {
                     "app.record": "common.record",
                     "win.export": "common.exportEllipsis",
+                    "win.rename": "meeting.renameEllipsis",
                     "win.skip-back": "player.back10",
                     "win.skip-forward": "player.forward10",
                 }.get(item.get_action_name())

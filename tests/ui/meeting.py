@@ -25,6 +25,9 @@ from gi.repository import Adw, Gio, GLib, GObject, Gst, Gtk  # noqa: E402
 
 build = Path(os.environ["CASSINI_TEST_BUILD"])
 Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-viewer.gresource")))
+sys.path.insert(0, str(ROOT / "tests"))
+from desktop_services import DesktopServices  # noqa: E402
+
 from cassini_viewer.folder_player import FolderPlayer  # noqa: E402
 from cassini_viewer.library_window import LibraryWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
@@ -51,6 +54,7 @@ def labels(widget):
     return result
 
 
+services = DesktopServices()
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
     subprocess.run([sys.executable, str(ROOT / "ux/library-vectors/make.py"), str(root / "fixtures")], check=True)
@@ -278,7 +282,8 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog = app._capture_confirmation
     dialog.emit("response", "keep")
     dialog.force_close()
-    assert recorder.pipeline is not None and not window.get_visible()
+    until(lambda: not window.get_visible())
+    assert recorder.pipeline is not None and app._capture_background
     app.activate()
     assert window.get_visible()
     app.on_quit()

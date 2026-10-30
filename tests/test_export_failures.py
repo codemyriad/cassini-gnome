@@ -124,3 +124,31 @@ def test_empty_embedded_speaker_id_is_damaged_before_import_or_export(tmp_path, 
     assert load_open_meeting(path).transcript == "damaged"
     imported = import_received(path, tmp_path / "Library")
     assert imported.transcript == "damaged" and not imported.words and not imported.speakers
+
+
+def test_flatpak_rejects_writable_tmpfs_home_before_creating_an_export(tmp_path, monkeypatch):
+    from cassini_viewer import library_location
+
+    original = load_open_meeting(ASSETS / "plain-title.opus", tmp_path / "Library")
+    monkeypatch.setattr("cassini_viewer.companion.in_flatpak", lambda: True)
+    monkeypatch.setattr(library_location, "_sandbox_mounts", lambda: (tmp_path / "host-grant",))
+    destination = tmp_path / "private-home/Documents"
+    with pytest.raises(PermissionError):
+        export_meeting(original, destination, "markdown")
+    assert not destination.exists() and not list(tmp_path.rglob(".cassini-*"))
+
+
+def test_flatpak_selected_folder_grant_exports_both_formats_without_a_home_grant(tmp_path, monkeypatch):
+    from cassini_viewer import library_location
+
+    original = load_open_meeting(ASSETS / "plain-title.opus", tmp_path / "Library")
+    destination = tmp_path / "host-grant"
+    destination.mkdir()
+    monkeypatch.setattr("cassini_viewer.companion.in_flatpak", lambda: True)
+    monkeypatch.setattr(library_location, "_sandbox_mounts", lambda: (destination,))
+    markdown = export_meeting(original, destination, "markdown")
+    opus = export_meeting(original, destination)
+    assert markdown.parent == opus.parent == destination
+    assert markdown.read_text().startswith("# ")
+    assert portable.verify_audio(str(opus), portable.read_meeting(str(opus))).state == portable.State.OK
+    assert not list(destination.glob(".cassini-*"))

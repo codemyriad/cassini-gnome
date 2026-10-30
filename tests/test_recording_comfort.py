@@ -41,6 +41,7 @@ def application(recorders, *, browser=None):
         send_notification=lambda identifier, _notification: notifications.append(identifier),
         withdraw_notification=lambda *_: None,
         notifications=notifications,
+        background_recording=SimpleNamespace(status=lambda *_: None),
     )
 
 
@@ -82,7 +83,7 @@ def test_each_native_session_keeps_its_levels_and_clock_when_another_stops(tmp_p
         assert comfort.status(meetings[1])["levels"] == [0.6, 0.8]
         assert comfort.elapsed(meetings[0]) >= 125500
         assert 65500 <= comfort.elapsed(meetings[1]) < 70000
-        assert comfort.last_payload["title"] == "Recording, 00:02:05"
+        assert comfort.last_payload["title"] == "Cassini is recording"
         assert "Earlier" in comfort.last_payload["body"]
         natives[0].pipeline = None
         captures[0].finish()

@@ -9,23 +9,29 @@ from gettext import gettext as _
 from gi.repository import Gio, GLib, Gtk
 
 from . import ux_formats as fmt
-from .capture_guard import native_recorders, recorder_busy
+from .capture_guard import capture_targets, native_recorders, recorder_busy
 from .recording_details import SilenceClock, edit_recording, live_meeting, live_observation
 from .session_events import meeting_sources, source_state
-from .strings import CATALOG, text
+from .strings import text
 
 LOG = logging.getLogger(__name__)
 
 
-def notification_payload(meeting, elapsed, *, native=False):
-    # Native copy is published by the coordinator; never claim a browser path.
-    identifier = "hidden.notification.nativeBody" if native else "hidden.notification.body"
+def notification_payload(meeting, elapsed, *, native=False, tz=None):
+    body = meeting.title
+    if meeting.started_at_ms is not None:
+        body += "\n" + text(
+            "recording.since",
+            time=fmt.row_time(
+                meeting.started_at_ms, tz=tz or fmt.local_timezone(GLib.TimeZone.new_local().get_identifier())
+            ),
+        )
     payload = dict(
-        title=text("hidden.status", liveBig=fmt.live_big(elapsed)),
-        body=text(identifier, title=meeting.title) if identifier in CATALOG else meeting.title,
+        title=text("recording.background.notification"),
+        body=body,
         buttons=[
             dict(label=text("common.stop"), action="app.stop-recording"),
-            dict(label=text("hidden.openCassini"), action="app.open-recording"),
+            dict(label=text("common.show"), action="app.open-recording"),
         ],
         defaultAction="app.open-recording",
     )
@@ -203,20 +209,41 @@ class RecordingComfort:
             state.update(line=native.line, minutes=native.minutes_left)
             self._disk_notification(None, native.line, native.minutes_left, key=key)
         self._refresh_pages()
-        hidden = bool(meetings) and not any(w.get_visible() for w in self.app.get_windows())
+        hidden = (bool(meetings) or any(capture_targets(self.app))) and not any(
+            w.get_visible() for w in self.app.get_windows()
+        )
         if hidden:
-            meeting = min(
-                meetings.values(),
-                key=lambda m: (m.started_at_ms if m.started_at_ms is not None else float("inf"), m.key),
-            )
-            payload = notification_payload(
-                meeting, self.elapsed(meeting), native=self.sources(meeting).source != "browser"
-            )
-            if (
-                any(self.sources(m).fallback for m in meetings.values())
-                and text("errors.othersFallback.line") not in payload["body"]
-            ):
-                payload["body"] += "\n" + text("errors.othersFallback.line")
+            if meetings:
+                meeting = min(
+                    meetings.values(),
+                    key=lambda m: (m.started_at_ms if m.started_at_ms is not None else float("inf"), m.key),
+                )
+                payload = notification_payload(
+                    meeting,
+                    self.elapsed(meeting),
+                    native=self.sources(meeting).source != "browser",
+                    tz=next((w.tz for w in self.app.get_windows() if hasattr(w, "tz")), None),
+                )
+                if (
+                    any(self.sources(m).fallback for m in meetings.values())
+                    and text("errors.othersFallback.line") not in payload["body"]
+                ):
+                    payload["body"] += "\n" + text("errors.othersFallback.line")
+                status = text("hidden.status", liveBig=fmt.live_big(self.elapsed(meeting)))
+            else:
+                # A new capture can precede Library discovery. Its controls
+                # must already be available when the last window is hidden.
+                payload = dict(
+                    title=text("recording.background.notification"),
+                    body=text("recording.background.notification"),
+                    buttons=[
+                        dict(label=text("common.stop"), action="app.stop-recording"),
+                        dict(label=text("common.show"), action="app.open-recording"),
+                    ],
+                    defaultAction="app.open-recording",
+                )
+                status = text("recording.background.notification")
+            self.app.background_recording.status(status)
             self.last_payload = payload
             notification = Gio.Notification.new(payload["title"])
             notification.set_body(payload["body"])
@@ -228,7 +255,9 @@ class RecordingComfort:
                 notification.add_button(button["label"], button["action"])
             self.app.send_notification("recording", notification)
             self.notification_visible = True
-        elif self.notification_visible:
+        else:
+            self.app.background_recording.status("")
+        if not hidden and self.notification_visible:
             self.app.withdraw_notification("recording")
             self.notification_visible = False
         return True

@@ -183,10 +183,11 @@ def confirm_capture_close(app, window, *, quitting=False):
         return False
     remember_capture_paths(app)
     dialog = Adw.AlertDialog(heading=text("confirm.recordingRunning.title"), body=text("confirm.recordingRunning.body"))
-    dialog.add_response("keep", text("confirm.recordingRunning.secondary"))
+    dialog.add_response("cancel", text("recording.background.cancel"))
+    dialog.add_response("keep", text("recording.background.keep"))
     dialog.add_response("stop", text("confirm.recordingRunning.primary"))
     dialog.set_default_response("stop")
-    dialog.set_close_response("keep")
+    dialog.set_close_response("cancel")
     app._capture_confirmation = dialog
     responded = False
 
@@ -196,20 +197,34 @@ def confirm_capture_close(app, window, *, quitting=False):
             return
         responded = True
         targets = list(app.get_windows()) if quitting else [window]
-        if choice == "keep":
+        if choice == "cancel":
             app._capture_confirmation = None
-            # The capture may have finished behind the dialog. Escape then
-            # dismisses it without hiding the last window or acquiring a hold.
-            if not any(capture_targets(app)):
-                return
-            remember_capture_paths(app)
-            app._capture_hidden_windows = getattr(app, "_capture_hidden_windows", set()) | set(targets)
-            if not getattr(app, "_capture_background", False):
-                app.hold()
-                app._capture_background = True
-                GLib.timeout_add(100, refresh_capture_background, app)
-            for target in targets:
-                target.set_visible(False)
+            return
+        if choice == "keep":
+            # Keep the windows and recording visible until the desktop permits
+            # background operation. Escape never reaches this permission path.
+            app._capture_confirmation = True
+            app.hold()
+
+            def permitted(allowed):
+                try:
+                    app._capture_confirmation = None
+                    if not allowed or app._quitting or not any(capture_targets(app)):
+                        return
+                    remember_capture_paths(app)
+                    current = [target for target in targets if target in app.get_windows()]
+                    app._capture_hidden_windows = getattr(app, "_capture_hidden_windows", set()) | set(current)
+                    if not getattr(app, "_capture_background", False):
+                        app.hold()
+                        app._capture_background = True
+                        GLib.timeout_add(100, refresh_capture_background, app)
+                    for target in current:
+                        target.set_visible(False)
+                    app.comfort.tick()  # Publish Stop/Show immediately, even before the first Library scan.
+                finally:
+                    app.release()
+
+            app.background_recording.request(permitted)
             return
         app._capture_confirmation = True  # Finalization guard; release the closed dialog itself.
         exiting = quitting or not any(w not in targets for w in app.get_windows())
