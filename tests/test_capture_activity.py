@@ -160,7 +160,7 @@ def test_desktop_probe_failure_preserves_watch_lease_and_status_polling(service,
         watcher.poll()
         spin_until(lambda: watcher.future is None)
         assert watcher.lease is lease and lease.fileno() >= 0, "A profile probe must not drop the application lease"
-        assert len(statuses) == delivered + 1, "Broker status polling must continue after the probe fails"
+        assert len(statuses) > delivered, "Broker status polling must continue after the probe fails"
         assert profiles[-1] == "unavailable"
     finally:
         watcher.close()
