@@ -80,20 +80,21 @@ def worker(application, private, report):
     # D39 copies the installed reviewed extension into the host data directory,
     # without any filesystem grant for that directory in the sandbox.
     prepared = inside(
-        "import hashlib,json,os;from cassini_viewer.companion_bundle import prepare,bundle_directory;"
-        "p=prepare();m=p/'manifest.json';s=m.stat();"
-        "assert m.read_bytes()==(bundle_directory()/'manifest.json').read_bytes();"
-        "print(json.dumps(dict(folder=str(p),inode=s.st_ino,mtime=s.st_mtime_ns,"
-        "sha256=hashlib.sha256(m.read_bytes()).hexdigest(),sandboxData=os.environ['XDG_DATA_HOME'])))"
+        "import hashlib,json,os;from cassini_viewer.companion_bundle import prepare,bundle_directory,_run;"
+        "p=prepare();raw=_run('inspect',p);"
+        "assert raw==(bundle_directory()/'manifest.json').read_bytes();"
+        "assert not (p/'manifest.json').exists();"
+        "print(json.dumps(dict(folder=str(p),sha256=hashlib.sha256(raw).hexdigest(),"
+        "sandboxData=os.environ['XDG_DATA_HOME'],sandboxCannotReadHostPath=True)))"
     )
     assert Path(prepared["folder"]) == private / "data/cassini/browser-companion"
     assert not Path(prepared["folder"]).is_relative_to(prepared["sandboxData"])
-    again = inside(
-        "import json;from cassini_viewer.companion_bundle import prepare;"
-        "p=prepare();s=(p/'manifest.json').stat();"
-        "print(json.dumps(dict(folder=str(p),inode=s.st_ino,mtime=s.st_mtime_ns)))"
-    )
-    assert all(prepared[key] == again[key] for key in ("folder", "inode", "mtime"))
+    manifest = Path(prepared["folder"]) / "manifest.json"
+    first = manifest.stat()
+    again = inside("import json;from cassini_viewer.companion_bundle import prepare;print(json.dumps(str(prepare())))")
+    assert again == prepared["folder"]
+    assert (manifest.stat().st_ino, manifest.stat().st_mtime_ns) == (first.st_ino, first.st_mtime_ns)
+    prepared.update(inode=first.st_ino, mtime=first.st_mtime_ns)
 
     command = private / "bin/google-chrome"
     command.parent.mkdir()
