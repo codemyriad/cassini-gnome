@@ -61,13 +61,16 @@
     "voices/verify.py": "tests/ux/voices/verify.py",
     "dc/README.md": "tests/dc/README.md",
     "dc/dc-quiet-jfk-v1.wav": "tests/dc/dc-quiet-jfk-v1.wav",
-    "dc/dc-quiet-jfk-v1-control.wav": "tests/dc/dc-quiet-jfk-v1-control.wav"
+    "dc/dc-quiet-jfk-v1-control.wav": "tests/dc/dc-quiet-jfk-v1-control.wav",
+    "library-v2/name-vectors.json": "tests/ux/library-v2/name-vectors.json",
+    "library-v2/name-vectors-malformed.json": "tests/ux/library-v2/name-vectors-malformed.json",
+    "library-v2/x-schema.json": "src/cassini_viewer/library_v2/x-schema.json"
   },
   "sha256": {
     "format-vectors.json": "8d9449e30b28b117c85f5396de6b0123b1f79cc9b53f6504157b1a0dfffcc791",
     "states-vectors.json": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
     "LIBRARY-RULES.md": "95a0e5068a08efa521f6eed73799b715ab50b2cf6aee374570b5337a6a3bdd2a",
-    "meeting.schema.json": "ebd82ff8639112c6145b673aa74169a706454560050a63956702173c403a1162",
+    "meeting.schema.json": "778192ddae1602e4de299c4ccf92a40d857802036cc9c8efc31ecc09fb84ba3e",
     "library-vectors/verify.py": "2011c3a7fc8d6fd5c58a4f06b16e8397f081755f743725f2732e332e4d1767da",
     "library-vectors/README.md": "8e8cbbe91ab72bbf9f404a94ab3b83822f4e137cca8cbbb25afd493b78394b54",
     "library-vectors/cases.json": "80723c1274ac44d8b23d0a154daa7b6fc5e559a1fceb6491b8e52558c4a6ce2b",
@@ -123,7 +126,10 @@
     "voices/verify.py": "6f30910aad10d84fa8c207c45b4e90cbb583007d0619645d71bbb34c26869641",
     "dc/README.md": "744757b0b80fd75129dbac76d7b5798f14094a49afc0299d35e26607729edd01",
     "dc/dc-quiet-jfk-v1.wav": "071f051241d394587c85463272e9414f133ee18c4bb835d1382b662e4154efda",
-    "dc/dc-quiet-jfk-v1-control.wav": "e31ed958621a39baf1d33dab6d10798695b8319e78fcaa1cb672cdb43c5f7830"
+    "dc/dc-quiet-jfk-v1-control.wav": "e31ed958621a39baf1d33dab6d10798695b8319e78fcaa1cb672cdb43c5f7830",
+    "library-v2/name-vectors.json": "ea88624249550fabb92a2f5d7b03bfaa6424e8b10a7245431cf3c15da03709ff",
+    "library-v2/name-vectors-malformed.json": "5de3b0b1effc01a0bb3cd1c106b88bbee2067373b62628c9c4337bcb47a3f6d9",
+    "library-v2/x-schema.json": "2c3b8312e7120a5c6903a5aeaa15114d32fcf2bd0077804ea7444c19f843a1ac"
   },
   "additionalSources": {
     "strings.json": {
@@ -135,8 +141,8 @@
       "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
     },
     "meeting.schema.json": {
-      "commit": "08183750f7f85701d36120e4c91a096b29872b88",
-      "note": "User-requested D28 Part A draft: optional app-owned recordingDetails end/writing facts; version remains 1; no session/protocol changes. Held in draft PR96."
+      "commit": "04004cd03817f4d45df4e4a703874e11fde3002c",
+      "note": "S-12 §11 Q11: optional namePrefix, namePrefixSource, published; version stays 1"
     },
     "LIBRARY.md": {
       "commit": "c74460bc61ea498dcf821e628190266348486345",
@@ -249,6 +255,18 @@
     "format-vectors.json": {
       "commit": "8a25902",
       "note": "D37.10/R37 format-vectors v4 with approved KB cases"
+    },
+    "library-v2/name-vectors.json": {
+      "commit": "1bed4bcee7dae9a02f65738252cce5fbbe7bf78d",
+      "note": "S-12 step 1 name vectors and x[\"codemyriad.io\"] schema with the §11 answers (Library v2 step 3a)"
+    },
+    "library-v2/name-vectors-malformed.json": {
+      "commit": "1bed4bcee7dae9a02f65738252cce5fbbe7bf78d",
+      "note": "S-12 step 1 name vectors and x[\"codemyriad.io\"] schema with the §11 answers (Library v2 step 3a)"
+    },
+    "library-v2/x-schema.json": {
+      "commit": "1bed4bcee7dae9a02f65738252cce5fbbe7bf78d",
+      "note": "S-12 step 1 name vectors and x[\"codemyriad.io\"] schema with the §11 answers (Library v2 step 3a)"
     }
   }
 }
