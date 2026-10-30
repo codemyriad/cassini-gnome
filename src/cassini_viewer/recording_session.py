@@ -534,6 +534,8 @@ def recover_session(directory):
         tracks.append(
             dict(id=file.stem, file=file.name, label="Recovered audio", kind="media", labelSource="recovered", **info)
         )
+    if not files:
+        tracks = recover_compacted(directory)
     if not tracks:
         raise ValueError("No readable recording metadata or PCM WAV tracks were found")
     return dict(
@@ -547,6 +549,43 @@ def recover_session(directory):
         problem="Recovered audio from damaged or missing metadata. Source labels and relative start times are unavailable.",
         tracks=tracks,
     )
+
+
+def recover_compacted(directory):
+    """S-12 §5 salvage: committed `tracks/*.opus` spans when no WAV remains.
+
+    A WAV and its Opus copy cannot be paired by name, so Opus spans are
+    recovered only from a folder without WAVs; nothing is ever deleted here.
+    """
+    from . import track_source
+
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        names = track_source.recovered_opus(fd, limit=65)
+    finally:
+        os.close(fd)
+    if len(names) > 64:
+        raise ValueError("Too many recording tracks to recover")
+    tracks = []
+    for name in names:
+        value = dict(file=name, codec="opus", decodedRate=track_source.OPUS_RATE)
+        try:
+            info = track_source.inspect(directory, value, recovered=True)
+        except (OSError, ValueError):
+            continue
+        tracks.append(
+            dict(
+                value,
+                id=Path(name).stem,
+                label="Recovered audio",
+                kind="media",
+                labelSource="recovered",
+                sampleRate=info.sample_rate,
+                channels=info.channels,
+                frames=info.frames,
+            )
+        )
+    return tracks
 
 
 def load_session(path):
@@ -568,13 +607,23 @@ def load_session(path):
     for track in tracks:
         if not isinstance(track, dict) or not isinstance(track.get("file"), str):
             raise ValueError("Invalid recording track")
-        filename = track["file"]
-        if Path(filename).name != filename or not filename.endswith(".wav"):
-            raise ValueError("Recording audio is outside the session directory")
-        info = wave_info(path.parent / filename, path.parent)
-        if track.get("sampleRate") != info["sampleRate"] or track.get("channels") != info["channels"]:
-            raise ValueError("Audio format differs from recording metadata")
-        track.update(info)
+        if track.get("codec") is not None:
+            # S-12 §5 compacted span: source sampleRate/frames stay as written;
+            # the confined Opus file must match them in 48 kHz time.
+            from . import track_source
+
+            try:
+                track_source.inspect(path.parent, track)
+            except ValueError as error:
+                raise ValueError(f"Invalid compacted recording track: {error}") from None
+        else:
+            filename = track["file"]
+            if Path(filename).name != filename or not filename.endswith(".wav"):
+                raise ValueError("Recording audio is outside the session directory")
+            info = wave_info(path.parent / filename, path.parent)
+            if track.get("sampleRate") != info["sampleRate"] or track.get("channels") != info["channels"]:
+                raise ValueError("Audio format differs from recording metadata")
+            track.update(info)
         offset = track.get("startOffsetMs")
         if offset is not None and (
             type(offset) not in (int, float) or not 0 <= offset <= 86400000 or not math.isfinite(offset)

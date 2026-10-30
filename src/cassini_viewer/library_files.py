@@ -64,4 +64,4 @@ class FileCache:
         return value
 
     def forget(self, directory):
-        self.entries = {k: v for k, v in self.entries.items() if k[0].parent != directory}
+        self.entries = {k: v for k, v in self.entries.items() if directory not in k[0].parents}

@@ -96,6 +96,8 @@ def prepare_tracks(meeting):
                 kind=track.kind,
                 frames=track.frames,
                 sampleRate=track.sample_rate,
+                # S-12 §5: the child dispatches the decoder by codec; WAV jobs are unchanged.
+                **({"codec": "opus"} if track.codec == "opus" else {}),
             )
         )
         speakers.setdefault(speaker, dict(id=speaker, name=name, provenance=provenance, colourIndex=index))
