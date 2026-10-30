@@ -366,3 +366,64 @@ def test_missing_removed_folder_is_not_a_failed_library_move(roots):
     removed.directory.rename(old / "outside-library-private-trash")
     result = location.process()
     assert not result["pending"] and not (new / removed.directory.name).exists()
+
+
+@pytest.mark.parametrize("mounted_music", [False, True])
+def test_flatpak_default_uses_only_host_backed_storage(tmp_path, monkeypatch, mounted_music):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.delenv("CASSINI_LIBRARY_DIR", raising=False)
+    monkeypatch.setenv("FLATPAK_ID", "com.gocassini.Viewer.Devel")
+    data = tmp_path / "private-app-data"
+    monkeypatch.setenv("XDG_DATA_HOME", str(data))
+    music = tmp_path / "Musica" / "Cassini"
+    monkeypatch.setattr(location, "music_directory", lambda: music.parent)
+    monkeypatch.setattr(location, "_sandbox_mounts", lambda: (data, music) if mounted_music else (data,))
+    expected = music if mounted_music else data / "cassini/Library"
+    assert location.initial_root() == expected
+    recording = RecordingSession(None, source="gnome", title="Persistent")
+    try:
+        assert recording.directory.parent == expected
+    finally:
+        recording.finish()
+
+
+def test_flatpak_rejects_unmounted_private_data_instead_of_using_tmpfs(tmp_path, monkeypatch):
+    monkeypatch.delenv("CASSINI_LIBRARY_DIR", raising=False)
+    monkeypatch.setenv("FLATPAK_ID", "com.gocassini.Viewer.Devel")
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "unmounted-data"))
+    monkeypatch.setattr(location, "_sandbox_mounts", lambda: ())
+    with pytest.raises(OSError, match="persistent storage"):
+        location.initial_root()
+
+
+def test_flatpak_mount_checks_follow_symlinks_and_exact_path_boundaries(tmp_path, monkeypatch):
+    mounted = tmp_path / "host mount"
+    mounted.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(mounted, target_is_directory=True)
+    monkeypatch.setattr(location, "_sandbox_mounts", lambda: (mounted,))
+    assert location._host_storage(alias / "Library")
+    assert not location._host_storage(tmp_path / "host mount-extra/Library")
+
+
+def test_flatpak_fallback_selection_survives_music_becoming_available(tmp_path, monkeypatch):
+    monkeypatch.delenv("CASSINI_LIBRARY_DIR", raising=False)
+    monkeypatch.setenv("FLATPAK_ID", "com.gocassini.Viewer.Devel")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    data = tmp_path / "app-data"
+    monkeypatch.setenv("XDG_DATA_HOME", str(data))
+    music = tmp_path / "Music/Cassini"
+    monkeypatch.setattr(location, "music_directory", lambda: music.parent)
+    monkeypatch.setattr(location, "_sandbox_mounts", lambda: (data,))
+    fallback = data / "cassini/Library"
+    assert location.primary() == fallback
+    monkeypatch.setattr(location, "_sandbox_mounts", lambda: (data, music))
+    assert location.initial_root() == music
+    assert location.primary() == fallback and location.load()["primary"] == str(fallback)
+
+
+def test_publish_default_does_not_overwrite_a_concurrent_library_move(roots):
+    _old, destination = roots
+    published = location.request(destination)
+    location.save(dict(version=1, primary="/stale-default", pending=[], aliases={}), only_if_missing=True)
+    assert location.load() == published

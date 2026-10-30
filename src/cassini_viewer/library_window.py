@@ -682,11 +682,15 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.get_application().observe_library(snapshot, self._observed_phases)
         self._observed_phases = {m.key: (m.lifecycle, m.capture_state) for m in snapshot.meetings}
         self.snapshot = snapshot
-        from .library_location import initial_root, primary
+        from .library_location import initial_root, music_directory, primary
 
-        # The published first-run footer names the original location literally.
-        # Do not claim that path after an explicit relocation (HARMONY 11).
-        self.privacy_footer.set_visible(primary() == initial_root())
+        # This published caption names Music/Cassini literally. An unmounted
+        # Music directory uses private persistent app data in Flatpak instead.
+        default = initial_root()
+        music_caption = (
+            os.environ.get("CASSINI_LIBRARY_DIR") is not None or default == (music_directory() / "Cassini").absolute()
+        )
+        self.privacy_footer.set_visible(primary() == default and music_caption)
         loaded = next((m for m in snapshot.meetings if m.key == self._loaded_key), None)
         if loaded and not self._external_meeting and self._loaded_directory != loaded.directory:
             position, playing = self.player.position, self.player.playing
