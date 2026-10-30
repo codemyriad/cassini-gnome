@@ -589,6 +589,11 @@ class CassiniWindow(Adw.ApplicationWindow):
         position = self.player.position
         focused = self.matches[self.match_cursor] if 0 <= self.match_cursor < len(self.matches) else None
 
+        displayed = {
+            owner.index: transcript.quote_items(w.text for w in owner.words)
+            for owner in [turn] + [aside for _, aside in turn.asides]
+        }
+
         def word_link(owner, i):
             word = owner.words[i]
             current = owner.word_at(position) if owner.index in self.active_turns else -1
@@ -604,7 +609,9 @@ class CassiniWindow(Adw.ApplicationWindow):
                 attrs.append('fgalpha="60%"')
             if word.low_confidence:
                 attrs.append('style="italic"')
-            text = GLib.markup_escape_text(word.text)
+            text = GLib.markup_escape_text(displayed[owner.index][i])
+            if not text:
+                return ""
             inner = f"<span {' '.join(attrs)}>{text}</span>" if attrs else text
             return f'<a href="w:{owner.index}/{i}">{inner}</a>'
 
@@ -614,13 +621,13 @@ class CassiniWindow(Adw.ApplicationWindow):
 
         parts, offsets = [], []
         length = 0
-        for i, word in enumerate(turn.words):
+        for i, _word in enumerate(turn.words):
             if i:
                 parts.append(" ")
                 length += 1
             offsets.append(length)
             parts.append(word_link(turn, i))
-            length += len(word.text.encode())
+            length += len(displayed[turn.index][i].encode())
             for aside in asides.get(i, ()):
                 name = self.speaker_label(aside.speaker)
                 on = aside.is_active(position)

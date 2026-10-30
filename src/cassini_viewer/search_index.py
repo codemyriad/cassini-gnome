@@ -14,6 +14,8 @@ from itertools import groupby
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from .transcript import quote_items, turn_text
+
 START, END = "\x01", "\x02"
 
 
@@ -165,7 +167,7 @@ class SearchIndex:
                     continue
                 ordered = sorted(meeting.words, key=lambda word: word.start_ms)
                 turns = tuple(
-                    SearchTurn(speaker, items, " ".join(w.text.replace(START, "").replace(END, "") for w in items))
+                    SearchTurn(speaker, items, turn_text(w.text.replace(START, "").replace(END, "") for w in items))
                     for speaker, words in groupby(ordered, key=lambda w: w.speaker)
                     if (items := tuple(words))
                 )
@@ -222,8 +224,11 @@ class SearchIndex:
             first = marked.index(START)
             end = 0
             position = turn.start_ms
-            for word in turn.words:
-                end += len(word.text) + 1
+            for word, value in zip(turn.words, quote_items(w.text for w in turn.words), strict=True):
+                value = value.replace(START, "").replace(END, "")
+                if not value:
+                    continue
+                end += len(value) + 1
                 if first < end:
                     position = word.start_ms
                     break

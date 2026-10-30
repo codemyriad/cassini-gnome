@@ -90,7 +90,17 @@ def test_size_rounding_is_half_up():
 
 @pytest.mark.parametrize(
     "size,expected",
-    [(0, "0 KB"), (1, "0 KB"), (512, "1 KB"), (1024, "1 KB"), (1536, "2 KB"), (1048575, "1024 KB"), (1048576, "1 MB")],
+    [
+        (0, "0 KB"),
+        (1, "1 KB"),
+        (512, "1 KB"),
+        (1024, "1 KB"),
+        (1536, "2 KB"),
+        (1023487, "999 KB"),
+        (1023488, "1 MB"),
+        (1048575, "1 MB"),
+        (1048576, "1 MB"),
+    ],
 )
 def test_sizes_below_one_mib_use_shared_kb_copy(size, expected):
     assert fmt.size(size) == expected

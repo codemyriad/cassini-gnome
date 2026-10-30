@@ -6,7 +6,6 @@ from pathlib import Path
 from . import library_location as location
 from .library import LibraryScanner, meeting_id
 from .meeting_store import LOCK, read_metadata, update_metadata
-from .strings import text
 
 
 def title_value(value):
@@ -15,9 +14,8 @@ def title_value(value):
     value = value.strip()
     if len(value) > 500 or any(0xD800 <= ord(char) <= 0xDFFF for char in value):
         raise ValueError("A meeting title supports at most 500 Unicode characters")
-    # R6 otherwise exposes the old captured title again. This is the same
-    # explicit untitled representation used by the Mac D35 implementation.
-    return value or text("library.untitled")
+    # D38.4: a blank name removes the local override.
+    return value or None
 
 
 def rename_meeting(directory, value):
@@ -37,6 +35,9 @@ def rename_meeting(directory, value):
         if meeting is None or meeting.lifecycle != "saved" or not meeting.metadata_editable:
             raise ValueError("Rename requires an editable saved Library meeting")
         current = read_metadata(directory)
-        if title == meeting.title:
+        source = "user" if title is not None else "meeting-window"
+        if (title is not None and title == meeting.title) or (
+            title is None and current.get("title") is None and current.get("titleSource") == source
+        ):
             return current
-        return update_metadata(directory, title=title, titleSource="user")
+        return update_metadata(directory, title=title, titleSource=source)

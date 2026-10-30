@@ -61,7 +61,13 @@ class RenameDialog(Adw.Dialog):
 
     def _validate(self):
         try:
-            changed = title_value(self.entry.get_text()) != self.meeting.title
+            title = title_value(self.entry.get_text())
+            changed = (
+                title != self.meeting.title
+                if title is not None
+                else self.meeting.metadata.get("title") is not None
+                or self.meeting.metadata.get("titleSource") != "meeting-window"
+            )
         except ValueError:
             changed = False
         self.confirm.set_sensitive(changed and not self.busy)

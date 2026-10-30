@@ -45,3 +45,46 @@ def test_reading_paragraphs_bound_layout_without_losing_timed_items():
     turns = reading_turns(words)
     assert [w for turn in turns for w in turn.words] == words
     assert all(len(t.words) <= 100 for t in turns)
+
+
+def test_d38_quotes_are_display_only_and_pair_within_a_turn():
+    from cassini_viewer.transcript import build_turns, quote_items, turn_text
+
+    texts = ['He said "hello', 'world" then "bye".', 'orphan"']
+    assert quote_items(texts) == ("He said “hello", "world” then “bye”.", "orphan")
+    assert turn_text(['"', "Hello"]) == "Hello"
+    assert turn_text(["Already “paired”", "don't change"]) == "Already “paired” don't change"
+    words = [Word("a", 0, 100, 'Hello"'), Word("b", 2000, 2100, '"Goodbye')]
+    assert [t.text for t in build_turns(words)] == ["Hello", "Goodbye"]
+    assert [w.text for w in words] == ['Hello"', '"Goodbye']
+
+
+def test_d38_quote_markup_keeps_original_item_links_and_timings():
+    words = [Word("a", 0, 10, '"'), Word("a", 10, 20, "<Hello>")]
+    value = item_markup(words, 10)
+    assert "item:0" not in value
+    assert value == '<a href="item:1"><span background="#fbe7a1" foreground="#202024">&lt;Hello&gt;</span></a>'
+    paired = [Word("a", 0, 10, '"Hello'), Word("a", 10, 20, 'world"')]
+    assert "“Hello" in item_markup(paired, 0) and "world”" in item_markup(paired, 10)
+    assert paired[0].text == '"Hello' and paired[1].text == 'world"'
+
+
+def test_d38_markdown_cleans_turn_text_without_changing_timed_items():
+    from copy import deepcopy
+
+    from cassini_viewer.export_model import markdown
+
+    model = dict(
+        title="Quote test",
+        startMs=None,
+        durationMs=None,
+        speakers=[dict(id="a", name="A")],
+        items=[
+            dict(speaker="a", startMs=0, endMs=100, text='Say "hello" then'),
+            dict(speaker="a", startMs=100, endMs=200, text='goodbye"'),
+        ],
+        notes=[],
+    )
+    before = deepcopy(model)
+    assert "Say “hello” then goodbye\n" in markdown(model)
+    assert model == before

@@ -1,5 +1,5 @@
 {
- "version": 3,
+ "version": 4,
  "note": "Binding golden vectors for both apps (HARMONY.md section 6). Times are epoch ms; format in the given tz with fixed en-GB patterns, 24 h clock. Both apps must pass all of them as unit tests; add vectors only via the coordinator.",
  "tz": "Europe/Rome",
  "nowMs": 1793107080000,
@@ -345,11 +345,47 @@
    "bytes": 464519168,
    "approx": false,
    "out": "443 MB"
+  },
+  {
+   "bytes": 524288,
+   "approx": false,
+   "out": "512 KB"
+  },
+  {
+   "bytes": 1536,
+   "approx": false,
+   "out": "2 KB"
+  },
+  {
+   "bytes": 469000,
+   "approx": true,
+   "out": "about 458 KB"
+  },
+  {
+   "bytes": 100,
+   "approx": false,
+   "out": "1 KB"
+  },
+  {
+   "bytes": 0,
+   "approx": false,
+   "out": "0 KB"
+  },
+  {
+   "bytes": 1023999,
+   "approx": false,
+   "out": "1 MB"
+  },
+  {
+   "bytes": 1048576,
+   "approx": false,
+   "out": "1 MB"
   }
  ],
- "sizeRule": "MB = bytes / 1048576 rounded half up (decimal, not binary float: 23.5 -> 24). If that rounded MB value is >= 1000, show GB instead: bytes / 1073741824 rounded half up to one decimal (1.25 -> 1.3), always with one decimal. 'approx' prefixes 'about '.",
+ "sizeRule": "MB = bytes / 1048576 rounded half up (decimal, not binary float: 23.5 -> 24). If that rounded MB value is >= 1000, show GB instead: bytes / 1073741824 rounded half up to one decimal (1.25 -> 1.3), always with one decimal. 'approx' prefixes 'about '. Below 1 MB (D37.10): KB = bytes / 1024 rounded half up, shown as '{n} KB'; a nonzero size shows at least 1 KB; 0 bytes is '0 KB'. If the rounded KB value is >= 1000, use the MB rule instead (so 1023999 bytes is '1 MB').",
  "changelog": [
   "v2: size[0] bytes 24117248 -> 25165824 (24 MiB); the old value was exactly 23 MiB and contradicted sizeRule (GNOME R1).",
-  "v3 (D6): sizeRule pinned (half up, decimal; switch to GB on the rounded MB value); five size vectors added at 23.5 MiB, 999.0 MiB, 999.5 MiB, 1.25 GiB, 443 MiB."
+  "v3 (D6): sizeRule pinned (half up, decimal; switch to GB on the rounded MB value); five size vectors added at 23.5 MiB, 999.0 MiB, 999.5 MiB, 1.25 GiB, 443 MiB.",
+  "v4 (D37.10): KB below 1 MB; seven size vectors added (512 KiB, 1.5 KiB, 458 KiB approx, 100 B, 0 B, 1023999 B, 1 MiB)."
  ]
 }

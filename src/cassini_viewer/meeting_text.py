@@ -4,6 +4,8 @@
 from fractions import Fraction
 from html import escape
 
+from .transcript import quote_items
+
 COLOURS = ("#1c71d8", "#b34d00", "#813d9c", "#21804b", "#bd2028", "#167c8b")
 DARK_COLOURS = ("#78aeed", "#ffa348", "#ce91df", "#77d39a", "#ff9298", "#79c7d1")
 
@@ -25,8 +27,10 @@ def speaking_shares(words, speaker_ids):
 
 def item_markup(words, position, *, dark=False):
     parts = []
-    for index, word in enumerate(words):
-        value = escape(word.text)
+    for index, (word, value) in enumerate(zip(words, quote_items(w.text for w in words), strict=True)):
+        if not value:
+            continue
+        value = escape(value)
         if word.start_ms <= position < word.end_ms:
             value = f'<span background="#fbe7a1" foreground="#202024">{value}</span>'
         elif word.start_ms > position:

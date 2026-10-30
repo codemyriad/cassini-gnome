@@ -287,3 +287,13 @@ def test_trash_erases_removed_text_from_search_cache_pages(index):
     index.sync(LibrarySnapshot())
     assert not search(index, secret)
     assert secret.encode() not in index.path.read_bytes(), "Trash left removed text in FTS/cache pages"
+
+
+def test_d38_cleaned_quotes_keep_search_seek_on_the_original_item(index):
+    selected = next(iter(index.current.values()))
+    words = (Word("a", 0, 10, '"'), Word("a", 100, 200, "needle"), Word("b", 2000, 2100, '"other'))
+    index.sync(LibrarySnapshot(meetings=(replace(selected, words=words),)))
+    (hit,) = search(index, "needle")
+    assert hit.position_ms == 100 and hit.marked == "\x01needle\x02"
+    assert index.turns[selected.key][0].words is not None
+    assert tuple(w.text for turn in index.turns[selected.key] for w in turn.words) == ('"', "needle", '"other')

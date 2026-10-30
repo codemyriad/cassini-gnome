@@ -21,7 +21,7 @@ from .meeting_text import reading_turns
 from .recording_session import KINDS, strict_json
 from .session_events import meeting_sources, read_events
 from .strings import text
-from .transcript import build_turns, visible_turns
+from .transcript import build_turns, turn_text, visible_turns
 
 MAX_JSON = 1024 * 1024
 
@@ -640,7 +640,7 @@ class LibraryScanner:
             transcript=transcript,
             eta_minutes=eta,
             error=error,
-            title=title or "Untitled meeting",
+            title=title or text("library.untitled"),
             title_is_fallback=title is None,
             started_at_ms=started,
             duration_ms=duration,
@@ -846,7 +846,7 @@ def _quote(words, override):
     if not candidates:
         return None
     chosen = min(candidates, key=lambda t: (-(t[2] - t[1]), t[1], t[3]))
-    text = " ".join(" ".join(chosen[4]).split())
+    text = " ".join(turn_text(chosen[4]).split())
     return f"“{text}”" if text else None
 
 

@@ -65,10 +65,33 @@ def test_received_rename_changes_only_local_metadata(meeting):
     assert source.read_bytes() == before
 
 
-def test_empty_is_explicit_untitled_and_never_reveals_captured_title(meeting):
+def test_empty_removes_user_override_and_restores_captured_title(meeting):
+    rename_meeting(meeting.directory, "Untitled meeting")
+    before = read_metadata(meeting.directory)
     saved = rename_meeting(meeting.directory, " \t ")
-    assert saved["title"] == "Untitled meeting" and saved["titleSource"] == "user"
-    assert LibraryScanner(meeting.directory.parent).scan().meetings[0].title == "Untitled meeting"
+    assert saved == dict(before, title=None, titleSource="meeting-window", revision=before["revision"] + 1)
+    assert LibraryScanner(meeting.directory.parent).scan().meetings[0].title == "Captured title"
+    assert rename_meeting(meeting.directory, "") == saved
+
+
+def test_received_blank_restores_automatic_title_without_touching_original(meeting):
+    source = Path(__file__).parents[1] / "ux/library-vectors/assets/plain-title.opus"
+    received = import_received(source, meeting.directory.parent)
+    audio = bytes_except_metadata(received)
+    rename_meeting(received.directory, "Override")
+    saved = rename_meeting(received.directory, "")
+    assert saved["title"] is None and saved["titleSource"] == "meeting-window"
+    restored = next(
+        m for m in LibraryScanner(meeting.directory.parent).scan().meetings if m.directory == received.directory
+    )
+    assert restored.title == received.title
+    assert bytes_except_metadata(received) == audio
+
+
+def test_blank_automatic_name_is_a_noop(meeting):
+    before = (meeting.directory / "meeting.json").read_bytes()
+    rename_meeting(meeting.directory, "")
+    assert (meeting.directory / "meeting.json").read_bytes() == before
 
 
 def test_unchanged_title_does_not_publish_a_revision(meeting):

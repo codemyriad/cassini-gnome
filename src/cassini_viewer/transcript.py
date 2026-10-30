@@ -28,6 +28,31 @@ SIDE_GAP_MS = 500
 TOUCH_TOLERANCE_MS = 20
 
 
+def quote_items(texts):
+    """D38.5 display-only paired quotes, retaining one output per timed item."""
+    texts = tuple(texts)
+    remaining = sum(value.count('"') for value in texts)
+    opening = True
+    result = []
+    for value in texts:
+        chars = []
+        for char in value:
+            if char == '"':
+                # Pair in reading order within this turn; discard a final orphan.
+                if remaining > 1 or not opening:
+                    chars.append("“" if opening else "”")
+                    opening = not opening
+                remaining -= 1
+            else:
+                chars.append(char)
+        result.append("".join(chars))
+    return tuple(result)
+
+
+def turn_text(texts):
+    return " ".join(value for value in quote_items(texts) if value)
+
+
 @dataclass(slots=True)
 class Turn:
     """A speaker run, with words retained in their original file order."""
@@ -45,7 +70,7 @@ class Turn:
 
     @property
     def text(self) -> str:
-        return " ".join(w.text for w in self.words)
+        return turn_text(w.text for w in self.words)
 
     def word_at(self, ms: int) -> int:
         """Index of the last word that has started by *ms*, or -1."""

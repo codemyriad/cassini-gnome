@@ -5,6 +5,7 @@ import re
 import unicodedata
 
 from . import ux_formats as fmt
+from .transcript import turn_text
 
 BANDS = ((4000, 12000, 16000), (6000, 12000, 20000), (8000, 16000, 32000), (12000, 20000, 48000), (20000, 24000, 64000))
 
@@ -80,7 +81,7 @@ def markdown(value):
             turns.append([item["speaker"], item["startMs"], [item["text"]]])
     for identifier, start, texts in turns:
         name = names.get(identifier, "Speaker " + str(order.index(identifier) + 1))
-        lines += [f"**{escaped(name)}** · {fmt.position(start)}", escaped(" ".join(texts)), ""]
+        lines += [f"**{escaped(name)}** · {fmt.position(start)}", escaped(turn_text(texts)), ""]
     if value.get("notes"):
         lines += ["## Notes", ""]
         lines += [

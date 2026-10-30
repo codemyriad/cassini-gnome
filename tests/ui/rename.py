@@ -273,10 +273,11 @@ with tempfile.TemporaryDirectory() as temporary:
     until(
         lambda: (
             dialog.closed
-            and any(m.title == "Untitled meeting" and m.directory == folder for m in window.snapshot.meetings)
+            and any(m.title == "Budget review" and m.directory == folder for m in window.snapshot.meetings)
         )
     )
-    assert read_metadata(folder)["title"] == "Untitled meeting"
+    assert read_metadata(folder)["title"] is None
+    assert read_metadata(folder)["titleSource"] == "meeting-window"
     assert before == {
         p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.iterdir() if p.name != "meeting.json"
     }
@@ -290,4 +291,6 @@ with tempfile.TemporaryDirectory() as temporary:
     window.monitor.capture_activity = lambda: {}
     window.close()
     app.comfort.close()
-print("PASS Rename: actual row/Meeting menus, F2, Return/Escape, untitled, failure/retry and unchanged audio")
+print(
+    "PASS Rename: actual row/Meeting menus, F2, Return/Escape, automatic name reset, failure/retry and unchanged audio"
+)
