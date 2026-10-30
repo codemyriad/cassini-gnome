@@ -131,14 +131,20 @@ try {
  },'the app owns the folder clipboard');
  execFileSync('xdotool',['key','--clearmodifiers','ctrl+l']);
  execFileSync('xdotool',['key','--clearmodifiers','ctrl+v']);
- const selection=JSON.parse(execFileSync('/usr/bin/python3',[path.join(root,'tests/recording/companion-picker.py'),state.folder],{encoding:'utf8'}));
- assert.equal(selection.accepted,true);
+ // Chromium's GTK3 picker does not export through its browser AT-SPI tree.
+ // Invoke the real Open button's native keyboard mnemonic on both GTK paths;
+ // loading the pinned ID and then the same-folder update proves acceptance.
+ assert.equal(execFileSync('xdotool',['getwindowfocus','getwindowname'],{encoding:'utf8'}).trim(),picker);
+ const selection={folder:state.folder,openAction:'Alt+O',accepted:false};
  evidence.stages.push(selection);
+ execFileSync('xdotool',['key','--clearmodifiers','alt+o']);
  await click;
  const loaded=await poll(async()=>{
   const values=await manager.locator('extensions-item').evaluateAll(items=>items.map(item=>({id:item.id,name:item.data?.name,version:item.data?.version})));
   return values.some(item=>item.id===id) ? values : null;
  },'Load unpacked installs the copied folder');
+ selection.accepted=true;
+ assert.equal(loaded.find(item=>item.id===id).version,installed.version);
  evidence.stages.push({loaded});
  await poll(async()=>(await call()).connected,'real companion handshake');
  assert.equal((await call()).done,true);

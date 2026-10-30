@@ -35,7 +35,7 @@ step before this work can ship. The catalog is not locally amended.
 
 The real-browser test currently models that proposed explicit address copy in
 its test driver, then uses actual address-bar keys, Developer mode, Load unpacked
-and the native folder picker's Open button. This temporary scaffolding is marked
+and the native folder picker's Open button through Alt+O. This temporary scaffolding is marked
 R44 and must become an activation of the production guide button when published.
 It never loads an extension through a command-line flag, a CDP install API or a
 profile edit. A private synthetic bundle version 0.2.3 checks stable-folder
@@ -66,7 +66,11 @@ browser cannot divert the test into a second profile.
 The accessibility probe waits for Chromium’s named native address field to
 receive focus and accept its paste before Enter; clipboard ownership is checked
 before either paste; it never substitutes debug-protocol navigation
-for that first installation.
+for that first installation. The folder chooser is exercised with both GTK3
+and GTK4 installed: its real Open mnemonic works with either toolkit, including
+the GTK3 chooser that Chromium does not expose through its browser AT-SPI tree.
+Successful acceptance still requires the exact extension ID/version, native
+handshake and the same-folder update after restarting the browser.
 
 It retains the real guide screenshot, native picker/extension identity/version,
 connection evidence and stderr, and fails on Gtk/Adw warnings or criticals. No
