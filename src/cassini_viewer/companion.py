@@ -154,7 +154,7 @@ BROWSER_APPS = (
 )
 DESKTOP_NAMES = tuple(
     dict.fromkeys(name + ".desktop" for _, commands, _, app in BROWSER_APPS for name in (*commands, app))
-) + ("chromium_chromium.desktop",)
+)
 
 
 def desktop_inventory(home, data):

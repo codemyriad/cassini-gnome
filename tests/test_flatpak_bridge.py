@@ -378,3 +378,20 @@ def test_host_flatpak_browser_detection_and_registration_use_host_home(host):
     assert browser.config == host / ".var/app/org.chromium.Chromium/config/chromium"
     paths = bridge.register(browsers=[browser])
     assert len(paths) == 2 and all(p.parent == browser.config / "NativeMessagingHosts" for p in paths)
+
+
+@pytest.mark.parametrize(
+    "error", [subprocess.TimeoutExpired("desktop probe", 2), subprocess.CalledProcessError(1, "desktop probe")]
+)
+def test_desktop_probe_process_failures_are_reported_as_io_errors(host, monkeypatch, error):
+    real_run = subprocess.run
+
+    def run(command, **kwargs):
+        if "cassini-desktops" in command:
+            raise error
+        return real_run(command, **kwargs)
+
+    monkeypatch.setattr(bridge.subprocess, "run", run)
+    with pytest.raises(OSError, match="Could not inspect host browsers") as caught:
+        bridge.installed_browsers()
+    assert caught.value.__cause__ is error

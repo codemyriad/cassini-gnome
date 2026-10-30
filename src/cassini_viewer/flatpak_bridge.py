@@ -170,14 +170,14 @@ for root in "${XDG_DATA_HOME:-$HOME/.local/share}/applications" "$HOME/.local/sh
     done
 done
 """
-    result = subprocess.run(
-        host_command(["/bin/sh", "-c", script, "cassini-desktops", *DESKTOP_NAMES], watch=True),
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        check=True,
-        timeout=2,
-    )
     try:
+        result = subprocess.run(
+            host_command(["/bin/sh", "-c", script, "cassini-desktops", *DESKTOP_NAMES], watch=True),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            check=True,
+            timeout=2,
+        )
         values = result.stdout.decode().split("\0")
         home = Path(values.pop(0))
         if not home.is_absolute() or values[-1] != "" or len(values) % 2 != 1:
@@ -187,11 +187,15 @@ done
             if name not in DESKTOP_NAMES:
                 raise ValueError("Unknown host desktop entry")
             desktops.setdefault(name, content)
-    except (UnicodeError, ValueError, IndexError) as error:
+    except (subprocess.SubprocessError, UnicodeError, ValueError, IndexError) as error:
         raise OSError("Could not inspect host browsers") from error
     return detect(
         config=config,
-        which=lambda command: flatpak if command == "flatpak" else executables.get(command),
+        which=lambda command: (
+            flatpak
+            if Path(command).name == "flatpak"
+            else executables.get(command) or executables.get(Path(command).name)
+        ),
         host=False,
         home=home,
         desktops=desktops,
