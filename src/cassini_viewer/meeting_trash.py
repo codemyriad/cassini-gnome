@@ -253,21 +253,23 @@ class MeetingTrash:
         if not self.operations:
             callbacks, self.waiters = self.waiters, []
             failed, self.failed_flush = self.failed_flush, False
-            if not failed:
-                for callback in callbacks:
-                    callback()
+            for callback, on_failure in callbacks:
+                notify = on_failure if failed else callback
+                if notify is not None:
+                    notify()
         self.app.release()
         return GLib.SOURCE_REMOVE
 
-    def flush(self, callback):
+    def flush(self, callback, *, failed=None):
         """Commit on close/quit; keep GTK alive until the native Trash reply."""
         for operation in list(self.operations.values()):
             if operation.phase == "pending":
                 operation.toast.dismiss()
         if not self.operations:
             return False
-        if callback not in self.waiters:
-            self.waiters.append(callback)
+        waiter = (callback, failed)
+        if waiter not in self.waiters:
+            self.waiters.append(waiter)
         return True
 
     def _refresh(self):

@@ -40,7 +40,7 @@ from .window import RESOURCE, CassiniWindow  # noqa: E402
 class CassiniApplication(Adw.Application):
     """The application: one window per open meeting."""
 
-    def __init__(self, application_id, version, profile):
+    def __init__(self, application_id, version, profile, *, installed_build=None):
         super().__init__(
             application_id=application_id,
             flags=Gio.ApplicationFlags.HANDLES_OPEN,
@@ -48,6 +48,13 @@ class CassiniApplication(Adw.Application):
         )
         self.version = version
         self.profile = profile
+        from .build_refresh import BuildRefresh
+
+        self.build_refresh = BuildRefresh(self, installed_build) if installed_build else None
+        self._resume_background = False
+        self._resume_automatic = False
+        self._resume_writing = False
+        self._resume_record = False
         self.settings_schema = "com.gocassini.Viewer"
         self._recording_settings = None
         self._watchdog = None
@@ -115,6 +122,7 @@ class CassiniApplication(Adw.Application):
         self._add_action("shortcuts", self.on_shortcuts, ["<primary>question"])
         self._add_action("preferences", self.on_preferences, ["<primary>comma"])
         self._add_action("quit", self.on_quit, ["<primary>q"])
+        self._add_action("restart", self.on_restart)
         self._add_action("record", self.on_record, ["<primary>r"])
         self._add_action("stop-recording", self.on_stop_recording)
         self._add_action("open-recording", self.on_open_recording)
@@ -139,6 +147,10 @@ class CassiniApplication(Adw.Application):
 
     def do_startup(self):
         Adw.Application.do_startup(self)
+        if self.build_refresh:
+            self.build_refresh.installed.announce()
+        # Restore the armed state before Watch can publish its first snapshot.
+        self._restore_automatic()
         from .main_loop_watchdog import MainLoopWatchdog
 
         self._watchdog = MainLoopWatchdog()
@@ -236,8 +248,35 @@ class CassiniApplication(Adw.Application):
             window.add_css_class("devel")
         return window
 
+    def _restore_automatic(self):
+        if self._resume_automatic:
+            self.set_auto_recording_hold(True)
+            self._resume_automatic = False
+
+    def _take_resume_intent(self):
+        self._restore_automatic()
+        background, self._resume_background = self._resume_background, False
+        record, self._resume_record = self._resume_record, False
+        return background, record
+
     def do_activate(self):
+        background, record = self._take_resume_intent()
+
+        def callback():
+            window = self._activate_current(background=background)
+            if record:
+                self._record_current()
+            return window
+
+        if self.build_refresh:
+            self.build_refresh.check(callback, show=not background, record=record)
+        else:
+            callback()
+
+    def _activate_current(self, *, background=False):
         self._quitting = False
+        if background and not self._resume_writing:
+            return None
         if self.browser_connection:
             self.browser_connection.trigger()
         from .library_window import LibraryWindow
@@ -245,22 +284,59 @@ class CassiniApplication(Adw.Application):
         window = next((w for w in self.get_windows() if isinstance(w, LibraryWindow)), None)
         if window is None:
             window = LibraryWindow(self)
-        window.present()
-        from .capture_guard import refresh_capture_background
+        if background:
+            # A hidden observer resumes queued writing from the previous build,
+            # then retires. Only real automatic-recording/job holds remain.
+            self.hold()
 
-        refresh_capture_background(self)
+            def scanned():
+                if window._pending and not self._quitting:
+                    return GLib.SOURCE_CONTINUE
+                from .capture_guard import finish_close
+
+                finish_close(self, [window], background=True)
+                self.release()
+                return GLib.SOURCE_REMOVE
+
+            GLib.timeout_add(100, scanned)
+        else:
+            window.present()
+            from .capture_guard import refresh_capture_background
+
+            refresh_capture_background(self)
+        return window
+
+    def on_restart(self, *_args):
+        if self.build_refresh:
+            self.build_refresh.check(show=True)
 
     def do_open(self, files, _n_files, _hint):
-        for file in files:
-            self.open_in_new_window(file)
+        # GApplication dispatches Open instead of Activate when a restart also
+        # carries files. Consume the same one-shot recording/background intent.
+        _background, record = self._take_resume_intent()
+
+        def opened():
+            window = self._activate_current()
+            for file in files:
+                window.open_file(file)
+            if record:
+                self._record_current()
+
+        if self.build_refresh:
+            self.build_refresh.check(opened, show=True, files=[f.get_uri() for f in files], record=record)
+        else:
+            opened()
 
     def open_in_new_window(self, file):
-        """Import/open *file* in the Library, presenting its window."""
-        self.do_activate()
-        from .library_window import LibraryWindow
+        """Import/open only after the installed build check completes."""
 
-        window = next(w for w in self.get_windows() if isinstance(w, LibraryWindow))
-        window.open_file(file)
+        def callback():
+            return self._activate_current().open_file(file)
+
+        if self.build_refresh:
+            self.build_refresh.check(callback, show=True, files=[file.get_uri()])
+        else:
+            callback()
 
     def on_open(self, *_args):
         dialog = Gtk.FileDialog(title=_("Open Meeting"))
@@ -297,8 +373,8 @@ class CassiniApplication(Adw.Application):
             return
         self.finish_quit()
 
-    def finish_quit(self):
-        if self.meeting_trash.flush(self.finish_quit):
+    def finish_quit(self, *, trash_flushed=False):
+        if not trash_flushed and self.meeting_trash.flush(self.finish_quit):
             return
         from .capture_guard import finish_close
 
@@ -327,9 +403,9 @@ class CassiniApplication(Adw.Application):
 
             self.browser_watch = BrowserWatch(self._browser_changed, profiles_changed=self.retry_browser_connection)
 
-    def retry_browser_connection(self, *_):
+    def retry_browser_connection(self, *_, force=False):
         if self.browser_connection and not self._quitting:
-            self.browser_connection.trigger()
+            self.browser_connection.trigger(force=force)
 
     def _browser_connection_changed(self):
         if self._quitting:
@@ -374,6 +450,9 @@ class CassiniApplication(Adw.Application):
         if dialog is None:
             dialog = self.companion_setup = CompanionSetup(self)
         dialog.present(target)
+        # User intent permits this build to own registration. Only schedule a
+        # worker after presenting the sheet; never launch a browser here.
+        GLib.idle_add(lambda: self.retry_browser_connection(force=True) or False)
 
         def mapped(*_args):
             if dialog.get_mapped():
@@ -461,6 +540,9 @@ class CassiniApplication(Adw.Application):
         return False
 
     def _browser_changed(self, snapshot):
+        # BrowserActivity can lag Watch by a tick. Its stale window snapshot
+        # must not hide the broker's recording -> idle transition.
+        was_recording = any(s.get("recording") for s in self._browser_snapshot.get("statuses", ()))
         snapshot = dict(snapshot)
         revision = snapshot.get("autoRecordRevision", 0)
         if type(revision) is not int or revision < self._auto_recording_revision:
@@ -481,6 +563,11 @@ class CassiniApplication(Adw.Application):
         for window in self.get_windows():
             window._browser_snapshot = snapshot
         self._native_changed()
+        if self.build_refresh:
+            if was_recording and not any(s.get("recording") for s in snapshot.get("statuses", ())):
+                self.build_refresh.check()
+            else:
+                self.build_refresh.capture_changed()
 
     def browser_capture_active(self):
         return any(s.get("recording") for s in self._browser_snapshot.get("statuses", [])) or any(
@@ -499,7 +586,17 @@ class CassiniApplication(Adw.Application):
         ):
             self.on_stop_recording()
             return
-        self.do_activate()
+
+        def record():
+            self._activate_current()
+            self._record_current()
+
+        if self.build_refresh:
+            self.build_refresh.check(record, show=True, record=True)
+        else:
+            record()
+
+    def _record_current(self):
         if self.recording_settings.get_boolean("skip-record-first"):
             self.start_recordings()
         elif not self.record_first:
@@ -685,6 +782,8 @@ class CassiniApplication(Adw.Application):
         for window in self.get_windows():
             if hasattr(window, "capture_changed"):
                 window.capture_changed()
+        if self.build_refresh:
+            self.build_refresh.capture_changed()
 
     def _release_native(self):
         from .capture_guard import recorder_busy
@@ -703,6 +802,8 @@ class CassiniApplication(Adw.Application):
         self._last_native = _recorder
         self._notify_shortcut_saved(_path)
         _recorder.close()
+        if self.build_refresh:
+            GLib.idle_add(lambda: self.build_refresh.check() or False)
         if self._pending_recording == _path:
             self._pending_recording = None
         if (
@@ -768,6 +869,8 @@ class CassiniApplication(Adw.Application):
                     self._browser_stops.discard(key)
                     self.release()
                 self._native_changed()
+                if self.build_refresh:
+                    self.build_refresh.check()
                 return False
 
             GLib.idle_add(delivered)
@@ -886,6 +989,8 @@ class CassiniApplication(Adw.Application):
                 dialog.refresh_voices()
 
     def _transcription_changed(self):
+        if self.build_refresh:
+            self.build_refresh.capture_changed()
         self._refresh_speaker_dialogs()
         for window in self.get_windows():
             if hasattr(window, "monitor"):
@@ -981,12 +1086,17 @@ class CassiniApplication(Adw.Application):
             self.stop_browser_recordings()
 
     def on_open_recording(self, *_):
-        self.do_activate()
-        window = self.get_active_window()
-        if hasattr(window, "open_live_recording"):
-            window.open_live_recording()
-        if self.comfort:
-            self.comfort.tick()
+        def present():
+            window = self._activate_current()
+            if hasattr(window, "open_live_recording"):
+                window.open_live_recording()
+            if self.comfort:
+                self.comfort.tick()
+
+        if self.build_refresh:
+            self.build_refresh.check(present, show=True)
+        else:
+            present()
 
     def begin_exit(self):
         self._quitting = True
@@ -1034,6 +1144,8 @@ class CassiniApplication(Adw.Application):
         return getattr(self, "_capture_background", False) and not self._quitting and any(capture_targets(self))
 
     def do_shutdown(self):
+        if self.build_refresh:
+            self.build_refresh.close()
         if self._watchdog:
             self._watchdog.close()
             self._watchdog = None
@@ -1140,9 +1252,24 @@ class CassiniApplication(Adw.Application):
         return about
 
 
-def main(application_id, version, profile):
+def main(application_id, version, profile, *, installed_build=None):
     """The application's entry point."""
     # Otherwise --help says "Usage: python3".
     GLib.set_prgname("cassini-viewer")
-    app = CassiniApplication(application_id, version, profile)
+    app = CassiniApplication(application_id, version, profile, installed_build=installed_build)
+    app._resume_background = "--cassini-resume-background" in sys.argv
+    app._resume_automatic = "--cassini-resume-automatic" in sys.argv
+    app._resume_writing = "--cassini-resume-writing" in sys.argv
+    app._resume_record = "--cassini-resume-record" in sys.argv
+    sys.argv[:] = [
+        arg
+        for arg in sys.argv
+        if arg
+        not in (
+            "--cassini-resume-background",
+            "--cassini-resume-automatic",
+            "--cassini-resume-writing",
+            "--cassini-resume-record",
+        )
+    ]
     return app.run(sys.argv)

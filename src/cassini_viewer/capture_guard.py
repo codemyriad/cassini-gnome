@@ -132,6 +132,13 @@ def release_background(app):
     if getattr(app, "_capture_background", False):
         app._capture_background = False
         app.release()
+    _refresh_build(app)
+
+
+def _refresh_build(app):
+    refresh = getattr(app, "build_refresh", None)
+    if refresh is not None:
+        refresh.capture_changed()
 
 
 def remember_capture_paths(app):
@@ -202,6 +209,7 @@ def confirm_capture_close(app, window, *, quitting=False):
         targets = list(app.get_windows()) if quitting else [window]
         if choice == "cancel":
             app._capture_confirmation = None
+            _refresh_build(app)
             return
         if choice == "keep":
             # Keep the windows and recording visible until the desktop permits
@@ -226,6 +234,7 @@ def confirm_capture_close(app, window, *, quitting=False):
                     app.comfort.tick()  # Publish Stop/Show immediately, even before the first Library scan.
                 finally:
                     app.release()
+                    _refresh_build(app)
 
             app.background_recording.request(permitted)
             return
@@ -273,6 +282,7 @@ def confirm_capture_close(app, window, *, quitting=False):
             if window is not None:
                 window.present()
             app.release()
+            _refresh_build(app)
 
         def ready():
             nonlocal completing

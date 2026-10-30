@@ -39,7 +39,7 @@ conf.set('localedir', get_option('prefix') / get_option('localedir'))
 conf.set('pkgdatadir', pkgdatadir)
 conf.set('bindir', get_option('prefix') / get_option('bindir'))
 
-configure_file(
+launcher = configure_file(
   input: 'cassini-viewer.in',
   output: 'cassini-viewer',
   configuration: conf,
@@ -48,11 +48,13 @@ configure_file(
   install_mode: 'r-xr-xr-x',
 )
 
-install_data(
+viewer_sources = files(
   'cassini_viewer/__init__.py',
   'cassini_viewer/colors.py',
   'cassini_viewer/main.py',
   'cassini_viewer/main_loop_watchdog.py',
+  'cassini_viewer/installed_build.py',
+  'cassini_viewer/build_refresh.py',
   'cassini_viewer/library_window.py',
   'cassini_viewer/meeting_trash.py',
   'cassini_viewer/trash_cleanup.py',
@@ -155,6 +157,7 @@ install_data(
   'cassini_viewer/browser_control_host.py',
   'cassini_viewer/browser_service.py',
   'cassini_viewer/companion.py',
+  'cassini_viewer/registration.py',
   'cassini_viewer/companion_bundle.py',
   'cassini_viewer/companion_local_dialog.py',
   'cassini_viewer/flatpak_bridge.py',
@@ -166,17 +169,38 @@ install_data(
   'cassini_viewer/summary.py',
   'cassini_viewer/transcript.py',
   'cassini_viewer/window.py',
-  install_dir: moduledir,
 )
+install_data(viewer_sources, install_dir: moduledir)
 
 # Where the recognition child finds the app's private ONNX Runtime, if any
 # (whistle_worker.onnxruntime_dir); a source run has no paths.json.
-configure_file(
+runtime_paths = configure_file(
   input: 'cassini_viewer/paths.json.in',
   output: 'paths.json',
-  configuration: {'ONNXRUNTIME_DIR': onnxruntime_dir, 'SHERPA_DIR': sherpa_dir, 'BINDIR': get_option('prefix') / get_option('bindir'), 'STORE_LISTING_PUBLIC': get_option('store_listing_public').to_string('true', 'false')},
+  configuration: {'ONNXRUNTIME_DIR': onnxruntime_dir, 'SHERPA_DIR': sherpa_dir, 'BINDIR': get_option('prefix') / get_option('bindir'), 'STORE_LISTING_PUBLIC': get_option('store_listing_public').to_string('true', 'false'), 'PROFILE': get_option('profile')},
   install: true,
   install_dir: moduledir,
+)
+
+# Content identity changes even for a same-version patch. Ninja tracks every
+# runtime source, generated launcher/resource, and bundled companion input.
+identity_script = files('../build-aux/build-identity.py')
+extension_inputs = run_command(py, identity_script,
+  '--list-extension', meson.project_source_root() / 'browser-extension', check: true).stdout().strip().split('\n')
+identity_inputs = viewer_sources + [launcher, runtime_paths, viewer_resources] + files(extension_inputs)
+if get_option('whistle').enabled()
+  identity_inputs += files('../whistle/pins.json', '../whistle/cpu_limit.c')
+endif
+custom_target('installed-build-identity',
+  input: identity_inputs,
+  output: 'build-info.json',
+  command: [py, identity_script, '--source', meson.project_source_root(),
+    '--build', meson.project_build_root(), '--version', meson.project_version(),
+    '--profile', get_option('profile'), '--application', application_id,
+    '--output', '@OUTPUT@', '@INPUT@'],
+  build_by_default: true,
+  install: true,
+  install_dir: pkgdatadir,
 )
 
 # pytest is optional: the Flatpak SDK, for one, does not ship it.

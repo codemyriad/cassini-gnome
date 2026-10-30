@@ -34,6 +34,12 @@ sys.path.insert(0, str(args.datadir))
 from cassini_viewer import runtime  # noqa: E402
 
 runtime.check()  # exits with a readable message if a library is missing or too old
+from cassini_viewer.installed_build import read, verified  # noqa: E402
+
+identity = read(args.datadir / "build-info.json")
+if not verified(identity, args.datadir, args.datadir.parents[1] / "bin/cassini-viewer"):
+    sys.exit("installed build identity does not match the package payload")
+print("installed build identity verified: " + identity["buildId"])
 from gi.repository import Adw, Gst, Gtk  # noqa: E402
 
 gtk = f"{Gtk.get_major_version()}.{Gtk.get_minor_version()}.{Gtk.get_micro_version()}"

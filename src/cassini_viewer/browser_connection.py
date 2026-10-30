@@ -51,7 +51,7 @@ class Backoff:
         return delay
 
 
-def setup():
+def setup(*, force=False):
     ready, retryable = companion.probe()
     if not ready:
         raise companion.SetupError("temporary" if retryable else "unsafe", retryable=retryable, available=False)
@@ -67,10 +67,27 @@ def setup():
     if not browsers:
         raise companion.SetupError("noBrowser")
     try:
-        companion.register(browsers=browsers)
+        from .registration import health
+
+        if force:
+            companion.register(browsers=browsers, force=True)
+        else:
+            companion.register(browsers=browsers)
+        if health(browsers):
+            raise companion.SetupError("buildMissing", retryable=True)
     except OSError as error:
+        from .registration import dead_registration
+
+        try:
+            dead = dead_registration(browsers)
+        except OSError:
+            dead = False
+        if dead:
+            original = error
+            error = companion.SetupError("buildMissing", retryable=True)
+            error.__cause__ = original
         error.browsers = tuple(browsers)
-        raise
+        raise error
     return tuple(browsers)
 
 
@@ -97,6 +114,7 @@ class BrowserConnection:
         cancel=None,
         jitter=random.uniform,
         ever_connected=False,
+        health_check=None,
     ):
         if later is None:
             from gi.repository import GLib
@@ -109,6 +127,13 @@ class BrowserConnection:
 
             cancel = GLib.source_remove
         self.changed, self.attempt = changed, attempt
+        if health_check is None:
+            from .registration import health
+
+            health_check = health
+        self.health_check = health_check
+        self.health_future = None
+        self.force = False
         self.later, self.post, self.cancel = later, post, cancel
         self.backoff = Backoff(jitter)
         self.available = available
@@ -152,10 +177,44 @@ class BrowserConnection:
         self.names = tuple(snapshot.get("browserNames", []))
         if before != (self.connected, self.names):
             self.changed()
+        if not self.connected and self.succeeded and self.browsers and not self.future and not self.timer:
+            self._check_health()
 
-    def trigger(self):
+    def _check_health(self):
+        if self.health_future is not None or self.closed:
+            return
+        future = self.health_future = Future()
+        future.add_done_callback(lambda result: self.post(self._health_finished, result))
+        browsers = self.browsers
+
+        def work():
+            try:
+                future.set_result(self.health_check(browsers))
+            except Exception as error:
+                future.set_exception(error)
+
+        threading.Thread(target=work, name="cassini-registration-health", daemon=True).start()
+
+    def _health_finished(self, future):
+        self.health_future = None
+        if self.closed or self.connected or self.future is not None:
+            return False
+        try:
+            repair = future.result()
+        except Exception as error:
+            self.error = classify(error)
+            if not self.timer:
+                self.timer = self.later(self.backoff.next(), self._start)
+            self.changed()
+        else:
+            if repair:
+                self.trigger()
+        return False
+
+    def trigger(self, *, force=False):
         if self.closed:
             return
+        self.force |= force
         self.revision += 1
         self.backoff.reset()
         if self.timer:
@@ -169,6 +228,7 @@ class BrowserConnection:
             return False
         self.timer = 0
         self.error = None
+        force, self.force = self.force, False
         future, revision = Future(), self.revision
         self.future = future
         future.add_done_callback(lambda f: self.post(self._finished, f, revision))
@@ -180,7 +240,7 @@ class BrowserConnection:
                 # Linux task priority applies to this worker, never GTK.
                 tid = threading.get_native_id()
                 os.setpriority(os.PRIO_PROCESS, tid, max(10, os.getpriority(os.PRIO_PROCESS, tid)))
-                result = self.attempt()
+                result = self.attempt(force=True) if force else self.attempt()
             except Exception as error:
                 future.set_exception(error)
             else:

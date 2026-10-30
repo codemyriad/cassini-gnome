@@ -324,10 +324,12 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
                 entered, release = threading.Event(), threading.Event()
                 original_attempt = app.browser_connection.attempt
 
-                def delayed_attempt(entered=entered, release=release, original_attempt=original_attempt):
+                def delayed_attempt(
+                    entered=entered, release=release, original_attempt=original_attempt, *, force=False
+                ):
                     entered.set()
                     assert release.wait(2)
-                    return original_attempt()
+                    return original_attempt(force=force)
 
                 app.browser_connection.attempt = delayed_attempt
                 before = time.monotonic()

@@ -46,6 +46,7 @@ class Clock:
             post=self.post,
             cancel=lambda key: self.timers.pop(key),
             jitter=lambda *_: 0,
+            health_check=lambda _browsers: False,
         )
 
 
@@ -175,7 +176,7 @@ def test_startup_registers_both_hosts_preserves_mtime_and_repairs_an_updated_pat
         controller.trigger()  # Application launch, no Connect action.
         clock.finish()
         assert controller.snapshot()["phase"] == "waiting"
-        files = tuple((browser.config / "NativeMessagingHosts").iterdir())
+        files = tuple((browser.config / "NativeMessagingHosts").glob("*.json"))
         assert {p.stem for p in files} == set(hosts)
         original = {p: (p.read_bytes(), p.stat().st_mtime_ns, p.stat().st_ino) for p in files}
         controller.trigger()
@@ -185,7 +186,7 @@ def test_startup_registers_both_hosts_preserves_mtime_and_repairs_an_updated_pat
         updated.write_bytes(executable.read_bytes())
         updated.chmod(0o700)
         hosts.update({name: updated for name in hosts})
-        controller.trigger()
+        controller.trigger(force=True)  # Explicit Set up authorizes this source build.
         clock.finish()
         assert all(str(updated).encode() in p.read_bytes() for p in files)
         controller.observe(dict(connectedBrowsers=1, browserNames=["Chromium"]))
@@ -247,3 +248,25 @@ def test_identical_observations_do_not_render_again():
     controller.observe(dict(connectedBrowsers=0, browserNames=[]))
     assert len(changes) == 2 and controller.snapshot()["everConnected"]
     controller.close()
+
+
+def test_dead_build_failure_renders_the_published_reason_and_remains_retryable():
+    from cassini_viewer.browser_connection import state_text
+
+    clock = Clock()
+
+    def failed():
+        raise companion.SetupError("buildMissing", retryable=True)
+
+    controller = clock.connection(failed)
+    try:
+        controller.trigger()
+        clock.finish()
+        state = controller.snapshot()
+        assert state["phase"] == "failed" and state["reason"] == "buildMissing"
+        assert state_text(state) == (
+            "Couldn’t connect. The browser companion is set up for a version of Cassini that isn’t installed."
+        )
+        assert controller.error.retryable and clock.timers
+    finally:
+        controller.close()

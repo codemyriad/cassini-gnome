@@ -96,7 +96,7 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "6d3e151e99015764f02c83a19c4f2e902416a43244e394f3d8a5a0e03fcc6b98",
+    "strings.json": "3b8ac56814c31e5541ddc4647aa457ba6ee39918de1595ec8d01d80f8ff98949",
     "LIBRARY.md": "6cd4063cdd58567c75a4733c8862e9fe0983863df890b86a91e9a9bb17749751",
     "session-events/session.json": "6bcec60cf4024421b57683d86a44d7ffd92efdc84a3e5b67e24cb09fcfb55723",
     "session-events/expected.json": "905ad1966fa3cac23aa348109d4f694a5606ea685f3a5689cc052cf092a8a920",
@@ -127,8 +127,8 @@
   },
   "additionalSources": {
     "strings.json": {
-      "commit": "9ebdad477452046a54284df5be1c7b4d89d7643b",
-      "note": "D39.1 exact published copy-address/new-tab action and R43 failure lines"
+      "commit": "b1b3c27424ab63fe9ebdce8bffc31d9fd4dc7e20",
+      "note": "D41.3 / R49 published buildMissing reason and exact coordinator catalog bytes"
     },
     "LIBRARY-RULES.md": {
       "commit": "c74460bc61ea498dcf821e628190266348486345",

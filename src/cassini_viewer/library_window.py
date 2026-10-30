@@ -77,7 +77,16 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.navigation.add(Adw.NavigationPage.new(self.root_box, text("library.title")))
         self.navigation.connect("popped", self._page_popped)
         self.toasts = Adw.ToastOverlay(child=self.navigation)
-        self.set_content(self.toasts)
+        self.update_banner = Adw.Banner(
+            title=text("update.restartNeeded"),
+            button_label=text("update.restart"),
+            action_name="app.restart",
+            revealed=False,
+        )
+        shell = Adw.ToolbarView(content=self.toasts)
+        shell.add_top_bar(self.update_banner)
+        self.set_content(shell)
+        self.update_build_banner()
         self._build_empty()
         self._build_library()
         self.loading = Gtk.Spinner(spinning=True, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
@@ -224,6 +233,12 @@ class LibraryWindow(Adw.ApplicationWindow):
             action="common.tryAgain",
             callback=lambda: self.get_application().meeting_trash.request(meeting, self),
         )
+
+    def update_build_banner(self):
+        app = self.get_application()
+        refresh = app.build_refresh
+        self.update_banner.set_revealed(bool(refresh and refresh.pending))
+        app.lookup_action("restart").set_enabled(bool(refresh and refresh.can_restart))
 
     def _text_focused(self):
         widget = self.get_focus()
@@ -555,6 +570,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.browser_status.render()
 
     def _activity_tick(self):
+        refresh = self.get_application().build_refresh
+        if refresh:
+            refresh.capture_changed()
         activity = dict(self._activity_source.snapshot) if self._activity_source else dict(self._fixture_activity)
         app = self.get_application()
         activity.update(recorder_activity(app.get_windows() + [app]))

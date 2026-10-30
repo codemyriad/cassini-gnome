@@ -174,6 +174,11 @@ class TranscriptionQueue:
         future.add_done_callback(lambda f: self._prepared(directory, f))
         return True
 
+    def preparing(self):
+        """Accepted jobs whose durable queue intent has not finished saving."""
+        with self.lock:
+            return any(not future.done() for future in self._prepare_futures.values())
+
     def _owned(self, directory):
         if not self._explicit_root:
             from .library_location import owned_directory
@@ -228,7 +233,6 @@ class TranscriptionQueue:
         # publisher knows how many words it must retain until recomputation
         # catches up. An explicit retry follows the same rule as auto-resume.
         meeting = next(m for m in scanner.scan(changed_directories={canonical}).meetings if m.directory == canonical)
-        self.changed(directory)
         return meeting, metadata
 
     def _prepared(self, directory, future):
@@ -242,6 +246,9 @@ class TranscriptionQueue:
             if prepared is None:
                 self._completed(directory)
             else:
+                # The durable queue intent and its Future are both complete
+                # before GTK observes this change and considers a restart.
+                self.changed(directory)
                 with self.lock:
                     if not self.closed and directory not in self._cancelled_meetings:
                         future = self.executor.submit(self._job, directory, *prepared)
