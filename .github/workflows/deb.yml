@@ -47,6 +47,12 @@ jobs:
       # network, smoke-tests it and writes the D11 goldens down with it.
       # Retried once because distribution mirrors occasionally time out.
       - run: build-aux/deb/build.sh "${{ matrix.base }}" || build-aux/deb/build.sh "${{ matrix.base }}"
+      # Preserve built packages even if a subsequent installed-app journey
+      # fails; release selection still requires every gate on main to pass.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ strategy.job-index }}
+          path: dist/*.deb
       - name: Upgrade the published Cassini Viewer 0.3.0 to Cassini talk
         if: matrix.base == 'ubuntu:26.04'
         env:
@@ -94,9 +100,3 @@ jobs:
         with:
           name: browser-startup-installed
           path: ${{ runner.temp }}/browser-startup/
-      # Each base names its file (~ubuntu26.04, ~debian-testing), so the
-      # release carries both.
-      - uses: actions/upload-artifact@v4
-        with:
-          name: deb-${{ strategy.job-index }}
-          path: dist/*.deb

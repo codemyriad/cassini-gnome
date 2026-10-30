@@ -25,7 +25,7 @@ assert not Path("/usr/bin/cassini-talk").exists()
 old = Gio.Settings.new(OLD)
 old.set_int("window-width", 935)
 old.set_string("speech-model", "parakeet-ultra-0.6b-int8")
-old.set_string("export-folder-uri", (home / "Exports").as_uri())
+old.set_string("record-shortcut-description", "Ctrl+Alt+F9")
 old.set_boolean("skip-record-first", True)
 Gio.Settings.sync()
 # Private user data must not be moved or rewritten by an identity change.
@@ -84,7 +84,7 @@ with (OUT / "application.log").open("w") as log:
             time.sleep(0.05)
         else:
             raise AssertionError("The upgraded app did not migrate settings on startup")
-        for key in ("speech-model", "export-folder-uri", "skip-record-first"):
+        for key in ("speech-model", "record-shortcut-description", "skip-record-first"):
             assert current.get_value(key) == old.get_value(key), key
         for name, digest in sentinels.items():
             assert hashlib.sha256((home / name).read_bytes()).hexdigest() == digest, name
