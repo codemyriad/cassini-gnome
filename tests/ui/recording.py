@@ -95,6 +95,27 @@ with tempfile.TemporaryDirectory() as tmp:
     until(lambda: not window._pending)
     live = next(m for m in window.snapshot.meetings if m.lifecycle == "recording")
     before = {p.name: p.read_bytes() for p in live.directory.iterdir() if p.name != "meeting.json"}
+    # An old finalizer may be delivered after the next capture has started.
+    # It must not consume the next capture's pending navigation request.
+    from types import SimpleNamespace
+
+    old = SimpleNamespace(
+        session=None,
+        pipeline=None,
+        starting=False,
+        stopping=False,
+        _finishing=False,
+        line=None,
+        minutes_left=90,
+        levels=[0.0, 0.0],
+        close=lambda: None,
+    )
+    app._pending_recording = str(live.directory)
+    app._native_finished(old, str(Path(tmp) / "Recording-older"))
+    assert app._pending_recording == str(live.directory), "Old finish discarded new Recording-page navigation"
+    app._native_finished(old, str(live.directory))
+    assert app._pending_recording is None, "Matching finish must retire its own pending request"
+    app._last_native = None
     window.open_meeting(live)
     page = window.recording_page
     assert page and not window.meeting_page and page.timer.get_label() == "00:12:48"

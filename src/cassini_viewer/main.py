@@ -629,7 +629,8 @@ class CassiniApplication(Adw.Application):
         self.native_captures = {key: r for key, r in self.native_captures.items() if r is not _recorder}
         self._last_native = _recorder
         _recorder.close()
-        self._pending_recording = None
+        if self._pending_recording == _path:
+            self._pending_recording = None
         if (
             self.transcription_enabled
             and not self._quitting
