@@ -80,6 +80,19 @@ def test_identity_is_deterministic_and_hashes_every_input(tmp_path):
     assert third["buildId"] != first["buildId"]
 
 
+def test_engine_only_patch_changes_the_build_identity(tmp_path):
+    _, _, launcher = payload(tmp_path)
+    source, build = tmp_path / "source", tmp_path / "build"
+    pins = source / "whistle/pins.json"
+    pins.parent.mkdir()
+    pins.write_text('{"engine": "old"}')
+    first = identity.generate(source, build, [launcher, pins], "0.3.0", "default", "com.gocassini.Viewer")
+    pins.write_text('{"engine": "new"}')
+    second = identity.generate(source, build, [launcher, pins], "0.3.0", "default", "com.gocassini.Viewer")
+    assert first["buildId"] != second["buildId"]
+    assert first["files"]["whistle/pins.json"] != second["files"]["whistle/pins.json"]
+
+
 @pytest.mark.parametrize(
     "mutate",
     [

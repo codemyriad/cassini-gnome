@@ -35,6 +35,10 @@ def generate(source, build, inputs, version, profile, application):
             files[path.relative_to(source / "src").as_posix()] = digest
         elif path.is_relative_to(source / "browser-extension"):
             files[path.relative_to(source).as_posix()] = digest
+        elif path.is_relative_to(source / "whistle"):
+            # These build inputs are also copied verbatim into the bundle.
+            # Engine-only patches must change the application identity too.
+            files[path.relative_to(source).as_posix()] = digest
         else:
             raise ValueError(f"Unexpected identity input: {path}")
     if not files or launcher is None:

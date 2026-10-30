@@ -187,8 +187,12 @@ runtime_paths = configure_file(
 identity_script = files('../build-aux/build-identity.py')
 extension_inputs = run_command(py, identity_script,
   '--list-extension', meson.project_source_root() / 'browser-extension', check: true).stdout().strip().split('\n')
+identity_inputs = viewer_sources + [launcher, runtime_paths, viewer_resources] + files(extension_inputs)
+if get_option('whistle').enabled()
+  identity_inputs += files('../whistle/pins.json', '../whistle/cpu_limit.c')
+endif
 custom_target('installed-build-identity',
-  input: viewer_sources + [launcher, runtime_paths, viewer_resources] + files(extension_inputs),
+  input: identity_inputs,
   output: 'build-info.json',
   command: [py, identity_script, '--source', meson.project_source_root(),
     '--build', meson.project_build_root(), '--version', meson.project_version(),
