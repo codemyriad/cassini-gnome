@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""D36 bounded, observer-owned analysis state. WIP: not wired into capture yet."""
+"""D36 bounded, observer-owned analysis state. WIP: native tap only; broker transport and UI are not connected."""
 
 import logging
 import math

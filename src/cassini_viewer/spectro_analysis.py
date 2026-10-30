@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """D36 PCM-to-linear-power core, entirely outside GTK and the WAV writer lock.
 
-WIP: not connected to capture or the UI. The non-48k frame sizes follow the
+WIP: native tap only; broker transport and UI are not connected. The non-48k frame sizes follow the
 published rate table's exact 2048/48000-second duration, pending the shared
 clarification of section 3.8's rounded 0.0427 value.
 """
