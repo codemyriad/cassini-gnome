@@ -125,7 +125,13 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
         extension.pop("gocassini.com", None)
     if extension:
         manifest["x"] = extension
+    return file_tags(manifest, words_tags, date=date), manifest
+
+
+def file_tags(manifest, words_tags, *, date):
+    """Every tag of a file with one default `words` transcript, mirroring `manifest`."""
     manifest_tags, _ = chunk_set("CASSINI_PAYLOAD_", manifest, MANIFEST_MIME)
+    meeting, audio, integrity = manifest["meeting"], manifest["audio"], manifest["integrity"]
     tags = dict(
         CASSINI_FORMAT=portable.FORMAT_V1,
         CASSINI_PROFILE="ogg-opus",
@@ -133,22 +139,22 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
         CASSINI_TRANSCRIPT_IDS="words",
         CASSINI_TRANSCRIPT_DEFAULT="words",
         CASSINI_DECODE_HINT=HINT,
-        CASSINI_MEETING_ID=identifier,
-        CASSINI_CREATED_AT=date,
-        CASSINI_SPEAKER_COUNT=str(len(meeting.speakers)),
+        CASSINI_MEETING_ID=meeting["id"],
+        CASSINI_CREATED_AT=meeting["createdAtUtc"],
+        CASSINI_SPEAKER_COUNT=str(len(manifest["speakers"])),
         CASSINI_AUDIO_SAMPLE_RATE="48000",
-        CASSINI_AUDIO_CHANNELS=str(shape["channels"]),
-        CASSINI_AUDIO_SAMPLE_COUNT=str(shape["sampleCount"]),
-        CASSINI_AUDIO_DURATION_MS=str(shape["durationMs"]),
+        CASSINI_AUDIO_CHANNELS=str(audio["channels"]),
+        CASSINI_AUDIO_SAMPLE_COUNT=str(audio["sampleCount"]),
+        CASSINI_AUDIO_DURATION_MS=str(audio["durationMs"]),
         CASSINI_AUDIO_MATCH_POLICY="exact-opus-audio-v1",
-        CASSINI_AUDIO_OPUS_SHA256=digest["sha256"],
-        TITLE=meeting.title,
+        CASSINI_AUDIO_OPUS_SHA256=integrity["opusAudioSha256"],
+        TITLE=meeting["title"],
         DATE=date,
         DESCRIPTION="Cassini portable meeting. " + HINT,
     )
     tags.update(manifest_tags)
     tags.update(words_tags)
-    return tags, manifest
+    return tags
 
 
 def _pages(stream):
@@ -170,16 +176,22 @@ def _page(serial, sequence, flags, granule, lacing, payload):
     return data
 
 
-def rewrite_tags(stream, output, tags, cancel=None):
-    """Replace only headers/framing; retain packet bytes and granule positions."""
+def rewrite_tags(stream, output, tags, cancel=None, *, vendor=b"Cassini for GNOME"):
+    """Replace only headers/framing; retain packet bytes and granule positions.
+
+    `tags` is a {name: value} dict, or a list of raw comment fields (bytes) when a
+    caller edits an existing comment vector and keeps every other field as it was.
+    """
     head, _comments, _vendor = portable.read_header(stream)
     if head[9] not in (1, 2):
         raise ValueError("Portable Opus accepts one or two channels")
     stream.seek(14)
     serial = struct.unpack("<I", stream.read(4))[0]
     output.write(_page(serial, 0, 2, 0, bytes([len(head)]), head))
-    vendor = b"Cassini for GNOME"
-    fields = [f"{key}={value}".encode() for key, value in tags.items()]
+    if isinstance(tags, dict):
+        fields = [f"{key}={value}".encode() for key, value in tags.items()]
+    else:
+        fields = [bytes(field) for field in tags]
     packet = b"OpusTags" + struct.pack("<I", len(vendor)) + vendor + struct.pack("<I", len(fields))
     packet += b"".join(struct.pack("<I", len(field)) + field for field in fields)
     lacing, offset, sequence = bytes([255]) * (len(packet) // 255) + bytes([len(packet) % 255]), 0, 1

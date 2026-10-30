@@ -1,0 +1,3679 @@
+{
+ "format": "cassini.library-v2.name-vectors/1",
+ "spec": "S-12 §2 with the §11 answers (ux-draft/library-v2/SPEC.md)",
+ "generator": "ux-draft/library-v2/names.py",
+ "maxUtf8Bytes": 200,
+ "untitled": {
+  "catalogId": "library.untitled",
+  "language": "en",
+  "value": "Untitled meeting"
+ },
+ "graphemeApproximation": "No break before Mn/Mc/Me, before or after U+200D, before U+1F3FB-1F3FF or U+E0020-E007F, inside a regional-indicator pair counted from the run's start, or inside a Hangul L/V/T jamo sequence. Every vector also holds under full UAX #29.",
+ "collisionKey": "NFC(casefold(NFD(name))), full Unicode case folding; plus the EEXIST retry rule (names.py header).",
+ "inputs": "title: the full title the Library row shows. start.kind: capture (startUtc from session.json; utcOffsetMinutes if valid, else libraryTimeZone at first conversion), unknown-start (importUtc in libraryTimeZone), persisted (namePrefix already chosen), received (dateTag, else importUtc in libraryTimeZone). existing: every name directly in the Library root. ownName: this meeting's current file name, or null. expected.namePrefixSource: recorded | legacy-device-tz | date-tag | import-time (S-12 §11 Q12), or persisted for a kept prefix (not stored).",
+ "cases": [
+  {
+   "id": "basic",
+   "note": "Capture start with its recorded UTC offset (Rome, CET).",
+   "input": {
+    "title": "Weekly sync",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Weekly sync",
+    "fileName": "2026-10-30--18.02-Weekly sync.opus",
+    "fileNameUtf8Bytes": 34
+   }
+  },
+  {
+   "id": "seconds-floored",
+   "note": "The minute is floored, never rounded.",
+   "input": {
+    "title": "Weekly sync",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:59.999Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Weekly sync",
+    "fileName": "2026-10-30--18.02-Weekly sync.opus",
+    "fileNameUtf8Bytes": 34
+   }
+  },
+  {
+   "id": "negative-offset-previous-day",
+   "note": "UTC-7: the local date is the day before the UTC date.",
+   "input": {
+    "title": "Standup",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-31T02:30:00.000Z",
+     "utcOffsetMinutes": -420
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--19.30-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": -420,
+    "sanitizedTitle": "Standup",
+    "fileName": "2026-10-30--19.30-Standup.opus",
+    "fileNameUtf8Bytes": 30
+   }
+  },
+  {
+   "id": "offset-plus-0545",
+   "note": "Nepal, +05:45.",
+   "input": {
+    "title": "Standup",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T04:20:00Z",
+     "utcOffsetMinutes": 345
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--10.05-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 345,
+    "sanitizedTitle": "Standup",
+    "fileName": "2026-10-30--10.05-Standup.opus",
+    "fileNameUtf8Bytes": 30
+   }
+  },
+  {
+   "id": "offset-plus-14",
+   "note": "Kiribati, +14:00, crosses into the next day.",
+   "input": {
+    "title": "Standup",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T12:00:00Z",
+     "utcOffsetMinutes": 840
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-31--02.00-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 840,
+    "sanitizedTitle": "Standup",
+    "fileName": "2026-10-31--02.00-Standup.opus",
+    "fileNameUtf8Bytes": 30
+   }
+  },
+  {
+   "id": "dst-ambiguous-first",
+   "note": "Europe/Rome 2026-10-25 02:30 happens twice; the first one (CEST, +120).",
+   "input": {
+    "title": "Night shift",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-25T00:30:00Z",
+     "utcOffsetMinutes": 120
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-25--02.30-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 120,
+    "sanitizedTitle": "Night shift",
+    "fileName": "2026-10-25--02.30-Night shift.opus",
+    "fileNameUtf8Bytes": 34
+   }
+  },
+  {
+   "id": "dst-ambiguous-second",
+   "note": "The second 02:30 (CET, +60): same prefix, so the same title gets ' (2)'.",
+   "input": {
+    "title": "Night shift",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-25T01:30:00Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-25--02.30-Night shift.opus"
+    ],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-25--02.30-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Night shift",
+    "fileName": "2026-10-25--02.30-Night shift (2).opus",
+    "fileNameUtf8Bytes": 38
+   }
+  },
+  {
+   "id": "dst-spring-gap",
+   "note": "Europe/Rome 2026-03-29: 02:00-03:00 does not exist; 01:30Z is 03:30 CEST.",
+   "input": {
+    "title": "Early",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-03-29T01:30:00Z",
+     "utcOffsetMinutes": 120
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-03-29--03.30-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 120,
+    "sanitizedTitle": "Early",
+    "fileName": "2026-03-29--03.30-Early.opus",
+    "fileNameUtf8Bytes": 28
+   }
+  },
+  {
+   "id": "legacy-no-offset",
+   "note": "Legacy session.json without startedAtUtcOffsetMinutes: the Library device's zone at first conversion (CEST in July).",
+   "input": {
+    "title": "Weekly sync",
+    "start": {
+     "kind": "capture",
+     "utcOffsetMinutes": null,
+     "startUtc": "2026-07-15T08:00:00.000Z",
+     "libraryTimeZone": "Europe/Rome"
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-07-15--10.00-",
+    "namePrefixSource": "legacy-device-tz",
+    "utcOffsetMinutes": 120,
+    "sanitizedTitle": "Weekly sync",
+    "fileName": "2026-07-15--10.00-Weekly sync.opus",
+    "fileNameUtf8Bytes": 34
+   }
+  },
+  {
+   "id": "legacy-no-offset-dst-ambiguous",
+   "note": "Legacy start in Rome's repeated hour: instant to local is unambiguous (02:45 CET).",
+   "input": {
+    "title": "Night shift",
+    "start": {
+     "kind": "capture",
+     "utcOffsetMinutes": null,
+     "startUtc": "2026-10-25T01:45:00Z",
+     "libraryTimeZone": "Europe/Rome"
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-25--02.45-",
+    "namePrefixSource": "legacy-device-tz",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Night shift",
+    "fileName": "2026-10-25--02.45-Night shift.opus",
+    "fileNameUtf8Bytes": 34
+   }
+  },
+  {
+   "id": "legacy-no-offset-new-york",
+   "note": "Legacy start converted on a device in America/New_York (EDT).",
+   "input": {
+    "title": "Weekly sync",
+    "start": {
+     "kind": "capture",
+     "utcOffsetMinutes": null,
+     "startUtc": "2026-10-30T17:02:41Z",
+     "libraryTimeZone": "America/New_York"
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--13.02-",
+    "namePrefixSource": "legacy-device-tz",
+    "utcOffsetMinutes": -240,
+    "sanitizedTitle": "Weekly sync",
+    "fileName": "2026-10-30--13.02-Weekly sync.opus",
+    "fileNameUtf8Bytes": 34
+   }
+  },
+  {
+   "id": "offset-out-of-range-high",
+   "note": "Offset +900 is outside -720..+840: unknown offset, so the device zone (Q17).",
+   "input": {
+    "title": "Weekly sync",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41Z",
+     "utcOffsetMinutes": 900,
+     "libraryTimeZone": "Europe/Rome"
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "legacy-device-tz",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Weekly sync",
+    "fileName": "2026-10-30--18.02-Weekly sync.opus",
+    "fileNameUtf8Bytes": 34
+   }
+  },
+  {
+   "id": "offset-out-of-range-low",
+   "note": "Offset -780 is outside -720..+840: unknown offset, so the device zone (Q17).",
+   "input": {
+    "title": "Weekly sync",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41Z",
+     "utcOffsetMinutes": -780,
+     "libraryTimeZone": "America/New_York"
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--13.02-",
+    "namePrefixSource": "legacy-device-tz",
+    "utcOffsetMinutes": -240,
+    "sanitizedTitle": "Weekly sync",
+    "fileName": "2026-10-30--13.02-Weekly sync.opus",
+    "fileNameUtf8Bytes": 34
+   }
+  },
+  {
+   "id": "offset-not-integer",
+   "note": "A non-integer offset is invalid input: unknown offset, so the device zone (Q17).",
+   "input": {
+    "title": "Weekly sync",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41Z",
+     "utcOffsetMinutes": 60.5,
+     "libraryTimeZone": "Europe/Rome"
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "legacy-device-tz",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Weekly sync",
+    "fileName": "2026-10-30--18.02-Weekly sync.opus",
+    "fileNameUtf8Bytes": 34
+   }
+  },
+  {
+   "id": "unknown-start",
+   "note": "A salvaged session without a start instant: conversion/import time, namePrefixSource import-time (Q16).",
+   "input": {
+    "title": "Recovered recording",
+    "start": {
+     "kind": "unknown-start",
+     "importUtc": "2026-10-30T21:15:00Z",
+     "libraryTimeZone": "Europe/Rome"
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--22.15-",
+    "namePrefixSource": "import-time",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Recovered recording",
+    "fileName": "2026-10-30--22.15-Recovered recording.opus",
+    "fileNameUtf8Bytes": 42
+   }
+  },
+  {
+   "id": "received-date-offset-out-of-range",
+   "note": "Received: DATE offset +15:00 is invalid, so not explicit: import time (Q17).",
+   "input": {
+    "title": "Lantern",
+    "start": {
+     "kind": "received",
+     "dateTag": "2026-04-15T09:12:00+15:00",
+     "importUtc": "2026-10-30T09:00:00Z",
+     "libraryTimeZone": "Europe/Rome"
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--10.00-",
+    "namePrefixSource": "import-time",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Lantern",
+    "fileName": "2026-10-30--10.00-Lantern.opus",
+    "fileNameUtf8Bytes": 30
+   }
+  },
+  {
+   "id": "persisted-prefix-kept",
+   "note": "A persisted namePrefix is kept across renames, time-zone changes and restarts.",
+   "input": {
+    "title": "Weekly sync, renamed",
+    "start": {
+     "kind": "persisted",
+     "namePrefix": "2026-10-30--18.02-"
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "persisted",
+    "utcOffsetMinutes": null,
+    "sanitizedTitle": "Weekly sync, renamed",
+    "fileName": "2026-10-30--18.02-Weekly sync, renamed.opus",
+    "fileNameUtf8Bytes": 43
+   }
+  },
+  {
+   "id": "received-date-offset",
+   "note": "Received: DATE is complete with an explicit offset; its own wall time is used.",
+   "input": {
+    "title": "Lantern Festival Booth Run-through",
+    "start": {
+     "kind": "received",
+     "dateTag": "2026-04-15T09:12:00+02:00",
+     "importUtc": "2026-10-30T09:00:00Z",
+     "libraryTimeZone": "Europe/Rome"
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-04-15--09.12-",
+    "namePrefixSource": "date-tag",
+    "utcOffsetMinutes": 120,
+    "sanitizedTitle": "Lantern Festival Booth Run-through",
+    "fileName": "2026-04-15--09.12-Lantern Festival Booth Run-through.opus",
+    "fileNameUtf8Bytes": 57
+   }
+  },
+  {
+   "id": "received-date-z",
+   "note": "Received: DATE in UTC ('Z' counts as explicit, S-12 §11 Q8): UTC wall time.",
+   "input": {
+    "title": "Lantern Festival Booth Run-through",
+    "start": {
+     "kind": "received",
+     "dateTag": "2026-04-15T09:12:00Z",
+     "importUtc": "2026-10-30T09:00:00Z",
+     "libraryTimeZone": "Europe/Rome"
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-04-15--09.12-",
+    "namePrefixSource": "date-tag",
+    "utcOffsetMinutes": 0,
+    "sanitizedTitle": "Lantern Festival Booth Run-through",
+    "fileName": "2026-04-15--09.12-Lantern Festival Booth Run-through.opus",
+    "fileNameUtf8Bytes": 57
+   }
+  },
+  {
+   "id": "received-date-unknown-offset",
+   "note": "Received: '-00:00' means local offset unknown (RFC 3339): import time.",
+   "input": {
+    "title": "Lantern Festival Booth Run-through",
+    "start": {
+     "kind": "received",
+     "dateTag": "2026-04-15T09:12:00-00:00",
+     "importUtc": "2026-10-30T09:00:00Z",
+     "libraryTimeZone": "Europe/Rome"
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--10.00-",
+    "namePrefixSource": "import-time",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Lantern Festival Booth Run-through",
+    "fileName": "2026-10-30--10.00-Lantern Festival Booth Run-through.opus",
+    "fileNameUtf8Bytes": 57
+   }
+  },
+  {
+   "id": "received-date-no-offset",
+   "note": "Received: DATE without an offset; recordedAtLocal is present but never used: import time.",
+   "input": {
+    "title": "Lantern Festival Booth Run-through",
+    "start": {
+     "kind": "received",
+     "dateTag": "2026-04-15T09:12:00",
+     "recordedAtLocal": "2026-04-15T09:12:00",
+     "importUtc": "2026-10-30T09:00:00Z",
+     "libraryTimeZone": "Europe/Rome"
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--10.00-",
+    "namePrefixSource": "import-time",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Lantern Festival Booth Run-through",
+    "fileName": "2026-10-30--10.00-Lantern Festival Booth Run-through.opus",
+    "fileNameUtf8Bytes": 57
+   }
+  },
+  {
+   "id": "received-date-only",
+   "note": "Received: a date without a time is not complete: import time.",
+   "input": {
+    "title": "Lantern",
+    "start": {
+     "kind": "received",
+     "dateTag": "2026-04-15",
+     "importUtc": "2026-10-30T09:00:00Z",
+     "libraryTimeZone": "Europe/Rome"
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--10.00-",
+    "namePrefixSource": "import-time",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Lantern",
+    "fileName": "2026-10-30--10.00-Lantern.opus",
+    "fileNameUtf8Bytes": 30
+   }
+  },
+  {
+   "id": "received-no-date",
+   "note": "Received: no DATE tag: import time.",
+   "input": {
+    "title": "Lantern",
+    "start": {
+     "kind": "received",
+     "dateTag": null,
+     "importUtc": "2026-10-30T23:30:00Z",
+     "libraryTimeZone": "Europe/Rome"
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-31--00.30-",
+    "namePrefixSource": "import-time",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Lantern",
+    "fileName": "2026-10-31--00.30-Lantern.opus",
+    "fileNameUtf8Bytes": 30
+   }
+  },
+  {
+   "id": "forbidden-U+002F",
+   "note": "Forbidden character U+002F becomes '-'.",
+   "input": {
+    "title": "a/b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "forbidden-U+005C",
+   "note": "Forbidden character U+005C becomes '-'.",
+   "input": {
+    "title": "a\\b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "forbidden-U+003A",
+   "note": "Forbidden character U+003A becomes '-'.",
+   "input": {
+    "title": "a:b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "forbidden-U+002A",
+   "note": "Forbidden character U+002A becomes '-'.",
+   "input": {
+    "title": "a*b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "forbidden-U+003F",
+   "note": "Forbidden character U+003F becomes '-'.",
+   "input": {
+    "title": "a?b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "forbidden-U+0022",
+   "note": "Forbidden character U+0022 becomes '-'.",
+   "input": {
+    "title": "a\"b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "forbidden-U+003C",
+   "note": "Forbidden character U+003C becomes '-'.",
+   "input": {
+    "title": "a<b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "forbidden-U+003E",
+   "note": "Forbidden character U+003E becomes '-'.",
+   "input": {
+    "title": "a>b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "forbidden-U+007C",
+   "note": "Forbidden character U+007C becomes '-'.",
+   "input": {
+    "title": "a|b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0000",
+   "note": "Control character U+0000 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0000b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0001",
+   "note": "Control character U+0001 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0001b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0002",
+   "note": "Control character U+0002 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0002b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0003",
+   "note": "Control character U+0003 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0003b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0004",
+   "note": "Control character U+0004 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0004b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0005",
+   "note": "Control character U+0005 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0005b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0006",
+   "note": "Control character U+0006 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0006b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0007",
+   "note": "Control character U+0007 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0007b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0008",
+   "note": "Control character U+0008 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\bb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0009",
+   "note": "Control character U+0009 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\tb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+000A",
+   "note": "Control character U+000A becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\nb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+000B",
+   "note": "Control character U+000B becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u000bb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+000C",
+   "note": "Control character U+000C becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\fb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+000D",
+   "note": "Control character U+000D becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\rb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+000E",
+   "note": "Control character U+000E becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u000eb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+000F",
+   "note": "Control character U+000F becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u000fb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0010",
+   "note": "Control character U+0010 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0010b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0011",
+   "note": "Control character U+0011 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0011b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0012",
+   "note": "Control character U+0012 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0012b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0013",
+   "note": "Control character U+0013 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0013b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0014",
+   "note": "Control character U+0014 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0014b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0015",
+   "note": "Control character U+0015 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0015b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0016",
+   "note": "Control character U+0016 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0016b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0017",
+   "note": "Control character U+0017 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0017b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0018",
+   "note": "Control character U+0018 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0018b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+0019",
+   "note": "Control character U+0019 becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u0019b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+001A",
+   "note": "Control character U+001A becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u001ab",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+001B",
+   "note": "Control character U+001B becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u001bb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+001C",
+   "note": "Control character U+001C becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u001cb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+001D",
+   "note": "Control character U+001D becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u001db",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+001E",
+   "note": "Control character U+001E becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u001eb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+001F",
+   "note": "Control character U+001F becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u001fb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "control-U+007F",
+   "note": "Control character U+007F becomes '-' (before whitespace folding).",
+   "input": {
+    "title": "a\u007fb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "forbidden-all",
+   "note": "All forbidden characters in one title.",
+   "input": {
+    "title": "Q3: plan/review\\notes*?\"<draft>\"|final",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Q3- plan-review-notes----draft---final",
+    "fileName": "2026-10-30--18.02-Q3- plan-review-notes----draft---final.opus",
+    "fileNameUtf8Bytes": 61
+   }
+  },
+  {
+   "id": "forbidden-only",
+   "note": "Only forbidden characters: they become '-', so the title is not empty.",
+   "input": {
+    "title": "///",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "---",
+    "fileName": "2026-10-30--18.02----.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "whitespace-runs",
+   "note": "Runs of White_Space (space, NBSP, ideographic, em space) become one space.",
+   "input": {
+    "title": "Weekly  　  sync",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Weekly sync",
+    "fileName": "2026-10-30--18.02-Weekly sync.opus",
+    "fileNameUtf8Bytes": 34
+   }
+  },
+  {
+   "id": "leading-trailing-dots-spaces",
+   "note": "Spaces and dots are trimmed at both ends.",
+   "input": {
+    "title": " . ..Weekly sync.. . ",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Weekly sync",
+    "fileName": "2026-10-30--18.02-Weekly sync.opus",
+    "fileNameUtf8Bytes": 34
+   }
+  },
+  {
+   "id": "leading-dots-hidden",
+   "note": "A leading dot never makes a hidden file.",
+   "input": {
+    "title": "...hidden agenda",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "hidden agenda",
+    "fileName": "2026-10-30--18.02-hidden agenda.opus",
+    "fileNameUtf8Bytes": 36
+   }
+  },
+  {
+   "id": "inner-dots-kept",
+   "note": "Dots inside the title stay.",
+   "input": {
+    "title": "v1.2 release.notes",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "v1.2 release.notes",
+    "fileName": "2026-10-30--18.02-v1.2 release.notes.opus",
+    "fileNameUtf8Bytes": 41
+   }
+  },
+  {
+   "id": "dots-only",
+   "note": "Only dots and spaces: empty after trimming, so the untitled fallback.",
+   "input": {
+    "title": " . . . ",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Untitled meeting",
+    "fileName": "2026-10-30--18.02-Untitled meeting.opus",
+    "fileNameUtf8Bytes": 39
+   }
+  },
+  {
+   "id": "empty",
+   "note": "Empty title: the catalog's untitled fallback (library.untitled, en).",
+   "input": {
+    "title": "",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Untitled meeting",
+    "fileName": "2026-10-30--18.02-Untitled meeting.opus",
+    "fileNameUtf8Bytes": 39
+   }
+  },
+  {
+   "id": "whitespace-only",
+   "note": "Whitespace-only title: the untitled fallback.",
+   "input": {
+    "title": "   ",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Untitled meeting",
+    "fileName": "2026-10-30--18.02-Untitled meeting.opus",
+    "fileNameUtf8Bytes": 39
+   }
+  },
+  {
+   "id": "tab-newline-only",
+   "note": "Tab and newline are controls, so they become '-', not whitespace: not empty.",
+   "input": {
+    "title": "\t\n",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "--",
+    "fileName": "2026-10-30--18.02---.opus",
+    "fileNameUtf8Bytes": 25
+   }
+  },
+  {
+   "id": "emoji",
+   "note": "Emoji are kept.",
+   "input": {
+    "title": "Launch 🚀 review 👍🏽",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Launch 🚀 review 👍🏽",
+    "fileName": "2026-10-30--18.02-Launch 🚀 review 👍🏽.opus",
+    "fileNameUtf8Bytes": 50
+   }
+  },
+  {
+   "id": "combining-nfd-to-nfc",
+   "note": "NFD input is composed to NFC.",
+   "input": {
+    "title": "Café résumé",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Café résumé",
+    "fileName": "2026-10-30--18.02-Café résumé.opus",
+    "fileNameUtf8Bytes": 37
+   }
+  },
+  {
+   "id": "combining-reordered",
+   "note": "NFC reorders marks by combining class (U+0323 before U+0307).",
+   "input": {
+    "title": "q̣̇ test",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "q̣̇ test",
+    "fileName": "2026-10-30--18.02-q̣̇ test.opus",
+    "fileNameUtf8Bytes": 33
+   }
+  },
+  {
+   "id": "invisible-U+0080",
+   "note": "U+0080, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0080b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0081",
+   "note": "U+0081, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0081b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0082",
+   "note": "U+0082, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0082b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0083",
+   "note": "U+0083, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0083b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0084",
+   "note": "U+0084, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0084b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0086",
+   "note": "U+0086, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0086b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0087",
+   "note": "U+0087, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0087b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0088",
+   "note": "U+0088, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0088b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0089",
+   "note": "U+0089, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0089b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+008A",
+   "note": "U+008A, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u008ab",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+008B",
+   "note": "U+008B, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u008bb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+008C",
+   "note": "U+008C, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u008cb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+008D",
+   "note": "U+008D, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u008db",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+008E",
+   "note": "U+008E, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u008eb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+008F",
+   "note": "U+008F, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u008fb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0090",
+   "note": "U+0090, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0090b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0091",
+   "note": "U+0091, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0091b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0092",
+   "note": "U+0092, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0092b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0093",
+   "note": "U+0093, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0093b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0094",
+   "note": "U+0094, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0094b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0095",
+   "note": "U+0095, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0095b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0096",
+   "note": "U+0096, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0096b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0097",
+   "note": "U+0097, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0097b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0098",
+   "note": "U+0098, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0098b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+0099",
+   "note": "U+0099, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u0099b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+009A",
+   "note": "U+009A, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u009ab",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+009B",
+   "note": "U+009B, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u009bb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+009C",
+   "note": "U+009C, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u009cb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+009D",
+   "note": "U+009D, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u009db",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+009E",
+   "note": "U+009E, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u009eb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+009F",
+   "note": "U+009F, C1 control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u009fb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+202A",
+   "note": "U+202A, bidi control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u202ab",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+202B",
+   "note": "U+202B, bidi control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u202bb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+202C",
+   "note": "U+202C, bidi control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u202cb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+202D",
+   "note": "U+202D, bidi control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u202db",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+202E",
+   "note": "U+202E, bidi control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u202eb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+2066",
+   "note": "U+2066, bidi control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u2066b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+2067",
+   "note": "U+2067, bidi control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u2067b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+2068",
+   "note": "U+2068, bidi control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u2068b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+2069",
+   "note": "U+2069, bidi control, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\u2069b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+FEFF",
+   "note": "U+FEFF, BOM/noncharacter, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\ufeffb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+FFFE",
+   "note": "U+FFFE, BOM/noncharacter, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\ufffeb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "invisible-U+FFFF",
+   "note": "U+FFFF, BOM/noncharacter, becomes '-' (S-12 §11 Q6a).",
+   "input": {
+    "title": "a\uffffb",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "nel-is-whitespace",
+   "note": "U+0085 is White_Space, not replaced: it folds to one space (Q6a).",
+   "input": {
+    "title": "a\u0085\u0085b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a b",
+    "fileName": "2026-10-30--18.02-a b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "bidi-override-spoof",
+   "note": "U+202E can no longer fake an extension (Q6a).",
+   "input": {
+    "title": "Invoice \u202egnp.exe",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Invoice -gnp.exe",
+    "fileName": "2026-10-30--18.02-Invoice -gnp.exe.opus",
+    "fileNameUtf8Bytes": 39
+   }
+  },
+  {
+   "id": "bom-leading",
+   "note": "A leading U+FEFF becomes '-' and is not trimmed.",
+   "input": {
+    "title": "\ufeffWeekly sync",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "-Weekly sync",
+    "fileName": "2026-10-30--18.02--Weekly sync.opus",
+    "fileNameUtf8Bytes": 35
+   }
+  },
+  {
+   "id": "zwj-kept",
+   "note": "A lone ZWJ stays (Q6a: emoji need it).",
+   "input": {
+    "title": "a‍b",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a‍b",
+    "fileName": "2026-10-30--18.02-a‍b.opus",
+    "fileNameUtf8Bytes": 28
+   }
+  },
+  {
+   "id": "variation-selector-kept",
+   "note": "Variation selectors stay (Q6a).",
+   "input": {
+    "title": "Ready ✔️ and ☺︎",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Ready ✔️ and ☺︎",
+    "fileName": "2026-10-30--18.02-Ready ✔️ and ☺︎.opus",
+    "fileNameUtf8Bytes": 46
+   }
+  },
+  {
+   "id": "zero-width-space-kept",
+   "note": "U+200B is not White_Space and is kept.",
+   "input": {
+    "title": "Weekly\u200bsync",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Weekly\u200bsync",
+    "fileName": "2026-10-30--18.02-Weekly\u200bsync.opus",
+    "fileNameUtf8Bytes": 36
+   }
+  },
+  {
+   "id": "literal-suffix-in-title",
+   "note": "A title that already ends in ' (2)' is kept as is.",
+   "input": {
+    "title": "Retro (2)",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Retro (2)",
+    "fileName": "2026-10-30--18.02-Retro (2).opus",
+    "fileNameUtf8Bytes": 32
+   }
+  },
+  {
+   "id": "cjk-300-bytes",
+   "note": "300 bytes of CJK: cut to 59 characters (177 bytes); the name is exactly 200 bytes.",
+   "input": {
+    "title": "会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议",
+    "fileName": "2026-10-30--18.02-会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会.opus",
+    "fileNameUtf8Bytes": 200
+   }
+  },
+  {
+   "id": "cjk-300-bytes-collision",
+   "note": "Same, with the full-length name taken: ' (2)' leaves 173 bytes, so 57 characters.",
+   "input": {
+    "title": "会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.02-会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会.opus"
+    ],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议",
+    "fileName": "2026-10-30--18.02-会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会议会 (2).opus",
+    "fileNameUtf8Bytes": 198
+   }
+  },
+  {
+   "id": "ascii-long",
+   "note": "300 ASCII letters cut to 177.",
+   "input": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "fileName": "2026-10-30--18.02-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.opus",
+    "fileNameUtf8Bytes": 200
+   }
+  },
+  {
+   "id": "ascii-exact-fit",
+   "note": "177 bytes fit exactly; no cut.",
+   "input": {
+    "title": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+    "fileName": "2026-10-30--18.02-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.opus",
+    "fileNameUtf8Bytes": 200
+   }
+  },
+  {
+   "id": "truncation-trailing-space",
+   "note": "The cut lands after a space: trailing spaces are trimmed again (Q3).",
+   "input": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx yz",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx yz",
+    "fileName": "2026-10-30--18.02-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.opus",
+    "fileNameUtf8Bytes": 199
+   }
+  },
+  {
+   "id": "truncation-trailing-dot",
+   "note": "The cut lands after a dot: trimmed again (Q3).",
+   "input": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.yz",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.yz",
+    "fileName": "2026-10-30--18.02-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.opus",
+    "fileNameUtf8Bytes": 199
+   }
+  },
+  {
+   "id": "zwj-family-boundary",
+   "note": "ZWJ sequences (25 bytes) are never split: 5 + 6x25 = 155 bytes fit; a split one would add up to 176.",
+   "input": {
+    "title": "xxxxx👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "xxxxx👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦",
+    "fileName": "2026-10-30--18.02-xxxxx👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦.opus",
+    "fileNameUtf8Bytes": 178
+   }
+  },
+  {
+   "id": "skin-tone-boundary",
+   "note": "Emoji + skin-tone modifier is one cluster (8 bytes): 172 + 8 > 177, so the whole cluster is dropped.",
+   "input": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx👍🏽end",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx👍🏽end",
+    "fileName": "2026-10-30--18.02-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.opus",
+    "fileNameUtf8Bytes": 195
+   }
+  },
+  {
+   "id": "flags-boundary",
+   "note": "Regional-indicator pairs are never split: 165 + 8 fits, a lone half (177 bytes) must not.",
+   "input": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx🇮🇹🇫🇷🇮🇹🇫🇷",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx🇮🇹🇫🇷🇮🇹🇫🇷",
+    "fileName": "2026-10-30--18.02-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx🇮🇹.opus",
+    "fileNameUtf8Bytes": 196
+   }
+  },
+  {
+   "id": "combining-boundary",
+   "note": "q + U+0323 U+0307 (no precomposed form) is one 5-byte cluster: 174 + 5 > 177, so the bare q is not kept.",
+   "input": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxq̣̇tail",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxq̣̇tail",
+    "fileName": "2026-10-30--18.02-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.opus",
+    "fileNameUtf8Bytes": 197
+   }
+  },
+  {
+   "id": "variation-selector-boundary",
+   "note": "A variation selector stays with its base (U+2764 U+FE0F, 6 bytes).",
+   "input": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx❤️tail",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx❤️tail",
+    "fileName": "2026-10-30--18.02-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.opus",
+    "fileNameUtf8Bytes": 196
+   }
+  },
+  {
+   "id": "hangul-jamo-boundary",
+   "note": "Conjoining jamo that NFC cannot compose (archaic V U+1176) stay together.",
+   "input": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxᄀᅶᆨtail",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxᄀᅶᆨtail",
+    "fileName": "2026-10-30--18.02-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.opus",
+    "fileNameUtf8Bytes": 195
+   }
+  },
+  {
+   "id": "single-cluster-over-budget",
+   "note": "One base with 120 acute accents (NFC: U+00E1 + 119 marks): the stream-safe step keeps 30 marks, so it fits and APFS accepts it (Q4 revised).",
+   "input": {
+    "title": "á́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "á́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́",
+    "fileName": "2026-10-30--18.02-á́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́.opus",
+    "fileNameUtf8Bytes": 85
+   }
+  },
+  {
+   "id": "stream-safe-30-marks",
+   "note": "x + 30 acute accents: exactly the limit, unchanged.",
+   "input": {
+    "title": "x́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́ end",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "x́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́ end",
+    "fileName": "2026-10-30--18.02-x́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́ end.opus",
+    "fileNameUtf8Bytes": 88
+   }
+  },
+  {
+   "id": "stream-safe-31-marks",
+   "note": "x + 31 acute accents: cut to 30 (APFS accepts 31, but the shared limit is 30).",
+   "input": {
+    "title": "x́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́ end",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "x́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́ end",
+    "fileName": "2026-10-30--18.02-x́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́ end.opus",
+    "fileNameUtf8Bytes": 88
+   }
+  },
+  {
+   "id": "stream-safe-32-marks",
+   "note": "x + 32 acute accents: cut to 30 (APFS rejects 32 with EILSEQ).",
+   "input": {
+    "title": "x́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́ end",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "x́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́ end",
+    "fileName": "2026-10-30--18.02-x́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́ end.opus",
+    "fileNameUtf8Bytes": 88
+   }
+  },
+  {
+   "id": "stream-safe-mixed-ccc",
+   "note": "20 x U+0301 then 20 x U+0323 on x: NFC puts the 20 dots (ccc 220) first, then 10 accents are kept.",
+   "input": {
+    "title": "x̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣́́́́́́́́́́́́́́́́́́́́",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "x̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣́́́́́́́́́́",
+    "fileName": "2026-10-30--18.02-x̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣̣́́́́́́́́́́.opus",
+    "fileNameUtf8Bytes": 84
+   }
+  },
+  {
+   "id": "stream-safe-runs-separate",
+   "note": "A starter (CGJ U+034F has ccc 0) ends a run: 2 x 25 marks are both kept.",
+   "input": {
+    "title": "x́́́́́́́́́́́́́́́́́́́́́́́́́͏́́́́́́́́́́́́́́́́́́́́́́́́́",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "x́́́́́́́́́́́́́́́́́́́́́́́́́͏́́́́́́́́́́́́́́́́́́́́́́́́́",
+    "fileName": "2026-10-30--18.02-x́́́́́́́́́́́́́́́́́́́́́́́́́͏́́́́́́́́́́́́́́́́́́́́́́́́́.opus",
+    "fileNameUtf8Bytes": 126
+   }
+  },
+  {
+   "id": "single-cluster-zwj-chain-over-budget",
+   "note": "A 214-byte ZWJ chain is one cluster with no non-starters: code-point fallback still applies (Q4).",
+   "input": {
+    "title": "👨‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "👨‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩",
+    "fileName": "2026-10-30--18.02-👨‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍👩‍.opus",
+    "fileNameUtf8Bytes": 198
+   }
+  },
+  {
+   "id": "nfc-shrinks-before-cut",
+   "note": "NFD 'é' (3 bytes) becomes NFC (2 bytes) before measuring: 88 fit in 176 bytes.",
+   "input": {
+    "title": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+    "fileName": "2026-10-30--18.02-éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé.opus",
+    "fileNameUtf8Bytes": 199
+   }
+  },
+  {
+   "id": "collision-1",
+   "note": "One existing name: ' (2)'.",
+   "input": {
+    "title": "Weekly sync",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.02-Weekly sync.opus"
+    ],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Weekly sync",
+    "fileName": "2026-10-30--18.02-Weekly sync (2).opus",
+    "fileNameUtf8Bytes": 38
+   }
+  },
+  {
+   "id": "collision-3",
+   "note": "Three existing names: ' (4)'.",
+   "input": {
+    "title": "Weekly sync",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.02-Weekly sync.opus",
+     "2026-10-30--18.02-Weekly sync (2).opus",
+     "2026-10-30--18.02-Weekly sync (3).opus"
+    ],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Weekly sync",
+    "fileName": "2026-10-30--18.02-Weekly sync (4).opus",
+    "fileNameUtf8Bytes": 38
+   }
+  },
+  {
+   "id": "collision-gap",
+   "note": "The smallest free suffix: ' (2)' even though ' (3)' is taken.",
+   "input": {
+    "title": "Weekly sync",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.02-Weekly sync.opus",
+     "2026-10-30--18.02-Weekly sync (3).opus"
+    ],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Weekly sync",
+    "fileName": "2026-10-30--18.02-Weekly sync (2).opus",
+    "fileNameUtf8Bytes": 38
+   }
+  },
+  {
+   "id": "collision-own-path",
+   "note": "The meeting's own current name is ignored: no rename.",
+   "input": {
+    "title": "Weekly sync",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.02-Weekly sync.opus",
+     "2026-10-30--18.02-Other.opus"
+    ],
+    "ownName": "2026-10-30--18.02-Weekly sync.opus"
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Weekly sync",
+    "fileName": "2026-10-30--18.02-Weekly sync.opus",
+    "fileNameUtf8Bytes": 34
+   }
+  },
+  {
+   "id": "collision-own-suffixed",
+   "note": "Own name ' (3)' ignored; base and ' (2)' taken by others: stays ' (3)'.",
+   "input": {
+    "title": "Weekly sync",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.02-Weekly sync.opus",
+     "2026-10-30--18.02-Weekly sync (2).opus",
+     "2026-10-30--18.02-Weekly sync (3).opus"
+    ],
+    "ownName": "2026-10-30--18.02-Weekly sync (3).opus"
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Weekly sync",
+    "fileName": "2026-10-30--18.02-Weekly sync (3).opus",
+    "fileNameUtf8Bytes": 38
+   }
+  },
+  {
+   "id": "collision-own-suffixed-base-free",
+   "note": "Own name ' (2)' and the base is free again: the base is chosen (Q10).",
+   "input": {
+    "title": "Weekly sync",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.02-Weekly sync (2).opus"
+    ],
+    "ownName": "2026-10-30--18.02-Weekly sync (2).opus"
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Weekly sync",
+    "fileName": "2026-10-30--18.02-Weekly sync.opus",
+    "fileNameUtf8Bytes": 34
+   }
+  },
+  {
+   "id": "collision-case-insensitive",
+   "note": "Names are compared case-insensitively (Q5).",
+   "input": {
+    "title": "weekly SYNC",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.02-Weekly sync.opus"
+    ],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "weekly SYNC",
+    "fileName": "2026-10-30--18.02-weekly SYNC (2).opus",
+    "fileNameUtf8Bytes": 38
+   }
+  },
+  {
+   "id": "collision-nfd-existing",
+   "note": "An existing NFD spelling collides with the NFC name (Q5).",
+   "input": {
+    "title": "Café",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.02-Café.opus"
+    ],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Café",
+    "fileName": "2026-10-30--18.02-Café (2).opus",
+    "fileNameUtf8Bytes": 32
+   }
+  },
+  {
+   "id": "collision-final-sigma-existing",
+   "note": "Mac review: 'ΟΣ meeting' vs an existing 'ος meeting' (final sigma): same caseless key, so ' (2)'.",
+   "input": {
+    "title": "ΟΣ meeting",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.02-ος meeting.opus"
+    ],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "ΟΣ meeting",
+    "fileName": "2026-10-30--18.02-ΟΣ meeting (2).opus",
+    "fileNameUtf8Bytes": 39
+   }
+  },
+  {
+   "id": "collision-sigma-existing",
+   "note": "Mac review: 'ΟΣ meeting' vs an existing 'οσ meeting': same caseless key, so ' (2)'.",
+   "input": {
+    "title": "ΟΣ meeting",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.02-οσ meeting.opus"
+    ],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "ΟΣ meeting",
+    "fileName": "2026-10-30--18.02-ΟΣ meeting (2).opus",
+    "fileNameUtf8Bytes": 39
+   }
+  },
+  {
+   "id": "collision-sharp-s",
+   "note": "Full case folding: ß folds to ss.",
+   "input": {
+    "title": "Straße",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.02-Strasse.opus"
+    ],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Straße",
+    "fileName": "2026-10-30--18.02-Straße (2).opus",
+    "fileNameUtf8Bytes": 34
+   }
+  },
+  {
+   "id": "collision-long-s",
+   "note": "Full case folding: ſ (U+017F) folds to s.",
+   "input": {
+    "title": "Status",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.02-ſtatus.opus"
+    ],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Status",
+    "fileName": "2026-10-30--18.02-Status (2).opus",
+    "fileNameUtf8Bytes": 33
+   }
+  },
+  {
+   "id": "collision-ff-ligature",
+   "note": "Full case folding: ﬀ (U+FB00) folds to ff.",
+   "input": {
+    "title": "Eﬀort",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.02-Effort.opus"
+    ],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Eﬀort",
+    "fileName": "2026-10-30--18.02-Eﬀort (2).opus",
+    "fileNameUtf8Bytes": 34
+   }
+  },
+  {
+   "id": "collision-different-minute",
+   "note": "A different minute is a different name.",
+   "input": {
+    "title": "Weekly sync",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.03-Weekly sync.opus"
+    ],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Weekly sync",
+    "fileName": "2026-10-30--18.02-Weekly sync.opus",
+    "fileNameUtf8Bytes": 34
+   }
+  },
+  {
+   "id": "collision-untitled",
+   "note": "Two untitled meetings in the same minute.",
+   "input": {
+    "title": "",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.02-Untitled meeting.opus"
+    ],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "Untitled meeting",
+    "fileName": "2026-10-30--18.02-Untitled meeting (2).opus",
+    "fileNameUtf8Bytes": 43
+   }
+  },
+  {
+   "id": "collision-200-bytes-plus-suffix",
+   "note": "A 200-byte name plus a suffix stays within 200 bytes.",
+   "input": {
+    "title": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [
+     "2026-10-30--18.02-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz.opus"
+    ],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+    "fileName": "2026-10-30--18.02-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz (2).opus",
+    "fileNameUtf8Bytes": 200
+   }
+  }
+ ]
+}

@@ -491,6 +491,24 @@
     }
    },
    "additionalProperties": true
+  },
+  "namePrefix": {
+   "type": "string",
+   "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}--[0-9]{2}\\.[0-9]{2}-$",
+   "description": "S-12 §2: Library v2 file-name prefix, chosen once and kept."
+  },
+  "namePrefixSource": {
+   "enum": [
+    "recorded",
+    "legacy-device-tz",
+    "date-tag",
+    "import-time"
+   ],
+   "description": "S-12 §11 Q12: where namePrefix came from."
+  },
+  "published": {
+   "type": "boolean",
+   "description": "S-12 §4.6: true once the meeting's Cassini file was durably published."
   }
  },
  "required": [

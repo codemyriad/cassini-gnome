@@ -145,6 +145,14 @@ def limited_pcm(chunks, *, limit=0.95, lookahead=240, release=2400):
 
 
 def encode_pcm(tracks, output, choice, cancel=None):
+    encode_blocks(limited_pcm(mixed_pcm(tracks, cancel)), output, choice, cancel)
+
+
+def encode_blocks(stream, output, choice, cancel=None):
+    """D8 Opus encode of mono 48 kHz float32 blocks (array.array("f")) into an Ogg file.
+
+    Export and the Library v2 mixdown share this one encoder path. `stream` is closed.
+    """
     import gi
 
     gi.require_version("Gst", "1.0")
@@ -164,7 +172,6 @@ def encode_pcm(tracks, output, choice, cancel=None):
     source = pipeline.get_by_name("pcm")
     pipeline.get_by_name("output").set_property("location", str(output))
     cursor = 0
-    stream = limited_pcm(mixed_pcm(tracks, cancel))
     try:
         if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
             raise RuntimeError("Could not start the Opus encoder")

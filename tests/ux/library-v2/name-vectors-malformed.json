@@ -1,0 +1,172 @@
+{
+ "format": "cassini.library-v2.name-vectors-malformed/1",
+ "spec": "S-12 §2 with the §11 answers (ux-draft/library-v2/SPEC.md)",
+ "generator": "ux-draft/library-v2/names.py",
+ "maxUtf8Bytes": 200,
+ "untitled": {
+  "catalogId": "library.untitled",
+  "language": "en",
+  "value": "Untitled meeting"
+ },
+ "rule": "titleUtf16 is an array of UTF-16 code units (integers 0-65535). A platform whose input boundary rejects malformed text (a JSON decoder, Swift String) records 'rejected at the input boundary' as a pass. A platform that accepts it turns each unpaired unit into '-' and keeps valid pairs, giving the expected name. valid-pair-control is well-formed and must always give its expected name.",
+ "cases": [
+  {
+   "id": "lone-high-U+D800",
+   "note": "Unpaired high surrogate.",
+   "input": {
+    "titleUtf16": [
+     97,
+     55296,
+     98
+    ],
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "lone-high-U+DBFF",
+   "note": "Unpaired high surrogate.",
+   "input": {
+    "titleUtf16": [
+     97,
+     56319,
+     98
+    ],
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "lone-low-U+DC00",
+   "note": "Unpaired low surrogate.",
+   "input": {
+    "titleUtf16": [
+     97,
+     56320,
+     98
+    ],
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "lone-low-U+DFFF",
+   "note": "Unpaired low surrogate.",
+   "input": {
+    "titleUtf16": [
+     97,
+     57343,
+     98
+    ],
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a-b",
+    "fileName": "2026-10-30--18.02-a-b.opus",
+    "fileNameUtf8Bytes": 26
+   }
+  },
+  {
+   "id": "reversed-pair",
+   "note": "Low then high: two unpaired units, two '-'.",
+   "input": {
+    "titleUtf16": [
+     97,
+     56320,
+     55296,
+     98
+    ],
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a--b",
+    "fileName": "2026-10-30--18.02-a--b.opus",
+    "fileNameUtf8Bytes": 27
+   }
+  },
+  {
+   "id": "valid-pair-control",
+   "note": "Control: a valid pair (U+1F600) stays; this one is well-formed.",
+   "input": {
+    "titleUtf16": [
+     97,
+     55357,
+     56832,
+     98
+    ],
+    "start": {
+     "kind": "capture",
+     "startUtc": "2026-10-30T17:02:41.500Z",
+     "utcOffsetMinutes": 60
+    },
+    "existing": [],
+    "ownName": null
+   },
+   "expected": {
+    "namePrefix": "2026-10-30--18.02-",
+    "namePrefixSource": "recorded",
+    "utcOffsetMinutes": 60,
+    "sanitizedTitle": "a😀b",
+    "fileName": "2026-10-30--18.02-a😀b.opus",
+    "fileNameUtf8Bytes": 29
+   }
+  }
+ ]
+}

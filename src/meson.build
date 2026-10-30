@@ -173,6 +173,22 @@ viewer_sources = files(
 )
 install_data(viewer_sources, install_dir: moduledir)
 
+# S-12 Library v2 (step 3a: not wired into the app yet).
+install_data(
+  'cassini_viewer/library_v2/__init__.py',
+  'cassini_viewer/library_v2/edit.py',
+  'cassini_viewer/library_v2/finalize.py',
+  'cassini_viewer/library_v2/fsutil.py',
+  'cassini_viewer/library_v2/journal.py',
+  'cassini_viewer/library_v2/mixdown.py',
+  'cassini_viewer/library_v2/names.py',
+  'cassini_viewer/library_v2/ogg.py',
+  'cassini_viewer/library_v2/publish.py',
+  'cassini_viewer/library_v2/xschema.py',
+  'cassini_viewer/library_v2/x-schema.json',
+  install_dir: moduledir / 'library_v2',
+)
+
 # Where the recognition child finds the app's private ONNX Runtime, if any
 # (whistle_worker.onnxruntime_dir); a source run has no paths.json.
 runtime_paths = configure_file(
@@ -214,8 +230,9 @@ if pytest.found()
     workdir: meson.project_source_root(),
     # The suite re-runs both conformance suites as subprocesses, alongside
     # Meson's own conformance tests: 11-21 s in a package build container,
-    # over Meson's 30 s default on a loaded builder.
-    timeout: 120,
+    # over Meson's 30 s default on a loaded builder. Library v2 adds a 60 min
+    # alignment golden, a scaled long meeting and a SIGKILL crash matrix.
+    timeout: 240,
   )
 endif
 

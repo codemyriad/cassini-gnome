@@ -1,0 +1,487 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""S-12 §4.6 and §7: durable publish, replace-in-place, rename-with-replace and delete.
+
+Every commit runs under the Library lock and is journaled before any copy is
+touched. Building a stage is not a commit step: finalize mixes and encodes into
+its stage without the lock (§11 step-3a Q10) and passes the finished stage here.
+Commit orders:
+
+publish  [stage built and validated] journal "staged" -> no-replace rename into
+         the root (renameat2 RENAME_NOREPLACE; each candidate name is journaled
+         before it is tried; EEXIST takes the next suffix, at most 99 retries, §11
+         Q5) -> fsync root and staging -> meeting.json -> retire.
+replace  journal -> stage -> "staged" -> atomic replacing rename onto the live file
+         (it is the target) -> fsync -> meeting.json -> retire.
+rename   journal -> stage -> "staged" -> no-replace rename to the new name -> fsync ->
+         meeting.json -> remove the old name -> fsync -> retire. The meeting's own
+         name is always free, under the casefold key too, so a case-only rename
+         keeps its base name. Where the filesystem itself folds case (EEXIST from
+         the meeting's own file), the old file first moves to a temporary dotfile
+         name in the root, journaled, and the stage then takes the new name
+         (§11 step-3a Q7).
+delete   journal intent -> move the file to the Trash -> fsync -> move the session
+         folder to the Trash -> fsync -> retire (§11 step-3a Q9; as v1's move to
+         Trash, permanent deletion stays the Trash's job).
+
+A failure before the rename leaves nothing in the root: the stage is discarded
+and the journal entry retired, while every source stays where it was. A failure
+after it is a PendingCommit: the entry stays and is reconciled (resume) before
+any retry. Nothing here deletes a published file to fake a rollback, and a stage
+that conflicts with what is live is kept.
+
+CHECKPOINT is a test hook: called with each step name, it lets the crash matrix
+SIGKILL a process between any two steps.
+"""
+
+import contextlib
+import os
+from pathlib import Path
+
+from .. import library_schema, meeting_store, portable
+from . import fsutil, journal, names
+
+MAX_RETRIES = 99
+CHECKPOINT = None
+
+
+class Kept(RuntimeError):
+    """A journal entry that cannot finish safely now; it and its stage stay for later."""
+
+
+class PendingCommit(RuntimeError):
+    """The new file is published but the operation has not finished; recovery will finish it."""
+
+
+class NamesExhausted(FileExistsError):
+    """Every candidate name up to the 99th retry already existed."""
+
+
+def step(name):
+    if CHECKPOINT is not None:
+        CHECKPOINT(name)
+
+
+def file_identity(path):
+    """(origin, sessionId, revision) from a Library file's x["codemyriad.io"], or None."""
+    try:
+        meeting = portable.read_meeting(str(path))
+    except (OSError, ValueError):
+        return None
+    x = (meeting.manifest or {}).get("x")
+    ours = x.get("codemyriad.io") if isinstance(x, dict) else None
+    if not isinstance(ours, dict) or ours.get("schema") != 1 or type(ours.get("revision")) is not int:
+        return None
+    return ours.get("origin"), ours.get("sessionId"), ours.get("revision")
+
+
+def find_file(layout, origin, session_id):
+    """The root file name that carries this identity (highest revision), or None. Reads headers only."""
+    best = None
+    for name in sorted(os.listdir(layout.root)):
+        path = layout.root / name
+        if name.startswith(".") or not name.endswith(".opus") or path.is_symlink() or not path.is_file():
+            continue
+        found = file_identity(path)
+        if found and found[:2] == (origin, session_id) and (best is None or found[2] > best[1]):
+            best = name, found[2]
+    return best[0] if best else None
+
+
+def _session(layout, entry):
+    return layout.resolve(entry["session"]) if entry.get("session") else None
+
+
+def _meeting(layout, entry):
+    """Apply entry["meetingUpdate"] to meeting.json at the new revision, idempotently.
+
+    meeting.json may have run ahead with transient writes (§11 Q9): the update
+    then lands on top with a higher revision, never lowering it.
+    """
+    directory = _session(layout, entry)
+    if directory is None:
+        return
+    if directory.is_symlink():
+        raise Kept("The session folder is a link; it was kept")
+    if not directory.exists():
+        return  # the session folder went since the entry was written: the file is complete on its own (§3)
+    update, revision = entry.get("meetingUpdate") or {}, entry["newRevision"]
+    with meeting_store.LOCK:
+        if entry.get("meetingRebuilt") and not (directory / "meeting.json").exists():
+            current = dict(update, revision=-1)  # rebuilt from the file's x: `update` is the whole meeting
+        else:
+            current = meeting_store.read_metadata(directory)
+        if current["revision"] >= revision and all(current.get(k) == v for k, v in update.items()):
+            return
+        value = dict(current, **update)
+        value["revision"] = revision if current["revision"] < revision else current["revision"] + 1
+        if not library_schema.valid(value):
+            raise ValueError("Invalid meeting metadata update")
+        meeting_store.atomic_json(directory / "meeting.json", value)
+
+
+def _discard(layout, entry):
+    """Drop an unpublished operation's own stage and temporaries, then retire it."""
+    for name in os.listdir(layout.staging):
+        if name.split(".", 1)[0] == entry["op"]:
+            (layout.staging / name).unlink(missing_ok=True)
+    fsutil.fsync_dir(layout.staging)
+    journal.retire(layout, entry["op"])
+
+
+def _identity(entry):
+    return entry["identity"]["origin"], entry["identity"]["sessionId"]
+
+
+def _matches(path, entry, revision):
+    if path.is_symlink():
+        return False
+    found = file_identity(path)
+    return found is not None and found == (*_identity(entry), revision)
+
+
+def _file_revision(entry):
+    """The revision the live file must have for this edit: its x revision, which meeting.json's
+    revision may have run ahead of (§11 Q9). Older entries only recorded baseRevision."""
+    return entry.get("fileRevision", entry.get("baseRevision"))
+
+
+def _case_alias(layout, entry, name, old):
+    """True when `name` differs from the meeting's own `old` name only under the casefold key, the
+    filesystem resolves it to that same file (a case-insensitive filesystem), that file is still
+    this meeting at the expected revision, and no other file sits at the temporary name."""
+    temporary = layout.root / entry["caseTemp"] if entry.get("caseTemp") else None
+    return (
+        old is not None
+        and name != old
+        and names.fold(name) == names.fold(old)
+        and fsutil.same_file(layout.root / name, layout.root / old)
+        and _matches(layout.root / old, entry, _file_revision(entry))
+        and (temporary is None or not temporary.exists() or fsutil.same_file(layout.root / old, temporary))
+    )
+
+
+def _move_old_aside(layout, entry):
+    """First journaled step of a case-only rename on a case-insensitive filesystem."""
+    entry.setdefault("caseTemp", f".cassini-case-{entry['op']}.opus")
+    journal.write(layout, entry)
+    step("before-case-temp")
+    old, temporary = layout.root / entry["oldPath"], layout.root / entry["caseTemp"]
+    if old.exists() and not temporary.exists():
+        fsutil.rename_noreplace(old, temporary)
+    elif old.exists() and fsutil.same_file(old, temporary):
+        old.unlink()  # the link() fallback linked it but did not unlink the old name
+    step("case-moved")
+    fsutil.fsync_dir(layout.root)
+    step("case-temp")
+
+
+def _place(layout, entry):
+    """No-replace rename of the stage into the root under a free name (§2, §11 Q5)."""
+    stage = layout.resolve(entry["stage"])
+    rejected = list(entry.get("rejected", ()))
+    spec = entry["name"]
+    old = entry.get("oldPath")
+    for _attempt in range(MAX_RETRIES + 1):
+        existing = os.listdir(layout.root) + rejected
+        own = old
+        if old is not None and any(names.fold(r) == names.fold(old) for r in rejected):
+            own = None  # the own name, or its casefold alias, was refused: the suffix must advance
+        name, _clean = names.file_name(spec["prefix"], spec["title"], spec["untitled"], existing, own)
+        if name == old:  # §11 Q5: a name equal to the meeting's own is never a target for no-replace
+            rejected.append(name)
+            continue
+        entry.update(newPath=name, rejected=rejected)
+        journal.write(layout, entry)
+        step("before-rename")
+        try:
+            fsutil.rename_noreplace(stage, layout.root / name)
+        except FileExistsError:
+            if _case_alias(layout, entry, name, old):
+                _move_old_aside(layout, entry)
+                continue  # the same name, now free
+            rejected.append(name)
+            continue
+        return name
+    entry["rejected"] = rejected
+    raise NamesExhausted(f"No free name after {MAX_RETRIES} retries")
+
+
+def _settle(layout, entry):
+    """Steps after the new file is in place; each is idempotent."""
+    fsutil.fsync_dir(layout.root)
+    fsutil.fsync_dir(layout.staging)
+    step("after-fsync")
+    _meeting(layout, entry)
+    step("after-meeting")
+    if entry["kind"] == "rename":
+        new = layout.root / entry["newPath"]
+        if not _matches(new, entry, entry["newRevision"]):
+            raise Kept("The new name does not hold this meeting; nothing was removed")
+        for name in (entry["oldPath"], entry.get("caseTemp")):
+            old = layout.root / name if name else None
+            if old is None or not (old.exists() or old.is_symlink()) or fsutil.same_file(old, new):
+                continue  # gone, or (case-insensitive filesystem) the old name now resolves to the new file
+            if not _matches(old, entry, _file_revision(entry)):
+                continue  # another file took the name: left alone, as delete does
+            old.unlink()
+            step("after-remove-old")
+        fsutil.fsync_dir(layout.root)
+    journal.retire(layout, entry["op"])
+
+
+def _stage_and_journal(layout, entry, write_stage):
+    """Journal the entry, write its stage, then mark it staged. Failures discard the stage."""
+    entry.update(phase="prepared", stage=f"{journal.META}/staging/{entry['op']}.opus.stage")
+    journal.write(layout, entry)
+    step("journaled")
+    stage = layout.resolve(entry["stage"])
+    try:
+        write_stage(stage)
+        fsutil.fsync_file(stage)
+        step("stage-written")
+        fsutil.fsync_dir(layout.staging)
+        entry["phase"] = "staged"
+        journal.write(layout, entry)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            _discard(layout, entry)
+        raise
+    step("staged")
+    return stage
+
+
+def _after_place_failure(layout, entry, error):
+    """Placing failed: if the new name already holds the stage, it is published (pending)."""
+    stage = layout.resolve(entry["stage"])
+    target = layout.root / entry["newPath"] if entry.get("newPath") else None
+    if target is not None and (not stage.exists() or fsutil.same_file(stage, target)) and target.exists():
+        raise PendingCommit(f"Published, but the operation did not finish: {error}") from error
+    if entry.get("caseTemp"):
+        # The original may already sit at its temporary name: keep the entry and the stage
+        # so that recovery finishes the rename (§11 step-3a Q7).
+        raise PendingCommit(f"A case-only rename did not finish: {error}") from error
+    with contextlib.suppress(OSError):
+        _discard(layout, entry)
+    raise error
+
+
+def _commit_new_name(layout, entry):
+    try:
+        _place(layout, entry)
+    except BaseException as error:
+        _after_place_failure(layout, entry, error)
+    step("renamed")
+    try:
+        _settle(layout, entry)
+    except BaseException as error:
+        raise PendingCommit(f"Published, but the operation did not finish: {error}") from error
+    return entry["newPath"]
+
+
+def publish_new(
+    layout, *, origin, session_id, base_revision, new_revision, name, meeting_update, write_stage=None, stage=None
+):
+    """§4.6: publish a new Library file. `name` = {prefix, title, untitled}; returns the file name.
+
+    `stage` is a finished, fsynced and validated `.cassini/staging/<op>.opus.stage`
+    built without the lock; it is journaled as staged. Otherwise `write_stage(path)`
+    builds it here, after the journal entry.
+    """
+    session = layout.session(origin, session_id)
+    entry = journal.new_entry(
+        "publish",
+        origin=origin,
+        session_id=session_id,
+        op=Path(stage).name.split(".", 1)[0] if stage is not None else None,
+        session=layout.relative(session),
+        oldPath=None,
+        newPath=None,
+        baseRevision=base_revision,
+        newRevision=new_revision,
+        name=dict(name),
+        meetingUpdate=dict(meeting_update),
+    )
+    if stage is None:
+        _stage_and_journal(layout, entry, write_stage)
+    else:
+        entry.update(phase="staged", stage=layout.relative(stage))
+        if layout.resolve(entry["stage"]) != layout.staging / f"{entry['op']}.opus.stage":
+            raise ValueError("A prebuilt stage must be .cassini/staging/<op>.opus.stage")
+        fsutil.fsync_file(stage)
+        fsutil.fsync_dir(layout.staging)
+        journal.write(layout, entry)
+        step("journaled")
+    return _commit_new_name(layout, entry)
+
+
+def commit_edit(
+    layout,
+    *,
+    origin,
+    session_id,
+    old_name,
+    base_revision,
+    new_revision,
+    name,
+    meeting_update,
+    write_stage,
+    file_revision=None,
+    meeting_rebuilt=False,
+):
+    """§6/§7: replace a published file with a rewritten stage, renaming it when `name` gives a new one.
+
+    `name` is None when the displayed title did not change (§11 Q10): the file is
+    replaced in place. Otherwise the new name is computed ignoring the meeting's own
+    current name; when it equals that name the edit is a replace too.
+    """
+    session = layout.session(origin, session_id)
+    if session.is_symlink():
+        raise Kept("The session folder is a link; it was kept")
+    kind = "replace"
+    if name is not None:
+        existing = os.listdir(layout.root)
+        candidate, _ = names.file_name(name["prefix"], name["title"], name["untitled"], existing, old_name)
+        kind = "replace" if candidate == old_name else "rename"
+    entry = journal.new_entry(
+        kind,
+        origin=origin,
+        session_id=session_id,
+        session=layout.relative(session) if session.is_dir() else None,
+        oldPath=old_name,
+        newPath=old_name if kind == "replace" else None,
+        baseRevision=base_revision,
+        fileRevision=base_revision if file_revision is None else file_revision,
+        newRevision=new_revision,
+        name=dict(name) if name else None,
+        meetingUpdate=dict(meeting_update),
+        meetingRebuilt=meeting_rebuilt,
+    )
+    stage = _stage_and_journal(layout, entry, write_stage)
+    if kind == "rename":
+        return _commit_new_name(layout, entry)
+    try:
+        _replace(layout, entry, stage)
+    except BaseException as error:
+        if stage.exists():
+            if isinstance(error, Kept):
+                raise
+            with contextlib.suppress(OSError):
+                _discard(layout, entry)
+            raise
+        raise PendingCommit(f"Replaced, but the operation did not finish: {error}") from error
+    step("replaced")
+    try:
+        _settle(layout, entry)
+    except BaseException as error:
+        raise PendingCommit(f"Replaced, but the operation did not finish: {error}") from error
+    return old_name
+
+
+def _replace(layout, entry, stage):
+    target = layout.root / entry["oldPath"]
+    if not _matches(target, entry, _file_revision(entry)):
+        entry["phase"] = "conflict"
+        journal.write(layout, entry)
+        raise Kept("The live file changed since this edit was staged; the edit was kept")
+    os.replace(stage, target)
+
+
+def native_trash(path):
+    """Move `path` to the Trash with Gio, as v1's move to Trash does (meeting_trash)."""
+    import gi
+
+    gi.require_version("Gio", "2.0")
+    from gi.repository import Gio
+
+    if not Gio.File.new_for_path(str(path)).trash(None):
+        raise OSError("Native Trash did not confirm success")
+
+
+TRASH = native_trash  # tests may replace it
+
+
+def delete(layout, *, origin, session_id, file_name=None):
+    """§7 delete: a durable intent, then the file and the session folder to the Trash, then retire.
+
+    The caller holds the lock. Pending entries for this meeting are reconciled first, then the
+    file is found again by identity (`file_name` is only the caller's view and is not trusted).
+    """
+    report = journal.replay(layout, identity=(origin, session_id))
+    if report.blocks(origin, session_id):
+        raise PendingCommit("An earlier change to this meeting has not finished")
+    # The replay may have renamed the file: delete what holds this meeting now, by identity.
+    del file_name
+    file_name = find_file(layout, origin, session_id)
+    session = layout.session(origin, session_id)
+    entry = journal.new_entry(
+        "delete",
+        origin=origin,
+        session_id=session_id,
+        phase="intent",
+        session=layout.relative(session),
+        oldPath=file_name,
+        newPath=None,
+    )
+    if file_name is not None:
+        path = layout.root / file_name
+        found = None if path.is_symlink() else file_identity(path)
+        entry["baseRevision"] = found[2] if found and found[:2] == (origin, session_id) else None
+    journal.write(layout, entry)
+    step("journaled")
+    _resume_delete(layout, entry)
+
+
+def _resume_delete(layout, entry):
+    if entry.get("oldPath"):
+        path = layout.root / entry["oldPath"]
+        # Only this meeting's own regular file goes to the Trash. A link, or another meeting
+        # that took the name after a crash, is left alone; the session still goes.
+        if not path.is_symlink() and path.exists():
+            found = file_identity(path)
+            if found is not None and found[:2] == _identity(entry):
+                TRASH(path)
+        fsutil.fsync_dir(layout.root)
+        step("file-trashed")
+    session = _session(layout, entry)
+    if session is not None and journal.identity_of(session) == _identity(entry):
+        if session.is_symlink():
+            raise Kept("The session folder is a link; it was kept")
+        if session.exists():
+            TRASH(session)
+        fsutil.fsync_dir(layout.sessions)
+        step("session-trashed")
+    journal.retire(layout, entry["op"])
+
+
+def resume(layout, entry):
+    """Finish or safely discard one journal entry (startup recovery, or before a retry)."""
+    kind, phase = entry["kind"], entry.get("phase")
+    if kind == "delete":
+        return _resume_delete(layout, entry)
+    if phase == "conflict":
+        raise Kept("A staged edit conflicts with the live file; it was kept")
+    stage = layout.resolve(entry["stage"])
+    if phase == "prepared":
+        # The stage was never confirmed complete and nothing was renamed: discard it.
+        return _discard(layout, entry)
+    if phase != "staged":
+        raise Kept("Unknown journal phase")
+    if kind == "replace":
+        if stage.exists():
+            _replace(layout, entry, stage)
+        elif not _matches(layout.root / entry["oldPath"], entry, entry["newRevision"]):
+            raise Kept("The replaced file is missing")
+        return _settle(layout, entry)
+    target = layout.root / entry["newPath"] if entry.get("newPath") else None
+    if stage.exists():
+        if target is not None and fsutil.same_file(stage, target):
+            # The link() fallback linked it already. Both names are one inode, so the new name
+            # must hold this meeting at the new revision before either copy goes.
+            if not _matches(target, entry, entry["newRevision"]):
+                raise Kept("The new name does not hold this meeting; nothing was removed")
+            stage.unlink()
+        else:
+            _place(layout, entry)
+    elif target is None or not _matches(target, entry, entry["newRevision"]):
+        raise Kept("The published file is missing or was replaced; nothing was removed")
+    _settle(layout, entry)

@@ -50,12 +50,17 @@ class ACMeter:
         return changed
 
 
+def disk_reserve(total):
+    """D7 Q5: the space Cassini never fills, the larger of 1 GiB and 2 % of the volume."""
+    return max(1024**3, math.ceil(total * 0.02))
+
+
 def space_left(path, byte_rate=48000 * 4, statvfs=None):
     import os
 
     value = (statvfs or os.statvfs)(path)
     total, free = value.f_blocks * value.f_frsize, value.f_bavail * value.f_frsize
-    reserve = max(1024**3, math.ceil(total * 0.02))
+    reserve = disk_reserve(total)
     return max(0, math.floor((free - reserve) / byte_rate / 60)), free <= reserve
 
 
