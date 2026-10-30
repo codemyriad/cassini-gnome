@@ -9,7 +9,6 @@ never substituted with a fake Background Apps entry or a tray implementation.
 import json
 import math
 import os
-import socket
 import subprocess
 import time
 import wave
@@ -98,13 +97,19 @@ def walk(node):
             yield from walk(child)
 
 
-def click(label):
+def click(label, *, dialog=None):
     def find():
         for node in walk(Atspi.get_desktop(0)):
             if (node.get_name() or "") != label:
                 continue
             if not node.get_state_set().contains(Atspi.StateType.SHOWING):
                 continue
+            if dialog:
+                parent = node.get_parent()
+                while parent and not (parent.get_name() == dialog and parent.get_role_name() == "dialog"):
+                    parent = parent.get_parent()
+                if parent is None:
+                    continue
             target = node
             while target:
                 iface = target.get_action_iface()
@@ -128,13 +133,22 @@ def listed(appid):
     return next((row for row in rows if row.get("app_id") == appid), None)
 
 
+def status_row(appid, *, recording=False):
+    row = listed(appid)
+    message = (row or {}).get("message", "")
+    matches = message.startswith("Recording,") if recording else message == "Ready to record browser meetings"
+    return row if matches else None
+
+
 def menu_item(appid, operation):
     # Exercise GNOME's real BackgroundAppMenuItem, including the close button
     # that dispatches org.gtk.Actions.Activate('quit'), not our app action helper.
     return shell(
         "(() => {const t=Main.panel.statusArea.quickSettings._backgroundApps.quickSettingsItems[0];"
         "const item=t._appsSection._getMenuItems().find(i=>i.app?.get_id()===" + json.dumps(appid + ".desktop") + ");"
-        "if(!item)return false;" + operation + ";return true;})()"
+        "if(!item)return false;Main.panel.statusArea.quickSettings.menu.open();t.menu.open();"
+        + operation
+        + ";return true;})()"
     )
 
 
@@ -145,32 +159,31 @@ def launch(appid):
 
 
 def broker_configure(appid):
-    folder = Path(os.environ["XDG_RUNTIME_DIR"])
-    if appid.endswith(".Devel"):
-        folder = folder / "app" / appid
-    path = folder / "cassini/browser-v2.sock"
-    until(path.exists, "real broker socket")
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-        sock.settimeout(5)
-        sock.connect(str(path))
-        sock.sendall(b'{"role":"app","action":"configure","autoRecord":true}\n')
-        with sock.makefile("rb") as stream:
-            response = json.loads(stream.readline())
-        assert not response.get("error") and response.get("autoRecord") is True, response
-    # Verify the live app has observed the real preference before closing it.
+    # Arm through the production switch: its accepted change acquires the app
+    # hold immediately, before the asynchronous broker write completes.
     action(appid, "preferences")
 
-    def armed():
-        for node in walk(Atspi.get_desktop(0)):
-            if (node.get_name() or "") == "Record every browser meeting automatically":
-                return node.get_state_set().contains(Atspi.StateType.CHECKED)
-        return False
+    def automatic():
+        return next(
+            (
+                node
+                for node in walk(Atspi.get_desktop(0))
+                if (node.get_name() or "") == "Record every browser meeting automatically"
+                and node.get_role_name() == "switch"
+                and node.get_state_set().contains(Atspi.StateType.SENSITIVE)
+            ),
+            None,
+        )
 
-    until(armed, "automatic-recording preference reflected by the running app")
-    # Close Preferences alone, keeping the Library.
-    shell(
-        "(() => {const C=imports.gi.Clutter; global._cassiniQAKeyboard ??= C.get_default_backend().get_default_seat().create_virtual_device(C.InputDeviceType.KEYBOARD_DEVICE); const d=global._cassiniQAKeyboard; d.notify_keyval(global.get_current_time()*1000,C.KEY_Escape,C.KeyState.PRESSED); d.notify_keyval(global.get_current_time()*1000+5000,C.KEY_Escape,C.KeyState.RELEASED); return true;})()"
+    switch = until(automatic, "automatic-recording switch ready")
+    if not switch.get_state_set().contains(Atspi.StateType.CHECKED):
+        click("Record every browser meeting automatically", dialog="Preferences")
+    until(
+        lambda: automatic() and automatic().get_state_set().contains(Atspi.StateType.CHECKED),
+        "automatic-recording change accepted",
     )
+    # Close the real sheet's accessible button, not its parent MetaWindow.
+    click("Close", dialog="Preferences")
 
     def dismissed():
         return not any(
@@ -179,7 +192,77 @@ def broker_configure(appid):
             for n in walk(Atspi.get_desktop(0))
         )
 
-    until(dismissed, "Preferences dismissed")
+    try:
+        until(dismissed, "Preferences dismissed")
+    except AssertionError:
+        for node in walk(Atspi.get_desktop(0)):
+            if node.get_name() in ("Close", "Preferences", "Record every browser meeting automatically"):
+                ancestors = []
+                parent = node
+                while parent:
+                    ancestors.append((parent.get_name(), parent.get_role_name()))
+                    parent = parent.get_parent()
+                print("PREFS ORACLE", node.get_state_set().get_states(), ancestors, flush=True)
+        call(
+            "org.gnome.Shell.Screenshot",
+            "/org/gnome/Shell/Screenshot",
+            "org.gnome.Shell.Screenshot",
+            "Screenshot",
+            GLib.Variant("(bbs)", (False, False, "/out/preferences-debug.png")),
+        )
+        raise
+
+
+def host_status_probe(appid):
+    # Exercise the *installed* BackgroundRecording implementation, not source
+    # imports or an identity-only stand-in. A separate peer needs its own grant.
+    program = r"""
+import json,logging,sys
+from gi.repository import GLib
+sys.path.insert(0,'/usr/share/cassini-viewer')
+from cassini_viewer.background_recording import BackgroundRecording
+messages=[]
+class Capture(logging.Handler):
+ def emit(self,record): messages.append(record.getMessage())
+logger=logging.getLogger('cassini_viewer.background_recording')
+logger.setLevel(logging.INFO);logger.addHandler(Capture())
+portal=BackgroundRecording(sys.argv[1],native=True)
+loop=GLib.MainLoop();result={}
+def published(ok):
+ result['statusAccepted']=ok;loop.quit()
+def permitted(ok):
+ result['permissionGranted']=ok
+ if ok: portal.status('Ready to record browser meetings',published)
+ else: loop.quit()
+portal.request(permitted)
+GLib.timeout_add_seconds(15,lambda:loop.quit() or False)
+loop.run();portal.close();result['messages']=messages
+print(json.dumps(result))
+"""
+    report = json.loads(subprocess.check_output(["python3", "-c", program, appid], text=True, timeout=20))
+    assert report.get("permissionGranted") is True, report
+    assert "statusAccepted" in report, report
+    if not report["statusAccepted"]:
+        assert any(
+            "Only sandboxed applications can set background status" in message for message in report["messages"]
+        ), report
+    return report
+
+
+def idle_notifications():
+    return shell(
+        "Main.messageTray.getSources().flatMap(s=>s.notifications??[]).filter(n=>n.title==='Cassini is still running').length"
+    )
+
+
+def screenshot(name):
+    call(
+        "org.gnome.Shell.Screenshot",
+        "/org/gnome/Shell/Screenshot",
+        "org.gnome.Shell.Screenshot",
+        "Screenshot",
+        GLib.Variant("(bbs)", (False, False, str(OUT / name))),
+    )
 
 
 def recording(root):
@@ -246,10 +329,18 @@ for appid in ("com.gocassini.Viewer", "com.gocassini.Viewer.Devel"):
     until(lambda appid=appid: not windows(appid), "last window closed")
     assert owner(appid), "Automatic recording did not keep the process alive"
     case = {"app": appid, "originalPID": original_pid}
-    if flatpak:
-        row = until(lambda appid=appid: listed(appid), "Flatpak in real Background Apps")
+    probe = None if flatpak else host_status_probe(appid)
+    if probe:
+        case["hostPortal"] = probe
+    can_list = flatpak or probe["statusAccepted"]
+    if can_list:
+        row = until(lambda appid=appid: status_row(appid), "watching status in real Background Apps")
         assert row.get("message") == "Ready to record browser meetings", row
         case["idleStatus"] = row["message"]
+        until(idle_notifications, "one-time still-running notification")
+        assert idle_notifications() == 1
+        until(lambda appid=appid: menu_item(appid, "true"), "Background Apps menu")
+        screenshot("background-apps-idle.png")
         until(lambda appid=appid: menu_item(appid, "item.activate(null)"), "Background Apps Open")
         until(lambda appid=appid: windows(appid), "Library reopened from Background Apps")
         assert pid(appid) == original_pid
@@ -263,7 +354,7 @@ for appid in ("com.gocassini.Viewer", "com.gocassini.Viewer.Devel"):
         launch(appid)
         assert pid(appid) == original_pid
     case["appGridReusesProcess"] = True
-    if flatpak:
+    if can_list:
         # Both native activation routes must work, even after the last window
         # has gone and only automatic recording keeps the process alive.
         close_window(appid)
@@ -271,13 +362,15 @@ for appid in ("com.gocassini.Viewer", "com.gocassini.Viewer.Devel"):
         until(lambda appid=appid: listed(appid), "second Background Apps listing")
         launch(appid)
         assert pid(appid) == original_pid
+        assert idle_notifications() == 1
+        case["oneTimeNotification"] = True
     action(appid, "record")
     manifest = until(lambda: recording(root), "actual microphone frames")
     case["meeting"] = manifest.parent.name
     close_window(appid)
     click("Keep Recording in Background")
     until(lambda appid=appid: not windows(appid), "recording hidden")
-    if flatpak:
+    if can_list:
         row = until(
             lambda appid=appid: (
                 listed(appid) if (listed(appid) or {}).get("message", "").startswith("Recording,") else None
@@ -285,6 +378,8 @@ for appid in ("com.gocassini.Viewer", "com.gocassini.Viewer.Devel"):
             "live recording Background Apps status",
         )
         case["recordingStatus"] = row["message"]
+        until(lambda appid=appid: menu_item(appid, "true"), "recording Background Apps menu")
+        screenshot("background-apps-recording.png")
         until(
             lambda appid=appid: menu_item(appid, "item.get_last_child().emit('clicked', 1)"),
             "Background Apps close button",
