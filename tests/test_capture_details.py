@@ -140,7 +140,7 @@ def test_large_transcripts_keep_the_header_language_without_loading_words(meetin
         stream.write('"large-unused-word-array",' * 100000)
         stream.write('"last"]}')
     report = read_details(meeting)
-    assert dict(report.writing)["Language"] == "en"
+    assert dict(report.writing)["Language"] == "English"
 
 
 def test_fractional_known_offsets_are_displayed_rather_than_losing_the_span(meetings):
@@ -167,3 +167,24 @@ def test_gap_frames_without_a_saved_rate_never_claim_zero_seconds(meetings):
     session["tracks"][0].pop("sampleRate")
     write_json(path, session)
     assert dict(read_details(meeting).health)["Gaps"] == "4,000 frames · duration not recorded"
+
+
+def test_live_writing_facts_wait_for_the_recording_to_finish(meetings):
+    report = read_details(replace(meetings["fallback"], lifecycle="recording"))
+    assert all(value == "After the recording" for _name, value in report.writing)
+
+
+def test_native_system_sound_does_not_claim_a_browser_was_missing(meetings):
+    meeting = meetings["fallback"]
+    native = replace(meeting, capture_source="gnome")
+    session = json.loads((meeting.directory / "session.json").read_text())
+    session["events"] = [dict(type="othersSource", atMs=0, source="system", reason="missing")]
+    native = replace(native, tracks=tuple(t for t in native.tracks if t.kind in ("microphone", "system")))
+    assert all("Browser" not in span.reason and "browser" not in span.reason for span in timeline(native, session))
+
+
+def test_native_unavailable_health_fields_are_not_shown(meetings):
+    health = dict(read_details(meetings["no-events"]).health)
+    assert set(health) == {"Microphone offset"}
+    # Actual saved counters remain useful, even for native captures.
+    assert "Gaps" in dict(read_details(meetings["microphone"]).health)

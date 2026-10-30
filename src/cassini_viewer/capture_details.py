@@ -19,6 +19,37 @@ from .recording_session import strict_json
 from .session_events import read_events
 
 UNKNOWN = "Not recorded for this meeting"
+BROWSER_SOURCES = {"chromium", "chrome", "firefox", "browser", "browser-host", "safari"}
+LANGUAGES = {
+    "bg": "Bulgarian",
+    "cs": "Czech",
+    "da": "Danish",
+    "de": "German",
+    "el": "Greek",
+    "en": "English",
+    "es": "Spanish",
+    "et": "Estonian",
+    "fi": "Finnish",
+    "fr": "French",
+    "hr": "Croatian",
+    "hu": "Hungarian",
+    "it": "Italian",
+    "lt": "Lithuanian",
+    "lv": "Latvian",
+    "mt": "Maltese",
+    "nb": "Norwegian Bokmål",
+    "nl": "Dutch",
+    "nn": "Norwegian Nynorsk",
+    "no": "Norwegian",
+    "pl": "Polish",
+    "pt": "Portuguese",
+    "ro": "Romanian",
+    "ru": "Russian",
+    "sk": "Slovak",
+    "sl": "Slovenian",
+    "sv": "Swedish",
+    "uk": "Ukrainian",
+}
 JSON_LIMIT = 1024 * 1024
 MIC_BUDGET = 512 * 1024
 REASONS = {
@@ -119,7 +150,7 @@ def _method(tracks, session, capture_source):
             )
         ) or "Microphone input"
     sources = []
-    browser_media = capture_source in ("chromium", "chrome", "firefox", "browser", "browser-host", "safari")
+    browser_media = capture_source in BROWSER_SOURCES
     browser = [t for t in tracks if t.kind in ("remote", "tab") or t.kind == "media" and browser_media]
     if browser:
         count = len({t.source_track_id or t.id for t in browser})
@@ -219,7 +250,8 @@ def timeline(meeting, session):
                         matches = (event["source"] == "system" and all(t.kind == "system" for t in active)) or (
                             event["source"] == "browser" and all(t.kind in ("remote", "tab", "media") for t in active)
                         )
-                        if matches:
+                        browser_reason = event["reason"] in ("missing", "lost", "restored")
+                        if matches and (not browser_reason or meeting.capture_source in BROWSER_SOURCES):
                             reason = REASONS.get(event["reason"], "")
             elif off:
                 source = "Not recorded"
@@ -332,12 +364,15 @@ def read_details(meeting):
             notes.append(
                 "Source-change events were not recorded. The timeline uses saved audio tracks; the reason for a source change is unknown."
             )
-        health = (
-            ("Gaps", _counter(raw_tracks, "gapFrames")),
-            ("Dropped audio", _counter(raw_tracks, "droppedFrames")),
-            ("Reported issue", clean(session.get("problemKind")) or UNKNOWN),
-            ("Microphone offset", _offset(fd, meeting)),
-        )
+        health = []
+        for title, field in (("Gaps", "gapFrames"), ("Dropped audio", "droppedFrames")):
+            if meeting.capture_source != "gnome" or any(field in t for t in raw_tracks):
+                health.append((title, _counter(raw_tracks, field)))
+        problem = clean(session.get("problemKind"))
+        if problem or meeting.capture_source != "gnome":
+            health.append(("Reported issue", problem or UNKNOWN))
+        health.append(("Microphone offset", _offset(fd, meeting)))
+        health = tuple(health)
     finally:
         os.close(fd)
     stored = meeting.metadata.get("transcript") or {}
@@ -367,14 +402,17 @@ def read_details(meeting):
             separation = "Nemotron · " + str(len(voices)) + " voices"
         else:
             separation = "Nemotron · voice count unavailable"
+    language = LANGUAGES.get(language.lower().replace("_", "-").split("-", 1)[0], UNKNOWN)
     writing = (
         ("Model", model),
-        ("Language", language if language and language != "und" else UNKNOWN),
+        ("Language", language),
         ("Time taken", UNKNOWN),
         ("Speech segments", UNKNOWN),
         ("Speaker separation", separation or UNKNOWN),
         ("Saved voices recognised", ", ".join(recognised) or "None recorded"),
     )
+    if meeting.lifecycle in ("recording", "saving"):
+        writing = tuple((name, "After the recording") for name, _value in writing)
     return Report(
         clean(meeting.title, 500),
         str(meeting.directory),

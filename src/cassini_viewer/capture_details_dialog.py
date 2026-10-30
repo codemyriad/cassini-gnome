@@ -21,7 +21,7 @@ def label(value, *classes, **kwargs):
 
 class RecordingDetailsDialog(Adw.Dialog):
     def __init__(self, window, meeting):
-        super().__init__(title="Recording details", content_width=900, content_height=620)
+        super().__init__(title="Recording details", content_width=900, follows_content_size=True)
         self.window, self.meeting = window, meeting
         self.external = window._external_meeting
         self.closed = self.busy = False
@@ -37,7 +37,9 @@ class RecordingDetailsDialog(Adw.Dialog):
         toolbar.add_top_bar(header)
         self.body = column(18, margin_start=24, margin_end=24, margin_top=12, margin_bottom=18)
         self.body.append(label("Reading recording details…", "dim-label"))
-        self.scroller = Gtk.ScrolledWindow(child=self.body, hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
+        self.scroller = Gtk.ScrolledWindow(
+            child=self.body, hscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_height=True
+        )
         toolbar.set_content(self.scroller)
         footer = column(8, margin_start=24, margin_end=24, margin_top=12, margin_bottom=18)
         footer.append(label("Files", "heading"))

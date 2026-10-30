@@ -66,8 +66,9 @@ import gi  # noqa: E402
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
+gi.require_version("GdkX11", "4.0")
 from details_fixture import build_library, build_many_spans, write_json  # noqa: E402
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, GdkX11, Gio, GLib, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
 from cassini_viewer.library import LibraryScanner  # noqa: E402
@@ -100,7 +101,17 @@ def shot(window, name):
     assert texture.save_to_png(str(target))
 
 
+def escape(dialog):
+    # Real XTest events in this run's private Xvfb, through GTK's dialog shortcut.
+    xid = GdkX11.X11Surface.get_xid(dialog.window.get_surface())
+    dialog.copy_button.grab_focus()
+    subprocess.run(["xdotool", "windowfocus", "--sync", str(xid)], check=True)
+    subprocess.run(["xdotool", "key", "--clearmodifiers", "Escape"], check=True)
+    until(lambda: dialog.closed)
+
+
 refresh_checks = []
+heights = {}
 
 
 def check_stable_refreshes(dialog, *, changing):
@@ -202,6 +213,7 @@ with tempfile.TemporaryDirectory() as temporary:
             assert not window._trash_key(None, Gdk.KEY_Delete, 0, Gdk.ModifierType(0))
             assert paths[key].is_dir() and not app.meeting_trash.hides(paths[key])
         shot(window, {"fallback": "browser-fallback", "microphone": "microphone", "no-events": "no-events"}[key])
+        heights[key] = dialog.get_child().get_height()
         body = dialog.report.plain_text()
         if key == "fallback":
             assert dialog.report.live and "3 audio streams" in body
@@ -228,7 +240,10 @@ with tempfile.TemporaryDirectory() as temporary:
             clipboard.read_text_async(None, lambda c, r: copied.append(c.read_text_finish(r)))
             until(lambda: bool(copied))
             assert copied[-1] == body
-        dialog.close()
+        if key in ("fallback", "microphone"):
+            escape(dialog)
+        else:
+            dialog.close()
         until(lambda dialog=dialog: dialog.closed)
         assert not dialog.timer
         end_details()
@@ -268,6 +283,8 @@ with tempfile.TemporaryDirectory() as temporary:
     assert len(dialog.report.spans) >= 40
     check_stable_refreshes(dialog, changing=False)
     shot(window, "many-spans")
+    heights["many-spans"] = dialog.get_child().get_height()
+    assert heights["microphone"] < heights["many-spans"], heights
     dialog.close()
     until(lambda: dialog.closed)
     end_details()
@@ -288,7 +305,8 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: dialog.report is not None and dialog.report.live)
     check_stable_refreshes(dialog, changing=True)
     shot(window, "live-generated")
-    dialog.close()
+    escape(dialog)
+    assert native.pipeline is not None and native.session.manifest["state"] == "recording"
     until(lambda: dialog.closed)
     end_details()
     app.stop_native()
@@ -322,5 +340,7 @@ with tempfile.TemporaryDirectory() as temporary:
     window.destroy()
     app.quit()
 target = Path(os.environ["CASSINI_SCREENSHOT_OUT"]).with_name("recording-details-checks.json")
-target.write_text(json.dumps(dict(refreshes=refresh_checks), indent=2) + "\n")
+target.write_text(
+    json.dumps(dict(refreshes=refresh_checks, contentHeights=heights, escapeLiveAndSaved=True), indent=2) + "\n"
+)
 print("PASS Details: menu/link, read-only facts, many spans, live capture, stable refresh/focus/scroll and screenshots")
