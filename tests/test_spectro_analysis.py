@@ -6,6 +6,7 @@ import ctypes.util
 import hashlib
 import json
 import math
+import sys
 import wave
 from pathlib import Path
 
@@ -22,27 +23,30 @@ def real_fft():
         pytest.skip("Install GStreamer base for the required recording/GUI gate")
 
 
-def test_shared_vectors_have_unchanged_published_hashes():
-    for name, digest in json.loads((ROOT / "UPSTREAM.json").read_text())["files"].items():
+def test_vectors_match_their_pinned_inputs_and_reference_generated_hashes():
+    pins = json.loads((ROOT / "UPSTREAM.json").read_text())
+    for name, digest in dict(pins["files"], **pins["inputs"]).items():
         assert hashlib.sha256((ROOT / name).read_bytes()).hexdigest() == digest
 
 
 @pytest.mark.parametrize("chunk", [480, 8192])
-def test_streaming_real_fft_matches_every_frozen_raw_and_display_cell(chunk):
-    golden = json.loads((ROOT / "spectro-v1.golden.json").read_text())
+@pytest.mark.parametrize("name", ["spectro-v1", "dc-quiet-jfk-v1"])
+def test_streaming_real_fft_matches_every_frozen_raw_and_display_cell(chunk, name):
+    golden = json.loads((ROOT / (name + ".golden.json")).read_text())
     assert golden["spec"] == "cassini-spectro-v1" and golden["firstFrame"] == 2
     assert golden["edgesHz"] == [round(edge, 3) for edge in EDGES]
     track, raw, display = Track(), Quantizer(release=math.inf), Quantizer()
     actual_raw, actual_display, slots = [], [], []
-    with wave.open(str(ROOT / "spectro-v1.wav")) as stream:
+    path = ROOT / (name + ".wav") if name == "spectro-v1" else ROOT.parent / "dc" / (name + ".wav")
+    with wave.open(str(path)) as stream:
         while data := stream.readframes(chunk):
             for slot, powers in track.feed(data):
                 slots.append(slot)
                 actual_raw.append(list(raw.column(slot, powers)))
                 actual_display.append(list(display.column(slot, powers)))
-    assert slots == list(range(1, 399))
+    assert slots == list(range(1, len(golden["raw"]) + 1))
     for kind, actual in (("raw", actual_raw), ("display", actual_display)):
-        assert len(actual) == len(golden[kind]) == 398
+        assert len(actual) == len(golden[kind])
         delta = [
             abs(a - b)
             for row, expected in zip(actual, golden[kind], strict=True)
@@ -50,8 +54,22 @@ def test_streaming_real_fft_matches_every_frozen_raw_and_display_cell(chunk):
         ]
         assert max(delta) <= 3
         assert sum(value <= 1 for value in delta) / len(delta) >= 0.99
-    assert all(not any(row) for row in actual_raw[:48])
-    assert all(not any(row) for row in actual_raw[200:248])
+    if name == "spectro-v1":
+        assert all(not any(row) for row in actual_raw[:48])
+        assert all(not any(row) for row in actual_raw[200:248])
+    # Any whole constant frame (zero or DC offset) must be exactly empty.
+    with wave.open(str(path)) as stream:
+        samples = array.array("h", stream.readframes(stream.getnframes()))
+    if sys.byteorder != "little":
+        samples.byteswap()
+    constant = 0
+    for index, row in enumerate(actual_raw):
+        end = (index + 3) * 960
+        frame = samples[end - 2048 : end]
+        if min(frame) == max(frame):
+            constant += 1
+            assert not any(row)
+    assert constant > 0
     assert len(track.history) == track.fft.size
 
 
@@ -95,15 +113,22 @@ def test_no_frame_crosses_a_gap_and_release_restarts_after_it():
         track.feed(b"x")
 
 
-def test_unselected_tracks_keep_bounded_warm_history_without_fft(monkeypatch):
-    track = Track()
-    powers, called = track.fft.powers, []
-    monkeypatch.setattr(track.fft, "powers", lambda frame: (called.append(True), powers(frame))[1])
+@pytest.mark.parametrize("channels", [1, 2])
+def test_unselected_tracks_copy_without_conversion_or_fft_and_resume_warm(monkeypatch, channels):
+    track, control = Track(channels=channels), Track(channels=channels)
+    mono = track._mono
+    monkeypatch.setattr(track, "_mono", lambda *_: pytest.fail("Unselected PCM was converted"))
+    pcm = tone(8192, channels=channels)
     for _ in range(10):
-        assert not track.feed(tone(8192), selected=False)
-        assert len(track.history) == track.fft.size
-    assert not called
-    assert track.feed(tone(960)) and called
+        assert not track.feed(pcm, selected=False)
+        control.feed(pcm)
+        assert len(track.raw_history) == max(track.size, track.rate // 10) * channels * 2
+        assert not track.history and track._fft is None
+    monkeypatch.setattr(track, "_mono", mono)
+    resumed = tone(960, channels=channels)
+    assert track.feed(resumed) == control.feed(resumed)
+    assert track.feed(tone(960, channels=channels), selected=False) == []
+    assert track._fft is None
 
 
 def test_other_rates_follow_the_published_frame_table_and_stationary_power():

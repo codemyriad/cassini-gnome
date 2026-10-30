@@ -27,6 +27,7 @@ class SourceTrack:
     arrival_ms: float
     chunk_ms: float = 20
     progress: int = -1
+    automatic_level: bool = False
 
 
 class SpectroSource:
@@ -64,21 +65,24 @@ class SpectroSource:
                 self.problem = str(error)
                 LOG.exception("Recording sound indicator failed; saved audio is retained")
 
-    def declare(self, identifier, *, kind, now_ms=0):
+    def declare(self, identifier, *, kind, rate=48000, now_ms=0):
         with self.lock:
             if identifier in self.retired or len(self.known) >= 64 and identifier not in self.known:
                 return
             side = "me" if kind in ("microphone", "local") else "others"
-            self.known[identifier] = side
+            chunk_ms = 8192 * 1000 / rate if kind in ("remote", "tab", "media", "local") else 20
+            self.known[identifier] = (side, chunk_ms)
             if self.active and identifier not in self.tracks:
-                self.tracks[identifier] = SourceTrack(None, side, 0, now_ms)
+                self.tracks[identifier] = SourceTrack(None, side, 0, now_ms, chunk_ms=chunk_ms)
                 if sum(self.tracks[key].side == side for key in self.selected) < 3:
                     self.selected.add(identifier)
 
     def subscribe(self, now_ms=0):
         with self.lock:
             if not self.subscribers:
-                self.tracks = {key: SourceTrack(None, side, 0, now_ms) for key, side in self.known.items()}
+                self.tracks = {
+                    key: SourceTrack(None, side, 0, now_ms, chunk_ms=chunk) for key, (side, chunk) in self.known.items()
+                }
                 self.next_selection_ms = now_ms
             subscription = Subscription()
             self.subscribers.add(subscription)
@@ -106,14 +110,35 @@ class SpectroSource:
             self.tracks.pop(identifier, None)
             self.selected.discard(identifier)
 
-    def _choose(self, now_ms):
+    def _choose(self, now_ms, current_id, current_data):
         if now_ms < self.next_selection_ms:
             return
         self.next_selection_ms = now_ms + 1000
+        from .recording_details import pcm_ac_level
+
+        for key, track in self.tracks.items():
+            analysis = track.analysis
+            if track.automatic_level and analysis is not None:
+                width = analysis.rate // 10 * analysis.channels * 2
+                if key == current_id:
+                    tail = current_data[-width:]
+                    if len(tail) < width:
+                        tail = bytes(analysis.raw_history[-(width - len(tail)) :]) + tail
+                else:
+                    tail = analysis.raw_history[-width:]
+                track.level = pcm_ac_level(tail, analysis.channels) if tail else 0
         self.selected = set()
         for side in self.pending:
             candidates = [(key, value) for key, value in self.tracks.items() if value.side == side]
-            candidates.sort(key=lambda pair: (-pair[1].level, pair[0]))
+            # Real digitally silent PCM beats a never-arriving placeholder, so
+            # silence has a trough rather than being shown as missing audio.
+            candidates.sort(
+                key=lambda pair: (
+                    -pair[1].level,
+                    -(pair[0] == current_id or bool(pair[1].analysis and pair[1].analysis.total)),
+                    pair[0],
+                )
+            )
             self.selected.update(key for key, _track in candidates[:3])
 
     def feed(self, identifier, data, offset_ms, *, rate, channels, kind, start_ms, now_ms, level, gap_frames=0):
@@ -123,20 +148,27 @@ class SpectroSource:
             started = time.perf_counter_ns()
             self.calls += 1
             self.now_ms = now_ms
-            self.declare(identifier, kind=kind, now_ms=now_ms)
+            self.declare(identifier, kind=kind, rate=rate, now_ms=now_ms)
             track = self.tracks.get(identifier)
             if track is None:
                 return
-            track.level, track.arrival_ms = level, now_ms
-            self._choose(now_ms)
+            track.automatic_level = level is None
+            if level is not None:
+                track.level = level
+            track.arrival_ms = now_ms
             if track.analysis is None:
                 track.analysis = Track(rate, channels, start_ms=start_ms)
             analysis = track.analysis
+            self._choose(now_ms, identifier, data)
             expected_ms = start_ms + analysis.total * 1000 / rate
             missing = max(0, round((offset_ms - expected_ms) * rate / 1000))
             gap = max(gap_frames, missing)
             track.chunk_ms = len(data) * 1000 / (channels * 2 * rate)
-            rows = analysis.feed(data, selected=identifier in self.selected, gap_frames=gap)
+            selected = identifier in self.selected
+            rows = analysis.feed(data, selected=selected, gap_frames=gap)
+            if not selected:
+                self.analysis_ns += time.perf_counter_ns() - started
+                return
             complete = (analysis.total // analysis.hop) * analysis.hop
             position = analysis.slot_origin + Fraction(complete * 50, rate)
             track.progress = position.numerator // position.denominator
@@ -173,7 +205,7 @@ class SpectroSource:
                 for key, track in self.tracks.items()
                 if key in self.selected
                 and track.side == side
-                and now_ms - track.arrival_ms <= max(100, track.chunk_ms * 2.5)
+                and now_ms - track.arrival_ms <= min(1800, max(100, track.chunk_ms * 2.5))
             ]
             if not pending:
                 continue

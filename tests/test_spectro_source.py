@@ -147,8 +147,8 @@ def test_declared_missing_source_does_not_hold_a_healthy_track_forever():
     sub = source.subscribe()
     feed(source, "one", now=100)
     assert not source.drain(sub, 100)["others"]
-    feed(source, "one", offset=100, now=200)
-    assert source.drain(sub, 200)["others"]
+    feed(source, "one", offset=100, now=600)
+    assert source.drain(sub, 600)["others"]
 
 
 def test_finishing_flushes_last_accepted_columns_and_prevents_more_analysis():
@@ -164,3 +164,50 @@ def test_finishing_flushes_last_accepted_columns_and_prevents_more_analysis():
     before = source.calls, source.analysed
     feed(source, "one", offset=100, now=200)
     assert (source.calls, source.analysed) == before
+
+
+def test_first_browser_packets_mix_before_sealing_even_after_100_ms():
+    source = SpectroSource()
+    for identifier in ("a", "b", "c"):
+        source.declare(identifier, kind="remote", rate=48000)
+    sub = source.subscribe()
+    feed(source, "a", now=200, frames=8192)
+    assert not source.drain(sub, 200)["others"]
+    feed(source, "b", now=200, frames=8192)
+    assert not source.drain(sub, 200)["others"]
+    feed(source, "c", now=200, frames=8192)
+    assert source.drain(sub, 200)["others"] and source.late == 0
+
+
+def test_browser_selection_uses_recent_100_ms_ac_and_ignores_dc():
+    source = SpectroSource()
+    for identifier in ("dc", "a", "b", "c"):
+        source.declare(identifier, kind="remote")
+    source.subscribe()
+    dc = (-16000).to_bytes(2, "little", signed=True) * 4800
+    source.feed("dc", dc, 0, rate=48000, channels=1, kind="remote", start_ms=0, now_ms=100, level=None)
+    for identifier, amplitude in (("a", 100), ("b", 200), ("c", 300)):
+        source.feed(
+            identifier,
+            tone(4800, amplitude=amplitude),
+            0,
+            rate=48000,
+            channels=1,
+            kind="remote",
+            start_ms=0,
+            now_ms=100,
+            level=None,
+        )
+    source.feed("dc", dc, 100, rate=48000, channels=1, kind="remote", start_ms=0, now_ms=1100, level=None)
+    assert source.selected == {"a", "b", "c"}
+    assert source.tracks["dc"].level == 0
+
+
+def test_real_silent_pcm_is_selected_before_never_arriving_slots():
+    source = SpectroSource()
+    for identifier in ("a-placeholder", "b-placeholder", "c-placeholder", "z-real"):
+        source.declare(identifier, kind="remote")
+    source.subscribe()
+    source.feed("z-real", bytes(9600), 0, rate=48000, channels=1, kind="remote", start_ms=0, now_ms=100, level=None)
+    assert "z-real" in source.selected
+    assert source.analysed > 0

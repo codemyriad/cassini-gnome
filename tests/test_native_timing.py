@@ -88,6 +88,13 @@ def test_pinned_gnome_gap_fixture_through_native_input_callbacks(tmp_path, monke
     session.manifest["createdAt"] = expected["createdAt"]
     recorder = NativeRecorder()
     recorder.session = session
+    picture = recorder.spectrogram.subscribe()
+    columns = {"me": [], "others": []}
+
+    def collect():
+        for side, rows in recorder.spectrogram.drain(picture, 0).items():
+            columns[side].extend(rows)
+
     try:
         for track in expected["tracks"]:
             session.add_track(
@@ -102,15 +109,23 @@ def test_pinned_gnome_gap_fixture_through_native_input_callbacks(tmp_path, monke
             with wave.open(str(FIXTURE / track["file"])) as audio:
                 first = audio.readframes(8000)
                 assert feed(recorder, track["id"], first, 0) == Gst.FlowReturn.OK
+                collect()
                 if track["kind"] == "system":
                     assert audio.readframes(8000) == bytes(8000 * 4)
                     assert feed(recorder, track["id"], audio.readframes(8000), 2_000_000_000) == Gst.FlowReturn.OK
+                    collect()
                 else:
                     for second in (1, 2):
                         assert (
                             feed(recorder, track["id"], audio.readframes(8000), second * 1_000_000_000)
                             == Gst.FlowReturn.OK
                         )
+                        collect()
+        assert recorder.spectrogram.problem is None
+        assert columns["me"] and columns["others"]
+        assert any(50 <= slot < 100 for slot, _flags, _bands in columns["me"])
+        assert not any(50 <= slot < 100 for slot, _flags, _bands in columns["others"])
+        assert any(slot >= 100 for slot, _flags, _bands in columns["others"])
         session.finish()
         assert session.manifest == expected
         for track in expected["tracks"]:

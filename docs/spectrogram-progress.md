@@ -14,14 +14,14 @@ pinned in tests/spectro-vectors/UPSTREAM.json.
 
 The source owns bounded observers and per-side pending/output queues, chooses
 at most three tracks per side, sums linear powers before quantisation, keeps
-unselected histories warm and drops histories when the last observer leaves.
+unselected raw histories warm without conversion or FFT allocation and drops histories when the last observer leaves.
 The native tap receives only committed selected PCM after native clock mapping,
 after releasing the WAV/selection lock. It excludes readiness PCM, suppresses
 retired callbacks and never turns a picture failure into a recording failure.
 The tests compare saved PCM byte for byte, including an injected DSP failure.
 
 Current validation: all seven Meson checks, 1,140 source tests and Ruff pass
-(one unavailable-locale skip); 36 targeted DSP/native tests pass. All tests use
+(one unavailable-locale skip); 38 targeted DSP/native tests pass. All tests use
 a private Ubuntu 26.04 container, without a desktop or audio-device connection.
 
 ## Next implementation work

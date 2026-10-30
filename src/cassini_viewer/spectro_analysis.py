@@ -64,11 +64,15 @@ def weights(rate, size):
     return result
 
 
+def frame_size(rate):
+    if type(rate) is not int or not 8000 <= rate <= 192000:
+        raise ValueError("Invalid spectrogram rate")
+    return 1 << ((rate * 2048 + 47999) // 48000 - 1).bit_length()
+
+
 class FFT:
     def __init__(self, rate):
-        if type(rate) is not int or not 8000 <= rate <= 192000:
-            raise ValueError("Invalid spectrogram rate")
-        self.size = 1 << ((rate * 2048 + 47999) // 48000 - 1).bit_length()
+        self.size = frame_size(rate)
         self.lib = library()
         self.handle = self.lib.gst_fft_f32_new(self.size, False)
         if not self.handle:
@@ -117,17 +121,24 @@ class FFT:
 
 
 class Track:
-    """One admitted PCM stream. Keep its history warm even while unselected."""
+    """One admitted PCM stream; unselected tracks pay for a bounded raw copy."""
 
     def __init__(self, rate=48000, channels=1, *, start_ms=0):
         if channels not in (1, 2) or not math.isfinite(start_ms) or start_ms < 0:
             raise ValueError("Invalid spectrogram track")
-        self.fft, self.rate, self.channels = FFT(rate), rate, channels
+        self.size, self.rate, self.channels = frame_size(rate), rate, channels
+        self._fft, self._float_ready = None, False
         self.hop = round(rate * 0.020)
-        self.history = array.array("f")
+        self.history, self.raw_history = array.array("f"), bytearray()
         self.total, self.next_end = 0, self.hop
-        self.slot_origin = Fraction(str(start_ms)) / 20 - Fraction(self.fft.size * 25, rate)
+        self.slot_origin = Fraction(str(start_ms)) / 20 - Fraction(self.size * 25, rate)
         self.integral_hop = self.hop * 50 == rate
+
+    @property
+    def fft(self):
+        if self._fft is None:
+            self._fft = FFT(self.rate)
+        return self._fft
 
     def skip(self, frames):
         if type(frames) is not int or frames < 0:
@@ -135,45 +146,67 @@ class Track:
         if not frames:
             return
         self.total += frames
-        self.history = array.array("f")
+        self.history, self.raw_history = array.array("f"), bytearray()
+        self._float_ready = False
         self.next_end = (self.total // self.hop + 1) * self.hop
+
+    def _remember(self, data):
+        size = max(self.size, self.rate // 10) * self.channels * 2
+        if len(data) >= size:
+            self.raw_history[:] = data[-size:]
+        else:
+            discard = max(0, len(self.raw_history) + len(data) - size)
+            if discard:
+                del self.raw_history[:discard]
+            self.raw_history.extend(data)
+
+    def _mono(self, data):
+        samples = array.array("h")
+        samples.frombytes(data)
+        if sys.byteorder != "little":
+            samples.byteswap()
+        if self.channels == 1:
+            return array.array("f", samples)
+        return array.array("f", ((left + right) / 2 for left, right in zip(samples[::2], samples[1::2], strict=True)))
 
     def _append(self, samples):
         self.history.extend(samples)
-        if len(self.history) > self.fft.size:
-            del self.history[: -self.fft.size]
+        if len(self.history) > self.size:
+            del self.history[: -self.size]
         self.total += len(samples)
 
     def feed(self, data, *, selected=True, gap_frames=0):
         if len(data) % (2 * self.channels):
             raise ValueError("Partial PCM frame")
         self.skip(gap_frames)
-        samples = array.array("h")
-        samples.frombytes(data)
-        if sys.byteorder != "little":
-            samples.byteswap()
-        if self.channels == 1:
-            mono = array.array("f", samples)
-        else:
-            mono = array.array(
-                "f", ((left + right) / 2 for left, right in zip(samples[::2], samples[1::2], strict=True))
-            )
         if not selected:
-            self._append(mono)
+            # No sample conversion or FFT allocation for quieter participants.
+            self._remember(data)
+            self.history = array.array("f")
+            self._float_ready = False
+            if self._fft is not None:
+                self._fft.close()
+                self._fft = None
+            self.total += len(data) // (2 * self.channels)
             self.next_end = (self.total // self.hop + 1) * self.hop
             return []
+        if not self._float_ready:
+            self.history = self._mono(self.raw_history[-self.size * self.channels * 2 :])
+            self._float_ready = True
+        mono = self._mono(data)
         result, consumed = [], 0
         while consumed < len(mono):
             count = min(self.next_end - self.total, len(mono) - consumed)
             self._append(mono[consumed : consumed + count])
             consumed += count
             if self.total == self.next_end:
-                if len(self.history) == self.fft.size:
+                if len(self.history) == self.size:
                     slot = self.slot_origin + (
                         self.next_end // self.hop if self.integral_hop else Fraction(self.next_end * 50, self.rate)
                     )
                     result.append((slot.numerator // slot.denominator, self.fft.powers(self.history)))
                 self.next_end += self.hop
+        self._remember(data)
         return result
 
 
