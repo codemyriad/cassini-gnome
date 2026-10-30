@@ -28,7 +28,7 @@ def run(*args):
 
 run("flatpak", "build-import-bundle", str(REPO), str(BUNDLE))
 remote = "cassini-talk-upgrade-test"
-run("flatpak", "remote-add", "--user", "--no-gpg-verify", remote, REPO.resolve().as_uri())
+run("flatpak", "remote-add", "--user", "--if-not-exists", "--no-gpg-verify", remote, REPO.resolve().as_uri())
 run("flatpak", "install", "--user", "--assumeyes", "--noninteractive", "--no-deps", remote, OLD)
 
 # The legacy app writes its own keyfile and private data in its real sandbox.

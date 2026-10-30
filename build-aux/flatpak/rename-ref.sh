@@ -17,7 +17,7 @@ old_ref=app/$old/$arch/master
 new_ref=app/$new/$arch/master
 refs=$(flatpak repo --branches "$repo")
 for ref in "$old_ref" "$new_ref"; do
-  if ! printf '%s\n' "$refs" | grep -Fxq "$ref"; then
+  if ! printf '%s\n' "$refs" | cut -f1 | grep -Fxq "$ref"; then
     echo "Required ref is absent: $ref" >&2
     exit 1
   fi

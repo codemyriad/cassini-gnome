@@ -22,6 +22,7 @@ endif
 
 metainfo_conf = configuration_data()
 metainfo_conf.set('APP_ID', application_id)
+metainfo_conf.set('LEGACY_APP_ID', legacy_application_id)
 metainfo_conf.set('APP_NAME', application_name)
 appstream_file = i18n.merge_file(
         input: configure_file(

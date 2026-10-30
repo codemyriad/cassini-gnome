@@ -13,8 +13,10 @@ python = import('python')
 application_name = run_command(find_program('python3'), files('build-aux/product-name.py'), files('src/cassini_viewer/strings.json'), check: true).stdout().strip()
 
 base_id = 'io.codemyriad.CassiniTalk'
+legacy_application_id = 'com.gocassini.Viewer'
 if get_option('profile') == 'development'
   application_id = base_id + '.Devel'
+  legacy_application_id += '.Devel'
 else
   application_id = base_id
 endif
