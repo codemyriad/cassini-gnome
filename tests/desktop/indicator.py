@@ -2,9 +2,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Real GNOME AppIndicator host, installed packages and native menu actions."""
 
+import base64
 import json
+import math
+import os
+import struct
 import subprocess
+import time
+import uuid
 import wave
+from pathlib import Path
 
 from gi.repository import GLib
 from windowless import (
@@ -22,6 +29,7 @@ from windowless import (
     measured_privacy,
     owner,
     pid,
+    pointer_click,
     prepare_desktop,
     privacy_indicator,
     recording,
@@ -45,30 +53,38 @@ def indicator(appid):
 
 
 def menu_click(appid, label):
-    until(
-        lambda: shell(f"(() => {{const a={actor(appid)};if(!a)return false;a.menu.open();return true;}})()"), "SNI menu"
-    )
     expression = f"{actor(appid)}?.menu._getMenuItems().find(i=>i.label?.text==={json.dumps(label)} && i.visible)"
-    until(
-        lambda: shell(f"(() => {{const i={expression};return !!i&&i.mapped&&i.width>0&&i.height>0;}})()"),
-        "SNI menu row " + label,
-    )
-    # Give the real menu row focus and deliver Return through the private
-    # compositor's virtual keyboard. The extension receives a real Clutter
-    # event and forwards its dbusmenu Event to Cassini.
+
+    def row_shown():
+        # Open the indicator's menu as its own button would, again if something
+        # (a banner, the overview) closed it, until the row is laid out.
+        return shell(
+            f"(() => {{const a={actor(appid)};if(!a)return false;if(!a.menu.isOpen)a.menu.open();"
+            f"const i={expression};return !!i&&i.mapped&&i.width>0&&i.height>0;}})()"
+        )
+
+    until(row_shown, "SNI menu row " + label)
+    # Click the real menu row through the compositor's virtual pointer. The
+    # extension receives a real Clutter event and forwards its dbusmenu Event
+    # to Cassini. (Virtual Return on a focused row was not delivered once the
+    # pointer had clicked inside a client window.)
     previous = shell("global._cassiniQaActivations?.length??0")
-    assert shell(
-        "(() => {const i=" + expression + ";if(!i)return false;i.grab_key_focus();"
-        "global._cassiniQaActivations??=[];i.connect('activate',()=>global._cassiniQaActivations.push(i.label.text));"
-        "global._cassiniQaKeyboard??=imports.gi.Clutter.get_default_backend().get_default_seat().create_virtual_device("
-        "imports.gi.Clutter.InputDeviceType.KEYBOARD_DEVICE);"
-        "const t=imports.gi.GLib.get_monotonic_time();"
-        "global._cassiniQaKeyboard.notify_key(t,28,imports.gi.Clutter.KeyState.PRESSED);"
-        "imports.gi.GLib.idle_add(imports.gi.GLib.PRIORITY_DEFAULT_IDLE,()=>{"
-        "global._cassiniQaKeyboard.notify_key(imports.gi.GLib.get_monotonic_time(),28,imports.gi.Clutter.KeyState.RELEASED);"
-        "return imports.gi.GLib.SOURCE_REMOVE;});"
-        "return global.stage.get_key_focus()===i;})()"
+    # The menu slides open; aim only once the compositor's own pick at the
+    # row's centre is that row, so the click cannot land beside the menu.
+    centre = until(
+        lambda: shell(
+            "(() => {const i=" + expression + ";if(!i||!" + actor(appid) + ".menu.isOpen)return null;"
+            "const [x,y]=i.get_transformed_position();const [w,h]=i.get_transformed_size();"
+            "const hit=global.stage.get_actor_at_pos(imports.gi.Clutter.PickMode.REACTIVE,x+w/2,y+h/2);"
+            "return hit&&(hit===i||i.contains(hit))?[x+w/2,y+h/2]:null;})()"
+        ),
+        "SNI menu row settled " + label,
     )
+    assert shell(
+        "(() => {const i=" + expression + ";if(!i)return false;global._cassiniQaActivations??=[];"
+        "i.connect('activate',()=>global._cassiniQaActivations.push(i.label.text));return true;})()"
+    )
+    pointer_click(centre[0], centre[1], "SNI menu row " + label)
     until(lambda: shell("global._cassiniQaActivations?.length??0") > previous, "real menu activation " + label)
     assert shell("global._cassiniQaActivations.at(-1)") == label
 
@@ -82,6 +98,109 @@ def kept(manifest):
         with wave.open(str(manifest.parent / track["file"]), "rb") as audio:
             assert audio.getnframes() == track["frames"]
     return value
+
+
+def tail_rms(manifest, kind, frames):
+    """RMS of the newest whole frames of one live WAV track (S16LE mono)."""
+    value = json.loads(manifest.read_text())
+    # A source change ends one span and starts a new track: use the newest.
+    track = [t for t in value["tracks"] if t["kind"] == kind][-1]
+    data = (manifest.parent / track["file"]).read_bytes()
+    count = min(frames, (len(data) - 44) // 2)
+    samples = struct.unpack(f"<{count}h", data[len(data) - 2 * count :])
+    return round(math.sqrt(sum(v * v for v in samples) / max(1, count)), 1)
+
+
+def track_frames(manifest, kind):
+    value = json.loads(manifest.read_text())
+    return ([t["frames"] for t in value["tracks"] if t["kind"] == kind] or [0])[-1]
+
+
+def muted_lesson(manifest, appid):
+    """D18: a lesson recorded through system audio while the speakers are muted."""
+    reference = tail_rms(manifest, "system", 12000)
+    subprocess.run(["pactl", "set-sink-mute", "speakers", "1"], check=True)
+    try:
+        until(
+            lambda: "yes" in subprocess.check_output(["pactl", "get-sink-mute", "speakers"], text=True),
+            "speakers muted",
+        )
+        start = track_frames(manifest, "system")
+        until(lambda: track_frames(manifest, "system") >= start + 48000, "one muted second recorded")
+        muted = tail_rms(manifest, "system", 12000)
+        indicator = measured_privacy(["speakers.monitor"])
+        screenshot("privacy-muted-lesson-" + appid + ".png")
+    finally:
+        subprocess.run(["pactl", "set-sink-mute", "speakers", "0"], check=True)
+    return dict(
+        path="muted lesson (system audio, speakers muted)",
+        inputs=capture_inputs(),
+        indicator=indicator,
+        toneRmsBeforeMute=reference,
+        toneRmsWhileMuted=muted,
+    )
+
+
+def browser_only(appid, microphone):
+    """Browser companion only: real broker and recording session, PCM from a stand-in tab.
+
+    The extension's in-page tracks arrive over the companion's audio protocol,
+    exactly as Chrome's native-messaging child forwards them. No browser runs
+    here, so a meeting page's own getUserMedia stream is not part of this row.
+    """
+    import sys
+
+    sys.path.insert(0, "/usr/share/cassini-viewer")
+    from cassini_viewer.browser_audio_proxy import BrowserAudioProxy
+
+    runtime = Path(os.environ["XDG_RUNTIME_DIR"])
+    socket = (runtime / "app" / appid if appid.endswith(".Devel") else runtime) / "cassini" / "browser-v2.sock"
+    until(socket.exists, "browser broker socket")
+    proxy = BrowserAudioProxy(path=socket)
+    try:
+        capture = str(uuid.uuid4())
+        proxy.handle(
+            dict(
+                type="start",
+                version=1,
+                independent=True,
+                captureId=capture,
+                microphone=microphone,
+                timelineOriginMs=int(time.time() * 1000),
+                title="D41.1 browser-only privacy measurement",
+            )
+        )
+        proxy.handle(dict(type="track", id="remote", label="Other", kind="remote", sampleRate=48000, channels=1))
+        tone = b"".join(struct.pack("<h", round(6000 * math.sin(2 * math.pi * 440 * i / 48000))) for i in range(48000))
+        for sequence in range(3):
+            proxy.handle(
+                dict(
+                    type="audio",
+                    id="remote",
+                    sequence=sequence,
+                    offsetMs=1000 * sequence,
+                    pcm=base64.b64encode(tone).decode(),
+                )
+            )
+        live = until(
+            lambda: indicator(appid) if (indicator(appid) or {}).get("title", "").startswith("Recording,") else None,
+            "browser-only recording in the SNI",
+        )
+        expected = ["mic"] if microphone else []
+        measured = measured_privacy(expected)
+        name = "browser-mic" if microphone else "browser-others"
+        screenshot("privacy-" + name + "-" + appid + ".png")
+        stopped = proxy.handle(dict(type="stop"))
+        until(lambda: capture_inputs() == [], "browser capture streams released")
+    finally:
+        proxy.close()
+    return dict(
+        path="browser companion only, " + ("Me + The others" if microphone else "The others"),
+        inputs=expected,
+        indicator=measured,
+        sniTitle=live["title"],
+        stopped=stopped.get("type"),
+    )
 
 
 version = prepare_desktop()
@@ -148,6 +267,11 @@ for appid in ("com.gocassini.Viewer", "com.gocassini.Viewer.Devel"):
     assert live["mapped"] and live["title"].startswith("Recording,"), live
     screenshot("indicator-recording-" + appid + ".png")
     privacy = []
+    # D41.1: GNOME's own top-bar microphone privacy indicator, per capture path.
+    # Each row records the actual Pulse capture streams GNOME saw. Nothing here
+    # opens a capture stream of its own.
+    both = ["mic", "speakers.monitor"]
+    privacy.append(dict(path="mic+system", inputs=both, indicator=measured_privacy(both)))
     for label, me, others, expected in [
         ("Me", True, False, ["mic"]),
         ("The others", False, True, ["speakers.monitor"]),
@@ -157,10 +281,14 @@ for appid in ("com.gocassini.Viewer", "com.gocassini.Viewer.Devel"):
         measured = measured_privacy(expected)
         privacy.append(dict(path="mic" if me else "system", inputs=capture_inputs(), indicator=measured))
         screenshot("privacy-" + ("mic" if me else "system") + "-" + appid + ".png")
+    privacy.append(muted_lesson(manifest, appid))
     menu_click(appid, "Stop Recording")
     until(lambda manifest=manifest: kept(manifest), "SNI Stop keeps WAVs")
     assert owner(appid)
     until(lambda appid=appid: not (indicator(appid) or {}).get("visible"), "SNI passive after stop")
+    for microphone in (False, True):
+        privacy.append(browser_only(appid, microphone))
+        until(lambda appid=appid: not (indicator(appid) or {}).get("visible"), "SNI passive after browser-only Stop")
     # The windowless Quit route must stop and keep without an invisible prompt.
     action(appid, "record")
     second = until(lambda: recording(root), "second recording")

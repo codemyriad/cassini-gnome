@@ -9,6 +9,7 @@ never substituted with a fake Background Apps entry or a tray implementation.
 import json
 import math
 import os
+import signal
 import subprocess
 import time
 import wave
@@ -254,6 +255,68 @@ print(json.dumps(result))
     return report
 
 
+def sandbox_diagnostic(appid):
+    """Explain a missing Flatpak Background Apps row without changing the verdict.
+
+    Reports the sandbox instances and their LSM labels, then asks the portal,
+    from a second process in the same app sandbox, whether it accepts SetStatus.
+    """
+    report = {}
+    for name, command in (
+        ("instances", ["flatpak", "ps", "--columns=instance,pid,child-pid,application"]),
+        ("runtimeInfo", ["sh", "-c", 'ls -la "$XDG_RUNTIME_DIR/.flatpak" "$XDG_RUNTIME_DIR"/.flatpak/*/ 2>&1']),
+    ):
+        result = subprocess.run(command, capture_output=True, text=True, timeout=20)
+        report[name] = (result.stdout + result.stderr).strip()
+    labels = {}
+    for line in report["instances"].splitlines():
+        for value in line.split()[1:3]:
+            if value.isdigit():
+                try:
+                    labels[value] = Path(f"/proc/{value}/attr/current").read_text().strip("\0\n ")
+                except OSError as error:
+                    labels[value] = str(error)
+    report["labels"] = labels
+    program = (
+        "import json,sys;from gi.repository import GLib;sys.path.insert(0,'/app/share/cassini-viewer');"
+        "from cassini_viewer.background_recording import BackgroundRecording;"
+        "p=BackgroundRecording(sys.argv[1]);l=GLib.MainLoop();r={};"
+        "s=lambda ok:(r.__setitem__('status',ok),l.quit());"
+        "g=lambda ok:(r.__setitem__('granted',ok),p.status('QA probe',s) if ok else l.quit());"
+        "p.request(g);GLib.timeout_add_seconds(15,l.quit);l.run();print(json.dumps(r))"
+    )
+    result = subprocess.run(
+        ["flatpak", "run", "--user", "--command=python3", appid, "-c", program, appid],
+        capture_output=True,
+        text=True,
+        timeout=40,
+    )
+    report["sandboxProbe"] = result.stdout.strip() or result.stderr.strip()[-2000:]
+    return report
+
+
+def background_row(appid, check, label):
+    """Wait for a Background Apps row; on timeout, report what the portal had."""
+    try:
+        return until(check, label)
+    except AssertionError:
+        rows = call(
+            "org.freedesktop.background.Monitor",
+            "/org/freedesktop/background/monitor",
+            "org.freedesktop.DBus.Properties",
+            "Get",
+            GLib.Variant("(ss)", ("org.freedesktop.background.Monitor", "BackgroundApps")),
+        )[0]
+        print(
+            "BACKGROUND STATUS",
+            dict(label=label, app=appid, owner=owner(appid), windows=windows(appid), rows=rows),
+            sandbox_diagnostic(appid),
+            flush=True,
+        )
+        screenshot("background-status-failed.png")
+        raise
+
+
 def idle_notifications(appid):
     return shell(
         "Main.messageTray.getSources().filter(s=>s._appId==="
@@ -306,6 +369,39 @@ def selected(manifest, me, others):
     return selection.get("me") is me and selection.get("others") is others
 
 
+def pointer_move(x, y, label):
+    """Place the compositor's virtual pointer at stage coordinates."""
+
+    def pointer_ready():
+        pointer = shell("global.get_pointer()")
+        if abs(pointer[0] - x) < 2 and abs(pointer[1] - y) < 2:
+            return True
+        # Mutter initializes a headless virtual pointer on its first motion;
+        # it may ignore that event's x coordinate. Moving is idempotent: keep
+        # placing it until the compositor reports the actual target position.
+        shell(
+            "(() => {global._cassiniQaPointer??=imports.gi.Clutter.get_default_backend().get_default_seat().create_virtual_device("
+            "imports.gi.Clutter.InputDeviceType.POINTER_DEVICE);"
+            f"global._cassiniQaPointer.notify_absolute_motion(imports.gi.GLib.get_monotonic_time(),{x},{y});return true;}})()"
+        )
+        return False
+
+    until(pointer_ready, "pointer reaches " + label)
+
+
+def pointer_click(x, y, label):
+    """Primary click at stage coordinates through a compositor virtual pointer."""
+    pointer_move(x, y, label)
+    # Clutter button 1 is the primary button; Mutter maps it to BTN_LEFT.
+    assert shell(
+        "(() => {const t=imports.gi.GLib.get_monotonic_time();"
+        "global._cassiniQaPointer.notify_button(t,1,imports.gi.Clutter.ButtonState.PRESSED);"
+        "imports.gi.GLib.idle_add(imports.gi.GLib.PRIORITY_DEFAULT_IDLE,()=>{"
+        "global._cassiniQaPointer.notify_button(imports.gi.GLib.get_monotonic_time(),1,imports.gi.Clutter.ButtonState.RELEASED);"
+        "return imports.gi.GLib.SOURCE_REMOVE;});return true;})()"
+    )
+
+
 def choose_recording_sources(manifest, label, me, others, appid):
     click("Change what is recorded")
     assert shell(
@@ -346,30 +442,18 @@ def choose_recording_sources(manifest, label, me, others, appid):
     )
     x, y = frame["x"] + box.x + box.width / 2, frame["y"] + box.y + box.height / 2
 
-    def pointer_ready():
-        pointer = shell("global.get_pointer()")
-        if abs(pointer[0] - x) < 2 and abs(pointer[1] - y) < 2:
-            return True
-        # Mutter initializes a headless virtual pointer on its first motion;
-        # it may ignore that event's x coordinate. Moving is idempotent: keep
-        # placing it until the compositor reports the actual target position.
-        shell(
-            "(() => {global._cassiniQaPointer??=imports.gi.Clutter.get_default_backend().get_default_seat().create_virtual_device("
-            "imports.gi.Clutter.InputDeviceType.POINTER_DEVICE);"
-            f"global._cassiniQaPointer.notify_absolute_motion(imports.gi.GLib.get_monotonic_time(),{x},{y});return true;}})()"
-        )
-        return False
-
-    until(pointer_ready, "pointer reaches source row " + label)
-    assert shell(
-        "(() => {const t=imports.gi.GLib.get_monotonic_time();"
-        "global._cassiniQaPointer.notify_button(t,1,imports.gi.Clutter.ButtonState.PRESSED);"
-        "imports.gi.GLib.idle_add(imports.gi.GLib.PRIORITY_DEFAULT_IDLE,()=>{"
-        "global._cassiniQaPointer.notify_button(imports.gi.GLib.get_monotonic_time(),1,imports.gi.Clutter.ButtonState.RELEASED);"
-        "return imports.gi.GLib.SOURCE_REMOVE;});return true;})()"
-    )
     try:
-        until(lambda: selected(manifest, me, others), "source selection " + label)
+        # The dialog may still be animating in when the first click arrives,
+        # and GTK then drops it. Selecting a radio row is idempotent, so click
+        # again (at most three times) until the session records the choice.
+        for attempt in range(3):
+            pointer_click(x, y, "source row " + label)
+            try:
+                until(lambda: selected(manifest, me, others), "source selection " + label, timeout=4)
+                break
+            except AssertionError:
+                if attempt == 2:
+                    raise
     except AssertionError:
         print(
             "SOURCE CLICK",
@@ -396,7 +480,12 @@ def choose_recording_sources(manifest, label, me, others, appid):
 def recording(root):
     for manifest in sorted(root.glob("Recording-*/session.json")):
         value = json.loads(manifest.read_text())
-        if any(track.get("frames", 0) > 0 for track in value.get("tracks", [])) and value.get("state") == "recording":
+        # The generated microphone must deliver PCM itself; frames on the
+        # system track alone once hid a stalled (non-live) test source.
+        microphone = any(
+            track.get("kind") == "microphone" and track.get("frames", 0) > 0 for track in value.get("tracks", [])
+        )
+        if microphone and value.get("state") == "recording":
             return manifest
     return None
 
@@ -404,15 +493,24 @@ def recording(root):
 def prepare_desktop():
     until(lambda: (Path(os.environ["XDG_RUNTIME_DIR"]) / "wayland-0").exists(), "private Wayland socket")
     os.environ["WAYLAND_DISPLAY"] = "wayland-0"
+    # Let Shell finish its startup animation first. Hiding the overview while it
+    # runs can leave layoutManager._startingUp set, and the AppIndicator host
+    # then waits for 'startup-complete' forever before adding any icon.
+    until(lambda: shell("!Main.layoutManager._startingUp"), "GNOME Shell startup complete")
     until(lambda: shell("Main.overview.hide(); true"), "GNOME Shell ready")
     until(
         lambda: shell("!!Main.panel.statusArea.quickSettings._volumeInput?._indicator"), "GNOME audio indicators ready"
     )
     version = subprocess.check_output(["gnome-shell", "--version"], text=True).strip()
     assert version.startswith("GNOME Shell 50"), version
+    # Create the virtual pointer before any Shell menu takes a modal grab: a
+    # device first used under a menu's grab had its first click ignored.
+    pointer_move(640, 400, "parked pointer")
     # PipeWire's shipped pipewire.conf documents the adapter/audiotestsrc
     # factory. It generates microphone PCM without opening a loopback capture
     # stream, so an idle privacy indicator remains a meaningful baseline.
+    # live = true makes it its own timer-driven driver; a non-live source has
+    # no driver in a mic-to-Cassini graph and never produces a frame.
     config = HOME / ".config/pipewire/pipewire.conf.d"
     config.mkdir(parents=True, exist_ok=True)
     (config / "90-cassini-qa-source.conf").write_text(
@@ -420,7 +518,7 @@ def prepare_desktop():
         "context.objects = [{ factory = adapter args = { factory.name = audiotestsrc "
         'node.name = mic node.description = "QA microphone" media.class = Audio/Source '
         "audio.position = [ MONO ] audio.rate = 48000 node.always-process = true "
-        "node.param.Props = { live = false } } }]\n"
+        "node.param.Props = { live = true } } }]\n"
     )
     subprocess.Popen(["pipewire"], stdout=(OUT / "pipewire.log").open("w"), stderr=subprocess.STDOUT)
     until(lambda: (Path(os.environ["XDG_RUNTIME_DIR"]) / "pipewire-0").exists(), "PipeWire")
@@ -509,23 +607,9 @@ def main():
             case["hostPortal"] = probe
         can_list = flatpak  # D41.3: native builds use SNI / app-grid, never claim Background Apps.
         if can_list:
-            try:
-                row = until(lambda appid=appid: status_row(appid), "watching status in real Background Apps")
-            except AssertionError:
-                rows = call(
-                    "org.freedesktop.background.Monitor",
-                    "/org/freedesktop/background/monitor",
-                    "org.freedesktop.DBus.Properties",
-                    "Get",
-                    GLib.Variant("(ss)", ("org.freedesktop.background.Monitor", "BackgroundApps")),
-                )[0]
-                print(
-                    "BACKGROUND STATUS",
-                    dict(app=appid, owner=owner(appid), windows=windows(appid), rows=rows),
-                    flush=True,
-                )
-                screenshot("background-status-failed.png")
-                raise
+            row = background_row(
+                appid, lambda appid=appid: status_row(appid), "watching status in real Background Apps"
+            )
             assert row.get("message") == "Ready to record browser meetings", row
             case["idleStatus"] = row["message"]
             until(lambda appid=appid: idle_notifications(appid), "one-time still-running notification")
@@ -550,7 +634,7 @@ def main():
             # has gone and only automatic recording keeps the process alive.
             close_window(appid)
             until(lambda appid=appid: not windows(appid), "second close")
-            until(lambda appid=appid: listed(appid), "second Background Apps listing")
+            background_row(appid, lambda appid=appid: listed(appid), "second Background Apps listing")
             launch(appid)
             assert pid(appid) == original_pid
             assert idle_notifications(appid) == 1
@@ -562,11 +646,8 @@ def main():
         click("Keep Recording in Background")
         until(lambda appid=appid: not windows(appid), "recording hidden")
         if can_list:
-            row = until(
-                lambda appid=appid: (
-                    listed(appid) if (listed(appid) or {}).get("message", "").startswith("Recording,") else None
-                ),
-                "live recording Background Apps status",
+            row = background_row(
+                appid, lambda appid=appid: status_row(appid, recording=True), "live recording Background Apps status"
             )
             case["recordingStatus"] = row["message"]
             until(lambda appid=appid: menu_item(appid, "true"), "recording Background Apps menu")
@@ -577,7 +658,24 @@ def main():
             )
         else:
             action(appid, "quit")
-        until(lambda appid=appid: not owner(appid), "stop and keep, then process exit")
+        try:
+            until(lambda appid=appid: not owner(appid), "stop and keep, then process exit")
+        except AssertionError:
+            print(
+                "QUIT DIAGNOSTIC",
+                dict(
+                    app=appid,
+                    windows=windows(appid),
+                    inputs=capture_inputs(),
+                    manifest=json.loads(manifest.read_text()),
+                ),
+                flush=True,
+            )
+            if not flatpak:
+                # The installed app registers faulthandler on SIGUSR1 (main_loop_watchdog).
+                os.kill(pid(appid), signal.SIGUSR1)
+                time.sleep(2)
+            raise
         saved = json.loads(manifest.read_text())
         assert saved["state"] == "completed"
         assert any(track["frames"] > 0 for track in saved["tracks"])
