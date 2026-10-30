@@ -2086,6 +2086,79 @@
    "status": "drawn"
   },
   {
+   "id": "hidden.status.watching",
+   "en": "Ready to record browser meetings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D41",
+   "status": "harmony",
+   "note": "Coordinator (D41). Cassini is running with no window and automatic recording is on. GNOME: Background status (portal SetStatus) under Cassini in Background Apps. Mac: the first, non-interactive line of the idle menu bar menu. While recording, hidden.status wins."
+  },
+  {
+   "id": "hidden.firstClose.title",
+   "en": "Cassini is still running",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "notification-title",
+   "boards": [],
+   "milestone": "D41",
+   "status": "harmony",
+   "note": "Coordinator (D41). GNOME only, once ever: the first time the last window closes while automatic recording is on and nothing is recording."
+  },
+  {
+   "id": "hidden.firstClose.body",
+   "en": "It records browser meetings automatically. To open it, use Background Apps in the system menu.",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "notification-body",
+   "boards": [],
+   "milestone": "D41",
+   "status": "harmony",
+   "note": "Coordinator (D41). GNOME only, with hidden.firstClose.title. Default action opens Cassini."
+  },
+  {
+   "id": "hidden.menu.settings",
+   "en": "Settings…",
+   "platforms": [
+    "mac"
+   ],
+   "role": "menu-item",
+   "boards": [],
+   "milestone": "D41",
+   "status": "harmony",
+   "note": "Coordinator (D41). Mac idle and recording menu bar menu; opens Settings (⌘,)."
+  },
+  {
+   "id": "hidden.menu.quit",
+   "en": "Quit Cassini",
+   "platforms": [
+    "mac"
+   ],
+   "role": "menu-item",
+   "boards": [],
+   "milestone": "D41",
+   "status": "harmony",
+   "note": "Coordinator (D41). Mac menu bar menu, last item. While recording, quitting stops and keeps every recording, as ⌘Q does."
+  },
+  {
+   "id": "settings.general.menuBar",
+   "en": "Show Cassini in the menu bar",
+   "platforms": [
+    "mac"
+   ],
+   "role": "switch",
+   "boards": [],
+   "milestone": "D41",
+   "status": "harmony",
+   "note": "Coordinator (D41). Mac Settings. Default on. Off hides the idle menu bar item only; the recording item always shows."
+  },
+  {
    "id": "library.group.unknownDate",
    "en": "Date unknown",
    "platforms": [
@@ -5861,6 +5934,61 @@
    "boards": [],
    "milestone": "D37",
    "status": "harmony"
+  },
+  {
+   "id": "browser.state.updating",
+   "en": "Updating the browser companion…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D40",
+   "status": "harmony",
+   "note": "Coordinator (D40). While Cassini has asked an older companion to reload itself and it hasn't reconnected yet (at most ~10 s, then needsUpdate or connected)."
+  },
+  {
+   "id": "browser.state.needsUpdate",
+   "en": "The browser companion needs an update",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D40",
+   "status": "harmony",
+   "note": "Coordinator (D40). Connected companion is older than this app's minimum and couldn't update itself. Browser meetings fall back to how they record without the companion."
+  },
+  {
+   "id": "companion.update.restart",
+   "en": "Restart {browser} to finish updating the browser companion.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "D40",
+   "status": "harmony",
+   "note": "Coordinator (D40). Under needsUpdate, in the setup guide, Preferences and the meeting card.",
+   "placeholders": {
+    "browser": "display name of the browser running the old companion"
+   }
+  },
+  {
+   "id": "browser.state.appTooOld",
+   "en": "Update Cassini to use this browser companion",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D40",
+   "status": "harmony",
+   "note": "Coordinator (D40). The companion speaks a newer wire version than this app supports."
   },
   {
    "id": "format.size.kb",

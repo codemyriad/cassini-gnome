@@ -77,3 +77,11 @@ jobs:
     uses: ./.github/workflows/whistle.yml
     with:
       product: ci-offline
+  desktop:
+    name: Desktop
+    needs: packages
+    if: ${{ !cancelled() && needs.packages.result == 'success' }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/background-apps.yml

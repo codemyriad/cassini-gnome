@@ -98,20 +98,36 @@ assert len(status) == 96 and "\n" not in status
 count = len(services.calls)
 permission.status("line\n" + "x" * 200)
 assert len(services.calls) == count
+permission.request(answers.append)
+assert answers == [False, True, True] and len(services.calls) == count
+permission.close()
+permission = BackgroundRecording()
 services.background_defer = True
 permission.request(answers.append)
 until(lambda: bool(services.background_pending))
 permission.close()
 until(lambda: services.background_closed == 1)
-assert answers == [False, True, False]
+assert answers == [False, True, True, False]
 services.complete_background()  # Late permission cannot hide any window.
 services.background_defer = False
 services.background_error = True
 unavailable = BackgroundRecording()
 unavailable.request(answers.append)
-until(lambda: answers == [False, True, False, False])
+until(lambda: answers == [False, True, True, False, False])
 unavailable.close()
 services.background_error = False
+
+# Native registration uses the actual desktop ID and the same dedicated
+# connection as its Background request, before that request is dispatched.
+registered = BackgroundRecording("com.gocassini.Viewer", native=True)
+registered.request(answers.append)
+until(lambda: registered.granted)
+registration = next(c for c in services.calls if c["method"] == "Register")
+host_calls = [c for c in services.calls if c.get("sender") == registration["sender"]]
+assert [c["method"] for c in host_calls] == ["Register", "RequestBackground"]
+assert registration["values"] == ("com.gocassini.Viewer", {})
+assert registration["sender"] != services.bus.get_unique_name()
+registered.close()
 
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
@@ -201,9 +217,10 @@ with tempfile.TemporaryDirectory() as temporary:
     native = app.recorder
     window.close()
     press(app._capture_confirmation, "Keep Recording in Background")
-    until(lambda: bool(services.background_pending))
-    services.complete_background()
+    # The previous successful consent is retained even though that capture
+    # finished before it arrived. Subsequent hides do not prompt again.
     until(lambda: app._capture_background and not window.get_visible() and "recording" in services.notifications)
+    assert not services.background_pending
     notification = services.notifications["recording"]
     assert notification["title"] == "Cassini is recording"
     assert [b["label"] for b in notification["buttons"]] == ["Stop", "Show"]
@@ -220,6 +237,35 @@ with tempfile.TemporaryDirectory() as temporary:
     app.comfort.tick()
     until(lambda: "recording" not in services.notifications)
     assert not app._quitting, "Background Stop must not cancel writing down"
+
+    # Automatic recording alone keeps the app reachable. Reopening creates a
+    # fresh Library; repeated closes reuse consent and the one-time notice.
+    app.set_auto_recording_hold(True)
+    window = app.get_active_window()
+    if window is not None:
+        window.close()
+    app.comfort.tick()
+    until(lambda: "background" in services.notifications)
+    assert services.notifications["background"]["title"] == "Cassini is still running"
+    assert app.background_recording.last_status == "Ready to record browser meetings"
+    first_notice_count = sum(item["id"] == "background" for item in services.history)
+    services.app_action(app, "open-recording")
+    until(lambda: any(w.get_visible() for w in app.get_windows()))
+    assert app.background_recording.last_status == ""
+    app.get_active_window().close()
+    app.comfort.tick()
+    assert not any(w.get_visible() for w in app.get_windows())
+    assert sum(item["id"] == "background" for item in services.history) == first_notice_count
+
+    # This is the exact app.quit action used by GNOME Background Apps. It must
+    # finalize audio and quit without presenting an invisible confirmation.
+    app.start_native(test=True)
+    until(lambda: app.recorder and app.recorder.pipeline and app.recorder.session.manifest["tracks"][0]["frames"] > 0)
+    native = app.recorder
+    services.app_action(app, "quit")
+    until(lambda: app._quitting and not native.pipeline and not native._finishing)
+    assert app._capture_confirmation is None
+    assert any(native.session.directory.glob("*.wav"))
     app.background_recording.close()
     app.comfort.close()
 services.close()

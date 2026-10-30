@@ -15,6 +15,9 @@ BACKGROUND_XML = """<node><interface name="org.freedesktop.portal.Background">
 <method name="RequestBackground"><arg type="s" direction="in"/><arg type="a{sv}" direction="in"/><arg type="o" direction="out"/></method>
 <method name="SetStatus"><arg type="a{sv}" direction="in"/></method>
 </interface></node>"""
+REGISTRY_XML = """<node><interface name="org.freedesktop.host.portal.Registry">
+<method name="Register"><arg type="s" direction="in"/><arg type="a{sv}" direction="in"/></method>
+</interface></node>"""
 REQUEST_XML = """<node><interface name="org.freedesktop.portal.Request"><method name="Close"/></interface></node>"""
 NOTIFY_XML = """<node><interface name="org.gtk.Notifications">
 <method name="AddNotification"><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="a{sv}" direction="in"/></method>
@@ -51,6 +54,11 @@ class DesktopServices:
                 "/org/freedesktop/portal/desktop",
                 Gio.DBusNodeInfo.new_for_xml(BACKGROUND_XML).interfaces[0],
                 self._background,
+            ),
+            self.bus.register_object(
+                "/org/freedesktop/portal/desktop",
+                Gio.DBusNodeInfo.new_for_xml(REGISTRY_XML).interfaces[0],
+                self._register,
             ),
             self.bus.register_object(
                 "/org/gtk/Notifications", Gio.DBusNodeInfo.new_for_xml(NOTIFY_XML).interfaces[0], self._notification
@@ -99,9 +107,13 @@ class DesktopServices:
             GLib.Variant("(ua{sv})", (1 if self.denied else 0, result)),
         )
 
+    def _register(self, _bus, sender, _path, _interface, method, parameters, invocation):
+        self.calls.append(dict(method=method, sender=sender, values=parameters.unpack()))
+        invocation.return_value(None)
+
     def _background(self, _bus, sender, _path, _interface, method, parameters, invocation):
         values = parameters.unpack()
-        self.calls.append(dict(method=method, values=values))
+        self.calls.append(dict(method=method, sender=sender, values=values))
         if self.background_error:
             invocation.return_dbus_error("org.freedesktop.portal.Error.Failed", "Synthetic unavailable portal")
         elif method == "SetStatus":

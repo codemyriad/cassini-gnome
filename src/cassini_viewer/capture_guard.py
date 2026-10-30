@@ -384,7 +384,7 @@ def confirm_capture_close(app, window, *, quitting=False):
             future.add_done_callback(stopped)
         ready()
 
-    if idle_quit:
+    if idle_quit or quitting and not any(w.get_visible() for w in app.get_windows()):
         response(dialog, "stop")
     else:
         dialog.connect("response", response)
