@@ -2,13 +2,13 @@
 """UX10 setup: installation and registration are not a connection handshake."""
 
 import logging
-import time
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 
 from gi.repository import Adw, GLib, Gtk
 
 from . import browser_service, companion
+from .browser_connection import add_text, classify, state_text
 from .strings import text
 
 LOG = logging.getLogger(__name__)
@@ -22,8 +22,8 @@ class CompanionSetup(Adw.Dialog):
         self.cancelled = Event()
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-companion")
         self.future = None
-        self.connect_requested = self.working = self.failed = self.add_requested = False
-        self.deadline = None
+        self.working = self.failed = self.add_requested = False
+        self.local_error = None
         self.browser_names = []
         self.connected = False
         content = Gtk.Box(
@@ -48,7 +48,7 @@ class CompanionSetup(Adw.Dialog):
             1, "companion.addStep.title", "companion.addStep.notAdded", "companion.add", self._add
         )
         self.connect_row, self.connect_badge, self.connect_caption, self.connect_button = self._step(
-            2, "companion.connectStep.title", "companion.connectStep.caption", "companion.connect", self._connect
+            2, "companion.connectStep.title", "browser.state.settingUp", "common.tryAgain", self._connect
         )
         self.connect_button.add_css_class("suggested-action")
         steps.append(self.add_row)
@@ -116,11 +116,9 @@ class CompanionSetup(Adw.Dialog):
         companion.open_add(browser)
 
     def _connect(self, *_):
-        self.connect_requested = self.working = True
-        self.failed = False
-        self.deadline = None
+        self.local_error = None
+        self.app.retry_browser_connection()
         self.render()
-        self.poll()
 
     def _submit(self, call, action):
         if self.future is not None or self.closed:
@@ -141,17 +139,12 @@ class CompanionSetup(Adw.Dialog):
     def poll(self):
         if self.closed:
             return GLib.SOURCE_REMOVE
-        if self.connect_requested and self.future is None:
-            self.connect_requested = False
-            self._submit(companion.register, "register")
-        elif self.add_requested and self.future is None:
+        if self.add_requested and self.future is None:
             self.add_requested = False
             self._submit(self._launch_add, "add")
-        else:
+        elif self.service_path is not None:
             self._submit(self._snapshot, "status")
-        if self.deadline is not None and time.monotonic() >= self.deadline and not self.connected:
-            self.working, self.failed, self.deadline = False, True, None
-            self.render()
+        self.render()
         return GLib.SOURCE_CONTINUE
 
     def _received(self, future, action):
@@ -160,26 +153,30 @@ class CompanionSetup(Adw.Dialog):
             return False
         try:
             value = future.result()
-            if action == "status":
-                self.connected = bool(value.get("connectedBrowsers", value.get("browsers")))
-                names = value.get("browserNames", [])
-                if names:
-                    self.browser_names = list(names)
-                if self.connected:
-                    self.working = self.failed = False
-                    self.deadline = None
-            elif action == "register":
-                self.deadline = time.monotonic() + 35
-        except Exception:
+            if action == "status" and self.app.browser_connection:
+                self.app.browser_connection.observe(value)
+            elif action == "add":
+                self.local_error = None
+        except Exception as error:
             LOG.exception("Companion %s failed", action)
             if action != "status":
-                self.working, self.failed, self.deadline = False, True, None
+                self.local_error = classify(error)
         self.render()
-        if self.connect_requested or self.add_requested:
+        if self.add_requested:
             self.poll()
         return False
 
     def render(self):
+        controller = self.app.browser_connection
+        state = controller.snapshot() if controller else dict(phase="settingUp", names=(), browser=None)
+        if state["phase"] == "connected":
+            self.local_error = None
+        if self.local_error:
+            state = dict(state, phase="failed", reason=self.local_error.reason)
+        self.connected = state["phase"] == "connected"
+        self.working, self.failed = state["phase"] == "settingUp", state["phase"] == "failed"
+        if self.connected and state["names"]:
+            self.browser_names = list(state["names"])
         added = self.connected or bool(self.browser_names)
         if self.browser_names:
             key = "companion.addStep.doneSeveral" if len(self.browser_names) > 1 else "companion.addStep.done"
@@ -188,21 +185,22 @@ class CompanionSetup(Adw.Dialog):
             self.add_caption.set_label(
                 text("settings.browser.status.connectedGeneric") if added else text("companion.addStep.notAdded")
             )
-        self.add_button.set_visible(not added)
-        if self.connected:
-            caption = "companion.connectStep.done"
-        elif self.working:
-            caption = "companion.connectStep.connecting"
-        elif self.failed:
-            caption = "companion.connectStep.failed"
-        else:
-            caption = "companion.connectStep.caption"
-        self.connect_caption.set_label(text(caption))
-        self.connect_button.set_visible(not self.connected)
+        self.add_button.set_visible(not added and state["browser"] is not None)
+        self.add_button.set_label(add_text(state))
+        self.connect_caption.set_label(state_text(state))
+        self.connect_button.set_visible(self.failed and self.app.browser_companion_available)
         self.connect_button.set_sensitive(not self.working)
-        self.connect_button.set_label(text("common.tryAgain" if self.failed else "companion.connect"))
+        self.connect_button.set_label(text("common.tryAgain"))
         self.done.set_sensitive(self.connected)
-        self.set_default_widget(self.done if self.connected else self.connect_button)
+        self.set_default_widget(
+            self.done
+            if self.connected
+            else self.connect_button
+            if self.connect_button.get_visible()
+            else self.add_button
+            if self.add_button.get_visible()
+            else None
+        )
         for n, row, badge, done, working in (
             (1, self.add_row, self.add_badge, added, False),
             (2, self.connect_row, self.connect_badge, self.connected, self.working),

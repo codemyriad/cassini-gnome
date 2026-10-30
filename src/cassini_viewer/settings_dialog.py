@@ -491,13 +491,28 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.pages["browserCompanion"].add(group)
         self.browser = Adw.ActionRow(title=text("settings.browser.status.notSetUp"), use_markup=False)
         setup = self.browser_setup = Gtk.Button(
-            label=text("meeting.companionCard.setUp"),
+            label=text("common.tryAgain"),
             valign=Gtk.Align.CENTER,
-            visible=self.app.browser_companion_available,
+            visible=False,
         )
-        setup.connect("clicked", lambda *_: self.app.on_companion_setup(parent=self))
+        setup.connect("clicked", self.app.retry_browser_connection)
         self.browser.add_suffix(setup)
+        self.browser_add = Gtk.Button(label=text("browser.state.addGeneric"), valign=Gtk.Align.CENTER, visible=False)
+        self.browser_add.connect("clicked", lambda *_: self.app.on_companion_add(parent=self))
+        self.browser.add_suffix(self.browser_add)
         group.add(self.browser)
+        self.render_browser()
+
+    def render_browser(self):
+        from .browser_connection import add_text, state_text
+
+        controller = self.app.browser_connection
+        available = self.app.browser_companion_available
+        state = controller.snapshot() if controller and available else None
+        self.browser.set_title(state_text(state))
+        self.browser_setup.set_visible(bool(state and state["phase"] == "failed"))
+        self.browser_add.set_visible(bool(state and state["phase"] == "waiting" and state["browser"]))
+        self.browser_add.set_label(add_text(state))
 
     def _show_folder(self):
         root = library_root()
@@ -587,7 +602,10 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.automatic.set_sensitive(True)
         self._updating = False
         names = self._snapshot.get("browserNames", [])
-        if self._snapshot.get("connectedBrowsers", self._snapshot.get("browsers")):
+        if self.app.browser_connection:
+            self.app.browser_connection.observe(self._snapshot)
+            self.render_browser()
+        elif self._snapshot.get("connectedBrowsers", self._snapshot.get("browsers")):
             if names:
                 self.browser.set_title(text("settings.browser.status.connected", browser=", ".join(names)))
             else:
@@ -609,7 +627,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.change_shortcut.set_sensitive(bool(shortcut and shortcut.bound and shortcut.configure_supported))
         mover = self.app.library_relocator
         self.render_moves(mover.state, moving=mover.running, error=mover._error)
-        self.browser_setup.set_visible(self.app.browser_companion_available)
+        self.render_browser()
         self.automatic.set_visible(self.app.browser_companion_available)
         self._request()
         return GLib.SOURCE_CONTINUE

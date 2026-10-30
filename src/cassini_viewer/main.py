@@ -76,9 +76,7 @@ class CassiniApplication(Adw.Application):
         self._browser_snapshot = {}
         self.browser_watch = None
         self._companion_ready = not self.in_flatpak
-        self._companion_probe_future = None
-        self._companion_probe_timer = 0
-        self._companion_probe_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-companion-probe")
+        self.browser_connection = None
         self._browser_seen_saved = None
         self._auto_recording_held = False
         self._auto_recording_pending = None
@@ -134,10 +132,10 @@ class CassiniApplication(Adw.Application):
         self.comfort = RecordingComfort(self, automatic=os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1")
         if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
             self._start_legacy_host_cleanup()
-            if self.in_flatpak:
-                self._refresh_companion()
-            else:
-                self._start_browser_watch()
+            from .browser_connection import BrowserConnection
+
+            self.browser_connection = BrowserConnection(self._browser_connection_changed, available=not self.in_flatpak)
+            self.browser_connection.trigger()
         from .sherpa_runtime import available as parakeet_available
 
         if self.writing_available and parakeet_available():
@@ -203,6 +201,8 @@ class CassiniApplication(Adw.Application):
 
     def do_activate(self):
         self._quitting = False
+        if self.browser_connection:
+            self.browser_connection.trigger()
         from .library_window import LibraryWindow
 
         window = next((w for w in self.get_windows() if isinstance(w, LibraryWindow)), None)
@@ -288,37 +288,35 @@ class CassiniApplication(Adw.Application):
         if self.browser_watch is None and os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
             from .browser_watch import BrowserWatch
 
-            self.browser_watch = BrowserWatch(self._browser_changed)
+            self.browser_watch = BrowserWatch(self._browser_changed, profiles_changed=self.retry_browser_connection)
 
-    def _refresh_companion(self):
-        self._companion_probe_timer = 0
-        if self._quitting or self._companion_ready or self._companion_probe_future is not None:
-            return GLib.SOURCE_REMOVE
-        from .companion import probe
+    def retry_browser_connection(self, *_):
+        if self.browser_connection and not self._quitting:
+            self.browser_connection.trigger()
 
-        future = self._companion_probe_executor.submit(probe)
-        self._companion_probe_future = future
-        future.add_done_callback(lambda f: GLib.idle_add(self._companion_probed, f))
-        return GLib.SOURCE_REMOVE
-
-    def _companion_probed(self, future):
-        self._companion_probe_future = None
+    def _browser_connection_changed(self):
         if self._quitting:
             return GLib.SOURCE_REMOVE
-        retryable = True
-        try:
-            self._companion_ready, retryable = future.result()
-        except Exception:
-            logging.getLogger(__name__).exception("Could not probe the host browser bridge")
+        previous = self._companion_ready
+        self._companion_ready = self.browser_connection.available
         if self._companion_ready:
             self._start_browser_watch()
-            for window in self.get_windows():
-                if hasattr(window, "companion_available_changed"):
-                    window.companion_available_changed()
-            if self.settings_dialog and not self.settings_dialog.closed:
+        elif self.browser_watch:
+            self.browser_watch.close()
+            self.browser_watch = None
+        for window in self.get_windows():
+            if previous != self._companion_ready and hasattr(window, "companion_available_changed"):
+                window.companion_available_changed()
+            if hasattr(window, "browser_connection_changed"):
+                window.browser_connection_changed()
+        if self.settings_dialog and not self.settings_dialog.closed:
+            if previous != self._companion_ready:
                 self.settings_dialog.refresh()
-        elif retryable:
-            self._companion_probe_timer = GLib.timeout_add_seconds(5, self._refresh_companion)
+            else:
+                self.settings_dialog.render_browser()
+        dialog = getattr(self, "companion_setup", None)
+        if dialog and not dialog.closed:
+            dialog.render()
         return GLib.SOURCE_REMOVE
 
     def on_companion_setup(self, *_args, parent=None):
@@ -331,6 +329,11 @@ class CassiniApplication(Adw.Application):
             dialog = self.companion_setup = CompanionSetup(self)
         dialog.present(parent or self.get_active_window())
         return dialog
+
+    def on_companion_add(self, *_args, parent=None):
+        dialog = self.on_companion_setup(parent=parent)
+        if dialog:
+            dialog._add()
 
     @property
     def recording_settings(self):
@@ -399,6 +402,8 @@ class CassiniApplication(Adw.Application):
         else:
             self._auto_recording_revision = revision
         self._browser_snapshot = snapshot
+        if self.browser_connection:
+            self.browser_connection.observe(snapshot)
         self.observe_browser_recordings(snapshot, self._browser_seen_saved)
         self._browser_seen_saved = {r["path"] for r in snapshot.get("recordings", []) if isinstance(r.get("path"), str)}
         desired = self._auto_recording_pending
@@ -882,15 +887,13 @@ class CassiniApplication(Adw.Application):
         self._quitting = True
         if self.voice_backfill:
             self.voice_backfill.close()
-        if self._companion_probe_timer:
-            GLib.source_remove(self._companion_probe_timer)
-            self._companion_probe_timer = 0
+        if self.browser_connection:
+            self.browser_connection.close()
         self._record_start_generation += 1
         if self.browser_watch:
             self.browser_watch.close()
         self.set_auto_recording_hold(False)
         self._record_start_executor.shutdown(wait=False, cancel_futures=True)
-        self._companion_probe_executor.shutdown(wait=False, cancel_futures=True)
         if self.speech_models:
             self.speech_models.close()
         if self.diarization_models:

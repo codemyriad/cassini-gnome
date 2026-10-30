@@ -24,6 +24,7 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
+from cassini_viewer.browser_connection import BrowserConnection  # noqa: E402
 from cassini_viewer.library_window import LibraryWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
 from cassini_viewer.settings_dialog import SettingsDialog  # noqa: E402
@@ -80,9 +81,11 @@ with tempfile.TemporaryDirectory() as temporary:
         app.activate()
         window = app.get_active_window()
         until(lambda: not window._pending)
+        app.browser_connection = BrowserConnection(app._browser_connection_changed, available=False)
+        app.retry_browser_connection()
         assert not app.browser_companion_available and app.browser_watch is None
-        until(lambda: app._companion_probe_future is None)
-        assert not app._companion_probe_timer, "Missing sandbox permission cannot recover through polling"
+        until(lambda: app.browser_connection.future is None)
+        assert not app.browser_connection.timer, "Missing sandbox permission cannot recover through polling"
         activity_timer = window._activity_timer
         assert activity_timer, "Native activity timer must run without a browser bridge"
         assert not window.first_companion.get_visible()
@@ -153,19 +156,19 @@ with tempfile.TemporaryDirectory() as temporary:
                 patch.object(bridge, "host_info", side_effect=host_info),
                 patch.object(SettingsDialog, "_call", return_value={}),
             ):
-                app._refresh_companion()
+                app.retry_browser_connection()
                 until(lambda: entered.is_set() and len(beats) >= 8)
-                assert app._companion_probe_future and not app._companion_probe_future.done()
+                assert app.browser_connection.future and not app.browser_connection.future.done()
                 recording_worker = app._record_start_executor.submit(threading.get_ident).result(timeout=1)
                 assert recording_worker != threads[0], "Blocked host probe occupied the recording executor"
                 assert not app.browser_companion_available
                 assert not settings.browser_setup.get_visible() and not settings.automatic.get_visible()
                 assert not window.first_companion.get_visible()
                 release.set()
-                until(lambda: app._companion_probe_future is None)
-                assert not app.browser_companion_available and app._companion_probe_timer
+                until(lambda: app.browser_connection.future is None)
+                assert not app.browser_companion_available and app.browser_connection.timer
                 until(lambda: app.browser_companion_available)  # Actual scheduled retry.
-                assert len(threads) == 2 and all(t != main_thread for t in threads)
+                assert len(threads) >= 3 and all(t != main_thread for t in threads)
                 assert window.first_companion.get_visible()
                 assert settings.browser_setup.get_visible() and settings.automatic.get_visible()
                 assert window.meeting_page._companion.get_visible()

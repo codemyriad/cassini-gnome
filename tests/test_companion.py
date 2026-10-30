@@ -41,6 +41,24 @@ def test_no_manifests_are_written_for_missing_browsers(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_profile_inventory_changes_only_for_browser_or_profile_changes(tmp_path, monkeypatch):
+    browser = companion.Browser("Chromium", "/test/chromium", tmp_path / "chromium")
+    monkeypatch.setattr(companion, "installed_browsers", lambda: [browser])
+    monkeypatch.setattr(companion, "in_flatpak", lambda: False)
+    missing = companion.profile_inventory()
+    browser.config.mkdir()
+    present = companion.profile_inventory()
+    assert present != missing
+    profile = browser.config / "Default"
+    profile.mkdir()
+    default = companion.profile_inventory()
+    assert default != present
+    (profile / "Preferences").write_text("irrelevant profile content")
+    assert companion.profile_inventory() == default
+    (browser.config / "Profile 2").mkdir()
+    assert companion.profile_inventory() != default
+
+
 def test_registers_both_hosts_atomically_with_exact_origin_and_private_permissions(tmp_path):
     browsers = companion.installed_browsers(config=tmp_path / "config", which=lambda name: "/bin/" + name)
     executable = tmp_path / "host"
@@ -74,10 +92,32 @@ def test_failed_manifest_publication_preserves_old_registration_and_removes_temp
         raise OSError("simulated rename failure")
 
     monkeypatch.setattr(Path, "replace", failed)
+    new = tmp_path / "updated-host"
+    new.write_text("#!/bin/sh\n")
+    new.chmod(0o700)
     with pytest.raises(OSError, match="rename"):
-        companion.register(browsers=[browser], hosts=hosts)
+        companion.register(browsers=[browser], hosts={"io.codemyriad.cassini": new})
     assert destination.read_bytes() == old
     assert list(destination.parent.iterdir()) == [destination]
+
+
+def test_an_unwritable_browser_does_not_prevent_other_browsers_registration(tmp_path, monkeypatch):
+    browsers = [companion.Browser(name, "/test/browser", tmp_path / name) for name in ("bad", "good")]
+    executable = tmp_path / "host"
+    executable.write_text("#!/bin/sh\n")
+    executable.chmod(0o700)
+    hosts = {"io.codemyriad.cassini": executable, "io.codemyriad.cassini.control": executable}
+    original = Path.mkdir
+
+    def mkdir(path, *args, **kwargs):
+        if path == browsers[0].config / "NativeMessagingHosts":
+            raise PermissionError(13, "read-only browser config")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", mkdir)
+    with pytest.raises(PermissionError):
+        companion.register(browsers=browsers, hosts=hosts)
+    assert len(list(browsers[1].config.rglob("*.json"))) == 2
 
 
 def test_add_opens_the_approved_store_url_in_the_chosen_browser_without_a_shell(tmp_path):

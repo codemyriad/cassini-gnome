@@ -31,11 +31,24 @@ WRITE = """set -eu
 umask 077
 destination=$1
 directory=${destination%/*}
+content=$(cat)
+[ ! -L "$destination" ] || exit 78
+if [ -e "$destination" ] && [ ! -f "$destination" ]; then exit 78; fi
+if [ -f "$destination" ] && printf '%s\\n' "$content" | cmp -s - "$destination"; then
+    if [ "$2" = 700 ] && [ ! -x "$destination" ]; then
+        [ -w "$destination" ] || exit 77
+        chmod 700 "$destination"
+    fi
+    exit 0
+fi
+ancestor=$directory
+while [ ! -e "$ancestor" ] && [ "$ancestor" != / ]; do ancestor=${ancestor%/*}; done
+[ -w "$ancestor" ] || exit 77
 mkdir -p -- "$directory"
 temporary=$(mktemp "$directory/.cassini-XXXXXXXX")
 trap 'rm -f -- "$temporary"' 0
 trap 'exit 1' HUP INT TERM
-cat > "$temporary"
+printf '%s\\n' "$content" > "$temporary"
 chmod "$2" "$temporary"
 mv -fT -- "$temporary" "$destination"
 """
@@ -167,6 +180,30 @@ def broker_command(socket_path):
     )
 
 
+def profile_inventory(browsers):
+    script = """for root in "$@"; do
+printf '%s\\0' "$root"
+if [ -d "$root" ]; then
+    printf 'present\\0'
+    for profile in "$root/Default" "$root"/Profile\\ *; do
+        [ ! -d "$profile" ] || printf '%s\\0' "${profile##*/}"
+    done
+else printf 'missing\\0'; fi
+done"""
+    try:
+        result = subprocess.run(
+            host_command(["/bin/sh", "-c", script, "cassini-profiles", *[str(b.config) for b in browsers]], watch=True),
+            capture_output=True,
+            check=True,
+            timeout=3,
+        )
+        if len(result.stdout) > 65536:
+            raise OSError("Browser profile inventory exceeds limit")
+        return result.stdout.decode("utf-8")
+    except (subprocess.SubprocessError, UnicodeError) as error:
+        raise OSError("Could not inspect host browser profiles") from error
+
+
 def _write(path, content, mode):
     try:
         subprocess.run(
@@ -177,6 +214,10 @@ def _write(path, content, mode):
             timeout=5,
         )
     except subprocess.SubprocessError as error:
+        from .companion import SetupError
+
+        if getattr(error, "returncode", None) in (77, 78):
+            raise SetupError("unwritable" if error.returncode == 77 else "unsafe") from error
         raise OSError("Could not register the browser companion") from error
 
 
@@ -220,14 +261,14 @@ def cleanup_legacy(browsers=None):
 
 
 def register(browsers=None):
-    from .companion import ORIGIN
+    from .companion import ORIGIN, SetupError
     from .companion import installed_browsers as detect
 
     target = deployment()
     config, data, flatpak, executables = host_info()
     browsers = detect(config=config, which=executables.get, host=False) if browsers is None else browsers
     if not browsers:
-        raise OSError("No supported browser is installed")
+        raise SetupError("noBrowser")
     directory = data / "cassini/native-hosts" / target.application
     template = Path(__file__).with_name("flatpak-native-host.sh").read_text()
     hosts = {}
@@ -243,7 +284,7 @@ def register(browsers=None):
         executable = directory / command
         _write(executable, content, "700")
         hosts[name] = executable
-    written = []
+    written, errors = [], []
     for browser in browsers:
         for name, executable in hosts.items():
             destination = browser.config / "NativeMessagingHosts" / (name + ".json")
@@ -254,7 +295,14 @@ def register(browsers=None):
                 type="stdio",
                 allowed_origins=[ORIGIN],
             )
-            _write(destination, json.dumps(manifest, indent=2) + "\n", "600")
-            written.append(destination)
+            try:
+                _write(destination, json.dumps(manifest, indent=2) + "\n", "600")
+                written.append(destination)
+            except SetupError as error:
+                if error.retryable:
+                    raise
+                errors.append(error)
     _cleanup_legacy_directories([browser.config / "NativeMessagingHosts" for browser in browsers])
+    if errors:
+        raise errors[0]
     return written
