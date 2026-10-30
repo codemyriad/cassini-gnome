@@ -328,7 +328,9 @@ with tempfile.TemporaryDirectory() as temporary:
 
     ended = read_metadata(directory)["recordingDetails"]["end"]
     assert ended["reason"] == "user" and ended["atMs"] > 0
-    assert not any(event["type"] == "end" for event in native.session.manifest.get("events", []))
+    terminal = [event for event in native.session.manifest.get("events", []) if event["type"] == "end"]
+    assert len(terminal) == 1 and terminal[0]["reason"] == "user"
+    assert terminal[0]["atMs"] >= ended["atMs"]
     saved = next(m for m in LibraryScanner(directory.parent).scan().meetings if m.directory == directory)
     assert read_details(saved).ended.startswith("Stopped by you · ")
     window.back_to_library()
