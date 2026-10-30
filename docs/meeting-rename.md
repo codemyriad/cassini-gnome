@@ -1,0 +1,7 @@
+# Rename a saved meeting (D35.2)
+
+Rename… is the first item in a Library row's menu and the Meeting page's More actions menu. F2 opens the same native dialog. The current name starts selected; Enter saves, Escape cancels. An unchanged name cannot be saved. Names are trimmed and limited to 500 Unicode scalar values. An empty name writes the shared “Untitled meeting” title with `titleSource: user`, so the original captured title does not reappear.
+
+The metadata transaction runs on the existing editor worker, rechecks Library ownership and capture state, and changes only `title` and `titleSource`. The normal metadata revision increments; existing notes, processing fields and unknown metadata survive. Received audio and original files are untouched. Saved meetings can be renamed while writing down; recording and saving meetings cannot. A failed write keeps the entered name and previous metadata, with Try again.
+
+`tests/test_meeting_rename.py` checks the metadata, ownership, received, live-capture and atomic-failure boundaries. `tests/ui/rename.py` uses both actual popovers and native X11 keyboard events for F2, Enter and Escape, and checks retry plus unchanged audio. It runs in the private Xvfb UX job, fails on Gtk-WARNING/CRITICAL and emits `rename.png` in `ux-boards`. Widget readiness is bounded by mapping and allocation, rather than fixed sleeps. The XTest helper sends the literal keycode: libxdo's keysym search can otherwise choose Alt+F2 in the runner keymap.

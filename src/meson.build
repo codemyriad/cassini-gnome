@@ -66,6 +66,8 @@ install_data(
   'cassini_viewer/speakers_dialog.py',
   'cassini_viewer/meeting_text.py',
   'cassini_viewer/meeting_store.py',
+  'cassini_viewer/meeting_rename.py',
+  'cassini_viewer/rename_dialog.py',
   'cassini_viewer/transcription.py',
   'cassini_viewer/transcript_publish.py',
   'cassini_viewer/speech_models.py',
