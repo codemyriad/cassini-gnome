@@ -297,3 +297,44 @@ def test_d38_cleaned_quotes_keep_search_seek_on_the_original_item(index):
     assert hit.position_ms == 100 and hit.marked == "\x01needle\x02"
     assert index.turns[selected.key][0].words is not None
     assert tuple(w.text for turn in index.turns[selected.key] for w in turn.words) == ('"', "needle", '"other')
+
+
+def test_d38_rejoined_interrupted_turn_never_pairs_quotes_across_speakers(index, tmp_path):
+    # Regression (re-review 118): build_turns rejoins A's run around B's
+    # overlapping interjection, and the preview and reader used to pair A's
+    # two quotes across B into “yes then no”. Every surface pairs per
+    # consecutive speaker run, so both unmatched quotes drop everywhere.
+    from cassini_viewer import export_model
+    from cassini_viewer.meeting_text import item_markup, reading_turns
+    from cassini_viewer.transcript import build_turns, visible_turns
+
+    words = (
+        Word("a", 0, 1000, 'He said "yes'),
+        Word("b", 900, 1100, "okay"),
+        Word("a", 1050, 2000, 'then no"'),
+    )
+    reader = build_turns(list(words))
+    assert len(visible_turns(reader)) == 1 and reader[1].host is reader[0], "fixture must rejoin A around B"
+    expected = ["He said yes", "okay", "then no"]
+    shown = {
+        "reader": [reader[0].text, reader[1].text],
+        "preview": [t.text for t in LibraryScanner(tmp_path)._preview("x", words)],
+        "meeting": [t.text for t in reading_turns(list(words))],
+    }
+    selected = next(iter(index.current.values()))
+    index.sync(LibrarySnapshot(meetings=(replace(selected, words=words),)))
+    shown["search"] = [t.text for t in index.turns[selected.key]]
+    items = [dict(speaker=w.speaker, startMs=w.start_ms, text=w.text) for w in words]
+    exported = export_model.markdown(dict(title="T", speakers=[], items=items)).split("## Transcript", 1)[1]
+    shown["markdown"] = [line for line in exported.splitlines() if line and not line.startswith("**")]
+    assert shown == {
+        "reader": ["He said yes then no", "okay"],
+        "preview": ["He said yes then no"],
+        "meeting": expected,
+        "search": expected,
+        "markdown": expected,
+    }
+    meeting_markup = "".join(item_markup(t.words, 0, values=t.items) for t in reading_turns(list(words)))
+    assert not any("“" in v or "”" in v for v in [*map(str, shown.values()), meeting_markup])
+    by_item = {id(w): v for t in reader for w, v in zip(t.words, t.items, strict=True)}
+    assert [by_item[id(w)] for w in words] == expected

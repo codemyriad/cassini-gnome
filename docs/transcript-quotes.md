@@ -1,6 +1,6 @@
 # Turn quotation marks (D38.5)
 
-When a turn is displayed, straight double quotes pair in reading order and become “ and ”. A final quote without a partner in that turn disappears, and an item left with only spaces disappears with it. Pairing never crosses a speaker turn. Existing curly quotes and apostrophes stay as written.
+When a turn is displayed, straight double quotes pair in reading order and become “ and ”. A final quote without a partner in that turn disappears, and an item left with only spaces disappears with it. Pairing never crosses a speaker turn: it runs over each consecutive run of one speaker, even where the reader and Library previews rejoin a turn around another speaker's overlapping interjection. Existing curly quotes and apostrophes stay as written.
 
 Library previews, the Meeting transcript, the standalone transcript reader (including its in-window search), Search excerpts and Markdown export use this display projection. The timed items and original transcript files are unchanged. Even when a quote-only item disappears, transcript links and Search seek positions still address the original item.
 

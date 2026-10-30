@@ -76,8 +76,8 @@ class Turn:
     fragments: list[tuple[int, int]] = field(default_factory=list)  # word slices
     over: list[str] = field(default_factory=list)
     host: Turn | None = None  # set when this turn is shown inside another
-    # D38.5 displayed text per item, when pairing spans more than this turn
-    # (reading_turns splits one speaker turn into bounded paragraphs).
+    # D38.5 displayed text per item, paired per consecutive speaker run: one
+    # run can span several reading paragraphs, and build_turns rejoins runs.
     display: tuple[str, ...] | None = None
 
     @property
@@ -131,6 +131,11 @@ def build_turns(words: list[Word]) -> list[Turn]:
             fragment.end_ms = max(fragment.end_ms, word.end_ms)
         else:
             fragments.append(Turn(len(fragments), word.speaker, [word], i, word.start_ms, word.end_ms))
+    # D38.5 pairs quotes within each consecutive speaker run, like Search,
+    # Markdown and the Meeting page; rejoining must never pair across a
+    # speaker change.
+    for fragment in fragments:
+        fragment.display = quote_items(w.text for w in fragment.words)
     spans = [_spans(fragment.words) for fragment in fragments]
     turns = []
     opened = {}
@@ -149,6 +154,7 @@ def build_turns(words: list[Word]) -> list[Turn]:
         if join:
             start = len(run.words)
             run.words.extend(fragment.words)
+            run.display += fragment.display
             run.fragments.append((start, len(run.words)))
             run.end_ms = max(run.end_ms, fragment.end_ms)
         else:
