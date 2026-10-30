@@ -167,9 +167,9 @@ class CassiniApplication(Adw.Application):
 
         self.library_relocator = LibraryRelocator(self)
         if (
-            self.recording_settings.get_boolean("record-shortcut-enabled")
-            and not os.environ.get("CASSINI_SCREENSHOT_ISOLATED")
+            not os.environ.get("CASSINI_SCREENSHOT_ISOLATED")
             and not os.environ.get("CASSINI_ISOLATED_AUDIO")
+            and self.recording_settings.get_boolean("record-shortcut-enabled")
         ):
             from .global_shortcut import GlobalShortcut
 
