@@ -71,6 +71,8 @@ class CassiniApplication(Adw.Application):
         screenshot = os.environ.get("CASSINI_SCREENSHOT_ISOLATED") == "1"
         self.writing_unavailable = None if screenshot else self._writing_unavailable()
         self.transcription_enabled = not screenshot and self.writing_unavailable is None
+        self._permission_sources = set()
+        self._shortcut_saved_pending = set()
         self.native_captures = {}
         self._last_native = None
         self._browser_snapshot = {}
@@ -140,7 +142,11 @@ class CassiniApplication(Adw.Application):
             self._start_legacy_host_cleanup()
             from .browser_connection import BrowserConnection
 
-            self.browser_connection = BrowserConnection(self._browser_connection_changed, available=not self.in_flatpak)
+            self.browser_connection = BrowserConnection(
+                self._browser_connection_changed,
+                available=not self.in_flatpak,
+                ever_connected=self.recording_settings.get_boolean("browser-ever-connected"),
+            )
             self.browser_connection.trigger()
         from .sherpa_runtime import available as parakeet_available
 
@@ -320,6 +326,8 @@ class CassiniApplication(Adw.Application):
     def _browser_connection_changed(self):
         if self._quitting:
             return GLib.SOURCE_REMOVE
+        if self.browser_connection.ever_connected and not self.recording_settings.get_boolean("browser-ever-connected"):
+            self.recording_settings.set_boolean("browser-ever-connected", True)
         previous = self._companion_ready
         self._companion_ready = self.browser_connection.available
         if self._companion_ready:
@@ -425,6 +433,10 @@ class CassiniApplication(Adw.Application):
         else:
             self._auto_recording_revision = revision
         self._browser_snapshot = snapshot
+        for status in snapshot.get("statuses", []):
+            self._permission_sources.update(
+                kind for kind in status.get("permittedSources", []) if kind in ("microphone", "system")
+            )
         if self.browser_connection:
             self.browser_connection.observe(snapshot)
         self.observe_browser_recordings(snapshot, self._browser_seen_saved)
@@ -469,6 +481,17 @@ class CassiniApplication(Adw.Application):
             or any(recorder_busy(r) for r in self.native_captures.values())
             or self.browser_capture_active()
         )
+        if active and not any(w.is_active() for w in self.get_windows()):
+            from pathlib import Path
+
+            self._shortcut_saved_pending.update(
+                str(r.session.directory.resolve()) for r in self.native_captures.values() if r.session
+            )
+            self._shortcut_saved_pending.update(
+                str(Path(s["path"]).resolve())
+                for s in self._browser_snapshot.get("statuses", [])
+                if s.get("recording") and isinstance(s.get("path"), str)
+            )
         if (
             not active
             and self.recording_settings.get_boolean("skip-record-first")
@@ -613,6 +636,15 @@ class CassiniApplication(Adw.Application):
         self._native_changed()
 
     def _native_changed(self, *_):
+        for recorder in tuple(self.native_captures.values()) + ((self._last_native,) if self._last_native else ()):
+            if recorder.session:
+                self._permission_sources.update(
+                    t["kind"]
+                    for t in tuple(recorder.session.manifest["tracks"])
+                    if t["kind"] in ("microphone", "system") and t["frames"] > 0
+                )
+        if self.record_first:
+            self.record_first.refresh_permissions()
         if self.comfort:
             self.comfort.native_level()
         for window in self.get_windows():
@@ -634,6 +666,7 @@ class CassiniApplication(Adw.Application):
     def _native_finished(self, _recorder, _path):
         self.native_captures = {key: r for key, r in self.native_captures.items() if r is not _recorder}
         self._last_native = _recorder
+        self._notify_shortcut_saved(_path)
         _recorder.close()
         if self._pending_recording == _path:
             self._pending_recording = None
@@ -689,6 +722,8 @@ class CassiniApplication(Adw.Application):
             def delivered():
                 try:
                     paths = result.result()
+                    for path in paths:
+                        self._notify_shortcut_saved(path)
                     if self.transcription_enabled:
                         for path in paths:
                             self.write_down(path)
@@ -703,6 +738,14 @@ class CassiniApplication(Adw.Application):
             GLib.idle_add(delivered)
 
         future.add_done_callback(done)
+
+    def _notify_shortcut_saved(self, directory):
+        from pathlib import Path
+
+        key = str(Path(directory).resolve())
+        if key in self._shortcut_saved_pending:
+            self._shortcut_saved_pending.remove(key)
+            self.comfort.saved_notification(directory)
 
     @staticmethod
     def _writing_unavailable():

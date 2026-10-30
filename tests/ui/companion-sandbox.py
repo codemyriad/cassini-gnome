@@ -169,8 +169,11 @@ with tempfile.TemporaryDirectory() as temporary:
                 assert not app.browser_companion_available and app.browser_connection.timer
                 until(lambda: app.browser_companion_available)  # Actual scheduled retry.
                 assert len(threads) >= 3 and all(t != main_thread for t in threads)
-                assert window.first_companion.get_visible()
-                assert settings.browser_setup.get_visible() and settings.automatic.get_visible()
+                assert not window.first_companion.get_visible(), "Setup belongs in Settings before the first connection"
+                assert settings.automatic.get_visible()
+                assert not settings.browser_setup.get_visible()
+                assert settings.browser.get_title() == "Browser meetings need Chrome, Edge, Brave or Chromium."
+                assert settings.browser_add.get_visible() and not settings.browser_add.get_sensitive()
                 assert window.meeting_page._companion.get_visible()
                 assert window._activity_timer == activity_timer, "Bridge changes must not duplicate the live timer"
         finally:

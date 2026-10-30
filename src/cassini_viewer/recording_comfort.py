@@ -3,7 +3,7 @@
 
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import CancelledError, ThreadPoolExecutor
 from gettext import gettext as _
 
 from gi.repository import Gio, GLib, Gtk
@@ -319,6 +319,37 @@ class RecordingComfort:
         notification = Gio.Notification.new(text(line, n=minutes))
         notification.set_default_action("app.open-recording")
         self.app.send_notification("recording-space", notification)
+
+    def saved_notification(self, directory):
+        if self.closed or self.app._quitting:
+            return
+        self.app.hold()
+        try:
+            future = self.executor.submit(live_meeting, directory, "saved")
+        except RuntimeError:
+            self.app.release()
+            return
+
+        def delivered(result):
+            try:
+                meeting = result.result()
+                if (
+                    not self.closed
+                    and not self.app._quitting
+                    and meeting
+                    and meeting.has_audio
+                    and meeting.capture_state in ("completed", "interrupted")
+                ):
+                    notification = Gio.Notification.new(text("recording.savedNotification", title=meeting.title))
+                    notification.set_default_action("app.open-recording")
+                    self.app.send_notification("saved-" + meeting.key, notification)
+            except (OSError, ValueError, CancelledError):
+                LOG.warning("Could not read the saved recording for notification", exc_info=True)
+            finally:
+                self.app.release()
+            return GLib.SOURCE_REMOVE
+
+        future.add_done_callback(lambda result: GLib.idle_add(delivered, result))
 
     def discard_meeting(self, directory):
         key = directory.name

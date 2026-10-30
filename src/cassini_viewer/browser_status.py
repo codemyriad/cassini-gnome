@@ -23,7 +23,15 @@ class BrowserStatus(Gtk.Box):
 
     def render(self):
         controller = self.app.browser_connection
-        self.set_visible(bool(controller and self.app.browser_companion_available))
+        state = controller.snapshot() if controller else None
+        self.set_visible(
+            bool(
+                state
+                and self.app.browser_companion_available
+                and state.get("everConnected")
+                and state["phase"] != "needsBrowser"
+            )
+        )
         if not controller:
             return
         state = controller.snapshot()

@@ -105,13 +105,15 @@ with tempfile.TemporaryDirectory() as temporary:
     window.set_default_size(1130, 730)
     until(lambda: not window._pending and app.browser_connection.future is None)
     assert app.browser_connection.snapshot()["phase"] == "waiting"
+    assert not window.browser_status.get_visible() and not window.first_browser_status.get_visible()
+    assert not window.first_companion.get_visible()
     files = list((tmp / "browser-config").rglob("io.codemyriad.cassini*.json"))
     assert len(files) == 8, "Both hosts must be registered at launch without Connect"
     before = {p: (p.read_bytes(), p.stat().st_mtime_ns, p.stat().st_ino) for p in files}
     from cassini_viewer.settings_dialog import SettingsDialog
 
     settings = app.settings_dialog = SettingsDialog(app, service_path=path)
-    assert settings.browser.get_title() == "Waiting for the Cassini Recorder extension"
+    assert settings.browser.get_title() == "Waiting for the browser companion"
     assert settings.browser_add.get_visible() and not settings.browser_setup.get_visible()
     dialog = app.companion_setup = CompanionSetup(app, service_path=path)
     dialog.present(window)
@@ -132,7 +134,7 @@ with tempfile.TemporaryDirectory() as temporary:
     companion.open_add = failed_open
     dialog.add_button.emit("clicked")
     until(lambda: dialog.local_error is not None)
-    assert dialog.failed and dialog.connect_button.get_visible()
+    assert dialog.failed and dialog.add_retry.get_visible() and not dialog.connect_row.get_visible()
     companion.open_add = opener
     dialog.add_button.emit("clicked")
     until(lambda: len(launches) == 2 and dialog.local_error is None and not dialog.failed)
@@ -144,16 +146,17 @@ with tempfile.TemporaryDirectory() as temporary:
     companion.register = read_only
     app.retry_browser_connection()  # A profile-change trigger, not a Connect click.
     until(lambda: dialog.failed)
-    assert dialog.connect_button.get_label() == "Try again" and dialog.connect_button.get_visible()
+    assert dialog.add_retry.get_label() == "Try again" and dialog.add_retry.get_visible()
+    assert not dialog.connect_row.get_visible()
     assert settings.browser_setup.get_visible() and not settings.browser_add.get_visible()
     assert not app.browser_connection.timer, "Permanent config errors must stop retrying"
     shot(window, "-failed")
     companion.register = real_register
-    dialog.connect_button.emit("clicked")
+    dialog.add_retry.emit("clicked")
     until(lambda: app.browser_connection.future is None and not dialog.failed)
     assert not dialog.connect_button.get_visible() and not dialog.done.get_sensitive()
     assert before == {p: (p.read_bytes(), p.stat().st_mtime_ns, p.stat().st_ino) for p in files}
-    assert dialog.connect_caption.get_label() == "Waiting for the Cassini Recorder extension"
+    assert dialog.connect_caption.get_label() == "" and not dialog.connect_row.get_visible()
     # The native host's socket connection alone is not an extension handshake.
     with connect(path) as connection, connection.makefile("rwb") as stream:
         send_packet(stream, dict(role="extension", browserName="Chrome"))
@@ -164,6 +167,8 @@ with tempfile.TemporaryDirectory() as temporary:
         send_packet(stream, dict(type="hello", version=1))
         send_packet(stream, dict(type="status", recording=False))
         until(lambda: dialog.done.get_sensitive())
+        assert app.recording_settings.get_boolean("browser-ever-connected")
+        assert window.browser_status.get_visible() and window.first_browser_status.get_visible()
         assert dialog.add_caption.get_label() == "Done. Cassini is in Chrome."
         assert dialog.connect_caption.get_label() == "Connected to Chrome"
         assert settings.browser.get_title() == "Connected to Chrome"

@@ -2914,7 +2914,7 @@
   {
    "id": "recordFirst.mic.caption",
    "en": "Your desktop may ask you to allow this next.",
-   "mac": "macOS asks you to allow this next.",
+   "mac": "macOS asks you to allow this.",
    "platforms": [
     "gnome",
     "mac"
@@ -2962,7 +2962,7 @@
   {
    "id": "recordFirst.sound.caption",
    "en": "Nothing to allow on this computer.",
-   "mac": "macOS asks once more, for Screen & System Audio Recording.",
+   "mac": "macOS asks you to allow this.",
    "platforms": [
     "gnome",
     "mac"
@@ -3025,7 +3025,7 @@
   },
   {
    "id": "recordFirst.title",
-   "en": "Before your first recording",
+   "en": "Before you record",
    "platforms": [
     "gnome",
     "mac"
@@ -3036,7 +3036,7 @@
     "RecordFirst-mac"
    ],
    "milestone": "UX5",
-   "note": "Also the dialog's accessible name (aria-labelledby). GNOME: centred AdwDialog title. Mac: leading sheet title. 20 px bold.",
+   "note": "Also the dialog's accessible name (aria-labelledby). GNOME: centred AdwDialog title. Mac: leading sheet title. 20 px bold. D37.1: no longer \"first\"; it shows until Don’t show again.",
    "status": "drawn"
   },
   {
@@ -3943,7 +3943,7 @@
   },
   {
    "id": "settings.library.folder.description",
-   "en": "Each meeting is a folder with its audio, transcript and notes. Back it up like any other folder.",
+   "en": "Each meeting is a folder with its audio and transcript. Back it up like any other folder.",
    "platforms": [
     "gnome",
     "mac"
@@ -5541,7 +5541,7 @@
   },
   {
    "id": "browser.state.waiting",
-   "en": "Waiting for the Cassini Recorder extension",
+   "en": "Waiting for the browser companion",
    "platforms": [
     "gnome",
     "mac"
@@ -5599,7 +5599,7 @@
   },
   {
    "id": "browser.state.addGeneric",
-   "en": "Add the Cassini Recorder extension",
+   "en": "Add the browser companion",
    "platforms": [
     "gnome",
     "mac"
@@ -5835,6 +5835,135 @@
    "milestone": "D35",
    "status": "harmony",
    "note": "Coordinator (D35)."
+  },
+  {
+   "id": "recordFirst.allowed",
+   "en": "Allowed",
+   "role": "caption",
+   "note": "Coordinator (D37). Source row caption once that permission is granted (D37.1).",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D37",
+   "status": "harmony"
+  },
+  {
+   "id": "browser.state.needsBrowser",
+   "en": "Browser meetings need Chrome, Edge, Brave or Chromium.",
+   "role": "description",
+   "note": "Coordinator (D37). Neutral line, not an error, when no supported browser is installed (D37.4). Add is disabled.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D37",
+   "status": "harmony"
+  },
+  {
+   "id": "format.size.kb",
+   "en": "{n} KB",
+   "role": "caption",
+   "placeholders": {
+    "n": "size in KB, whole number, below 1 MB"
+   },
+   "note": "Coordinator (D37). D37.10. Below 1 MB; format vectors gain this case.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D37",
+   "status": "harmony"
+  },
+  {
+   "id": "recording.savedNotification",
+   "en": "Recording saved: {title}",
+   "role": "notification",
+   "placeholders": {
+    "title": "meeting title"
+   },
+   "note": "Coordinator (D37). D37.10. Posted when the global shortcut stops a recording while another app is in front.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D37",
+   "status": "harmony"
+  },
+  {
+   "id": "recording.pill.open.a11y",
+   "en": "Open recording, {time}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [],
+   "milestone": "D37",
+   "status": "harmony",
+   "note": "Coordinator (D37.6), proposed by Mac.",
+   "placeholders": {
+    "time": "elapsed time, live"
+   }
+  },
+  {
+   "id": "recording.pill.stop.a11y",
+   "en": "Stop recording",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [],
+   "milestone": "D37",
+   "status": "harmony",
+   "note": "Coordinator (D37.6), proposed by Mac."
+  },
+  {
+   "id": "player.position",
+   "en": "Position",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [],
+   "milestone": "D37",
+   "status": "harmony",
+   "note": "Coordinator (D37.6), proposed by Mac."
+  },
+  {
+   "id": "player.speed.a11y",
+   "en": "Playback speed, {rate}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [],
+   "milestone": "D37",
+   "status": "harmony",
+   "note": "Coordinator (D37.6), proposed by Mac.",
+   "placeholders": {
+    "rate": "e.g. 1×"
+   }
+  },
+  {
+   "id": "player.playFromHere",
+   "en": "Play from here",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "action",
+   "boards": [],
+   "milestone": "D37",
+   "status": "harmony",
+   "note": "Coordinator (D37.6), proposed by Mac."
   }
  ]
 }

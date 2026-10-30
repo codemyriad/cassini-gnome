@@ -509,7 +509,8 @@ class SettingsDialog(Adw.PreferencesDialog):
         state = controller.snapshot() if controller and available else None
         self.browser.set_title(state_text(state))
         self.browser_setup.set_visible(bool(state and state["phase"] == "failed"))
-        self.browser_add.set_visible(bool(state and state["phase"] == "waiting" and state["browser"]))
+        self.browser_add.set_visible(bool(state and state["phase"] in ("waiting", "needsBrowser")))
+        self.browser_add.set_sensitive(bool(state and state["browser"]))
         self.browser_add.set_label(add_text(state))
 
     def _show_folder(self):
