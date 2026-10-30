@@ -19,13 +19,15 @@ await cp(path.join(root, 'browser-extension'), resource, {recursive:true});
 const bin = await mkdtemp(path.join(os.tmpdir(), 'cassini-companion-bin-'));
 // The app chooses a real supported browser. The wrapper only binds Chromium
 // to this test's private profile; it never loads or installs an extension.
-const wrapper = path.join(bin, 'chromium');
 const quote = s => "'" + s.replaceAll("'", "'\\''") + "'";
-await writeFile(wrapper, `#!/bin/sh
-printf '%s\\n' "$@" >> ${quote(path.join(out,'browser-launch-args.txt'))}
+for (const command of ['google-chrome','google-chrome-stable','chromium','chromium-browser']) {
+ const wrapper=path.join(bin,command);
+ await writeFile(wrapper, `#!/bin/sh
+printf '%s\\n' "$0" "$@" >> ${quote(path.join(out,'browser-launch-args.txt'))}
 exec ${quote(chromium.executablePath())} --no-sandbox --user-data-dir=${quote(profile)} "$@"
 `);
-await chmod(wrapper, 0o700);
+ await chmod(wrapper, 0o700);
+}
 const environment = {...process.env, PATH: bin+':'+process.env.PATH, CASSINI_LIBRARY_DIR:path.join(out,'Library')};
 const evidence = {method:'actual Developer mode and Load unpacked UI', expectedID:'pcafdaahfhjiolfpfnlhmljfgoabbaij', storeRequests:[], stages:[]};
 let app, context;
@@ -77,6 +79,8 @@ try {
  await call('prepare');
  const state=await poll(async()=>{const state=await call();return state.guide&&state.copyReady ? state : null;},'Add from Cassini guide');
  assert.equal(state.primary,'Add from Cassini');
+ assert.equal(path.dirname(state.browserExecutable),bin,'the app must launch this test’s private browser wrapper');
+ evidence.chosenBrowser={name:state.browserName,executable:state.browserExecutable,profile};
  assert.equal(state.done,false);
  const installed=JSON.parse(await readFile(path.join(state.folder,'manifest.json')));
  const id=[...createHash('sha256').update(Buffer.from(installed.key,'base64')).digest('hex').slice(0,32)].map(c=>String.fromCharCode(97+parseInt(c,16))).join('');

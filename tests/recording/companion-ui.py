@@ -103,6 +103,8 @@ def dispatch(packet):
             done=bool(guide and guide.done.get_sensitive()),
             folder=str(guide.folder) if guide else None,
             primary=setup.add_button.get_label() if setup else None,
+            browserName=guide.browser.name if guide else None,
+            browserExecutable=guide.browser.executable if guide else None,
             copyReady=bool(guide and guide.copy_button.get_sensitive()),
         )
     except Exception as error:

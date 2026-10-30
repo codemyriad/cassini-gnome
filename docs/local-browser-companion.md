@@ -60,6 +60,9 @@ CASSINI_TEST_BUILD="$PWD/_build" tests/recording/run.sh node tests/recording/com
 ```
 
 The Recording integration gate runs this proof against its exact build product.
+All Chrome/Chromium executable names resolve to the private wrapper, and the
+selected executable is asserted before opening anything, so a runner’s installed
+browser cannot divert the test into a second profile.
 The accessibility probe waits for Chromium’s named native address field to
 receive focus and accept its paste before Enter; clipboard ownership is checked
 before either paste; it never substitutes debug-protocol navigation
