@@ -174,9 +174,13 @@ with tempfile.TemporaryDirectory() as temporary:
             retry.assert_called_once_with(empty)
         page.update(meeting)
         window._selected(None, SimpleNamespace(meeting=meeting))
-    # Synthetic growth owns its model until it is restored. Live Library
-    # notifications must not replace it with the on-disk fixture mid-assertion.
-    with patch.object(window.monitor, "callback", lambda _snapshot: None):
+    # Both scans and the independent one-second refresh must keep reading the
+    # synthetic fixture throughout this block. Restore the real model afterwards.
+    with (
+        patch.object(window.monitor, "callback", lambda _snapshot: None),
+        patch.object(window, "_source_snapshot", window._source_snapshot),
+        patch.object(window, "snapshot", window.snapshot),
+    ):
         # Growing transcripts splice stable rows and never drag a paused reader back.
         from dataclasses import replace
 
@@ -187,7 +191,22 @@ with tempfile.TemporaryDirectory() as temporary:
             Word(meeting.speakers[i % len(meeting.speakers)].id, i * 1000, i * 1000 + 900, f"Item {i}")
             for i in range(400)
         )
-        page.update(replace(meeting, words=timed, turns=reading_turns(timed)))
+
+        def show_synthetic(words):
+            current = replace(meeting, words=words, turns=reading_turns(words))
+            snapshot = replace(
+                window._source_snapshot,
+                meetings=tuple(current if m.key == current.key else m for m in window._source_snapshot.meetings),
+            )
+            window._source_snapshot = snapshot
+            window._updated(snapshot)
+            # Exercise the refresh that used to revert this test's model on
+            # slower hosted layout, rather than depending on timer alignment.
+            window._activity_tick()
+            assert page.meeting.words is words
+            assert page.store.get_n_items() == len(current.turns)
+
+        show_synthetic(timed)
         until(lambda: page.scroller.get_vadjustment().get_upper() > 5000)
         adjustment = page.scroller.get_vadjustment()
         adjustment.set_value(1500)
@@ -207,7 +226,7 @@ with tempfile.TemporaryDirectory() as temporary:
         stable = page.store.get_item(1)
         anchor = visible_anchor()
         grown = timed + (Word(meeting.speakers[0].id, 400000, 400900, "New words"),)
-        page.update(replace(meeting, words=grown, turns=reading_turns(grown)))
+        show_synthetic(grown)
         frames = []
         page.list.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 2)[1])
         until(lambda: len(frames) >= 2)
