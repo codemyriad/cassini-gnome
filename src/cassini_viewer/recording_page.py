@@ -134,7 +134,7 @@ class RecordingPage(Adw.NavigationPage):
         self.change_sources.set_hexpand(True)
         source_actions.append(self.change_sources)
         self.details_button = Gtk.Button(
-            label="Details", css_classes=["flat", "link"], action_name="win.recording-details"
+            label="Details", css_classes=["flat", "recording-change"], action_name="win.recording-details"
         )
         source_actions.append(self.details_button)
         sources.append(source_actions)
