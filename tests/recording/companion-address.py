@@ -47,12 +47,17 @@ while time.monotonic() < deadline:
             states = node.get_state_set()
             if not states.contains(Atspi.StateType.FOCUSED):
                 continue
-            focused_nodes.append((node.get_role_name(), node.get_name()))
+            application = node.get_application().get_name()
+            focused_nodes.append((application, node.get_role_name(), node.get_name()))
+            if not any(name in application.lower() for name in ("chrom", "brave", "edge")):
+                continue
+            if node.get_name() != "Address and search bar":
+                continue
             interface = node.get_text_iface()
             if interface is None:
                 continue
             value = Atspi.Text.get_text(interface, 0, Atspi.Text.get_character_count(interface))
-            last = dict(focused=True, value=value)
+            last = dict(focused=True, application=application, name=node.get_name(), value=value)
             if expected is None or value.rstrip("/") == expected.rstrip("/"):
                 print(json.dumps(dict(ready=True, **last)))
                 raise SystemExit(0)

@@ -83,14 +83,18 @@ try {
  assert.equal(id,evidence.expectedID);
  await call('shot',{path:path.join(out,'companion-local-guide.png')});
  await poll(async()=>{try {await access(path.join(out,'companion-local-guide.png'));return true;} catch {return false;}},'rendered guide screenshot');
+ const screenshot=await readFile(path.join(out,'companion-local-guide.png'));
+ assert.deepEqual([screenshot.readUInt32BE(16),screenshot.readUInt32BE(20)],[1120,720]);
  await call('open');
  // R44: pending catalog/spec amendment. Chromium rejects external chrome://
  // navigation; emulate the user's explicit address-bar navigation, never CDP.
  const newTab=await poll(()=>context.pages().find(page=>page.url().startsWith('chrome://new-tab-page')),'browser opens a new tab');
  await newTab.bringToFront();
  await call('address');
- evidence.clipboardBeforePaste=await call('clipboard');
- assert.equal(evidence.clipboardBeforePaste.value,'chrome://extensions/');
+ await poll(async()=>{
+  const value=await call('clipboard');evidence.clipboardBeforePaste=value;
+  return value.local && value.value==='chrome://extensions/';
+ },'the app owns the Extensions address clipboard');
  const address = expected => JSON.parse(execFileSync('/usr/bin/python3',[
   path.join(root,'tests/recording/companion-address.py'),...(expected ? [expected] : [])],{encoding:'utf8'}));
  await poll(()=>{
@@ -117,6 +121,10 @@ try {
  },'native extension directory picker');
  evidence.stages.push({picker});
  await call('copy');
+ await poll(async()=>{
+  const value=await call('clipboard');evidence.clipboardFolder=value;
+  return value.local && value.value===state.folder;
+ },'the app owns the folder clipboard');
  execFileSync('xdotool',['key','--clearmodifiers','ctrl+l']);
  execFileSync('xdotool',['key','--clearmodifiers','ctrl+v']);
  const selection=JSON.parse(execFileSync('/usr/bin/python3',[path.join(root,'tests/recording/companion-picker.py'),state.folder],{encoding:'utf8'}));

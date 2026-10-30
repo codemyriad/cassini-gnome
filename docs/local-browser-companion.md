@@ -60,8 +60,9 @@ CASSINI_TEST_BUILD="$PWD/_build" tests/recording/run.sh node tests/recording/com
 ```
 
 The Recording integration gate runs this proof against its exact build product.
-The accessibility probe waits for the native address field to receive focus and
-accept its paste before Enter; it never substitutes debug-protocol navigation
+The accessibility probe waits for Chromium’s named native address field to
+receive focus and accept its paste before Enter; clipboard ownership is checked
+before either paste; it never substitutes debug-protocol navigation
 for that first installation.
 
 It retains the real guide screenshot, native picker/extension identity/version,
