@@ -1,0 +1,15 @@
+{
+  "source": "drmeyers:~/dev/cassini-coordination/ux-draft/bleed",
+  "commit": "7249927",
+  "review": "Mac review required before merge (D38.3)",
+  "sha256": {
+    "echo-vectors.json": "81805038e849a856783bd51c5965735f4d3f1246ac31eeb584050b7940365ad2",
+    "make.py": "d761ce13b93f9f3127cfc2a2cdd8a5f8e5eb52365c2b78252b921550830a23b3",
+    "measure.py": "cd96169c4a9610c728ab37c27769620ad5936185374628ee94649f9c5053c9e7",
+    "results/mac-757abb6-bleed.transcript.json": "286a6fd82442369c04f0415e10de5e066567eeb2cc71680f705f63f5bb77cf59",
+    "results/mac-757abb6-clean.transcript.json": "8fded9e2f287841b548237d3c0b084bf5f995d1c8c55b6e0c6b1363857503b1f",
+    "source/me.wav": "eefe0a4e7975c9d069fd414e1c55b1d5a5f4b25c4405894f3a59f3b5dc23d235",
+    "source/them.wav": "6c89c7d41c9eb6f385da9d64da28af1bcb97f027412d636ef597071c1c7b1d7c",
+    "source/tts.py": "722e961d0fe2e011ec7db3e35991d626962e3eb1885c10f39a513035584104a8"
+  }
+}

@@ -377,6 +377,21 @@ class TranscriptionQueue:
                 raise CancelledError()
             if value["type"] == "planning":
                 return
+            if value["type"] == "echo":
+                indexes = value.get("indexes")
+                if not isinstance(indexes, list) or len(indexes) > 2048:
+                    raise ValueError("Invalid echo classification reply")
+                for index in indexes:
+                    if (
+                        type(index) is not int
+                        or not 0 <= index < len(publisher.words)
+                        or tracks[publisher.words[index]["_order"]]["kind"] not in ("microphone", "local")
+                    ):
+                        raise ValueError("Echo classification must address a microphone word")
+                    publisher.words[index]["echo"] = True
+                if indexes:
+                    publisher.reassign(publisher.words)
+                return
             if value["type"] == "recognised":
                 recognised_summary = value["summary"]
             if value["type"] == "diarized":

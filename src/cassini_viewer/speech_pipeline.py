@@ -361,6 +361,10 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
     )
     elapsed = processed = 0.0
     language = "und"
+    echo_words = []
+    echo_enabled = any(t.get("kind") in ("microphone", "local") for t in tracks) and any(
+        t.get("kind") not in ("microphone", "local") for t in tracks
+    )
     for _order, grouped in groupby(plan, key=lambda entry: entry[0]):
         entries = list(grouped)
         track = entries[0][1]
@@ -374,6 +378,8 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
                 value, words, language, input_hash = recognise_segment(
                     model, track["path"], segment, offset, samples=samples
                 )
+                if echo_enabled:
+                    echo_words.extend(dict(word, track=track["id"]) for word in words)
                 elapsed += time.monotonic() - started
                 seconds = (segment["endSample"] - segment["startSample"]) / RATE
                 processed += seconds
@@ -390,4 +396,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
                     etaMinutes=math.ceil((remaining * factor + extra_seconds) / 60),
                     realtimeFactor=factor,
                 )
+    from .echo import notify_echo
+
+    notify_echo(echo_words, tracks, notify)
     return dict(language=language, diagnostics=diagnostics, segments=len(plan), vad=detector.runtime)

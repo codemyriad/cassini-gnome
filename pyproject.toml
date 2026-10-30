@@ -2,7 +2,7 @@
 [tool.ruff]
 line-length = 120
 target-version = "py311"
-extend-exclude = ["tests/export/cassini-read-pure.py", "tests/parakeet/tools", "tests/ux/diarization", "tests/ux/voices"]
+extend-exclude = ["tests/export/cassini-read-pure.py", "tests/parakeet/tools", "tests/ux/diarization", "tests/ux/voices", "tests/bleed/make.py", "tests/bleed/measure.py", "tests/bleed/source/tts.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM"]

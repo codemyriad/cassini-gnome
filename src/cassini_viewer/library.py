@@ -792,7 +792,10 @@ def _sidecar_words(body):
         start, end = item.get("startMs"), item.get("endMs")
         if not _integer(start) or not _integer(end) or end < start:
             raise ValueError("invalid-transcript-time")
-        words.append(portable.Word(item["speaker"], start, end, item["text"], item.get("lowConfidenceSpeaker") is True))
+        if item.get("echo") is not True:
+            words.append(
+                portable.Word(item["speaker"], start, end, item["text"], item.get("lowConfidenceSpeaker") is True)
+            )
     return tuple(words)
 
 

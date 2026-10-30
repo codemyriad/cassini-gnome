@@ -126,7 +126,15 @@ class WhistleClient:
             value = self._receive()
             if value.get("type") == "complete":
                 return value
-            if value.get("type") not in ("planning", "planned", "progress", "recognised", "diarizing", "diarized"):
+            if value.get("type") not in (
+                "planning",
+                "planned",
+                "progress",
+                "echo",
+                "recognised",
+                "diarizing",
+                "diarized",
+            ):
                 raise RuntimeError("Whistle worker failed: " + str(value.get("message", "invalid reply")))
             progress(value)
 

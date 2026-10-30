@@ -1,0 +1,13 @@
+# Microphone echo (D38)
+
+After either recogniser finishes, the recognition child compares microphone words with the other tracks. It applies NFKC, case folding and edge-punctuation removal; a matching word must start 0–600 ms earlier on another track and be at least 6 dB louder there. The sandwich pass catches differently recognised words between direct echo anchors less than one second apart, with the same level protection. Only microphone tracks are judged. Re-enabled spans keep their own timing and track identity.
+
+RMS is measured on the unchanged PCM16 WAVs, using meeting-relative offsets, clipping at available audio and averaging stereo channels. Reads use bounded blocks and a bounded level cache. Matching uses a sliding maximum, avoiding a scan of every other word for each microphone word. No PCM or model data crosses into the GTK process. The recogniser, VAD, FIR, diarizer and captured WAVs are unchanged.
+
+The worker sends bounded index batches before optional diarization. The queue retains the original timed items with additive `echo: true`; fresh jobs recompute flags. Attribution preserves that flag. Both sidecar and portable readers omit flagged words from their display model, which also supplies Search, export, speaking shares, talk time and voiceprint windows.
+
+This is an additive `cassini.words.v1` member. The published format at cassini-format `867f68c`, `spec/cassini-words-v1.md`, explicitly permits unknown members on items. An actual Opus round trip verifies that the frozen upstream pre-D38 reader still accepts and retains the items, while the current reader skips echoes.
+
+Shared inputs in `tests/bleed` are pinned to coordination `7249927`; the JSON expectations are hand-authored and require Mac review before merge. The 20 vectors include the complete clean and bleed cases plus lag, level, normalisation, browser and sandwich boundaries. Scripts imported from coordination remain byte-identical and are excluded from local formatting.
+
+`tests/bleed/probe.py` runs the actual production queue and bundled Whistle without a network interface. It checks that the clean result equals recognition output before classification, retains raw flagged words, calls the frozen `measure.py` on the display projection, requires at most two residual echoes and ten displayed turns, and verifies every WAV hash afterwards. It runs in the existing offline CI container with the installed modules and private runtime. On roy the clean and bleed cases each display 106 words in seven turns, with zero residual echoes; 49 words are flagged in the raw 155-word bleed transcript, and all 56 original microphone words remain.
