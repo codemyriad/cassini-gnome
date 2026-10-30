@@ -4,7 +4,6 @@
 
 import base64
 import json
-import math
 import os
 import struct
 import sys
@@ -25,6 +24,7 @@ import gi  # noqa: E402
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
 from readiness import wait_until  # noqa: E402
+from signal_power import energy  # noqa: E402
 
 from cassini_viewer.browser_audio_proxy import BrowserAudioProxy  # noqa: E402
 from cassini_viewer.browser_service import BrowserService  # noqa: E402
@@ -58,9 +58,12 @@ def tone(directory, track, hz):
     values = struct.unpack("<" + "h" * (len(data) // 2), data)
     assert len(values) >= 12000
     values = values[-12000:]
-    re = sum(value / 32768 * math.cos(2 * math.pi * hz * i / 48000) for i, value in enumerate(values))
-    im = sum(value / 32768 * math.sin(2 * math.pi * hz * i / 48000) for i, value in enumerate(values))
-    return (re * re + im * im) / (12000 * 12000)
+    measured = energy(values, hz, 48000)
+    power = measured["tone"] ** 2 / 4
+    evidence.setdefault("toneMeasurements", []).append(
+        dict(folder=directory.name, file=track["file"], frequency=hz, frames=len(values), power=power, **measured)
+    )
+    return power
 
 
 try:

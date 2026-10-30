@@ -171,3 +171,15 @@ append exception, track/offset/frame count, complete bus error and pre-disposal
 pipeline evidence in gst-evidence.json, in addition to results.json and raw GST
 logs. This also covers failures at the first native capture, before the comfort
 probe has run. No readiness, duration, tone or bleed thresholds differ.
+
+The standalone browser microphone proof uses the same 100 ms spectral-magnitude
+windows as `signal.mjs`, over its original final 12,000 mono frames (250 ms).
+Pulse clock corrections can shift phase inside a continuous tone: summing one
+complex coefficient across the whole interval can cancel real audio. A hosted
+failure had RMS 0.17675 (the expected 0.25-amplitude sine) but coherent power
+0.000555; windowed magnitude gives 0.008003. Both are in the original squared
+amplitude units. The wanted-power threshold stays 0.001, bleed stays below 1%,
+and every frame-count/readiness/duration requirement is unchanged. Analytic
+controls still reject silence, another source, a short 20%-duty burst and real
+cross-source bleed. Failure JSON retains RMS, magnitude, power and measured
+frame count alongside the WAVs; this change never touches captured audio.
