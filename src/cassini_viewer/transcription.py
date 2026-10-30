@@ -8,6 +8,7 @@ import os
 import platform
 import sys
 import threading
+import time
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
 
@@ -133,8 +134,10 @@ class TranscriptionQueue:
         diarization_models=None,
         voice_models=None,
         voice_store=None,
+        clock=time.monotonic,
     ):
         self.changed, self.finished = changed, finished
+        self.clock = clock
         self.bundle = Path(bundle) if bundle else bundle_path()
         self.root = library_root(root).absolute()
         self._explicit_root = root is not None
@@ -300,6 +303,7 @@ class TranscriptionQueue:
             self._completed(directory)
 
     def _run(self, meeting, metadata):
+        started = self.clock()
         self._check_open()
         directory = meeting.directory
         # Select on this owner thread when the job starts, never at enqueue.
@@ -357,6 +361,9 @@ class TranscriptionQueue:
         diarization = (
             self.diarization_models.request(directory, origin=meeting.origin) if self.diarization_models else None
         )
+        from .capture_facts import separation_result, separation_unavailable
+
+        separation = separation_unavailable(self.diarization_models, tracks, meeting.origin)
         voices_options, voice_generation = None, None
         if diarization is not None and self.voice_models and self.voice_store:
             try:
@@ -369,6 +376,7 @@ class TranscriptionQueue:
         self.client.keep_for_voices = voices_options is not None
         self.client.diarization = diarization
         turn_groups = {}
+        reused_groups = set()
         recognised_summary = None
 
         def progress(value):
@@ -384,6 +392,8 @@ class TranscriptionQueue:
 
                 group_id = value["groupId"]
                 if value["first"]:
+                    if value.get("reused") is True:
+                        reused_groups.add(group_id)
                     turn_groups[group_id] = dict(
                         id=group_id,
                         durationMs=value["durationMs"],
@@ -465,7 +475,11 @@ class TranscriptionQueue:
                         speakers.update(voices)
                         update_progress_metadata(directory, speakers, check_active=self._check_open)
                         publisher.reassign(words)
+            if separation["reason"] != "notApplicable":
+                separation = separation_result(result, groups, reused_groups)
             complete.setdefault("diagnostics", []).extend(result.get("diagnostics", []))
+        elif diarization is not None and separation["reason"] != "notApplicable":
+            separation = dict(status="failed", reason="processingFailed")
         for diagnostic in complete.get("diagnostics", []):
             LOG.warning("Transcription diagnostic: %s", diagnostic)
         if self.closed:
@@ -531,14 +545,27 @@ class TranscriptionQueue:
                 LOG.exception("Saved voice extraction failed; keeping the completed transcript")
                 self.client.close()
                 self.client = self.client_model = None
-        update_progress_metadata(
-            directory,
-            speakers,
-            transcript=dict(status="done", reference=REFERENCE, model=tag),
-            etaMinutes=None,
-            error=None,
-            check_active=self._check_open,
+        facts = dict(
+            wallDurationMs=max(0, min(9007199254740991, int((self.clock() - started) * 1000))),
+            resumed=(metadata.get("transcript") or {}).get("status") in ("queued", "running"),
+            speakerSeparation=separation,
         )
+        segments = complete.get("segments")
+        if type(segments) is int and 0 <= segments <= 9007199254740991:
+            facts["speechSegments"] = segments
+        with LOCK:
+            self._check_open()
+            # End facts or other metadata may have arrived while this job ran.
+            details = dict(read_metadata(directory).get("recordingDetails", {}), writingDown=facts)
+            update_progress_metadata(
+                directory,
+                speakers,
+                transcript=dict(status="done", reference=REFERENCE, model=tag),
+                recordingDetails=details,
+                etaMinutes=None,
+                error=None,
+                check_active=self._check_open,
+            )
         self.changed(directory)
         if self.client_model == MODEL_ID:
             self.client.close()

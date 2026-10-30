@@ -120,6 +120,15 @@ def build_library(root):
             quoteOverride=None,
             received=None,
         )
+        if key == "microphone":
+            metadata["recordingDetails"] = dict(
+                writingDown=dict(
+                    wallDurationMs=4217,
+                    resumed=False,
+                    speechSegments=1,
+                    speakerSeparation=dict(status="skipped", reason="modelsNotInstalled"),
+                )
+            )
         write_json(folder / "meeting.json", metadata)
         write_json(
             folder / "transcript.json",

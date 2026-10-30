@@ -289,6 +289,14 @@ def _end(meeting, session):
                 reason = ENDS.get(event.get("reason")) if isinstance(event.get("reason"), str) else None
                 if reason:
                     return f"{reason} · {fmt.position(int(event['atMs']))}"
+    details = meeting.metadata.get("recordingDetails") or {}
+    end = details.get("end") if isinstance(details, dict) else None
+    if isinstance(end, dict) and isinstance(end.get("reason"), str) and end["reason"] in ENDS:
+        result = ENDS[end["reason"]]
+        at = end.get("atMs")
+        if type(at) is int and 0 <= at <= 9007199254740991:
+            result += " · " + fmt.position(at)
+        return result
     return UNKNOWN
 
 
@@ -339,6 +347,52 @@ def _offset(fd, meeting):
     return "No large offset in the sampled microphone audio"
 
 
+def _wall_time(value):
+    if type(value) is not int or not 0 <= value <= 9007199254740991:
+        return UNKNOWN
+    minutes, remainder = divmod(value, 60000)
+    hours, minutes = divmod(minutes, 60)
+    parts = [f"{hours} h"] if hours else []
+    if minutes:
+        parts.append(f"{minutes} min")
+    parts.append(f"{remainder / 1000:g} s")
+    return " ".join(parts)
+
+
+def _separation(value):
+    if not isinstance(value, dict):
+        return UNKNOWN
+    status = value.get("status")
+    reasons = {
+        "modelsNotInstalled": "Tell speakers apart was not installed",
+        "modelNotReady": "Tell speakers apart was not ready",
+        "unavailable": "Tell speakers apart was unavailable on this computer",
+        "notApplicable": "Not needed for these separate audio tracks",
+        "tooShort": "The audio was too short to separate speakers",
+        "processingFailed": "Speaker separation could not finish. The transcript was kept.",
+    }
+    if status in ("skipped", "failed"):
+        return reasons.get(value.get("reason"), UNKNOWN)
+    count = value.get("speakersFound")
+    model, revision = clean(value.get("modelId")), clean(value.get("modelRevision"))
+    if (
+        status not in ("completed", "partial")
+        or type(count) is not int
+        or not 0 <= count <= 1000
+        or not model
+        or not revision
+    ):
+        return UNKNOWN
+    name = "Nemotron" if model == "nemotron-3-diarization-int8" else model
+    result = f"{name} · {count} " + ("voice" if count == 1 else "voices")
+    result += f"\n{model}@{revision}"
+    if value.get("reused") is True:
+        result += "\nSaved speaker turns reused"
+    if status == "partial":
+        result += "\nSome audio could not be separated"
+    return result
+
+
 def read_details(meeting):
     notes = []
     try:
@@ -357,7 +411,6 @@ def read_details(meeting):
     try:
         session = _json(fd, "session.json", notes, optional=meeting.origin == "received")
         language = _language(fd, notes)
-        turns = _json(fd, "speaker-turns.json", notes, optional=True)
         raw_tracks = session.get("tracks", [])
         raw_tracks = [t for t in raw_tracks[:64] if isinstance(t, dict)] if isinstance(raw_tracks, list) else []
         if not read_events(session.get("events")):
@@ -386,29 +439,22 @@ def read_details(meeting):
         else tag or UNKNOWN
     )
     recognised = sorted({clean(s.name) for s in meeting.speakers if s.provenance == "recognised"})
-    separation = clean(turns.get("model"))
-    if separation.startswith("nemotron-3-diarization"):
-        from .worker_diarization import FORMAT, valid_group
-
-        groups = turns.get("groups")
-        if (
-            turns.get("format") == FORMAT
-            and isinstance(groups, list)
-            and len(groups) <= 64
-            and all(valid_group(g) for g in groups)
-            and len({g["id"] for g in groups}) == len(groups)
-        ):
-            voices = {(g["id"], t["speaker"]) for g in groups for t in g["turns"]}
-            separation = "Nemotron · " + str(len(voices)) + " voices"
-        else:
-            separation = "Nemotron · voice count unavailable"
+    details = meeting.metadata.get("recordingDetails") or {}
+    writing_facts = details.get("writingDown") if isinstance(details, dict) else None
+    writing_facts = writing_facts if isinstance(writing_facts, dict) and meeting.transcript == "done" else {}
+    wall_time = _wall_time(writing_facts.get("wallDurationMs"))
+    if wall_time != UNKNOWN and writing_facts.get("resumed") is True:
+        wall_time += " (resumed; this run)"
+    segments = writing_facts.get("speechSegments")
+    segments = str(segments) if type(segments) is int and 0 <= segments <= 9007199254740991 else UNKNOWN
+    separation = _separation(writing_facts.get("speakerSeparation"))
     language = LANGUAGES.get(language.lower().replace("_", "-").split("-", 1)[0], UNKNOWN)
     writing = (
         ("Model", model),
         ("Language", language),
-        ("Time taken", UNKNOWN),
-        ("Speech segments", UNKNOWN),
-        ("Speaker separation", separation or UNKNOWN),
+        ("Time taken", wall_time),
+        ("Speech segments", segments),
+        ("Speaker separation", separation),
         ("Saved voices recognised", ", ".join(recognised) or "None recorded"),
     )
     if meeting.lifecycle in ("recording", "saving"):
