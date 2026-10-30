@@ -164,20 +164,25 @@ def broker_configure(appid):
     action(appid, "preferences")
 
     def automatic():
-        return next(
-            (
-                node
-                for node in walk(Atspi.get_desktop(0))
-                if (node.get_name() or "") == "Record every browser meeting automatically"
+        candidates = []
+        for node in walk(Atspi.get_desktop(0)):
+            if (
+                (node.get_name() or "") == "Record every browser meeting automatically"
                 and node.get_role_name() == "switch"
                 and node.get_state_set().contains(Atspi.StateType.SENSITIVE)
-            ),
-            None,
-        )
+                and node.get_state_set().contains(Atspi.StateType.SHOWING)
+            ):
+                rectangle = node.get_component_iface().get_extents(Atspi.CoordType.SCREEN)
+                if rectangle.width > 0:
+                    candidates.append((rectangle.width, node))
+        # AdwSwitchRow and its GtkSwitch share a name and role. The row's
+        # ancestor action does not operate the switch reliably. D42's real
+        # package-upgrade journey exercises the inner switch's own action.
+        return min(candidates, key=lambda candidate: candidate[0])[1] if candidates else None
 
     switch = until(automatic, "automatic-recording switch ready")
     if not switch.get_state_set().contains(Atspi.StateType.CHECKED):
-        click("Record every browser meeting automatically", dialog="Preferences")
+        assert switch.get_action_iface().do_action(0), "GtkSwitch action refused"
     until(
         lambda: automatic() and automatic().get_state_set().contains(Atspi.StateType.CHECKED),
         "automatic-recording change accepted",
