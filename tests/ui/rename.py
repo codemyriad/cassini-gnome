@@ -94,24 +94,8 @@ def choose_rename(popover):
     item = buttons[0]
     until(lambda: item.get_mapped() and item.get_width() > 0)
     assert item.is_sensitive()
-    native = item.get_native()
-    ok, bounds = item.compute_bounds(native)
-    assert ok
-    xid = GdkX11.X11Surface.get_xid(native.get_surface())
-    subprocess.run(
-        [
-            "xdotool",
-            "mousemove",
-            "--sync",
-            "--window",
-            str(xid),
-            str(round(bounds.get_x() + bounds.get_width() / 2)),
-            str(round(bounds.get_y() + bounds.get_height() / 2)),
-        ],
-        check=True,
-        timeout=3,
-    )
-    subprocess.run(["xdotool", "click", "--clearmodifiers", "1"], check=True, timeout=3)
+    assert item.activate()
+
 
 
 def key(window, symbol):
