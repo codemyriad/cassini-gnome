@@ -70,6 +70,11 @@ def main(*, input_stream=None, output_stream=None, path=None):
         override = os.environ.get("CASSINI_CONTROL_SOCKET")
         target = path or override or ensure_service()
         with connect(target) as connection, connection.makefile("rwb") as stream:
+            # The link stays open for the browser's lifetime and the broker
+            # writes only when it has a command, so an idle read must not time
+            # out: that dropped the link every 30 s and reset the broker's
+            # per-browser state. EOF from either side still ends it.
+            connection.settimeout(None)
             if not override:
                 send_packet(stream, {"role": "extension", **parent_browser_info()})
             done = threading.Event()

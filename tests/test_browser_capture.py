@@ -392,6 +392,29 @@ def bind_capture(peer, capture, tab=3):
     )
 
 
+def test_a_call_stopped_while_its_browser_is_away_stays_stopped(server):
+    from test_browser_service import wait_for
+    from test_browser_sessions import Extension
+
+    service, path, _ = server
+    peer = Extension(path, (3,), instance="4242:99")
+    client = BrowserAudioProxy(path=path)
+    start(client, "away")
+    capture = service.captures["away"]
+    bind_capture(peer, capture)
+    peer.close()
+    client.close()
+    wait_for(lambda: capture.browser_lost and not service.browsers)
+    request("stop-all", path=path)
+    wait_for(lambda: capture.finished)
+    # The extension's new worker reports the call that is still open.
+    peer = Extension(path, (3,), instance="4242:99")
+    try:
+        wait_for(lambda: 3 in next(iter(service.browsers.values())).attempted)
+    finally:
+        peer.close()
+
+
 def test_independent_call_hangup_stops_without_system_fallback(server):
     from test_browser_service import meeting, wait_for
     from test_browser_sessions import Extension

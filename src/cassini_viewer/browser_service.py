@@ -23,6 +23,12 @@ from uuid import uuid4
 MAX_PACKET = 512 * 1024
 CALL_END_GRACE = 2
 BROWSER_RETURN_GRACE = 30
+# A call the user stopped stays stopped beyond the control link that carried
+# the stop, so a reconnect does not start it again automatically.
+STOPPED_CALL_GRACE = 10 * 60
+STOPPED_CALL_LIMIT = 256
+# A new extension worker reports the calls already open as its pages reconnect.
+STOPPED_CALL_REPORT_WINDOW = 30
 
 
 class StartRejected(ValueError):
@@ -132,6 +138,7 @@ class BrowserConnection:
         self.notifications = {}
         self.pending = {}
         self.attempted = set()
+        self.connected_at = time.monotonic()
         self.error = None
         self.busy = set()
         self.scheduled = set()
@@ -170,6 +177,7 @@ class BrowserService:
         self.recordings = []
         self.captures = {}
         self.call_captures = {}
+        self.stopped_calls = {}
         self._capture_missing_since = {}
         self._capture_observed = set()
         self._capture_policy_pending = set()
@@ -332,6 +340,7 @@ class BrowserService:
             self.auto_record = enabled
             self.auto_record_revision = max(self.auto_record_revision + 1, time.monotonic_ns())
             if enabled:
+                self.stopped_calls.clear()
                 for browser in self.browsers.values():
                     browser.attempted.clear()
         self.policy()
@@ -429,7 +438,8 @@ class BrowserService:
                     meetings[value["tabId"]]["heard"] = value.get("heard") is True
                     meetings[value["tabId"]]["title"] = value["title"][:200]
                     meetings[value["tabId"]]["url"] = value["url"][:2048]
-                browser.meetings = meetings
+                previous, browser.meetings = browser.meetings, meetings
+                self._restore_stopped(browser, previous)
                 browser.attempted.intersection_update(meetings)
             elif kind == "status":
                 self._status(browser, packet)
@@ -454,7 +464,7 @@ class BrowserService:
                 raise ValueError("Unknown browser control event")
         self.policy()
 
-    def command(self, identifier, action, *, microphone=True, preserve_capture=False):
+    def command(self, identifier, action, *, microphone=True, preserve_capture=False, user=False):
         if action not in ("start", "stop") or not isinstance(identifier, str) or type(microphone) is not bool:
             raise ValueError("Invalid meeting command")
         if identifier.startswith("capture:"):
@@ -462,6 +472,8 @@ class BrowserService:
                 capture = self.captures.get(identifier.removeprefix("capture:"))
             if action != "stop" or capture is None:
                 raise ValueError("This meeting is no longer available")
+            if user:
+                self._remember_capture_stop(capture)
             capture.stop()
             return self.snapshot()
         browser_id, _, raw_tab = identifier.partition(":")
@@ -492,6 +504,8 @@ class BrowserService:
             browser.busy.add(tab)
             browser.error = None
             browser.attempted.add(tab)
+            if user:
+                self._remember_stop(browser, tab, action == "stop")
             request_id = str(uuid4())
             pending = dict(event=threading.Event(), result=None, action=action, tabId=tab)
             browser.pending[request_id] = pending
@@ -554,7 +568,7 @@ class BrowserService:
                 if group.is_set() or self._stopping_all.is_set():
                     break
                 try:
-                    self.command(identifier, "start", microphone=microphone)
+                    self.command(identifier, "start", microphone=microphone, user=True)
                 except StartRejected:
                     if not group.is_set() and not self._stopping_all.is_set():
                         try:
@@ -678,7 +692,7 @@ class BrowserService:
                     )
             for identifier in commands:
                 try:
-                    result = self.command(identifier, "stop")
+                    result = self.command(identifier, "stop", user=quitting_pid is None)
                     if isinstance(result.get("stoppedPath"), str):
                         paths.append(result["stoppedPath"])
                 except ValueError:
@@ -995,7 +1009,9 @@ class BrowserService:
                                 raise ValueError("This meeting is no longer recording")
                             result = capture.select(packet.get("me"), packet.get("others"))
                         else:
-                            result = self.command(packet.get("id"), action, microphone=packet.get("microphone", True))
+                            result = self.command(
+                                packet.get("id"), action, microphone=packet.get("microphone", True), user=True
+                            )
                     except (OSError, ValueError, TimeoutError) as error:
                         result = {"error": str(error)}
                     send_packet(stream, result)
@@ -1006,8 +1022,59 @@ class BrowserService:
                 with self.lock:
                     browser.closed = True
                     self.browsers.pop(browser.id, None)
+                    self._restore_stopped(browser, browser.meetings)
                     for pending in browser.pending.values():
                         pending["event"].set()
+
+    def _remember_stop(self, browser, tab, stopped):
+        """Remember a call the user stopped; starting it again forgets that."""
+        if browser.browser_instance is None:
+            return
+        key = (browser.browser_instance, tab)
+        if not stopped:
+            self.stopped_calls.pop(key, None)
+            return
+        self.stopped_calls[key] = (browser.meetings.get(tab, {}).get("url"), time.monotonic())
+        if len(self.stopped_calls) > STOPPED_CALL_LIMIT:
+            del self.stopped_calls[min(self.stopped_calls, key=lambda key: self.stopped_calls[key][1])]
+
+    def _remember_capture_stop(self, capture):
+        """Remember the call of a recording whose browser link is down."""
+        with self.lock:
+            for (instance, tab), capture_id in self.call_captures.items():
+                if capture_id == capture.capture_id:
+                    self.stopped_calls[(instance, tab)] = (None, time.monotonic())
+
+    def _restore_stopped(self, browser, previous):
+        """Keep stopped calls stopped on this link, across reconnects.
+
+        The control link reconnects whenever the extension's worker restarts
+        or reloads, and a new worker reports meetings as its pages reconnect.
+        Tab ids are unique within one browser process, across its profiles.
+        A call that leaves a connected link's inventory has ended. One that
+        appears later, or with another address, is a different meeting. A
+        stop is forgotten once no link has reported its call for a while.
+        """
+        instance = browser.browser_instance
+        if instance is None:
+            return
+        now = time.monotonic()
+        for tab in previous.keys() - browser.meetings.keys():
+            self.stopped_calls.pop((instance, tab), None)
+        for tab, meeting in browser.meetings.items():
+            stopped = self.stopped_calls.get((instance, tab))
+            if stopped is None:
+                continue
+            late = now - browser.connected_at >= STOPPED_CALL_REPORT_WINDOW
+            if tab not in previous and (late or stopped[0] not in (None, meeting["url"])):
+                del self.stopped_calls[(instance, tab)]
+                continue
+            self.stopped_calls[(instance, tab)] = (meeting["url"], now)
+            browser.attempted.add(tab)
+        reported = {(b.browser_instance, tab) for b in self.browsers.values() for tab in b.meetings}
+        for key, (_, seen) in list(self.stopped_calls.items()):
+            if key not in reported and now - seen >= STOPPED_CALL_GRACE:
+                del self.stopped_calls[key]
 
     def serve(self, path, ready=None, *, idle_timeout=None):
         import fcntl
