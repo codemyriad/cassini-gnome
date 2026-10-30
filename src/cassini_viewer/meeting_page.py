@@ -225,13 +225,17 @@ class MeetingPage(Adw.NavigationPage):
         bar.append(self.rate_button)
         outer.append(bar)
 
-    def _name_rate_items(self, widget):
+    def _name_rate_items(self, widget, *_args):
         # GTK's model buttons do not consistently derive an AT-SPI name from
-        # their displayed label. Name the actionable items using their target.
-        if isinstance(widget, Gtk.Actionable) and widget.get_action_name() == "win.rate":
-            target = widget.get_action_target_value()
-            if target is not None and target.get_string() in self.window.RATES:
-                widget.update_property([Gtk.AccessibleProperty.LABEL], [f"{target.get_string()}×"])
+        # their text. Use the displayed label from our fixed menu model.
+        if widget.find_property("text"):
+            caption = widget.get_property("text")
+            if caption in {f"{rate}×" for rate in self.window.RATES}:
+                if not getattr(widget, "_cassini_rate_name", False):
+                    widget._cassini_rate_name = True
+                    widget.connect("notify::active", self._name_rate_items)
+                widget.reset_relation(Gtk.AccessibleRelation.LABELLED_BY)
+                widget.update_property([Gtk.AccessibleProperty.LABEL], [caption])
         child = widget.get_first_child()
         while child:
             self._name_rate_items(child)

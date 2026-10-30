@@ -3,6 +3,12 @@
 
 import subprocess
 import sys
+from pathlib import Path
+
+import pytest
+
+pytest.importorskip("gi", reason="The watchdog exercises the real GLib main context")
+SOURCE = Path(__file__).resolve().parents[1] / "src"
 
 
 def test_stall_dumps_all_threads_once_and_recovers():
@@ -21,7 +27,7 @@ GLib.timeout_add(800, lambda: (loop.quit(), False)[1])
 loop.run()
 watchdog.close()
 """
-    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=5)
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=5, cwd=SOURCE)
     assert result.returncode == 0, result.stderr
     assert result.stderr.count("main loop stalled") == 1, result.stderr
     assert result.stderr.count("Current thread") == 1, result.stderr
@@ -39,7 +45,7 @@ watchdog = MainLoopWatchdog()
 os.kill(os.getpid(), signal.SIGUSR1)
 watchdog.close()
 """
-    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=5)
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=5, cwd=SOURCE)
     assert result.returncode == 0, result.stderr
     assert result.stderr.count("Current thread") == 1, result.stderr
     assert "main loop stalled" not in result.stderr

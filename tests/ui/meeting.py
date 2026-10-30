@@ -265,6 +265,12 @@ with tempfile.TemporaryDirectory() as temporary:
     subprocess.run(["xdotool", "key", "ctrl+bracketright"], check=True)
     until(lambda: window.player.rate == 1.75)
     assert window.meeting_page.rate_button.get_label() == "1.75×"
+    app.on_shortcuts()
+    until(lambda: app.shortcuts_dialog and app.shortcuts_dialog.get_mapped())
+    shortcut_labels = labels(app.shortcuts_dialog)
+    assert "Increase playback speed" in shortcut_labels and "Decrease playback speed" in shortcut_labels
+    app.shortcuts_dialog.close()
+    until(lambda: app.shortcuts_dialog is None)
 
     assert len(app.get_windows()) == 1, "File opens belong to the pushed reading page"
     # Library files opened via Open/CLI remain attached to live model updates.

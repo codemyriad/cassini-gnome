@@ -60,7 +60,10 @@ The source tests deliberately block a real GLib callback for 400 ms and assert
 one stall/dump/recovery; a separate test checks SIGUSR1. The Meeting UI test
 checks action/menu state, invalid rates, a real player replacement, Ctrl+] and
 four seconds of synchronized GStreamer playback at 2× (8 seconds ±1 second).
-The AT-SPI gate finds and activates the named speed control.
+The AT-SPI gate finds and activates the named speed control, selects 1.5× from
+the real menu and checks the player/action state. Rate items explicitly override
+GTK’s labelled-by relation to its presentational label, so AT-SPI exposes the
+menu text even after a radio state changes.
 
 A private cairo container cannot validate the user's real GPU/desktop. The
 coordinator's GPU/profile/second-build QA and both external reviews remain
