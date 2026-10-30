@@ -69,12 +69,10 @@ class RecordFirst(Adw.Dialog):
         buttons = Gtk.Box(spacing=10, homogeneous=True)
         later = Gtk.Button(label=text("common.notNow"))
         later.connect("clicked", lambda *_: self.close())
-        self.start_button = Gtk.Button(label=text("recordFirst.start"), css_classes=["cassini-record"])
-        start_label = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
-        start_label.append(Gtk.Label(label="●", accessible_role=Gtk.AccessibleRole.PRESENTATION))
-        start_label.append(Gtk.Label(label=text("recordFirst.start")))
-        self.start_button.set_child(start_label)
-        self.start_button.update_property([Gtk.AccessibleProperty.LABEL], [text("recordFirst.start")])
+        self.start_button = Gtk.Button(
+            child=Adw.ButtonContent(icon_name="media-record-symbolic", label=text("recordFirst.start")),
+            css_classes=["cassini-record"],
+        )
         self.start_button.connect("clicked", self._start)
         buttons.append(later)
         buttons.append(self.start_button)

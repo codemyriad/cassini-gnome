@@ -281,11 +281,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             css_classes=["cassini-record"] + (["big-record"] if big else []),
             action_name="app.record",
         )
-        box = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
-        box.append(label("●", "record-dot", accessible_role=Gtk.AccessibleRole.PRESENTATION))
-        box.append(label(text("common.record")))
-        button.set_child(box)
-        button.update_property([Gtk.AccessibleProperty.LABEL], [text("common.record")])
+        button.set_child(Adw.ButtonContent(icon_name="media-record-symbolic", label=text("common.record")))
         return button
 
     def _header(self, *, record=False, close=True):
