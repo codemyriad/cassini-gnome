@@ -209,7 +209,9 @@ class RecordingComfort:
             state.update(line=native.line, minutes=native.minutes_left)
             self._disk_notification(None, native.line, native.minutes_left, key=key)
         self._refresh_pages()
-        hidden = (bool(meetings) or any(capture_targets(self.app))) and not any(w.get_visible() for w in self.app.get_windows())
+        hidden = (bool(meetings) or any(capture_targets(self.app))) and not any(
+            w.get_visible() for w in self.app.get_windows()
+        )
         if hidden:
             if meetings:
                 meeting = min(
