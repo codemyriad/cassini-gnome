@@ -47,6 +47,17 @@ jobs:
       # network, smoke-tests it and writes the D11 goldens down with it.
       # Retried once because distribution mirrors occasionally time out.
       - run: build-aux/deb/build.sh "${{ matrix.base }}" || build-aux/deb/build.sh "${{ matrix.base }}"
+      - name: Installed package restarts after upgrades and preserves active audio
+        if: matrix.base == 'ubuntu:26.04'
+        run: tests/build-refresh/run.sh dist/*.deb "$RUNNER_TEMP/build-refresh"
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.base == 'ubuntu:26.04'
+        with:
+          name: installed-build-refresh
+          path: |
+            ${{ runner.temp }}/build-refresh/*.json
+            ${{ runner.temp }}/build-refresh/*.log
+            ${{ runner.temp }}/build-refresh/*.png
       - uses: actions/setup-node@v6
         if: matrix.base == 'ubuntu:26.04'
         with:

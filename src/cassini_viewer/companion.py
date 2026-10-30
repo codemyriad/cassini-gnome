@@ -303,11 +303,31 @@ def profile_inventory():
     return hashlib.sha256(json.dumps([values, profiles], sort_keys=True).encode()).hexdigest()
 
 
+def _manifest_data(name, executable):
+    executable = Path(executable).resolve(strict=True)
+    if not executable.is_file() or not os.access(executable, os.X_OK):
+        raise OSError("Native messaging host is not executable")
+    return dict(
+        name=name,
+        description="Cassini local meeting recorder",
+        path=str(executable),
+        type="stdio",
+        allowed_origins=[ORIGIN],
+    )
+
+
 def _register_browser(browser, hosts, *, force=False):
-    from .registration import directory_lock
+    from .registration import directory_lock, manifest, native_read, native_target
 
     directory = browser.config / "NativeMessagingHosts"
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # Do not require directory write access to retain already-correct files.
+    # The mutating path re-reads everything under the shared lock below.
+    if all(
+        manifest(native_read(directory / (name + ".json"))) == _manifest_data(name, path) and native_target(path)
+        for name, path in hosts.items()
+    ):
+        return [directory / (name + ".json") for name in hosts]
     with directory_lock(directory):
         return _register_locked(browser, hosts, force=force)
 
@@ -319,16 +339,7 @@ def _register_locked(browser, hosts, *, force=False):
     directory = browser.config / "NativeMessagingHosts"
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     for name, executable in hosts.items():
-        executable = Path(executable).resolve(strict=True)
-        if not executable.is_file() or not os.access(executable, os.X_OK):
-            raise OSError("Native messaging host is not executable")
-        data = dict(
-            name=name,
-            description="Cassini local meeting recorder",
-            path=str(executable),
-            type="stdio",
-            allowed_origins=[ORIGIN],
-        )
+        data = _manifest_data(name, executable)
         destination = directory / (name + ".json")
         previous = native_read(destination)
         replace, dead = decision(previous, data, force=force, protected=protected_build(), target_ready=native_target)

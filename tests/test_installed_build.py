@@ -4,6 +4,8 @@
 import importlib.util
 import json
 import os
+import shutil
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -223,3 +225,58 @@ def test_many_activations_coalesce_one_io_check_and_close_balances_hold():
     release.set()
     clock.finish()
     assert not held and not finished
+
+
+def test_flatpak_checks_current_host_deployment_instead_of_running_app_mount(tmp_path, monkeypatch):
+    from cassini_viewer import flatpak_bridge as bridge
+
+    _, old_root, old_launcher = payload(tmp_path / "old")
+    running = InstalledBuild(old_root, old_launcher, "0.3.0", flatpak=True)
+    value, new_root, new_launcher = payload(tmp_path / "new", "new")
+    location = tmp_path / "deployment"
+    root = location / "files/share/cassini-viewer"
+    shutil.copytree(new_root, root)
+    launcher = location / "files/bin/cassini-viewer"
+    launcher.parent.mkdir(parents=True)
+    shutil.copyfile(new_launcher, launcher)
+    fake = tmp_path / "flatpak"
+    fake.write_text(f"#!/bin/sh\nprintf '%s\\n' '{location}'\n")
+    fake.chmod(0o700)
+    monkeypatch.setattr(bridge, "deployment", lambda: bridge.Deployment("com.gocassini.Viewer", "x86_64", "stable"))
+    monkeypatch.setattr(bridge, "host_info", lambda: (None, None, str(fake), None))
+    monkeypatch.setattr(bridge, "host_command", lambda command, **_: command)
+    assert running.changed()
+    assert read(old_root / "build-info.json") == running.running
+    assert value["buildId"] != running.running["buildId"]
+    (root / "cassini_viewer/example.py").write_text("incomplete deployment")
+    with pytest.raises(subprocess.CalledProcessError):
+        running.changed()
+
+
+def test_native_reexec_uses_installed_shebang_and_preserves_hidden_handoff(tmp_path, monkeypatch):
+    _, root, launcher = payload(tmp_path)
+    running = InstalledBuild(root, launcher, "0.3.0")
+    calls = []
+    monkeypatch.setattr(os, "execv", lambda program, args: calls.append((program, args)))
+    running.reexec(show=False, automatic=True, writing=True, files=["file:///meeting.opus"])
+    assert calls == [
+        (
+            str(launcher),
+            [
+                str(launcher),
+                "file:///meeting.opus",
+                "--cassini-resume-background",
+                "--cassini-resume-writing",
+                "--cassini-resume-automatic",
+            ],
+        )
+    ]
+
+
+def test_activation_callback_runs_before_last_hold_is_released():
+    app, held, _, _ = application()
+    refresh, clock = controller(app, SimpleNamespace(changed=lambda: False, restart=None))
+    observed = []
+    refresh.check(lambda: observed.append(bool(held)), show=True)
+    clock.finish()
+    assert observed == [True] and not held

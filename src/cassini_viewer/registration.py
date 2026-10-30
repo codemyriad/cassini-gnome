@@ -183,10 +183,16 @@ def health(browsers):
         from .flatpak_bridge import registration_health
 
         return registration_health(browsers)
+    ready = {}
     for browser in browsers:
         for name in ("io.codemyriad.cassini", "io.codemyriad.cassini.control"):
             value = manifest(native_read(browser.config / "NativeMessagingHosts" / (name + ".json")))
-            if value is None or not native_target(value["path"]):
+            if value is None:
+                return True
+            path = value["path"]
+            if path not in ready:
+                ready[path] = native_target(path)
+            if not ready[path]:
                 return True
     return False
 

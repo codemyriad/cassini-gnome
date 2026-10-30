@@ -152,3 +152,17 @@ def test_no_connection_poll_heals_dead_target_without_user_click(tmp_path, monke
         assert controller.snapshot()["phase"] == "waiting"
     finally:
         controller.close()
+
+
+def test_unchanged_registration_does_not_need_a_writable_directory(tmp_path):
+    browser = companion.Browser("Chromium", "/test/browser", tmp_path / "profile")
+    paths = companion.register(browsers=[browser], hosts=hosts(executable(tmp_path / "host")))
+    directory = paths[0].parent
+    (directory / ".cassini-registration.lock").unlink()
+    before = {p: (p.read_bytes(), p.stat().st_ino) for p in paths}
+    directory.chmod(0o500)
+    try:
+        companion.register(browsers=[browser], hosts=hosts(tmp_path / "host"))
+        assert before == {p: (p.read_bytes(), p.stat().st_ino) for p in paths}
+    finally:
+        directory.chmod(0o700)

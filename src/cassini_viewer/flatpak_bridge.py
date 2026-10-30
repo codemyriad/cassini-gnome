@@ -513,8 +513,14 @@ def registration_health(browsers):
         for browser in browsers
         for name in ("io.codemyriad.cassini", "io.codemyriad.cassini.control")
     ]
+    ready = {}
     for raw in _registration_files(paths).values():
         value = manifest(raw)
-        if value is None or not _registered_host_ready(value["path"]):
+        if value is None:
+            return True
+        path = value["path"]
+        if path not in ready:
+            ready[path] = _registered_host_ready(path)
+        if not ready[path]:
             return True
     return False
