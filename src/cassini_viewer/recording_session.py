@@ -39,6 +39,15 @@ def optional_string(value, default, code):
     return value
 
 
+def stop_reason(message):
+    from .session_events import END_REASONS
+
+    reason = message.get("reason", "user")
+    if not isinstance(reason, str) or reason not in END_REASONS:
+        raise ProtocolError("state", "Invalid recording end reason")
+    return reason
+
+
 def label_text(value):
     return "".join(c for c in value if unicodedata.category(c) not in ("Cc", "Cf"))[:200]
 
@@ -508,7 +517,7 @@ class BrowserHost:
             (self.audio_sink or self.session).append(identifier, data, message.get("offsetMs"))
             self.sequences[identifier] += 1
         elif kind == "stop":
-            self.session.finish(optional_string(message.get("problem"), None, "state"), reason=message.get("reason"))
+            self.session.finish(optional_string(message.get("problem"), None, "state"), reason=stop_reason(message))
             self.stopped = True
             result = {"type": "stopped", "path": str(self.session.directory)}
             if "problem" in self.session.manifest:
