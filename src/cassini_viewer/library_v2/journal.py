@@ -134,12 +134,12 @@ class LibraryLock:
             os.close(fd)
 
 
-def new_entry(kind, *, origin, session_id, **members):
+def new_entry(kind, *, origin, session_id, op=None, **members):
     if kind not in KINDS:
         raise ValueError("unknown journal kind")
     now = datetime.now(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
     return dict(
-        op=str(uuid4()), kind=kind, createdAt=now, identity=dict(origin=origin, sessionId=session_id), **members
+        op=op or str(uuid4()), kind=kind, createdAt=now, identity=dict(origin=origin, sessionId=session_id), **members
     )
 
 
@@ -233,15 +233,77 @@ def replay(layout, *, identity=None):
             continue
         report.completed.append(entry["op"])
     if identity is None:
-        named = set()
-        for entry in pending(layout).entries:
-            named.add(entry["op"])
+        named = {entry["op"] for entry in pending(layout).entries}
         try:
             staged = sorted(os.listdir(layout.staging))
         except FileNotFoundError:
             staged = []
-        report.orphans = [n for n in staged if n.split(".", 1)[0] not in named]
+        groups = {}
+        for name in staged:
+            groups.setdefault(name.split(".", 1)[0], []).append(name)
+        for op, files in groups.items():
+            if op in named:
+                continue
+            if f"{op}.{BUILD_MARKER}" in files and abandoned_build(layout, op):
+                for name in files:
+                    (layout.staging / name).unlink(missing_ok=True)
+                continue
+            if f"{op}.{BUILD_MARKER}" not in files:
+                report.orphans.extend(files)
+        fsutil.fsync_dir(layout.staging)
     return report
+
+
+BUILD_MARKER = "build.partial"
+
+
+class Build:
+    """A stage being built without the Library lock (§11 step-3a Q10).
+
+    `.cassini/staging/<op>.build.partial` is flock'ed for the whole build. Recovery
+    removes the files of an unjournaled op only when that marker is no longer locked,
+    i.e. its builder died: nothing from it was published and its sources are intact.
+    """
+
+    def __init__(self, layout):
+        layout.ensure()
+        self.layout = layout
+        self.op = str(uuid4())
+        self.stage = layout.staging / f"{self.op}.opus.stage"
+        starting = layout.staging / f"{self.op}.new.partial"  # never cleaned up: not yet locked
+        self.fd = os.open(starting, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW, 0o600)
+        fcntl.flock(self.fd, fcntl.LOCK_EX)
+        os.rename(starting, layout.staging / f"{self.op}.{BUILD_MARKER}")
+
+    def close(self):
+        """Release the build. Its files go unless a journal entry now owns the stage."""
+        try:
+            owned = (self.layout.journal / f"{self.op}.json").exists()
+            for name in os.listdir(self.layout.staging):
+                if name.split(".", 1)[0] == self.op and (not owned or name.endswith(".partial")):
+                    (self.layout.staging / name).unlink(missing_ok=True)
+        finally:
+            os.close(self.fd)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        self.close()
+
+
+def abandoned_build(layout, op):
+    try:
+        fd = os.open(layout.staging / f"{op}.{BUILD_MARKER}", os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return False
+    finally:
+        os.close(fd)
+    return True
 
 
 def recover(root):

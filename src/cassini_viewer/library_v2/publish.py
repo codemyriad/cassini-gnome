@@ -1,18 +1,27 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """S-12 §4.6 and §7: durable publish, replace-in-place, rename-with-replace and delete.
 
-Every operation runs under the Library lock and is journaled before any copy is
-touched. Commit orders:
+Every commit runs under the Library lock and is journaled before any copy is
+touched. Building a stage is not a commit step: finalize mixes and encodes into
+its stage without the lock (§11 step-3a Q10) and passes the finished stage here.
+Commit orders:
 
-publish  journal -> stage (complete, fsynced, validated) -> journal "staged" ->
-         no-replace rename into the root (renameat2 RENAME_NOREPLACE; each candidate
-         name is journaled before it is tried; EEXIST takes the next suffix, at most
-         99 retries, §11 Q5) -> fsync root and staging -> meeting.json -> retire.
+publish  [stage built and validated] journal "staged" -> no-replace rename into
+         the root (renameat2 RENAME_NOREPLACE; each candidate name is journaled
+         before it is tried; EEXIST takes the next suffix, at most 99 retries, §11
+         Q5) -> fsync root and staging -> meeting.json -> retire.
 replace  journal -> stage -> "staged" -> atomic replacing rename onto the live file
          (it is the target) -> fsync -> meeting.json -> retire.
 rename   journal -> stage -> "staged" -> no-replace rename to the new name -> fsync ->
-         meeting.json -> remove the old name -> fsync -> retire.
-delete   journal intent -> remove the file -> fsync -> remove the session -> fsync -> retire.
+         meeting.json -> remove the old name -> fsync -> retire. The meeting's own
+         name is always free, under the casefold key too, so a case-only rename
+         keeps its base name. Where the filesystem itself folds case (EEXIST from
+         the meeting's own file), the old file first moves to a temporary dotfile
+         name in the root, journaled, and the stage then takes the new name
+         (§11 step-3a Q7).
+delete   journal intent -> move the file to the Trash -> fsync -> move the session
+         folder to the Trash -> fsync -> retire (§11 step-3a Q9; as v1's move to
+         Trash, permanent deletion stays the Trash's job).
 
 A failure before the rename leaves nothing in the root: the stage is discarded
 and the journal entry retired, while every source stays where it was. A failure
@@ -26,7 +35,7 @@ SIGKILL a process between any two steps.
 
 import contextlib
 import os
-import shutil
+from pathlib import Path
 
 from .. import library_schema, meeting_store, portable
 from . import fsutil, journal, names
@@ -121,6 +130,29 @@ def _matches(path, entry, revision):
     return found is not None and found == (*_identity(entry), revision)
 
 
+def _case_alias(layout, name, old):
+    """True when `name` differs from the meeting's own `old` name only under the casefold key and
+    the filesystem resolves it to that same file (a case-insensitive filesystem)."""
+    return (
+        old is not None
+        and name != old
+        and names.fold(name) == names.fold(old)
+        and fsutil.same_file(layout.root / name, layout.root / old)
+    )
+
+
+def _move_old_aside(layout, entry):
+    """First journaled step of a case-only rename on a case-insensitive filesystem."""
+    entry.setdefault("caseTemp", f".cassini-case-{entry['op']}.opus")
+    journal.write(layout, entry)
+    step("before-case-temp")
+    old, temporary = layout.root / entry["oldPath"], layout.root / entry["caseTemp"]
+    if old.exists() and not temporary.exists():
+        fsutil.rename_noreplace(old, temporary)
+    fsutil.fsync_dir(layout.root)
+    step("case-temp")
+
+
 def _place(layout, entry):
     """No-replace rename of the stage into the root under a free name (§2, §11 Q5)."""
     stage = layout.resolve(entry["stage"])
@@ -139,6 +171,9 @@ def _place(layout, entry):
         try:
             fsutil.rename_noreplace(stage, layout.root / name)
         except FileExistsError:
+            if _case_alias(layout, name, old):
+                _move_old_aside(layout, entry)
+                continue  # the same name, now free
             rejected.append(name)
             continue
         return name
@@ -154,8 +189,11 @@ def _settle(layout, entry):
     _meeting(layout, entry)
     step("after-meeting")
     if entry["kind"] == "rename":
-        old = layout.root / entry["oldPath"]
-        if old.exists() or old.is_symlink():
+        new = layout.root / entry["newPath"]
+        for name in (entry["oldPath"], entry.get("caseTemp")):
+            old = layout.root / name if name else None
+            if old is None or not (old.exists() or old.is_symlink()) or fsutil.same_file(old, new):
+                continue  # gone, or (case-insensitive filesystem) the old name now resolves to the new file
             if not _matches(old, entry, entry["baseRevision"]):
                 raise Kept("The old name now holds another file; it was kept")
             old.unlink()
@@ -209,13 +247,21 @@ def _commit_new_name(layout, entry):
     return entry["newPath"]
 
 
-def publish_new(layout, *, origin, session_id, base_revision, new_revision, name, meeting_update, write_stage):
-    """§4.6: publish a new Library file. `name` = {prefix, title, untitled}; returns the file name."""
+def publish_new(
+    layout, *, origin, session_id, base_revision, new_revision, name, meeting_update, write_stage=None, stage=None
+):
+    """§4.6: publish a new Library file. `name` = {prefix, title, untitled}; returns the file name.
+
+    `stage` is a finished, fsynced and validated `.cassini/staging/<op>.opus.stage`
+    built without the lock; it is journaled as staged. Otherwise `write_stage(path)`
+    builds it here, after the journal entry.
+    """
     session = layout.session(origin, session_id)
     entry = journal.new_entry(
         "publish",
         origin=origin,
         session_id=session_id,
+        op=Path(stage).name.split(".", 1)[0] if stage is not None else None,
         session=layout.relative(session),
         oldPath=None,
         newPath=None,
@@ -224,7 +270,16 @@ def publish_new(layout, *, origin, session_id, base_revision, new_revision, name
         name=dict(name),
         meetingUpdate=dict(meeting_update),
     )
-    _stage_and_journal(layout, entry, write_stage)
+    if stage is None:
+        _stage_and_journal(layout, entry, write_stage)
+    else:
+        entry.update(phase="staged", stage=layout.relative(stage))
+        if layout.resolve(entry["stage"]) != layout.staging / f"{entry['op']}.opus.stage":
+            raise ValueError("A prebuilt stage must be .cassini/staging/<op>.opus.stage")
+        fsutil.fsync_file(stage)
+        fsutil.fsync_dir(layout.staging)
+        journal.write(layout, entry)
+        step("journaled")
     return _commit_new_name(layout, entry)
 
 
@@ -285,8 +340,22 @@ def _replace(layout, entry, stage):
     os.replace(stage, target)
 
 
+def native_trash(path):
+    """Move `path` to the Trash with Gio, as v1's move to Trash does (meeting_trash)."""
+    import gi
+
+    gi.require_version("Gio", "2.0")
+    from gi.repository import Gio
+
+    if not Gio.File.new_for_path(str(path)).trash(None):
+        raise OSError("Native Trash did not confirm success")
+
+
+TRASH = native_trash  # tests may replace it
+
+
 def delete(layout, *, origin, session_id, file_name):
-    """§7 delete: a durable intent, then the file, then the session folder, then retire."""
+    """§7 delete: a durable intent, then the file and the session folder to the Trash, then retire."""
     session = layout.session(origin, session_id)
     entry = journal.new_entry(
         "delete",
@@ -310,19 +379,19 @@ def _resume_delete(layout, entry):
         path = layout.root / entry["oldPath"]
         if path.exists() or path.is_symlink():
             found = file_identity(path)
-            if found is None or found[:2] != _identity(entry):
+            if found is None or found[:2] != _identity(entry) or path.is_symlink():
                 raise Kept("Another file now has this name; it was kept")
-            path.unlink()
+            TRASH(path)
         fsutil.fsync_dir(layout.root)
-        step("file-removed")
+        step("file-trashed")
     session = _session(layout, entry)
     if session is not None and journal.identity_of(session) == _identity(entry):
         if session.is_symlink():
-            session.unlink()
-        elif session.exists():
-            shutil.rmtree(session)
+            raise Kept("The session folder is a link; it was kept")
+        if session.exists():
+            TRASH(session)
         fsutil.fsync_dir(layout.sessions)
-        step("session-removed")
+        step("session-trashed")
     journal.retire(layout, entry["op"])
 
 

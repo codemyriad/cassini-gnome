@@ -499,3 +499,152 @@ def test_mapping_round_trips_presence_of_name_prefix_source_and_unknown_x_member
         dict(meeting, namePrefixSource="legacy-device-tz"), origin="Recording", automatic_title=None
     )
     assert x2["namePrefixSource"] == "legacy-device-tz" and "namePrefixSource" not in x2["passthrough"]
+
+
+# ---- §11 step-3a answers: case-only renames (Q7), no lock through the mixdown (Q10), Q6 ----
+
+
+def test_a_case_only_rename_keeps_the_base_name(tmp_path):
+    sid, directory = simple_session(tmp_path, 0.5)
+    first = finalize(tmp_path, sid).name
+    second = finalize(tmp_path, simple_session(tmp_path, 0.5)[0]).name
+    assert (first, second) == ("2026-10-30--18.02-Weekly sync.opus", "2026-10-30--18.02-Weekly sync (2).opus")
+    renamed = edit.edit_meeting(tmp_path, "Recording", sid, dict(title="weekly SYNC", titleSource="user"))
+    assert renamed == "2026-10-30--18.02-weekly SYNC.opus"  # its own name is free under the casefold key
+    assert sorted(root_files(tmp_path)) == sorted([renamed, second])
+    clean_state(tmp_path)
+
+
+@pytest.fixture
+def case_insensitive(monkeypatch):
+    """Make the Library behave like a case-insensitive filesystem (names resolve by casefold key)."""
+    from cassini_viewer.library_v2 import names
+
+    real_rename, real_same = fsutil.rename_noreplace, fsutil.same_file
+
+    def resolve(path):
+        path = Path(path)
+        match = [n for n in os.listdir(path.parent) if names.fold(n) == names.fold(path.name)]
+        return path.parent / match[0] if match else path
+
+    def rename(source, target):
+        if resolve(target).exists():
+            raise FileExistsError(errno.EEXIST, "File exists", str(target))
+        return real_rename(source, target)
+
+    monkeypatch.setattr(fsutil, "rename_noreplace", rename)
+    monkeypatch.setattr(fsutil, "same_file", lambda a, b: real_same(resolve(a), resolve(b)))
+
+
+def test_a_case_only_rename_on_a_case_insensitive_filesystem_goes_through_a_temporary_name(
+    tmp_path, monkeypatch, case_insensitive
+):
+    sid, directory = simple_session(tmp_path, 0.5)
+    old = finalize(tmp_path, sid).name
+    steps = []
+    monkeypatch.setattr(publish, "CHECKPOINT", steps.append)
+    renamed = edit.edit_meeting(tmp_path, "Recording", sid, dict(title="WEEKLY sync", titleSource="user"))
+    assert renamed == "2026-10-30--18.02-WEEKLY sync.opus" and old == "2026-10-30--18.02-Weekly sync.opus"
+    assert root_files(tmp_path) == [renamed] and not [n for n in os.listdir(tmp_path) if n.startswith(".cassini-")]
+    assert steps.index("case-temp") < steps.index("renamed") < steps.index("after-remove-old")
+    assert manifest(tmp_path / renamed)["x"]["codemyriad.io"]["revision"] == 2
+    assert meeting_json(directory)["title"] == "WEEKLY sync"
+    clean_state(tmp_path)
+
+
+def paused_at(step_name, worker_name):
+    """A CHECKPOINT that holds the named worker thread at `step_name` until released."""
+    import threading
+
+    reached, release = threading.Event(), threading.Event()
+
+    def hook(step):
+        if step == step_name and threading.current_thread().name == worker_name:
+            reached.set()
+            assert release.wait(30)
+
+    return hook, reached, release
+
+
+def run_thread(name, function):
+    import threading
+
+    box = {}
+
+    def target():
+        try:
+            box["value"] = function()
+        except BaseException as error:  # reported by the test
+            box["error"] = error
+
+    thread = threading.Thread(target=target, name=name)
+    thread.start()
+    return thread, box
+
+
+def test_another_meeting_can_be_renamed_while_a_mixdown_runs(tmp_path, monkeypatch):
+    other = simple_session(tmp_path, 0.5, title="Other")[0]
+    finalize(tmp_path, other)
+    sid, _ = simple_session(tmp_path, 1.0)
+    hook, reached, release = paused_at("mixed", "mixdown")
+    monkeypatch.setattr(publish, "CHECKPOINT", hook)
+    mixing, result = run_thread("mixdown", lambda: finalize(tmp_path, sid))
+    assert reached.wait(30)
+    renaming, renamed = run_thread("rename", lambda: edit.edit_meeting(tmp_path, "Recording", other, dict(title="Renamed", titleSource="user")))  # fmt: skip
+    renaming.join(15)
+    finished = not renaming.is_alive()
+    release.set()
+    mixing.join(30)
+    renaming.join(30)
+    assert finished, "the rename waited for the mixdown: the Library lock was held"
+    assert renamed["value"] == "2026-10-30--18.02-Renamed.opus" and "error" not in result
+    assert sorted(root_files(tmp_path)) == ["2026-10-30--18.02-Renamed.opus", "2026-10-30--18.02-Weekly sync.opus"]
+    clean_state(tmp_path)
+
+
+def test_commit_retags_when_meeting_json_changed_during_the_mixdown(tmp_path, monkeypatch):
+    from cassini_viewer import meeting_store
+
+    sid, directory = simple_session(tmp_path, 1.0)
+    hook, reached, release = paused_at("mixed", "mixdown")
+    monkeypatch.setattr(publish, "CHECKPOINT", hook)
+    mixing, result = run_thread("mixdown", lambda: finalize(tmp_path, sid))
+    assert reached.wait(30)
+    with meeting_store.LOCK:
+        value = meeting_store.read_metadata(directory)
+        meeting_store.atomic_json(
+            directory / "meeting.json", dict(value, title="Changed", titleSource="user", revision=1)
+        )
+    release.set()
+    mixing.join(30)
+    assert result["value"].name == "2026-10-30--18.02-Changed.opus" and result["value"].revision == 2
+    ours = manifest(tmp_path / result["value"].name)["x"]["codemyriad.io"]
+    assert (ours["revision"], ours["meeting"]["title"]) == (2, "Changed")
+    assert meeting_json(directory)["revision"] == 2 and meeting_json(directory)["published"] is True
+    clean_state(tmp_path)
+
+
+def test_a_second_finalize_of_a_published_meeting_is_idempotent(tmp_path, monkeypatch):
+    """Q6: startup may finalize again; a racing build sees the commit and publishes nothing new."""
+    sid, directory = simple_session(tmp_path, 1.0)
+    hook, reached, release = paused_at("stage-written", "late")
+    monkeypatch.setattr(publish, "CHECKPOINT", hook)
+    late, result = run_thread("late", lambda: finalize(tmp_path, sid))
+    assert reached.wait(30)
+    first = finalize(tmp_path, sid)
+    release.set()
+    late.join(30)
+    assert result["value"].already_published and result["value"].name == first.name
+    assert root_files(tmp_path) == [first.name] and meeting_json(directory)["revision"] == 1
+    clean_state(tmp_path)
+
+
+def test_recovery_removes_only_builds_whose_process_is_gone(tmp_path):
+    layout = journal.Layout(tmp_path)
+    with journal.Build(layout) as running:
+        running.stage.write_bytes(b"half")
+        report = journal.recover(tmp_path)
+        assert running.stage.exists() and not report.orphans  # a live build is left alone
+    assert os.listdir(layout.staging) == []
+    (layout.staging / "5b0c7ad3-0d1f-4a7e-9d43-3a0d3b7e1a11.opus.stage").write_bytes(b"x")
+    assert journal.recover(tmp_path).orphans == ["5b0c7ad3-0d1f-4a7e-9d43-3a0d3b7e1a11.opus.stage"]

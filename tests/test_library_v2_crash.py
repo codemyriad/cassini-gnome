@@ -55,8 +55,19 @@ OLD = "2026-10-30--18.02-Weekly sync.opus"
 NEW = "2026-10-30--18.02-Renamed.opus"
 
 
-def crash(operation, step, root, sid):
-    result = subprocess.run([sys.executable, "-c", CHILD, SRC, operation, step, str(root), sid], timeout=120)
+RECOVER = textwrap.dedent(
+    """
+    import sys
+    sys.path.insert(0, sys.argv[1])
+    from cassini_viewer.library_v2 import journal
+    report = journal.recover(sys.argv[2])
+    assert not report.kept and not report.orphans, report
+    """
+)
+
+
+def crash(operation, step, root, sid, env=None):
+    result = subprocess.run([sys.executable, "-c", CHILD, SRC, operation, step, str(root), sid], timeout=120, env=env)
     assert result.returncode == -signal.SIGKILL, f"{step} was never reached"
 
 
@@ -76,7 +87,17 @@ def state(root, name):
     return value["x"]["codemyriad.io"]["revision"], value["x"].get("gocassini.com", {}).get("notes")
 
 
-PUBLISH = ["journaled", "mixed", "stage-written", "staged", "before-rename", "renamed", "after-fsync", "after-meeting"]
+# The first three run without the Library lock, before anything is journaled (§11 step-3a Q10).
+PUBLISH = [
+    "building",
+    "mixed",
+    "stage-written",
+    "journaled",
+    "before-rename",
+    "renamed",
+    "after-fsync",
+    "after-meeting",
+]
 
 
 @pytest.mark.parametrize("step", PUBLISH)
@@ -87,8 +108,8 @@ def test_crash_while_publishing(tmp_path, step):
     found = recovered(tmp_path)
     assert list(found) == [("Recording", sid)] and len(found[("Recording", sid)]) == 1
     assert {p.name: p.read_bytes() for p in directory.glob("track-*.wav")} == sources
-    if PUBLISH.index(step) < PUBLISH.index("staged"):
-        # Before the stage was known complete nothing was published; a retry publishes.
+    if PUBLISH.index(step) < PUBLISH.index("journaled"):
+        # An unjournaled build of a dead process: recovery removed it; a retry publishes (Q6).
         assert found[("Recording", sid)] == [("session", directory.name, 0)] and meeting_json(directory) is None
         assert finalize.finalize(tmp_path, sid, zone="Europe/Rome").name == OLD
     else:
@@ -143,8 +164,34 @@ def test_crash_while_renaming(published, tmp_path, step):
     assert meeting_json(directory)["revision"] == (2 if applied else 1)
 
 
-@pytest.mark.parametrize("step", ["journaled", "file-removed", "session-removed"])
-def test_crash_while_deleting_never_resurrects_the_session(published, tmp_path, step):
+@pytest.mark.parametrize("step", ["journaled", "before-rename", "renamed", "after-meeting"])
+def test_crash_during_a_case_only_rename_keeps_the_base_name(published, tmp_path, step):
     root, sid, directory = library(published, tmp_path)
-    crash("delete", step, root, sid)
-    assert recovered(root) == {} and root_files(root) == [] and not directory.exists()
+    child = CHILD.replace(
+        '{"title": "Renamed", "titleSource": "user"}', '{"title": "weekly SYNC", "titleSource": "user"}'
+    )
+    result = subprocess.run([sys.executable, "-c", child, SRC, "rename", step, str(root), sid], timeout=120)
+    assert result.returncode == -signal.SIGKILL
+    found = recovered(root)
+    applied = step != "journaled"
+    name = "2026-10-30--18.02-weekly SYNC.opus" if applied else OLD
+    assert found == {("Recording", sid): [("file", name, 2 if applied else 1)]} and root_files(root) == [name]
+
+
+@pytest.mark.parametrize("step", ["journaled", "file-trashed", "session-trashed"])
+def test_crash_while_trashing_never_resurrects_the_session(published, tmp_path, step):
+    """§11 step-3a Q9: the file and the session folder both go to the (isolated) Trash, intact."""
+    root, sid, directory = library(published, tmp_path)
+    original = (root / OLD).read_bytes()
+    session_files = {p.name: p.read_bytes() for p in directory.iterdir()}
+    env = dict(os.environ, XDG_DATA_HOME=str(tmp_path / "xdg"), HOME=str(tmp_path / "home"))
+    (tmp_path / "xdg").mkdir()
+    (tmp_path / "home").mkdir()
+    crash("delete", step, root, sid, env=env)
+    subprocess.run([sys.executable, "-c", RECOVER, SRC, str(root)], timeout=120, env=env, check=True)
+    assert rows(root) == {} and root_files(root) == [] and not directory.exists()
+    layout = journal.Layout(root)
+    assert os.listdir(layout.journal) == [] and os.listdir(layout.staging) == []
+    trash = tmp_path / "xdg" / "Trash" / "files"
+    assert (trash / OLD).read_bytes() == original
+    assert {p.name: p.read_bytes() for p in (trash / directory.name).iterdir()} == session_files

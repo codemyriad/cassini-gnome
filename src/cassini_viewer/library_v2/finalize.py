@@ -6,7 +6,7 @@ not called by the app yet (step 3a); Stop still works as in the v1 Library.
 
 The session is `<Library>/.cassini/sessions/Recording-<uuid>/` with session.json
 (capture-owned, read only) and meeting.json (the working copy; defaults when
-absent). The capture writers must have stopped (§4.1). The published file holds:
+absent). The capture writers must have stopped (§4.1); the mixdown runs without the Library lock. The published file holds:
 
 - the mono 48 kHz D8 mixdown (§4.3/§4.4), checked by G12 and the format's digest,
   its playable length equal to the timeline within one Opus frame (G13);
@@ -153,8 +153,78 @@ def library_manifest(*, digest, title, created, recorded_at_local, choice, words
     return manifest
 
 
-def build(stage, timeline, choice, *, title, date, recorded_at_local, extension, now, cancel=None):
-    """Mix, encode, tag and validate the complete file at `stage`."""
+@dataclass(frozen=True)
+class Plan:
+    """What the file says about one meeting.json revision."""
+
+    base: int
+    new: int
+    update: dict  # meeting.json members the commit sets
+    prefix: str
+    title: str
+    date: str | None
+    recorded_at_local: str | None
+    extension: dict
+    assumed: bool
+
+
+def plan(session, meeting, timeline, *, zone, now, untitled):
+    prefix, source, date, recorded_at_local = start_of(session, meeting, zone, now)
+    update = dict(published=True, namePrefix=prefix)
+    if source is not None and source != "persisted":
+        update["namePrefixSource"] = source
+    updated = dict(meeting, **update, revision=meeting["revision"] + 1)
+    updated.pop("published")
+    if not library_schema.valid(updated):
+        raise ValueError("Invalid meeting metadata")
+    automatic = session.get("title") if isinstance(session.get("title"), str) else None
+    automatic = automatic[:500] if automatic else None
+    ours = xschema.private_data(updated, origin="Recording", automatic_title=automatic, tracks=timeline.tracks)
+    if not xschema.valid(ours):
+        raise ValueError('x["codemyriad.io"] does not match its schema')
+    extension = {xschema.DOMAIN: ours}
+    notes = xschema.notes_domain(None, updated.get("notes"))
+    assumed = any(span.offset_assumed for span in timeline.spans)
+    if assumed:
+        notes["recovery"] = dict(offsetsAssumedZero=True)
+    if notes:
+        extension[xschema.NOTES_DOMAIN] = notes
+    return Plan(
+        base=meeting["revision"],
+        new=meeting["revision"] + 1,
+        update=update,
+        prefix=prefix,
+        title=edit.display_title(updated, automatic, untitled),
+        date=date,
+        recorded_at_local=recorded_at_local,
+        extension=extension,
+        assumed=assumed,
+    )
+
+
+def tag(audio_path, stage, digest, plan, choice, now):
+    """Write `audio_path`'s Ogg Opus stream with the plan's tags to `stage` (new, fsynced, validated)."""
+    words_tags, words_ref = chunk_set("CASSINI_TX_WORDS_PAYLOAD_", EMPTY_WORDS, WORDS_MIME)
+    created = now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    manifest = library_manifest(
+        digest=digest,
+        title=plan.title,
+        created=created,
+        recorded_at_local=plan.recorded_at_local,
+        choice=choice,
+        words_ref=words_ref,
+        extension=plan.extension,
+    )
+    tags = file_tags(manifest, words_tags, date=plan.date or created)
+    with open(audio_path, "rb") as audio, open(stage, "xb") as output:
+        rewrite_tags(audio, output, tags)
+        output.flush()
+        os.fsync(output.fileno())
+    edit.verify(stage, digest=digest["sha256"])
+
+
+def build(stage, timeline, choice, plan, now, cancel=None):
+    """Mix, encode, tag and validate the complete file at `stage`; returns the audio digest."""
     mix = stage.with_name(stage.name.split(".", 1)[0] + ".mix.partial")
     try:
         expected = mixdown.encode(timeline.spans, mix, choice, cancel)
@@ -163,29 +233,36 @@ def build(stage, timeline, choice, *, title, date, recorded_at_local, extension,
             digest = portable.compute_audio_digest(audio)
         if abs(digest["sampleCount"] - expected) > mixdown.FRAME:
             raise DurationMismatch(f"Encoded {digest['sampleCount']} samples for a {expected}-sample timeline")
-        words_tags, words_ref = chunk_set("CASSINI_TX_WORDS_PAYLOAD_", EMPTY_WORDS, WORDS_MIME)
-        created = now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
-        manifest = library_manifest(
-            digest=digest,
-            title=title,
-            created=created,
-            recorded_at_local=recorded_at_local,
-            choice=choice,
-            words_ref=words_ref,
-            extension=extension,
-        )
-        tags = file_tags(manifest, words_tags, date=date or created)
-        with open(mix, "rb") as audio, open(stage, "xb") as output:
-            rewrite_tags(audio, output, tags)
-            output.flush()
-            os.fsync(output.fileno())
+        tag(mix, stage, digest, plan, choice, now)
     finally:
         mix.unlink(missing_ok=True)
-    edit.verify(stage, digest=digest["sha256"])
+    return digest
+
+
+def _published(layout, session_id, meeting):
+    name = publish.find_file(layout, "Recording", session_id)
+    if name is None:
+        raise FileNotFoundError("The meeting was published but its file is missing")
+    return Result(name=name, revision=meeting["revision"], already_published=True)
+
+
+def _reconcile(layout, session_id):
+    report = journal.replay(layout, identity=("Recording", session_id))
+    if report.blocks("Recording", session_id):
+        raise publish.PendingCommit("An earlier publish of this meeting has not finished")
 
 
 def finalize(root, session_id, *, untitled=None, zone=None, now=None, statvfs=os.statvfs, cancel=None):
     """Publish the Cassini file of the stopped recording `session_id`; returns a Result.
+
+    Idempotent (§11 step-3a Q6, startup re-finalize): an already published meeting
+    returns its file; a pending journal entry is reconciled first; a build left by a
+    dead process is cleaned up by recovery, and the next call builds again.
+
+    The mixdown and encode run without the Library lock (§11 step-3a Q10). The lock
+    covers reconciliation, then the journal and commit, which re-check the
+    preconditions: not published meanwhile, the same meeting.json revision (else
+    the stage is re-tagged from the current one, audio unchanged), a free name.
 
     Raises EmptyRecording (no source has samples), LowDisk, or ValueError for a
     damaged session, all before anything is published; PendingCommit when the file
@@ -196,79 +273,56 @@ def finalize(root, session_id, *, untitled=None, zone=None, now=None, statvfs=os
     untitled = untitled or text("library.untitled")
     zone = zone or local_zone()
     now = now or datetime.now(UTC)
+    directory = layout.session(origin, session_id)
     with journal.LibraryLock(layout):
-        report = journal.replay(layout, identity=(origin, session_id))
-        if report.blocks(origin, session_id):
-            raise publish.PendingCommit("An earlier publish of this meeting has not finished")
-        directory = layout.session(origin, session_id)
-        with meeting_store.LOCK:
-            meeting = meeting_store.read_metadata(directory)
-        if meeting.get("published") is True:
-            name = publish.find_file(layout, origin, session_id)
-            if name is None:
-                raise FileNotFoundError("The meeting was published but its file is missing")
-            return Result(name=name, revision=meeting["revision"], already_published=True)
-        session = read_session(directory)
-        timeline = mixdown.session_spans(directory, session)
-        if not timeline.spans:
-            raise mixdown.EmptyRecording("No audio samples were recorded")
-        choice = mixdown.encode_choice(timeline.spans)
-        usage = statvfs(layout.root)
-        needed = space_needed(mixdown.total_samples(timeline.spans), choice, usage)
-        free = usage.f_bavail * usage.f_frsize
-        if free < needed:
-            raise LowDisk(needed, free)
-        prefix, source, date, recorded_at_local = start_of(session, meeting, zone, now)
-        base, new = meeting["revision"], meeting["revision"] + 1
-        update = dict(published=True, namePrefix=prefix)
-        if source is not None and source != "persisted":
-            update["namePrefixSource"] = source
-        updated = dict(meeting, **update, revision=new)
-        updated.pop("published")
-        if not library_schema.valid(updated):
-            raise ValueError("Invalid meeting metadata")
-        automatic = session.get("title") if isinstance(session.get("title"), str) else None
-        automatic = automatic[:500] if automatic else None
-        title = edit.display_title(updated, automatic, untitled)
-        ours = xschema.private_data(updated, origin=origin, automatic_title=automatic, tracks=timeline.tracks)
-        if not xschema.valid(ours):
-            raise ValueError('x["codemyriad.io"] does not match its schema')
-        extension = {xschema.DOMAIN: ours}
-        notes = xschema.notes_domain(None, updated.get("notes"))
-        assumed = any(span.offset_assumed for span in timeline.spans)
-        if assumed:
-            notes["recovery"] = dict(offsetsAssumedZero=True)
-        if notes:
-            extension[xschema.NOTES_DOMAIN] = notes
-
-        def write_stage(stage):
-            build(
-                stage,
-                timeline,
-                choice,
-                title=title,
-                date=date,
-                recorded_at_local=recorded_at_local,
-                extension=extension,
-                now=now,
-                cancel=cancel,
+        _reconcile(layout, session_id)
+    with meeting_store.LOCK:
+        meeting = meeting_store.read_metadata(directory)
+    if meeting.get("published") is True:
+        return _published(layout, session_id, meeting)
+    session = read_session(directory)
+    timeline = mixdown.session_spans(directory, session)
+    if not timeline.spans:
+        raise mixdown.EmptyRecording("No audio samples were recorded")
+    choice = mixdown.encode_choice(timeline.spans)
+    usage = statvfs(layout.root)
+    needed = space_needed(mixdown.total_samples(timeline.spans), choice, usage)
+    free = usage.f_bavail * usage.f_frsize
+    if free < needed:
+        raise LowDisk(needed, free)
+    first = plan(session, meeting, timeline, zone=zone, now=now, untitled=untitled)
+    with journal.Build(layout) as job:
+        publish.step("building")
+        digest = build(job.stage, timeline, choice, first, now, cancel)
+        publish.step("stage-written")
+        with journal.LibraryLock(layout):
+            _reconcile(layout, session_id)
+            with meeting_store.LOCK:
+                current = meeting_store.read_metadata(directory)
+            if current.get("published") is True:
+                return _published(layout, session_id, current)
+            final = first
+            if current["revision"] != meeting["revision"]:
+                # meeting.json changed while mixing: same audio, tags from the current revision.
+                final = plan(session, current, timeline, zone=zone, now=now, untitled=untitled)
+                retagged = job.stage.with_name(job.op + ".retag.partial")
+                tag(job.stage, retagged, digest, final, choice, now)
+                os.replace(retagged, job.stage)
+            name = publish.publish_new(
+                layout,
+                origin=origin,
+                session_id=session_id,
+                base_revision=final.base,
+                new_revision=final.new,
+                name=dict(prefix=final.prefix, title=final.title, untitled=untitled),
+                meeting_update=final.update,
+                stage=job.stage,
             )
-
-        name = publish.publish_new(
-            layout,
-            origin=origin,
-            session_id=session_id,
-            base_revision=base,
-            new_revision=new,
-            name=dict(prefix=prefix, title=title, untitled=untitled),
-            meeting_update=update,
-            write_stage=write_stage,
-        )
-        problem = session.get("problem") if isinstance(session.get("problem"), str) else None
-        return Result(
-            name=name,
-            revision=new,
-            missing_sources=list(timeline.empty),
-            offsets_assumed_zero=assumed,
-            problem=problem,
-        )
+    problem = session.get("problem") if isinstance(session.get("problem"), str) else None
+    return Result(
+        name=name,
+        revision=final.new,
+        missing_sources=list(timeline.empty),
+        offsets_assumed_zero=final.assumed,
+        problem=problem,
+    )
