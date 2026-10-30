@@ -130,7 +130,14 @@ class RecordingPage(Adw.NavigationPage):
             halign=Gtk.Align.START,
         )
         self.change_sources.connect("clicked", self._change_sources)
-        sources.append(self.change_sources)
+        source_actions = Gtk.Box(hexpand=True)
+        self.change_sources.set_hexpand(True)
+        source_actions.append(self.change_sources)
+        self.details_button = Gtk.Button(
+            label=text("details.link"), css_classes=["flat", "recording-change"], action_name="win.recording-details"
+        )
+        source_actions.append(self.details_button)
+        sources.append(source_actions)
         column.append(sources)
         self.update_status()
 

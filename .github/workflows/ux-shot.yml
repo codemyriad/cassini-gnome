@@ -83,6 +83,7 @@ jobs:
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/model-notices.py ux-artifacts/notices-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/settings.py ux-artifacts/settings-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/companion.py ux-artifacts/companion-setup.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/recording-details.py ux-artifacts/recording-details.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/journey-parity.py ux-artifacts/journey-parity.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/companion-sandbox.py ux-artifacts/companion-sandbox.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/what-is-recorded.py ux-artifacts/what-is-recorded.png
