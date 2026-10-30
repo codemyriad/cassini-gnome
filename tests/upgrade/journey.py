@@ -43,7 +43,20 @@ for name in (
     path.write_bytes((name + "\n").encode())
     sentinels[name] = hashlib.sha256(path.read_bytes()).hexdigest()
 
-subprocess.run(["sudo", "dpkg", "-i", "/packages/new.deb", "/packages/transition.deb"], check=True)
+# Use the end-user package manager: apt orders the transition and handles
+# Breaks, whereas raw dpkg refuses to deconfigure the old installed package.
+subprocess.run(
+    [
+        "sudo",
+        "apt-get",
+        "install",
+        "-y",
+        "--no-install-recommends",
+        "/packages/new.deb",
+        "/packages/transition.deb",
+    ],
+    check=True,
+)
 assert installed("cassini-talk").startswith("install ok installed 0.3.0+")
 assert installed("cassini-viewer").startswith("install ok installed 0.3.0+")
 assert not Path("/usr/bin/cassini-viewer").is_symlink()
@@ -81,12 +94,20 @@ with (OUT / "application.log").open("w") as log:
         while time.monotonic() < deadline:
             while GLib.MainContext.default().pending():
                 GLib.MainContext.default().iteration(False)
-            if owns() and current.get_boolean("legacy-settings-migrated"):
+            visible = (
+                subprocess.run(
+                    ["xdotool", "search", "--all", "--onlyvisible", "--pid", str(app.pid), "--name", "^Cassini talk$"],
+                    capture_output=True,
+                    timeout=2,
+                ).returncode
+                == 0
+            )
+            if owns() and visible and current.get_boolean("legacy-settings-migrated"):
                 break
             assert app.poll() is None, "The upgraded app exited during startup"
             time.sleep(0.05)
         else:
-            raise AssertionError("The upgraded app did not migrate settings on startup")
+            raise AssertionError("The upgraded app did not present its window and migrate settings")
         for key in ("speech-model", "record-shortcut-description", "skip-record-first", "follow-along", "window-width"):
             assert current.get_value(key) == old.get_value(key), key
         for name, digest in sentinels.items():
