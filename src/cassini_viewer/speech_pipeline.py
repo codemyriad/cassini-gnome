@@ -86,8 +86,18 @@ def resampled_stream(blocks):
         first = last
 
 
+def streamed(track):
+    """Received Opus files and compacted capture spans (S-12 §5) decode sequentially."""
+    return track.get("format") == "opus" or track.get("codec") == "opus"
+
+
 def audio_chunks(track):
-    if track.get("format") == "opus":
+    if track.get("codec") == "opus":
+        from .track_source import mono_blocks
+
+        with closing(mono_blocks(track["path"])) as decoded:
+            yield from resampled_stream(decoded)
+    elif track.get("format") == "opus":
         from .opus_input import pcm_blocks
 
         with closing(pcm_blocks(track["path"])) as decoded:
@@ -98,7 +108,7 @@ def audio_chunks(track):
 
 def audio_segments(track, segments, heartbeat=None, *, clock=None):
     """Second sequential decode pass: retain at most one speech segment, no WAV."""
-    if track.get("format") != "opus":
+    if not streamed(track):
         for segment in segments:
             yield np.concatenate(list(resampled_chunks(track["path"], segment["startSample"], segment["endSample"])))
         return

@@ -5,6 +5,8 @@ Each appsrc exposes the *meeting* timeline. A seek changes its PCM read cursor
 and the silence before its known offset; it never assumes an unknown offset is
 zero. This lets audiomixer forward the same seek to every source, including
 sources that start later or have already ended. No intermediate audio is written.
+A compacted Opus span (S-12 §5) is decoded at 48 kHz by track_source's
+seekable decoder instead of being read from its WAV.
 """
 
 import os
@@ -14,6 +16,7 @@ from gi.repository import GLib, Gst
 
 from .library import _wave
 from .player import Player
+from .track_source import OpusDecoder
 
 CHUNK_FRAMES = 2048
 
@@ -24,7 +27,9 @@ class PCMSource:
             raise ValueError("Cannot align a track with an unknown start offset")
         self.path = track.path
         self.fd = None
-        self.frames, self.rate, self.channels = track.frames, track.sample_rate, track.channels
+        self.codec = track.codec
+        self.decoder = None
+        self.frames, self.rate, self.channels = track.pcm_frames, track.pcm_rate, track.channels
         self.offset_ns = round(track.start_offset_ms * Gst.MSECOND)
         self.leading_frames = (self.offset_ns * self.rate + Gst.SECOND - 1) // Gst.SECOND
         self.end_frame = self.leading_frames + self.frames
@@ -49,7 +54,14 @@ class PCMSource:
 
     def _open(self):
         # appsrc calls need-data on its streaming thread, including this initial IO.
-        if self.fd is not None:
+        if self.fd is not None or self.decoder is not None:
+            return
+        if self.codec == "opus":
+            decoder = OpusDecoder(self.path)
+            if decoder.info.samples < self.frames or decoder.channels != self.channels:
+                decoder.close()
+                raise ValueError("Recording source changed after the Library scan")
+            self.decoder = decoder
             return
         fd = os.open(self.path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
         try:
@@ -74,7 +86,12 @@ class PCMSource:
                 silence = min(frames, max(0, self.leading_frames - cursor))
                 audio_frames = frames - silence
                 data = bytes(silence * self.channels * 2)
-                if audio_frames:
+                if audio_frames and self.decoder is not None:
+                    self.decoder.seek(max(0, cursor - self.leading_frames))
+                    data += self.decoder.read(audio_frames)
+                    if len(data) != frames * self.channels * 2:
+                        raise ValueError("Incomplete recording source")
+                elif audio_frames:
                     data += os.pread(
                         self.fd,
                         audio_frames * self.channels * 2,
@@ -83,7 +100,7 @@ class PCMSource:
                     if len(data) != frames * self.channels * 2:
                         raise ValueError("Incomplete recording source")
                 self.cursor += frames
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, TimeoutError, GLib.Error) as error:
             message = GLib.Error.new_literal(Gst.ResourceError.quark(), str(error), Gst.ResourceError.READ)
             src.post_message(Gst.Message.new_error(src, message, str(error)))
             src.emit("end-of-stream")
@@ -100,6 +117,9 @@ class PCMSource:
         if self.fd is not None:
             os.close(self.fd)
             self.fd = None
+        if self.decoder is not None:
+            self.decoder.close()
+            self.decoder = None
 
 
 class FolderPlayer(Player):

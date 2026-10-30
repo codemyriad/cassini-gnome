@@ -96,7 +96,8 @@ def recording_observation(meeting, *, freshness_seconds=1):
     descriptor = os.open(meeting.directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         for track in meeting.tracks:
-            if track.ended is True:
+            # Live meters read growing WAVs only; compacted spans are never live.
+            if track.ended is True or track.codec != "pcm":
                 continue
             index = 0 if track.kind in ("microphone", "local") else 1
             if track.kind == "remote":

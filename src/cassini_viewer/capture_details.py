@@ -329,7 +329,8 @@ def _offset(fd, meeting):
 
     remaining, total, count = MIC_BUDGET, 0, 0
     for track in meeting.tracks:
-        if track.kind not in ("microphone", "local") or remaining < 2:
+        # A compacted Opus span (S-12 §5) has no raw PCM DC level to measure.
+        if track.kind not in ("microphone", "local") or remaining < 2 or track.codec != "pcm":
             continue
         try:
             with regular(fd, track.path.name) as (stream, info):

@@ -5,7 +5,6 @@ import math
 import os
 import re
 import stat
-import struct
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -13,7 +12,7 @@ from fractions import Fraction
 from pathlib import Path
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from . import portable, ux_formats
+from . import portable, track_source, ux_formats
 from .library_files import FileCache, basename, key
 from .library_schema import valid
 from .meeting_state import MeetingError, MeetingState
@@ -67,55 +66,13 @@ def _json(stream, _info, limit=MAX_JSON):
     return value
 
 
-def _wave(stream, info):
-    header = stream.read(44)
-    if len(header) != 44:
-        raise ValueError("incomplete-wav-header")
-    riff, _, wave, fmt, size, encoding, channels, rate, byte_rate, alignment, bits, data, _ = struct.unpack(
-        "<4sI4s4sIHHIIHH4sI", header
-    )
-    if (
-        riff != b"RIFF"
-        or wave != b"WAVE"
-        or fmt != b"fmt "
-        or data != b"data"
-        or size != 16
-        or encoding != 1
-        or bits != 16
-        or channels not in (1, 2)
-        or not 8000 <= rate <= 192000
-        or alignment != channels * 2
-        or byte_rate != rate * channels * 2
-    ):
-        raise ValueError("unsupported-pcm-header")
-    return (info.st_size - 44) // alignment, rate, channels
+_wave = track_source.wave_header
 
 
 def _opus_duration(stream, head, info):
     """Read the final complete EOS page (at most 65307 bytes), not the whole audio."""
-    if len(head) < 19:
-        return None
-    stream.seek(0)
-    first = stream.read(27)
-    serial = first[14:18]
-    stream.seek(max(0, info.st_size - 65536))
-    tail = stream.read(65536)
-    position = len(tail)
-    while (position := tail.rfind(b"OggS", 0, position)) >= 0:
-        page = tail[position:]
-        if len(page) < 27 or page[4] != 0 or not page[5] & 4 or page[14:18] != serial:
-            continue
-        segments = page[26]
-        if len(page) < 27 + segments or 27 + segments + sum(page[27 : 27 + segments]) != len(page):
-            continue
-        checksum = struct.unpack_from("<I", page, 22)[0]
-        if portable.ogg_crc(page[:22] + bytes(4) + page[26:]) != checksum:
-            continue
-        (granule,) = struct.unpack_from("<Q", page, 6)
-        (pre_skip,) = struct.unpack_from("<H", head, 10)
-        if pre_skip <= granule <= 0x7FFFFFFFFFFFFFFF:
-            return (granule - pre_skip) * 1000 // 48000
-    return None
+    samples = track_source.final_samples(stream, head, info)
+    return None if samples is None else samples * 1000 // 48000
 
 
 def _opus(stream, info):
@@ -155,6 +112,18 @@ class CaptureTrack:
     id: str | None = None
     kind: str = "unknown"
     source_track_id: str | None = None
+    # S-12 §5: "pcm" (v1 WAV) or "opus" (compacted). frames/sample_rate stay the
+    # source metadata; readers decode pcm_frames at pcm_rate.
+    codec: str = "pcm"
+    decoded_frames: int | None = None
+
+    @property
+    def pcm_rate(self):
+        return track_source.OPUS_RATE if self.codec == "opus" else self.sample_rate
+
+    @property
+    def pcm_frames(self):
+        return self.decoded_frames if self.codec == "opus" else self.frames
 
     @property
     def display_end_ms(self):
@@ -302,6 +271,31 @@ class LibrarySnapshot:
         return dict(scan="failed" if self.unavailable else "ok" if self.meetings else "empty", groups=groups)
 
 
+def _compacted_signature(fd, limit=256):
+    """Stat keys of `tracks/*.opus`; a symlinked or unreadable tracks/ is keyed by itself."""
+    try:
+        item = os.stat(track_source.TRACKS, dir_fd=fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return []
+    result = [(track_source.TRACKS, item.st_mode, key(item))]
+    if not stat.S_ISDIR(item.st_mode):
+        return result
+    try:
+        folder = os.open(track_source.TRACKS, track_source.NOFOLLOW_DIRECTORY, dir_fd=fd)
+    except OSError:
+        return result
+    try:
+        for child in sorted(n for n in os.listdir(folder) if n.endswith(".opus"))[:limit]:
+            try:
+                info = os.stat(child, dir_fd=folder, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            result.append((f"{track_source.TRACKS}/{child}", info.st_mode, key(info)))
+    finally:
+        os.close(folder)
+    return result
+
+
 def _sort(meeting):
     unknown = meeting.started_at_ms is None
     return (
@@ -404,6 +398,8 @@ class LibraryScanner:
                                     signature.append((child, item.st_mode, key(item)))
                                 except FileNotFoundError:
                                     continue
+                            elif child == track_source.TRACKS:
+                                signature.extend(_compacted_signature(fd))
                         fingerprint = (key(info)[:2], tuple(sorted(signature)), activity.get(identifier))
                         cached = self._row_cache.get(name)
                         if cached and cached[0] == fingerprint:
@@ -448,6 +444,15 @@ class LibraryScanner:
     def _load(self, fd, directory, name, kind, loader):
         return self._files.get(fd, directory / basename(name), kind, loader)
 
+    def _load_span(self, fd, directory, parts, kind, loader):
+        if len(parts) == 1:
+            return self._load(fd, directory, parts[0], kind, loader)
+        folder = os.open(basename(parts[0]), track_source.NOFOLLOW_DIRECTORY, dir_fd=fd)
+        try:
+            return self._files.get(folder, directory / parts[0] / basename(parts[1]), kind, loader)
+        finally:
+            os.close(folder)
+
     def _metadata(self, fd, directory, identifier, origin, diagnostics):
         try:
             raw = self._load(fd, directory, "meeting.json", "json", _json)
@@ -474,6 +479,7 @@ class LibraryScanner:
 
     def _capture(self, fd, directory, identifier, names, diagnostics):
         salvaged = False
+        capture = None
         try:
             capture = self._load(fd, directory, "session.json", "json", _json)
             if (
@@ -487,10 +493,19 @@ class LibraryScanner:
                 raise ValueError("capture-identity-or-version")
             values = capture["tracks"]
         except (OSError, ValueError):
+            # Compacted spans pair with their WAVs through a surviving
+            # `sourceFile` record; without one, a WAV wins (S-12 §11).
+            pairs = track_source.salvage_pairs(capture)
             capture, salvaged = {}, True
-            values = [dict(file=name) for name in sorted(names) if name.startswith("track-") and name.endswith(".wav")][
-                :64
-            ]
+            values = track_source.salvage_values(
+                [name for name in sorted(names) if name.startswith("track-") and name.endswith(".wav")],
+                [
+                    name
+                    for name in sorted(names)
+                    if name.startswith(track_source.TRACKS + "/") and name.endswith(".opus")
+                ],
+                pairs,
+            )
             diagnostics.append(Diagnostic(directory / "session.json", "capture-recovered"))
         tracks = []
         identifiers = [
@@ -502,14 +517,12 @@ class LibraryScanner:
             try:
                 if not isinstance(value, dict):
                     raise ValueError("invalid-track")
-                name = basename(value.get("file"))
-                if not name.startswith("track-") or not name.endswith(".wav"):
-                    raise ValueError("invalid-track-name")
-                frames, rate, channels = self._load(fd, directory, name, "wave", _wave)
-                if any(
-                    k in value and value[k] != actual for k, actual in (("sampleRate", rate), ("channels", channels))
-                ):
-                    raise ValueError("track-format-mismatch")
+                span = track_source.describe(
+                    value,
+                    lambda parts, kind, loader: self._load_span(fd, directory, parts, kind, loader),
+                    recovered=salvaged,
+                )
+                name, frames, rate, channels = span.relative, span.frames, span.sample_rate, span.channels
                 offset = value.get("startOffsetMs")
                 if type(offset) not in (int, float) or not 0 <= offset <= 86400000 or not math.isfinite(offset):
                     offset = None
@@ -553,6 +566,8 @@ class LibraryScanner:
                         identity,
                         kind,
                         source_identity,
+                        span.codec,
+                        span.decoded_frames if span.codec == "opus" else None,
                     )
                 )
             except (OSError, ValueError, TypeError):
