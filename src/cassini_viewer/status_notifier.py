@@ -92,8 +92,9 @@ def recording_pixels(size=24):
 
 
 class StatusNotifier:
-    def __init__(self, app, connection):
+    def __init__(self, app, connection, *, changed=None):
         self.app, self.bus = app, connection
+        self.changed = changed or (lambda: None)
         self.closed = self.registered = self.registering = False
         self.proxy = None
         self.owner = ""
@@ -161,9 +162,9 @@ class StatusNotifier:
             if self.closed or generation != self.generation:
                 return
             self.proxy = proxy
-            proxy.connect("g-properties-changed", lambda *_: self._ensure())
-            proxy.connect("g-signal", lambda *_: self._ensure())
-            self._ensure()
+            proxy.connect("g-properties-changed", self._watcher_changed)
+            proxy.connect("g-signal", self._watcher_changed)
+            self._watcher_changed()
 
         Gio.DBusProxy.new(
             self.bus,
@@ -182,6 +183,17 @@ class StatusNotifier:
         self._clear_retry()
         self.proxy = None
         self.registered = self.registering = False
+
+        self.changed()
+
+    @property
+    def available(self):
+        host = self.proxy.get_cached_property("IsStatusNotifierHostRegistered") if self.proxy else None
+        return bool(self.registered and host and host.unpack())
+
+    def _watcher_changed(self, *_):
+        self._ensure()
+        self.changed()
 
     def _clear_retry(self):
         if self.retry_timer:
@@ -221,6 +233,7 @@ class StatusNotifier:
             self.registered = ok
             if not ok:
                 self.retry_timer = GLib.timeout_add_seconds(5, self._retry)
+            self.changed()
 
         self.proxy.call(
             "RegisterStatusNotifierItem",

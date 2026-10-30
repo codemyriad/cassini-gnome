@@ -37,3 +37,11 @@ a fake watcher on a private session bus, including missing watcher/host, unique
 registration, action guards, timer updates and teardown. Desktop integration,
 Flatpak access, icon rendering and the GNOME privacy-indicator measurements
 remain part of the D41 draft; the component is now wired into application and capture lifecycles.
+
+D41.3 accepts that native builds do not appear in Background Apps on GNOME 50.
+They use the optional indicator and app-grid/search activation. The portal
+registry receives `get_application_id()`; this change does not rename desktop
+IDs. The one-time notice names Background Apps only for a confirmed Flatpak
+status, the indicator only after its host accepts registration, and otherwise
+instructs the person to start Cassini again. Permission, registration and window
+reopen races must settle before that notice is sent.

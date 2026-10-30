@@ -62,15 +62,34 @@ class WindowlessBackground:
 
     def _published(self, available):
         app = self.app
-        # In particular, never claim Background Apps can open a native build
-        # when the host portal rejects SetStatus. D41/R48 records that limit.
-        if not available or not self.idle or not self.message or app._quitting:
+        if not self.idle or not self.message or app._quitting or not app.background_recording.granted:
             return
+        flatpak = app.in_flatpak
+        background_available = available and flatpak
+        indicator = getattr(app, "status_notifier", None)
+        # A duplicate status call can return False while SetStatus is still
+        # pending. Wait for a confirmed result before choosing a route.
+        waiting_for_portal = flatpak and not available and app.background_recording.status_supported
+        if not background_available and (waiting_for_portal or getattr(indicator, "registering", False)):
+            return
+        body = (
+            "hidden.firstClose.body"
+            if background_available
+            else "hidden.firstClose.indicatorBody"
+            if getattr(indicator, "available", False)
+            else "hidden.firstClose.launcherBody"
+        )
         settings = app.recording_settings
         if settings.get_boolean("background-notification-shown"):
             return
         notification = Gio.Notification.new(text("hidden.firstClose.title"))
-        notification.set_body(text("hidden.firstClose.body"))
+        notification.set_body(text(body))
         notification.set_default_action("app.open-recording")
         app.send_notification("background", notification)
         settings.set_boolean("background-notification-shown", True)
+
+    def indicator_ready(self):
+        # SetStatus is unavailable for native builds. A late SNI registration
+        # can finish a deferred notification, but never one after reopening.
+        if not self.app.in_flatpak or not self.app.background_recording.status_supported:
+            self._published(False)

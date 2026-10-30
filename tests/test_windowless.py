@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 pytest.importorskip("gi.repository.Gio")
+from cassini_viewer import windowless
 from cassini_viewer.windowless import WindowlessBackground
 
 
@@ -16,6 +17,7 @@ class Portal:
         self.statuses = []
         self.requests = 0
         self.listed = True
+        self.status_supported = True
 
     def request(self, callback):
         self.callback = callback
@@ -28,8 +30,21 @@ class Portal:
 
     def status(self, message, callback=None):
         self.statuses.append(message)
+        if not self.listed:
+            self.status_supported = False
         if callback:
             callback(self.listed)
+
+
+@pytest.fixture
+def notification_body(monkeypatch):
+    def new(title):
+        value = SimpleNamespace(title=title, body=None, default_action=None)
+        value.set_body = lambda body: setattr(value, "body", body)
+        value.set_default_action = lambda action: setattr(value, "default_action", action)
+        return value
+
+    monkeypatch.setattr(windowless, "Gio", SimpleNamespace(Notification=SimpleNamespace(new=new)))
 
 
 def application():
@@ -40,6 +55,7 @@ def application():
     app = SimpleNamespace(
         _auto_recording_held=True,
         _quitting=False,
+        in_flatpak=True,
         get_windows=lambda: [window],
         background_recording=Portal(),
         recording_settings=SimpleNamespace(
@@ -97,15 +113,17 @@ def test_denied_background_request_reopens_a_window():
     assert window.visible and not notifications
 
 
-def test_host_status_rejection_never_claims_background_apps_can_open_it():
+def test_host_status_rejection_uses_launcher_without_claiming_background_apps(notification_body):
     app, window, notifications = application()
+    app.in_flatpak = False
     window.visible = False
     app.background_recording.listed = False
     presence = WindowlessBackground(app)
     presence.refresh()
     app.background_recording.finish(True)
-    assert not notifications
-    assert not app.recording_settings.get_boolean("background-notification-shown")
+    assert len(notifications) == 1
+    assert notifications[0][1].body == ("It records browser meetings automatically. To open it, start Cassini again.")
+    assert app.recording_settings.get_boolean("background-notification-shown")
 
 
 def test_late_permission_after_reopen_does_not_send_hidden_notification():
@@ -167,3 +185,102 @@ def test_idle_indicator_only_runs_when_automatic_recording_is_armed_and_windowle
     app._auto_recording_held = False
     presence.refresh()
     assert not updates[-1]["automatic"] and not updates[-1]["recording"]
+
+
+def test_accepted_indicator_names_the_real_top_bar_route(notification_body):
+    app, window, notifications = application()
+    app.in_flatpak = False
+    window.visible = False
+    app.background_recording.listed = False
+    app.status_notifier = SimpleNamespace(
+        available=True, registering=False, recording=False, message="", update=lambda **_: None
+    )
+    presence = WindowlessBackground(app)
+    presence.refresh()
+    app.background_recording.finish(True)
+    assert notifications[0][1].body == (
+        "It records browser meetings automatically. To open it, use Cassini’s icon in the top bar."
+    )
+    assert notifications[0][1].default_action == "app.open-recording"
+    presence.indicator_ready()
+    assert len(notifications) == 1
+
+
+@pytest.mark.parametrize("accepted", [True, False])
+def test_pending_indicator_chooses_its_route_only_after_registration_finishes(notification_body, accepted):
+    app, window, notifications = application()
+    app.in_flatpak = False
+    window.visible = False
+    app.background_recording.listed = False
+    indicator = app.status_notifier = SimpleNamespace(
+        available=False, registering=True, recording=False, message="", update=lambda **_: None
+    )
+    presence = WindowlessBackground(app)
+    presence.refresh()
+    app.background_recording.finish(True)
+    assert not notifications
+    indicator.registering, indicator.available = False, accepted
+    presence.indicator_ready()
+    assert len(notifications) == 1
+    assert notifications[0][1].body.endswith(
+        "use Cassini’s icon in the top bar." if accepted else "start Cassini again."
+    )
+
+
+def test_pending_portal_status_never_causes_a_premature_launcher_notice(notification_body):
+    app, window, notifications = application()
+    window.visible = False
+    presence = WindowlessBackground(app)
+    presence.refresh()
+    app.background_recording.granted = True
+    presence._published(False)  # Duplicate call while the real SetStatus reply is pending.
+    assert not notifications and app.background_recording.status_supported
+    presence._published(True)
+    assert notifications[0][1].body.endswith("use Background Apps in the system menu.")
+
+
+def test_late_indicator_after_reopening_does_not_send_a_hidden_notice(notification_body):
+    app, window, notifications = application()
+    app.in_flatpak = False
+    window.visible = False
+    app.background_recording.listed = False
+    indicator = app.status_notifier = SimpleNamespace(
+        available=False, registering=True, recording=False, message="", update=lambda **_: None
+    )
+    presence = WindowlessBackground(app)
+    presence.refresh()
+    app.background_recording.finish(True)
+    window.visible = True
+    presence.refresh()
+    indicator.registering, indicator.available = False, True
+    presence.indicator_ready()
+    assert not notifications
+    window.visible = False
+    presence.refresh()
+    assert notifications[0][1].body.endswith("use Cassini’s icon in the top bar.")
+
+
+def test_native_never_claims_background_apps_even_if_status_call_succeeds(notification_body):
+    app, window, notifications = application()
+    app.in_flatpak = False
+    window.visible = False
+    presence = WindowlessBackground(app)
+    presence.refresh()
+    app.background_recording.finish(True)
+    assert notifications[0][1].body.endswith("start Cassini again.")
+    assert "Background Apps" not in notifications[0][1].body
+
+
+def test_indicator_registration_waits_for_background_permission_before_notifying(notification_body):
+    app, window, notifications = application()
+    app.in_flatpak = False
+    window.visible = False
+    app.status_notifier = SimpleNamespace(
+        available=True, registering=False, recording=False, message="", update=lambda **_: None
+    )
+    presence = WindowlessBackground(app)
+    presence.refresh()
+    presence.indicator_ready()
+    assert not notifications
+    app.background_recording.finish(False)
+    assert window.visible and not notifications

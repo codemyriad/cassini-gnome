@@ -110,7 +110,7 @@ class CassiniApplication(Adw.Application):
         self.global_shortcut = None
         from .background_recording import BackgroundRecording
 
-        self.background_recording = BackgroundRecording(application_id, native=not self.in_flatpak)
+        self.background_recording = BackgroundRecording(self.get_application_id(), native=not self.in_flatpak)
         from .windowless import WindowlessBackground
 
         self.windowless_background = WindowlessBackground(self)
@@ -159,7 +159,7 @@ class CassiniApplication(Adw.Application):
         from .status_notifier import StatusNotifier
 
         if bus := self.get_dbus_connection():
-            self.status_notifier = StatusNotifier(self, bus)
+            self.status_notifier = StatusNotifier(self, bus, changed=self.windowless_background.indicator_ready)
         from .main_loop_watchdog import MainLoopWatchdog
 
         self._watchdog = MainLoopWatchdog()

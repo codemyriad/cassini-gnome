@@ -142,6 +142,7 @@ with tempfile.TemporaryDirectory() as temporary:
     app = CassiniApplication("com.gocassini.BackgroundTest", "test", "development")
     app.transcription_enabled = False
     app.register(None)
+    assert app.background_recording.application_id == app.get_application_id()
     app.activate()
     window = app.get_active_window()
     window.set_default_size(1130, 730)
@@ -249,6 +250,9 @@ with tempfile.TemporaryDirectory() as temporary:
     app.comfort.tick()
     until(lambda: "background" in services.notifications)
     assert services.notifications["background"]["title"] == "Cassini is still running"
+    assert services.notifications["background"]["body"] == (
+        "It records browser meetings automatically. To open it, start Cassini again."
+    )
     assert app.background_recording.last_status == "Ready to record browser meetings"
     first_notice_count = sum(item["id"] == "background" for item in services.history)
     services.app_action(app, "open-recording")
