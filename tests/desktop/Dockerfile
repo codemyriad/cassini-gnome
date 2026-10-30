@@ -5,7 +5,7 @@ ARG TEST_GID=1000
 ENV DEBIAN_FRONTEND=noninteractive
 COPY app.deb /tmp/app.deb
 RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes && apt-get update && apt-get install -y --no-install-recommends \
-    /tmp/app.deb gnome-shell dbus dbus-x11 at-spi2-core python3-gi gir1.2-atspi-2.0 \
+    /tmp/app.deb gnome-shell gnome-shell-extension-appindicator dbus dbus-x11 at-spi2-core python3-gi gir1.2-atspi-2.0 \
     xdg-desktop-portal xdg-desktop-portal-gnome xdg-desktop-portal-gtk flatpak \
     pipewire pipewire-pulse wireplumber pulseaudio-utils xdg-user-dirs gsettings-desktop-schemas \
     dconf-cli fonts-cantarell adwaita-icon-theme ca-certificates \
