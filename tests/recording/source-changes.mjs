@@ -35,7 +35,7 @@ export async function run({context, call, join, record, recording, samples, powe
   evidence.scenarios.push({name: 'hang-up-tab-open-stops-without-fallback', directory: hungUpDirectory});
   assert.equal(savedHangup.manifest.events.at(-1).reason, 'callEnded');
   const closed = await join('Browser-confirmed closed tab', 770, 1100, id);
-  await call({action: 'record'});
+  await record();
   const closedDirectory = await recording('Browser-confirmed closed tab');
   await closed.meeting.close();
   const savedClosed = await poll(async () => {
