@@ -60,7 +60,18 @@ function power(track, frequency) {
 async function join(title, localHz, remoteHz, id) {
  const meeting = await context.newPage(), remote = await remoteBrowser.newPage();
  pairs.push({meeting, remote});
- for (const page of [meeting, remote]) {await page.goto(`http://127.0.0.1:${server.address().port}/`); await page.click('#join');}
+ for (const page of [meeting, remote]) {
+  await page.addInitScript(() => {
+   window.cassiniDiscoveryEvidence = [];
+   window.addEventListener('message', event => {
+    if (event.source === window && event.data?.channel === 'cassini-page' && event.data.type === 'discovery') {
+     cassiniDiscoveryEvidence.push({sourceCount: event.data.sourceCount, heard: event.data.heard});
+     if (cassiniDiscoveryEvidence.length > 8) cassiniDiscoveryEvidence.shift();
+    }
+   });
+  });
+  await page.goto(`http://127.0.0.1:${server.address().port}/`); await page.click('#join');
+ }
  await meeting.evaluate(async ({title, localHz}) => {document.title = title; await window.join(localHz);}, {title, localHz});
  await remote.evaluate(hz => window.join(hz), remoteHz);
  const offer = await meeting.evaluate(async () => {await meeting.pc.setLocalDescription(await meeting.pc.createOffer()); return meeting.description();});
@@ -141,7 +152,17 @@ try {
  assert.deepEqual((await samples(directories[0])).tracks.map(t => t.frames), frozen);
  await call({action: 'stop-all'});
  await poll(async () => !(await call()).statuses.some(s => s.recording), 'global pill stops remaining session');
- for (const directory of directories) assert.equal((await samples(directory)).manifest.state, 'completed');
+ for (const directory of directories) {
+  const saved = await samples(directory);
+  assert.equal(saved.manifest.state, 'completed');
+  assert.ok(!(saved.manifest.events || []).some(event => event.type === 'end'), 'no protocol end events were added');
+  await poll(async () => {
+   try {
+    const metadata = JSON.parse(await readFile(path.join(directory, 'meeting.json')));
+    return metadata.recordingDetails?.end?.reason === 'user' && metadata.recordingDetails.end.atMs > 0;
+   } catch (error) {if (error.code === 'ENOENT') return false; throw error;}
+  }, 'manual browser Stop saves app-owned end facts');
+ }
  evidence.scenarios.push({name: 'library-records-two-active-calls-muted-tab-and-sink-independent-mic-stop', directories, powers});
  await automatic(true);
  await poll(async () => (await call()).statuses.filter(s => s.recording).length === 3, 'auto opt-in starts every current call');
@@ -216,7 +237,21 @@ try {
 
  await (await import('./source-changes.mjs')).run({context, call, join, record, recording, samples, power, poll, automatic, id, artifacts, evidence});
  console.log('PASS real Library Record/individual Stop/global Stop; concurrent muted source capture and mic copies; windowless auto-record/native notification controls');
-} catch (error) {evidence.failure = error.stack; throw error;}
+} catch (error) {
+ evidence.failure = error.stack;
+ try {evidence.failureState = await call();} catch {}
+ evidence.peerStates = [];
+ for (const pair of pairs) for (const page of [pair.meeting, pair.remote]) {
+  try {evidence.peerStates.push(await page.evaluate(() => ({
+   connection: window.meeting?.pc?.connectionState, ice: window.meeting?.pc?.iceConnectionState,
+   gathering: window.meeting?.pc?.iceGatheringState,
+   receivers: window.meeting?.pc?.getReceivers().map(receiver => ({kind: receiver.track?.kind, state: receiver.track?.readyState})),
+   hookWrapped: RTCPeerConnection.prototype.createOffer.toString().includes('remember'),
+   discovery: window.cassiniDiscoveryEvidence
+  })));} catch {}
+ }
+ throw error;
+}
 finally {
  if (ui && ui.exitCode === null) {
   try {await call({action: 'quit'}); ui.stdin.end(); await Promise.race([new Promise(resolve => ui.once('exit', resolve)), new Promise(resolve => setTimeout(resolve, 2000))]);} catch {}

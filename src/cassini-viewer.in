@@ -28,6 +28,10 @@ os.environ["XDG_DATA_DIRS"] = str(share) + ":" + os.environ.get("XDG_DATA_DIRS",
 
 sys.path.insert(1, pkgdatadir)
 signal.signal(signal.SIGINT, signal.SIG_DFL)
+try:
+    locale.setlocale(locale.LC_ALL, "")
+except locale.Error:
+    pass  # An unavailable desktop locale keeps the existing C-locale fallback.
 locale.bindtextdomain("cassini-viewer", localedir)
 locale.textdomain("cassini-viewer")
 gettext.install("cassini-viewer", localedir)

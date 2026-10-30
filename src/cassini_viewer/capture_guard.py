@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """UX2 confirmation 1: explicit stop-and-keep or background recording."""
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 
 from .strings import text
+
+LOG = logging.getLogger(__name__)
 
 
 def recorder_busy(recorder):
@@ -418,6 +421,18 @@ def stop_browser_captures(directory=None, *, cancel_groups=(), quitting=False, g
     def matches(path):
         return isinstance(path, str) and (directory is None or Path(path).resolve() == Path(directory).resolve())
 
+    def save_end(paths):
+        from .capture_facts import record_end
+        from .library_location import owned_directory
+
+        for path in paths:
+            try:
+                record_end(owned_directory(Path(path)), "appQuit" if quitting else "user")
+            except (OSError, ValueError):
+                # Optional details must never turn saved audio into a failed Stop.
+                LOG.warning("Could not save browser recording end details", exc_info=True)
+        return paths
+
     state = browser_service.request()
     if state.get("protocol", 0) >= 2:
         result = browser_service.request(
@@ -430,7 +445,7 @@ def stop_browser_captures(directory=None, *, cancel_groups=(), quitting=False, g
         )
         if any(s.get("recording") and matches(s.get("path")) for s in result.get("statuses", [])):
             raise ValueError("The browser has not confirmed the recording stopped")
-        return result.get("stoppedPaths", [])
+        return save_end(result.get("stoppedPaths", []))
     statuses = [s for s in state.get("statuses", []) if s.get("recording") and matches(s.get("path"))]
     paths = [s["path"] for s in statuses]
     identifiers = {s["id"] for s in statuses if isinstance(s.get("id"), str)}
@@ -461,7 +476,7 @@ def stop_browser_captures(directory=None, *, cancel_groups=(), quitting=False, g
     after = browser_service.request()
     if any(s.get("recording") and matches(s.get("path")) for s in after.get("statuses", [])):
         raise ValueError("The browser has not confirmed the recording stopped")
-    return paths
+    return save_end(paths)
 
 
 def queue_saved_for_later(path):

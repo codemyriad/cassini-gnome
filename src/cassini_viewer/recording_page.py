@@ -130,7 +130,14 @@ class RecordingPage(Adw.NavigationPage):
             halign=Gtk.Align.START,
         )
         self.change_sources.connect("clicked", self._change_sources)
-        sources.append(self.change_sources)
+        source_actions = Gtk.Box(hexpand=True)
+        self.change_sources.set_hexpand(True)
+        source_actions.append(self.change_sources)
+        self.details_button = Gtk.Button(
+            label=text("details.link"), css_classes=["flat", "recording-change"], action_name="win.recording-details"
+        )
+        source_actions.append(self.details_button)
+        sources.append(source_actions)
         column.append(sources)
         self.update_status()
 
@@ -264,6 +271,12 @@ class RecordingPage(Adw.NavigationPage):
                     )
                 )
 
+    def flush_edits(self):
+        if self._save_timer:
+            GLib.source_remove(self._save_timer)
+            self._save_timer = 0
+        self._save()
+
     def close(self):
         if self._closed:
             return
@@ -271,9 +284,6 @@ class RecordingPage(Adw.NavigationPage):
         if self.sources_dialog is not None and not self.sources_dialog.closed:
             self.sources_dialog.force_close()
         self.window._editor_focus(self.title_entry, False)
-        if self._save_timer:
-            GLib.source_remove(self._save_timer)
-            self._save_timer = 0
-        self._save()
+        self.flush_edits()
         if self.capture._controls in self.window._capture_headers:
             self.window._capture_headers.remove(self.capture._controls)

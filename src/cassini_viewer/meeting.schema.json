@@ -348,6 +348,149 @@
     "additionalProperties": true
    },
    "$comment": "D24/UX16. Optional; version stays 1. An ordered history: readers apply entries in order and resolve chains (A->B then B->C shows A and B as C) for display, export and Search; transcript.json is never rewritten. Undo merge removes the last entry, so undoing B->C restores A->B. Writers append only when from and into are both speakers visible after resolution and from != into, so no cycle is written. Readers ignore an entry whose from or into is unknown, or that would create a cycle."
+  },
+  "recordingDetails": {
+   "type": "object",
+   "description": "Optional D28 Part A design draft facts, app-owned. On-disk version stays 1. Capture session.json and its event contract are unchanged; older readers ignore and preserve this member.",
+   "properties": {
+    "end": {
+     "type": "object",
+     "properties": {
+      "reason": {
+       "enum": [
+        "user",
+        "callEnded",
+        "tabClosed",
+        "pageGone",
+        "disk",
+        "error",
+        "appQuit"
+       ]
+      },
+      "atMs": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 9007199254740991,
+       "description": "Final recorded audio endpoint, floor(offset + frames*1000/rate). Optional when timing is unknown; never align from an assumed offset."
+      }
+     },
+     "required": [
+      "reason"
+     ],
+     "additionalProperties": true
+    },
+    "writingDown": {
+     "type": "object",
+     "properties": {
+      "wallDurationMs": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 9007199254740991,
+       "description": "Monotonic wall duration of this successful attempt, excluding queue wait and previous interrupted attempts; includes worker setup, recognition, separation, voice extraction and publication before the final done write."
+      },
+      "resumed": {
+       "type": "boolean",
+       "description": "True when this attempt resumed a previously queued/running job. Duration covers this attempt only."
+      },
+      "speechSegments": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 9007199254740991,
+       "description": "Optional actual number of planned speech segments, including zero. Absent when the worker did not report it."
+      },
+      "speakerSeparation": {
+       "type": "object",
+       "properties": {
+        "status": {
+         "enum": [
+          "completed",
+          "partial",
+          "skipped",
+          "failed"
+         ]
+        },
+        "modelId": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 200
+        },
+        "modelRevision": {
+         "type": "string",
+         "pattern": "^[0-9a-f]{64}$"
+        },
+        "speakersFound": {
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 1000
+        },
+        "reused": {
+         "type": "boolean"
+        },
+        "reason": {
+         "enum": [
+          "modelsNotInstalled",
+          "modelNotReady",
+          "unavailable",
+          "notApplicable",
+          "tooShort",
+          "processingFailed"
+         ]
+        }
+       },
+       "required": [
+        "status"
+       ],
+       "additionalProperties": true,
+       "allOf": [
+        {
+         "if": {
+          "properties": {
+           "status": {
+            "enum": [
+             "completed",
+             "partial"
+            ]
+           }
+          }
+         },
+         "then": {
+          "required": [
+           "modelId",
+           "modelRevision",
+           "speakersFound",
+           "reused"
+          ]
+         }
+        },
+        {
+         "if": {
+          "properties": {
+           "status": {
+            "enum": [
+             "skipped",
+             "failed"
+            ]
+           }
+          }
+         },
+         "then": {
+          "required": [
+           "reason"
+          ]
+         }
+        }
+       ]
+      }
+     },
+     "required": [
+      "wallDurationMs",
+      "resumed",
+      "speakerSeparation"
+     ],
+     "additionalProperties": true
+    }
+   },
+   "additionalProperties": true
   }
  },
  "required": [

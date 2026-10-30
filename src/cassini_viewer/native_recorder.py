@@ -2,6 +2,7 @@
 """Separate native PCM tracks on one GStreamer clock, checkpointed off GTK."""
 
 import contextlib
+import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -67,7 +68,8 @@ class NativeRecorder(GObject.Object):
         self._stop_requested = False
         self.session = None
         self.stopping = self._finishing = False
-        self._problem = self.line = self.end_reason = None
+        self._problem = self.line = None
+        self.end_reason = None
         self.levels = [0.0, 0.0]
         self._track_ids = {"microphone": "microphone", "system": "system"}
         self._boundaries = {"microphone": 0, "system": 0}
@@ -364,6 +366,13 @@ class NativeRecorder(GObject.Object):
                 pipeline.set_state(Gst.State.NULL)
             with self._lock:
                 session.finish(problem, reason=reason, at_ms=at_ms)
+            if reason:
+                from .capture_facts import record_end
+
+                try:
+                    record_end(session.directory, reason, manifest=session.manifest)
+                except (OSError, ValueError):
+                    logging.getLogger(__name__).warning("Could not save recording end details", exc_info=True)
 
         future = self._executor.submit(finish)
         future.add_done_callback(lambda f: GLib.idle_add(self._finished, f, pipeline))

@@ -119,3 +119,31 @@ def test_application_browser_inventory_drives_hidden_notifications_without_windo
     finally:
         close(comfort)
         capture.finish()
+
+
+@pytest.mark.parametrize("state", ["saved", "recording", "missing"])
+def test_saved_notification_waits_for_readable_finished_audio_and_releases_its_hold(tmp_path, monkeypatch, state):
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    capture = session(tmp_path, "Final title", "gnome")
+    if state == "saved":
+        capture.finish()
+    holds, notifications = [], []
+    app = SimpleNamespace(
+        _quitting=False,
+        hold=lambda: holds.append("hold"),
+        release=lambda: holds.append("release"),
+        send_notification=lambda identifier, _: notifications.append(identifier),
+    )
+    comfort = RecordingComfort(app, automatic=False)
+    try:
+        comfort.saved_notification(capture.directory if state != "missing" else tmp_path / "Recording-missing")
+        end = time.monotonic() + 3
+        while holds != ["hold", "release"] and time.monotonic() < end:
+            GLib.MainContext.default().iteration(False)
+            time.sleep(0.005)
+        assert holds == ["hold", "release"]
+        assert notifications == (["saved-" + capture.directory.name] if state == "saved" else [])
+    finally:
+        close(comfort)
+        if not capture.finished:
+            capture.finish()

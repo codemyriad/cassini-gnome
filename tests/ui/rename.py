@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 from unittest.mock import patch
@@ -198,8 +199,30 @@ with tempfile.TemporaryDirectory() as temporary:
         until(lambda dialog=dialog: dialog.entry.get_mapped() and dialog.entry.get_width() > 0)
         dialog.entry.set_text("  " + name + "  ")
         until(lambda dialog=dialog: window.get_focus() == dialog.entry.get_delegate())
-        key(window, 0xFF0D)  # Return through the actual entry/default button.
-        until(lambda dialog=dialog, name=name: dialog.closed and any(m.title == name for m in window.snapshot.meetings))
+        # Keep the save pending beyond GtkText's cursor blink callback. Disabling
+        # the focused inner text without a focus-out produces a delayed warning.
+        from cassini_viewer.meeting_rename import rename_meeting
+
+        release = threading.Event()
+
+        def paused_save(*args, release=release):
+            assert release.wait(8), "GUI did not release the metadata worker"
+            return rename_meeting(*args)
+
+        with patch("cassini_viewer.rename_dialog.rename_meeting", side_effect=paused_save):
+            key(window, 0xFF0D)  # Return through the actual entry/default button.
+            until(lambda dialog=dialog: dialog.busy)
+            started = time.monotonic()
+            try:
+                until(lambda started=started: time.monotonic() - started >= 1.5)
+                assert not dialog.closed and dialog.busy
+            finally:
+                release.set()
+            until(
+                lambda dialog=dialog, name=name: (
+                    dialog.closed and any(m.title == name for m in window.snapshot.meetings)
+                )
+            )
         assert read_metadata(folder)["titleSource"] == "user"
         if surface == "meeting":
             assert window.meeting_page.headline.get_title() == name and window.get_title() == name

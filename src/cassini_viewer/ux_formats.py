@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Fixed en-GB display formats from HARMONY §6; independent of GTK and locale."""
+"""Shared duration/calendar formats, with locale time style per D37."""
 
+import locale
 import math
 import re
 from datetime import datetime, timedelta, timezone
@@ -113,6 +114,16 @@ def row_time(at_ms, *, tz):
     if at_ms is None:
         return ""
     at = _local(at_ms, tz)
+    try:
+        pattern = locale.nl_langinfo(locale.T_FMT)
+        language = locale.getlocale(locale.LC_TIME)[0] or "C"
+    except (AttributeError, ValueError):
+        pattern, language = "%H:%M", "C"
+    # musl accepts locale names but supplies the C LC_TIME template. Honour
+    # the US clock style even when those locale tables are unavailable.
+    us_fallback = pattern == "%H:%M:%S" and language.rsplit("_", 1)[-1] == "US"
+    if us_fallback or (any(token in pattern for token in ("%I", "%l", "%r")) and "%H" not in pattern):
+        return at.strftime("%I:%M %p").lstrip("0")
     return f"{at.hour:02d}:{at.minute:02d}"
 
 
@@ -171,6 +182,11 @@ def search_count(places, meetings):
 def size(byte_count, *, approx=False):
     if type(byte_count) is not int or byte_count < 0:
         raise ValueError("Expected nonnegative integer bytes")
+    if byte_count < 1048576:
+        from .strings import text
+
+        count = (Decimal(byte_count) / 1024).quantize(Decimal(1), rounding=ROUND_HALF_UP)
+        return ("about " if approx else "") + text("format.size.kb", n=count)
     count = (Decimal(byte_count) / 1048576).quantize(Decimal(1), rounding=ROUND_HALF_UP)
     if count < 1000:
         value = f"{count} MB"

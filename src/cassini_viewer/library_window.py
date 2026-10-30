@@ -44,6 +44,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.recording_page = None
         self._external_meeting = False
         self.export_dialog = None
+        self.recording_details_dialog = None
         self.rename_dialog = None
         self._pending_selection = None
         self._opening_files = 0
@@ -103,6 +104,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             ("export", self.show_export),
             ("rename", self.show_rename),
             ("move-to-trash", self.move_to_trash),
+            ("recording-details", self.show_recording_details),
             ("undo-speaker-merge", lambda *_: self.meeting_page.undo_speaker_merge() if self.meeting_page else None),
             ("play-pause", self._play_selected),
             ("skip-back", lambda *_: self.player.skip(-10000)),
@@ -121,6 +123,16 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def toast(self, message):
         self.toasts.add_toast(Adw.Toast(title=GLib.markup_escape_text(message)))
+
+    def show_recording_details(self):
+        from .capture_details_dialog import RecordingDetailsDialog
+
+        page = self.recording_page or self.meeting_page
+        meeting = page.meeting if page else self.selected
+        if meeting is not None:
+            if not self.recording_details_dialog or self.recording_details_dialog.closed:
+                self.recording_details_dialog = RecordingDetailsDialog(self, meeting)
+            self.recording_details_dialog.present(self)
 
     def _drop_files(self, _target, files, _x, _y):
         for file in files.get_files():
@@ -470,7 +482,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         header.pack_start(self.capture_header)
         header.pack_end(self.search_button())
         sidebar.add_top_bar(header)
-        self.rows = Gtk.ListBox(selection_mode=Gtk.SelectionMode.BROWSE, css_classes=["library-rows"])
+        self.rows = Gtk.ListBox(
+            selection_mode=Gtk.SelectionMode.BROWSE, activate_on_single_click=False, css_classes=["library-rows"]
+        )
         self.rows.connect(
             "row-activated", lambda _rows, row: self.open_meeting(row.meeting) if hasattr(row, "meeting") else None
         )
@@ -523,7 +537,7 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def companion_available_changed(self):
         available = self.get_application().browser_companion_available
-        self.first_companion.set_visible(available)
+        self.first_companion.set_visible(False)
         if available and self._activity_source is None and os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
             self._activity_source = BrowserActivity(self._activity_tick)
         if self.meeting_page:
@@ -685,6 +699,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             meeting.legacy_transcript_file,
             meeting.lifecycle,
             meeting.transcript,
+            meeting.eta_minutes,
             meeting.error,
             tuple(t.start_offset_ms for t in meeting.tracks),
             (meeting.metadata.get("received") or {}).get("originalFolderName"),
@@ -941,6 +956,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         trash_error = self.trash_error_line(meeting)
         if trash_error:
             self.preview.append(trash_error)
+        elif meeting.transcript in ("queued", "running"):
+            self.preview.append(label(meeting.badge().text, "dim-label", wrap=True, xalign=0))
         elif meeting.transcript == "failed":
             self.preview.append(
                 InlineLine(
@@ -1230,6 +1247,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         if app.meeting_trash.flush(self._close_after_trash):
             return True
         self.get_application().window_closing(self)
+        if self.recording_details_dialog and not self.recording_details_dialog.closed:
+            self.recording_details_dialog.force_close()
         if self.export_dialog and not self.export_dialog.closed:
             self.export_dialog.cancel()
         if self.rename_dialog and not self.rename_dialog.closed:
