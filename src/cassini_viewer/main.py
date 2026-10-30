@@ -110,7 +110,10 @@ class CassiniApplication(Adw.Application):
         self.global_shortcut = None
         from .background_recording import BackgroundRecording
 
-        self.background_recording = BackgroundRecording()
+        self.background_recording = BackgroundRecording(application_id, native=not self.in_flatpak)
+        from .windowless import WindowlessBackground
+
+        self.windowless_background = WindowlessBackground(self)
         self._pending_recording = None
         from .meeting_trash import MeetingTrash
 
@@ -301,6 +304,7 @@ class CassiniApplication(Adw.Application):
             GLib.timeout_add(100, scanned)
         else:
             window.present()
+            self.windowless_background.refresh()
             from .capture_guard import refresh_capture_background
 
             refresh_capture_background(self)

@@ -42,6 +42,7 @@ def application(recorders, *, browser=None):
         withdraw_notification=lambda *_: None,
         notifications=notifications,
         background_recording=SimpleNamespace(status=lambda *_: None),
+        windowless_background=SimpleNamespace(refresh=lambda *_: None),
     )
 
 

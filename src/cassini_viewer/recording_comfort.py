@@ -243,7 +243,7 @@ class RecordingComfort:
                     defaultAction="app.open-recording",
                 )
                 status = text("recording.background.notification")
-            self.app.background_recording.status(status)
+            self.app.windowless_background.refresh(status)
             self.last_payload = payload
             notification = Gio.Notification.new(payload["title"])
             notification.set_body(payload["body"])
@@ -256,7 +256,7 @@ class RecordingComfort:
             self.app.send_notification("recording", notification)
             self.notification_visible = True
         else:
-            self.app.background_recording.status("")
+            self.app.windowless_background.refresh()
         if not hidden and self.notification_visible:
             self.app.withdraw_notification("recording")
             self.notification_visible = False
