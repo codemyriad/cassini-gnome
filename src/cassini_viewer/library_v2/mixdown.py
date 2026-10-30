@@ -270,6 +270,10 @@ class Reader:
             self.base += drop
 
     def close(self):
+        """Stop the decoder and drop the buffer; later reads are silence. Idempotent."""
+        self.done = True
+        self.buffer = self.np.zeros(0, dtype=self.np.float64)
+        self.base = self.length
         close = getattr(self.blocks, "close", None)
         if close:
             close()
@@ -292,11 +296,19 @@ def mixed(spans, total, cancel=None, readers=None):
                     lo, hi = max(first, 0), min(first + count, reader.length)
                     if lo < hi:
                         out[lo - first : hi - first] += reader.get(lo, hi)
-                        reader.release(lo)
+                        reader.release(hi)
+                    if first + count >= reader.length:
+                        reader.close()  # the span ended: its pipeline, fd and buffer go now
                     continue
-                j = mapping.source(np.arange(start, start + count, dtype=np.float64))
+                if reader.done and not len(reader.buffer):
+                    continue
+                j = mapping.source(np.arange(start, start + count + 1, dtype=np.float64))
+                ended = j[-1] > reader.length - 1
+                j = j[:-1]
                 inside = (j >= 0) & (j <= reader.length - 1)
                 if not inside.any():
+                    if ended:
+                        reader.close()
                     continue
                 j = j[inside]
                 low = np.floor(j).astype(np.int64)
@@ -305,7 +317,9 @@ def mixed(spans, total, cancel=None, readers=None):
                 segment = reader.get(first, int(low.max()) + 2)
                 index = low - first
                 out[inside] += segment[index] * (1 - weight) + segment[index + 1] * weight
-                reader.release(first)
+                reader.release(int(low.max()))
+                if ended:
+                    reader.close()
             yield out
     finally:
         for reader in readers:

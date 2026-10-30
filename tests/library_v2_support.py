@@ -184,3 +184,27 @@ def marker_at(decoder, expected, search=RATE // 2):
 def rms(decoder, start, count):
     window = mono_window(decoder, start, count)
     return float(np.sqrt(np.mean(window**2))) if len(window) else 0.0
+
+
+def emulate_case_insensitive(setattr_):
+    """Make the Library behave like a case-insensitive filesystem: names resolve by casefold key.
+
+    `setattr_(obj, name, value)` installs a patch (pytest's monkeypatch.setattr, or setattr in a
+    child process).
+    """
+    from cassini_viewer.library_v2 import fsutil, names
+
+    real_rename, real_same = fsutil.rename_noreplace, fsutil.same_file
+
+    def resolve(path):
+        path = Path(path)
+        match = [n for n in os.listdir(path.parent) if names.fold(n) == names.fold(path.name)]
+        return path.parent / match[0] if match else path
+
+    def rename(source, target):
+        if resolve(target).exists():
+            raise FileExistsError(17, "File exists", str(target))
+        return real_rename(source, target)
+
+    setattr_(fsutil, "rename_noreplace", rename)
+    setattr_(fsutil, "same_file", lambda a, b: real_same(resolve(a), resolve(b)))

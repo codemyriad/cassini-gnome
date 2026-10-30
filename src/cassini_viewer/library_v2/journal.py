@@ -15,6 +15,7 @@ no longer fits what is live: kept for the user, never applied or deleted), and
 "intent" for deletions.
 """
 
+import contextlib
 import errno
 import fcntl
 import json
@@ -25,6 +26,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from uuid import UUID, uuid4
 
+from ..library_files import basename
 from ..recording_session import strict_json
 from . import fsutil
 
@@ -188,19 +190,72 @@ def pending(layout):
             with open(path, "rb") as stream:
                 raw = stream.read(MAX_ENTRY + 1)
             entry = strict_json(raw) if len(raw) <= MAX_ENTRY else None
-            if (
-                not isinstance(entry, dict)
-                or entry.get("kind") not in KINDS
-                or name != f"{entry.get('op')}.json"
-                or _path(layout, entry["op"]) != path
-            ):
+            if not isinstance(entry, dict) or name != f"{entry.get('op')}.json" or _path(layout, entry["op"]) != path:
                 raise ValueError("invalid-journal-entry")
-        except (OSError, ValueError):
+            check_entry(layout, entry)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
             result.damaged.append(name)
             continue
         result.entries.append(entry)
     result.entries.sort(key=lambda e: (str(e.get("createdAt")), e["op"]))
     return result
+
+
+def _basename(value, *, optional=True):
+    if value is None and optional:
+        return
+    if not isinstance(value, str) or basename(value) != value or "/" in value:
+        raise ValueError("journal path is not one name in the Library root")
+
+
+def _revision(value, *, optional=False):
+    if value is None and optional:
+        return
+    if type(value) is not int or not 0 <= value <= 9007199254740991:
+        raise ValueError("invalid journal revision")
+
+
+def check_entry(layout, entry):
+    """Structure, types and confined paths of one entry, per kind; ValueError when malformed."""
+    if entry.get("kind") not in KINDS or not isinstance(entry.get("createdAt"), str):
+        raise ValueError("invalid journal kind")
+    identity = entry.get("identity")
+    if not isinstance(identity, dict) or identity.get("origin") not in ("Recording", "Received"):
+        raise ValueError("invalid journal identity")
+    session_id = identity.get("sessionId")
+    if not isinstance(session_id, str) or str(UUID(session_id)) != session_id.lower():
+        raise ValueError("invalid journal identity")
+    session = entry.get("session")
+    if session is not None and layout.resolve(session) != layout.session(identity["origin"], session_id):
+        raise ValueError("journal session is not this meeting's folder")
+    _basename(entry.get("oldPath"))
+    _basename(entry.get("newPath"))
+    if entry["kind"] == "delete":
+        if entry.get("phase") != "intent":
+            raise ValueError("invalid delete phase")
+        _revision(entry.get("baseRevision"), optional=True)
+        return
+    if entry.get("phase") not in ("prepared", "staged", "conflict"):
+        raise ValueError("invalid journal phase")
+    if entry.get("stage") != f"{META}/staging/{entry['op']}.opus.stage":
+        raise ValueError("invalid journal stage")
+    _revision(entry.get("baseRevision"))
+    _revision(entry.get("newRevision"))
+    _revision(entry.get("fileRevision"), optional=True)
+    if not isinstance(entry.get("meetingUpdate"), dict):
+        raise ValueError("invalid meeting update")
+    spec = entry.get("name")
+    named = isinstance(spec, dict) and all(isinstance(spec.get(k), str) for k in ("prefix", "title", "untitled"))
+    if (entry["kind"] != "replace" or spec is not None) and not named:
+        raise ValueError("invalid journal name")
+    if entry["kind"] in ("replace", "rename"):
+        _basename(entry.get("oldPath"), optional=False)
+    rejected = entry.get("rejected", [])
+    if not isinstance(rejected, list) or not all(isinstance(n, str) for n in rejected):
+        raise ValueError("invalid rejected names")
+    temporary = entry.get("caseTemp")
+    if temporary is not None and (temporary != f".cassini-case-{entry['op']}.opus"):
+        raise ValueError("invalid case-rename temporary")
 
 
 @dataclass
@@ -228,7 +283,7 @@ def replay(layout, *, identity=None):
             continue
         try:
             publish.resume(layout, entry)
-        except (publish.Kept, OSError, ValueError) as error:
+        except (publish.Kept, OSError, ValueError, KeyError, TypeError) as error:
             report.kept.append((entry, str(error)))
             continue
         report.completed.append(entry["op"])
@@ -244,17 +299,19 @@ def replay(layout, *, identity=None):
         for op, files in groups.items():
             if op in named:
                 continue
-            if f"{op}.{BUILD_MARKER}" in files and abandoned_build(layout, op):
-                for name in files:
-                    (layout.staging / name).unlink(missing_ok=True)
-                continue
-            if f"{op}.{BUILD_MARKER}" not in files:
-                report.orphans.extend(files)
+            markers = [n for n in (f"{op}.{STARTING}", f"{op}.{BUILD_MARKER}") if n in files]
+            if markers:
+                if all(abandoned_build(layout, marker) for marker in markers):
+                    for name in sorted(files, key=lambda n: n in markers):  # markers last
+                        (layout.staging / name).unlink(missing_ok=True)
+                continue  # a live build: left alone
+            report.orphans.extend(files)
         fsutil.fsync_dir(layout.staging)
     return report
 
 
 BUILD_MARKER = "build.partial"
+STARTING = "new.partial"  # the marker's name until it is locked; both are locked while a build runs
 
 
 class Build:
@@ -270,18 +327,23 @@ class Build:
         self.layout = layout
         self.op = str(uuid4())
         self.stage = layout.staging / f"{self.op}.opus.stage"
-        starting = layout.staging / f"{self.op}.new.partial"  # never cleaned up: not yet locked
+        starting = layout.staging / f"{self.op}.{STARTING}"
         self.fd = os.open(starting, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW, 0o600)
         fcntl.flock(self.fd, fcntl.LOCK_EX)
         os.rename(starting, layout.staging / f"{self.op}.{BUILD_MARKER}")
 
     def close(self):
         """Release the build. Its files go unless a journal entry now owns the stage."""
+        marker = f"{self.op}.{BUILD_MARKER}"
         try:
             owned = (self.layout.journal / f"{self.op}.json").exists()
             for name in os.listdir(self.layout.staging):
-                if name.split(".", 1)[0] == self.op and (not owned or name.endswith(".partial")):
-                    (self.layout.staging / name).unlink(missing_ok=True)
+                if name.split(".", 1)[0] == self.op and name != marker and (not owned or name.endswith(".partial")):
+                    with contextlib.suppress(FileNotFoundError):
+                        os.unlink(self.layout.staging / name)
+            # The marker goes last, so recovery never sees this build's files without it.
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(self.layout.staging / marker)
         finally:
             os.close(self.fd)
 
@@ -292,9 +354,10 @@ class Build:
         self.close()
 
 
-def abandoned_build(layout, op):
+def abandoned_build(layout, marker):
+    """True when nobody holds the lock on this build marker (its builder is gone)."""
     try:
-        fd = os.open(layout.staging / f"{op}.{BUILD_MARKER}", os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+        fd = os.open(layout.staging / marker, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
     except FileNotFoundError:
         return False
     try:

@@ -119,8 +119,12 @@ def verify(path, *, digest=None):
 
 
 def display_title(meeting, automatic_title, untitled):
-    """The title the Library shows (MAPPING.md): meeting.title, automaticTitle, else the untitled string."""
-    for value in (meeting.get("title"), automatic_title):
+    """The title the Library shows (MAPPING.md): meeting.title, automaticTitle, a received file's
+    original name stem, else the untitled string."""
+    received = meeting.get("received")
+    original = received.get("originalName") if isinstance(received, dict) else None
+    stem = Path(original).stem if isinstance(original, str) else None
+    for value in (meeting.get("title"), automatic_title, stem):
         if isinstance(value, str) and value.strip():
             return value
     return untitled
@@ -149,8 +153,6 @@ def edit_meeting(root, origin, session_id, changes, *, untitled=None):
         if report.blocks(origin, session_id):
             raise publish.PendingCommit("An earlier change to this meeting has not finished")
         session = layout.session(origin, session_id)
-        with meeting_store.LOCK:
-            meeting = meeting_store.read_metadata(session)
         name = publish.find_file(layout, origin, session_id)
         if name is None:
             raise FileNotFoundError("The meeting's file is missing")
@@ -158,16 +160,28 @@ def edit_meeting(root, origin, session_id, changes, *, untitled=None):
         live = portable.read_meeting(str(path))
         manifest = deepcopy(live.manifest)
         x_old = manifest["x"][xschema.DOMAIN]
-        if x_old["revision"] > meeting["revision"]:
-            raise FileAhead("The file is ahead of its session metadata")
-        base, new = meeting["revision"], meeting["revision"] + 1
+        rebuilt = not (session.is_dir() and (session / "meeting.json").exists())
+        if rebuilt:
+            # No session folder, or no meeting.json: the file is complete on its own (§3).
+            meeting = xschema.rebuild(x_old, manifest["x"].get(xschema.NOTES_DOMAIN), session_exists=session.is_dir())
+        else:
+            with meeting_store.LOCK:
+                meeting = meeting_store.read_metadata(session)
+            if x_old["revision"] > meeting["revision"]:
+                raise FileAhead("The file is ahead of its session metadata")
+        # meeting.json may run ahead of the file (§11 Q9): the file's own revision is what the
+        # commit expects to find; both copies then move to one revision above either.
+        base, new = meeting["revision"], max(meeting["revision"], x_old["revision"]) + 1
         updated = dict(meeting, **changes)
         updated["revision"] = new
         if not library_schema.valid(updated):
             raise ValueError("Invalid meeting metadata update")
         automatic = x_old.get("automaticTitle")
-        displayed = display_title(updated, automatic, untitled)
         old_display = manifest["meeting"]["title"]
+        if {"title", "titleSource"} & set(changes):
+            displayed = display_title(updated, automatic, untitled)
+        else:
+            displayed = old_display  # §11 Q6b/Q10: other edits never rename or re-localize
         extension = manifest["x"]
         extension[xschema.DOMAIN] = xschema.private_data(updated, origin=origin, automatic_title=automatic, base=x_old)
         notes = xschema.notes_domain(extension.get(xschema.NOTES_DOMAIN), updated.get("notes"))
@@ -199,8 +213,12 @@ def edit_meeting(root, origin, session_id, changes, *, untitled=None):
             session_id=session_id,
             old_name=name,
             base_revision=base,
+            file_revision=x_old["revision"],
             new_revision=new,
             name=spec,
-            meeting_update={k: updated[k] for k in changes},
+            meeting_update=(
+                {k: v for k, v in updated.items() if k != "revision"} if rebuilt else {k: updated[k] for k in changes}
+            ),
+            meeting_rebuilt=rebuilt,
             write_stage=write_stage,
         )

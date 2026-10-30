@@ -518,22 +518,9 @@ def test_a_case_only_rename_keeps_the_base_name(tmp_path):
 @pytest.fixture
 def case_insensitive(monkeypatch):
     """Make the Library behave like a case-insensitive filesystem (names resolve by casefold key)."""
-    from cassini_viewer.library_v2 import names
+    from library_v2_support import emulate_case_insensitive
 
-    real_rename, real_same = fsutil.rename_noreplace, fsutil.same_file
-
-    def resolve(path):
-        path = Path(path)
-        match = [n for n in os.listdir(path.parent) if names.fold(n) == names.fold(path.name)]
-        return path.parent / match[0] if match else path
-
-    def rename(source, target):
-        if resolve(target).exists():
-            raise FileExistsError(errno.EEXIST, "File exists", str(target))
-        return real_rename(source, target)
-
-    monkeypatch.setattr(fsutil, "rename_noreplace", rename)
-    monkeypatch.setattr(fsutil, "same_file", lambda a, b: real_same(resolve(a), resolve(b)))
+    emulate_case_insensitive(monkeypatch.setattr)
 
 
 def test_a_case_only_rename_on_a_case_insensitive_filesystem_goes_through_a_temporary_name(

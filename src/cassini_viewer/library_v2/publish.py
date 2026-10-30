@@ -102,7 +102,10 @@ def _meeting(layout, entry):
         return
     update, revision = entry.get("meetingUpdate") or {}, entry["newRevision"]
     with meeting_store.LOCK:
-        current = meeting_store.read_metadata(directory)
+        if entry.get("meetingRebuilt") and not (directory / "meeting.json").exists():
+            current = dict(update, revision=-1)  # rebuilt from the file's x: `update` is the whole meeting
+        else:
+            current = meeting_store.read_metadata(directory)
         if current["revision"] >= revision and all(current.get(k) == v for k, v in update.items()):
             return
         value = dict(current, **update)
@@ -126,8 +129,16 @@ def _identity(entry):
 
 
 def _matches(path, entry, revision):
+    if path.is_symlink():
+        return False
     found = file_identity(path)
     return found is not None and found == (*_identity(entry), revision)
+
+
+def _file_revision(entry):
+    """The revision the live file must have for this edit: its x revision, which meeting.json's
+    revision may have run ahead of (§11 Q9). Older entries only recorded baseRevision."""
+    return entry.get("fileRevision", entry.get("baseRevision"))
 
 
 def _case_alias(layout, name, old):
@@ -149,6 +160,9 @@ def _move_old_aside(layout, entry):
     old, temporary = layout.root / entry["oldPath"], layout.root / entry["caseTemp"]
     if old.exists() and not temporary.exists():
         fsutil.rename_noreplace(old, temporary)
+    elif old.exists() and fsutil.same_file(old, temporary):
+        old.unlink()  # the link() fallback linked it but did not unlink the old name
+    step("case-moved")
     fsutil.fsync_dir(layout.root)
     step("case-temp")
 
@@ -161,7 +175,10 @@ def _place(layout, entry):
     old = entry.get("oldPath")
     for _attempt in range(MAX_RETRIES + 1):
         existing = os.listdir(layout.root) + rejected
-        name, _clean = names.file_name(spec["prefix"], spec["title"], spec["untitled"], existing, old)
+        own = old
+        if old is not None and any(names.fold(r) == names.fold(old) for r in rejected):
+            own = None  # the own name, or its casefold alias, was refused: the suffix must advance
+        name, _clean = names.file_name(spec["prefix"], spec["title"], spec["untitled"], existing, own)
         if name == old:  # §11 Q5: a name equal to the meeting's own is never a target for no-replace
             rejected.append(name)
             continue
@@ -194,7 +211,7 @@ def _settle(layout, entry):
             old = layout.root / name if name else None
             if old is None or not (old.exists() or old.is_symlink()) or fsutil.same_file(old, new):
                 continue  # gone, or (case-insensitive filesystem) the old name now resolves to the new file
-            if not _matches(old, entry, entry["baseRevision"]):
+            if not _matches(old, entry, _file_revision(entry)):
                 raise Kept("The old name now holds another file; it was kept")
             old.unlink()
             step("after-remove-old")
@@ -229,6 +246,10 @@ def _after_place_failure(layout, entry, error):
     target = layout.root / entry["newPath"] if entry.get("newPath") else None
     if target is not None and (not stage.exists() or fsutil.same_file(stage, target)) and target.exists():
         raise PendingCommit(f"Published, but the operation did not finish: {error}") from error
+    if entry.get("caseTemp"):
+        # The original may already sit at its temporary name: keep the entry and the stage
+        # so that recovery finishes the rename (§11 step-3a Q7).
+        raise PendingCommit(f"A case-only rename did not finish: {error}") from error
     with contextlib.suppress(OSError):
         _discard(layout, entry)
     raise error
@@ -284,7 +305,18 @@ def publish_new(
 
 
 def commit_edit(
-    layout, *, origin, session_id, old_name, base_revision, new_revision, name, meeting_update, write_stage
+    layout,
+    *,
+    origin,
+    session_id,
+    old_name,
+    base_revision,
+    new_revision,
+    name,
+    meeting_update,
+    write_stage,
+    file_revision=None,
+    meeting_rebuilt=False,
 ):
     """§6/§7: replace a published file with a rewritten stage, renaming it when `name` gives a new one.
 
@@ -306,9 +338,11 @@ def commit_edit(
         oldPath=old_name,
         newPath=old_name if kind == "replace" else None,
         baseRevision=base_revision,
+        fileRevision=base_revision if file_revision is None else file_revision,
         newRevision=new_revision,
         name=dict(name) if name else None,
         meetingUpdate=dict(meeting_update),
+        meetingRebuilt=meeting_rebuilt,
     )
     stage = _stage_and_journal(layout, entry, write_stage)
     if kind == "rename":
@@ -333,7 +367,7 @@ def commit_edit(
 
 def _replace(layout, entry, stage):
     target = layout.root / entry["oldPath"]
-    if not _matches(target, entry, entry["baseRevision"]):
+    if not _matches(target, entry, _file_revision(entry)):
         entry["phase"] = "conflict"
         journal.write(layout, entry)
         raise Kept("The live file changed since this edit was staged; the edit was kept")
@@ -355,7 +389,13 @@ TRASH = native_trash  # tests may replace it
 
 
 def delete(layout, *, origin, session_id, file_name):
-    """§7 delete: a durable intent, then the file and the session folder to the Trash, then retire."""
+    """§7 delete: a durable intent, then the file and the session folder to the Trash, then retire.
+
+    The caller holds the lock. Pending entries for this meeting are reconciled first.
+    """
+    report = journal.replay(layout, identity=(origin, session_id))
+    if report.blocks(origin, session_id):
+        raise PendingCommit("An earlier change to this meeting has not finished")
     session = layout.session(origin, session_id)
     entry = journal.new_entry(
         "delete",
@@ -367,7 +407,8 @@ def delete(layout, *, origin, session_id, file_name):
         newPath=None,
     )
     if file_name is not None:
-        found = file_identity(layout.root / file_name)
+        path = layout.root / file_name
+        found = None if path.is_symlink() else file_identity(path)
         entry["baseRevision"] = found[2] if found and found[:2] == (origin, session_id) else None
     journal.write(layout, entry)
     step("journaled")
@@ -377,11 +418,12 @@ def delete(layout, *, origin, session_id, file_name):
 def _resume_delete(layout, entry):
     if entry.get("oldPath"):
         path = layout.root / entry["oldPath"]
-        if path.exists() or path.is_symlink():
+        # Only this meeting's own regular file goes to the Trash. A link, or another meeting
+        # that took the name after a crash, is left alone; the session still goes.
+        if not path.is_symlink() and path.exists():
             found = file_identity(path)
-            if found is None or found[:2] != _identity(entry) or path.is_symlink():
-                raise Kept("Another file now has this name; it was kept")
-            TRASH(path)
+            if found is not None and found[:2] == _identity(entry):
+                TRASH(path)
         fsutil.fsync_dir(layout.root)
         step("file-trashed")
     session = _session(layout, entry)
@@ -420,6 +462,6 @@ def resume(layout, entry):
             stage.unlink()  # the link() fallback had linked it already
         else:
             _place(layout, entry)
-    elif target is None or not target.exists():
-        raise Kept("The published file is missing")
+    elif target is None or not _matches(target, entry, entry["newRevision"]):
+        raise Kept("The published file is missing or was replaced; nothing was removed")
     _settle(layout, entry)

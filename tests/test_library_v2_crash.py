@@ -32,6 +32,10 @@ CHILD = textwrap.dedent(
     sys.path.insert(0, sys.argv[1])
     from cassini_viewer.library_v2 import edit, finalize, journal, publish
     operation, target, root, sid = sys.argv[2:6]
+    if os.environ.get("CASSINI_TEST_CASEFOLD"):
+        sys.path.insert(0, os.environ["CASSINI_TEST_DIR"])
+        from library_v2_support import emulate_case_insensitive
+        emulate_case_insensitive(setattr)
 
     def checkpoint(step):
         if step == target:
@@ -44,6 +48,8 @@ CHILD = textwrap.dedent(
         edit.edit_meeting(root, "Recording", sid, {"notes": [{"atMs": 1, "text": "after"}]})
     elif operation == "rename":
         edit.edit_meeting(root, "Recording", sid, {"title": "Renamed", "titleSource": "user"})
+    elif operation == "case":
+        edit.edit_meeting(root, "Recording", sid, {"title": "WEEKLY sync", "titleSource": "user"})
     elif operation == "delete":
         layout = journal.Layout(Path(root))
         with journal.LibraryLock(layout):
@@ -195,3 +201,37 @@ def test_crash_while_trashing_never_resurrects_the_session(published, tmp_path, 
     trash = tmp_path / "xdg" / "Trash" / "files"
     assert (trash / OLD).read_bytes() == original
     assert {p.name: p.read_bytes() for p in (trash / directory.name).iterdir()} == session_files
+
+
+CASE = ["journaled", "before-rename", "before-case-temp", "case-moved", "case-temp", "renamed", "after-meeting",
+        "after-remove-old"]  # fmt: skip
+
+
+@pytest.mark.parametrize("step", CASE)
+def test_crash_during_a_case_only_rename_on_a_case_insensitive_filesystem(published, tmp_path, monkeypatch, step):
+    """§11 step-3a Q7 under casefold emulation: the original is never left hidden at its temporary name."""
+    from library_v2_support import emulate_case_insensitive
+
+    root, sid, directory = library(published, tmp_path)
+    env = dict(os.environ, CASSINI_TEST_CASEFOLD="1", CASSINI_TEST_DIR=str(Path(__file__).parent))
+    crash("case", step, root, sid, env=env)
+    emulate_case_insensitive(monkeypatch.setattr)
+    found = recovered(root)
+    applied = step != "journaled"
+    name = "2026-10-30--18.02-WEEKLY sync.opus" if applied else OLD
+    assert found == {("Recording", sid): [("file", name, 2 if applied else 1)]} and root_files(root) == [name]
+    assert not [n for n in os.listdir(root) if n.startswith(".cassini-case-")]
+    assert state(root, name)[0] == (2 if applied else 1)
+    assert meeting_json(directory)["revision"] == (2 if applied else 1)
+
+
+def test_resume_never_removes_the_old_name_when_the_new_name_holds_another_file(published, tmp_path):
+    """Review item 4: a rename that crashed after placing its file, whose new name was then taken."""
+    root, sid, directory = library(published, tmp_path)
+    other_id, _other = simple_session(root, 0.5, title="Other")
+    other = finalize.finalize(root, other_id, zone="Europe/Rome").name
+    crash("rename", "renamed", root, sid)
+    (root / NEW).write_bytes((root / other).read_bytes())  # another meeting's file now at the new name
+    report = journal.recover(root)
+    assert len(report.kept) == 1 and (root / OLD).exists()  # the meeting's own copy is never removed
+    assert state(root, OLD)[0] == 1

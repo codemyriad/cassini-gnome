@@ -111,8 +111,8 @@ def validate(stream, *, strict=True):
             last_granule = granule
             granules.append(granule)
         if flags & 0x04:
-            if partial:
-                raise OggError("the end-of-stream page does not complete its packet")
+            if partial or not completed_audio:
+                raise OggError("the end-of-stream page does not complete an audio packet")
             eos = True
             final = granule
         sequence += 1
