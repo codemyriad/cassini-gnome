@@ -81,6 +81,20 @@ def diagnostics():
         errors=errors,
         gst=trace.snapshot(),
         notifications=services.notifications,
+        pendingRecording=app._pending_recording if app else None,
+        windows=[
+            dict(
+                visible=window.get_visible(),
+                recording=str(window.recording_page.meeting.directory) if window.recording_page else None,
+                meeting=str(window.meeting_page.meeting.directory) if window.meeting_page else None,
+                scanPending=window._pending,
+                snapshot=[(str(m.directory), m.lifecycle) for m in window.snapshot.meetings] if window.snapshot else [],
+            )
+            for window in app.get_windows()
+            if hasattr(window, "recording_page")
+        ]
+        if app
+        else [],
         capture=dict(
             starting=native.starting,
             stopping=native.stopping,

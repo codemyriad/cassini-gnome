@@ -92,6 +92,7 @@ class CassiniApplication(Adw.Application):
         self.recording_error = None
         self.record_first = None
         self.settings_dialog = None
+        self.shortcuts_dialog = None
         self.library_relocator = None
         self.comfort = None
         self.global_shortcut = None
@@ -103,6 +104,7 @@ class CassiniApplication(Adw.Application):
 
         self._add_action("open", self.on_open, ["<primary>o"])
         self._add_action("about", self.on_about)
+        self._add_action("shortcuts", self.on_shortcuts, ["<primary>question"])
         self._add_action("preferences", self.on_preferences, ["<primary>comma"])
         self._add_action("quit", self.on_quit, ["<primary>q"])
         self._add_action("record", self.on_record, ["<primary>r"])
@@ -166,10 +168,27 @@ class CassiniApplication(Adw.Application):
         from .library_relocator import LibraryRelocator
 
         self.library_relocator = LibraryRelocator(self)
-        if not os.environ.get("CASSINI_SCREENSHOT_ISOLATED") and not os.environ.get("CASSINI_ISOLATED_AUDIO"):
+        if (
+            not os.environ.get("CASSINI_SCREENSHOT_ISOLATED")
+            and not os.environ.get("CASSINI_ISOLATED_AUDIO")
+            and self.recording_settings.get_boolean("record-shortcut-enabled")
+        ):
             from .global_shortcut import GlobalShortcut
 
             self.global_shortcut = GlobalShortcut(self.on_global_record, settings=self.recording_settings)
+
+    def configure_global_shortcut(self):
+        """Only Settings may initiate the first desktop permission request."""
+        shortcut = self.global_shortcut
+        if shortcut and not shortcut.closed and not shortcut.error:
+            if shortcut.bound:
+                shortcut.configure()
+            return
+        if shortcut:
+            shortcut.close()
+        from .global_shortcut import GlobalShortcut
+
+        self.global_shortcut = GlobalShortcut(self.on_global_record, settings=self.recording_settings)
 
     def _add_action(self, name, callback, accels=None):
         action = Gio.SimpleAction.new(name, None)
@@ -612,7 +631,8 @@ class CassiniApplication(Adw.Application):
         self.native_captures = {key: r for key, r in self.native_captures.items() if r is not _recorder}
         self._last_native = _recorder
         _recorder.close()
-        self._pending_recording = None
+        if self._pending_recording == _path:
+            self._pending_recording = None
         if (
             self.transcription_enabled
             and not self._quitting
@@ -961,6 +981,27 @@ class CassiniApplication(Adw.Application):
             dialog.present(self.get_active_window())
         else:
             self.library_relocator.move(destination)
+
+    def on_shortcuts(self, *_args):
+        window = self.get_active_window()
+        if window is None or self.shortcuts_dialog is not None:
+            return
+        builder = Gtk.Builder.new_from_resource(RESOURCE + "/shortcuts-dialog.ui")
+        for item in builder.get_objects():
+            if isinstance(item, Adw.ShortcutsItem):
+                identifier = {
+                    "app.record": "common.record",
+                    "win.export": "common.exportEllipsis",
+                    "win.skip-back": "player.back10",
+                    "win.skip-forward": "player.forward10",
+                }.get(item.get_action_name())
+                if identifier:
+                    from .strings import text
+
+                    item.set_title(text(identifier))
+        dialog = self.shortcuts_dialog = builder.get_object("shortcuts_dialog")
+        dialog.connect("closed", lambda *_: setattr(self, "shortcuts_dialog", None))
+        dialog.present(window)
 
     def on_preferences(self, *_args):
         from .settings_dialog import SettingsDialog

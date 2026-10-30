@@ -7,6 +7,7 @@ import json
 import os
 import tempfile
 import threading
+from functools import cache
 from pathlib import Path
 from uuid import uuid4
 
@@ -28,9 +29,43 @@ def music_directory():
     return Path(GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_MUSIC) or Path.home() / "Music")
 
 
+@cache
+def _sandbox_mounts():
+    # Flatpak's root/home is a per-launch tmpfs. A filesystem permission or
+    # the private app-data directory adds a bind mount that survives exit.
+    # Mount namespaces do not change during this process's lifetime.
+    def unescape(value):
+        for encoded, decoded in (("\\040", " "), ("\\011", "\t"), ("\\012", "\n"), ("\\134", "\\")):
+            value = value.replace(encoded, decoded)
+        return Path(value)
+
+    return tuple(
+        unescape(line.split()[4])
+        for line in Path("/proc/self/mountinfo").read_text().splitlines()
+        if len(line.split()) >= 6 and line.split()[4] != "/"
+    )
+
+
+def _host_storage(path):
+    resolved = Path(path).resolve()
+    return any(mount == resolved or mount in resolved.parents for mount in _sandbox_mounts())
+
+
 def initial_root():
     override = os.environ.get("CASSINI_LIBRARY_DIR")
-    return Path(override).absolute() if override is not None else (music_directory() / "Cassini").absolute()
+    if override is not None:
+        return Path(override).absolute()
+    root = (music_directory() / "Cassini").absolute()
+    from .companion import in_flatpak
+
+    if in_flatpak() and not _host_storage(root):
+        # No xdg-music mount (unconfigured/disabled/revoked): never record
+        # into the sandbox's temporary home. App data is persistent without
+        # granting access to any additional host files.
+        root = Path(os.environ["XDG_DATA_HOME"]) / "cassini" / "Library"
+        if not _host_storage(root):
+            raise OSError("The Library has no persistent storage in this sandbox")
+    return root
 
 
 def load():
@@ -38,7 +73,16 @@ def load():
         with config_path().open("rb") as stream:
             raw = stream.read(LIMIT + 1)
     except FileNotFoundError:
-        return dict(version=1, primary=str(initial_root()), pending=[], aliases={})
+        root = initial_root()
+        value = dict(version=1, primary=str(root), pending=[], aliases={})
+        from .companion import in_flatpak
+
+        if in_flatpak() and root == Path(os.environ["XDG_DATA_HOME"]) / "cassini/Library":
+            # Keep this choice after Music is configured later. Publish only
+            # if still absent: another process may have moved the Library.
+            save(value, only_if_missing=True)
+            return load()
+        return value
     value = json.loads(raw)
     if len(raw) > LIMIT or value.get("version") != 1:
         raise ValueError("Invalid Library location configuration")
@@ -75,7 +119,7 @@ def load():
     return value
 
 
-def save(value):
+def save(value, *, only_if_missing=False):
     value["generation"] = uuid4().hex
     path = config_path()
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -86,14 +130,23 @@ def save(value):
             output.write("\n")
             output.flush()
             os.fsync(output.fileno())
-        os.replace(temporary, path)
+        if only_if_missing:
+            try:
+                os.link(temporary, path)
+            except FileExistsError:
+                return
+        else:
+            os.replace(temporary, path)
         # The new generation makes any old progress records harmless even if
         # the process exits before this compaction finishes.
-        journal_fd = os.open(path.with_suffix(".journal"), os.O_CREAT | os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-        try:
-            os.fsync(journal_fd)
-        finally:
-            os.close(journal_fd)
+        if not only_if_missing:
+            journal_fd = os.open(
+                path.with_suffix(".journal"), os.O_CREAT | os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW, 0o600
+            )
+            try:
+                os.fsync(journal_fd)
+            finally:
+                os.close(journal_fd)
         fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
         try:
             os.fsync(fd)
@@ -159,7 +212,7 @@ def primary():
     try:
         info = path.stat()
     except FileNotFoundError:
-        return initial_root()
+        return Path(load()["primary"])
     signature = (str(path), info.st_ino, info.st_mtime_ns, info.st_size)
     if _PRIMARY_CACHE and _PRIMARY_CACHE[0] == signature:
         return _PRIMARY_CACHE[1]

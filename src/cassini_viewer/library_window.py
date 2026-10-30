@@ -312,6 +312,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             menu.append(_("Open…"), "app.open")
             menu.append(text("common.exportEllipsis"), "win.export")
             menu.append(text("settings.title"), "app.preferences")
+            menu.append(_("_Keyboard Shortcuts"), "app.shortcuts")
             menu.append(_("_About Cassini"), "app.about")
             button = Gtk.MenuButton(
                 icon_name="open-menu-symbolic", menu_model=menu, tooltip_text=text("common.mainMenu"), primary=True
@@ -342,11 +343,11 @@ class LibraryWindow(Adw.ApplicationWindow):
             justify=Gtk.Justification.CENTER,
             halign=Gtk.Align.CENTER,
             wrap=True,
-            width_request=400,
+            width_request=280,
         )
         title.set_max_width_chars(28)
         title.set_halign(Gtk.Align.FILL)
-        center.append(Adw.Clamp(maximum_size=440, tightening_threshold=440, child=title))
+        center.append(Adw.Clamp(maximum_size=280, tightening_threshold=280, child=title))
         body = label(text("firstRun.body"), "dim-label", justify=Gtk.Justification.CENTER, wrap=True, width_request=460)
         body.set_max_width_chars(50)
         center.append(body)
@@ -694,11 +695,15 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.get_application().observe_library(snapshot, self._observed_phases)
         self._observed_phases = {m.key: (m.lifecycle, m.capture_state) for m in snapshot.meetings}
         self.snapshot = snapshot
-        from .library_location import initial_root, primary
+        from .library_location import initial_root, music_directory, primary
 
-        # The published first-run footer names the original location literally.
-        # Do not claim that path after an explicit relocation (HARMONY 11).
-        self.privacy_footer.set_visible(primary() == initial_root())
+        # This published caption names Music/Cassini literally. An unmounted
+        # Music directory uses private persistent app data in Flatpak instead.
+        default = initial_root()
+        music_caption = (
+            os.environ.get("CASSINI_LIBRARY_DIR") is not None or default == (music_directory() / "Cassini").absolute()
+        )
+        self.privacy_footer.set_visible(primary() == default and music_caption)
         loaded = next((m for m in snapshot.meetings if m.key == self._loaded_key), None)
         if loaded and not self._external_meeting and self._loaded_directory != loaded.directory:
             position, playing = self.player.position, self.player.playing

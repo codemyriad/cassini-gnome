@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Use build-aux/ux-screenshot.sh")
@@ -114,6 +115,33 @@ with tempfile.TemporaryDirectory() as tmp:
     assert app.get_accels_for_action("app.browser-meetings") == []
     menus = [w.get_menu_model() for w in walk(window) if isinstance(w, Gtk.MenuButton)]
     assert all("app.browser-meetings" not in set(menu_actions(m)) for m in menus if m)
+    primary = next(
+        w
+        for w in walk(window)
+        if isinstance(w, Gtk.MenuButton)
+        and w.get_mapped()
+        and w.get_menu_model()
+        and "app.shortcuts" in set(menu_actions(w.get_menu_model()))
+    )
+    primary.popup()
+    until(primary.get_popover().get_mapped)
+    item = next(
+        w
+        for w in walk(primary.get_popover())
+        if w.__gtype__.name == "GtkModelButton"
+        and any(isinstance(child, Gtk.Label) and child.get_text() == "Keyboard Shortcuts" for child in walk(w))
+    )
+    assert item.is_sensitive() and item.activate(), "Activate through the actual primary-menu item"
+    until(lambda: app.shortcuts_dialog is not None and app.shortcuts_dialog.get_mapped())
+    shortcuts = app.shortcuts_dialog
+    assert app.get_accels_for_action("app.shortcuts") == ["<Control>question"]
+    app.activate_action("shortcuts", None)
+    assert app.shortcuts_dialog is shortcuts, "Repeated invocation must not stack dialogs"
+    shortcut_labels = [w.get_text() for w in walk(shortcuts) if isinstance(w, Gtk.Label)]
+    assert "Back 10 seconds" in shortcut_labels and "Forward 10 seconds" in shortcut_labels
+    assert "Ctrl+Shift+E" in shortcut_labels or "Ctrl" in shortcut_labels
+    shortcuts.close()
+    until(lambda: app.shortcuts_dialog is None)
     # Idle/live-clock ticks and equivalent snapshots retain widget identity,
     # selection, focus and scroll rather than tearing down the Library.
     first_row = window.rows.get_selected_row()
@@ -238,6 +266,22 @@ with tempfile.TemporaryDirectory() as tmp:
     assert empty.root_box.get_visible_child_name() == "empty"
     labels = [w.get_label() for w in walk(empty) if isinstance(w, Gtk.Label)]
     assert text("firstRun.title") in labels and text("firstRun.footer") in labels
+    assert empty.privacy_footer.get_visible()
+    # A sandbox fallback is the initial Library too, but its footer must not
+    # claim Music/Cassini. Settings/Show in Files use the actual primary path.
+    from cassini_viewer import library_location
+
+    fallback = Path(tmp) / "private-data/cassini/Library"
+    with (
+        patch.dict(os.environ),
+        patch.object(library_location, "initial_root", return_value=fallback),
+        patch.object(library_location, "primary", return_value=fallback),
+    ):
+        os.environ.pop("CASSINI_LIBRARY_DIR", None)
+        empty._updated(empty.snapshot)
+        assert not empty.privacy_footer.get_visible()
+    empty._updated(empty.snapshot)
+    assert empty.privacy_footer.get_visible()
     app.activate_action("record", None)
     assert app.record_first is not None and app.recorder is None, "Opening Record must not start devices"
     app.record_first.close()
