@@ -53,6 +53,8 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
     service.captures["call"] = capture
     browser = BrowserConnection(None)
     browser.capabilities = {"independent-sessions-v1", "page-state-v1"}
+    if case.get("callEvidence"):
+        browser.capabilities.add("call-evidence-v1")
     browser.status_seen = True
     browser.states = {3: dict(recording=True, tabId=3, captureId="call")}
     service.browsers[browser.id] = browser
@@ -73,7 +75,7 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
             page = step["pageState"] if same else None
             count = step["sourceCount"] if same else 0
             browser.states[3]["pageState"] = page
-            browser.meetings = {3: dict(pageState=page, sourceCount=count)}
+            browser.meetings = {3: dict(pageState=page, sourceCount=count, heard=step.get("heard", True))}
             # Only real PCM on the retained transport makes restore ready.
             if not capture.finished and count and capture.browser_lost and step.get("restoreReady", True):
                 wire = "return-" + str(index)
@@ -100,3 +102,44 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
         assert all(args[1] == "stop" for args, _kwargs in commands)
     finally:
         capture.stop()
+
+
+def test_returning_prejoin_receive_slots_do_not_reset_the_deadline(tmp_path, monkeypatch):
+    test_shared_actions_use_actual_capture_devices_spans_and_end(
+        tmp_path,
+        monkeypatch,
+        dict(
+            name="return-prejoin",
+            callEvidence=True,
+            steps=[
+                dict(atMs=0, pageState="navigating", sourceCount=0, expect=[]),
+                dict(atMs=2000, pageState="navigating", sourceCount=0, expect=["fallback"]),
+                dict(atMs=119999, pageState="present", sourceCount=3, heard=False, restoreReady=False, expect=[]),
+                dict(
+                    atMs=120000,
+                    pageState="present",
+                    sourceCount=3,
+                    heard=False,
+                    restoreReady=False,
+                    expect=["stop:pageGone"],
+                ),
+            ],
+        ),
+    )
+
+
+def test_hangup_after_failed_restore_keeps_the_normal_call_end_grace(tmp_path, monkeypatch):
+    test_shared_actions_use_actual_capture_devices_spans_and_end(
+        tmp_path,
+        monkeypatch,
+        dict(
+            name="hangup-after-restore-failure",
+            steps=[
+                dict(atMs=0, pageState="navigating", sourceCount=0, expect=[]),
+                dict(atMs=2000, pageState="navigating", sourceCount=0, expect=["fallback"]),
+                dict(atMs=60000, pageState="present", sourceCount=2, restoreReady=False, expect=[]),
+                dict(atMs=61000, pageState="present", sourceCount=0, expect=[]),
+                dict(atMs=63000, pageState="present", sourceCount=0, expect=["stop:callEnded"]),
+            ],
+        ),
+    )

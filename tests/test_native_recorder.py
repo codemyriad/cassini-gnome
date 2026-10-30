@@ -117,3 +117,21 @@ def test_stop_during_replacement_first_sample_keeps_the_confirmed_tracks(tmp_pat
         recorder.stop()
         spin_until(lambda: recorder.pipeline is None and not recorder._finishing)
         recorder._executor.shutdown()
+
+
+def test_preparation_stop_end_time_uses_this_start_not_an_old_recorder_clock(tmp_path):
+    from test_recorder import spin_until
+
+    from cassini_viewer.native_recorder import NativeRecorder
+
+    recorder = NativeRecorder()
+    recorder._start_us = 0
+    recorder.start(tmp_path, test=True)
+    recorder.stop()  # Before the prepared result reaches the main context.
+    try:
+        spin_until(lambda: recorder.session is not None and recorder.session.finished and not recorder._finishing)
+        assert recorder.pipeline is None and all(t["frames"] == 0 for t in recorder.session.manifest["tracks"])
+        end = recorder.session.manifest["events"][-1]
+        assert end["reason"] == "user" and 0 <= end["atMs"] < 5000
+    finally:
+        recorder._executor.shutdown()

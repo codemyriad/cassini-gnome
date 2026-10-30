@@ -24,7 +24,7 @@ class CallLifecycle:
         if page == "present" and count > 0:
             self.missing = self.ended = None
             return "restore" if fallback and others and restore_ready else None
-        if page != "present" or self.missing is not None or fallback:
+        if page != "present" or self.missing is not None:
             self.ended = None
             if self.missing is None:
                 self.missing = now

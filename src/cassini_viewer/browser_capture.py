@@ -28,6 +28,7 @@ class BrowserCapture:
         self.browser_lost_since = None
         self.audio_connected = False
         self.lifecycle_capable = False
+        self.tab_closed = False
         self.end_reason = None
         self.streams = None
         self.stopping = self.starting = False
@@ -217,18 +218,18 @@ class BrowserCapture:
 
     @property
     def browser_ready(self):
+        return self.others and self.browser_ready_since()
+
+    def browser_ready_since(self, since=None):
         with self.lock:
             now = time.monotonic()
-            return (
-                self.audio_connected
-                and self.others
-                and any(
-                    track.kind not in ("microphone", "local")
-                    and track.available
-                    and track.received_at is not None
-                    and now - track.received_at <= 2
-                    for track in self.streams.tracks.values()
-                )
+            return self.audio_connected and any(
+                track.kind not in ("microphone", "local")
+                and track.available
+                and track.received_at is not None
+                and (since is None or track.received_at >= since)
+                and now - track.received_at <= 2
+                for track in self.streams.tracks.values()
             )
 
     def restore(self):
@@ -265,6 +266,8 @@ class BrowserCapture:
             with self.lock:
                 if self.finished or self.stopping or self.stop_requested.is_set():
                     raise ProtocolError("state", "No active recording")
+                if self.tab_closed and (fallback is not None or restore):
+                    return self.snapshot()
                 if restore and (not self.browser_lost or not self.browser_ready):
                     return self.snapshot()
                 lost = False if restore else self.browser_lost or fallback is not None
@@ -288,6 +291,8 @@ class BrowserCapture:
                 with self.lock:
                     if self.finished or self.stopping or self.stop_requested.is_set():
                         raise ProtocolError("state", "No active recording")
+                    if self.tab_closed and (fallback is not None or restore):
+                        return self.snapshot()  # A tab may close while a fallback device gets ready.
                     for _identifier, _tap, state in prepared.values():
                         if state["error"]:
                             raise OSError(state["error"])

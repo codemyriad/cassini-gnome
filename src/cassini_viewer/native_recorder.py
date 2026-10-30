@@ -64,6 +64,7 @@ class NativeRecorder(GObject.Object):
         if self.pipeline is not None or self.starting or self.stopping or self._changing_sources or self._finishing:
             raise RuntimeError("Already recording")
         self.starting = True
+        self._start_us = GLib.get_monotonic_time()
         self._stop_requested = False
         self.session = None
         self.stopping = self._finishing = False

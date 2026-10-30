@@ -144,6 +144,7 @@ class BrowserConnection:
         self.scheduled = set()
         self.missing_since = {}
         self.states = {}
+        self.page_states = {}
         self.capabilities = set()
         self.closed = False
 
@@ -352,6 +353,7 @@ class BrowserService:
             return
         browser.status_seen = True
         previous = browser.states
+        received_pages = {}
         browser.status = {
             key: value[key] for key in ("recording", "tabId", "path", "message", "tracks", "pageState") if key in value
         }
@@ -368,6 +370,8 @@ class BrowserService:
                 ):
                     raise ValueError("Invalid recording status")
                 tab = item["tabId"]
+                if item.get("pageState") in ("present", "navigating", "closed"):
+                    received_pages[tab] = item["pageState"]
                 if tab in states or not 0 <= tab <= 9007199254740991:
                     raise ValueError("Invalid or duplicate recording tab")
                 states[tab] = {
@@ -377,6 +381,8 @@ class BrowserService:
                 }
         else:
             tab = value.get("tabId")
+            if type(tab) is int and value.get("pageState") in ("present", "navigating", "closed"):
+                received_pages[tab] = value["pageState"]
             states = {tab: dict(browser.status)} if value["recording"] else {}
         interrupted = value.get("interrupted", [])
         if isinstance(interrupted, list):
@@ -413,6 +419,7 @@ class BrowserService:
                     # control disconnect, including the original call address.
                     self._bind_capture(browser, tab, capture_id)
         browser.states = states
+        browser.page_states.update(received_pages)
         for tab, old in previous.items():
             if old.get("recording") and not states.get(tab, {}).get("recording"):
                 close = browser.notifications.pop(tab, None)
@@ -447,6 +454,7 @@ class BrowserService:
                     meetings[value["tabId"]] = {key: value[key] for key in ("tabId", "title", "url", "sourceCount")}
                     if value.get("pageState") in ("present", "navigating", "closed"):
                         meetings[value["tabId"]]["pageState"] = value["pageState"]
+                        browser.page_states[value["tabId"]] = value["pageState"]
                     meetings[value["tabId"]]["heard"] = value.get("heard") is True
                     meetings[value["tabId"]]["title"] = value["title"][:200]
                     meetings[value["tabId"]]["url"] = value["url"][:2048]
@@ -478,6 +486,11 @@ class BrowserService:
                 )
             else:
                 raise ValueError("Unknown browser control event")
+            browser.page_states = {
+                tab: page
+                for tab, page in browser.page_states.items()
+                if tab in browser.states or tab in browser.meetings
+            }
         self.policy()
 
     def command(self, identifier, action, *, microphone=True, preserve_capture=False, user=False, reason="user"):
@@ -824,12 +837,19 @@ class BrowserService:
                     if peer is not None:
                         state = peer[0].states[peer[1]]
                         meeting = peer[2] or {}
-                        page = (
-                            state.get("pageState")
-                            if state.get("pageState") == "closed"
-                            else (meeting.get("pageState") or state.get("pageState"))
-                        )
+                        page = browser_page = peer[0].page_states.get(peer[1])
+                        if browser_page is None:
+                            page = state.get("pageState") or meeting.get("pageState")
                         count = meeting.get("sourceCount", 0)
+                        if (
+                            lifecycle.missing is not None
+                            and "call-evidence-v1" in peer[0].capabilities
+                            and meeting.get("heard") is not True
+                            and not capture.browser_ready_since(lifecycle.missing)
+                        ):
+                            count = 0  # Returning pre-join slots are not received audio.
+                    if page == "closed":
+                        capture.tab_closed = True
                     action = lifecycle.decide(
                         now,
                         page,

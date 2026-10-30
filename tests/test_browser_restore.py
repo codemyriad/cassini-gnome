@@ -98,3 +98,33 @@ def test_dead_audio_port_and_others_off_never_replace_system_with_empty_browser(
         assert source_state(capture.host.session.manifest["events"]).source == "none"
     finally:
         capture.stop()
+
+
+@pytest.mark.parametrize("during_readiness", [False, True])
+def test_closed_tab_cancels_pending_fallback_without_a_system_event_or_span(tmp_path, during_readiness):
+    capture = BrowserCapture(lambda *_: None, parent=tmp_path, tap_factory=Tap)
+    capture.start(dict(type="start", captureId="closing", timelineOriginMs=1, microphone=True))
+    before = (capture.directory / "session.json").read_bytes()
+    microphone = capture.microphone
+
+    class Closing(Tap):
+        def start(self):
+            super().start()
+            capture.tab_closed = True
+
+    if during_readiness:
+        capture.tap_factory = Closing
+    else:
+        capture.tab_closed = True
+    try:
+        capture.fallback()
+        assert (capture.directory / "session.json").read_bytes() == before
+        assert not capture.browser_lost and not capture.finished
+        assert set(capture.native_taps) == {"microphone"}
+        assert capture.microphone is microphone and not microphone.stopped
+        if during_readiness:
+            assert Tap.instances[-1].kind == "system" and Tap.instances[-1].stopped
+        capture.stop(reason="tabClosed")
+        assert capture.host.session.manifest["events"][-1]["reason"] == "tabClosed"
+    finally:
+        capture.stop()
