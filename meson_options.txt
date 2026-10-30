@@ -18,3 +18,6 @@ option('sherpa', type: 'feature', value: 'disabled',
   description: 'Bundle the D16 optional Parakeet C API runtime (Linux glibc x86_64)')
 option('sherpa_cache', type: 'string', value: '.sherpa-cache',
   description: 'Pinned sherpa build artifacts; Meson never downloads')
+
+option('store_listing_public', type: 'boolean', value: false,
+  description: 'Offer the public browser store as primary; keep Add from Cassini available')

@@ -25,7 +25,7 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer import companion  # noqa: E402
+from cassini_viewer import companion, companion_bundle  # noqa: E402
 from cassini_viewer.browser_service import BrowserService, connect, request, send_packet  # noqa: E402
 from cassini_viewer.companion_setup import CompanionSetup  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
@@ -89,6 +89,7 @@ with tempfile.TemporaryDirectory() as temporary:
     original = companion.installed_browsers
     browsers = original(config=tmp / "browser-config", which=lambda command: "/test/" + command)
     companion.installed_browsers = lambda: browsers
+    companion_bundle.store_listing_public = lambda: True
     launches = []
     companion.open_add = lambda browser: launches.append((browser.name, companion.ADD_URL))
     app = CassiniApplication("com.gocassini.CompanionTest", "test", "development")
@@ -123,6 +124,34 @@ with tempfile.TemporaryDirectory() as temporary:
     Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
     shot(window, "-pending-dark")
     Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
+    # D39's default Add is a real guide backed by the stable private copy.
+    companion_bundle.store_listing_public = lambda: False
+    dialog.render()
+    settings.render_browser()
+    assert dialog.add_button.get_label() == settings.browser_add.get_label() == "Add from Cassini"
+    assert not dialog.local_add.get_visible() and not settings.browser_add_local.get_visible()
+    dialog.add_button.emit("clicked")
+    until(lambda: dialog.local_dialog is not None and not dialog.local_dialog.closed)
+    local = dialog.local_dialog
+    assert not local.done.get_sensitive() and not dialog.done.get_sensitive()
+    assert (local.folder / "manifest.json").is_file()
+    copy_values = []
+    local.copy_button.emit("clicked")
+    clipboard = local.get_display().get_clipboard()
+    clipboard.read_text_async(None, lambda c, r: copy_values.append(c.read_text_finish(r)))
+    until(lambda: bool(copy_values))
+    assert copy_values[-1] == str(local.folder)
+    extension_pages = []
+    companion.open_extensions = lambda browser: extension_pages.append(browser.name)
+    local.open_button.emit("clicked")
+    until(lambda: bool(extension_pages) and not local.opening)
+    assert extension_pages == ["Chrome"] and not local.done.get_sensitive()
+    shot(window, "-local")
+    local.force_close()
+    companion_bundle.store_listing_public = lambda: True
+    dialog.render()
+    settings.render_browser()
+    assert dialog.local_add.get_visible() and settings.browser_add_local.get_visible()
     dialog.add_button.emit("clicked")
     until(lambda: len(launches) == 1)
     assert not dialog.done.get_sensitive() and dialog.add_caption.get_label() == "Not added yet"

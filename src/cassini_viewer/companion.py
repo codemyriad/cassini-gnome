@@ -162,7 +162,16 @@ def installed_browsers(*, config=None, which=shutil.which, host=True):
 
 def open_add(browser, *, launch=subprocess.Popen):
     """The sole Add entry point; a click never means the extension is installed."""
-    command = [browser.executable, ADD_URL]
+    return open_url(browser, ADD_URL, launch=launch)
+
+
+def open_extensions(browser, *, launch=subprocess.Popen):
+    url = "edge://extensions/" if browser.name == "Edge" else "chrome://extensions/"
+    return open_url(browser, "--app=" + url, launch=launch)
+
+
+def open_url(browser, url, *, launch=subprocess.Popen):
+    command = [browser.executable, url]
     if in_flatpak():
         from .flatpak_bridge import detached_command
 

@@ -2,12 +2,13 @@
 """UX10 setup: installation and registration are not a connection handshake."""
 
 import logging
-from concurrent.futures import ThreadPoolExecutor
+import threading
+from concurrent.futures import Future
 from threading import Event
 
 from gi.repository import Adw, GLib, Gtk
 
-from . import browser_service, companion
+from . import browser_service, companion, companion_bundle
 from .browser_connection import add_text, classify, state_text
 from .strings import text
 
@@ -20,10 +21,11 @@ class CompanionSetup(Adw.Dialog):
         self.app, self.service_path = app, service_path
         self.closed = False
         self.cancelled = Event()
-        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-companion")
         self.future = None
         self.working = self.failed = self.add_requested = False
         self.local_error = None
+        self.prepare_error = False
+        self.local_dialog = None
         self.browser_names = []
         self.connected = False
         content = Gtk.Box(
@@ -57,6 +59,16 @@ class CompanionSetup(Adw.Dialog):
         steps.append(self.add_row)
         steps.append(self.connect_row)
         content.append(steps)
+        self.local_add = Gtk.Button(label=text("companion.local.add"), css_classes=["flat"], halign=Gtk.Align.START)
+        self.local_add.connect("clicked", lambda *_: self._add(local=True))
+        content.append(self.local_add)
+        self.prepare_problem = Gtk.Box(spacing=10, visible=False)
+        self.prepare_label = Gtk.Label(wrap=True, xalign=0, hexpand=True, css_classes=["warn-line"])
+        self.prepare_problem.append(self.prepare_label)
+        self.prepare_retry = Gtk.Button(label=text("common.tryAgain"), valign=Gtk.Align.CENTER)
+        self.prepare_retry.connect("clicked", lambda *_: self._add(local=True))
+        self.prepare_problem.append(self.prepare_retry)
+        content.append(self.prepare_problem)
         privacy = Gtk.Box(spacing=10)
         privacy.append(
             Gtk.Image(
@@ -107,15 +119,19 @@ class CompanionSetup(Adw.Dialog):
         row.set_child(line)
         return row, badge, detail, button
 
-    def _add(self, *_):
-        self.add_requested = True
+    def _add(self, *_, local=None):
+        self.prepare_error = False
+        self.local_error = None
+        self.add_requested = "local" if local or not companion_bundle.store_listing_public() else "store"
         self.poll()
 
-    def _launch_add(self):
+    def _launch_add(self, *, local=False):
         browsers = companion.installed_browsers()
         if not browsers:
             raise OSError("No supported browser is installed")
         browser = next((b for b in browsers if b.name in self.browser_names), browsers[0])
+        if local:
+            return browser, companion_bundle.prepare()
         companion.open_add(browser)
 
     def _connect(self, *_):
@@ -126,8 +142,20 @@ class CompanionSetup(Adw.Dialog):
     def _submit(self, call, action):
         if self.future is not None or self.closed:
             return False
-        self.future = self.executor.submit(call)
-        self.future.add_done_callback(lambda future: GLib.idle_add(self._received, future, action))
+        future = self.future = Future()
+        future.add_done_callback(lambda result: GLib.idle_add(self._received, result, action))
+
+        def work():
+            if not future.set_running_or_notify_cancel():
+                return
+            try:
+                result = call()
+            except Exception as error:
+                future.set_exception(error)
+            else:
+                future.set_result(result)
+
+        threading.Thread(target=work, name="cassini-companion", daemon=True).start()
         return True
 
     def _snapshot(self):
@@ -143,8 +171,9 @@ class CompanionSetup(Adw.Dialog):
         if self.closed:
             return GLib.SOURCE_REMOVE
         if self.add_requested and self.future is None:
+            action = self.add_requested
             self.add_requested = False
-            self._submit(self._launch_add, "add")
+            self._submit(lambda: self._launch_add(local=action == "local"), action)
         elif self.service_path is not None:
             self._submit(self._snapshot, "status")
         self.render()
@@ -158,11 +187,20 @@ class CompanionSetup(Adw.Dialog):
             value = future.result()
             if action == "status" and self.app.browser_connection:
                 self.app.browser_connection.observe(value)
-            elif action == "add":
+            elif action == "local":
+                from .companion_local_dialog import LocalCompanionDialog
+
+                self.prepare_error = False
+                browser, folder = value
+                self.local_dialog = LocalCompanionDialog(self, browser, folder)
+                self.local_dialog.present(self)
+            elif action == "store":
                 self.local_error = None
         except Exception as error:
             LOG.exception("Companion %s failed", action)
-            if action != "status":
+            if action == "local":
+                self.prepare_error = True
+            elif action != "status":
                 self.local_error = classify(error)
         self.render()
         if self.add_requested:
@@ -177,6 +215,13 @@ class CompanionSetup(Adw.Dialog):
         if self.local_error:
             state = dict(state, phase="failed", reason=self.local_error.reason)
         self.connected = state["phase"] == "connected"
+        self.local_add.set_visible(companion_bundle.store_listing_public())
+        self.local_add.set_sensitive(state["browser"] is not None and self.future is None)
+        self.prepare_problem.set_visible(self.prepare_error)
+        self.prepare_label.set_label(text("companion.local.prepareFailed") if self.prepare_error else "")
+        self.prepare_retry.set_sensitive(self.future is None)
+        if self.local_dialog and not self.local_dialog.closed:
+            self.local_dialog.render()
         self.working, self.failed = state["phase"] == "settingUp", state["phase"] == "failed"
         if self.connected and state["names"]:
             self.browser_names = list(state["names"])
@@ -229,4 +274,7 @@ class CompanionSetup(Adw.Dialog):
         if self.timer:
             GLib.source_remove(self.timer)
             self.timer = 0
-        self.executor.shutdown(wait=False, cancel_futures=True)
+        if self.future:
+            self.future.cancel()
+        if self.local_dialog and not self.local_dialog.closed:
+            self.local_dialog.force_close()

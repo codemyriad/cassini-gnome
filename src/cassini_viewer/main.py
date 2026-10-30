@@ -361,10 +361,10 @@ class CassiniApplication(Adw.Application):
         dialog.present(parent or self.get_active_window())
         return dialog
 
-    def on_companion_add(self, *_args, parent=None):
+    def on_companion_add(self, *_args, parent=None, local=None):
         dialog = self.on_companion_setup(parent=parent)
         if dialog:
-            dialog._add()
+            dialog._add(local=local)
 
     @property
     def recording_settings(self):
