@@ -473,7 +473,7 @@ def test_reload_fallback_survives_return_but_stops_when_call_does_not_return(ser
         peer.inventory(())
         wait_for(lambda: "reload" in service._capture_missing_since)
         with service.lock:
-            service._capture_missing_since["reload"] = time.monotonic() - 30.01
+            service._capture_missing_since["reload"] = time.monotonic() - 120.01
         service.policy()
         wait_for(lambda: capture.finished)
         assert all(tap.stopped for tap in Tap.instances)
@@ -500,7 +500,7 @@ def test_disconnected_fallback_is_saved_after_bounded_browser_return_grace(serve
     service.policy()
     assert not capture.finished
     with service.lock:
-        service._capture_missing_since["disconnected"] = time.monotonic() - 30.01
+        service._capture_missing_since["disconnected"] = time.monotonic() - 120.01
     service.policy()
     wait_for(lambda: capture.finished)
     assert all(tap.stopped for tap in Tap.instances)
@@ -542,7 +542,7 @@ def test_unobserved_audio_disconnect_still_starts_bounded_fallback_grace(server)
         assert not capture.finished
         with service.lock:
             service._capture_missing_since.pop("unobserved-loss")
-            capture.browser_lost_since = time.monotonic() - 30.01
+            capture.browser_lost_since = time.monotonic() - 120.01
         service.policy()
         wait_for(lambda: capture.finished)
         assert all(tap.stopped for tap in Tap.instances)
@@ -572,7 +572,7 @@ def test_initial_system_fallback_expires_when_control_left_before_first_policy(s
     key = capture.capture_id
     assert key not in service._capture_observed and capture.browser_lost
     with service.lock:
-        capture.browser_lost_since = time.monotonic() - 30.01
+        capture.browser_lost_since = time.monotonic() - 120.01
     service.policy()
     wait_for(lambda: capture.finished)
     assert all(tap.stopped for tap in Tap.instances)

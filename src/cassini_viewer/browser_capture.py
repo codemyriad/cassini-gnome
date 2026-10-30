@@ -26,6 +26,9 @@ class BrowserCapture:
         self.me, self.others = True, True
         self.browser_lost = False
         self.browser_lost_since = None
+        self.audio_connected = False
+        self.lifecycle_capable = False
+        self.end_reason = None
         self.streams = None
         self.stopping = self.starting = False
         self.finished = False
@@ -87,6 +90,7 @@ class BrowserCapture:
                 if self.finished or self.stop_requested.is_set():
                     raise ProtocolError("state", "Recording start was cancelled")
                 self.capture_id, self.origin_ms = identifier, origin
+                self.audio_connected = others_source == "browser"
                 self.starting = True
                 result = self.host.handle(message)
                 self.host.session.manifest["createdAt"] = created
@@ -186,6 +190,7 @@ class BrowserCapture:
                 )
                 if active:
                     self.error = message
+                    self.end_reason = "error"
             if active:
                 self.changed(self, "error")
 
@@ -210,6 +215,25 @@ class BrowserCapture:
             raise ValueError("Invalid fallback reason")
         return self._change(self.me, self.others, fallback=reason)
 
+    @property
+    def browser_ready(self):
+        with self.lock:
+            now = time.monotonic()
+            return (
+                self.audio_connected
+                and self.others
+                and any(
+                    track.kind not in ("microphone", "local")
+                    and track.available
+                    and track.received_at is not None
+                    and now - track.received_at <= 2
+                    for track in self.streams.tracks.values()
+                )
+            )
+
+    def restore(self):
+        return self._apply_change(self.me, self.others, restore=True)
+
     def _change(self, me, others, *, fallback=None):
         return self._apply_change(me, others, fallback=fallback)
 
@@ -221,6 +245,8 @@ class BrowserCapture:
         if not others:
             if self.others:
                 events.append(dict(atMs=at, type="othersSource", source="none", reason="user"))
+        elif not lost and old.fallback:
+            events.append(dict(atMs=at, type="othersSource", source="browser", reason="restored"))
         elif not self.others or (lost and old.source != "system"):
             events.append(
                 dict(
@@ -232,14 +258,16 @@ class BrowserCapture:
             )
         return events
 
-    def _apply_change(self, me, others, *, fallback=None):
+    def _apply_change(self, me, others, *, fallback=None, restore=False):
         if self.starting and not self.ready.wait(12):
             raise TimeoutError("Native capture did not finish starting")
         with self.transition:
             with self.lock:
                 if self.finished or self.stopping or self.stop_requested.is_set():
                     raise ProtocolError("state", "No active recording")
-                lost = self.browser_lost or fallback is not None
+                if restore and (not self.browser_lost or not self.browser_ready):
+                    return self.snapshot()
+                lost = False if restore else self.browser_lost or fallback is not None
                 if (me, others, lost) == (self.me, self.others, self.browser_lost):
                     return self.snapshot()
                 desired = {kind for kind, enabled in (("microphone", me), ("system", others and lost)) if enabled}
@@ -270,8 +298,8 @@ class BrowserCapture:
                     at = change_time(self.host.session, self.elapsed_ms())
                     removed = {kind: value for kind, value in self.native_taps.items() if kind not in desired}
                     with (
-                        self.host.session.change(self._events(me, others, lost, fallback, at)),
                         self.streams.change(),
+                        self.host.session.change(self._events(me, others, lost, fallback, at)),
                     ):
                         self.streams.select(me, others, at, browser=not lost)
                         for identifier, _tap in removed.values():
@@ -281,6 +309,8 @@ class BrowserCapture:
                     if lost and not self.browser_lost:
                         self.browser_lost_since = time.monotonic()
                     self.me, self.others, self.browser_lost = me, others, lost
+                    if not lost:
+                        self.browser_lost_since = None
                     for kind in removed:
                         self.native_taps.pop(kind)
                         self.levels[0 if kind == "microphone" else 1] = 0
@@ -307,14 +337,20 @@ class BrowserCapture:
             if not self.stop_requested.is_set() and (message.get("failureReason") == "lost" or self.browser_lost):
                 self.fallback()
                 return dict(type="stopped", path=str(self.directory))
-            return self.stop(message.get("problem"))
+            return self.stop(message.get("problem"), reason=message.get("reason"))
         with self.lock:
             if self.finished or self.stopping:
                 raise ProtocolError("state", "No active recording")
             return self.host.handle(message)
 
-    def stop(self, problem=None):
-        self.stop_requested.set()
+    def stop(self, problem=None, *, reason=None):
+        from .session_events import END_REASONS
+
+        if reason is not None and (not isinstance(reason, str) or reason not in END_REASONS):
+            raise ProtocolError("state", "Invalid recording end reason")
+        with self.lock:
+            self.end_reason = self.end_reason or reason or ("error" if problem else "user")
+            self.stop_requested.set()
         if self.starting and not self.ready.wait(12):
             raise TimeoutError("Native capture did not finish starting")
         with self.lock:
@@ -337,8 +373,11 @@ class BrowserCapture:
                         tap.stop()
                     except Exception as error:
                         problem = problem or str(error)
+                        self.end_reason = "error"
                 with self.lock:
-                    return self.host.handle(dict(type="stop", problem=problem))
+                    self.host.session.finish(problem, reason=self.end_reason, at_ms=self.elapsed_ms())
+                    self.host.stopped = True
+                    return dict(type="stopped", path=str(self.directory))
         except Exception as error:
             self.error = str(error)
             raise
@@ -351,6 +390,7 @@ class BrowserCapture:
             self.changed(self, "finished")
 
     def close(self, problem="Browser disconnected before recording was stopped."):
+        self.audio_connected = False
         if not self.finished and self.host.session is not None:
             if self.stop_requested.is_set():
                 self.stop()

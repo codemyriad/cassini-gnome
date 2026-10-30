@@ -218,3 +218,38 @@ with session.change([dict(atMs=754210,type='othersSource',source='system',reason
     if crash == "after":
         assert value["events"][0]["atMs"] == value["tracks"][0]["startOffsetMs"] == 754210
         assert (manifest.parent / value["tracks"][0]["file"]).is_file()
+
+
+def test_failed_post_rename_durability_restores_working_state_without_deleting_referenced_wavs(tmp_path, monkeypatch):
+    import os
+    import stat
+
+    session = RecordingSession(tmp_path)
+    with session.change(initial()):
+        session.add_track("remote", None, "remote", 48000, 1)
+    session.append("remote", b"\x01\x00" * 48, 0)
+    old = json.loads(json.dumps(session.manifest))
+    original, failed = os.fsync, []
+
+    def directory_barrier(fd):
+        if stat.S_ISDIR(os.fstat(fd).st_mode) and not failed:
+            failed.append(True)
+            raise OSError("directory barrier failed after rename")
+        original(fd)
+
+    monkeypatch.setattr(os, "fsync", directory_barrier)
+    with (
+        pytest.raises(OSError, match="after rename"),
+        session.change([dict(atMs=10, type="othersSource", source="system", reason="lost")]),
+    ):
+        session.end_track("remote")
+        session.add_track("system", None, "system", 48000, 1)
+    assert session.manifest == old
+    saved = json.loads((session.directory / "session.json").read_text())
+    assert saved == old
+    assert all((session.directory / t["file"]).is_file() for t in saved["tracks"])
+    assert set(session.writers) == {"remote"}
+    # The old source still accepts PCM and the proposed source/event is absent.
+    session.append("remote", b"\x02\x00" * 48, 1)
+    session.finish(reason="user")
+    assert session.manifest["tracks"][0]["frames"] == 96

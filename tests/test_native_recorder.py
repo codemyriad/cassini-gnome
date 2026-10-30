@@ -106,7 +106,9 @@ def test_stop_during_replacement_first_sample_keeps_the_confirmed_tracks(tmp_pat
         spin_until(lambda: recorder.pipeline is None and not recorder._finishing)
         with pytest.raises(ValueError, match="No source change"):
             replacement.result()
-        assert session.manifest["events"] == events and set(session.writers) == tracks
+        assert session.manifest["events"][:-1] == events and set(session.writers) == tracks
+        assert session.manifest["events"][-1]["type"] == "end"
+        assert session.manifest["events"][-1]["reason"] == "user"
         assert session.manifest["state"] == "completed" and not errors
         assert not recorder._pending_sources
         assert len(list(session.directory.glob("track-*.wav"))) == len(tracks)

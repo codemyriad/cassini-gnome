@@ -422,7 +422,7 @@ def finish_close(app, windows, *, background=False):
         release_background(app)
 
 
-def stop_browser_captures(directory=None, *, cancel_groups=(), quitting=False, generation=0):
+def stop_browser_captures(directory=None, *, cancel_groups=(), quitting=False, generation=0, reason="user"):
     import time
     from pathlib import Path
 
@@ -451,6 +451,7 @@ def stop_browser_captures(directory=None, *, cancel_groups=(), quitting=False, g
             cancelGroups=list(cancel_groups),
             quitting=quitting,
             generation=generation,
+            reason=reason,
         )
         if any(s.get("recording") and matches(s.get("path")) for s in result.get("statuses", [])):
             raise ValueError("The browser has not confirmed the recording stopped")
