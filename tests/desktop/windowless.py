@@ -254,9 +254,11 @@ print(json.dumps(result))
     return report
 
 
-def idle_notifications():
+def idle_notifications(appid):
     return shell(
-        "Main.messageTray.getSources().flatMap(s=>s.notifications??[]).filter(n=>n.title==='Cassini is still running').length"
+        "Main.messageTray.getSources().filter(s=>s._appId==="
+        + json.dumps(appid)
+        + ").flatMap(s=>s.notifications??[]).filter(n=>n.title==='Cassini is still running').length"
     )
 
 
@@ -270,6 +272,61 @@ def screenshot(name):
     )
 
 
+def capture_inputs():
+    sources = {
+        s["index"]: s["name"]
+        for s in json.loads(subprocess.check_output(["pactl", "--format=json", "list", "sources"], text=True))
+    }
+    outputs = json.loads(subprocess.check_output(["pactl", "--format=json", "list", "source-outputs"], text=True))
+    return sorted(sources.get(output["source"], "unknown") for output in outputs)
+
+
+def measured_privacy(inputs):
+    until(lambda: capture_inputs() == inputs, "actual capture inputs")
+    until(
+        lambda: (
+            shell("Main.panel.statusArea.quickSettings._volumeInput._control.get_source_outputs().length")
+            == len(inputs)
+        ),
+        "GNOME observes capture streams",
+    )
+    return privacy_indicator()
+
+
+def privacy_indicator():
+    return shell(
+        "(() => {const i=Main.panel.statusArea.quickSettings._volumeInput._indicator;"
+        "return {visible:i.visible,mapped:i.mapped,privacy:i.has_style_class_name('privacy-indicator')};})()"
+    )
+
+
+def selected(manifest, me, others):
+    events = json.loads(manifest.read_text()).get("events", [])
+    selection = next((event for event in reversed(events) if event["type"] == "selection"), {})
+    return selection.get("me") is me and selection.get("others") is others
+
+
+def choose_recording_sources(manifest, label, me, others):
+    click("Change what is recorded")
+
+    def radio():
+        candidates = []
+        for node in walk(Atspi.get_desktop(0)):
+            if node.get_name() != label or node.get_role_name() != "radio button":
+                continue
+            if not node.get_state_set().contains(Atspi.StateType.SHOWING):
+                continue
+            rectangle = node.get_component_iface().get_extents(Atspi.CoordType.SCREEN)
+            if rectangle.width > 0:
+                candidates.append((rectangle.width, node))
+        return min(candidates, key=lambda value: value[0])[1] if candidates else None
+
+    choice = until(radio, "source radio " + label)
+    assert choice.get_action_iface().do_action(0), "Source radio action refused"
+    until(lambda: selected(manifest, me, others), "source selection " + label)
+    click("Close", dialog="What is recorded")
+
+
 def recording(root):
     for manifest in sorted(root.glob("Recording-*/session.json")):
         value = json.loads(manifest.read_text())
@@ -278,129 +335,179 @@ def recording(root):
     return None
 
 
-until(lambda: (Path(os.environ["XDG_RUNTIME_DIR"]) / "wayland-0").exists(), "private Wayland socket")
-os.environ["WAYLAND_DISPLAY"] = "wayland-0"
-until(lambda: shell("Main.overview.hide(); true"), "GNOME Shell ready")
-version = subprocess.check_output(["gnome-shell", "--version"], text=True).strip()
-assert version.startswith("GNOME Shell 50"), version
-subprocess.Popen(["pipewire"], stdout=(OUT / "pipewire.log").open("w"), stderr=subprocess.STDOUT)
-until(lambda: (Path(os.environ["XDG_RUNTIME_DIR"]) / "pipewire-0").exists(), "PipeWire")
-subprocess.Popen(["wireplumber"], stdout=(OUT / "wireplumber.log").open("w"), stderr=subprocess.STDOUT)
-subprocess.Popen(["pipewire-pulse"], stdout=(OUT / "pulse.log").open("w"), stderr=subprocess.STDOUT)
-until(lambda: subprocess.run(["pactl", "info"], capture_output=True).returncode == 0, "private Pulse server")
-for args in (
-    ["load-module", "module-null-sink", "sink_name=voice"],
-    ["load-module", "module-null-sink", "sink_name=speakers"],
-    ["load-module", "module-remap-source", "master=voice.monitor", "source_name=mic"],
-    ["set-default-source", "mic"],
-    ["set-default-sink", "speakers"],
-):
-    subprocess.run(["pactl", *args], check=True, capture_output=True)
-tone = OUT / "tone.wav"
-with wave.open(str(tone), "wb") as wav:
-    wav.setparams((1, 2, 48000, 0, "NONE", "not compressed"))
-    import struct
-
-    wav.writeframes(
-        b"".join(struct.pack("<h", round(6000 * math.sin(2 * math.pi * 440 * i / 48000))) for i in range(48000))
-    )
-subprocess.Popen(
-    ["sh", "-c", 'while true; do paplay --device=voice "$1"; done', "cassini-qa-tone", str(tone)],
-    stdout=subprocess.DEVNULL,
-    stderr=subprocess.DEVNULL,
-)
-
-versions = subprocess.check_output(
-    ["dpkg-query", "-W", "xdg-desktop-portal", "xdg-desktop-portal-gnome", "flatpak"], text=True
-)
-results = {"shell": version, "packages": versions, "cases": []}
-root = HOME / "Music/Cassini"
-for appid in ("com.gocassini.Viewer", "com.gocassini.Viewer.Devel"):
-    flatpak = appid.endswith(".Devel")
-    prefix = ["flatpak", "run", "--user", "--command=gsettings", appid] if flatpak else []
-    subprocess.run(
-        [*prefix, *([] if flatpak else ["gsettings"]), "set", "com.gocassini.Viewer", "skip-record-first", "true"],
-        check=True,
-    )
-    # Explicit pre-consent isolates the Background Apps journey from the desktop
-    # permission prompt. The real RequestBackground still runs in the app; its
-    # denial/late-response behavior is covered by the private-bus GTK test.
-    if flatpak:
-        subprocess.run(["flatpak", "permission-set", "background", "background", appid, "yes"], check=True)
-    launch(appid)
-    original_pid = pid(appid)
-    broker_configure(appid)
-    close_window(appid)
-    until(lambda appid=appid: not windows(appid), "last window closed")
-    assert owner(appid), "Automatic recording did not keep the process alive"
-    case = {"app": appid, "originalPID": original_pid}
-    probe = None if flatpak else host_status_probe(appid)
-    if probe:
-        case["hostPortal"] = probe
-    can_list = flatpak or probe["statusAccepted"]
-    if can_list:
-        row = until(lambda appid=appid: status_row(appid), "watching status in real Background Apps")
-        assert row.get("message") == "Ready to record browser meetings", row
-        case["idleStatus"] = row["message"]
-        until(idle_notifications, "one-time still-running notification")
-        assert idle_notifications() == 1
-        until(lambda appid=appid: menu_item(appid, "true"), "Background Apps menu")
-        screenshot("background-apps-idle.png")
-        until(lambda appid=appid: menu_item(appid, "item.activate(null)"), "Background Apps Open")
-        until(lambda appid=appid: windows(appid), "Library reopened from Background Apps")
-        assert pid(appid) == original_pid
-        case["backgroundOpen"] = True
-    else:
-        # Match the documented upstream rejection rather than fabricating an
-        # entry. The installed package must still reopen via its real launcher.
-        assert listed(appid) is None
-        case["backgroundOpen"] = False
-        case["limitation"] = "Host applications are excluded by xdg-desktop-portal Background (R48)"
-        launch(appid)
-        assert pid(appid) == original_pid
-    case["appGridReusesProcess"] = True
-    if can_list:
-        # Both native activation routes must work, even after the last window
-        # has gone and only automatic recording keeps the process alive.
-        close_window(appid)
-        until(lambda appid=appid: not windows(appid), "second close")
-        until(lambda appid=appid: listed(appid), "second Background Apps listing")
-        launch(appid)
-        assert pid(appid) == original_pid
-        assert idle_notifications() == 1
-        case["oneTimeNotification"] = True
-    action(appid, "record")
-    manifest = until(lambda: recording(root), "actual microphone frames")
-    case["meeting"] = manifest.parent.name
-    close_window(appid)
-    click("Keep Recording in Background")
-    until(lambda appid=appid: not windows(appid), "recording hidden")
-    if can_list:
-        row = until(
-            lambda appid=appid: (
-                listed(appid) if (listed(appid) or {}).get("message", "").startswith("Recording,") else None
-            ),
-            "live recording Background Apps status",
-        )
-        case["recordingStatus"] = row["message"]
-        until(lambda appid=appid: menu_item(appid, "true"), "recording Background Apps menu")
-        screenshot("background-apps-recording.png")
+def prepare_desktop():
+    until(lambda: (Path(os.environ["XDG_RUNTIME_DIR"]) / "wayland-0").exists(), "private Wayland socket")
+    os.environ["WAYLAND_DISPLAY"] = "wayland-0"
+    until(lambda: shell("Main.overview.hide(); true"), "GNOME Shell ready")
+    version = subprocess.check_output(["gnome-shell", "--version"], text=True).strip()
+    assert version.startswith("GNOME Shell 50"), version
+    subprocess.Popen(["pipewire"], stdout=(OUT / "pipewire.log").open("w"), stderr=subprocess.STDOUT)
+    until(lambda: (Path(os.environ["XDG_RUNTIME_DIR"]) / "pipewire-0").exists(), "PipeWire")
+    subprocess.Popen(["wireplumber"], stdout=(OUT / "wireplumber.log").open("w"), stderr=subprocess.STDOUT)
+    subprocess.Popen(["pipewire-pulse"], stdout=(OUT / "pulse.log").open("w"), stderr=subprocess.STDOUT)
+    until(lambda: subprocess.run(["pactl", "info"], capture_output=True).returncode == 0, "private Pulse server")
+    for args, resource, name in (
+        (["load-module", "module-null-sink", "sink_name=voice"], "sinks", "voice"),
+        (["load-module", "module-null-sink", "sink_name=speakers"], "sinks", "speakers"),
+    ):
+        subprocess.run(["pactl", *args], check=True, capture_output=True)
         until(
-            lambda appid=appid: menu_item(appid, "item.get_last_child().emit('clicked', 1)"),
-            "Background Apps close button",
+            lambda resource=resource, name=name: any(
+                line.split()[1] == name
+                for line in subprocess.check_output(["pactl", "list", "short", resource], text=True).splitlines()
+            ),
+            "private audio " + name,
         )
-    else:
-        action(appid, "quit")
-    until(lambda appid=appid: not owner(appid), "stop and keep, then process exit")
-    saved = json.loads(manifest.read_text())
-    assert saved["state"] == "completed"
-    assert any(track["frames"] > 0 for track in saved["tracks"])
-    for track in saved["tracks"]:
-        with wave.open(str(manifest.parent / track["file"]), "rb") as wav:
-            assert wav.getnframes() == track["frames"]
-    case["quitKeptAudio"] = True
-    case["quitHadNoWindow"] = True
-    results["cases"].append(case)
-    (OUT / "background-apps.json").write_text(json.dumps(results, indent=2) + "\n")
-assert len(results["cases"]) == 2
-print(json.dumps(results, indent=2))
+    # A virtual source node, rather than module-remap-source: the latter opens
+    # a loopback capture stream that would light GNOME's privacy indicator even
+    # before Cassini records anything and invalidate the D41.1 measurements.
+    subprocess.run(
+        [
+            "pw-cli",
+            "create-node",
+            "adapter",
+            "{ factory.name=support.null-audio-sink node.name=mic media.class=Audio/Source/Virtual "
+            "object.linger=true audio.position=[MONO] monitor.passthrough=true }",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    until(
+        lambda: any(
+            line.split()[1] == "mic"
+            for line in subprocess.check_output(["pactl", "list", "short", "sources"], text=True).splitlines()
+        ),
+        "private virtual microphone",
+    )
+    for args in (["set-default-source", "mic"], ["set-default-sink", "speakers"]):
+        diagnostic = []
+
+        def set_default(args=args, diagnostic=diagnostic):
+            result = subprocess.run(["pactl", *args], capture_output=True, text=True)
+            diagnostic[:] = [result.stderr.strip()]
+            return result.returncode == 0
+
+        try:
+            until(set_default, "private audio default " + args[1])
+        except AssertionError as error:
+            raise AssertionError(
+                f"{error}: {diagnostic}; sources="
+                + subprocess.check_output(["pactl", "list", "short", "sources"], text=True)
+            ) from error
+    tone = OUT / "tone.wav"
+    with wave.open(str(tone), "wb") as wav:
+        wav.setparams((1, 2, 48000, 0, "NONE", "not compressed"))
+        import struct
+
+        wav.writeframes(
+            b"".join(struct.pack("<h", round(6000 * math.sin(2 * math.pi * 440 * i / 48000))) for i in range(48000))
+        )
+    subprocess.Popen(
+        ["sh", "-c", 'while true; do paplay --device=speakers "$1"; done', "cassini-qa-tone", str(tone)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    return version
+
+
+def main():
+    version = prepare_desktop()
+    versions = subprocess.check_output(
+        ["dpkg-query", "-W", "xdg-desktop-portal", "xdg-desktop-portal-gnome", "flatpak"], text=True
+    )
+    results = {"shell": version, "packages": versions, "cases": []}
+    root = HOME / "Music/Cassini"
+    for appid in ("com.gocassini.Viewer", "com.gocassini.Viewer.Devel"):
+        flatpak = appid.endswith(".Devel")
+        prefix = ["flatpak", "run", "--user", "--command=gsettings", appid] if flatpak else []
+        subprocess.run(
+            [*prefix, *([] if flatpak else ["gsettings"]), "set", "com.gocassini.Viewer", "skip-record-first", "true"],
+            check=True,
+        )
+        # Explicit pre-consent isolates the Background Apps journey from the desktop
+        # permission prompt. The real RequestBackground still runs in the app; its
+        # denial/late-response behavior is covered by the private-bus GTK test.
+        if flatpak:
+            subprocess.run(["flatpak", "permission-set", "background", "background", appid, "yes"], check=True)
+        launch(appid)
+        original_pid = pid(appid)
+        broker_configure(appid)
+        close_window(appid)
+        until(lambda appid=appid: not windows(appid), "last window closed")
+        assert owner(appid), "Automatic recording did not keep the process alive"
+        case = {"app": appid, "originalPID": original_pid}
+        probe = None if flatpak else host_status_probe(appid)
+        if probe:
+            case["hostPortal"] = probe
+        can_list = flatpak or probe["statusAccepted"]
+        if can_list:
+            row = until(lambda appid=appid: status_row(appid), "watching status in real Background Apps")
+            assert row.get("message") == "Ready to record browser meetings", row
+            case["idleStatus"] = row["message"]
+            until(lambda appid=appid: idle_notifications(appid), "one-time still-running notification")
+            assert idle_notifications(appid) == 1
+            until(lambda appid=appid: menu_item(appid, "true"), "Background Apps menu")
+            screenshot("background-apps-idle.png")
+            until(lambda appid=appid: menu_item(appid, "item.activate(null)"), "Background Apps Open")
+            until(lambda appid=appid: windows(appid), "Library reopened from Background Apps")
+            assert pid(appid) == original_pid
+            case["backgroundOpen"] = True
+        else:
+            # Match the documented upstream rejection rather than fabricating an
+            # entry. The installed package must still reopen via its real launcher.
+            assert listed(appid) is None
+            case["backgroundOpen"] = False
+            case["limitation"] = "Host applications are excluded by xdg-desktop-portal Background (R48)"
+            launch(appid)
+            assert pid(appid) == original_pid
+        case["appGridReusesProcess"] = True
+        if can_list:
+            # Both native activation routes must work, even after the last window
+            # has gone and only automatic recording keeps the process alive.
+            close_window(appid)
+            until(lambda appid=appid: not windows(appid), "second close")
+            until(lambda appid=appid: listed(appid), "second Background Apps listing")
+            launch(appid)
+            assert pid(appid) == original_pid
+            assert idle_notifications(appid) == 1
+            case["oneTimeNotification"] = True
+        action(appid, "record")
+        manifest = until(lambda: recording(root), "actual microphone frames")
+        case["meeting"] = manifest.parent.name
+        close_window(appid)
+        click("Keep Recording in Background")
+        until(lambda appid=appid: not windows(appid), "recording hidden")
+        if can_list:
+            row = until(
+                lambda appid=appid: (
+                    listed(appid) if (listed(appid) or {}).get("message", "").startswith("Recording,") else None
+                ),
+                "live recording Background Apps status",
+            )
+            case["recordingStatus"] = row["message"]
+            until(lambda appid=appid: menu_item(appid, "true"), "recording Background Apps menu")
+            screenshot("background-apps-recording.png")
+            until(
+                lambda appid=appid: menu_item(appid, "item.get_last_child().emit('clicked', 1)"),
+                "Background Apps close button",
+            )
+        else:
+            action(appid, "quit")
+        until(lambda appid=appid: not owner(appid), "stop and keep, then process exit")
+        saved = json.loads(manifest.read_text())
+        assert saved["state"] == "completed"
+        assert any(track["frames"] > 0 for track in saved["tracks"])
+        for track in saved["tracks"]:
+            with wave.open(str(manifest.parent / track["file"]), "rb") as wav:
+                assert wav.getnframes() == track["frames"]
+        case["quitKeptAudio"] = True
+        case["quitHadNoWindow"] = True
+        results["cases"].append(case)
+        (OUT / "background-apps.json").write_text(json.dumps(results, indent=2) + "\n")
+    assert len(results["cases"]) == 2
+    print(json.dumps(results, indent=2))
+
+
+if __name__ == "__main__":
+    main()

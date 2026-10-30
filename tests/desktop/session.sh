@@ -13,6 +13,16 @@ export LANG=C.UTF-8
 xdg-user-dirs-update
 dbus-daemon --config-file=/source/tests/desktop/system-bus.conf --fork --nopidfile
 exec dbus-run-session -- bash -ec '
+  if [ "${CASSINI_QA_INDICATOR:-0}" = 1 ]; then
+    gsettings set org.gnome.shell disable-user-extensions false
+    gsettings set org.gnome.shell enabled-extensions "['\''ubuntu-appindicators@ubuntu.com'\'']"
+  else
+    gsettings set org.gnome.shell enabled-extensions "[]"
+  fi
   gnome-shell --headless --unsafe-mode --virtual-monitor 1280x800 --no-x11 >/out/shell.log 2>&1 &
-  python3 /source/tests/desktop/windowless.py
+  if [ "${CASSINI_QA_INDICATOR:-0}" = 1 ]; then
+    python3 /source/tests/desktop/indicator.py
+  else
+    python3 /source/tests/desktop/windowless.py
+  fi
 '

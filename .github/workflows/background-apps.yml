@@ -45,7 +45,7 @@ jobs:
         with:
           name: background-apps-desktop
           path: |
-            desktop-evidence/*.json
-            desktop-evidence/*.log
-            desktop-evidence/*.png
+            desktop-evidence/*/*.json
+            desktop-evidence/*/*.log
+            desktop-evidence/*/*.png
           retention-days: 7

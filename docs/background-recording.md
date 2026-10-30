@@ -10,7 +10,7 @@ A notification is sent immediately when hidden, even before the first Library sc
 
 ## Windowless automatic recording (D41)
 
-When automatic recording keeps Cassini alive after its last window closes, the app requests Background permission once and publishes “Ready to record browser meetings”. A live recording takes precedence. Returning to the Library clears the hidden status. The first successful idle status sends the catalog's one-time “Cassini is still running” notification; the preference survives restarts. Permission denial restores a window. No autostart command, tray icon, extra Flatpak permission or dummy microphone is added.
+When automatic recording keeps Cassini alive after its last window closes, the app requests Background permission once and publishes “Ready to record browser meetings”. A live recording takes precedence. Returning to the Library clears the hidden status. The first successful idle status sends the catalog's one-time “Cassini is still running” notification; the preference survives restarts. Permission denial restores a window. No autostart command or dummy microphone is added. Optional SNI presence is described below.
 
 Background Apps' close button activates `app.quit`. With no visible window, the existing asynchronous stop-and-save guard finalizes every capture before quitting, without presenting an invisible confirmation. Launching the desktop entry reactivates the running application's Library.
 
@@ -45,3 +45,5 @@ IDs. The one-time notice names Background Apps only for a confirmed Flatpak
 status, the indicator only after its host accepts registration, and otherwise
 instructs the person to start Cassini again. Permission, registration and window
 reopen races must settle before that notice is sent.
+
+The real desktop gate runs twice with separate fresh homes: without any indicator host, and with Ubuntu’s AppIndicator extension enabled. The AppIndicator case operates the host’s actual menu using a virtual keyboard in the private compositor, checks passive/idle/recording visibility, reopens the same process and stops/quits while preserving exact WAV frame counts. Bundle preparation uses a private system bus as well as a session bus. PipeWire sink/source/default readiness is bounded; a standalone virtual microphone avoids the loopback input stream that would invalidate the privacy-indicator baseline.
