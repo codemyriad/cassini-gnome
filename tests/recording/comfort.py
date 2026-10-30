@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Real Pulse capture and keyboard notes; private notification/shortcut wire services."""
+"""Real Pulse capture and keyboard titles; private notification/shortcut wire services."""
 
 import argparse
 import faulthandler
@@ -159,26 +159,18 @@ try:
     )
     capture_clock(native)
     page = window.recording_page
-    # Real key events: spaces belong to notes, not the global player action.
-    page.notes_view.grab_focus()
+    # Real key events stay in the title; the removed notes editor is absent.
+    assert not hasattr(page, "notes_view")
+    assert read_metadata(native.session.directory)["notes"] == []
     xid = GdkX11.X11Surface.get_xid(window.get_surface())
     subprocess.run(["xdotool", "windowfocus", "--sync", str(xid)], check=True)
-    before = page.elapsed()
-    subprocess.run(["xdotool", "type", "--clearmodifiers", "--delay", "1", "First decision"], check=True)
-    until(lambda: (native.session.directory / "meeting.json").exists(), "note saved as typed")
-    until(lambda: read_metadata(native.session.directory)["notes"], "timed note persisted")
-    data = read_metadata(native.session.directory)
-    note = data["notes"][0]
-    assert note["text"] == "First decision" and before <= note["atMs"] <= page.elapsed(), dict(
-        note=note, before=before, elapsed=page.elapsed(), playing=window.player.playing
-    )
-    assert data["title"] is None and data["titleSource"] == "meeting-window", "Notes renamed the meeting"
-    assert not window.player.playing, "Typing a space started playback"
     page.title_entry.grab_focus()
     subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+a"], check=True)
     subprocess.run(["xdotool", "type", "--clearmodifiers", "--delay", "1", "Team planning"], check=True)
     until(lambda: read_metadata(native.session.directory)["title"] == "Team planning", "title saved separately")
     assert native.session.manifest["title"] == "", "Renaming modified capture metadata"
+    assert read_metadata(native.session.directory)["notes"] == []
+    assert not window.player.playing, "Typing a space started playback"
     producers[0].get_by_name("tone").set_property("volume", 0)
     until(lambda: native.levels[0] == 0, "actual microphone PCM silent")
     app.comfort.clocks[native.session.directory.name].last_sound -= 20
@@ -262,7 +254,7 @@ try:
     services.app_action(app, "open-recording")
     until(window.get_visible, "open last-edit recording")
     final_directory = native.session.directory
-    window.recording_page.notes_view.get_buffer().insert_at_cursor("Last keystroke before closing")
+    window.recording_page.title_entry.set_text("Last keystroke before closing")
     app.on_quit()
     dialog = app._capture_confirmation
     dialog.emit("response", "stop")
@@ -271,8 +263,8 @@ try:
     app.comfort.close()
     until(
         lambda: (
-            read_metadata(final_directory)["notes"]
-            and read_metadata(final_directory)["notes"][-1]["text"] == "Last keystroke before closing"
+            read_metadata(final_directory)["title"] == "Last keystroke before closing"
+            and read_metadata(final_directory)["notes"] == []
         ),
         "last edit survives monitor close and editor shutdown",
     )
@@ -280,8 +272,8 @@ try:
     report.update(
         actualPulse=True,
         portalStarts=True,
-        keyboardTimedNotes=True,
-        notesPreserveTitle=True,
+        keyboardTitleEdits=True,
+        newMeetingsHaveNoNotes=True,
         silentMicAndRecovery=True,
         lowSpaceWarnsOnce=True,
         hiddenAudioGrows=True,

@@ -20,7 +20,7 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, GLib  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
 sys.path.insert(0, str(ROOT / "tests"))
@@ -29,7 +29,6 @@ from desktop_services import DesktopServices  # noqa: E402
 from cassini_viewer.global_shortcut import GlobalShortcut  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
 from cassini_viewer.recording_details import SilenceClock  # noqa: E402
-from cassini_viewer.recording_page import TimedNotes  # noqa: E402
 
 
 def until(predicate):
@@ -108,11 +107,10 @@ with tempfile.TemporaryDirectory() as tmp:
     window._play_selected()
     assert not window.player.playing
     page.title_entry.set_text("Renamed while recording")
-    buffer = page.notes_view.get_buffer()
-    buffer.insert(buffer.get_end_iter(), "\nA new decision")
+    assert not hasattr(page, "notes_view") and not hasattr(page, "notes")
     until(lambda: json.loads((live.directory / "meeting.json").read_text())["title"] == "Renamed while recording")
     data = json.loads((live.directory / "meeting.json").read_text())
-    assert data["notes"][-1] == dict(atMs=768000, text="A new decision"), data["notes"]
+    assert data["notes"] == [dict(atMs=700000, text="Decision on the travel budget around here")]
     assert data["notes"][0] == dict(atMs=700000, text="Decision on the travel budget around here")
     assert page.headline.get_label() == "Renamed while recording"
     assert all((live.directory / name).read_bytes() == data for name, data in before.items())
@@ -125,30 +123,28 @@ with tempfile.TemporaryDirectory() as tmp:
     page.update_status()
     assert page.lines.get_visible()
     # Closing/switching flushes a pending keystroke edit before debounce.
-    buffer.insert(buffer.get_end_iter(), " updated")
+    page.title_entry.set_text("Renamed just before closing")
     window.back_to_library()
     # Reopen the stale scanner object before its debounce; the pending draft
-    # must survive and cannot replace notes saved by the closed page.
+    # must preserve the pending title and the pre-existing notes.
     window.open_meeting(live)
     reopened = window.recording_page
-    assert reopened.notes.values()[-1]["text"].endswith(" updated")
-    assert reopened.title_entry.get_text() == "Renamed while recording"
+    assert reopened.title_entry.get_text() == "Renamed just before closing"
     reopened.update(live)
-    assert reopened.title_entry.get_text() == "Renamed while recording"
+    assert reopened.title_entry.get_text() == "Renamed just before closing"
     from concurrent.futures import Future
 
     failed = Future()
     failed.set_exception(OSError("Synthetic save failure"))
     reopened._saving += 1
-    reopened._saved(failed, dict(notes=reopened.notes.values()))
-    assert reopened._dirty and reopened._notes_dirty
+    reopened._saved(failed, dict(title=reopened.title_entry.get_text()))
+    assert reopened._dirty and reopened._title_dirty
 
-    reopened_buffer = reopened.notes_view.get_buffer()
-    reopened_buffer.insert(reopened_buffer.get_end_iter(), "\nAfter reopening")
+    reopened.title_entry.set_text("Title after reopening")
     window.back_to_library()
-    until(lambda: json.loads((live.directory / "meeting.json").read_text())["notes"][-1]["text"] == "After reopening")
+    until(lambda: json.loads((live.directory / "meeting.json").read_text())["title"] == "Title after reopening")
     saved = json.loads((live.directory / "meeting.json").read_text())["notes"]
-    assert saved[-2]["text"].endswith(" updated")
+    assert saved == [dict(atMs=700000, text="Decision on the travel budget around here")]
     assert not window.recording_page
     # The sidebar and header share the native monotonic clock even when the
     # wall clock moves a full day forwards or backwards.
@@ -268,76 +264,7 @@ with tempfile.TemporaryDirectory() as tmp:
     browser_window.close()
     browser_app.comfort.close()
 
-# Timestamp is captured once on first keystroke and survives edits; another line gets its own time.
-buffer = Gtk.TextBuffer()
-now = [12345]
-notes = TimedNotes(buffer, [], lambda: now[0], lambda: None)
-buffer.insert(buffer.get_end_iter(), "First")
-now[0] = 22000
-buffer.insert(buffer.get_end_iter(), " revised\nSecond")
-assert notes.values() == [dict(atMs=12345, text="First revised"), dict(atMs=22000, text="Second")], notes.values()
-# Split an existing body and type before the displayed timestamp.
-now[0] = 33000
-buffer.insert(buffer.get_iter_at_offset(len("00:00:12  First")), "\n")
-assert notes.values() == [
-    dict(atMs=12345, text="First"),
-    dict(atMs=33000, text=" revised"),
-    dict(atMs=22000, text="Second"),
-]
-buffer.insert(buffer.get_start_iter(), "At column zero ")
-assert notes.values()[0] == dict(atMs=12345, text="At column zero First")
-# Native interactive deletion, including every timestamp and newline.
-buffer.delete_interactive(*buffer.get_bounds(), True)
-assert notes.values() == [] and buffer.get_char_count() == 0
-buffer.insert(buffer.get_end_iter(), "One\nTwo\nThree")
-assert [n["text"] for n in notes.values()] == ["One", "Two", "Three"]
-# Removing across lines merges bodies and retains the first note's time.
-first = buffer.get_iter_at_offset(len("00:00:33  O"))
-last = buffer.get_iter_at_offset(len("00:00:33  One\n00:00:33  Tw"))
-buffer.delete_interactive(first, last, True)
-assert [n["text"] for n in notes.values()] == ["Oo", "Three"]
-undo_buffer = Gtk.TextBuffer(enable_undo=True)
-undo_notes = TimedNotes(undo_buffer, [], lambda: 0, lambda: None)
-undo_buffer.insert(undo_buffer.get_end_iter(), "Undo me")
-undo_buffer.undo()
-assert undo_notes.values() == [], undo_notes.values()
-# GTK native undo/redo must restore exact model milliseconds, not parse display text.
-for deletion in ("all", "across"):
-    original_notes = [dict(atMs=12345, text="First"), dict(atMs=33456, text="Second")]
-    undo_buffer = Gtk.TextBuffer(enable_undo=True)
-    undo_notes = TimedNotes(undo_buffer, original_notes, lambda: 45000, lambda: None)
-    if deletion == "all":
-        undo_buffer.delete_interactive(*undo_buffer.get_bounds(), True)
-    else:
-        undo_buffer.delete_interactive(undo_buffer.get_iter_at_offset(12), undo_buffer.get_iter_at_offset(28), True)
-    deleted = undo_notes.values()
-    undo_buffer.undo()
-    assert undo_notes.values() == original_notes, (deletion, undo_notes.values())
-    undo_buffer.redo()
-    assert undo_notes.values() == deleted, undo_notes.values()
-    undo_buffer.undo()
-    undo_buffer.insert(undo_buffer.get_end_iter(), " revised")
-    assert undo_notes.values()[-1] == dict(atMs=33456, text="Second revised")
-
-# A newline before an existing body preserves its original pin.
-buffer = Gtk.TextBuffer(enable_undo=True)
-notes = TimedNotes(buffer, [dict(atMs=12345, text="First")], lambda: 45000, lambda: None)
-buffer.insert(buffer.get_iter_at_offset(10), "\n")
-assert notes.values() == [dict(atMs=12345, text="First")], notes.values()
-buffer.undo()
-assert notes.values() == [dict(atMs=12345, text="First")]
-buffer.insert(buffer.get_end_iter(), "\n")
-# Gtk.TextView's Backspace deletes the last prefix character at the body start.
-end = buffer.get_iter_at_mark(buffer.get_insert())
-start = end.copy()
-start.backward_char()
-buffer.delete_interactive(start, end, True)
-assert len(notes.lines) == 1 and notes.values() == [dict(atMs=12345, text="First")], notes.lines
-buffer.undo()
-assert len(notes.lines) == 2
-buffer.redo()
-assert len(notes.lines) == 1
 services.close()
 print(
-    "PASS portal binding/denial/activation, real GNotification payload/updates/Open, Recording page, rename, pinned notes, flush, silence and disk line"
+    "PASS portal binding/denial/activation, GNotification/Open, Recording page without notes, title edit/flush/retry, preserved old notes, silence and disk line"
 )

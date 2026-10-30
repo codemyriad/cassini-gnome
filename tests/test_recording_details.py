@@ -81,6 +81,31 @@ def test_live_edits_preserve_other_app_owned_fields_and_capture_bytes(tmp_path):
     session.finish()
 
 
+def test_existing_notes_survive_title_and_progress_edits_and_still_export(tmp_path):
+    from cassini_viewer.export_model import markdown, model_projection
+
+    session = RecordingSession(tmp_path, source="gnome")
+    session.add_track("mic", "Mic", "microphone", 16000, 1)
+    session.append("mic", bytes(3200), 0)
+    session.finish()
+    notes = [dict(atMs=12345, text="Already typed", extra=dict(retain="exactly — ✓"))]
+    update_metadata(session.directory, notes=notes)
+    old = json.dumps(notes, ensure_ascii=False).encode()
+    edit_recording(session.directory, title="A title edit")
+    update_metadata(session.directory, transcript=dict(status="queued", reference=None), etaMinutes=1)
+    (meeting,) = LibraryScanner(tmp_path).scan().meetings
+    assert json.dumps(meeting.metadata["notes"], ensure_ascii=False).encode() == old
+    assert list(meeting.notes) == notes
+    assert markdown(model_projection(meeting, tz="UTC")).endswith("## Notes\n\n- 00:00:12 Already typed\n")
+
+
+def test_new_meeting_metadata_keeps_empty_notes_without_an_editor(tmp_path):
+    session = RecordingSession(tmp_path, source="gnome")
+    edit_recording(session.directory, title="A new title")
+    assert json.loads((session.directory / "meeting.json").read_text())["notes"] == []
+    session.finish()
+
+
 def test_browser_source_observation_reads_real_pcm_without_writing(tmp_path):
     session = RecordingSession(tmp_path)
     for name, kind in [("mic", "local"), ("a", "remote"), ("b", "remote")]:
