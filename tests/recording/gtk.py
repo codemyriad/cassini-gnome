@@ -35,7 +35,9 @@ from gi.repository import Gio, Gst  # noqa: E402
 from gst_evidence import GstEvidence  # noqa: E402
 from readiness import PCMProgress, wait_until  # noqa: E402
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path[:0] = [str(Path(__file__).resolve().parents[2] / name) for name in ("src", "tests")]
+from desktop_services import DesktopServices  # noqa: E402
+
 Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-viewer.gresource")))
 from cassini_viewer.library_window import LibraryWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
@@ -61,6 +63,7 @@ def painted(window):
 
 artifacts = Path(os.environ.get("CASSINI_TEST_ARTIFACTS", str(Path(__file__).parent / "artifacts/gtk")))
 artifacts.mkdir(parents=True, exist_ok=True)
+services = DesktopServices()
 app = CassiniApplication("com.gocassini.RecordingTest", "test", "development")
 app.transcription_enabled = False  # Audio/permission harness; real ML is proved by the offline pipeline job.
 evidence = {"passed": False}
@@ -175,6 +178,11 @@ try:
         dialog = app._capture_confirmation
         dialog.emit("response", "keep")
         dialog.force_close()
+        wait_until(
+            lambda: app._capture_background and not window.get_visible(),
+            "desktop approves background capture",
+            diagnostics=diagnostics,
+        )
         wait_until(
             lambda: all(w.frames >= before + 48000 * 0.4 for w in recorder.session.writers.values()),
             "Keep recording actually keeps writing",

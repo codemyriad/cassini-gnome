@@ -147,7 +147,7 @@ try {
  await automatic(true);
  await poll(async () => (await call()).statuses.filter(s => s.recording).length === 3, 'auto re-enabled for hidden capture');
  await call({action: 'close-window'});
- assert.equal((await call()).status, 'Window closed');
+ await poll(async () => (await call()).status === 'Window closed', 'desktop approves background capture');
  const hidden = await poll(async () => (await call()).notifications.recording, 'native hidden notification');
  assert.ok(hidden.buttons.some(button => button.action === 'app.stop-recording'));
  await call({action: 'notification-stop'});

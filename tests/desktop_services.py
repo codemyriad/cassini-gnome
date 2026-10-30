@@ -11,6 +11,11 @@ PORTAL_XML = """<node><interface name="org.freedesktop.portal.GlobalShortcuts">
 <signal name="ShortcutsChanged"><arg type="o"/><arg type="a(sa{sv})"/></signal>
 <signal name="Activated"><arg type="o"/><arg type="s"/><arg type="t"/><arg type="a{sv}"/></signal>
 </interface></node>"""
+BACKGROUND_XML = """<node><interface name="org.freedesktop.portal.Background">
+<method name="RequestBackground"><arg type="s" direction="in"/><arg type="a{sv}" direction="in"/><arg type="o" direction="out"/></method>
+<method name="SetStatus"><arg type="a{sv}" direction="in"/></method>
+</interface></node>"""
+REQUEST_XML = """<node><interface name="org.freedesktop.portal.Request"><method name="Close"/></interface></node>"""
 NOTIFY_XML = """<node><interface name="org.gtk.Notifications">
 <method name="AddNotification"><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="a{sv}" direction="in"/></method>
 <method name="RemoveNotification"><arg type="s" direction="in"/><arg type="s" direction="in"/></method>
@@ -26,6 +31,11 @@ class DesktopServices:
         self.calls = []
         self.session = "/org/freedesktop/portal/desktop/session/cassini_test"
         self.denied = False
+        self.background_denied = False
+        self.background_defer = False
+        self.background_pending = []
+        self.background_error = False
+        self.background_closed = 0
         self.shortcut_description = "Ctrl+Alt+R"
         self.shortcuts_bound = False
         self.closed = False
@@ -36,6 +46,11 @@ class DesktopServices:
         self.objects = [
             self.bus.register_object(
                 "/org/freedesktop/portal/desktop", Gio.DBusNodeInfo.new_for_xml(PORTAL_XML).interfaces[0], self._portal
+            ),
+            self.bus.register_object(
+                "/org/freedesktop/portal/desktop",
+                Gio.DBusNodeInfo.new_for_xml(BACKGROUND_XML).interfaces[0],
+                self._background,
             ),
             self.bus.register_object(
                 "/org/gtk/Notifications", Gio.DBusNodeInfo.new_for_xml(NOTIFY_XML).interfaces[0], self._notification
@@ -83,6 +98,43 @@ class DesktopServices:
             "Response",
             GLib.Variant("(ua{sv})", (1 if self.denied else 0, result)),
         )
+
+    def _background(self, _bus, sender, _path, _interface, method, parameters, invocation):
+        values = parameters.unpack()
+        self.calls.append(dict(method=method, values=values))
+        if self.background_error:
+            invocation.return_dbus_error("org.freedesktop.portal.Error.Failed", "Synthetic unavailable portal")
+        elif method == "SetStatus":
+            invocation.return_value(None)
+        else:
+            token = values[-1]["handle_token"]
+            path = f"/org/freedesktop/portal/desktop/request/{sender[1:].replace('.', '_')}/{token}"
+            self.objects.append(
+                self.bus.register_object(
+                    path, Gio.DBusNodeInfo.new_for_xml(REQUEST_XML).interfaces[0], self._background_close
+                )
+            )
+            invocation.return_value(GLib.Variant("(o)", (path,)))
+            self.background_pending.append((sender, path))
+            if not self.background_defer:
+                self.complete_background()
+
+    def complete_background(self):
+        sender, path = self.background_pending.pop(0)
+        self.bus.emit_signal(
+            sender,
+            path,
+            "org.freedesktop.portal.Request",
+            "Response",
+            GLib.Variant(
+                "(ua{sv})",
+                (1 if self.background_denied else 0, {"background": GLib.Variant("b", not self.background_denied)}),
+            ),
+        )
+
+    def _background_close(self, *_args):
+        self.background_closed += 1
+        _args[-1].return_value(None)
 
     def _notification(self, _bus, _sender, _path, _interface, method, parameters, invocation):
         values = parameters.unpack()

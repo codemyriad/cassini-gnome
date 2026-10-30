@@ -52,12 +52,16 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
+sys.path.insert(0, str(ROOT / "tests"))
+from desktop_services import DesktopServices  # noqa: E402
+
 from cassini_viewer.main import CassiniApplication  # noqa: E402
 from cassini_viewer.meeting_store import read_metadata  # noqa: E402
 from cassini_viewer.recording_session import RecordingSession  # noqa: E402
 from cassini_viewer.transcription import TranscriptionQueue  # noqa: E402
 from cassini_viewer.whistle_client import WhistleClient  # noqa: E402
 
+services = DesktopServices()
 mode = sys.argv[1]
 faulthandler.dump_traceback_later(9)
 busy_writing = mode in ("quit-writing", "close-writing")
@@ -111,6 +115,7 @@ with tempfile.TemporaryDirectory() as tmp:
     subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
     os.environ["GSETTINGS_SCHEMA_DIR"] = str(schemas)
     app = CassiniApplication("com.gocassini.QuitTest" + mode.replace("-", ""), "test", "development")
+    app.background_recording.request = lambda callback: callback(True)
     app.transcription_enabled = mode != "stop-after-finish" and (
         not mode.startswith("keep-")
         or mode
@@ -393,7 +398,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 phase = 2
                 return True
             if mode.startswith("keep-"):
-                assert app._capture_confirmation.get_close_response() == "keep"
+                assert app._capture_confirmation.get_close_response() == "cancel"
                 if mode == "keep-finished":
                     app.stop_native()
                 else:
