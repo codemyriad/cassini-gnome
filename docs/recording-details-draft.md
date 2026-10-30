@@ -13,9 +13,12 @@ track evidence does not establish why a source changed. In particular, today's
 The meeting service/device name is shown only if it is actually recorded; a title
 mentioning Google Meet does not establish the capture method or stream identities.
 
-An already-present optional `end` event can be displayed, with the recorded reason
-and timestamp. No end events are written by this change. Older recordings show
-**Not recorded for this meeting**; live state comes from the existing controller
+An already-present optional session `end` event can be displayed. No session end
+or other protocol events are written by this change. New manual Stops save an
+app-owned end fact in `meeting.json` after audio finalization; native disk/error
+stops and Stop-and-save on exit also save the reason where known. A capture error
+takes precedence over the requested stop reason. Older recordings without an end
+fact show **Not recorded for this meeting**. Live state comes from the controller
 and Library scanner, not a `state: recording` file left behind after a crash.
 
 Health includes gap/dropped frame counters, their durations using each track's own
@@ -23,17 +26,50 @@ rate, issue kind, and an estimate of microphone DC offset from sampled initial P
 The sample is limited to one second per microphone track and 512 KiB in total.
 Offsets of at least 512 PCM16 units are called out. This is an observation, not a
 measurement of the entire meeting; current speech detection compensates, WAVs are
-unchanged. A missing counter is unknown, not a claim of zero lost audio.
+unchanged. A missing counter is unknown, not a claim of zero lost audio. Native-only rows
+whose counters/issue kind were never provided are omitted. A native system-sound
+span never claims that browser audio was missing.
 If a saved counter lacks a valid sample rate, its frame count is shown without
 inventing a duration.
 
-Writing-down model and language come from saved metadata. Speaker separation uses
-the speaker-turns sidecar; recognised names come from the Library's resolved speaker
-model. Current writers do not persist writing duration or speech-segment count,
-so those facts remain explicitly unrecorded. This draft does not add bookkeeping
-to transcription or change either recognition pipeline.
+Writing-down model and language come from saved metadata; language codes use a
+human name. During capture those rows say **After the recording**. Recognised
+names come from the Library's resolved speaker model. New successful jobs record
+wall duration, whether they resumed, the actual speech-segment count when known,
+and explicit separation facts. Old cached speaker turns alone do not establish
+those facts; older meetings keep **Not recorded for this meeting** for them.
+No recognition, audio, VAD, diarization or voiceprint input changes.
 
-Facts use a grid so GTK can negotiate the height-for-width columns without asking
+## Optional app-owned metadata (D28 Part A draft)
+
+The on-disk version stays integer `1`. The optional top-level `recordingDetails`
+object is defined in `src/cassini_viewer/meeting.schema.json`; all other root and
+nested unknown members remain preserved. This is bookkeeping in `meeting.json`,
+not an extension of `session.json` or the browser protocol.
+
+| Placement | Type and meaning |
+| --- | --- |
+| `recordingDetails.end.reason` | `user`, `disk`, `error` or `appQuit` for current writers. The schema/reader also accepts a recorded `callEnded`, `tabClosed` or `pageGone`; this change does not start writing those. |
+| `recordingDetails.end.atMs` | Optional integer: final saved audio endpoint, exactly floor(offset + frames × 1000 / rate), maximized over tracks with known offsets. It is not the button-press clock time. Unknown offsets are never assumed to be aligned or written back. |
+| `recordingDetails.writingDown.wallDurationMs` | Nonnegative integer milliseconds measured by a monotonic wall clock for the successful attempt. Starts when its FIFO job runs; excludes queue wait and earlier interrupted attempts. Includes worker setup, recognition, optional separation/voice extraction, and publication up to the final done write. |
+| `recordingDetails.writingDown.resumed` | Boolean: the attempt resumed a previously queued/running job. The displayed duration is labelled “resumed; this run” when true. An explicit retry of a failed job is a new attempt. |
+| `recordingDetails.writingDown.speechSegments` | Optional nonnegative integer from the worker's actual segment count, including zero. Omitted when not reported. |
+| `recordingDetails.writingDown.speakerSeparation.status` | `completed`, `partial`, `skipped` or `failed`. Failure keeps the completed words. |
+| `…speakerSeparation.modelId` / `modelRevision` | The pinned model id and full 64-character revision. Required for completed/partial separation; copied in full in the dialog/Copy details. |
+| `…speakerSeparation.speakersFound` | Nonnegative integer, required for completed/partial. Counts distinct native (group, voice) pairs, before names or UX16 merges. |
+| `…speakerSeparation.reused` | Boolean, required for completed/partial: all returned groups reused validated cached speaker turns. Mixed inference/cache is false. |
+| `…speakerSeparation.reason` | Required for skipped/failed; one of `modelsNotInstalled`, `modelNotReady`, `unavailable`, `notApplicable`, `tooShort`, `processingFailed`. Partial may also carry `processingFailed`. These are facts about that attempt, not today's model state. |
+
+Writing facts are published atomically with transcript status `done`, after optional
+attribution and voice extraction. The writer rereads under the metadata lock so a
+concurrent title/name/note/end edit is retained. Cancelled/failed jobs do not claim
+new successful timing facts. Stop bookkeeping runs off GTK and cannot turn saved
+audio into a failed Stop if its optional metadata write fails. Native WAVs and
+capture manifests are unchanged by the new facts, and repeated identical Stop
+bookkeeping does not increment the metadata revision.
+
+The dialog follows its content’s natural size as the asynchronous report arrives;
+short reports are shorter than long timelines. Facts use a grid so GTK can negotiate the height-for-width columns without asking
 for their width at a viewport height below their minimum. Unchanged reports (and
 unchanged read errors) do not touch the widget tree. Ordinary live updates reuse
 the existing labels and only change differing values; the body is rebuilt only
@@ -72,3 +108,8 @@ A parent process replays the child's complete stderr and fails on any Gtk warnin
 or critical between dialog-open/closed markers. Startup diagnostics outside those
 scopes are still printed. No G_DEBUG/log suppression is used. A mutation restoring
 the old facts box makes the new warning guard fail after the UI assertions pass.
+
+The GTK regression sends real Escape key events in private Xvfb for saved, fixture-live
+and generated-live recordings. Escape closes only the dialog; real recording
+continues. It compares actual content heights and retains the existing warning,
+equal-report, focus and scrolling checks.

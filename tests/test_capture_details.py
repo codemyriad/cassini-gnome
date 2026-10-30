@@ -111,7 +111,32 @@ def test_reports_are_whitelisted_and_do_not_read_private_voice_stores(meetings):
     meeting = replace(meeting, speakers=(replace(meeting.speakers[0], name="Alex", provenance="recognised"),))
     report = read_details(meeting)
     assert "PRIVATE_PRINT_SENTINEL" not in report.plain_text()
-    assert dict(report.writing)["Speaker separation"] == "Nemotron · 2 voices"
+    assert dict(report.writing)["Speaker separation"] == "Tell speakers apart was not installed"
+    # New explicit facts are authoritative; an old cached sidecar alone does
+    # not establish whether this writing attempt ran or reused separation.
+    from cassini_viewer.nemotron_model import MODEL_ID, REVISION
+
+    details = dict(
+        writingDown=dict(
+            wallDurationMs=4217,
+            resumed=True,
+            speechSegments=2,
+            speakerSeparation=dict(
+                status="completed",
+                modelId=MODEL_ID,
+                modelRevision=REVISION,
+                speakersFound=2,
+                reused=True,
+                embedding="PRIVATE_PRINT_SENTINEL",
+            ),
+        )
+    )
+    report = read_details(replace(meeting, metadata=dict(meeting.metadata, recordingDetails=details)))
+    assert dict(report.writing)["Time taken"] == "4.217 s (resumed; this run)"
+    assert dict(report.writing)["Speech segments"] == "2"
+    assert dict(report.writing)["Speaker separation"].startswith("Nemotron · 2 voices")
+    assert MODEL_ID + "@" + REVISION in report.plain_text()
+    assert "PRIVATE_PRINT_SENTINEL" not in report.plain_text()
     assert dict(report.writing)["Saved voices recognised"] == "Alex"
 
 
@@ -188,3 +213,20 @@ def test_native_unavailable_health_fields_are_not_shown(meetings):
     assert set(health) == {"Microphone offset"}
     # Actual saved counters remain useful, even for native captures.
     assert "Gaps" in dict(read_details(meetings["microphone"]).health)
+
+
+def test_new_writing_facts_do_not_get_inferred_for_older_meetings(meetings):
+    values = dict(read_details(meetings["no-events"]).writing)
+    assert values["Time taken"] == values["Speaker separation"] == UNKNOWN
+    values = dict(read_details(meetings["microphone"]).writing)
+    assert values["Time taken"] == "4.217 s" and values["Speaker separation"] == "Tell speakers apart was not installed"
+
+
+def test_manual_end_fact_works_without_a_new_session_event(meetings):
+    meeting = meetings["no-events"]
+    updated = replace(
+        meeting, metadata=dict(meeting.metadata, recordingDetails=dict(end=dict(reason="user", atMs=198000)))
+    )
+    assert read_details(updated).ended == "Stopped by you · 00:03:18"
+    unknown_time = replace(updated, metadata=dict(meeting.metadata, recordingDetails=dict(end=dict(reason="user"))))
+    assert read_details(unknown_time).ended == "Stopped by you"

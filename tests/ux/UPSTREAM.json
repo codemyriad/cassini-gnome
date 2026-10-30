@@ -67,7 +67,7 @@
     "format-vectors.json": "ee9c9b9585e76c42f09df54d7a8933e7167527fce2ea185e78b51b1059840e51",
     "states-vectors.json": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
     "LIBRARY-RULES.md": "95a0e5068a08efa521f6eed73799b715ab50b2cf6aee374570b5337a6a3bdd2a",
-    "meeting.schema.json": "90bb08b031647ec81873d4924eccc65d376fbfa963c3df25903c36983d0393d2",
+    "meeting.schema.json": "ebd82ff8639112c6145b673aa74169a706454560050a63956702173c403a1162",
     "library-vectors/verify.py": "2011c3a7fc8d6fd5c58a4f06b16e8397f081755f743725f2732e332e4d1767da",
     "library-vectors/README.md": "8e8cbbe91ab72bbf9f404a94ab3b83822f4e137cca8cbbb25afd493b78394b54",
     "library-vectors/cases.json": "80723c1274ac44d8b23d0a154daa7b6fc5e559a1fceb6491b8e52558c4a6ce2b",
@@ -135,8 +135,8 @@
       "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
     },
     "meeting.schema.json": {
-      "commit": "2c6ce190e20af1166c87d89096a25c44ef17eedf",
-      "note": "D25 explicit name clearing suppresses AUTO, including running jobs; version remains 1"
+      "commit": "08183750f7f85701d36120e4c91a096b29872b88",
+      "note": "User-requested D28 Part A draft: optional app-owned recordingDetails end/writing facts; version remains 1; no session/protocol changes. Held in draft PR96."
     },
     "LIBRARY.md": {
       "commit": "c74460bc61ea498dcf821e628190266348486345",

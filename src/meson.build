@@ -131,6 +131,7 @@ install_data(
   'cassini_viewer/recording_comfort.py',
   'cassini_viewer/recording_details.py',
   'cassini_viewer/capture_details.py',
+  'cassini_viewer/capture_facts.py',
   'cassini_viewer/capture_details_dialog.py',
   'cassini_viewer/global_shortcut.py',
   'cassini_viewer/settings_dialog.py',
