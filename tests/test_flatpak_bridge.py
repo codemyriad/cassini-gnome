@@ -344,3 +344,24 @@ def test_dedicated_broker_launch_returns_before_its_host_child_finishes(host):
     while not (host / "broker-finished").exists() and time.monotonic() < deadline:
         time.sleep(0.01)
     assert (host / "broker-finished").read_text() == "done"
+
+
+def test_host_manifest_comparison_needs_no_diffutils_and_preserves_trailing_newlines(host, monkeypatch):
+    tools = host / "coreutils-only"
+    tools.mkdir()
+    for name in ("cat", "head", "mkdir", "mktemp", "rm", "chmod", "mv"):
+        (tools / name).symlink_to(shutil.which(name))
+    monkeypatch.setenv("PATH", str(tools))
+    assert shutil.which("cmp") is None
+    path = host / "manifests/own.json"
+    content = '{"path":"a"}\n\n'
+    bridge._write(path, content, "600")
+    original = path.stat()
+    bridge._write(path, content, "600")
+    current = path.stat()
+    assert (current.st_ino, current.st_mtime_ns) == (original.st_ino, original.st_mtime_ns)
+    assert path.read_text() == content
+    changed = '{"path":"b"}\n'
+    bridge._write(path, changed, "600")
+    assert path.read_text() == changed
+    assert not list(path.parent.glob(".cassini-*"))

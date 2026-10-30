@@ -18,6 +18,7 @@ browser_binary=$(node -e 'console.log(require(process.argv[1]).chromium.executab
 browser_cache=$(dirname "$(dirname "$(dirname "$browser_binary")")")
 test -x "$browser_binary"
 docker build --label cassini.scope=browser-startup-test --build-arg BASE="${CASSINI_BROWSER_TEST_BASE:-ubuntu:26.04}" \
+  --build-arg TEST_UID="$(id -u)" --build-arg TEST_GID="$(id -g)" \
   -f "$source_root/tests/browser-setup/Dockerfile" -t "$package_test_image" "$package_context"
 docker run --rm --label cassini.scope=browser-startup-test --network=none --cap-drop=ALL \
   --security-opt=no-new-privileges --read-only --cpus=4 --memory=3g \
@@ -25,4 +26,4 @@ docker run --rm --label cassini.scope=browser-startup-test --network=none --cap-
   -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 -e PLAYWRIGHT_BROWSERS_PATH=/browsers \
   -v "$source_root:/source:ro" -v "$output:/out:rw" -v "$browser_cache:/browsers:ro" \
   -v "$node_binary:/opt/node/bin/node:ro" -w /source "$package_test_image" \
-  bash /source/tests/browser-setup/session.sh
+  bash /source/tests/browser-setup/session.sh 2>&1 | tee "$output/session.log"

@@ -2,6 +2,12 @@
 ARG BASE=ubuntu:26.04
 FROM ${BASE}
 ENV DEBIAN_FRONTEND=noninteractive
+ARG TEST_UID=1000
+ARG TEST_GID=1000
+# dbus-daemon needs a passwd entry for the runtime UID (hosted runners use
+# 1001; the Ubuntu image only provides 1000). No login or host account data.
+RUN if ! getent group "$TEST_GID" >/dev/null; then printf 'cassini-test:x:%s:\n' "$TEST_GID" >> /etc/group; fi \
+    && if ! getent passwd "$TEST_UID" >/dev/null; then printf 'cassini-test:x:%s:%s::/tmp:/bin/sh\n' "$TEST_UID" "$TEST_GID" >> /etc/passwd; fi
 COPY app.deb /tmp/app.deb
 # Verify the complete package payload, including man pages that minimal OCI
 # images otherwise omit. No dpkg verification exceptions.

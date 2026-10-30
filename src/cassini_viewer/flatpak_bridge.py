@@ -31,10 +31,16 @@ WRITE = """set -eu
 umask 077
 destination=$1
 directory=${destination%/*}
-content=$(cat)
+# A sentinel retains trailing newlines in command substitutions. cmp belongs
+# to diffutils, which is not guaranteed on a host with only coreutils.
+content=$(cat; printf '.')
+content=${content%.}
 [ ! -L "$destination" ] || exit 78
 if [ -e "$destination" ] && [ ! -f "$destination" ]; then exit 78; fi
-if [ -f "$destination" ] && printf '%s\\n' "$content" | cmp -s - "$destination"; then
+if [ -f "$destination" ]; then
+    previous=$(head -c 65537 -- "$destination"; printf '.')
+else previous='.'; fi
+if [ -f "$destination" ] && [ "${previous%.}" = "$content" ]; then
     if [ "$2" = 700 ] && [ ! -x "$destination" ]; then
         [ -w "$destination" ] || exit 77
         chmod 700 "$destination"
@@ -48,7 +54,7 @@ mkdir -p -- "$directory"
 temporary=$(mktemp "$directory/.cassini-XXXXXXXX")
 trap 'rm -f -- "$temporary"' 0
 trap 'exit 1' HUP INT TERM
-printf '%s\\n' "$content" > "$temporary"
+printf '%s' "$content" > "$temporary"
 chmod "$2" "$temporary"
 mv -fT -- "$temporary" "$destination"
 """
@@ -205,6 +211,10 @@ done"""
 
 
 def _write(path, content, mode):
+    from .companion import SetupError
+
+    if len(content.encode()) > 65536:
+        raise SetupError("unsafe")
     try:
         subprocess.run(
             host_command(["/bin/sh", "-c", WRITE, "cassini-register", str(path), mode], watch=True),
@@ -214,8 +224,6 @@ def _write(path, content, mode):
             timeout=5,
         )
     except subprocess.SubprocessError as error:
-        from .companion import SetupError
-
         if getattr(error, "returncode", None) in (77, 78):
             raise SetupError("unwritable" if error.returncode == 77 else "unsafe") from error
         raise OSError("Could not register the browser companion") from error
