@@ -4,7 +4,7 @@ import {spawn, execFileSync} from 'node:child_process';
 import {createWriteStream} from 'node:fs';
 import path from 'node:path';
 
-export async function run({context, call, join, recording, samples, power, poll, automatic, id, artifacts, evidence}) {
+export async function run({context, call, join, record, recording, samples, power, poll, automatic, id, artifacts, evidence}) {
  let producer;
  async function choose(directory, me, others) {
   await call({action: 'selection', path: directory, me, others});
@@ -20,7 +20,7 @@ export async function run({context, call, join, recording, samples, power, poll,
   // A normal hang-up keeps the tab/companion reachable. It must save the
   // meeting after the call-end grace, without ever starting system capture.
   const hungUp = await join('Hang-up with tab still open', 770, 1100, id);
-  await call({action: 'record'});
+  await record();
   const hungUpDirectory = await recording('Hang-up with tab still open');
   await hungUp.meeting.evaluate(() => meeting.pc.close());
   const savedHangup = await poll(async () => {
@@ -35,7 +35,7 @@ export async function run({context, call, join, recording, samples, power, poll,
   evidence.scenarios.push({name: 'hang-up-tab-open-stops-without-fallback', directory: hungUpDirectory});
   assert.equal(savedHangup.manifest.events.at(-1).reason, 'callEnded');
   const closed = await join('Browser-confirmed closed tab', 770, 1100, id);
-  await call({action: 'record'});
+  await record();
   const closedDirectory = await recording('Browser-confirmed closed tab');
   await closed.meeting.close();
   const savedClosed = await poll(async () => {
@@ -47,7 +47,7 @@ export async function run({context, call, join, recording, samples, power, poll,
   evidence.scenarios.push({name: 'closed-tab-stops-with-end-reason-and-no-fallback', directory: closedDirectory});
   const first = await join('Fallback browser meeting', 440, 880, id);
   await join('Unaffected browser meeting', 550, 990, id);
-  await call({action: 'record'});
+  await record();
   const directory = await recording('Fallback browser meeting');
   const otherDirectory = await recording('Unaffected browser meeting');
   const initial = await samples(directory);

@@ -77,6 +77,10 @@ async function automatic(enabled) {
  await call({action: 'auto', enabled});
  await poll(async () => (await call()).auto === enabled, 'automatic preference applied');
 }
+async function record() {
+ await poll(async () => (await call()).recordReady, 'previous capture fully saved before Record starts');
+ await call({action: 'record'});
+}
 async function recording(title) {
  const status = await poll(async () => (await call()).statuses.find(s => s.recording && s.title === title && s.path), `recording ${title}`);
  await poll(async () => (await samples(status.path)).tracks.some(t => t.kind === 'remote' && t.frames >= t.sampleRate * 2), `two seconds of ${title}`);
@@ -109,7 +113,7 @@ try {
  await join('First browser meeting', 440, 880, id);
  await join('Second browser meeting', 550, 990, id);
  const distraction = await context.newPage(); await distraction.goto(`http://127.0.0.1:${server.address().port}/?not-a-meeting`); await distraction.bringToFront();
- await call({action: 'record'}); // The real Library Record action snapshots both calls.
+ await record(); // The real Library Record action snapshots both calls.
  const directories = [await recording('First browser meeting'), await recording('Second browser meeting')];
  assert.notEqual(...directories);
  const powers = [];
@@ -210,7 +214,7 @@ try {
  evidence.scenarios.push({name: 'prejoin-receive-slots-do-not-auto-record-until-inbound-rtp', beforeJoin,
   sourceCount: candidate.sourceCount, heardBefore: candidate.heard, heardAfter: heard.heard, directory: joinedDirectory});
 
- await (await import('./source-changes.mjs')).run({context, call, join, recording, samples, power, poll, automatic, id, artifacts, evidence});
+ await (await import('./source-changes.mjs')).run({context, call, join, record, recording, samples, power, poll, automatic, id, artifacts, evidence});
  console.log('PASS real Library Record/individual Stop/global Stop; concurrent muted source capture and mic copies; windowless auto-record/native notification controls');
 } catch (error) {evidence.failure = error.stack; throw error;}
 finally {
