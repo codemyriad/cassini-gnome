@@ -29,8 +29,8 @@ APPID = initial["applicationId"]
 OBJECT = "/" + APPID.replace(".", "/")
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 log_path = OUT / "application.log"
-log = log_path.open("a", buffering=1)
-activation_log = (OUT / "activations.log").open("a", buffering=1)
+log = log_path.open("w", buffering=1)
+activation_log = (OUT / "activations.log").open("w", buffering=1)
 report = dict(initial=initial["buildId"], version=initial["version"], fixturePackagesAreTestOnly=True)
 
 
@@ -229,7 +229,9 @@ try:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    subprocess.run(["gsettings", "set", "com.gocassini.Viewer", "skip-record-first", "true"], check=True)
+    settings = Gio.Settings.new("com.gocassini.Viewer")
+    assert settings.set_boolean("skip-record-first", True)
+    Gio.Settings.sync()
     process = subprocess.Popen([str(APP)], stdout=log, stderr=log)
     until(lambda: owner() and image(initial["buildId"]) and window_ids(), "initial installed app")
     switch_on()

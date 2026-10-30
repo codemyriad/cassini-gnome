@@ -21,7 +21,7 @@ docker build --label cassini.scope=installed-build-refresh \
 # bus, synthetic audio, and generated home. Never mount a host desktop/socket.
 docker run --rm --label cassini.scope=installed-build-refresh --network=none \
  --cpus=4 --memory=3g --shm-size=128m \
- --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g \
+ --tmpfs /tmp:rw,exec,nosuid,nodev,size=2g \
  -v "$source_root:/source:ro" -v "$package:/original.deb:ro" -v "$output:/out:rw" \
  -v "$private_home:/home/qa:rw" -e CASSINI_QA_UPGRADE=1 \
  "$image" bash /source/tests/build-refresh/session.sh 2>&1 | tee "$output/session.log"
