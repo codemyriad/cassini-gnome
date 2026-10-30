@@ -519,7 +519,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.browser_add.set_label(add_text(state))
         from .companion_bundle import store_listing_public
 
-        self.browser_add_local.set_visible(bool(state and store_listing_public()))
+        self.browser_add_local.set_visible(bool(state and (store_listing_public() or state["phase"] == "connected")))
         self.browser_add_local.set_sensitive(bool(state and state["browser"]))
 
     def _show_folder(self):

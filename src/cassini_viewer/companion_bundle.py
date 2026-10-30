@@ -80,7 +80,7 @@ fi
 # a newer copy installed since the caller inspected the manifest.
 if [ -e "$destination" ]; then
     managed "$destination" || exit 78
-    actual=$(sha256sum -- "$destination/manifest.json")
+    actual=$(sha256sum < "$destination/manifest.json")
     actual=${actual%% *}
     [ "$actual" = "$expected" ] || exit 75
 else

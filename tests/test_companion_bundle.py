@@ -42,9 +42,10 @@ def native(monkeypatch):
     monkeypatch.setattr(bundle, "in_flatpak", lambda: False)
 
 
-def test_install_is_stable_idempotent_and_newer_only_without_touching_profiles(tmp_path):
+@pytest.mark.parametrize("data_name", ["Data with $ shell spaces", "Data 'quote' with \\ slash\nline"])
+def test_install_is_stable_idempotent_and_newer_only_without_touching_profiles(tmp_path, data_name):
     original = source(tmp_path)
-    target = tmp_path / "Data with $ shell spaces" / "cassini/browser-companion"
+    target = tmp_path / data_name / "cassini/browser-companion"
     profile = tmp_path / "Browser/Default/Preferences"
     profile.parent.mkdir(parents=True)
     profile.write_bytes(b"USER PREFERENCES UNTOUCHED")

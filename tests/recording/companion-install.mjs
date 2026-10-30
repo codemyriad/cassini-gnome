@@ -35,7 +35,7 @@ function launchApp(label) {
  app = spawn('/usr/bin/python3',[path.join(root,'tests/recording/companion-ui.py'),'--build',build,'--bundle',resource],
              {stdio:['pipe','pipe','pipe'],env:environment});
  app.stderr.pipe(createWriteStream(path.join(out,label+'.log')));
- createInterface({input:app.stderr}).on('line',line=>{if(/(?:Gtk|Adw|GLib-GObject)-(?:WARNING|CRITICAL)|Traceback \(most recent call last\)/.test(line))gtkDiagnostics.push(line);});
+ createInterface({input:app.stderr}).on('line',line=>{if(/(?:Gtk|Adw|Adwaita|Gdk|Gsk|GLib-GObject)-(?:WARNING|CRITICAL)|Traceback \(most recent call last\)/.test(line))gtkDiagnostics.push(line);});
  createInterface({input:app.stdout}).on('line',line=>{
   try {const value=JSON.parse(line); pending.shift()?.(value);} catch {evidence.stages.push({output:line});}
  });

@@ -358,7 +358,7 @@ class CassiniApplication(Adw.Application):
         dialog = getattr(self, "companion_setup", None)
         if dialog is None or dialog.closed:
             dialog = self.companion_setup = CompanionSetup(self)
-        dialog.present(parent or self.get_active_window())
+            dialog.present(parent or self.get_active_window())
         return dialog
 
     def on_companion_add(self, *_args, parent=None, local=None):

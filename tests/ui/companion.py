@@ -4,6 +4,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,25 @@ from unittest.mock import patch
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Use build-aux/ux-screenshot.sh")
+if os.environ.get("CASSINI_COMPANION_UI_CHILD") != "1":
+    result = subprocess.run(
+        [sys.executable, __file__],
+        env=dict(os.environ, CASSINI_COMPANION_UI_CHILD="1"),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    diagnostics = [
+        line
+        for line in result.stderr.splitlines()
+        if re.search(r"(?:Gtk|Adw|Adwaita|Gdk|Gsk|GLib-GObject)-(?:WARNING|CRITICAL)\b", line)
+    ]
+    if diagnostics:
+        raise SystemExit("GTK diagnostics during companion setup:\n" + "\n".join(diagnostics))
+    raise SystemExit(result.returncode)
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 import gi  # noqa: E402
@@ -202,6 +222,17 @@ with tempfile.TemporaryDirectory() as temporary:
         assert dialog.connect_caption.get_label() == "Connected to Chrome"
         assert settings.browser.get_title() == "Connected to Chrome"
         assert not settings.browser_setup.get_visible() and not settings.browser_add.get_visible()
+        # Existing connected users can explicitly load the app's stable copy,
+        # including when the public-store build flag is off.
+        companion_bundle.store_listing_public = lambda: False
+        dialog.render()
+        settings.render_browser()
+        assert dialog.local_add.get_visible() and settings.browser_add_local.get_visible()
+        previous_local = dialog.local_dialog
+        settings.browser_add_local.emit("clicked")
+        until(lambda: dialog.local_dialog is not previous_local and not dialog.local_dialog.closed)
+        assert dialog.local_dialog.done.get_sensitive(), "Only the real existing connection enables Done"
+        dialog.local_dialog.force_close()
         shot(window, "-connected")
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
         shot(window, "-connected-dark")

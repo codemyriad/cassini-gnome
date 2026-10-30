@@ -215,7 +215,9 @@ class CompanionSetup(Adw.Dialog):
         if self.local_error:
             state = dict(state, phase="failed", reason=self.local_error.reason)
         self.connected = state["phase"] == "connected"
-        self.local_add.set_visible(companion_bundle.store_listing_public())
+        self.local_add.set_visible(
+            companion_bundle.store_listing_public() or self.connected or bool(self.browser_names)
+        )
         self.local_add.set_sensitive(state["browser"] is not None and self.future is None)
         self.prepare_problem.set_visible(self.prepare_error)
         self.prepare_label.set_label(text("companion.local.prepareFailed") if self.prepare_error else "")
