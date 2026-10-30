@@ -21,7 +21,7 @@ class Subscription:
 
 @dataclass
 class SourceTrack:
-    analysis: Track
+    analysis: Track | None
     side: str
     level: float
     arrival_ms: float
@@ -40,7 +40,10 @@ class SpectroSource:
     def __init__(self):
         self.lock = threading.RLock()
         self.subscribers, self.tracks, self.retired = set(), {}, set()
+        self.known = {}
+        self.now_ms = 0
         self.problem = None
+        self.finished = False
         self.selected, self.next_selection_ms = set(), 0
         self.pending = {side: {} for side in ("me", "others")}
         self.quantizers = {side: Quantizer() for side in ("me", "others")}
@@ -49,7 +52,7 @@ class SpectroSource:
 
     @property
     def active(self):
-        return bool(self.subscribers) and self.problem is None
+        return bool(self.subscribers) and self.problem is None and not self.finished
 
     def observe(self, *args, **kwargs):
         try:
@@ -61,8 +64,22 @@ class SpectroSource:
                 self.problem = str(error)
                 LOG.exception("Recording sound indicator failed; saved audio is retained")
 
-    def subscribe(self):
+    def declare(self, identifier, *, kind, now_ms=0):
         with self.lock:
+            if identifier in self.retired or len(self.known) >= 64 and identifier not in self.known:
+                return
+            side = "me" if kind in ("microphone", "local") else "others"
+            self.known[identifier] = side
+            if self.active and identifier not in self.tracks:
+                self.tracks[identifier] = SourceTrack(None, side, 0, now_ms)
+                if sum(self.tracks[key].side == side for key in self.selected) < 3:
+                    self.selected.add(identifier)
+
+    def subscribe(self, now_ms=0):
+        with self.lock:
+            if not self.subscribers:
+                self.tracks = {key: SourceTrack(None, side, 0, now_ms) for key, side in self.known.items()}
+                self.next_selection_ms = now_ms
             subscription = Subscription()
             self.subscribers.add(subscription)
             return subscription
@@ -85,6 +102,7 @@ class SpectroSource:
     def retire(self, identifier):
         with self.lock:
             self.retired.add(identifier)
+            self.known.pop(identifier, None)
             self.tracks.pop(identifier, None)
             self.selected.discard(identifier)
 
@@ -104,18 +122,15 @@ class SpectroSource:
                 return
             started = time.perf_counter_ns()
             self.calls += 1
+            self.now_ms = now_ms
+            self.declare(identifier, kind=kind, now_ms=now_ms)
             track = self.tracks.get(identifier)
             if track is None:
-                if len(self.tracks) >= 64:
-                    return
-                side = "me" if kind in ("microphone", "local") else "others"
-                track = self.tracks[identifier] = SourceTrack(
-                    Track(rate, channels, start_ms=start_ms), side, level, now_ms
-                )
-                if sum(self.tracks[key].side == side for key in self.selected) < 3:
-                    self.selected.add(identifier)
+                return
             track.level, track.arrival_ms = level, now_ms
             self._choose(now_ms)
+            if track.analysis is None:
+                track.analysis = Track(rate, channels, start_ms=start_ms)
             analysis = track.analysis
             expected_ms = start_ms + analysis.total * 1000 / rate
             missing = max(0, round((offset_ms - expected_ms) * rate / 1000))
@@ -135,9 +150,23 @@ class SpectroSource:
             while len(pending) > 64:
                 del pending[min(pending)]
                 self.overflow += 1
+            self._collect(now_ms)
             self.analysis_ns += time.perf_counter_ns() - started
 
-    def _collect(self, now_ms):
+    def finish(self):
+        with self.lock:
+            self.finished = True
+            try:
+                self._collect(self.now_ms, force=True)
+            except Exception as error:
+                if self.problem is None:
+                    self.problem = str(error)
+                    LOG.exception("Could not finish the recording sound indicator")
+            finally:
+                self.tracks.clear()
+                self.selected.clear()
+
+    def _collect(self, now_ms, *, force=False):
         for side, pending in self.pending.items():
             active = [
                 track.progress
@@ -150,7 +179,7 @@ class SpectroSource:
                 continue
             # A live source's progress seals earlier slots. A missing source
             # contributes nothing; it never freezes another participant's lane.
-            cutoff = min(active) if active else max(pending)
+            cutoff = min(active) if active and not force else max(pending)
             for slot in sorted(key for key in pending if key <= cutoff):
                 rows = tuple(pending.pop(slot).values())
                 powers = [math.fsum(row[band] for row in rows) for band in range(32)]
@@ -166,7 +195,6 @@ class SpectroSource:
         with self.lock:
             if subscription not in self.subscribers:
                 return {side: [] for side in self.pending}
-            self._collect(now_ms)
             result = {}
             for side, queue in subscription.lanes.items():
                 result[side] = list(queue)

@@ -52,6 +52,8 @@ def test_two_identical_tracks_mix_as_power_before_quantisation():
     solo, mixed = SpectroSource(), SpectroSource()
     a, b = solo.subscribe(), mixed.subscribe()
     feed(solo, "one")
+    mixed.declare("one", kind="remote")
+    mixed.declare("two", kind="remote")
     feed(mixed, "one")
     feed(mixed, "two")
     raw, both = solo.drain(a, 100)["others"], mixed.drain(b, 100)["others"]
@@ -79,6 +81,8 @@ def test_each_lane_chooses_only_three_tracks_once_per_second_and_retires():
     source = SpectroSource()
     sub = source.subscribe()
     for n in range(5):
+        source.declare(str(n), kind="remote")
+    for n in range(5):
         feed(source, str(n), level=n / 10)
     assert len(source.selected) == 3
     feed(source, "4", offset=100, now=1100, level=0.9)
@@ -95,6 +99,8 @@ def test_each_lane_chooses_only_three_tracks_once_per_second_and_retires():
 def test_a_missing_remote_track_does_not_freeze_a_continuing_lane():
     source = SpectroSource()
     sub = source.subscribe()
+    source.declare("one", kind="remote")
+    source.declare("two", kind="remote")
     feed(source, "one")
     feed(source, "two")
     source.drain(sub, 100)
@@ -123,3 +129,38 @@ def test_parallel_native_inputs_keep_their_lanes_independent():
     rows = source.drain(sub, 100)
     assert rows["me"] == rows["others"] and rows["me"]
     assert math.isfinite(source.analysis_ns) and source.late == 0
+
+
+def test_gui_drain_only_reads_completed_columns_without_analysis(monkeypatch):
+    source = SpectroSource()
+    sub = source.subscribe()
+    feed(source, "one")
+    assert source.analysed > 0
+    monkeypatch.setattr(source, "_collect", lambda *_: pytest.fail("Lane analysis ran on the GTK drain path"))
+    assert source.drain(sub, 100)["others"]
+
+
+def test_declared_missing_source_does_not_hold_a_healthy_track_forever():
+    source = SpectroSource()
+    source.declare("one", kind="remote")
+    source.declare("missing", kind="remote")
+    sub = source.subscribe()
+    feed(source, "one", now=100)
+    assert not source.drain(sub, 100)["others"]
+    feed(source, "one", offset=100, now=200)
+    assert source.drain(sub, 200)["others"]
+
+
+def test_finishing_flushes_last_accepted_columns_and_prevents_more_analysis():
+    source = SpectroSource()
+    source.declare("one", kind="remote")
+    source.declare("missing", kind="remote")
+    sub = source.subscribe()
+    feed(source, "one", now=100)
+    assert not any(source.drain(sub, 100).values())
+    source.finish()
+    assert source.drain(sub, 100)["others"]
+    assert not source.tracks and not source.active
+    before = source.calls, source.analysed
+    feed(source, "one", offset=100, now=200)
+    assert (source.calls, source.analysed) == before

@@ -21,16 +21,15 @@ retired callbacks and never turns a picture failure into a recording failure.
 The tests compare saved PCM byte for byte, including an injected DSP failure.
 
 Current validation: all seven Meson checks, 1,140 source tests and Ruff pass
-(one unavailable-locale skip); 33 targeted DSP/native tests pass. All tests use
+(one unavailable-locale skip); 36 targeted DSP/native tests pass. All tests use
 a private Ubuntu 26.04 container, without a desktop or audio-device connection.
 
 ## Next implementation work
 
-- Before attaching a GTK consumer, move lane collection/quantisation out of
-  `drain()` into the producer path. Declare all known active spans before their
-  first PCM so that two simultaneous tracks mix before sealing a slot. A stalled
-  source must contribute nothing rather than freeze a continuing participant.
-  Draining on GTK must only dequeue completed columns.
+- Keep lane collection/quantisation on the producer path; GTK draining now only
+  dequeues completed columns. Native spans are declared before their first PCM,
+  so simultaneous streams mix before a slot is sealed. Apply the same declaration
+  ordering to the broker and restoration paths.
 - Add the browser/native-fallback admission taps outside their writer locks,
   preserving restore transactions and excluding readiness/rejected PCM. Retire
   ended spans. Existing 100-ms AC levels remain the selection/silence authority.

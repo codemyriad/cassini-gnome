@@ -109,6 +109,8 @@ class NativeRecorder(GObject.Object):
         self.starting = False
         try:
             self.session, (self.minutes_left, reserve) = future.result()
+            for track in self.session.manifest["tracks"]:
+                self.spectrogram.declare(track["id"], kind=track["kind"])
             if self._stop_requested:
                 self._begin_finish()
                 return False
@@ -237,6 +239,8 @@ class NativeRecorder(GObject.Object):
                 committed = True
             for identifier in retired_ids:
                 self.spectrogram.retire(identifier)
+            for kind in added:
+                self.spectrogram.declare(self._track_ids[kind], kind=kind, now_ms=at)
             for kind in removed:
                 self.levels[0 if kind == "microphone" else 1] = 0
             for branch in retired:
@@ -386,8 +390,11 @@ class NativeRecorder(GObject.Object):
         def finish():
             if pipeline is not None:
                 pipeline.set_state(Gst.State.NULL)
-            with self._lock:
-                session.finish(problem)
+            try:
+                with self._lock:
+                    session.finish(problem)
+            finally:
+                self.spectrogram.finish()
             reason = "error" if problem else self.end_reason
             if reason:
                 from .capture_facts import record_end
