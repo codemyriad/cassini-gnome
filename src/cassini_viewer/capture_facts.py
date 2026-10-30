@@ -60,12 +60,29 @@ def record_end(directory, reason, *, manifest=None):
     with LOCK:
         current = read_metadata(directory)
         details = dict(current.get("recordingDetails", {}))
-        end = dict(details.get("end", {}), **end)
+        previous = dict(details.get("end", {}))
+        previous.pop("atMs", None)  # Unknown current timing must not retain an older endpoint.
+        end = dict(previous, **end)
         if details.get("end") == end:
             return False
         details["end"] = end
         update_metadata(directory, recordingDetails=details)
     return True
+
+
+def writing_details(previous, facts):
+    """Replace this attempt's known facts while retaining future additive fields."""
+    details = dict(previous)
+    writing = dict(details.get("writingDown", {}))
+    separation = dict(writing.pop("speakerSeparation", {}))
+    for key in ("status", "modelId", "modelRevision", "speakersFound", "reused", "reason"):
+        separation.pop(key, None)
+    for key in ("wallDurationMs", "resumed", "speechSegments"):
+        writing.pop(key, None)
+    details["writingDown"] = dict(
+        writing, **dict(facts, speakerSeparation=dict(separation, **facts["speakerSeparation"]))
+    )
+    return details
 
 
 def separation_unavailable(models, tracks, origin):

@@ -361,7 +361,7 @@ class TranscriptionQueue:
         diarization = (
             self.diarization_models.request(directory, origin=meeting.origin) if self.diarization_models else None
         )
-        from .capture_facts import separation_result, separation_unavailable
+        from .capture_facts import separation_result, separation_unavailable, writing_details
 
         separation = separation_unavailable(self.diarization_models, tracks, meeting.origin)
         voices_options, voice_generation = None, None
@@ -556,7 +556,7 @@ class TranscriptionQueue:
         with LOCK:
             self._check_open()
             # End facts or other metadata may have arrived while this job ran.
-            details = dict(read_metadata(directory).get("recordingDetails", {}), writingDown=facts)
+            details = writing_details(read_metadata(directory).get("recordingDetails", {}), facts)
             update_progress_metadata(
                 directory,
                 speakers,

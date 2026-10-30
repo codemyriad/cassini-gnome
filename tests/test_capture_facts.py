@@ -32,10 +32,10 @@ def test_end_handles_fractional_unknown_timing_and_actual_error(tmp_path):
     manifest = dict(session.manifest, tracks=[dict(frames=1, sampleRate=8000, startOffsetMs=0.9)])
     record_end(session.directory, "user", manifest=manifest)
     assert read_metadata(session.directory)["recordingDetails"]["end"]["atMs"] == 1
-    second = capture(tmp_path)
-    manifest = dict(second.manifest, tracks=[dict(frames=1, sampleRate=8000, startOffsetMs=None)], problemKind="io")
-    record_end(second.directory, "user", manifest=manifest)
-    assert read_metadata(second.directory)["recordingDetails"]["end"] == dict(reason="error")
+    update_metadata(session.directory, recordingDetails=dict(end=dict(reason="user", atMs=1, futureEnd=True)))
+    manifest = dict(session.manifest, tracks=[dict(frames=1, sampleRate=8000, startOffsetMs=None)], problemKind="io")
+    record_end(session.directory, "user", manifest=manifest)
+    assert read_metadata(session.directory)["recordingDetails"]["end"] == dict(reason="error", futureEnd=True)
 
 
 def test_live_capture_does_not_claim_stop_completed(tmp_path):
@@ -55,7 +55,26 @@ def test_successful_job_records_this_attempt_wall_time_and_skip_reason(tmp_path,
     write_metadata(
         session.directory, transcript=dict(status=previous, reference=REFERENCE if previous != "none" else None)
     )
-    update_metadata(session.directory, recordingDetails=dict(futureDetail=True))
+    update_metadata(
+        session.directory,
+        recordingDetails=dict(
+            futureDetail=True,
+            writingDown=dict(
+                wallDurationMs=9000,
+                resumed=False,
+                speechSegments=99,
+                futureWriting={"keep": True},
+                speakerSeparation=dict(
+                    status="completed",
+                    modelId="old-model",
+                    modelRevision="a" * 64,
+                    speakersFound=42,
+                    reused=True,
+                    futureSeparation={"keep": True},
+                ),
+            ),
+        ),
+    )
     before = {p.name: p.read_bytes() for p in session.directory.iterdir() if p.name != "meeting.json"}
     done = []
     clock = iter((10.0, 14.25))
@@ -107,7 +126,8 @@ def test_successful_job_records_this_attempt_wall_time_and_skip_reason(tmp_path,
             wallDurationMs=4250,
             resumed=resumed,
             speechSegments=3,
-            speakerSeparation=dict(status="skipped", reason="modelsNotInstalled"),
+            speakerSeparation=dict(status="skipped", reason="modelsNotInstalled", futureSeparation={"keep": True}),
+            futureWriting={"keep": True},
         )
         assert valid(metadata)
         assert all((session.directory / name).read_bytes() == value for name, value in before.items())
