@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 OLD = "com.gocassini.Viewer"
@@ -22,14 +23,11 @@ assert (
 )
 
 
-def run(*args):
-    return subprocess.check_output(args, text=True, timeout=180)
+def run(*args, **kwargs):
+    return subprocess.check_output(args, text=True, timeout=180, **kwargs)
 
 
-run("flatpak", "build-import-bundle", str(REPO), str(BUNDLE))
-remote = "cassini-talk-upgrade-test"
-run("flatpak", "remote-add", "--user", "--if-not-exists", "--no-gpg-verify", remote, REPO.resolve().as_uri())
-run("flatpak", "install", "--user", "--assumeyes", "--noninteractive", "--no-deps", remote, OLD)
+run("flatpak", "install", "--user", "--assumeyes", "--noninteractive", "--no-deps", "--bundle", str(BUNDLE))
 
 # The legacy app writes its own keyfile and private data in its real sandbox.
 seed = r"""
@@ -53,8 +51,37 @@ for name in ("Library/upgrade-sentinel.bin", "models/upgrade-sentinel.bin", "voi
 print(json.dumps(dict(files=files, primary=str(data / "Library"))))
 """
 before = json.loads(run("flatpak", "run", "--no-documents-portal", "--command=python3", OLD, "-c", seed))
-subprocess.run(["sh", str(ROOT / "build-aux/flatpak/rename-ref.sh"), str(REPO)], check=True)
-run("flatpak", "update", "--user", "--assumeyes", "--noninteractive", "--no-deps", OLD)
+with tempfile.TemporaryDirectory(prefix="cassini-signing-test-", dir=REPORT.parent) as temporary:
+    work = Path(temporary)
+    homedir = work / "keyring"
+    homedir.mkdir(mode=0o700)
+    run("gpg", "--batch", "--homedir", str(homedir), "--pinentry-mode", "loopback", "--passphrase", "",
+        "--quick-generate-key", "Cassini temporary signing test", "rsa2048", "sign", "1d")
+    listing = run("gpg", "--batch", "--homedir", str(homedir), "--with-colons", "--list-keys")
+    key = next(line.split(":")[9] for line in listing.splitlines() if line.startswith("fpr:"))
+    output = work / "artifacts"
+    run(sys.executable, str(ROOT / "build-aux/flatpak/prepare-release.py"), str(REPO), str(output),
+        "--key", key, "--gpg-homedir", str(homedir), "--legacy-bundle", str(BUNDLE))
+    # The test uses a local URL but the production artifact must name D45.1's
+    # canonical origin. Signature verification is enabled, never bypassed.
+    repo_file = output / "cassini-talk.flatpakrepo"
+    description = repo_file.read_text()
+    canonical = "https://cassini.talk/download/linux/flatpak/"
+    assert "Url=" + canonical + "\n" in description and "GPGKey=" in description
+    local = work / "local.flatpakrepo"
+    local.write_text(description.replace("Url=" + canonical, "Url=" + REPO.resolve().as_uri()))
+    remote = "cassini-talk-upgrade-test"
+    run("flatpak", "remote-add", "--user", "--if-not-exists", "--from", remote, str(local))
+    run("flatpak", "install", "--user", "--assumeyes", "--noninteractive", "--no-deps", "--reinstall", remote, OLD)
+    # Installing a bundle in a separate private installation must configure
+    # its canonical update origin even with no network or runtime downloads.
+    bundle_env = dict(os.environ, FLATPAK_USER_DIR=str(work / "bundle-installation"))
+    run("flatpak", "install", "--user", "--assumeyes", "--noninteractive", "--no-deps", "--bundle",
+        str(output / "cassini-talk.flatpak"), env=bundle_env)
+    origin = run("flatpak", "info", "--user", "--show-origin", NEW, env=bundle_env).strip()
+    remotes = run("flatpak", "remotes", "--user", "--columns=name,url", env=bundle_env)
+    assert any(line.split() == [origin, canonical] for line in remotes.splitlines()), remotes
+
 apps = run("flatpak", "list", "--user", "--app", "--columns=application").splitlines()
 assert NEW in apps and OLD not in apps, apps
 
@@ -80,5 +107,6 @@ assert before["files"] == after["files"] and before["primary"] == after["primary
 old_dir = Path.home() / ".var/app" / OLD
 new_dir = Path.home() / ".var/app" / NEW
 assert old_dir.is_symlink() and old_dir.resolve() == new_dir.resolve()
-REPORT.write_text(json.dumps(dict(before=before, after=after, flatpakManagedRebase=True), indent=2) + "\n")
+REPORT.write_text(json.dumps(dict(before=before, after=after, flatpakManagedRebase=True,
+    signedRepository=True, bundleOrigin=canonical), indent=2) + "\n")
 print("Flatpak's managed rebase retained the old data and absolute Library path")

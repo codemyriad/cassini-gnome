@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build the Flatpak and write a single-file bundle to ./dist.
-#   build-aux/flatpak/build.sh [--devel] [--install] [--smoke]
+#   build-aux/flatpak/build.sh [--devel] [--install] [--smoke] [--release ...]
 #     --devel    build io.codemyriad.CassiniTalk.Devel -> dist/cassini-talk-devel.flatpak
 #     --install  install the bundle for the current user afterwards
 #     --smoke    install it, then smoke-test it offline (build-aux/flatpak/smoke.sh)
@@ -14,15 +14,28 @@ APP_ID=io.codemyriad.CassiniTalk
 BUNDLE=cassini-talk
 INSTALL=
 SMOKE=
+RELEASE=
+SIGNING_KEY=
+SIGNING_HOME=
+LEGACY_BUNDLE=
 for arg in "$@"; do
   case $arg in
     --devel) APP_ID=io.codemyriad.CassiniTalk.Devel; BUNDLE=cassini-talk-devel ;;
     --install) INSTALL=1 ;;
     --smoke) SMOKE=1 ;;
+    --release) RELEASE=1 ;;
+    --gpg-key=*) SIGNING_KEY=${arg#*=} ;;
+    --gpg-homedir=*) SIGNING_HOME=${arg#*=} ;;
+    --legacy-bundle=*) LEGACY_BUNDLE=${arg#*=} ;;
     -h|--help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
+if [ -n "$RELEASE" ]; then
+  [ "$APP_ID" = io.codemyriad.CassiniTalk ] && [ -n "$SIGNING_KEY" ] && [ -n "$SIGNING_HOME" ] || {
+    echo '--release requires the stable profile, --gpg-key and --gpg-homedir' >&2; exit 2;
+  }
+fi
 MANIFEST=build-aux/flatpak/$APP_ID.json
 
 if ! command -v flatpak >/dev/null 2>&1; then
@@ -57,9 +70,16 @@ flatpak remote-add --user --if-not-exists flathub \
   --state-dir=.flatpak-builder --repo=repo _flatpak "$MANIFEST"
 
 mkdir -p dist
-flatpak build-bundle \
-  --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
-  repo "dist/$BUNDLE.flatpak" "$APP_ID"
+if [ -n "$RELEASE" ]; then
+  set -- python3 build-aux/flatpak/prepare-release.py repo dist \
+    --key "$SIGNING_KEY" --gpg-homedir "$SIGNING_HOME"
+  if [ -n "$LEGACY_BUNDLE" ]; then set -- "$@" --legacy-bundle "$LEGACY_BUNDLE"; fi
+  "$@"
+else
+  flatpak build-bundle \
+    --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+    repo "dist/$BUNDLE.flatpak" "$APP_ID"
+fi
 ls -l "dist/$BUNDLE.flatpak"
 
 if [ -n "$SMOKE" ]; then

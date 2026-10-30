@@ -42,7 +42,7 @@ if appstreamcli.found()
     args: ['validate', '--no-net', '--explain', appstream_file])
 endif
 
-install_data('io.codemyriad.CassiniTalk.gschema.xml',
+install_data('io.codemyriad.CassiniTalk.gschema.xml', 'com.gocassini.Viewer.gschema.xml',
   install_dir: get_option('datadir') / 'glib-2.0' / 'schemas',
 )
 

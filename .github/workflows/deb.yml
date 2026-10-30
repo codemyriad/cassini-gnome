@@ -26,6 +26,8 @@ jobs:
         base: ["ubuntu:26.04", "debian:testing"]
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - run: echo "CASSINI_PARAKEET_TEST_CACHE=$RUNNER_TEMP/parakeet-models" >> "$GITHUB_ENV"
       # The pinned writing-down artifacts (whistle/pins.json), downloaded once
       # per pin set; the package builds read them and never download.

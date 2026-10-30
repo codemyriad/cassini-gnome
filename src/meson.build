@@ -58,6 +58,7 @@ viewer_sources = files(
   'cassini_viewer/colors.py',
   'cassini_viewer/main.py',
   'cassini_viewer/identity.py',
+  'cassini_viewer/legacy_instance.py',
   'cassini_viewer/main_loop_watchdog.py',
   'cassini_viewer/installed_build.py',
   'cassini_viewer/build_refresh.py',

@@ -18,6 +18,8 @@ def preferences(tmp_path):
     schemas.mkdir()
     source = Path(__file__).parents[1] / "data/io.codemyriad.CassiniTalk.gschema.xml"
     (schemas / source.name).write_bytes(source.read_bytes())
+    legacy = source.with_name("com.gocassini.Viewer.gschema.xml")
+    (schemas / legacy.name).write_bytes(legacy.read_bytes())
     subprocess.run(["glib-compile-schemas", "--strict", str(schemas)], check=True)
     schema_source = Gio.SettingsSchemaSource.new_from_directory(str(schemas), None, False)
     backend = Gio.keyfile_settings_backend_new(str(tmp_path / "preferences.ini"), "/", None)

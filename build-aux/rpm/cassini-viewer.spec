@@ -217,6 +217,7 @@ python3 sherpa/fetch.py --cache .sherpa-cache --verify %{buildroot}%{_libdir}/ca
 %{_datadir}/applications/io.codemyriad.CassiniTalk.desktop
 %{_datadir}/metainfo/io.codemyriad.CassiniTalk.metainfo.xml
 %{_datadir}/glib-2.0/schemas/io.codemyriad.CassiniTalk.gschema.xml
+%{_datadir}/glib-2.0/schemas/com.gocassini.Viewer.gschema.xml
 %{_datadir}/icons/hicolor/scalable/apps/io.codemyriad.CassiniTalk.svg
 %{_datadir}/icons/hicolor/symbolic/apps/io.codemyriad.CassiniTalk-symbolic.svg
 %dir %{_datadir}/dbus-1
