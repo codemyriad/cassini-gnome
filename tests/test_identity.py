@@ -53,6 +53,16 @@ def test_migration_keeps_values_already_saved_under_the_new_id_and_never_replays
     assert new.get_boolean(MIGRATED)
 
 
+def test_preferences_changed_after_migration_are_immediately_persisted(preferences):
+    source, backend, old, new = preferences
+    old.set_int("window-width", 935)
+    migrated = settings(source=source, backend=backend)
+    migrated.set_boolean("follow-along", False)
+    Gio.Settings.sync()
+    assert not new.get_boolean("follow-along"), "Other Settings instances must see later edits"
+    assert not settings(source=source, backend=backend).get_boolean("follow-along")
+
+
 def test_legacy_native_menus_keep_actions_and_use_the_catalog_product_name():
     from cassini_viewer.identity import product_menu
 

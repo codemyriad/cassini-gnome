@@ -24,21 +24,24 @@ def settings(*, source=None, backend=None):
     if previous is None:
         return current  # Retry when compatibility schemas become available.
     old = Gio.Settings.new_full(previous, backend, None)
-    current.delay()
+    # delay() is permanent for an instance, even after apply(). Keep the
+    # application's normal settings object outside the migration transaction.
+    migration = Gio.Settings.new_full(schema, backend, None)
+    migration.delay()
     for key in sorted(set(schema.list_keys()) & set(previous.list_keys()) - RESET):
         value = old.get_user_value(key)
         if value is None or current.get_user_value(key) is not None or not current.is_writable(key):
             continue
         if value.get_type_string() != schema.get_key(key).get_value_type().dup_string():
             continue
-        if not current.set_value(key, value):
-            current.revert()
+        if not migration.set_value(key, value):
+            migration.revert()
             LOG.warning("Could not migrate Cassini settings; the previous values are kept")
             return current
-    if not current.set_boolean(MIGRATED, True):
-        current.revert()
+    if not migration.set_boolean(MIGRATED, True):
+        migration.revert()
         return current
-    current.apply()
+    migration.apply()
     Gio.Settings.sync()
     return current
 

@@ -42,10 +42,10 @@ async function poll(check, label, milliseconds = 20000) {
  throw new Error(label + (last ? ': ' + last.message : ''));
 }
 try {
- assert.equal((await execute('dpkg', ['--verify', 'cassini-viewer'])).stdout.trim(), '', 'installed package was modified');
- report.package = (await execute('dpkg-query', ['-W', '-f=${Version}', 'cassini-viewer'])).stdout;
+ assert.equal((await execute('dpkg', ['--verify', 'cassini-talk'])).stdout.trim(), '', 'installed package was modified');
+ report.package = (await execute('dpkg-query', ['-W', '-f=${Version}', 'cassini-talk'])).stdout;
  await assert.rejects(stat(profile), {code: 'ENOENT'});
- app = spawn('/usr/bin/cassini-viewer', [], {env, stdio: ['ignore', log, log]});
+ app = spawn('/usr/bin/cassini-talk', [], {env, stdio: ['ignore', log, log]});
  app.on('error', error => {appError = error;});
  await poll(async () => (await Promise.all(files.map(file => stat(file)))).length === 2, 'automatic host registration');
  const manifests = await Promise.all(files.map(async file => JSON.parse(await readFile(file, 'utf8'))));
