@@ -81,11 +81,19 @@ def test_end_may_follow_pcm_at_the_legal_24_hour_input_offset(tmp_path):
     assert session.manifest["events"][-1]["atMs"] == 86400001
 
 
-def test_invalid_native_stop_reason_is_rejected_before_finalizing(tmp_path):
+@pytest.mark.parametrize("invalid", ["guess", None, [], {}, True])
+def test_invalid_native_stop_reason_is_rejected_before_finalizing(tmp_path, invalid):
     host = BrowserHost(tmp_path)
     host.handle(dict(type="start"))
     with pytest.raises(ProtocolError, match="reason"):
-        host.handle(dict(type="stop", reason="guess"))
+        host.handle(dict(type="stop", reason=invalid))
     assert not host.session.finished and not host.stopped
     host.handle(dict(type="stop", reason="appQuit"))
     assert host.session.manifest["events"][-1]["reason"] == "appQuit"
+
+
+def test_native_stop_without_reason_defaults_to_user_despite_prior_warning(tmp_path):
+    host = BrowserHost(tmp_path)
+    host.handle(dict(type="start"))
+    host.handle(dict(type="stop", problem="Earlier input gap warning"))
+    assert host.session.manifest["events"][-1]["reason"] == "user"

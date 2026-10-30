@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from .capture_sources import BrowserStreams, change_time, selected_pcm
-from .recording_session import BrowserHost, ProtocolError
+from .recording_session import BrowserHost, ProtocolError, stop_reason
 from .session_events import source_state
 
 
@@ -332,10 +332,11 @@ class BrowserCapture:
 
     def handle(self, message):
         if message.get("type") == "stop":
+            reason = stop_reason(message)
             if not self.stop_requested.is_set() and (message.get("failureReason") == "lost" or self.browser_lost):
                 self.fallback()
                 return dict(type="stopped", path=str(self.directory))
-            return self.stop(message.get("problem"), reason=message.get("reason"))
+            return self.stop(message.get("problem"), reason=reason)
         with self.lock:
             if self.finished or self.stopping:
                 raise ProtocolError("state", "No active recording")
