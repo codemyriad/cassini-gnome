@@ -1,8 +1,9 @@
-# Recording details — D28 Part A design draft
+# Recording details — D28 Part A
 
-This draft adds **Recording details…** to the Meeting header menu and a **Details**
-link to the Recording page. Both open the same live dialog. English is provisional
-until Silvio approves the design and the coordinator publishes `details.*` copy.
+**Recording details…** in the Meeting header menu and **Details** on the Recording
+page open the same live dialog. Silvio approved this design. All app-owned display
+copy comes from the coordinator’s shared `details.*` catalog; captured names, paths
+and technical identifiers stay as recorded data.
 
 The timeline uses saved track offsets and lengths, split at source/selection events.
 Browser stream counts count audio sources, never participants. Unknown offsets
@@ -130,4 +131,4 @@ Refreshed against main `5f48fbb`: all seven Meson checks pass (1123 source tests
 one unavailable-locale skip). The real dialog test passes seven warning-guarded
 open scopes, including many spans, live capture, unchanged reports and preserved
 focus/scroll. Rename menus/keys and the D37 journey test pass alongside it.
-The review PNGs remain 1120×720. This remains a design draft for Silvio.
+The review PNGs remain 1120×720. Silvio approved the design; the coordinator owns the final merge.

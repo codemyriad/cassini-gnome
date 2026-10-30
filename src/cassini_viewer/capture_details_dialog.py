@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""D28 Part A design draft. Provisional English; no capture actions or writes."""
+"""D28 Part A: recording details, with bounded reads and stable live widgets."""
 
 import threading
 import weakref
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
-from .capture_details import UNKNOWN, read_details
+from .capture_details import UNKNOWN, read_details, side_title
+from .strings import text
 
 
 def column(spacing=6, **kwargs):
@@ -21,7 +22,7 @@ def label(value, *classes, **kwargs):
 
 class RecordingDetailsDialog(Adw.Dialog):
     def __init__(self, window, meeting):
-        super().__init__(title="Recording details", content_width=900, follows_content_size=True)
+        super().__init__(title=text("details.title"), content_width=900, follows_content_size=True)
         self.window, self.meeting = window, meeting
         self.external = window._external_meeting
         self.closed = self.busy = False
@@ -32,26 +33,26 @@ class RecordingDetailsDialog(Adw.Dialog):
         toolbar = Adw.ToolbarView()
         self.set_child(toolbar)
         header = Adw.HeaderBar()
-        self.heading = Adw.WindowTitle(title="Recording details", subtitle=meeting.title)
+        self.heading = Adw.WindowTitle(title=text("details.title"), subtitle=meeting.title)
         header.set_title_widget(self.heading)
         toolbar.add_top_bar(header)
         self.body = column(18, margin_start=24, margin_end=24, margin_top=12, margin_bottom=18)
-        self.body.append(label("Reading recording details…", "dim-label"))
+        self.body.append(label(text("details.reading"), "dim-label"))
         self.scroller = Gtk.ScrolledWindow(
             child=self.body, hscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_height=True
         )
         toolbar.set_content(self.scroller)
         footer = column(8, margin_start=24, margin_end=24, margin_top=12, margin_bottom=18)
-        footer.append(label("Files", "heading"))
+        footer.append(label(text("details.files.title"), "heading"))
         row = Gtk.Box(spacing=10)
         self.folder = Gtk.Label(xalign=0, selectable=True, hexpand=True, ellipsize=Pango.EllipsizeMode.MIDDLE)
         self.folder.add_css_class("dim-label")
         self.folder.set_max_width_chars(45)
         row.append(self.folder)
-        self.open_button = Gtk.Button(label="Open folder", sensitive=False)
+        self.open_button = Gtk.Button(label=text("details.openFolder"), sensitive=False)
         self.open_button.connect("clicked", self._open)
         row.append(self.open_button)
-        self.copy_button = Gtk.Button(label="Copy details", sensitive=False, css_classes=["suggested-action"])
+        self.copy_button = Gtk.Button(label=text("details.copy"), sensitive=False, css_classes=["suggested-action"])
         self.copy_button.connect("clicked", self._copy)
         self.set_default_widget(self.copy_button)
         row.append(self.copy_button)
@@ -86,7 +87,7 @@ class RecordingDetailsDialog(Adw.Dialog):
                 result = read_details(meeting)
                 error = None
             except Exception:
-                result, error = None, "Couldn’t read recording details. Close this dialog and try again."
+                result, error = None, text("details.readFailed")
             dialog = reference()
             if dialog is not None and not dialog.closed:
                 GLib.idle_add(dialog._loaded, meeting.directory, result, error)
@@ -159,7 +160,7 @@ class RecordingDetailsDialog(Adw.Dialog):
                 widget.set_visible(bool(value))
             if key[0] in ("ended", "health", "writing"):
                 (widget.add_css_class if value == UNKNOWN else widget.remove_css_class)("dim-label")
-        subtitle = report.title + (" · Live" if report.live else "")
+        subtitle = text("details.liveSubtitle", title=report.title) if report.live else report.title
         if self.heading.get_subtitle() != subtitle:
             self.heading.set_subtitle(subtitle)
         if self.folder.get_label() != report.folder:
@@ -175,17 +176,17 @@ class RecordingDetailsDialog(Adw.Dialog):
             self.body.remove(self.body.get_first_child())
         captured = column(10)
         caption = Gtk.Box(spacing=12)
-        caption.append(label("How it was captured", "title-3", hexpand=True))
-        self.live_hint = label("Updates while recording", "small", "dim-label")
+        caption.append(label(text("details.capture.title"), "title-3", hexpand=True))
+        self.live_hint = label(text("details.updates"), "small", "dim-label")
         caption.append(self.live_hint)
         captured.append(caption)
         sides = Gtk.Box(spacing=14, homogeneous=True)
         for side in ("Me", "The others"):
             panel = column(4, css_classes=["details-side"], valign=Gtk.Align.START)
-            panel.append(label(side, "heading"))
+            panel.append(label(side_title(side), "heading"))
             spans = [span for span in report.spans if span.side == side]
             if not spans:
-                panel.append(label("No source details recorded", "dim-label"))
+                panel.append(label(text("details.capture.empty"), "dim-label"))
             for index, span in enumerate(spans[:20]):
                 row = Gtk.Box(spacing=10, css_classes=["details-span"])
                 row.append(Gtk.Box(width_request=3, css_classes=["details-marker"], margin_top=4, margin_bottom=4))
@@ -207,7 +208,7 @@ class RecordingDetailsDialog(Adw.Dialog):
                 row.append(content)
                 panel.append(row)
             if len(spans) > 20:
-                panel.append(label("More spans are included in Copy details.", "small", "dim-label"))
+                panel.append(label(text("details.capture.more"), "small", "dim-label"))
             sides.append(panel)
         captured.append(sides)
         self.body.append(captured)
@@ -218,12 +219,12 @@ class RecordingDetailsDialog(Adw.Dialog):
         facts = Gtk.Grid(column_spacing=24, column_homogeneous=True)
         left = column(14)
         ended = column(4)
-        ended.append(label("How it ended", "heading"))
+        ended.append(label(text("details.end.title"), "heading"))
         ended.append(self._bound(("ended",), report.ended, "body"))
         left.append(ended)
-        left.append(self._facts("Audio health", report.health, "health"))
+        left.append(self._facts(text("details.health.title"), report.health, "health"))
         facts.attach(left, 0, 0, 1, 1)
-        facts.attach(self._facts("Writing down", report.writing, "writing"), 1, 0, 1, 1)
+        facts.attach(self._facts(text("details.writing.title"), report.writing, "writing"), 1, 0, 1, 1)
         self.body.append(facts)
 
     def _facts(self, title, rows, group):
@@ -242,7 +243,7 @@ class RecordingDetailsDialog(Adw.Dialog):
     def _copy(self, *_):
         if self.report:
             self.get_display().get_clipboard().set(self.report.plain_text())
-            self.window.toast("Recording details copied")
+            self.window.toast(text("details.copied"))
 
     def _open(self, *_):
         if self.report:
@@ -254,4 +255,4 @@ class RecordingDetailsDialog(Adw.Dialog):
             launcher.launch_finish(result)
         except GLib.Error:
             if not self.closed:
-                self.window.toast("Couldn’t open the recording folder")
+                self.window.toast(text("details.openFailed"))

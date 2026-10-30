@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """D28 Part A draft: bounded, read-only facts; no capture policy or event writes.
 
-English is provisional pending design approval and the shared details.* catalog.
 The report is a whitelist projection, never a dump of metadata or voice stores.
 """
 
@@ -17,57 +16,62 @@ from . import ux_formats as fmt
 from .library_files import regular
 from .recording_session import strict_json
 from .session_events import read_events
+from .strings import text
 
-UNKNOWN = "Not recorded for this meeting"
+UNKNOWN = text("details.unknown")
 BROWSER_SOURCES = {"chromium", "chrome", "firefox", "browser", "browser-host", "safari"}
 LANGUAGES = {
-    "bg": "Bulgarian",
-    "cs": "Czech",
-    "da": "Danish",
-    "de": "German",
-    "el": "Greek",
-    "en": "English",
-    "es": "Spanish",
-    "et": "Estonian",
-    "fi": "Finnish",
-    "fr": "French",
-    "hr": "Croatian",
-    "hu": "Hungarian",
-    "it": "Italian",
-    "lt": "Lithuanian",
-    "lv": "Latvian",
-    "mt": "Maltese",
-    "nb": "Norwegian Bokmål",
-    "nl": "Dutch",
-    "nn": "Norwegian Nynorsk",
-    "no": "Norwegian",
-    "pl": "Polish",
-    "pt": "Portuguese",
-    "ro": "Romanian",
-    "ru": "Russian",
-    "sk": "Slovak",
-    "sl": "Slovenian",
-    "sv": "Swedish",
-    "uk": "Ukrainian",
+    "bg": text("details.language.bg"),
+    "cs": text("details.language.cs"),
+    "da": text("details.language.da"),
+    "de": text("details.language.de"),
+    "el": text("details.language.el"),
+    "en": text("details.language.en"),
+    "es": text("details.language.es"),
+    "et": text("details.language.et"),
+    "fi": text("details.language.fi"),
+    "fr": text("details.language.fr"),
+    "hr": text("details.language.hr"),
+    "hu": text("details.language.hu"),
+    "it": text("details.language.it"),
+    "lt": text("details.language.lt"),
+    "lv": text("details.language.lv"),
+    "mt": text("details.language.mt"),
+    "nb": text("details.language.nb"),
+    "nl": text("details.language.nl"),
+    "nn": text("details.language.nn"),
+    "no": text("details.language.no"),
+    "pl": text("details.language.pl"),
+    "pt": text("details.language.pt"),
+    "ro": text("details.language.ro"),
+    "ru": text("details.language.ru"),
+    "sk": text("details.language.sk"),
+    "sl": text("details.language.sl"),
+    "sv": text("details.language.sv"),
+    "uk": text("details.language.uk"),
 }
 JSON_LIMIT = 1024 * 1024
 MIC_BUDGET = 512 * 1024
 REASONS = {
-    "start": "Selected when recording began",
-    "missing": "Browser audio was unavailable",
-    "lost": "The browser audio connection was lost",
-    "user": "You changed what was recorded",
-    "restored": "Browser audio returned",
+    "start": text("details.reason.start"),
+    "missing": text("details.reason.missing"),
+    "lost": text("details.reason.lost"),
+    "user": text("details.reason.user"),
+    "restored": text("details.reason.restored"),
 }
 ENDS = {
-    "user": "Stopped by you",
-    "callEnded": "The call ended",
-    "tabClosed": "The tab was closed",
-    "pageGone": "The meeting page did not come back",
-    "disk": "Recording stopped because space ran low",
-    "error": "Recording stopped because of an error",
-    "appQuit": "Cassini was quit",
+    "user": text("details.end.user"),
+    "callEnded": text("details.end.callEnded"),
+    "tabClosed": text("details.end.tabClosed"),
+    "pageGone": text("details.end.pageGone"),
+    "disk": text("details.end.disk"),
+    "error": text("details.end.error"),
+    "appQuit": text("details.end.appQuit"),
 }
+
+
+def side_title(side):
+    return text("details.side.me" if side == "Me" else "details.side.others")
 
 
 def clean(value, limit=180):
@@ -90,7 +94,7 @@ class Span:
     @property
     def time(self):
         if self.start_ms is None or self.end_ms is None:
-            return "Timing not recorded"
+            return text("details.timingUnknown")
         return f"{fmt.position(self.start_ms)}–{fmt.position(self.end_ms)}"
 
 
@@ -106,18 +110,18 @@ class Report:
     notes: tuple[str, ...] = ()
 
     def plain_text(self):
-        lines = ["Cassini recording details", self.title, "", "How it was captured"]
+        lines = [text("details.copy.heading"), self.title, "", text("details.capture.title")]
         for side in ("Me", "The others"):
-            lines.append(side)
+            lines.append(side_title(side))
             rows = [s for s in self.spans if s.side == side]
             lines.extend(f"  {s.source} · {s.method} · {s.time}" + (f" · {s.reason}" if s.reason else "") for s in rows)
             if not rows:
-                lines.append("  No saved audio for this side")
-        lines.extend(["", "How it ended", self.ended, "", "Audio health"])
+                lines.append("  " + text("details.copy.sideEmpty"))
+        lines.extend(["", text("details.end.title"), self.ended, "", text("details.health.title")])
         lines.extend(f"{key}: {value}" for key, value in self.health)
-        lines.extend(["", "Writing down"])
+        lines.extend(["", text("details.writing.title")])
         lines.extend(f"{key}: {value}" for key, value in self.writing)
-        lines.extend(["", "Files", self.folder])
+        lines.extend(["", text("details.files.title"), self.folder])
         if self.notes:
             lines.extend(["", *self.notes])
         return "\n".join(lines)
@@ -134,37 +138,39 @@ def _json(fd, filename, notes, *, optional=False):
             return value
     except FileNotFoundError:
         if not optional:
-            notes.append(f"{filename} is unavailable; some details are not recorded.")
+            notes.append(text("details.metadata.missing", filename=filename))
     except (OSError, ValueError):
-        notes.append(f"{filename} could not be read safely; some details are unavailable.")
+        notes.append(text("details.metadata.unsafe", filename=filename))
     return {}
 
 
 def _method(tracks, session, capture_source):
     kinds = {t.kind for t in tracks}
     if kinds <= {"microphone", "local"}:
-        return "Microphone", ", ".join(
+        return text("details.source.microphone"), ", ".join(
             sorted(
                 {clean(session.get(t.id, {}).get("label")) for t in tracks}
                 - {"", "Me", "Microphone", "microphone", "Local audio"}
             )
-        ) or "Microphone input"
+        ) or text("details.method.microphone")
     sources = []
     browser_media = capture_source in BROWSER_SOURCES
     browser = [t for t in tracks if t.kind in ("remote", "tab") or t.kind == "media" and browser_media]
     if browser:
         count = len({t.source_track_id or t.id for t in browser})
-        sources.append("Browser audio")
-        method = f"{count} audio stream" + ("s" if count != 1 else "")
+        sources.append(text("details.source.browser"))
+        method = text("details.method.stream.one" if count == 1 else "details.method.stream.other", n=count)
     else:
         method = ""
     if "system" in kinds:
-        sources.append("Computer sound")
+        sources.append(text("details.source.system"))
     if "application" in kinds:
-        sources.append("Application audio")
+        sources.append(text("details.source.application"))
     if not sources:
-        sources.append("Audio source not recorded")
-    return " + ".join(sources), method or "Saved audio track" + ("s" if len(tracks) != 1 else "")
+        sources.append(text("details.source.unknown"))
+    return " + ".join(sources), method or text(
+        "details.method.track.one" if len(tracks) == 1 else "details.method.track.other"
+    )
 
 
 def _language(fd, notes):
@@ -206,7 +212,7 @@ def _language(fd, notes):
     except FileNotFoundError:
         return ""
     except (OSError, ValueError, RecursionError):
-        notes.append("The saved writing-down language could not be read from its metadata header.")
+        notes.append(text("details.metadata.languageReadFailed"))
     return ""
 
 
@@ -254,11 +260,11 @@ def timeline(meeting, session):
                         if matches and (not browser_reason or meeting.capture_source in BROWSER_SOURCES):
                             reason = REASONS.get(event["reason"], "")
             elif off:
-                source = "Not recorded"
+                source = text("details.source.none")
                 if selections[-1]["reason"] == "start":
-                    method, reason = "Not selected", "Not selected when recording began"
+                    method, reason = text("details.method.notSelected"), text("details.reason.notSelected")
                 else:
-                    method, reason = "Switched off", "You changed what was recorded"
+                    method, reason = text("details.method.off"), text("details.reason.user")
             else:
                 continue
             span = Span(side, source, method, start, end, reason)
@@ -281,21 +287,21 @@ def timeline(meeting, session):
 
 def _end(meeting, session):
     if meeting.lifecycle in ("recording", "saving"):
-        return "Still recording" if meeting.lifecycle == "recording" else "Saving the recording"
+        return text("details.end.recording" if meeting.lifecycle == "recording" else "details.end.saving")
     events = session.get("events")
     if isinstance(events, list):
         for event in reversed(events[:1000]):
             if isinstance(event, dict) and event.get("type") == "end" and number(event.get("atMs")):
                 reason = ENDS.get(event.get("reason")) if isinstance(event.get("reason"), str) else None
                 if reason:
-                    return f"{reason} · {fmt.position(int(event['atMs']))}"
+                    return text("details.end.at", reason=reason, time=fmt.position(int(event["atMs"])))
     details = meeting.metadata.get("recordingDetails") or {}
     end = details.get("end") if isinstance(details, dict) else None
     if isinstance(end, dict) and isinstance(end.get("reason"), str) and end["reason"] in ENDS:
         result = ENDS[end["reason"]]
         at = end.get("atMs")
         if type(at) is int and 0 <= at <= 9007199254740991:
-            result += " · " + fmt.position(at)
+            result = text("details.end.at", reason=result, time=fmt.position(at))
         return result
     return UNKNOWN
 
@@ -307,11 +313,15 @@ def _counter(tracks, field):
     frames = sum(t[field] for t in rows)
     if all(type(t.get("sampleRate")) is int and 8000 <= t["sampleRate"] <= 192000 for t in rows):
         milliseconds = sum(t[field] * 1000 / t["sampleRate"] for t in rows)
-        duration = f"{milliseconds / 1000:g} s"
+        duration = text("details.duration.seconds", n=f"{milliseconds / 1000:g}")
     else:
-        duration = "duration not recorded"
-    result = f"{frames:,} frames · {duration}"
-    return result + (" (not all tracks report this)" if len(rows) != len(tracks) else "")
+        duration = text("details.health.durationUnknown")
+    result = text(
+        "details.health.counter.one" if frames == 1 else "details.health.counter.other",
+        frames=f"{frames:,}",
+        duration=duration,
+    )
+    return text("details.health.partialCounter", value=result) if len(rows) != len(tracks) else result
 
 
 def _offset(fd, meeting):
@@ -341,10 +351,8 @@ def _offset(fd, meeting):
         return UNKNOWN
     mean = total / count
     if abs(mean) >= 512:
-        return (
-            f"{mean:+.0f} PCM16 (sampled start). Cassini now compensates in speech detection; saved audio is unchanged."
-        )
-    return "No large offset in the sampled microphone audio"
+        return text("details.health.largeOffset", offset=f"{mean:+.0f}")
+    return text("details.health.offsetFine")
 
 
 def _wall_time(value):
@@ -352,10 +360,10 @@ def _wall_time(value):
         return UNKNOWN
     minutes, remainder = divmod(value, 60000)
     hours, minutes = divmod(minutes, 60)
-    parts = [f"{hours} h"] if hours else []
+    parts = [text("details.duration.hours", n=hours)] if hours else []
     if minutes:
-        parts.append(f"{minutes} min")
-    parts.append(f"{remainder / 1000:g} s")
+        parts.append(text("details.duration.minutes", n=minutes))
+    parts.append(text("details.duration.seconds", n=f"{remainder / 1000:g}"))
     return " ".join(parts)
 
 
@@ -364,12 +372,15 @@ def _separation(value):
         return UNKNOWN
     status = value.get("status")
     reasons = {
-        "modelsNotInstalled": "Tell speakers apart was not installed",
-        "modelNotReady": "Tell speakers apart was not ready",
-        "unavailable": "Tell speakers apart was unavailable on this computer",
-        "notApplicable": "Not needed for these separate audio tracks",
-        "tooShort": "The audio was too short to separate speakers",
-        "processingFailed": "Speaker separation could not finish. The transcript was kept.",
+        key: text("details.separation." + key)
+        for key in (
+            "modelsNotInstalled",
+            "modelNotReady",
+            "unavailable",
+            "notApplicable",
+            "tooShort",
+            "processingFailed",
+        )
     }
     if status in ("skipped", "failed"):
         return reasons.get(value.get("reason"), UNKNOWN)
@@ -383,13 +394,15 @@ def _separation(value):
         or not revision
     ):
         return UNKNOWN
-    name = "Nemotron" if model == "nemotron-3-diarization-int8" else model
-    result = f"{name} · {count} " + ("voice" if count == 1 else "voices")
+    name = text("details.model.nemotron") if model == "nemotron-3-diarization-int8" else model
+    result = text(
+        "details.separation.voices.one" if count == 1 else "details.separation.voices.other", model=name, n=count
+    )
     result += f"\n{model}@{revision}"
     if value.get("reused") is True:
-        result += "\nSaved speaker turns reused"
+        result += "\n" + text("details.separation.reused")
     if status == "partial":
-        result += "\nSome audio could not be separated"
+        result += "\n" + text("details.separation.partial")
     return result
 
 
@@ -406,7 +419,7 @@ def read_details(meeting):
             _end(meeting, {}),
             (),
             (),
-            ("The meeting folder is unavailable.",),
+            (text("details.folderUnavailable"),),
         )
     try:
         session = _json(fd, "session.json", notes, optional=meeting.origin == "received")
@@ -414,17 +427,18 @@ def read_details(meeting):
         raw_tracks = session.get("tracks", [])
         raw_tracks = [t for t in raw_tracks[:64] if isinstance(t, dict)] if isinstance(raw_tracks, list) else []
         if not read_events(session.get("events")):
-            notes.append(
-                "Source-change events were not recorded. The timeline uses saved audio tracks; the reason for a source change is unknown."
-            )
+            notes.append(text("details.timelineUnknown"))
         health = []
-        for title, field in (("Gaps", "gapFrames"), ("Dropped audio", "droppedFrames")):
+        for title, field in (
+            (text("details.health.gaps"), "gapFrames"),
+            (text("details.health.dropped"), "droppedFrames"),
+        ):
             if meeting.capture_source != "gnome" or any(field in t for t in raw_tracks):
                 health.append((title, _counter(raw_tracks, field)))
         problem = clean(session.get("problemKind"))
         if problem or meeting.capture_source != "gnome":
-            health.append(("Reported issue", problem or UNKNOWN))
-        health.append(("Microphone offset", _offset(fd, meeting)))
+            health.append((text("details.health.problem"), problem or UNKNOWN))
+        health.append((text("details.health.offset"), _offset(fd, meeting)))
         health = tuple(health)
     finally:
         os.close(fd)
@@ -432,9 +446,9 @@ def read_details(meeting):
     stored = stored if isinstance(stored, dict) else {}
     tag = clean(stored.get("model"))
     model = (
-        "Parakeet Ultra"
+        text("details.model.parakeet")
         if tag.startswith("parakeet-ultra")
-        else "Whistle"
+        else text("details.model.whistle")
         if tag.startswith("whistle")
         else tag or UNKNOWN
     )
@@ -444,21 +458,21 @@ def read_details(meeting):
     writing_facts = writing_facts if isinstance(writing_facts, dict) and meeting.transcript == "done" else {}
     wall_time = _wall_time(writing_facts.get("wallDurationMs"))
     if wall_time != UNKNOWN and writing_facts.get("resumed") is True:
-        wall_time += " (resumed; this run)"
+        wall_time = text("details.writing.resumed", duration=wall_time)
     segments = writing_facts.get("speechSegments")
     segments = str(segments) if type(segments) is int and 0 <= segments <= 9007199254740991 else UNKNOWN
     separation = _separation(writing_facts.get("speakerSeparation"))
     language = LANGUAGES.get(language.lower().replace("_", "-").split("-", 1)[0], UNKNOWN)
     writing = (
-        ("Model", model),
-        ("Language", language),
-        ("Time taken", wall_time),
-        ("Speech segments", segments),
-        ("Speaker separation", separation),
-        ("Saved voices recognised", ", ".join(recognised) or "None recorded"),
+        (text("details.writing.model"), model),
+        (text("details.writing.language"), language),
+        (text("details.writing.timeTaken"), wall_time),
+        (text("details.writing.speechSegments"), segments),
+        (text("details.writing.separation"), separation),
+        (text("details.writing.recognised"), ", ".join(recognised) or text("details.writing.noneRecognised")),
     )
     if meeting.lifecycle in ("recording", "saving"):
-        writing = tuple((name, "After the recording") for name, _value in writing)
+        writing = tuple((name, text("details.writing.after")) for name, _value in writing)
     return Report(
         clean(meeting.title, 500),
         str(meeting.directory),
