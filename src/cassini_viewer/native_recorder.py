@@ -40,6 +40,7 @@ class NativeRecorder(GObject.Object):
         self._lock = threading.Lock()
         self._finishing = False
         self._problem = None
+        self.end_reason = None
         self._timeout = 0
         self._disk_timer = 0
         self._disk_future = None
@@ -65,7 +66,7 @@ class NativeRecorder(GObject.Object):
         self._stop_requested = False
         self.session = None
         self.stopping = self._finishing = False
-        self._problem = self.line = None
+        self._problem = self.line = self.end_reason = None
         self.levels = [0.0, 0.0]
         self._track_ids = {"microphone": "microphone", "system": "system"}
         self._boundaries = {"microphone": 0, "system": 0}
@@ -96,7 +97,7 @@ class NativeRecorder(GObject.Object):
                 session.manifest["tracks"][-1]["startOffsetMs"] = 0
             return session, space_left(session.directory)
         except Exception as error:
-            session.finish(str(error))
+            session.finish(str(error), reason="error")
             raise
 
     def _prepared(self, future, test):
@@ -129,6 +130,7 @@ class NativeRecorder(GObject.Object):
             self.emit("changed")
             if reserve:
                 self.line = "errors.diskStopped.line"
+                self.end_reason = "disk"
                 self.stop()
             elif self._stop_requested:
                 self.stop()
@@ -317,6 +319,7 @@ class NativeRecorder(GObject.Object):
             self._begin_finish()
 
     def stop(self):
+        self.end_reason = self.end_reason or "user"
         if self.starting:
             self._stop_requested = True
             return
@@ -352,12 +355,14 @@ class NativeRecorder(GObject.Object):
                 GLib.source_remove(timer)
         self._timeout = self._disk_timer = 0
         pipeline, session = self.pipeline, self.session
+        reason = "error" if problem else (self.end_reason or "user")
+        at_ms = max(0, (GLib.get_monotonic_time() - self._start_us) / 1000)
 
         def finish():
             if pipeline is not None:
                 pipeline.set_state(Gst.State.NULL)
             with self._lock:
-                session.finish(problem)
+                session.finish(problem, reason=reason, at_ms=at_ms)
 
         future = self._executor.submit(finish)
         future.add_done_callback(lambda f: GLib.idle_add(self._finished, f, pipeline))
@@ -404,6 +409,7 @@ class NativeRecorder(GObject.Object):
             return self._begin_finish(str(error))
         if reserve:
             self.line = "errors.diskStopped.line"
+            self.end_reason = "disk"
             self.stop()
         elif self.minutes_left < 30:
             self.line = "errors.diskLow.line"

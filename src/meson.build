@@ -112,6 +112,7 @@ install_data(
 
   'cassini_viewer/capture_guard.py',
   'cassini_viewer/capture_sources.py',
+  'cassini_viewer/call_lifecycle.py',
   'cassini_viewer/session_events.py',
   'cassini_viewer/what_is_recorded.py',
   'cassini_viewer/strings.py',

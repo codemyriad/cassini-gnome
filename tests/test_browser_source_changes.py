@@ -104,7 +104,7 @@ def test_browser_close_failure_finalizes_and_releases_microphone(server, limit):
 
             append_events(
                 capture.host.session.manifest,
-                [dict(atMs=0, type="selection", me=True, others=True, reason="user")] * 998,
+                [dict(atMs=0, type="selection", me=True, others=True, reason="user")] * 997,
             )
             capture.host.session.checkpoint()
     client.close()

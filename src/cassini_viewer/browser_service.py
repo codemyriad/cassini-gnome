@@ -20,9 +20,9 @@ from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
 from uuid import uuid4
 
+from .call_lifecycle import BROWSER_RETURN_GRACE, CALL_END_GRACE, CallLifecycle
+
 MAX_PACKET = 512 * 1024
-CALL_END_GRACE = 2
-BROWSER_RETURN_GRACE = 30
 
 
 class StartRejected(ValueError):
@@ -173,6 +173,7 @@ class BrowserService:
         self._capture_missing_since = {}
         self._capture_observed = set()
         self._capture_policy_pending = set()
+        self._capture_lifecycles = {}
         self.capture_parent, self.tap_factory = capture_parent, tap_factory
         self.applications = {}
         self.application_pids = {}
@@ -309,7 +310,7 @@ class BrowserService:
             if capture is not None:
                 try:
                     if problem or self.closed.is_set():
-                        capture.stop(problem)
+                        capture.stop(problem, reason="error" if problem else "appQuit")
                     else:
                         capture.close()
                 finally:
@@ -343,7 +344,7 @@ class BrowserService:
         browser.status_seen = True
         previous = browser.states
         browser.status = {
-            key: value[key] for key in ("recording", "tabId", "path", "message", "tracks") if key in value
+            key: value[key] for key in ("recording", "tabId", "path", "message", "tracks", "pageState") if key in value
         }
         if "sessions" in value:
             items = value["sessions"]
@@ -362,7 +363,7 @@ class BrowserService:
                     raise ValueError("Invalid or duplicate recording tab")
                 states[tab] = {
                     key: item[key]
-                    for key in ("recording", "tabId", "path", "message", "tracks", "stopping", "captureId")
+                    for key in ("recording", "tabId", "path", "message", "tracks", "stopping", "captureId", "pageState")
                     if key in item
                 }
         else:
@@ -426,6 +427,8 @@ class BrowserService:
                     ):
                         continue
                     meetings[value["tabId"]] = {key: value[key] for key in ("tabId", "title", "url", "sourceCount")}
+                    if value.get("pageState") in ("present", "navigating", "closed"):
+                        meetings[value["tabId"]]["pageState"] = value["pageState"]
                     meetings[value["tabId"]]["heard"] = value.get("heard") is True
                     meetings[value["tabId"]]["title"] = value["title"][:200]
                     meetings[value["tabId"]]["url"] = value["url"][:2048]
@@ -454,15 +457,23 @@ class BrowserService:
                 raise ValueError("Unknown browser control event")
         self.policy()
 
-    def command(self, identifier, action, *, microphone=True, preserve_capture=False):
-        if action not in ("start", "stop") or not isinstance(identifier, str) or type(microphone) is not bool:
+    def command(self, identifier, action, *, microphone=True, preserve_capture=False, reason="user"):
+        from .session_events import END_REASONS
+
+        if (
+            action not in ("start", "stop")
+            or not isinstance(identifier, str)
+            or type(microphone) is not bool
+            or not isinstance(reason, str)
+            or reason not in END_REASONS
+        ):
             raise ValueError("Invalid meeting command")
         if identifier.startswith("capture:"):
             with self.lock:
                 capture = self.captures.get(identifier.removeprefix("capture:"))
             if action != "stop" or capture is None:
                 raise ValueError("This meeting is no longer available")
-            capture.stop()
+            capture.stop(reason=reason)
             return self.snapshot()
         browser_id, _, raw_tab = identifier.partition(":")
         with self.lock:
@@ -497,14 +508,21 @@ class BrowserService:
             browser.pending[request_id] = pending
             capture = self.captures.get(browser.states.get(tab, {}).get("captureId"))
             if capture is not None and action == "stop" and not preserve_capture:
+                capture.end_reason = capture.end_reason or reason
                 capture.stop_requested.set()
         try:
             if capture is not None and capture.browser_lost and action == "stop" and not preserve_capture:
-                capture.stop()
-                return dict(self.snapshot(), stoppedPath=str(capture.directory))
+                capture.stop(reason=reason)
+                if "page-state-v1" not in browser.capabilities:
+                    return dict(self.snapshot(), stoppedPath=str(capture.directory))
             packet = dict(type="command", requestId=request_id, action=action, tabId=tab, mode="tracks")
             if independent:
                 packet.update(independent=True, captureLocal=False, microphone=microphone)
+                if "page-state-v1" in browser.capabilities:
+                    if action == "start":
+                        packet["keepOnNavigation"] = True
+                    else:
+                        packet["reason"] = reason
             browser.send(packet)
             if not pending["event"].wait(self.command_timeout):
                 raise TimeoutError("The browser did not finish the recording command")
@@ -634,7 +652,12 @@ class BrowserService:
             raise
         return capture.snapshot()
 
-    def stop_all(self, directory=None, *, cancel_groups=(), quitting_pid=None, quitting_generation=0):
+    def stop_all(self, directory=None, *, cancel_groups=(), quitting_pid=None, quitting_generation=0, reason="user"):
+        from .session_events import END_REASONS
+
+        reason = "appQuit" if quitting_pid is not None else reason
+        if not isinstance(reason, str) or reason not in END_REASONS:
+            raise ValueError("Invalid recording end reason")
         if type(quitting_generation) is not int or quitting_generation < 0:
             raise ValueError("Invalid application generation")
         if (
@@ -678,7 +701,7 @@ class BrowserService:
                     )
             for identifier in commands:
                 try:
-                    result = self.command(identifier, "stop")
+                    result = self.command(identifier, "stop", reason=reason)
                     if isinstance(result.get("stoppedPath"), str):
                         paths.append(result["stoppedPath"])
                 except ValueError:
@@ -692,7 +715,7 @@ class BrowserService:
                     if not c.finished and (directory is None or c.directory is not None and matches(str(c.directory)))
                 ]
             for capture in captures:
-                capture.stop()
+                capture.stop(reason=reason)
             return dict(self.snapshot(), stoppedPaths=list(dict.fromkeys(paths)))
         finally:
             if directory is None:
@@ -727,6 +750,35 @@ class BrowserService:
                     self._capture_missing_since.pop(key, None)
                     continue
                 peer = observed.get(key)
+                if peer is not None and "page-state-v1" in peer[0].capabilities:
+                    capture.lifecycle_capable = True
+                if capture.lifecycle_capable:
+                    lifecycle = self._capture_lifecycles.setdefault(key, CallLifecycle())
+                    if key not in self._capture_observed and capture.browser_lost and lifecycle.missing is None:
+                        lifecycle.missing = capture.browser_lost_since
+                    page, count = None, 0
+                    if peer is not None:
+                        state = peer[0].states[peer[1]]
+                        meeting = peer[2] or {}
+                        page = (
+                            state.get("pageState")
+                            if state.get("pageState") == "closed"
+                            else (meeting.get("pageState") or state.get("pageState"))
+                        )
+                        count = meeting.get("sourceCount", 0)
+                    action = lifecycle.decide(
+                        now,
+                        page,
+                        count,
+                        fallback=capture.browser_lost,
+                        others=capture.others,
+                        restore_ready=capture.browser_ready,
+                    )
+                    identifier = f"{peer[0].id}:{peer[1]}" if peer is not None else None
+                    if action and key not in self._capture_policy_pending:
+                        self._capture_policy_pending.add(key)
+                        capture_tasks.append((key, capture, identifier, action))
+                    continue
                 if peer is not None and peer[2] is not None and peer[2]["sourceCount"] > 0:
                     self._capture_missing_since.pop(key, None)
                     continue
@@ -749,7 +801,7 @@ class BrowserService:
                 identifier = f"{peer[0].id}:{peer[1]}" if peer is not None else None
                 action = None
                 if now - since >= (CALL_END_GRACE if ended else BROWSER_RETURN_GRACE):
-                    action = "stop"
+                    action = "stop:callEnded" if ended else "stop:pageGone"
                 elif not ended and not capture.browser_lost and (peer is not None or now - since >= CALL_END_GRACE):
                     action = "fallback"
                 if action and key not in self._capture_policy_pending:
@@ -757,6 +809,8 @@ class BrowserService:
                     capture_tasks.append((key, capture, identifier, action))
             for key in self._capture_missing_since.keys() - self.captures.keys():
                 self._capture_missing_since.pop(key, None)
+            for key in self._capture_lifecycles.keys() - self.captures.keys():
+                self._capture_lifecycles.pop(key, None)
             for browser in self.browsers.values():
                 if browser.closed or not browser.status_seen:
                     continue
@@ -807,11 +861,14 @@ class BrowserService:
                     self._fallback(identifier, capture)
                 else:
                     capture.fallback()
+            elif action == "restore":
+                capture.restore()
             else:
                 # Save before waiting for a potentially unreachable extension.
-                capture.stop()
+                reason = action.partition(":")[2] or "user"
+                capture.stop(reason=reason)
                 if identifier is not None:
-                    self.command(identifier, "stop")
+                    self.command(identifier, "stop", reason=reason)
         except (OSError, ValueError, TimeoutError):
             logging.getLogger(__name__).exception("Browser capture lifecycle: %s", action)
         finally:
@@ -821,7 +878,8 @@ class BrowserService:
     def _fallback(self, identifier, capture):
         try:
             capture.fallback()
-            self.command(identifier, "stop", preserve_capture=True)
+            if not capture.lifecycle_capable:
+                self.command(identifier, "stop", preserve_capture=True)
         except (OSError, ValueError, TimeoutError) as error:
             logging.getLogger(__name__).warning("Browser source fallback: %s", error)
         finally:
@@ -977,6 +1035,7 @@ class BrowserService:
                                 cancel_groups=packet.get("cancelGroups", []),
                                 quitting_pid=pid if packet.get("quitting") is True else None,
                                 quitting_generation=packet.get("generation", 0),
+                                reason=packet.get("reason", "user"),
                             )
                         elif action == "configure":
                             result = self.configure(packet.get("autoRecord"))

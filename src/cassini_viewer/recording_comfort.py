@@ -264,7 +264,7 @@ class RecordingComfort:
             state["silent"] = self.clocks.setdefault(meeting.key, SilenceClock(now)).update(1, now)
         if value["reserve"]:
             state["line"] = "errors.diskStopped.line"
-            self.app.stop_browser_recordings(meeting.directory)
+            self.app.stop_browser_recordings(meeting.directory, reason="disk")
         elif value["minutes"] < 30:
             state["line"] = "errors.diskLow.line"
         else:

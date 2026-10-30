@@ -33,6 +33,18 @@ export async function run({context, call, join, recording, samples, power, poll,
   assert.ok(!hungUp.meeting.isClosed());
   assert.ok(!savedHangup.tracks.some(t => t.kind === 'system'), 'hang-up never falls back');
   evidence.scenarios.push({name: 'hang-up-tab-open-stops-without-fallback', directory: hungUpDirectory});
+  assert.equal(savedHangup.manifest.events.at(-1).reason, 'callEnded');
+  const closed = await join('Browser-confirmed closed tab', 770, 1100, id);
+  await call({action: 'record'});
+  const closedDirectory = await recording('Browser-confirmed closed tab');
+  await closed.meeting.close();
+  const savedClosed = await poll(async () => {
+   const current = await samples(closedDirectory);
+   return current.manifest.state === 'completed' && current;
+  }, 'confirmed closed tab saves after call-end grace');
+  assert.equal(savedClosed.manifest.events.at(-1).reason, 'tabClosed');
+  assert.ok(!savedClosed.tracks.some(t => t.kind === 'system'), 'closed tab never starts fallback');
+  evidence.scenarios.push({name: 'closed-tab-stops-with-end-reason-and-no-fallback', directory: closedDirectory});
   const first = await join('Fallback browser meeting', 440, 880, id);
   await join('Unaffected browser meeting', 550, 990, id);
   await call({action: 'record'});
@@ -83,6 +95,42 @@ export async function run({context, call, join, recording, samples, power, poll,
   assert.ok(systemWanted > .001 && microphoneBleed < systemWanted * .01, JSON.stringify({systemWanted, microphoneBleed}));
   const notification = await poll(async () => (await call()).notifications.recording, 'fallback hidden notification');
   assert.ok(notification.body.includes('Recording the others from this computer’s sound.'));
+  // D33: the same tab returns on its retained native connection. It must
+  // restore browser PCM, keeping the folder and the original microphone WAV.
+  await first.meeting.click('#join');
+  await first.meeting.evaluate(async () => {document.title = 'Fallback browser meeting'; await window.join(440);});
+  await first.remote.evaluate(async () => {meeting.pc.close(); await window.join(880);});
+  const offer = await first.meeting.evaluate(async () => {
+   await meeting.pc.setLocalDescription(await meeting.pc.createOffer()); return meeting.description();
+  });
+  const answer = await first.remote.evaluate(async offer => {
+   await meeting.pc.setRemoteDescription(offer);
+   await meeting.pc.setLocalDescription(await meeting.pc.createAnswer()); return meeting.description();
+  }, offer);
+  await first.meeting.evaluate(answer => meeting.pc.setRemoteDescription(answer), answer);
+  const returned = await poll(async () => {
+   const current = await samples(directory);
+   return current.manifest.events.some(e => e.reason === 'restored') &&
+    current.tracks.some(t => t.kind === 'remote' && !t.ended && t.frames >= 96000) && current;
+  }, 'same-tab browser return restores a fresh span in the original folder');
+  const returnedRemote = returned.tracks.find(t => t.kind === 'remote' && !t.ended);
+  const restoredWanted = power(returnedRemote, 880), systemBleed = power(returnedRemote, 1210);
+  assert.ok(restoredWanted > .001 && systemBleed < restoredWanted * .01,
+   JSON.stringify({restoredWanted, systemBleed}));
+  assert.equal(returned.manifest.state, 'recording');
+  assert.ok(returned.tracks.find(t => t.file === mic.file && !t.ended));
+  assert.ok(returned.tracks.find(t => t.file === system.file).ended);
+  assert.equal((await call()).statuses.filter(s => s.path === directory && s.recording).length, 1);
+  assert.ok((await samples(otherDirectory)).tracks.find(t => t.kind === 'remote').frames > independentBefore + 96000);
+  evidence.scenarios.push({name: 'same-tab-return-restores-browser-in-same-folder', directory,
+   originalMic: mic.file, restoredWanted, systemBleed});
+  // Lose the page again before the separate worker-recovery/expiry proof.
+  await first.meeting.reload();
+  await poll(async () => {
+   const current = await samples(directory);
+   return current.tracks.filter(t => t.kind === 'system').length === 2 &&
+    current.manifest.events.filter(e => e.type === 'othersSource').at(-1).source === 'system';
+  }, 'second reload creates its own fallback span');
   // A worker restart loses every browser audio connection. The fallback that
   // already exists must be rebound, never duplicated or switched back.
   const oldIds = new Set((await call()).statuses.filter(s => s.recording).map(s => s.id));
@@ -100,9 +148,10 @@ export async function run({context, call, join, recording, samples, power, poll,
   }, 'worker reconnect retains exactly the same two capture folders');
   const afterRestart = await samples(directory);
   assert.equal(afterRestart.manifest.events.filter(e => e.type === 'othersSource').at(-1).source, 'system');
-  assert.equal(afterRestart.tracks.filter(t => t.kind === 'system').length, 1);
+  assert.equal(afterRestart.tracks.filter(t => t.kind === 'system').length, 2);
   await poll(async () => (await samples(directory)).manifest.state === 'completed',
-   'fallback saves when no active call returns within thirty seconds', 45000);
+   'fallback saves when no active call returns within two minutes', 135000);
+  assert.equal((await samples(directory)).manifest.events.at(-1).reason, 'pageGone');
   assert.equal((await samples(otherDirectory)).manifest.state, 'recording');
   evidence.scenarios.push({name: 'reload-fallback-without-return-stops-at-bounded-grace', directory});
   await call({action: 'notification-stop'});
