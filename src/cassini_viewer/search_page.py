@@ -433,10 +433,12 @@ class SearchPage(Adw.NavigationPage):
             css_classes=["search-actions"],
         )
         self.play = Gtk.Button(css_classes=["suggested-action"], sensitive=meeting.has_audio)
-        play_label = Gtk.Box(spacing=8)
-        play_label.append(Gtk.Image(icon_name="media-playback-start-symbolic"))
-        play_label.append(label(text("search.context.playFrom", position=fmt.position(hit.position_ms))))
-        self.play.set_child(play_label)
+        self.play.set_child(
+            Adw.ButtonContent(
+                icon_name="media-playback-start-symbolic",
+                label=text("search.context.playFrom", position=fmt.position(hit.position_ms)),
+            )
+        )
         self.play.connect("clicked", lambda *_: self.play_from())
         self.open = Gtk.Button(label=text("search.context.openMeeting"))
         self.open.connect("clicked", lambda *_: self.open_meeting())
