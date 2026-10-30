@@ -123,7 +123,7 @@ def click(label, *, dialog=None):
     until(find, "click " + label)
 
 
-def listed(appid):
+def portal_rows(appid):
     rows = call(
         "org.freedesktop.background.Monitor",
         "/org/freedesktop/background/monitor",
@@ -131,14 +131,39 @@ def listed(appid):
         "Get",
         GLib.Variant("(ss)", ("org.freedesktop.background.Monitor", "BackgroundApps")),
     )[0]
-    return next((row for row in rows if row.get("app_id") == appid), None)
+    return [row for row in rows if row.get("app_id") == appid]
+
+
+def listed(appid):
+    return next(iter(portal_rows(appid)), None)
+
+
+def shell_entries(appid):
+    """What the person sees: GNOME Shell's Background Apps menu items for the app."""
+    return shell(
+        "Main.panel.statusArea.quickSettings._backgroundApps.quickSettingsItems[0]._appsSection._getMenuItems()"
+        ".filter(i=>i.app?.get_id()===" + json.dumps(appid + ".desktop") + ").map(i=>i.message??'')"
+    )
 
 
 def status_row(appid, *, recording=False):
-    row = listed(appid)
-    message = (row or {}).get("message", "")
-    matches = message.startswith("Recording,") if recording else message == "Ready to record browser meetings"
-    return row if matches else None
+    # The portal lists every sandbox instance of the app: the UI process and,
+    # when it runs, the browser broker (a separate `flatpak run` instance).
+    # GNOME Shell merges them into one entry. Exactly one instance carries the
+    # status, and the person sees exactly one Cassini entry showing it.
+    def wanted(message):
+        return message.startswith("Recording,") if recording else message == "Ready to record browser meetings"
+
+    rows = portal_rows(appid)
+    carrying = [row for row in rows if wanted(row.get("message", ""))]
+    if not carrying:
+        return None
+    assert len(carrying) == 1, rows
+    assert not [row for row in rows if row.get("message") and row not in carrying], rows
+    entries = shell_entries(appid)
+    if len(entries) != 1 or not wanted(entries[0]):
+        return None
+    return carrying[0]
 
 
 def menu_item(appid, operation):
@@ -612,6 +637,8 @@ def main():
             )
             assert row.get("message") == "Ready to record browser meetings", row
             case["idleStatus"] = row["message"]
+            case["portalInstances"] = len(portal_rows(appid))
+            case["shellEntries"] = shell_entries(appid)
             until(lambda appid=appid: idle_notifications(appid), "one-time still-running notification")
             assert idle_notifications(appid) == 1
             until(lambda appid=appid: menu_item(appid, "true"), "Background Apps menu")
