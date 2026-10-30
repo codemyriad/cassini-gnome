@@ -18,6 +18,18 @@ def title_value(value):
     return value or None
 
 
+def renames(meeting, metadata, title):
+    """Whether saving *title* (a title_value result) changes the meeting.
+
+    A blank rename (None) only changes a meeting whose metadata holds a user
+    title or a non-automatic source. Missing meeting.json reads as automatic,
+    like read_metadata, so it never enables a no-op save (D38.4).
+    """
+    if title is not None:
+        return title != meeting.title
+    return metadata.get("title") is not None or metadata.get("titleSource", "meeting-window") != "meeting-window"
+
+
 def rename_meeting(directory, value):
     title = title_value(value)
     with location.routing(), LOCK:
@@ -35,9 +47,6 @@ def rename_meeting(directory, value):
         if meeting is None or meeting.lifecycle != "saved" or not meeting.metadata_editable:
             raise ValueError("Rename requires an editable saved Library meeting")
         current = read_metadata(directory)
-        source = "user" if title is not None else "meeting-window"
-        if (title is not None and title == meeting.title) or (
-            title is None and current.get("title") is None and current.get("titleSource") == source
-        ):
+        if not renames(meeting, current, title):
             return current
-        return update_metadata(directory, title=title, titleSource=source)
+        return update_metadata(directory, title=title, titleSource="user" if title is not None else "meeting-window")

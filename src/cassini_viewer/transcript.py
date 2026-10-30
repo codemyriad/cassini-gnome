@@ -29,23 +29,32 @@ TOUCH_TOLERANCE_MS = 20
 
 
 def quote_items(texts):
-    """D38.5 display-only paired quotes, retaining one output per timed item."""
+    """D38.5 display-only paired quotes, retaining one output per timed item.
+
+    Pairing runs in reading order over everything passed in, which must be one
+    whole speaker turn. A final unmatched straight quote is dropped; an item
+    left with only whitespace once its quote is dropped displays as "".
+    """
     texts = tuple(texts)
     remaining = sum(value.count('"') for value in texts)
     opening = True
     result = []
     for value in texts:
         chars = []
+        dropped = False
         for char in value:
             if char == '"':
                 # Pair in reading order within this turn; discard a final orphan.
                 if remaining > 1 or not opening:
                     chars.append("“" if opening else "”")
                     opening = not opening
+                else:
+                    dropped = True
                 remaining -= 1
             else:
                 chars.append(char)
-        result.append("".join(chars))
+        joined = "".join(chars)
+        result.append("" if dropped and not joined.strip() else joined)
     return tuple(result)
 
 
@@ -67,10 +76,20 @@ class Turn:
     fragments: list[tuple[int, int]] = field(default_factory=list)  # word slices
     over: list[str] = field(default_factory=list)
     host: Turn | None = None  # set when this turn is shown inside another
+    # D38.5 displayed text per item, when pairing spans more than this turn
+    # (reading_turns splits one speaker turn into bounded paragraphs).
+    display: tuple[str, ...] | None = None
+
+    @property
+    def items(self) -> tuple[str, ...]:
+        """Displayed text of each timed item; "" for an item shown as nothing."""
+        if self.display is not None and len(self.display) == len(self.words):
+            return self.display
+        return quote_items(w.text for w in self.words)
 
     @property
     def text(self) -> str:
-        return turn_text(w.text for w in self.words)
+        return " ".join(value for value in self.items if value)
 
     def word_at(self, ms: int) -> int:
         """Index of the last word that has started by *ms*, or -1."""
@@ -218,11 +237,49 @@ def current_turn(turns: list[Turn], ms: int) -> Turn | None:
 
 
 def find_matches(turns: list[Turn], query: str) -> list[tuple[int, int]]:
-    """(turn index, word index) of every word containing *query*, case-insensitively."""
+    """(turn index, word index) of every word whose displayed text contains *query*.
+
+    Matches what the reader shows (D38.5 quotes), so an item displayed as
+    nothing is never counted or focused.
+    """
     needle = query.strip().casefold()
     if not needle:
         return []
-    return [(turn.index, i) for turn in turns for i, word in enumerate(turn.words) if needle in word.text.casefold()]
+    return [
+        (turn.index, i) for turn in turns for i, value in enumerate(turn.items) if value and needle in value.casefold()
+    ]
+
+
+def join_items(turn: Turn, link, chip) -> tuple[str, list[int]]:
+    """Markup for *turn* and the UTF-8 byte offset of each item in its text.
+
+    ``link(owner, i)`` is the markup of a displayed item and ``chip(aside)``
+    returns an aside's (markup, plain text). Items displayed as "" (D38.5) emit
+    nothing and no separator, so offsets match the rendered layout.
+    """
+    asides = {}
+    for after, aside in turn.asides:
+        asides.setdefault(after, []).append(aside)
+    parts, offsets = [], []
+    length = 0
+    for i, value in enumerate(turn.items):
+        if value:
+            if parts:
+                parts.append(" ")
+                length += 1
+            parts.append(link(turn, i))
+            offsets.append(length)
+            length += len(value.encode())
+        else:
+            offsets.append(length)
+        for aside in asides.get(i, ()):
+            markup, plain = chip(aside)
+            if parts:
+                parts.append(" ")
+                length += 1
+            parts.append(markup)
+            length += len(plain.encode())
+    return "".join(parts), offsets
 
 
 def format_time(ms: int, *, force_hours: bool = False) -> str:

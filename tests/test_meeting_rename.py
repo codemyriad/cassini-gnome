@@ -142,3 +142,18 @@ def test_outside_and_live_meetings_cannot_be_renamed(meeting, tmp_path):
         assert not (live.directory / "meeting.json").exists()
     finally:
         live.finish()
+
+
+def test_blank_rename_without_meeting_json_is_not_offered(meeting):
+    # Regression (review 118 #5): with no meeting.json the dialog enabled
+    # Rename for a blank name that the save then treats as a no-op.
+    from cassini_viewer.meeting_rename import renames
+
+    (meeting.directory / "meeting.json").unlink()
+    bare = LibraryScanner(meeting.directory.parent).scan().meetings[0]
+    assert bare.metadata == {}
+    assert not renames(bare, bare.metadata, title_value("  "))
+    assert renames(bare, bare.metadata, title_value("New name"))
+    assert renames(bare, dict(title="Mine", titleSource="user"), None)
+    rename_meeting(bare.directory, "")
+    assert not (meeting.directory / "meeting.json").exists()

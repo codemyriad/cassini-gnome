@@ -5,7 +5,7 @@ import logging
 
 from gi.repository import Adw, GLib, Gtk
 
-from .meeting_rename import rename_meeting, title_value
+from .meeting_rename import rename_meeting, renames, title_value
 from .strings import CATALOG, text
 
 LOG = logging.getLogger(__name__)
@@ -61,13 +61,7 @@ class RenameDialog(Adw.Dialog):
 
     def _validate(self):
         try:
-            title = title_value(self.entry.get_text())
-            changed = (
-                title != self.meeting.title
-                if title is not None
-                else self.meeting.metadata.get("title") is not None
-                or self.meeting.metadata.get("titleSource") != "meeting-window"
-            )
+            changed = renames(self.meeting, self.meeting.metadata, title_value(self.entry.get_text()))
         except ValueError:
             changed = False
         self.confirm.set_sensitive(changed and not self.busy)

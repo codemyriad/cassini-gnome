@@ -25,9 +25,12 @@ def speaking_shares(words, speaker_ids):
     return result
 
 
-def item_markup(words, position, *, dark=False):
+def item_markup(words, position, *, dark=False, values=None):
+    """Markup for timed items; *values* is their displayed text (D38.5)."""
+    if values is None:
+        values = quote_items(w.text for w in words)
     parts = []
-    for index, (word, value) in enumerate(zip(words, quote_items(w.text for w in words), strict=True)):
+    for index, (word, value) in enumerate(zip(words, values, strict=True)):
         if not value:
             continue
         value = escape(value)
@@ -56,4 +59,16 @@ def reading_turns(words):
             turn = turns[-1]
             turn.words.append(word)
             turn.end_ms = max(turn.end_ms, word.end_ms)
+    # D38.5 pairs quotes across the whole speaker turn, as Search and Markdown
+    # do, so a paragraph boundary never drops or mispairs a quote.
+    start = 0
+    for end in range(1, len(turns) + 1):
+        if end == len(turns) or turns[end].speaker != turns[start].speaker:
+            run = turns[start:end]
+            values = quote_items(w.text for turn in run for w in turn.words)
+            offset = 0
+            for turn in run:
+                turn.display = values[offset : offset + len(turn.words)]
+                offset += len(turn.words)
+            start = end
     return tuple(turns)

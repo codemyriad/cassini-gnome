@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import pytest
+
 from cassini_viewer.meeting_text import item_markup, speaking_shares
 from cassini_viewer.portable import Word
 
@@ -88,3 +90,46 @@ def test_d38_markdown_cleans_turn_text_without_changing_timed_items():
     before = deepcopy(model)
     assert "Say “hello” then goodbye\n" in markdown(model)
     assert model == before
+
+
+@pytest.mark.parametrize(
+    "words",
+    [
+        # Quote opens on item 100 and closes on item 101 of one speaker's run.
+        [Word("a", i * 10, i * 10 + 10, '"opened' if i == 99 else 'closed"' if i == 100 else "w") for i in range(150)],
+        # Quote opens at 1 s and closes at 31 s, past the 30 s paragraph bound.
+        [Word("a", 1000, 1500, 'He said "wait'), Word("a", 31000, 31500, 'now" then')],
+    ],
+)
+def test_d38_quotes_pair_across_reading_paragraphs_of_one_speaker_turn(words):
+    # Regression (review 118 #2): reading_turns' 100-item/30 s split used to
+    # make each paragraph pair alone, deleting both halves of the quote.
+    from cassini_viewer.meeting_text import reading_turns
+    from cassini_viewer.transcript import turn_text
+
+    turns = reading_turns(words)
+    assert len(turns) == 2
+    whole = turn_text(w.text for w in words)
+    assert " ".join(t.text for t in turns) == whole
+    assert "“" in whole and "”" in whole
+    shown = "".join(item_markup(t.words, 0, values=t.items) for t in turns)
+    assert "“" in shown and "”" in shown
+    assert [w.text for w in words] == [w.text for t in turns for w in t.words]
+
+
+def test_d38_quote_pairing_stops_at_a_speaker_change():
+    from cassini_viewer.meeting_text import reading_turns
+
+    turns = reading_turns([Word("a", 0, 10, 'Hi "x'), Word("b", 10, 20, 'y" ok')])
+    assert [t.text for t in turns] == ["Hi x", "y ok"]
+
+
+def test_d38_dropped_quote_with_whitespace_displays_nothing():
+    # Regression (review 118 #6): ' "' used to survive as a blank item and a
+    # whitespace-only link.
+    from cassini_viewer.transcript import quote_items, turn_text
+
+    assert quote_items(["Hello", ' "', "world"]) == ("Hello", "", "world")
+    assert turn_text(['" ', "Hello"]) == "Hello"
+    words = [Word("a", 0, 10, "Hello"), Word("a", 10, 20, ' "'), Word("a", 20, 30, "world")]
+    assert item_markup(words, 100) == '<a href="item:0">Hello</a> <a href="item:2">world</a>'

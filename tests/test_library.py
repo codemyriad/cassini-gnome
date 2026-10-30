@@ -439,3 +439,16 @@ def test_default_title_is_a_placeholder_but_real_identical_titles_are_not(tmp_pa
     write_metadata(session.directory, title="Untitled meeting", titleSource="user")
     named = scan_library(tmp_path).meetings[0]
     assert named.title == "Untitled meeting" and not named.title_is_fallback
+
+
+def test_unreadable_meeting_title_is_a_localised_fallback(tmp_path):
+    # Regression (review 118 #4): unreadable folders stored English text as a
+    # real (editable) title.
+    from cassini_viewer.library import _unreadable
+    from cassini_viewer.strings import text
+
+    directory = tmp_path / f"Recording-{uuid4()}"
+    directory.mkdir()
+    for activity in (None, "recording"):
+        meeting = _unreadable(directory, directory.name[10:], activity)
+        assert meeting.title == text("library.untitled") and meeting.title_is_fallback

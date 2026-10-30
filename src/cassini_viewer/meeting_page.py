@@ -283,7 +283,7 @@ class MeetingPage(Adw.NavigationPage):
             use_markup=True,
             css_classes=["words"],
         )
-        words.set_markup(item_markup(turn.words, self.player.position))
+        words.set_markup(item_markup(turn.words, self.player.position, values=turn.items))
         words.connect("activate-link", lambda _label, uri: self._word_clicked(turn, uri))
         row.append(names)
         row.append(words)
@@ -551,7 +551,7 @@ class MeetingPage(Adw.NavigationPage):
         self.play.set_tooltip_text(play_name)
         self.play.update_property([Gtk.AccessibleProperty.LABEL], [play_name])
         for turn, words, _row in list(self.bound.values()):
-            words.set_markup(item_markup(turn.words, self.player.position))
+            words.set_markup(item_markup(turn.words, self.player.position, values=turn.items))
 
     def set_recording_notice(self, line, minutes):
         signature = line, minutes
