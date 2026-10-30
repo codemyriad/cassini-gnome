@@ -7955,6 +7955,43 @@
    "milestone": "D42",
    "status": "harmony",
    "note": "Coordinator (D42). Action of update.restartNeeded; restarts Cassini and reopens the same window."
+  },
+  {
+   "id": "browser.state.reason.buildMissing",
+   "en": "The browser companion is set up for a version of Cassini that isn’t installed.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "reason",
+   "boards": [],
+   "milestone": "D42",
+   "status": "harmony",
+   "note": "Coordinator (D42). R49. The registered native host target is missing or not executable, including a relay for an uninstalled Flatpak. Shown with the existing failed state while repair is needed; Try again retries registration."
+  },
+  {
+   "id": "hidden.firstClose.indicatorBody",
+   "en": "It records browser meetings automatically. To open it, use Cassini’s icon in the top bar.",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "notification-body",
+   "boards": [],
+   "milestone": "D41.3",
+   "status": "harmony",
+   "note": "Coordinator (D41.3). R50. GNOME only: when Background Apps can't list this build and an SNI host has accepted Cassini's registration. Reuses hidden.firstClose.title and the once-ever preference."
+  },
+  {
+   "id": "hidden.firstClose.launcherBody",
+   "en": "It records browser meetings automatically. To open it, start Cassini again.",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "notification-body",
+   "boards": [],
+   "milestone": "D41.3",
+   "status": "harmony",
+   "note": "Coordinator (D41.3). D41.3. GNOME only: neither Background Apps nor an SNI host is available. Starting Cassini from the app grid or search brings the window back."
   }
  ]
 }

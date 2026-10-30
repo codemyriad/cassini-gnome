@@ -248,3 +248,25 @@ def test_identical_observations_do_not_render_again():
     controller.observe(dict(connectedBrowsers=0, browserNames=[]))
     assert len(changes) == 2 and controller.snapshot()["everConnected"]
     controller.close()
+
+
+def test_dead_build_failure_renders_the_published_reason_and_remains_retryable():
+    from cassini_viewer.browser_connection import state_text
+
+    clock = Clock()
+
+    def failed():
+        raise companion.SetupError("buildMissing", retryable=True)
+
+    controller = clock.connection(failed)
+    try:
+        controller.trigger()
+        clock.finish()
+        state = controller.snapshot()
+        assert state["phase"] == "failed" and state["reason"] == "buildMissing"
+        assert state_text(state) == (
+            "Couldn’t connect. The browser companion is set up for a version of Cassini that isn’t installed."
+        )
+        assert controller.error.retryable and clock.timers
+    finally:
+        controller.close()
