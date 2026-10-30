@@ -64,7 +64,12 @@ def test_host_inventory_and_registration_use_host_configs_and_shell_safe_paths(h
         assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
         assert "@APPLICATION@" not in executable.read_text()
     assert not Path("SHOULD-NOT-EXIST").exists()
+    originals = {p: (p.stat().st_mtime_ns, p.stat().st_ino) for p in paths}
+    stubs = {Path(json.loads(p.read_text())["path"]) for p in paths}
+    stub_originals = {p: (p.stat().st_mtime_ns, p.stat().st_ino) for p in stubs}
     assert bridge.register() == paths
+    assert originals == {p: (p.stat().st_mtime_ns, p.stat().st_ino) for p in paths}
+    assert stub_originals == {p: (p.stat().st_mtime_ns, p.stat().st_ino) for p in stubs}
     assert not list(host.rglob(".cassini-*"))
 
 
@@ -88,6 +93,34 @@ def test_probe_retries_only_a_recoverable_host_failure(monkeypatch, failure, exp
     monkeypatch.setattr(bridge, "host_info", host_info)
     assert bridge.probe() == expected
     assert len(calls) == (0 if failure == "permission" else 1)
+
+
+def test_host_profile_inventory_observes_new_profiles_without_reading_contents(host):
+    browsers = bridge.installed_browsers()
+    initial = bridge.profile_inventory(browsers)
+    profile = browsers[0].config / "Default"
+    profile.mkdir(parents=True)
+    seen = bridge.profile_inventory(browsers)
+    assert seen != initial and "Default" in seen
+    (profile / "Preferences").write_text("irrelevant profile content")
+    assert bridge.profile_inventory(browsers) == seen
+    (profile.parent / "Profile 2").mkdir()
+    assert bridge.profile_inventory(browsers) != seen
+
+
+def test_unsafe_host_manifest_is_preserved_and_other_profiles_still_register(host):
+    browsers = bridge.installed_browsers()
+    directory = browsers[0].config / "NativeMessagingHosts"
+    directory.mkdir(parents=True)
+    foreign = host / "foreign.json"
+    foreign.write_text("another application's data")
+    link = directory / "io.codemyriad.cassini.json"
+    link.symlink_to(foreign)
+    with pytest.raises(companion.SetupError, match="unsafe"):
+        bridge.register()
+    assert link.is_symlink() and foreign.read_text() == "another application's data"
+    for browser in browsers[1:]:
+        assert len(list((browser.config / "NativeMessagingHosts").glob("*.json"))) == 2
 
 
 def test_actual_host_stub_keeps_binary_native_frames_and_selects_its_deployment(host):
@@ -311,3 +344,24 @@ def test_dedicated_broker_launch_returns_before_its_host_child_finishes(host):
     while not (host / "broker-finished").exists() and time.monotonic() < deadline:
         time.sleep(0.01)
     assert (host / "broker-finished").read_text() == "done"
+
+
+def test_host_manifest_comparison_needs_no_diffutils_and_preserves_trailing_newlines(host, monkeypatch):
+    tools = host / "coreutils-only"
+    tools.mkdir()
+    for name in ("cat", "head", "mkdir", "mktemp", "rm", "chmod", "mv"):
+        (tools / name).symlink_to(shutil.which(name))
+    monkeypatch.setenv("PATH", str(tools))
+    assert shutil.which("cmp") is None
+    path = host / "manifests/own.json"
+    content = '{"path":"a"}\n\n'
+    bridge._write(path, content, "600")
+    original = path.stat()
+    bridge._write(path, content, "600")
+    current = path.stat()
+    assert (current.st_ino, current.st_mtime_ns) == (original.st_ino, original.st_mtime_ns)
+    assert path.read_text() == content
+    changed = '{"path":"b"}\n'
+    bridge._write(path, changed, "600")
+    assert path.read_text() == changed
+    assert not list(path.parent.glob(".cassini-*"))

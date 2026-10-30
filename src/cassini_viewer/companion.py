@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Per-user companion registration; no root, shell commands or manual IDs."""
 
+import hashlib
 import json
 import logging
 import os
@@ -25,6 +26,12 @@ LEGACY_HOSTS = {
     },
 }
 CONFIG_DIRS = ("google-chrome", "chromium", "microsoft-edge", "BraveSoftware/Brave-Browser")
+
+
+class SetupError(OSError):
+    def __init__(self, reason, *, retryable=False, available=True):
+        super().__init__("No supported browser is installed" if reason == "noBrowser" else "Browser setup: " + reason)
+        self.reason, self.retryable, self.available = reason, retryable, available
 
 
 def legacy_owned(filename, content):
@@ -186,6 +193,80 @@ def host_paths():
     return result
 
 
+def profile_inventory():
+    """Worker-only fingerprint: executable/config roots and profile names, no content."""
+    browsers = installed_browsers()
+    if in_flatpak():
+        from .flatpak_bridge import profile_inventory as host_profiles
+
+        profiles = host_profiles(browsers)
+    else:
+        profiles = []
+        for browser in browsers:
+            try:
+                children = sorted(
+                    p.name
+                    for p in browser.config.iterdir()
+                    if (p.name == "Default" or p.name.startswith("Profile ")) and p.is_dir()
+                )
+                profiles.append((str(browser.config), True, children))
+            except FileNotFoundError:
+                profiles.append((str(browser.config), False, []))
+            except OSError as error:
+                profiles.append((str(browser.config), "unavailable-" + str(error.errno), []))
+    values = [(b.name, b.executable, str(b.config)) for b in browsers]
+    return hashlib.sha256(json.dumps([values, profiles], sort_keys=True).encode()).hexdigest()
+
+
+def _register_browser(browser, hosts):
+    written = []
+    directory = browser.config / "NativeMessagingHosts"
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    for name, executable in hosts.items():
+        executable = Path(executable).resolve(strict=True)
+        if not executable.is_file() or not os.access(executable, os.X_OK):
+            raise OSError("Native messaging host is not executable")
+        data = dict(
+            name=name,
+            description="Cassini local meeting recorder",
+            path=str(executable),
+            type="stdio",
+            allowed_origins=[ORIGIN],
+        )
+        destination = directory / (name + ".json")
+        try:
+            with os.fdopen(os.open(destination, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
+                if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                    raise SetupError("unsafe")
+                previous = stream.read(MANIFEST_LIMIT + 1)
+            if len(previous) <= MANIFEST_LIMIT and json.loads(previous) == data:
+                written.append(destination)
+                continue
+        except FileNotFoundError:
+            pass
+        except (ValueError, UnicodeError):
+            pass  # A damaged own manifest is replaced atomically.
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", dir=directory, delete=False) as stream:
+                temporary = Path(stream.name)
+                json.dump(data, stream, indent=2)
+                stream.write("\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            temporary.replace(destination)
+            descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+            written.append(destination)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+    return written
+
+
 def register(*, browsers=None, hosts=None):
     """Atomically write both exact-origin manifests, only under user configs."""
     if in_flatpak():
@@ -195,40 +276,14 @@ def register(*, browsers=None, hosts=None):
     browsers = installed_browsers() if browsers is None else browsers
     hosts = host_paths() if hosts is None else hosts
     if not browsers:
-        raise OSError("No supported browser is installed")
-    written = []
+        raise SetupError("noBrowser")
+    written, errors = [], []
     for browser in browsers:
-        directory = browser.config / "NativeMessagingHosts"
-        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-        for name, executable in hosts.items():
-            executable = Path(executable).resolve(strict=True)
-            if not executable.is_file() or not os.access(executable, os.X_OK):
-                raise OSError("Native messaging host is not executable")
-            data = dict(
-                name=name,
-                description="Cassini local meeting recorder",
-                path=str(executable),
-                type="stdio",
-                allowed_origins=[ORIGIN],
-            )
-            temporary = None
-            try:
-                with tempfile.NamedTemporaryFile(mode="w", dir=directory, delete=False) as stream:
-                    temporary = Path(stream.name)
-                    json.dump(data, stream, indent=2)
-                    stream.write("\n")
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                destination = directory / (name + ".json")
-                temporary.replace(destination)
-                descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
-                try:
-                    os.fsync(descriptor)
-                finally:
-                    os.close(descriptor)
-                written.append(destination)
-            finally:
-                if temporary is not None:
-                    temporary.unlink(missing_ok=True)
+        try:
+            written.extend(_register_browser(browser, hosts))
+        except OSError as error:
+            errors.append(error)
     cleanup_legacy(browsers=browsers)
+    if errors:
+        raise errors[0]
     return written

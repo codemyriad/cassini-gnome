@@ -86,31 +86,37 @@ with tempfile.TemporaryDirectory() as temporary:
     legacy = Path(os.environ["XDG_CONFIG_HOME"]) / "chromium/NativeMessagingHosts/com.codemyriad.cassini.json"
     legacy.parent.mkdir(parents=True)
     legacy.write_text(json.dumps(dict(name="com.codemyriad.cassini", path="/old/cassini-browser-host")))
+    original = companion.installed_browsers
+    browsers = original(config=tmp / "browser-config", which=lambda command: "/test/" + command)
+    companion.installed_browsers = lambda: browsers
+    launches = []
+    companion.open_add = lambda browser: launches.append((browser.name, companion.ADD_URL))
     app = CassiniApplication("com.gocassini.CompanionTest", "test", "development")
-    # Exercise actual startup against private configs, with the watcher and
-    # shortcut disabled so no real browser or desktop service is contacted.
+    # Actual launch starts registration, with only private configs/executables.
+    # Browser transport is supplied by the real private service below.
+    app._start_browser_watch = lambda: None
     os.environ.pop("CASSINI_SCREENSHOT_ISOLATED")
-    with (
-        patch.dict(os.environ, {"CASSINI_ISOLATED_AUDIO": "1"}),
-        patch.object(app, "_start_browser_watch", lambda: None),
-        patch.object(companion, "in_flatpak", lambda: False),
-    ):
+    with patch.dict(os.environ, {"CASSINI_ISOLATED_AUDIO": "1"}):
         app.register(None)
         until(lambda: not legacy.exists())
     os.environ["CASSINI_SCREENSHOT_ISOLATED"] = "1"
     app.activate()
     window = app.get_active_window()
     window.set_default_size(1130, 730)
-    until(lambda: not window._pending)
-    original = companion.installed_browsers
-    browsers = original(config=tmp / "browser-config", which=lambda command: "/test/" + command)
-    companion.installed_browsers = lambda: browsers
-    launches = []
-    companion.open_add = lambda browser: launches.append((browser.name, companion.ADD_URL))
-    dialog = CompanionSetup(app, service_path=path)
+    until(lambda: not window._pending and app.browser_connection.future is None)
+    assert app.browser_connection.snapshot()["phase"] == "waiting"
+    files = list((tmp / "browser-config").rglob("io.codemyriad.cassini*.json"))
+    assert len(files) == 8, "Both hosts must be registered at launch without Connect"
+    before = {p: (p.read_bytes(), p.stat().st_mtime_ns, p.stat().st_ino) for p in files}
+    from cassini_viewer.settings_dialog import SettingsDialog
+
+    settings = app.settings_dialog = SettingsDialog(app, service_path=path)
+    assert settings.browser.get_title() == "Waiting for the Cassini Recorder extension"
+    assert settings.browser_add.get_visible() and not settings.browser_setup.get_visible()
+    dialog = app.companion_setup = CompanionSetup(app, service_path=path)
     dialog.present(window)
     until(lambda: dialog.future is None)
-    assert not dialog.done.get_sensitive()
+    assert not dialog.done.get_sensitive() and not dialog.connect_button.get_visible()
     shot(window, "-pending")
     Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
     shot(window, "-pending-dark")
@@ -118,17 +124,36 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog.add_button.emit("clicked")
     until(lambda: len(launches) == 1)
     assert not dialog.done.get_sensitive() and dialog.add_caption.get_label() == "Not added yet"
+    opener = companion.open_add
+
+    def failed_open(_browser):
+        raise OSError("synthetic browser launch failure")
+
+    companion.open_add = failed_open
+    dialog.add_button.emit("clicked")
+    until(lambda: dialog.local_error is not None)
+    assert dialog.failed and dialog.connect_button.get_visible()
+    companion.open_add = opener
+    dialog.add_button.emit("clicked")
+    until(lambda: len(launches) == 2 and dialog.local_error is None and not dialog.failed)
     real_register = companion.register
-    companion.register = lambda: (_ for _ in ()).throw(OSError("simulated read-only config"))
-    dialog.connect_button.emit("clicked")
+
+    def read_only(**_kwargs):
+        raise PermissionError(13, "simulated read-only config")
+
+    companion.register = read_only
+    app.retry_browser_connection()  # A profile-change trigger, not a Connect click.
     until(lambda: dialog.failed)
-    assert dialog.connect_button.get_label() == "Try again" and not dialog.done.get_sensitive()
+    assert dialog.connect_button.get_label() == "Try again" and dialog.connect_button.get_visible()
+    assert settings.browser_setup.get_visible() and not settings.browser_add.get_visible()
+    assert not app.browser_connection.timer, "Permanent config errors must stop retrying"
     shot(window, "-failed")
     companion.register = real_register
     dialog.connect_button.emit("clicked")
-    until(lambda: dialog.deadline is not None)
-    assert len(list((tmp / "browser-config").rglob("io.codemyriad.cassini*.json"))) == 8
-    assert not dialog.done.get_sensitive() and dialog.connect_caption.get_label() == "Connecting…"
+    until(lambda: app.browser_connection.future is None and not dialog.failed)
+    assert not dialog.connect_button.get_visible() and not dialog.done.get_sensitive()
+    assert before == {p: (p.read_bytes(), p.stat().st_mtime_ns, p.stat().st_ino) for p in files}
+    assert dialog.connect_caption.get_label() == "Waiting for the Cassini Recorder extension"
     # The native host's socket connection alone is not an extension handshake.
     with connect(path) as connection, connection.makefile("rwb") as stream:
         send_packet(stream, dict(role="extension", browserName="Chrome"))
@@ -140,12 +165,15 @@ with tempfile.TemporaryDirectory() as temporary:
         send_packet(stream, dict(type="status", recording=False))
         until(lambda: dialog.done.get_sensitive())
         assert dialog.add_caption.get_label() == "Done. Cassini is in Chrome."
-        assert dialog.connect_caption.get_label() == "Connected."
+        assert dialog.connect_caption.get_label() == "Connected to Chrome"
+        assert settings.browser.get_title() == "Connected to Chrome"
+        assert not settings.browser_setup.get_visible() and not settings.browser_add.get_visible()
         shot(window, "-connected")
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
         shot(window, "-connected-dark")
     until(lambda: not dialog.done.get_sensitive())
-    assert dialog.connect_button.get_visible()
+    assert not dialog.connect_button.get_visible()
+    settings.force_close()
     dialog.force_close()
     until(lambda: dialog.closed)
     window.close()

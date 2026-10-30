@@ -47,6 +47,30 @@ jobs:
       # network, smoke-tests it and writes the D11 goldens down with it.
       # Retried once because distribution mirrors occasionally time out.
       - run: build-aux/deb/build.sh "${{ matrix.base }}" || build-aux/deb/build.sh "${{ matrix.base }}"
+      - uses: actions/setup-node@v6
+        if: matrix.base == 'ubuntu:26.04'
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: tests/recording/package-lock.json
+      - uses: actions/cache@v4
+        if: matrix.base == 'ubuntu:26.04'
+        with:
+          path: ~/.cache/ms-playwright
+          key: browser-startup-linux-x64-${{ hashFiles('tests/recording/package-lock.json') }}
+      - name: Prepare the pinned browser startup harness
+        if: matrix.base == 'ubuntu:26.04'
+        run: |
+          npm ci --prefix tests/recording
+          tests/recording/node_modules/.bin/playwright install chromium
+      - name: Installed package connects a fresh real extension without Connect
+        if: matrix.base == 'ubuntu:26.04'
+        run: tests/browser-setup/run.sh dist/*.deb "$RUNNER_TEMP/browser-startup"
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.base == 'ubuntu:26.04'
+        with:
+          name: browser-startup-installed
+          path: ${{ runner.temp }}/browser-startup/
       # Each base names its file (~ubuntu26.04, ~debian-testing), so the
       # release carries both.
       - uses: actions/upload-artifact@v4
