@@ -4,6 +4,7 @@
 https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Background.html
 """
 
+import contextlib
 import logging
 import threading
 from uuid import uuid4
@@ -235,5 +236,13 @@ class BackgroundRecording:
         self._cancel_request()
         self._complete(False)
         if self.bus:
-            self.bus.close(None, None, None)
-            self.bus = None
+            # GDBus closes before writing queued messages; flush first so the
+            # cleared status and the pending request's Close reach the portal.
+            bus, self.bus = self.bus, None
+
+            def flushed(connection, result):
+                with contextlib.suppress(GLib.Error):
+                    connection.flush_finish(result)
+                connection.close(None, None, None)
+
+            bus.flush(None, flushed)
