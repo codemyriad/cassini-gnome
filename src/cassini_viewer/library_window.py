@@ -300,6 +300,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             menu.append(_("Open…"), "app.open")
             menu.append(text("common.exportEllipsis"), "win.export")
             menu.append(text("settings.title"), "app.preferences")
+            menu.append(_("_Keyboard Shortcuts"), "app.shortcuts")
             menu.append(_("_About Cassini"), "app.about")
             button = Gtk.MenuButton(
                 icon_name="open-menu-symbolic", menu_model=menu, tooltip_text=text("common.mainMenu"), primary=True

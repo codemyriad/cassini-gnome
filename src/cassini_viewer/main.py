@@ -92,6 +92,7 @@ class CassiniApplication(Adw.Application):
         self.recording_error = None
         self.record_first = None
         self.settings_dialog = None
+        self.shortcuts_dialog = None
         self.library_relocator = None
         self.comfort = None
         self.global_shortcut = None
@@ -103,6 +104,7 @@ class CassiniApplication(Adw.Application):
 
         self._add_action("open", self.on_open, ["<primary>o"])
         self._add_action("about", self.on_about)
+        self._add_action("shortcuts", self.on_shortcuts, ["<primary>question"])
         self._add_action("preferences", self.on_preferences, ["<primary>comma"])
         self._add_action("quit", self.on_quit, ["<primary>q"])
         self._add_action("record", self.on_record, ["<primary>r"])
@@ -978,6 +980,27 @@ class CassiniApplication(Adw.Application):
             dialog.present(self.get_active_window())
         else:
             self.library_relocator.move(destination)
+
+    def on_shortcuts(self, *_args):
+        window = self.get_active_window()
+        if window is None or self.shortcuts_dialog is not None:
+            return
+        builder = Gtk.Builder.new_from_resource(RESOURCE + "/shortcuts-dialog.ui")
+        for item in builder.get_objects():
+            if isinstance(item, Adw.ShortcutsItem):
+                identifier = {
+                    "app.record": "common.record",
+                    "win.export": "common.exportEllipsis",
+                    "win.skip-back": "player.back10",
+                    "win.skip-forward": "player.forward10",
+                }.get(item.get_action_name())
+                if identifier:
+                    from .strings import text
+
+                    item.set_title(text(identifier))
+        dialog = self.shortcuts_dialog = builder.get_object("shortcuts_dialog")
+        dialog.connect("closed", lambda *_: setattr(self, "shortcuts_dialog", None))
+        dialog.present(window)
 
     def on_preferences(self, *_args):
         from .settings_dialog import SettingsDialog
