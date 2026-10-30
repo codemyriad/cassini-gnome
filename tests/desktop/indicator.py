@@ -63,29 +63,46 @@ def menu_click(appid, label):
             f"const i={expression};return !!i&&i.mapped&&i.width>0&&i.height>0;}})()"
         )
 
-    until(row_shown, "SNI menu row " + label)
     # Click the real menu row through the compositor's virtual pointer. The
     # extension receives a real Clutter event and forwards its dbusmenu Event
     # to Cassini. (Virtual Return on a focused row was not delivered once the
     # pointer had clicked inside a client window.)
     previous = shell("global._cassiniQaActivations?.length??0")
-    # The menu slides open; aim only once the compositor's own pick at the
-    # row's centre is that row, so the click cannot land beside the menu.
-    centre = until(
-        lambda: shell(
-            "(() => {const i=" + expression + ";if(!i||!" + actor(appid) + ".menu.isOpen)return null;"
-            "const [x,y]=i.get_transformed_position();const [w,h]=i.get_transformed_size();"
-            "const hit=global.stage.get_actor_at_pos(imports.gi.Clutter.PickMode.REACTIVE,x+w/2,y+h/2);"
-            "return hit&&(hit===i||i.contains(hit))?[x+w/2,y+h/2]:null;})()"
-        ),
-        "SNI menu row settled " + label,
-    )
-    assert shell(
-        "(() => {const i=" + expression + ";if(!i)return false;global._cassiniQaActivations??=[];"
-        "i.connect('activate',()=>global._cassiniQaActivations.push(i.label.text));return true;})()"
-    )
-    pointer_click(centre[0], centre[1], "SNI menu row " + label)
-    until(lambda: shell("global._cassiniQaActivations?.length??0") > previous, "real menu activation " + label)
+    for attempt in range(3):
+        until(row_shown, "SNI menu row " + label)
+        # The menu slides open; aim only once the compositor's own pick at the
+        # row's centre is that row, so the click cannot land beside the menu.
+        centre = until(
+            lambda: shell(
+                "(() => {const i=" + expression + ";if(!i||!" + actor(appid) + ".menu.isOpen)return null;"
+                "const [x,y]=i.get_transformed_position();const [w,h]=i.get_transformed_size();"
+                "const hit=global.stage.get_actor_at_pos(imports.gi.Clutter.PickMode.REACTIVE,x+w/2,y+h/2);"
+                "return hit&&(hit===i||i.contains(hit))?[x+w/2,y+h/2]:null;})()"
+            ),
+            "SNI menu row settled " + label,
+        )
+        assert shell(
+            "(() => {const i=" + expression + ";if(!i)return false;global._cassiniQaActivations??=[];"
+            "if(!i._cassiniQaWatched){i._cassiniQaWatched=true;"
+            "i.connect('activate',()=>global._cassiniQaActivations.push(i.label.text));}return true;})()"
+        )
+        pointer_click(centre[0], centre[1], "SNI menu row " + label)
+        # The hosted runner occasionally drops a click on a freshly opened
+        # menu. Click again only when the row did not activate, so no action
+        # can run twice.
+        try:
+            until(
+                lambda: shell("global._cassiniQaActivations?.length??0") > previous,
+                "real menu activation " + label,
+                timeout=5,
+            )
+            break
+        except AssertionError:
+            if attempt == 2:
+                print("SNI menu diagnostic", label, indicator(appid), shell("global.get_pointer()"), flush=True)
+                screenshot("indicator-menu-failed.png")
+                raise
+    assert shell("global._cassiniQaActivations.length") == previous + 1
     assert shell("global._cassiniQaActivations.at(-1)") == label
 
 
