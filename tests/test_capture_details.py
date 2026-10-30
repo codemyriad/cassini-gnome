@@ -40,8 +40,10 @@ def test_reader_only_end_record_and_large_dc_offset_are_factual_and_do_not_write
     before = {p.name: (p.stat().st_size, p.stat().st_mtime_ns) for p in meeting.directory.iterdir()}
     report = read_details(meeting)
     assert report.ended == "Stopped by you · 00:01:23"
-    assert "-2060 PCM16" in dict(report.health)["Microphone offset"]
-    assert "speech detection" in dict(report.health)["Microphone offset"]
+    assert dict(report.health)["Microphone offset"] == (
+        "The microphone adds a steady offset (-2060). Cassini corrects for it when finding speech; "
+        "the saved audio is unchanged."
+    )
     assert any(s.source == "Not recorded" and s.side == "The others" for s in report.spans)
     assert before == {p.name: (p.stat().st_size, p.stat().st_mtime_ns) for p in meeting.directory.iterdir()}
     # Source evidence is not a liveness claim.
@@ -132,7 +134,7 @@ def test_reports_are_whitelisted_and_do_not_read_private_voice_stores(meetings):
         )
     )
     report = read_details(replace(meeting, metadata=dict(meeting.metadata, recordingDetails=details)))
-    assert dict(report.writing)["Time taken"] == "4.217 s (resumed; this run)"
+    assert dict(report.writing)["Time taken"] == "4.217 s (this run, after resuming)"
     assert dict(report.writing)["Speech segments"] == "2"
     assert dict(report.writing)["Speaker separation"].startswith("Nemotron · 2 voices")
     assert MODEL_ID + "@" + REVISION in report.plain_text()
@@ -149,6 +151,7 @@ def test_symlink_fifo_and_oversized_metadata_are_bounded_and_leave_files_alone(m
     transcript.write_bytes(b" " * (1024 * 1024 + 1))
     report = read_details(meeting)
     assert report.notes and report.ended == UNKNOWN
+    assert "The language used to write it down couldn’t be read." in report.notes
     session.unlink()
     outside = tmp_path / "outside.json"
     outside.write_text('{"secret":"PRIVATE_PRINT_SENTINEL"}')

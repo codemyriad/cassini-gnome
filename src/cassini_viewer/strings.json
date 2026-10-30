@@ -5964,6 +5964,1716 @@
    "milestone": "D37",
    "status": "harmony",
    "note": "Coordinator (D37.6), proposed by Mac."
+  },
+  {
+   "id": "companion.local.add",
+   "en": "Add from Cassini",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D39",
+   "status": "harmony",
+   "note": "Coordinator (D39). Step 1 button while storeListingPublic is false; a secondary link after."
+  },
+  {
+   "id": "companion.local.title",
+   "en": "Add the browser companion from Cassini",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "D39",
+   "status": "harmony",
+   "note": "Coordinator (D39). Heading of the three-step panel."
+  },
+  {
+   "id": "companion.local.step1",
+   "en": "Open the Extensions page in {browser}.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "D39",
+   "status": "harmony",
+   "note": "Coordinator (D39). Step 1.",
+   "placeholders": {
+    "browser": "display name of the chosen supported browser"
+   }
+  },
+  {
+   "id": "companion.local.openExtensions",
+   "en": "Open Extensions page",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D39",
+   "status": "harmony",
+   "note": "Coordinator (D39). Opens chrome://extensions (or the browser equivalent) in the chosen browser."
+  },
+  {
+   "id": "companion.local.step2",
+   "en": "Turn on Developer mode.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "D39",
+   "status": "harmony",
+   "note": "Coordinator (D39). Step 2. The toggle is at the top right of the Extensions page."
+  },
+  {
+   "id": "companion.local.step3",
+   "en": "Click Load unpacked and choose the Cassini folder.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "D39",
+   "status": "harmony",
+   "note": "Coordinator (D39). Step 3."
+  },
+  {
+   "id": "companion.local.copyFolder",
+   "en": "Copy folder location",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D39",
+   "status": "harmony",
+   "note": "Coordinator (D39). Copies the stable companion folder path."
+  },
+  {
+   "id": "companion.local.pasteHint",
+   "en": "In the folder chooser, press Ctrl+L and paste.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "D39",
+   "status": "harmony",
+   "note": "Coordinator (D39). Under step 3.",
+   "mac": "In the folder chooser, press ⌘⇧G and paste."
+  },
+  {
+   "id": "companion.local.copied",
+   "en": "Folder location copied",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "toast",
+   "boards": [],
+   "milestone": "D39",
+   "status": "harmony",
+   "note": "Coordinator (D39). After Copy folder location."
+  },
+  {
+   "id": "companion.local.devModeNote",
+   "en": "{browser} may remind you that a developer-mode extension is on. That’s expected.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "D39",
+   "status": "harmony",
+   "note": "Coordinator (D39). Dim caption at the bottom of the panel.",
+   "placeholders": {
+    "browser": "display name"
+   }
+  },
+  {
+   "id": "details.title",
+   "en": "Recording details",
+   "role": "dialog-title",
+   "note": "GNOME proposal R41, published by the coordinator. Dialog and header title; approved D28 Part A.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.menu",
+   "en": "Recording details…",
+   "role": "menu-item",
+   "note": "GNOME proposal R41, published by the coordinator. Meeting More actions entry; opens the dialog.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.link",
+   "en": "Details",
+   "role": "button",
+   "note": "GNOME proposal R41, published by the coordinator. Recording page link; same style as Change what is recorded.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.copy.heading",
+   "en": "Cassini recording details",
+   "role": "copy-heading",
+   "note": "GNOME proposal R41, published by the coordinator. First line of the plain-text Copy details report.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.capture.title",
+   "en": "How it was captured",
+   "role": "section-heading",
+   "note": "GNOME proposal R41, published by the coordinator. Timeline section, dialog and copied report.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.end.title",
+   "en": "How it ended",
+   "role": "section-heading",
+   "note": "GNOME proposal R41, published by the coordinator. End-reason section, dialog and copied report.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.health.title",
+   "en": "Audio health",
+   "role": "section-heading",
+   "note": "GNOME proposal R41, published by the coordinator. Health section, dialog and copied report.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.writing.title",
+   "en": "Writing down",
+   "role": "section-heading",
+   "note": "GNOME proposal R41, published by the coordinator. Processing section, dialog and copied report.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.files.title",
+   "en": "Files",
+   "role": "section-heading",
+   "note": "GNOME proposal R41, published by the coordinator. Folder/actions section, dialog and copied report.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.side.me",
+   "en": "Me",
+   "role": "label",
+   "note": "GNOME proposal R41, published by the coordinator. Microphone side heading. Internal side identity is not translated.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.side.others",
+   "en": "The others",
+   "role": "label",
+   "note": "GNOME proposal R41, published by the coordinator. Other audio side heading; does not imply a participant count.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.reading",
+   "en": "Reading recording details…",
+   "role": "status",
+   "note": "GNOME proposal R41, published by the coordinator. Shown until the bounded background read finishes.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.updates",
+   "en": "Updates while recording",
+   "role": "caption",
+   "note": "GNOME proposal R41, published by the coordinator. Live-dialog caption, hidden for saved meetings.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.liveSubtitle",
+   "en": "{title} · Live",
+   "role": "format",
+   "note": "GNOME proposal R41, published by the coordinator. Live header subtitle; title is the captured/user meeting name.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.unknown",
+   "en": "Not recorded for this meeting",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Unknown saved fact; never inferred from current model state.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.timingUnknown",
+   "en": "Timing not recorded",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. A span whose start offset is unknown; never invent alignment.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.capture.empty",
+   "en": "No source details recorded",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Side panel with no known span evidence.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.copy.sideEmpty",
+   "en": "No saved audio for this side",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Copied report line when a side has no saved spans.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.capture.more",
+   "en": "More spans are included in Copy details.",
+   "role": "caption",
+   "note": "GNOME proposal R41, published by the coordinator. Dialog displays at most20 spans per side; copy includes all.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.copy",
+   "en": "Copy details",
+   "role": "button",
+   "note": "GNOME proposal R41, published by the coordinator. Copy the whitelisted report, never raw metadata or voiceprints.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.openFolder",
+   "en": "Open folder",
+   "role": "button",
+   "note": "GNOME proposal R41, published by the coordinator. Open the actual meeting folder through the system launcher.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.copied",
+   "en": "Recording details copied",
+   "role": "toast",
+   "note": "GNOME proposal R41, published by the coordinator. Shown after placing the report on the clipboard.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.openFailed",
+   "en": "Couldn’t open the recording folder",
+   "role": "toast",
+   "note": "GNOME proposal R41, published by the coordinator. Folder launcher failed; no destructive action.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.readFailed",
+   "en": "Couldn’t read recording details. Close this dialog and try again.",
+   "role": "error",
+   "note": "GNOME proposal R41, published by the coordinator. Bounded report read failed; preserve diagnostics without dumping private metadata.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.source.microphone",
+   "en": "Microphone",
+   "role": "label",
+   "note": "GNOME proposal R41, published by the coordinator. Source type, separate from a captured device label.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.source.browser",
+   "en": "Browser audio",
+   "role": "label",
+   "note": "GNOME proposal R41, published by the coordinator. Browser source type; stream count is not people.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.source.system",
+   "en": "Computer sound",
+   "role": "label",
+   "note": "GNOME proposal R41, published by the coordinator. System audio source type.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.source.application",
+   "en": "Application audio",
+   "role": "label",
+   "note": "GNOME proposal R41, published by the coordinator. Application audio source type.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.source.unknown",
+   "en": "Audio source not recorded",
+   "role": "label",
+   "note": "GNOME proposal R41, published by the coordinator. Recovered/unknown source; do not guess browser capture.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.source.none",
+   "en": "Not recorded",
+   "role": "label",
+   "note": "GNOME proposal R41, published by the coordinator. Selection events explicitly show this side off.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.method.microphone",
+   "en": "Microphone input",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Fallback method when no meaningful saved microphone device label exists.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.method.stream.one",
+   "en": "{n} audio stream",
+   "role": "format",
+   "note": "GNOME proposal R41, published by the coordinator. Exactly one distinct browser source ID; n=1.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.method.stream.other",
+   "en": "{n} audio streams",
+   "role": "format",
+   "note": "GNOME proposal R41, published by the coordinator. Distinct browser source IDs; n is not a participant count.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.method.track.one",
+   "en": "Saved audio track",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. One saved track with no more specific method.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.method.track.other",
+   "en": "Saved audio tracks",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Several saved tracks with no more specific method.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.method.notSelected",
+   "en": "Not selected",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Side was not selected at recording start.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.method.off",
+   "en": "Switched off",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Side was switched off by a later selection event.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.reason.notSelected",
+   "en": "Not selected when recording began",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Explanation paired with Not selected.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.end.recording",
+   "en": "Still recording",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. How it ended while recording is live.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.end.saving",
+   "en": "Saving the recording",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. How it ended while finalization is in progress.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.end.at",
+   "en": "{reason} · {time}",
+   "role": "format",
+   "note": "GNOME proposal R41, published by the coordinator. Saved end reason and final known audio position; omit the time when unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.health.gaps",
+   "en": "Gaps",
+   "role": "field-label",
+   "note": "GNOME proposal R41, published by the coordinator. Saved gapFrames counter, shown only when the source can report it.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.health.dropped",
+   "en": "Dropped audio",
+   "role": "field-label",
+   "note": "GNOME proposal R41, published by the coordinator. Saved droppedFrames counter, shown only when the source can report it.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.health.problem",
+   "en": "Reported issue",
+   "role": "field-label",
+   "note": "GNOME proposal R41, published by the coordinator. Saved problemKind, not an inferred current error.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.health.offset",
+   "en": "Microphone offset",
+   "role": "field-label",
+   "note": "GNOME proposal R41, published by the coordinator. Bounded sample from the beginning of the saved microphone WAV.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.health.durationUnknown",
+   "en": "duration not recorded",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Frame count exists but saved sample rate is unavailable.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.health.counter.one",
+   "en": "{frames} frame · {duration}",
+   "role": "format",
+   "note": "GNOME proposal R41, published by the coordinator. One saved gap/dropped frame; duration is formatted or the unknown-duration line.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.health.counter.other",
+   "en": "{frames} frames · {duration}",
+   "role": "format",
+   "note": "GNOME proposal R41, published by the coordinator. Saved gap/dropped count; frames is grouped decimal, duration includes its unit.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.health.partialCounter",
+   "en": "{value} (not all tracks report this)",
+   "role": "format",
+   "note": "GNOME proposal R41, published by the coordinator. Only some saved tracks report this counter; value is the count/duration line.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.health.largeOffset",
+   "en": "The microphone adds a steady offset ({offset}). Cassini corrects for it when finding speech; the saved audio is unchanged.",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Offset is a signed integer mean, e.g. -2060; shown only for a large sampled DC offset. Coordinator edited the proposed English (R41).",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.health.offsetFine",
+   "en": "No large offset in the sampled microphone audio",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. No large offset found in the bounded sample; makes no claim about the whole meeting.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.duration.hours",
+   "en": "{n} h",
+   "role": "format",
+   "note": "GNOME proposal R41, published by the coordinator. Measured wall duration hour component.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.duration.minutes",
+   "en": "{n} min",
+   "role": "format",
+   "note": "GNOME proposal R41, published by the coordinator. Measured wall duration minute component.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.duration.seconds",
+   "en": "{n} s",
+   "role": "format",
+   "note": "GNOME proposal R41, published by the coordinator. Measured wall duration or audio-health duration; n may be fractional.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.writing.resumed",
+   "en": "{duration} (this run, after resuming)",
+   "role": "format",
+   "note": "GNOME proposal R41, published by the coordinator. Elapsed time covers only the successful resumed attempt, excluding queue time. Coordinator edited the proposed English (R41).",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.writing.model",
+   "en": "Model",
+   "role": "field-label",
+   "note": "GNOME proposal R41, published by the coordinator. Recognition model saved for this attempt.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.writing.language",
+   "en": "Language",
+   "role": "field-label",
+   "note": "GNOME proposal R41, published by the coordinator. Language name from the saved transcript header; unknown stays unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.writing.timeTaken",
+   "en": "Time taken",
+   "role": "field-label",
+   "note": "GNOME proposal R41, published by the coordinator. Monotonic wall time of the successful attempt.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.writing.speechSegments",
+   "en": "Speech segments",
+   "role": "field-label",
+   "note": "GNOME proposal R41, published by the coordinator. Actual segment count reported by the worker, including zero.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.writing.separation",
+   "en": "Speaker separation",
+   "role": "field-label",
+   "note": "GNOME proposal R41, published by the coordinator. Actual optional speaker-separation outcome for this attempt.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.writing.recognised",
+   "en": "Saved voices recognised",
+   "role": "field-label",
+   "note": "GNOME proposal R41, published by the coordinator. Recognised names only; no embeddings or match scores.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.writing.noneRecognised",
+   "en": "None recorded",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. No recognised names are recorded for this meeting.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.writing.after",
+   "en": "After the recording",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Every Writing down value while recording/saving; do not claim facts are missing yet.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.model.whistle",
+   "en": "Whistle",
+   "role": "model-name",
+   "note": "GNOME proposal R41, published by the coordinator. Proper product name for the saved Whistle model tag.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.model.parakeet",
+   "en": "Parakeet Ultra",
+   "role": "model-name",
+   "note": "GNOME proposal R41, published by the coordinator. Proper product name for the saved Parakeet model tag.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.model.nemotron",
+   "en": "Nemotron",
+   "role": "model-name",
+   "note": "GNOME proposal R41, published by the coordinator. Short proper product name; full saved model ID/revision is also shown verbatim.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.separation.modelsNotInstalled",
+   "en": "Tell speakers apart was not installed",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Historical skipped reason, not today’s download state.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.separation.modelNotReady",
+   "en": "Tell speakers apart was not ready",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Historical skipped reason: model existed but was not ready.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.separation.unavailable",
+   "en": "Tell speakers apart was unavailable on this computer",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Historical skipped reason when the optional feature was unavailable.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.separation.notApplicable",
+   "en": "Not needed for these separate audio tracks",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Tracks did not require mixed-track speaker separation.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.separation.tooShort",
+   "en": "The audio was too short to separate speakers",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Actual skipped-too-short processing outcome.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.separation.processingFailed",
+   "en": "Speaker separation could not finish. The transcript was kept.",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Failure after useful recognition; no claim that the whole write-down failed.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.separation.voices.one",
+   "en": "{model} · {n} voice",
+   "role": "format",
+   "note": "GNOME proposal R41, published by the coordinator. Completed/partial separation summary with exactly one native voice.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.separation.voices.other",
+   "en": "{model} · {n} voices",
+   "role": "format",
+   "note": "GNOME proposal R41, published by the coordinator. Completed/partial separation summary; n counts native group/voice pairs, before merges.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.separation.reused",
+   "en": "Saved speaker turns reused",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. All returned groups reused validated cached turns.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.separation.partial",
+   "en": "Some audio could not be separated",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Partial separation result; useful recognised words were kept.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.metadata.missing",
+   "en": "{filename} is unavailable; some details are not recorded.",
+   "role": "note",
+   "note": "GNOME proposal R41, published by the coordinator. Required saved metadata file missing; filename is a known whitelisted basename.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.metadata.unsafe",
+   "en": "{filename} could not be read safely; some details are unavailable.",
+   "role": "note",
+   "note": "GNOME proposal R41, published by the coordinator. Unsafe/unreadable/oversized saved metadata; no raw exception or private contents.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.metadata.languageReadFailed",
+   "en": "The language used to write it down couldn’t be read.",
+   "role": "note",
+   "note": "GNOME proposal R41, published by the coordinator. Malformed/unsupported bounded header; never load the full timed-word array. Coordinator edited the proposed English (R41).",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.folderUnavailable",
+   "en": "The meeting folder is unavailable.",
+   "role": "note",
+   "note": "GNOME proposal R41, published by the coordinator. Actual meeting folder cannot be opened.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.timelineUnknown",
+   "en": "Source-change events were not recorded. The timeline uses saved audio tracks; the reason for a source change is unknown.",
+   "role": "note",
+   "note": "GNOME proposal R41, published by the coordinator. Older/unknown event history; track evidence is shown without inventing reasons.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.reason.start",
+   "en": "Selected when recording began",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Explanation from a matching othersSource/selection event; browser reasons are never applied to a native capture.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.reason.missing",
+   "en": "Browser audio was unavailable",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Explanation from a matching othersSource/selection event; browser reasons are never applied to a native capture.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.reason.lost",
+   "en": "The browser audio connection was lost",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Explanation from a matching othersSource/selection event; browser reasons are never applied to a native capture.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.reason.user",
+   "en": "You changed what was recorded",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Explanation from a matching othersSource/selection event; browser reasons are never applied to a native capture.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.reason.restored",
+   "en": "Browser audio returned",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Explanation from a matching othersSource/selection event; browser reasons are never applied to a native capture.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.end.user",
+   "en": "Stopped by you",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Recorded terminal reason; never inferred for an older meeting without an end fact.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.end.callEnded",
+   "en": "The call ended",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Recorded terminal reason; never inferred for an older meeting without an end fact.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.end.tabClosed",
+   "en": "The tab was closed",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Recorded terminal reason; never inferred for an older meeting without an end fact.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.end.pageGone",
+   "en": "The meeting page did not come back",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Recorded terminal reason; never inferred for an older meeting without an end fact.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.end.disk",
+   "en": "Recording stopped because space ran low",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Recorded terminal reason; never inferred for an older meeting without an end fact.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.end.error",
+   "en": "Recording stopped because of an error",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Recorded terminal reason; never inferred for an older meeting without an end fact.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.end.appQuit",
+   "en": "Cassini was quit",
+   "role": "value",
+   "note": "GNOME proposal R41, published by the coordinator. Recorded terminal reason; never inferred for an older meeting without an end fact.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.bg",
+   "en": "Bulgarian",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.cs",
+   "en": "Czech",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.da",
+   "en": "Danish",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.de",
+   "en": "German",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.el",
+   "en": "Greek",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.en",
+   "en": "English",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.es",
+   "en": "Spanish",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.et",
+   "en": "Estonian",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.fi",
+   "en": "Finnish",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.fr",
+   "en": "French",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.hr",
+   "en": "Croatian",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.hu",
+   "en": "Hungarian",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.it",
+   "en": "Italian",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.lt",
+   "en": "Lithuanian",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.lv",
+   "en": "Latvian",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.mt",
+   "en": "Maltese",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.nb",
+   "en": "Norwegian Bokmål",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.nl",
+   "en": "Dutch",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.nn",
+   "en": "Norwegian Nynorsk",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.no",
+   "en": "Norwegian",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.pl",
+   "en": "Polish",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.pt",
+   "en": "Portuguese",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.ro",
+   "en": "Romanian",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.ru",
+   "en": "Russian",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.sk",
+   "en": "Slovak",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.sl",
+   "en": "Slovenian",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.sv",
+   "en": "Swedish",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
+  },
+  {
+   "id": "details.language.uk",
+   "en": "Ukrainian",
+   "role": "language-name",
+   "note": "GNOME proposal R41, published by the coordinator. Human-readable saved BCP-47 language name; unknown languages use details.unknown.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D28A",
+   "status": "harmony"
   }
  ]
 }

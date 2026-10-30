@@ -224,7 +224,7 @@ with tempfile.TemporaryDirectory() as temporary:
             write_json(paths[key] / "session.json", live)
             until(lambda dialog=dialog: dict(dialog.report.health)["Reported issue"] == "io")
         elif key == "microphone":
-            assert "-2060 PCM16" in body and "Stopped by you" in body
+            assert "The microphone adds a steady offset (-2060)." in body and "Stopped by you" in body
             opened = []
 
             def launch(launcher, _parent, _cancel, _callback, opened=opened):
@@ -274,7 +274,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert dialog.report.folder == str(outside)
     assert dialog.report.title == outside_metadata["title"]
     assert REVISION in dialog.report.plain_text()
-    assert dict(dialog.report.writing)["Time taken"] == "15.68 s (resumed; this run)"
+    assert dict(dialog.report.writing)["Time taken"] == "15.68 s (this run, after resuming)"
     shot(window, "speaker-separation")
     assert not window.lookup_action("move-to-trash").get_enabled()
     window._updated(window._source_snapshot)

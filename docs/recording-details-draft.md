@@ -5,6 +5,9 @@ page open the same live dialog. Silvio approved this design. All app-owned displ
 copy comes from the coordinator’s shared `details.*` catalog; captured names, paths
 and technical identifiers stay as recorded data.
 
+The complete catalog is vendored verbatim from coordination `6c497ba`; its
+SHA256 is `a6ca71e032e344d30baf71441bb4c98cf7bec0d449e28961b5c28f86ea8cc055`.
+
 The timeline uses saved track offsets and lengths, split at source/selection events.
 Browser stream counts count audio sources, never participants. Unknown offsets
 have no displayed time range. Missing source-change events are explicitly noted.
@@ -53,7 +56,7 @@ not an extension of `session.json` or the browser protocol.
 | `recordingDetails.end.reason` | `user`, `disk`, `error` or `appQuit` for current writers. The schema/reader also accepts a recorded `callEnded`, `tabClosed` or `pageGone`; this change does not start writing those. |
 | `recordingDetails.end.atMs` | Optional integer: final saved audio endpoint, exactly floor(offset + frames × 1000 / rate), maximized over tracks with known offsets. It is not the button-press clock time. Unknown offsets are never assumed to be aligned or written back. |
 | `recordingDetails.writingDown.wallDurationMs` | Nonnegative integer milliseconds measured by a monotonic wall clock for the successful attempt. Starts when its FIFO job runs; excludes queue wait and earlier interrupted attempts. Includes worker setup, recognition, optional separation/voice extraction, and publication up to the final done write. |
-| `recordingDetails.writingDown.resumed` | Boolean: the attempt resumed a previously queued/running job. The displayed duration is labelled “resumed; this run” when true. An explicit retry of a failed job is a new attempt. |
+| `recordingDetails.writingDown.resumed` | Boolean: the attempt resumed a previously queued/running job. The displayed duration is labelled “this run, after resuming” when true. An explicit retry of a failed job is a new attempt. |
 | `recordingDetails.writingDown.speechSegments` | Optional nonnegative integer from the worker's actual segment count, including zero. Omitted when not reported. |
 | `recordingDetails.writingDown.speakerSeparation.status` | `completed`, `partial`, `skipped` or `failed`. Failure keeps the completed words. |
 | `…speakerSeparation.modelId` / `modelRevision` | The pinned model id and full 64-character revision. Required for completed/partial separation; copied in full in the dialog/Copy details. |
