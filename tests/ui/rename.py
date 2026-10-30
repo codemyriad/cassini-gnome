@@ -97,7 +97,6 @@ def choose_rename(popover):
     assert item.activate()
 
 
-
 def key(window, symbol):
     until(
         lambda: (
