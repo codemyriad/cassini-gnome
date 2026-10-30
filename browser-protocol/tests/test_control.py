@@ -48,6 +48,25 @@ class ControlTests(unittest.TestCase):
                 self.assertIs(type(case['expect']['automatic']),bool)
                 self.assertIs(type(case['expect']['manual']),bool)
 
+
+    def test_d33_page_state_and_opt_in_are_additive_and_typed(self):
+        extension=Draft202012Validator(json.loads((ROOT/'schemas/control-extension.schema.json').read_text()))
+        host=Draft202012Validator(json.loads((ROOT/'schemas/control-host.schema.json').read_text()))
+        for state in ['present','closed','navigating']:
+            row=dict(type='status',recording=True,tabId=2,path='/Recording-test',message='',pageState=state)
+            self.assertTrue(extension.is_valid(row))
+            self.assertTrue(extension.is_valid(dict(row,sessions=[row])))
+        for state in ['missing',None,1]:
+            self.assertFalse(extension.is_valid(dict(row,pageState=state)))
+        start=dict(type='command',requestId='s',action='start',mode='tracks',tabId=2,independent=True,keepOnNavigation=True)
+        self.assertTrue(host.is_valid(start))
+        self.assertFalse(host.is_valid(dict(start,independent=False)))
+        self.assertFalse(host.is_valid(dict(start,keepOnNavigation='true')))
+        self.assertFalse(host.is_valid(dict(start,reason='user')))
+        stop=dict(type='command',requestId='s',action='stop',tabId=2,reason='tabClosed')
+        self.assertTrue(host.is_valid(stop))
+        self.assertFalse(host.is_valid(dict(stop,reason='unknown')))
+
     def test_host_schema_matches_valid_and_invalid_commands(self):
         validator=Draft202012Validator(json.loads((ROOT/'schemas/control-host.schema.json').read_text()))
         invalid={'invalid-action','invalid-tab-id','missing-mode','whole-tab-needs-browser-click'}

@@ -16,7 +16,7 @@ async function twoMeetings() {
 test('independent capability starts two tabs, routes packets and stops only one', async () => {
   const app = await twoMeetings();
   try {
-    assert.deepEqual(Array.from(app.ports[0].sent[0].capabilities), ['independent-sessions-v1', 'call-evidence-v1']);
+    assert.deepEqual(Array.from(app.ports[0].sent[0].capabilities), ['independent-sessions-v1', 'call-evidence-v1', 'page-state-v1']);
     assert.equal((await app.command(command('one','start',2,{captureLocal:false,microphone:true}))).ok,true);
     const second = await app.command(command('two','start',3,{captureLocal:false,microphone:false}));
     assert.equal(second.ok,true);assert.equal(app.audio.length,2);

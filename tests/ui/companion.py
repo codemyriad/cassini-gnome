@@ -4,6 +4,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,25 @@ from unittest.mock import patch
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Use build-aux/ux-screenshot.sh")
+if os.environ.get("CASSINI_COMPANION_UI_CHILD") != "1":
+    result = subprocess.run(
+        [sys.executable, __file__],
+        env=dict(os.environ, CASSINI_COMPANION_UI_CHILD="1"),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    diagnostics = [
+        line
+        for line in result.stderr.splitlines()
+        if re.search(r"(?:Gtk|Adw|Adwaita|Gdk|Gsk|GLib-GObject)-(?:WARNING|CRITICAL)\b", line)
+    ]
+    if diagnostics:
+        raise SystemExit("GTK diagnostics during companion setup:\n" + "\n".join(diagnostics))
+    raise SystemExit(result.returncode)
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 import gi  # noqa: E402
@@ -25,7 +45,7 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer import companion  # noqa: E402
+from cassini_viewer import companion, companion_bundle  # noqa: E402
 from cassini_viewer.browser_service import BrowserService, connect, request, send_packet  # noqa: E402
 from cassini_viewer.companion_setup import CompanionSetup  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
@@ -89,8 +109,12 @@ with tempfile.TemporaryDirectory() as temporary:
     original = companion.installed_browsers
     browsers = original(config=tmp / "browser-config", which=lambda command: "/test/" + command)
     companion.installed_browsers = lambda: browsers
+    companion_bundle.store_listing_public = lambda: True
     launches = []
-    companion.open_add = lambda browser: launches.append((browser.name, companion.ADD_URL))
+    companion.open_add = lambda browser: (
+        launches.append((browser.name, companion.ADD_URL)),
+        subprocess.Popen(["/bin/true"]),
+    )[1]
     app = CassiniApplication("com.gocassini.CompanionTest", "test", "development")
     # Actual launch starts registration, with only private configs/executables.
     # Browser transport is supplied by the real private service below.
@@ -123,6 +147,70 @@ with tempfile.TemporaryDirectory() as temporary:
     Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
     shot(window, "-pending-dark")
     Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
+    # D39's default Add is a real guide backed by the stable private copy.
+    companion_bundle.store_listing_public = lambda: False
+    dialog.render()
+    settings.render_browser()
+    assert dialog.add_button.get_label() == settings.browser_add.get_label() == "Add from Cassini"
+    assert not dialog.local_add.get_visible() and not settings.browser_add_local.get_visible()
+    with patch.object(companion_bundle, "prepare", side_effect=OSError("synthetic unwritable companion folder")):
+        dialog.add_button.emit("clicked")
+        until(lambda: dialog.prepare_error and dialog.future is None)
+        assert dialog.prepare_problem.get_visible()
+        assert dialog.prepare_label.get_label() == "Couldn’t prepare the browser companion."
+        assert dialog.prepare_retry.get_label() == "Try again" and dialog.prepare_retry.get_sensitive()
+        assert dialog.local_dialog is None
+        shot(window, "-prepare-failed")
+    dialog.prepare_retry.emit("clicked")
+    until(lambda: dialog.local_dialog is not None and not dialog.local_dialog.closed)
+    local = dialog.local_dialog
+    assert not local.done.get_sensitive() and not dialog.done.get_sensitive()
+    assert (local.folder / "manifest.json").is_file()
+    copy_values = []
+    local.copy_button.emit("clicked")
+    clipboard = local.get_display().get_clipboard()
+    clipboard.read_text_async(None, lambda c, r: copy_values.append(c.read_text_finish(r)))
+    until(lambda: bool(copy_values))
+    assert copy_values[-1] == str(local.folder)
+    extension_pages = []
+    companion.open_new_tab = lambda browser: (extension_pages.append(browser.name), subprocess.Popen(["/bin/true"]))[1]
+    local.address_button.emit("clicked")
+    until(lambda: bool(extension_pages) and not local.opening)
+    assert extension_pages == ["Chrome"] and not local.done.get_sensitive()
+    copy_values.clear()
+    clipboard.read_text_async(None, lambda c, r: copy_values.append(c.read_text_finish(r)))
+    until(lambda: bool(copy_values))
+    assert copy_values[-1] == "chrome://extensions/"
+    assert local.address_button.get_label() == "Copy Address and Open Chrome"
+    failing_launcher = tmp / "exit-42"
+    failing_launcher.write_text("#!/bin/sh\nexit 42\n")
+    failing_launcher.chmod(0o700)
+    # Exercise an actual child failure rather than a mocked Python exception.
+    with patch.object(
+        companion,
+        "open_new_tab",
+        side_effect=lambda browser: companion.open_url(
+            companion.Browser(browser.name, str(failing_launcher), browser.config), "about:blank", new_tab=True
+        ),
+    ):
+        local.address_button.emit("clicked")
+        until(lambda: local.failed and not local.opening)
+        assert local.address_button.get_label() == "Try again" and local.address_button.get_sensitive()
+        assert local.problem.get_visible()
+        assert local.problem.get_label() == "Couldn’t open Chrome. Open it yourself and paste the address."
+        copy_values.clear()
+        clipboard.read_text_async(None, lambda c, r: copy_values.append(c.read_text_finish(r)))
+        until(lambda: bool(copy_values))
+        assert copy_values[-1] == "chrome://extensions/", "Launch failure must keep the copied address"
+        shot(window, "-open-failed")
+    local.address_button.emit("clicked")
+    until(lambda: len(extension_pages) == 2 and not local.opening and not local.failed)
+    shot(window, "-local")
+    local.force_close()
+    companion_bundle.store_listing_public = lambda: True
+    dialog.render()
+    settings.render_browser()
+    assert dialog.local_add.get_visible() and settings.browser_add_local.get_visible()
     dialog.add_button.emit("clicked")
     until(lambda: len(launches) == 1)
     assert not dialog.done.get_sensitive() and dialog.add_caption.get_label() == "Not added yet"
@@ -173,14 +261,35 @@ with tempfile.TemporaryDirectory() as temporary:
         assert dialog.connect_caption.get_label() == "Connected to Chrome"
         assert settings.browser.get_title() == "Connected to Chrome"
         assert not settings.browser_setup.get_visible() and not settings.browser_add.get_visible()
+        # Existing connected users can explicitly load the app's stable copy,
+        # including when the public-store build flag is off.
+        companion_bundle.store_listing_public = lambda: False
+        dialog.render()
+        settings.render_browser()
+        assert dialog.local_add.get_visible() and settings.browser_add_local.get_visible()
+        dialog.force_close()
+        until(lambda: dialog.closed)
+        settings.present(window)
+        until(settings.get_mapped)
+        settings.browser_add_local.emit("clicked")
+        dialog = app.companion_setup
+        dialog.service_path = path
+        until(dialog.get_mapped)
+        assert dialog.local_dialog is None and dialog.future is None, "Outer Add only presents the setup sheet"
+        assert dialog.add_button.get_visible() and dialog.add_button.get_label() == "Add from Cassini"
+        dialog.add_button.emit("clicked")
+        until(lambda: dialog.local_dialog is not None and not dialog.local_dialog.closed)
+        assert dialog.local_dialog.done.get_sensitive(), "Only the real existing connection enables Done"
+        dialog.local_dialog.force_close()
         shot(window, "-connected")
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
         shot(window, "-connected-dark")
     until(lambda: not dialog.done.get_sensitive())
     assert not dialog.connect_button.get_visible()
-    settings.force_close()
     dialog.force_close()
     until(lambda: dialog.closed)
+    settings.force_close()
+    until(lambda: settings.closed)
     reopened = app.on_companion_setup(parent=window)
     until(reopened.get_mapped)
     assert reopened.add_badge.get_label() == "✓" and not reopened.add_button.get_visible()

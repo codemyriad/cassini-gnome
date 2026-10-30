@@ -155,6 +155,8 @@ install_data(
   'cassini_viewer/browser_control_host.py',
   'cassini_viewer/browser_service.py',
   'cassini_viewer/companion.py',
+  'cassini_viewer/companion_bundle.py',
+  'cassini_viewer/companion_local_dialog.py',
   'cassini_viewer/flatpak_bridge.py',
   'cassini_viewer/flatpak-native-host.sh',
   'cassini_viewer/companion_setup.py',
@@ -172,7 +174,7 @@ install_data(
 configure_file(
   input: 'cassini_viewer/paths.json.in',
   output: 'paths.json',
-  configuration: {'ONNXRUNTIME_DIR': onnxruntime_dir, 'SHERPA_DIR': sherpa_dir, 'BINDIR': get_option('prefix') / get_option('bindir')},
+  configuration: {'ONNXRUNTIME_DIR': onnxruntime_dir, 'SHERPA_DIR': sherpa_dir, 'BINDIR': get_option('prefix') / get_option('bindir'), 'STORE_LISTING_PUBLIC': get_option('store_listing_public').to_string('true', 'false')},
   install: true,
   install_dir: moduledir,
 )

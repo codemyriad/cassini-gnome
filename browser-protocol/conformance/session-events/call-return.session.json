@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "id": "d3300000-0000-4000-8000-000000000001",
+  "createdAt": "2026-10-30T00:00:00Z",
+  "source": "chromium",
+  "title": "Same call returns after a network gap",
+  "state": "completed",
+  "tracks": [
+    {
+      "id": "mic",
+      "file": "track-mic.wav",
+      "kind": "microphone",
+      "label": "Synthetic source",
+      "labelSource": "device",
+      "sampleRate": 8000,
+      "channels": 1,
+      "frames": 40000,
+      "startOffsetMs": 0,
+      "endOffsetMs": 5000,
+      "ended": true
+    },
+    {
+      "id": "remote-before",
+      "file": "track-remote-before.wav",
+      "kind": "remote",
+      "label": "Synthetic source",
+      "labelSource": "browser",
+      "sampleRate": 8000,
+      "channels": 1,
+      "frames": 8000,
+      "startOffsetMs": 0,
+      "endOffsetMs": 1000,
+      "ended": true,
+      "sourceTrackId": "remote-a"
+    },
+    {
+      "id": "fallback",
+      "file": "track-fallback.wav",
+      "kind": "system",
+      "label": "Synthetic source",
+      "labelSource": "device",
+      "sampleRate": 8000,
+      "channels": 1,
+      "frames": 16000,
+      "startOffsetMs": 1000,
+      "endOffsetMs": 3000,
+      "ended": true
+    },
+    {
+      "id": "remote-after",
+      "file": "track-remote-after.wav",
+      "kind": "remote",
+      "label": "Synthetic source",
+      "labelSource": "browser",
+      "sampleRate": 8000,
+      "channels": 1,
+      "frames": 16000,
+      "startOffsetMs": 3000,
+      "endOffsetMs": 5000,
+      "ended": true,
+      "sourceTrackId": "remote-a"
+    }
+  ],
+  "events": [
+    {
+      "type": "othersSource",
+      "atMs": 0,
+      "source": "browser",
+      "reason": "start"
+    },
+    {
+      "type": "selection",
+      "atMs": 0,
+      "me": true,
+      "others": true,
+      "reason": "start"
+    },
+    {
+      "type": "othersSource",
+      "atMs": 1000,
+      "source": "system",
+      "reason": "lost"
+    },
+    {
+      "type": "othersSource",
+      "atMs": 3000,
+      "source": "browser",
+      "reason": "restored"
+    },
+    {
+      "type": "end",
+      "atMs": 5000,
+      "reason": "callEnded"
+    }
+  ]
+}

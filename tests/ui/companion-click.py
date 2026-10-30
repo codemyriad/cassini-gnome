@@ -70,7 +70,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
 from desktop_services import DesktopServices  # noqa: E402
 
-from cassini_viewer import browser_service, companion  # noqa: E402
+from cassini_viewer import browser_service, companion, companion_bundle  # noqa: E402
 from cassini_viewer.browser_watch import BrowserWatch  # noqa: E402
 from cassini_viewer.capture_activity import BrowserActivity, read_browser_activity  # noqa: E402
 from cassini_viewer.companion_setup import CompanionSetup  # noqa: E402
@@ -141,6 +141,10 @@ def completed_result(future, *args, **kwargs):
     return original_result(future, *args, **kwargs)
 
 
+# Preserve the original store-build latency gate. Default local installation
+# has its own actual Chromium/guide gate, without weakening these bounds.
+companion_bundle.store_listing_public = lambda: True
+
 original_result = Future.result
 with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
     tmp = Path(temporary)
@@ -210,6 +214,7 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
             launch_entered.set()
             assert launch_release.wait(2)
             launches.append(browser.name)
+            return subprocess.Popen(["/bin/true"])
 
         guards.enter_context(patch.object(companion, "open_add", open_add))
         app = CassiniApplication("com.gocassini.CompanionClickTest", "test", "development")

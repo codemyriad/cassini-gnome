@@ -29,6 +29,10 @@ def state_text(state):
 
 
 def add_text(state):
+    from .companion_bundle import store_listing_public
+
+    if not store_listing_public():
+        return text("companion.local.add")
     browser = state.get("browser") if state else None
     return text("browser.state.add", browser=browser.name) if browser else text("browser.state.addGeneric")
 
@@ -51,6 +55,14 @@ def setup():
     ready, retryable = companion.probe()
     if not ready:
         raise companion.SetupError("temporary" if retryable else "unsafe", retryable=retryable, available=False)
+    from .companion_bundle import prepare
+
+    try:
+        prepare()
+    except (OSError, ValueError):
+        # Folder preparation cannot invalidate an existing store connection.
+        # An explicit Add from Cassini retries it and shows its own true error.
+        LOG.warning("Could not prepare the local browser companion", exc_info=True)
     browsers = companion.installed_browsers()
     if not browsers:
         raise companion.SetupError("noBrowser")

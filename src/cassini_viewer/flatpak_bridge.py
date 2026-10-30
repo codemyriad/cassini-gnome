@@ -107,8 +107,30 @@ def host_command(command, *, watch=False):
     return [spawn, "--host", "--directory=/", *(["--watch-bus"] if watch else []), *command]
 
 
-def detached_command(command):
-    return host_command(["/bin/sh", "-c", '"$@" </dev/null >/dev/null 2>&1 &', "cassini-host-launch", *command])
+BROWSER_LAUNCH = r"""
+"$@" </dev/null >/dev/null 2>&1 &
+child=$!
+report_exit() {
+    wait "$child"
+    status=$?
+    if [ "$status" -ne 0 ]; then
+        printf 'Browser launcher exited with status %s\n' "$status" >&2
+    fi
+    exit "$status"
+}
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    kill -0 "$child" 2>/dev/null || report_exit
+    sleep .05
+done
+kill -0 "$child" 2>/dev/null || report_exit
+# A live browser is intentionally detached, with no --watch-bus lifetime tie.
+exit 0
+"""
+
+
+def detached_command(command, *, check_early_exit=False):
+    script = BROWSER_LAUNCH if check_early_exit else '"$@" </dev/null >/dev/null 2>&1 &'
+    return host_command(["/bin/sh", "-c", script, "cassini-host-launch", *command])
 
 
 def host_info():

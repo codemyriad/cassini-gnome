@@ -133,6 +133,17 @@
             "string",
             "null"
           ]
+        },
+        "reason": {
+          "enum": [
+            "user",
+            "callEnded",
+            "tabClosed",
+            "pageGone",
+            "disk",
+            "error",
+            "appQuit"
+          ]
         }
       },
       "additionalProperties": true

@@ -77,6 +77,37 @@ def worker(application, private, report):
         result.check_returncode()
         return json.loads(result.stdout)
 
+    # D39 copies the installed reviewed extension into the host data directory,
+    # without any filesystem grant for that directory in the sandbox.
+    prepared = inside(
+        "import hashlib,json,os;from cassini_viewer.companion_bundle import prepare,bundle_directory,_run;"
+        "p=prepare();raw=_run('inspect',p);"
+        "assert raw==(bundle_directory()/'manifest.json').read_bytes();"
+        "assert not (p/'manifest.json').exists();"
+        "print(json.dumps(dict(folder=str(p),sha256=hashlib.sha256(raw).hexdigest(),"
+        "sandboxData=os.environ['XDG_DATA_HOME'],sandboxCannotReadHostPath=True)))"
+    )
+    assert Path(prepared["folder"]) == private / "data/cassini/browser-companion"
+    assert not Path(prepared["folder"]).is_relative_to(prepared["sandboxData"])
+    manifest = Path(prepared["folder"]) / "manifest.json"
+    first = manifest.stat()
+    again = inside("import json;from cassini_viewer.companion_bundle import prepare;print(json.dumps(str(prepare())))")
+    assert again == prepared["folder"]
+    assert (manifest.stat().st_ino, manifest.stat().st_mtime_ns) == (first.st_ino, first.st_mtime_ns)
+    prepared.update(inode=first.st_ino, mtime=first.st_mtime_ns)
+
+    # Exercise an atomic refresh using the actual installed copy module and
+    # host filesystem. No sandbox filesystem grant is needed for publication.
+    prepared["upgradedVersion"] = inside(
+        "import json,shutil,tempfile;from pathlib import Path;"
+        "from cassini_viewer.companion_bundle import prepare,bundle_directory,_run;"
+        "temporary=tempfile.TemporaryDirectory();p=Path(temporary.name)/'extension';"
+        "shutil.copytree(bundle_directory(),p);m=json.loads((p/'manifest.json').read_text());"
+        "m['version']='0.2.3';(p/'manifest.json').write_text(json.dumps(m));"
+        "target=prepare(p);print(json.dumps(json.loads(_run('inspect',target))['version']))"
+    )
+    assert prepared["upgradedVersion"] == "0.2.3"
+
     command = private / "bin/google-chrome"
     command.parent.mkdir()
     command.write_text(
@@ -86,6 +117,18 @@ def worker(application, private, report):
     command.chmod(0o700)
     for name in ("chromium", "microsoft-edge", "brave-browser"):
         (command.parent / name).symlink_to(command.name)
+    failing = private / "bin/exit-42"
+    failing.write_text("#!/bin/sh\nexit 42\n")
+    failing.chmod(0o700)
+    failure = inside(
+        "import json;from pathlib import Path;from cassini_viewer import companion;\n"
+        f"browser=companion.Browser('Chrome',{str(failing)!r},Path({str(private / 'config')!r}))\n"
+        "try:\n companion.check_browser_launch(companion.open_new_tab(browser))\n"
+        "except OSError as error:\n print(json.dumps(str(error)))\n"
+        "else:\n raise AssertionError('Host exit42 was hidden')\n"
+    )
+    assert "status 42" in failure
+
     # D27: exercise cleanup from the installed sandbox, against the host's
     # private config. Matching origins alone must never delete another app.
     legacy = private / "config/chromium/NativeMessagingHosts/com.codemyriad.cassini.json"
@@ -255,6 +298,9 @@ def worker(application, private, report):
         report.write_text(
             json.dumps(
                 dict(
+                    hostCompanion=prepared,
+                    hostExit42Reported=True,
+                    unchangedCopyKeepsInode=True,
                     installedManifestPermission=True,
                     extraGrants=False,
                     hostConfiguration=True,

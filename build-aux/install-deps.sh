@@ -105,7 +105,7 @@ case $family in
            py3-jsonschema py3-rfc3339-validator"
     # No NumPy: the pinned engine cannot run on musl, so
     # writing down is not available on Alpine.
-    runtime="python3 py3-gobject3 gtk4.0 libadwaita gstreamer
+    runtime="python3 py3-gobject3 gtk4.0 libadwaita gstreamer coreutils
              gst-plugins-base gst-plugins-good" ;;
 esac
 

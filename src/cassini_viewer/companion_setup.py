@@ -7,7 +7,7 @@ from threading import Event, Thread
 
 from gi.repository import Adw, GLib, Gtk
 
-from . import browser_service, companion
+from . import browser_service, companion, companion_bundle
 from .browser_connection import add_text, classify, state_text
 from .strings import text
 
@@ -25,6 +25,9 @@ class CompanionSetup(Adw.Dialog):
         self.future = None
         self.working = self.failed = self.add_requested = False
         self.local_error = None
+        self.prepare_error = False
+        self.prefer_local = False
+        self.local_dialog = None
         self.browser_names = []
         self.connected = False
         content = Gtk.Box(
@@ -58,6 +61,16 @@ class CompanionSetup(Adw.Dialog):
         steps.append(self.add_row)
         steps.append(self.connect_row)
         content.append(steps)
+        self.local_add = Gtk.Button(label=text("companion.local.add"), css_classes=["flat"], halign=Gtk.Align.START)
+        self.local_add.connect("clicked", lambda *_: self._add(local=True))
+        content.append(self.local_add)
+        self.prepare_problem = Gtk.Box(spacing=10, visible=False)
+        self.prepare_label = Gtk.Label(wrap=True, xalign=0, hexpand=True, css_classes=["warn-line"])
+        self.prepare_problem.append(self.prepare_label)
+        self.prepare_retry = Gtk.Button(label=text("common.tryAgain"), valign=Gtk.Align.CENTER)
+        self.prepare_retry.connect("clicked", lambda *_: self._add(local=True))
+        self.prepare_problem.append(self.prepare_retry)
+        content.append(self.prepare_problem)
         privacy = Gtk.Box(spacing=10)
         privacy.append(
             Gtk.Image(
@@ -108,17 +121,22 @@ class CompanionSetup(Adw.Dialog):
         row.set_child(line)
         return row, badge, detail, button
 
-    def _add(self, *_):
+    def _add(self, *_, local=None):
+        self.prepare_error = False
         self.local_error = None
-        self.add_requested = True
+        self.add_requested = (
+            "local" if local or self.prefer_local or not companion_bundle.store_listing_public() else "store"
+        )
         self.poll()
 
-    def _launch_add(self):
+    def _launch_add(self, *, local=False):
         browsers = companion.installed_browsers()
         if not browsers:
             raise OSError("No supported browser is installed")
         browser = next((b for b in browsers if b.name in self.browser_names), browsers[0])
-        companion.open_add(browser)
+        if local:
+            return browser, companion_bundle.prepare()
+        companion.check_browser_launch(companion.open_add(browser))
 
     def _connect(self, *_):
         self.local_error = None
@@ -158,8 +176,9 @@ class CompanionSetup(Adw.Dialog):
         if self.closed:
             return GLib.SOURCE_REMOVE
         if self.add_requested and self.future is None:
+            action = self.add_requested
             self.add_requested = False
-            self._submit(self._launch_add, "add")
+            self._submit(lambda: self._launch_add(local=action == "local"), action)
         elif self.service_path is not None:
             self._submit(self._snapshot, "status")
         self.render()
@@ -176,11 +195,20 @@ class CompanionSetup(Adw.Dialog):
             value = future.result()
             if action == "status" and self.app.browser_connection:
                 self.app.browser_connection.observe(value)
-            elif action == "add":
+            elif action == "local":
+                from .companion_local_dialog import LocalCompanionDialog
+
+                self.prepare_error = False
+                browser, folder = value
+                self.local_dialog = LocalCompanionDialog(self, browser, folder)
+                self.local_dialog.present(self)
+            elif action == "store":
                 self.local_error = None
         except Exception as error:
             LOG.exception("Companion %s failed", action)
-            if action != "status":
+            if action == "local":
+                self.prepare_error = True
+            elif action != "status":
                 self.local_error = classify(error)
         self.render()
         if self.add_requested:
@@ -203,11 +231,29 @@ class CompanionSetup(Adw.Dialog):
             self._future_action,
             self.future is not None,
             self.app.browser_companion_available,
+            self.prepare_error,
+            self.prefer_local,
+            companion_bundle.store_listing_public(),
         )
         if signature == self._render_signature:
             return
         self._render_signature = signature
         self.connected = state["phase"] == "connected"
+        self.local_add.set_visible(
+            not self.prefer_local
+            and (
+                companion_bundle.store_listing_public()
+                or state.get("everConnected", False)
+                or self.connected
+                or bool(self.browser_names)
+            )
+        )
+        self.local_add.set_sensitive(state["browser"] is not None and self.future is None)
+        self.prepare_problem.set_visible(self.prepare_error)
+        self.prepare_label.set_label(text("companion.local.prepareFailed") if self.prepare_error else "")
+        self.prepare_retry.set_sensitive(self.future is None)
+        if self.local_dialog and not self.local_dialog.closed:
+            self.local_dialog.render()
         self.working, self.failed = state["phase"] == "settingUp", state["phase"] == "failed"
         if self.connected and state["names"]:
             self.browser_names = list(state["names"])
@@ -217,9 +263,9 @@ class CompanionSetup(Adw.Dialog):
             self.add_caption.set_label(text(key, browser=self.browser_names[0], browsers=", ".join(self.browser_names)))
         else:
             self.add_caption.set_label(text("common.done") if added else text("companion.addStep.notAdded"))
-        self.add_button.set_visible(not added)
+        self.add_button.set_visible(not added or self.prefer_local)
         self.add_button.set_sensitive(state["browser"] is not None and self.future is None)
-        self.add_button.set_label(add_text(state))
+        self.add_button.set_label(text("companion.local.add") if self.prefer_local else add_text(state))
         self.connect_row.set_visible(added)
         self.add_retry.set_visible(not added and self.failed and self.app.browser_companion_available)
         if not added and self.failed:
@@ -228,14 +274,16 @@ class CompanionSetup(Adw.Dialog):
         self.connect_caption.set_visible(added)
         if state["phase"] == "needsBrowser":
             self.add_caption.set_label(state_text(state))
-        if self._future_action == "add" and state["browser"]:
+        if self._future_action == "store" and state["browser"]:
             self.add_caption.set_label(text("companion.opening", browser=state["browser"].name))
         self.connect_button.set_visible(added and self.failed and self.app.browser_companion_available)
         self.connect_button.set_sensitive(not self.working)
         self.connect_button.set_label(text("common.tryAgain"))
         self.done.set_sensitive(self.connected)
         self.set_default_widget(
-            self.done
+            self.add_button
+            if self.prefer_local and self.add_button.get_visible()
+            else self.done
             if self.connected
             else self.connect_button
             if self.connect_button.get_visible()
@@ -246,7 +294,7 @@ class CompanionSetup(Adw.Dialog):
             else None
         )
         for n, row, badge, done, working in (
-            (1, self.add_row, self.add_badge, added, self._future_action == "add"),
+            (1, self.add_row, self.add_badge, added, self._future_action in ("local", "store")),
             (2, self.connect_row, self.connect_badge, self.connected, added and self.working),
         ):
             badge.set_label("✓" if done else str(n))
@@ -267,3 +315,5 @@ class CompanionSetup(Adw.Dialog):
             self.timer = 0
         if self.future:
             self.future.cancel()
+        if self.local_dialog and not self.local_dialog.closed:
+            self.local_dialog.force_close()

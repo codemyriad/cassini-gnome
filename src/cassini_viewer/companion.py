@@ -2,6 +2,7 @@
 """Per-user companion registration; no root, shell commands or manual IDs."""
 
 import configparser
+import errno
 import hashlib
 import json
 import logging
@@ -223,12 +224,35 @@ def installed_browsers(*, config=None, which=shutil.which, host=True, home=None,
 
 def open_add(browser, *, launch=subprocess.Popen):
     """The sole Add entry point; a click never means the extension is installed."""
-    command = [browser.executable, *browser.arguments, ADD_URL]
+    return open_url(browser, ADD_URL, launch=launch)
+
+
+def extensions_address(browser):
+    scheme = {"Edge": "edge", "Brave": "brave"}.get(browser.name, "chrome")
+    return f"{scheme}://extensions/"
+
+
+def open_new_tab(browser, *, launch=subprocess.Popen):
+    return open_url(browser, "about:blank", new_tab=True, launch=launch)
+
+
+def open_url(browser, url, *, new_tab=False, launch=subprocess.Popen):
+    command = [browser.executable, *browser.arguments, *(["--new-tab"] if new_tab else []), url]
     if in_flatpak():
         from .flatpak_bridge import detached_command
 
-        command = detached_command(command)
+        command = detached_command(command, check_early_exit=True)
     return launch(command, stdin=subprocess.DEVNULL, start_new_session=True)
+
+
+def check_browser_launch(process):
+    """Worker-only bounded probe; a still-running browser is left untouched."""
+    try:
+        result = process.wait(timeout=2.0 if in_flatpak() else 0.5)
+    except subprocess.TimeoutExpired:
+        return
+    if result:
+        raise OSError(errno.EIO, f"Browser launcher exited with status {result}")
 
 
 def host_paths():

@@ -498,6 +498,11 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.browser_add = Gtk.Button(label=text("browser.state.addGeneric"), valign=Gtk.Align.CENTER, visible=False)
         self.browser_add.connect("clicked", lambda *_: self.app.on_companion_add(parent=self))
         self.browser.add_suffix(self.browser_add)
+        self.browser_add_local = Gtk.Button(
+            label=text("companion.local.add"), valign=Gtk.Align.CENTER, css_classes=["flat"], visible=False
+        )
+        self.browser_add_local.connect("clicked", lambda *_: self.app.on_companion_add(parent=self, local=True))
+        self.browser.add_suffix(self.browser_add_local)
         group.add(self.browser)
         self.render_browser()
 
@@ -512,6 +517,10 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.browser_add.set_visible(bool(state and state["phase"] in ("waiting", "needsBrowser")))
         self.browser_add.set_sensitive(bool(state and state["browser"]))
         self.browser_add.set_label(add_text(state))
+        from .companion_bundle import store_listing_public
+
+        self.browser_add_local.set_visible(bool(state and (store_listing_public() or state["phase"] == "connected")))
+        self.browser_add_local.set_sensitive(bool(state and state["browser"]))
 
     def _show_folder(self):
         root = library_root()
