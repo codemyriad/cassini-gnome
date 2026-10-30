@@ -89,6 +89,8 @@ try {
  const newTab=await poll(()=>context.pages().find(page=>page.url().startsWith('chrome://new-tab-page')),'browser opens a new tab');
  await newTab.bringToFront();
  await call('address');
+ evidence.clipboardBeforePaste=await call('clipboard');
+ assert.equal(evidence.clipboardBeforePaste.value,'chrome://extensions/');
  const address = expected => JSON.parse(execFileSync('/usr/bin/python3',[
   path.join(root,'tests/recording/companion-address.py'),...(expected ? [expected] : [])],{encoding:'utf8'}));
  await poll(()=>{
@@ -98,7 +100,7 @@ try {
   return result.ready;
  },'native browser address field receives focus');
  execFileSync('xdotool',['key','--clearmodifiers','ctrl+v']);
- const pasted=await poll(()=>{const value=address('chrome://extensions/');return value.ready ? value : null;},'address paste accepted by the native browser');
+ const pasted=await poll(()=>{const value=address('chrome://extensions/');evidence.addressPaste=value;return value.ready ? value : null;},'address paste accepted by the native browser');
  evidence.stages.push({address:pasted});
  execFileSync('xdotool',['key','--clearmodifiers','Return']);
  const page=await poll(()=>context.pages().find(page=>page.url().startsWith('chrome://extensions')),'user opens Extensions page');

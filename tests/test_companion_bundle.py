@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """D39 real filesystem/host transactions; never open or edit browser profiles."""
 
+import fcntl
 import json
 import os
+import selectors
 import shlex
 import shutil
 import subprocess
@@ -61,7 +63,7 @@ def test_install_is_stable_idempotent_and_newer_only_without_touching_profiles(t
     bundle.prepare(original, destination=target)
     assert fingerprint(target) == updated
     assert profile.read_bytes() == b"USER PREFERENCES UNTOUCHED"
-    assert not list(target.parent.glob(".browser-companion*"))
+    assert list(target.parent.glob(".browser-companion*")) == [target.parent / ".browser-companion.lock"]
 
 
 def test_pinned_id_and_browser_version_comparison():
@@ -123,7 +125,7 @@ def test_partial_stage_failure_keeps_previous_copy_and_removes_temporary_files(t
     with pytest.raises(OSError):
         bundle.prepare(new, destination=target)
     assert fingerprint(target) == before
-    assert not list(target.parent.glob(".browser-companion*"))
+    assert list(target.parent.glob(".browser-companion*")) == [target.parent / ".browser-companion.lock"]
 
 
 def test_failed_publish_rename_rolls_back_and_next_start_recovers_a_crash(tmp_path, monkeypatch):
@@ -201,7 +203,7 @@ def test_copy_needs_no_host_python_or_diffutils(tmp_path, monkeypatch):
     root = source(tmp_path)
     commands = tmp_path / "coreutils"
     commands.mkdir()
-    for name in ("head", "mkdir", "rmdir", "mv", "rm", "base64", "mktemp", "chmod", "sha256sum", "sleep"):
+    for name in ("head", "mkdir", "rmdir", "mv", "rm", "base64", "mktemp", "chmod", "sha256sum", "sleep", "flock"):
         (commands / name).symlink_to(shutil.which(name))
     monkeypatch.setenv("PATH", str(commands))
     result = bundle.prepare(root, destination=tmp_path / "destination")
@@ -227,27 +229,47 @@ def test_host_copy_timeout_is_an_os_error_and_cannot_break_an_existing_connectio
         bundle.prepare(source(tmp_path), destination=tmp_path / "destination")
 
 
-def test_an_owner_can_release_its_lock_after_mkdir_reports_busy(tmp_path, monkeypatch):
+def test_busy_kernel_lock_is_bounded_and_release_preserves_the_lock_inode(tmp_path):
     root = source(tmp_path)
     target = tmp_path / "data/browser-companion"
-    commands = tmp_path / "commands"
-    commands.mkdir()
-    marker = tmp_path / "released"
+    target.parent.mkdir()
     lock = target.parent / ".browser-companion.lock"
-    mkdir = shutil.which("mkdir")
-    command = commands / "mkdir"
-    command.write_text(
-        "#!/bin/sh\n"
-        f'if [ "$2" = {shlex.quote(str(lock))} ] && [ ! -f {shlex.quote(str(marker))} ]; then\n'
-        f"  : > {shlex.quote(str(marker))}\n"
-        f'  {shlex.quote(mkdir)} -- "$2"\n'
-        '  rmdir -- "$2"\n'
-        "  exit 1\n"
-        "fi\n"
-        f'exec {shlex.quote(mkdir)} "$@"\n'
+    with lock.open("a") as held:
+        inode = lock.stat().st_ino
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(OSError) as caught:
+            bundle.prepare(root, destination=target)
+        assert caught.value.returncode == 75
+        assert lock.stat().st_ino == inode and not target.exists()
+        fcntl.flock(held, fcntl.LOCK_UN)
+        assert bundle.prepare(root, destination=target) == target
+        assert lock.stat().st_ino == inode
+    assert (target / "manifest.json").is_file()
+
+
+def test_kernel_lock_recovers_after_owner_is_killed_without_cleanup(tmp_path):
+    root = source(tmp_path)
+    target = tmp_path / "data/browser-companion"
+    target.parent.mkdir()
+    lock = target.parent / ".browser-companion.lock"
+    # An actual process owns the open file description, then dies without any
+    # shell trap/unlink. The next launch must use the same inode successfully.
+    owner = subprocess.Popen(
+        ["/bin/sh", "-c", f"exec 9>>{shlex.quote(str(lock))}; flock 9; printf READY; exec sleep 30"],
+        stdout=subprocess.PIPE,
     )
-    command.chmod(0o700)
-    monkeypatch.setenv("PATH", str(commands) + os.pathsep + os.defpath)
-    bundle.prepare(root, destination=target)
-    assert marker.exists() and (target / "manifest.json").is_file()
-    assert not lock.exists()
+    try:
+        with selectors.DefaultSelector() as selector:
+            selector.register(owner.stdout, selectors.EVENT_READ)
+            assert selector.select(3), "Lock owner never became ready"
+        assert owner.stdout.read(5) == b"READY"
+        inode = lock.stat().st_ino
+        owner.kill()
+        owner.wait(timeout=3)
+        assert bundle.prepare(root, destination=target) == target
+        assert lock.stat().st_ino == inode
+    finally:
+        if owner.poll() is None:
+            owner.kill()
+            owner.wait(timeout=3)
+        owner.stdout.close()

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""D39 stable unpacked companion, using only POSIX/coreutils on a Flatpak host."""
+"""D39 stable unpacked companion, using the existing Linux host bridge and kernel file locks."""
 
 import base64
 import errno
@@ -17,7 +17,8 @@ from .companion import EXTENSION_ID, in_flatpak
 LIMIT = 8 * 1024 * 1024
 MARKER = "io.codemyriad.cassini.browser-companion-v1"
 # The same bounded transaction runs natively and through the existing host
-# bridge. No host Python, profile/policy editing or new Flatpak grant is used.
+# bridge. Linux flock is used without a timeout flag (also supported by BusyBox).
+# No host Python, profile/policy editing or new Flatpak grant is used.
 TRANSACTION = r"""set -eu
 umask 077
 operation=$1
@@ -27,34 +28,21 @@ parent=${destination%/*}
 previous=$parent/.browser-companion.previous
 lock=$parent/.browser-companion.lock
 [ ! -L "$destination" ] && [ ! -L "$previous" ] && [ ! -L "$lock" ] || exit 78
+[ ! -e "$lock" ] || [ -f "$lock" ] || exit 78
 mkdir -p -- "$parent"
+# Never unlink this file: every contender must lock the same inode. Kernel
+# ownership disappears on exit/crash, with no PID probing or stale-lock reaper
+# that could mistake a newly acquired directory for the previous owner.
+exec 9>>"$lock"
 locked=false
 for attempt in 1 2 3 4 5 6 7 8 9 10; do
-    if mkdir -- "$lock" 2>/dev/null; then locked=true; break; fi
-    [ ! -L "$lock" ] || exit 78
-    # A directory may be released/reacquired between any two probes. Treat a
-    # missing/non-directory lock as contention, without claiming ownership.
-    if [ -f "$lock/pid" ] && [ ! -L "$lock/pid" ]; then
-        owner=$(head -c 24 -- "$lock/pid" 2>/dev/null || :)
-        case "$owner" in
-            '') : ;; # The owner may still be writing, or may just have left.
-            *[!0-9]*) exit 78 ;;
-            *) if ! kill -0 "$owner" 2>/dev/null &&
-                  [ "$(head -c 24 -- "$lock/pid" 2>/dev/null || :)" = "$owner" ]; then
-                   rm -f -- "$lock/pid"
-                   rmdir -- "$lock" 2>/dev/null || :
-               fi ;;
-        esac
-    fi
+    if flock -n 9; then locked=true; break; fi
     sleep 0.05
 done
 [ "$locked" = true ] || exit 75
-printf '%s' "$$" > "$lock/pid"
 stage=''
 cleanup() {
     [ -z "$stage" ] || rm -rf -- "$stage"
-    rm -f -- "$lock/pid"
-    rmdir -- "$lock" 2>/dev/null || :
 }
 trap cleanup 0
 trap 'exit 1' HUP INT TERM

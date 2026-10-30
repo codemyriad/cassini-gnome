@@ -4,13 +4,14 @@ Cassini prepares its reviewed browser extension in the host data directory:
 `$XDG_DATA_HOME/cassini/browser-companion`, normally
 `~/.local/share/cassini/browser-companion`. The Flatpak uses the existing host
 bridge and the host's data directory. It adds no filesystem or D-Bus permission
-and requires no Python on the host.
+and requires no Python on the host. Linux `flock` provides the shared lock
+(util-linux or BusyBox; no timeout extension is needed).
 
 The public manifest key must resolve to
 `pcafdaahfhjiolfpfnlhmljfgoabbaij`. Resources are bounded regular files; symlinks,
 private-key files and ambiguous transport names are refused. A same or newer
 installed version keeps its files, inodes and timestamps. A newer app bundle is
-staged beside the destination and published under a bounded directory lock with
+staged beside the destination and published under a bounded kernel file lock with
 a manifest compare-and-swap. Failed staging/rename retains the previous copy.
 The browser reads an update at its next start. No browser preference, policy or
 extension-installation database is edited.
@@ -44,8 +45,9 @@ updates on app/browser restart; the shipping extension remains 0.2.2.
 
 The source tests cover pinned identity, newer-only/idempotent writes, unsafe
 files, partial staging, rollback and crash recovery, concurrent versions, an
-owner releasing its lock after a busy mkdir, a host-data path, and a minimal
-host PATH without Python or diffutils. The installed Flatpak bridge smoke also
+busy owner, crash-released kernel lock, a host-data path, and a minimal
+host PATH without Python or diffutils. The lock file remains in place so
+all contenders use the same inode; there is no PID-based stale-lock cleanup. The installed Flatpak bridge smoke also
 checks the real host-data copy and unchanged inode/timestamp on another launch.
 
 The GUI test uses the existing private display harness. The fresh-browser proof
