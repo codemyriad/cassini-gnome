@@ -492,13 +492,26 @@ class BrowserHost:
             self.stopped = True
 
 
-def wave_info(path, directory):
-    """Read the v1 PCM header; complete frames on disk win over stale sizes."""
-    if path.resolve().parent != directory.resolve():
-        raise ValueError("Recording audio is outside the session directory")
-    with path.open("rb") as audio:
-        header = audio.read(44)
-        size = os.fstat(audio.fileno()).st_size
+def _wave_at(directory_fd, name):
+    """The v1 PCM header of a basename in an opened session folder, never following a link.
+
+    Complete frames on disk win over stale sizes.
+    """
+    import errno
+
+    from .library_files import regular
+
+    try:
+        with regular(directory_fd, name) as (stream, info):
+            return _wave_fields(stream, info.st_size)
+    except OSError as error:
+        if error.errno == errno.ELOOP:
+            raise ValueError("Recording audio is outside the session directory") from None
+        raise
+
+
+def _wave_fields(audio, size):
+    header = audio.read(44)
     if len(header) != 44:
         raise ValueError("Incomplete recording WAV header")
     riff, _, wave, fmt, fmt_size, encoding, channels, rate, byte_rate, alignment, bits, data, _ = struct.unpack(
@@ -521,20 +534,35 @@ def wave_info(path, directory):
     return {"sampleRate": rate, "channels": channels, "frames": (size - 44) // alignment}
 
 
-def recover_session(directory, pairs=None):
-    files = sorted(directory.glob("track-*.wav"))
-    if len(files) > 64:
-        raise ValueError("Too many recording tracks to recover")
-    tracks = []
-    for file in files:
-        try:
-            info = wave_info(file, directory)
-        except (OSError, ValueError):
-            continue
-        tracks.append(
-            dict(id=file.stem, file=file.name, label="Recovered audio", kind="media", labelSource="recovered", **info)
-        )
-    tracks += recover_compacted(directory, [file.name for file in files], pairs)
+def recover_session(directory, pairs=None, *, directory_fd=None):
+    """Salvage a session folder, opened without following a link before any read."""
+    from . import track_source
+
+    fd = os.open(directory, track_source.NOFOLLOW_DIRECTORY) if directory_fd is None else directory_fd
+    try:
+        names = sorted(n for n in os.listdir(fd) if n.startswith("track-") and n.endswith(".wav"))
+        if len(names) > 64:
+            raise ValueError("Too many recording tracks to recover")
+        tracks = []
+        for name in names:
+            try:
+                info = _wave_at(fd, name)
+            except (OSError, ValueError):
+                continue
+            tracks.append(
+                dict(
+                    id=Path(name).stem,
+                    file=name,
+                    label="Recovered audio",
+                    kind="media",
+                    labelSource="recovered",
+                    **info,
+                )
+            )
+        tracks += recover_compacted(fd, names, pairs)
+    finally:
+        if directory_fd is None:
+            os.close(fd)
     if not tracks:
         raise ValueError("No readable recording metadata or PCM WAV tracks were found")
     return dict(
@@ -550,30 +578,19 @@ def recover_session(directory, pairs=None):
     )
 
 
-def recover_compacted(directory, wavs, pairs=None):
+def recover_compacted(directory_fd, wavs, pairs=None):
     """S-12 §5 salvage of committed `tracks/*.opus` spans without a usable session.json.
 
     Surviving `sourceFile` records (given, or read from a damaged session.json
     that still parses) pair Opus spans with their WAVs, as the scanner does.
     Without a record an Opus span is used only when no WAV is left (S-12 §11).
-    A symlinked session folder yields no Opus span; nothing is ever deleted.
+    Nothing is ever deleted here.
     """
-    import errno
-
     from . import track_source
 
-    try:
-        fd = os.open(directory, track_source.NOFOLLOW_DIRECTORY)
-    except OSError as error:
-        if error.errno in (errno.ELOOP, errno.ENOTDIR):
-            return []
-        raise
-    try:
-        names = track_source.recovered_opus(fd, limit=65)
-        if pairs is None:
-            pairs = track_source.surviving_pairs(fd)
-    finally:
-        os.close(fd)
+    names = track_source.recovered_opus(directory_fd, limit=65)
+    if pairs is None:
+        pairs = track_source.surviving_pairs(directory_fd)
     names = [v["file"] for v in track_source.salvage_values(wavs, names, pairs, limit=None) if v.get("codec") == "opus"]
     if len(names) > 64:
         raise ValueError("Too many recording tracks to recover")
@@ -581,7 +598,7 @@ def recover_compacted(directory, wavs, pairs=None):
     for name in names:
         value = dict(file=name, codec="opus", decodedRate=track_source.OPUS_RATE)
         try:
-            info = track_source.inspect(directory, value, recovered=True)
+            info = track_source.inspect_at(directory_fd, value, recovered=True)
         except (OSError, ValueError):
             continue
         tracks.append(
@@ -600,16 +617,32 @@ def recover_compacted(directory, wavs, pairs=None):
 
 
 def load_session(path):
-    """Load or salvage a session read-only; never infer missing labels or offsets."""
+    """Load or salvage a session read-only; never infer missing labels or offsets.
+
+    The session folder is opened without following a link before anything in
+    it is read, and every file is read relative to that descriptor.
+    """
+    from . import track_source
+    from .library_files import regular
+
     path = Path(path).absolute()
+    fd = os.open(path.parent, track_source.NOFOLLOW_DIRECTORY)
     try:
-        if path.stat().st_size > 1024 * 1024:
-            raise ValueError("Recording manifest is too large")
-        manifest = strict_json(path.read_bytes())
+        return _load_session(path, fd, regular, track_source)
+    finally:
+        os.close(fd)
+
+
+def _load_session(path, fd, regular, track_source):
+    try:
+        with regular(fd, path.name) as (stream, info):
+            if info.st_size > 1024 * 1024:
+                raise ValueError("Recording manifest is too large")
+            manifest = strict_json(stream.read())
         if not isinstance(manifest, dict) or not isinstance(manifest.get("tracks"), list):
             raise ValueError("Invalid recording metadata")
     except (OSError, ValueError):
-        return recover_session(path.parent)
+        return recover_session(path.parent, directory_fd=fd)
     if type(manifest.get("version")) is not int or manifest["version"] != 1:
         raise ValueError("Unsupported recording session")
     tracks = manifest["tracks"]
@@ -621,17 +654,15 @@ def load_session(path):
         if "codec" in track:
             # S-12 §5 compacted span: source sampleRate/frames stay as written;
             # the confined Opus file must match them in 48 kHz time.
-            from . import track_source
-
             try:
-                track_source.inspect(path.parent, track)
+                track_source.inspect_at(fd, track)
             except ValueError as error:
                 raise ValueError(f"Invalid compacted recording track: {error}") from None
         else:
             filename = track["file"]
             if Path(filename).name != filename or not filename.endswith(".wav"):
                 raise ValueError("Recording audio is outside the session directory")
-            info = wave_info(path.parent / filename, path.parent)
+            info = _wave_at(fd, filename)
             if track.get("sampleRate") != info["sampleRate"] or track.get("channels") != info["channels"]:
                 raise ValueError("Audio format differs from recording metadata")
             track.update(info)

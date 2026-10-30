@@ -296,16 +296,21 @@ def describe(value, load, *, recovered=False):
     return SpanInfo(codec, parts, frames, rate, opus.channels, opus.samples, OPUS_RATE)
 
 
+def inspect_at(directory_fd, value, *, recovered=False):
+    """describe() for one span of an already opened session folder, without a cache."""
+
+    def load(parts, _kind, loader):
+        with open_span(directory_fd, parts) as (stream, info):
+            return loader(stream, info)
+
+    return describe(value, load, recovered=recovered)
+
+
 def inspect(directory, value, *, recovered=False):
-    """describe() for one span of a session folder path, without a cache."""
+    """inspect_at() for a session folder path, itself opened without following links."""
     fd = os.open(directory, NOFOLLOW_DIRECTORY)
     try:
-
-        def load(parts, _kind, loader):
-            with open_span(fd, parts) as (stream, info):
-                return loader(stream, info)
-
-        return describe(value, load, recovered=recovered)
+        return inspect_at(fd, value, recovered=recovered)
     finally:
         os.close(fd)
 

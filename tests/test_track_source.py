@@ -567,6 +567,24 @@ def test_a_symlinked_session_folder_is_never_followed(tmp_path):
     with pytest.raises(OSError):
         load_session(link / "session.json")
     (directory / "session.json").unlink()
-    with pytest.raises(ValueError, match="No readable"):
+    with pytest.raises(OSError):
         recover_session(link)
     assert len(recover_session(directory)["tracks"]) == 2
+
+
+@pytest.mark.parametrize("layout", ["wav-only", "mixed"])
+def test_recovery_never_reads_audio_behind_a_session_symlink(tmp_path, layout):
+    from cassini_viewer.recording_session import recover_session
+
+    directory = capture(tmp_path / "outside")
+    if layout == "mixed":
+        compact(directory, "remote")
+    (directory / "session.json").unlink()
+    assert recover_session(directory)["tracks"]  # readable in place
+    link = tmp_path / "Library" / directory.name
+    link.parent.mkdir()
+    link.symlink_to(directory, target_is_directory=True)
+    with pytest.raises(OSError):
+        load_session(link / "session.json")
+    with pytest.raises(OSError):
+        recover_session(link)
