@@ -23,8 +23,10 @@ ID and WAV but the same opaque `sourceTrackId`, so both spans write down as one
 speaker. The browser label deliberately changes: labels never establish identity.
 The microphone omits `sourceTrackId` and retains the source speaker Me.
 
-`restored.reader.json` is a reader-only schema/state vector with hand-written
-expectations. It accepts the reserved `othersSource.reason: restored` after an
-explicit event, leaves the prior fallback in force before that event, and shows
-no fallback afterwards. It is not a `make.py` case: current writers never emit
-`restored` or automatically switch back. Selection reasons remain start/user.
+`restored.reader.json` preserves the historical reader-acceptance vector. D33 now
+also allows that writer transition. `--case call-return` materialises the new
+browser → computer → browser case in one folder. Its returned span shares the
+actual opaque remote source ID, and the final single `end` explains callEnded.
+The hand-written expected file checks timeline, roles and final end. Schema and
+semantic checks reject illegal restoration, duplicate/nonterminal end and unsaved
+state with end. Policy deadlines live in `control/call-lifecycle-vectors.json`.

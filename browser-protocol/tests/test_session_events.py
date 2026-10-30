@@ -70,6 +70,68 @@ class SessionEventsTests(unittest.TestCase):
         fixture = json.loads((ROOT / 'conformance/native-session/session.json').read_text())
         annotations.validate(fixture)
 
+    def test_shared_call_lifecycle_vector_oracle(self):
+        from contextlib import redirect_stdout
+        import io
+        spec = importlib.util.spec_from_file_location('call_lifecycle', ROOT/'conformance/check-call-lifecycle.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with redirect_stdout(io.StringIO()): module.check()
+
+    def test_terminal_boundary_cannot_precede_accepted_pcm(self):
+        session = json.loads((annotations.FIXTURES / 'call-return.session.json').read_text())
+        session['events'][-1]['atMs'] = 3000  # Ordered, but finalized PCM runs to 5000.
+        with self.assertRaisesRegex(ValueError, 'track end'):
+            annotations.validate(session)
+        for end in [5000, 5000.125, 6000]:
+            session['events'][-1]['atMs'] = end
+            annotations.validate(session)
+        # An absent event or an unknown/null end is never an inferred boundary.
+        session['events'].pop()
+        annotations.validate(session)
+        for track in session['tracks']:
+            track.pop('endOffsetMs', None)
+        session['events'].append(dict(type='end', atMs=3000, reason='user'))
+        annotations.validate(session)
+        for track in session['tracks']:
+            track['endOffsetMs'] = None
+        annotations.validate(session)
+
+    def test_d33_terminal_end_reasons_and_single_checkpoint_boundary(self):
+        self.session['state'] = 'completed'
+        end = max(track.get('endOffsetMs') or 0 for track in self.session['tracks'])
+        for reason in ['user', 'callEnded', 'tabClosed', 'pageGone', 'disk', 'error', 'appQuit']:
+            with self.subTest(reason=reason):
+                self.session['events'] = [dict(type='end', atMs=end, reason=reason)]
+                annotations.validate(self.session)
+        for event in [dict(type='end', atMs=end), dict(type='end', atMs=end, reason='unknown'),
+                      dict(type='end', atMs=-1, reason='user')]:
+            self.session['events'] = [event]
+            with self.assertRaises((ValueError, ValidationError)): annotations.validate(self.session)
+        self.session['events'] = [dict(type='end', atMs=end, reason='user')] * 2
+        with self.assertRaises(ValidationError): annotations.validate(self.session)
+        self.session['events'] = [dict(type='end', atMs=end, reason='user'), dict(type='future', atMs=end)]
+        with self.assertRaises(ValueError): annotations.validate(self.session)
+        self.session['state'] = 'recording'
+        self.session['events'] = [dict(type='end', atMs=end, reason='user')]
+        with self.assertRaises(ValueError): annotations.validate(self.session)
+        self.session['state'] = 'completed'
+        self.session['events'] = [dict(type='future', atMs=0)] * 999 + [dict(type='end', atMs=end, reason='user')]
+        annotations.validate(self.session)
+        self.session['events'].insert(0, dict(type='future', atMs=0))
+        with self.assertRaises(ValidationError): annotations.validate(self.session)
+
+    def test_d33_restore_is_only_browser_after_fallback_with_others_selected(self):
+        restore = dict(type='othersSource', atMs=2, source='browser', reason='restored')
+        fallback = dict(type='othersSource', atMs=0, source='system', reason='lost')
+        self.session['events'] = [fallback, restore]
+        annotations.validate(self.session)
+        for events in [[restore], [dict(fallback, reason='user'), restore],
+                       [fallback, dict(restore, source='system')],
+                       [fallback, dict(type='selection',atMs=1,me=True,others=False,reason='user'),restore]]:
+            self.session['events'] = events
+            with self.assertRaises((ValueError,ValidationError)): annotations.validate(self.session)
+
 
 if __name__ == '__main__':
     unittest.main()

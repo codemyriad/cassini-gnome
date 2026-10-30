@@ -42,11 +42,12 @@ test('idle discovery forwards only evidence and reconnect requires a fresh hook 
  const hiddenCount=ports[1].sent.length;
  send({type:'discovery',sourceCount:3,heard:true});assert.equal(ports[1].sent.length,hiddenCount,'late hidden-page proof is ignored');
  ports[1].onDisconnect.emit();handlers.get('pageshow')();
- assert.deepEqual(JSON.parse(JSON.stringify(ports[2].sent)),[],'pageshow must wait for its forced hook answer');
+ assert.deepEqual(JSON.parse(JSON.stringify(ports[2].sent)),[{type:'pageState',state:'present'}],'pageshow publishes only trusted lifecycle until the forced hook answer');
  send({type:'discovery',sourceCount:3,heard:false});
- assert.deepEqual(JSON.parse(JSON.stringify(ports[2].sent)),[{type:'discovery',sourceCount:3,heard:false}]);
+ assert.deepEqual(JSON.parse(JSON.stringify(ports[2].sent.at(-1))),{type:'discovery',sourceCount:3,heard:false});
  send({type:'discovery',sourceCount:3,heard:true});handlers.get('pagehide')();
  const shownCount=ports[2].sent.length;handlers.get('pageshow')();
- assert.equal(ports[2].sent.length,shownCount,'pageshow on the same port must not replay a cached count');
+ assert.equal(ports[2].sent.length,shownCount+1,'pageshow publishes lifecycle but no cached count');
+ assert.equal(ports[2].sent.at(-1).type,'pageState');
  send({type:'discovery',sourceCount:3,heard:false});assert.equal(ports[2].sent.at(-1).heard,false);
 });

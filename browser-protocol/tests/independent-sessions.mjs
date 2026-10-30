@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {createServer as httpServer} from 'node:http';
 import {createServer as unixServer} from 'node:net';
 import {execFileSync} from 'node:child_process';
-import {mkdtemp,mkdir,readFile,writeFile,chmod,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,readFile,writeFile,chmod,rm,readdir} from 'node:fs/promises';
 import path from 'node:path';import os from 'node:os';import {fileURLToPath} from 'node:url';
 import {connectReceiveSlots} from '../scenarios/product-topologies.mjs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
@@ -63,7 +63,7 @@ try {
     // Two rendered aliases of one receiver exercise clone dedup. Muting tab
     // and sink below must not stop this source's recording graph.
     await page.evaluate(async()=>{const track=topologyPeer.getReceivers()[0].track;for(const value of [track,track.clone()]){const audio=document.createElement('audio');audio.srcObject=new MediaStream([value]);audio.autoplay=true;document.body.append(audio);await audio.play();}});
-    meetings.push({page,frequency});
+    meetings.push({page,remote,frequency});
   }
   const hello=await until(()=>events.find(e=>e.type==='hello'&&e.capabilities?.includes('independent-sessions-v1')),'capability handshake');
   assert.ok(hello.capabilities.includes('call-evidence-v1'));
@@ -106,6 +106,48 @@ try {
   await command('stop',meetings[1].tabId);
   assert.equal((await manifest(meetings[0].directory)).state,'completed');assert.equal((await manifest(meetings[1].directory)).state,'completed');
   report.independentStop=true;
+  // D33 opt-in: the loaded extension retains its native port/token/origin over
+  // a real document reload. The fixture broker observes wire state; desktop
+  // policy timing and system fallback are separately checked by shared vectors.
+  assert.ok(hello.capabilities.includes('page-state-v1'));
+  const retained=[];
+  for(const meeting of meetings) {
+    const state=await command('start',meeting.tabId,{keepOnNavigation:true});
+    meeting.directory=state.path;
+    retained.push({tabId:meeting.tabId,path:state.path,captureId:state.sessions.find(s=>s.tabId===meeting.tabId).captureId});
+  }
+  await Promise.all(meetings.map(m=>until(async()=>await count(m.directory)>=96000,'retained sessions have complete PCM')));
+  const folderNames=(await readdir(audioRoot)).sort();
+  const beforeReload=await manifest(meetings[0].directory);
+  await meetings[0].page.reload();
+  const currentStatus=()=>events.filter(e=>e.type==='status').at(-1);
+  await until(()=>currentStatus()?.sessions.some(s=>s.tabId===meetings[0].tabId&&s.pageState==='present'),'new document status');
+  const secondBeforeReload=await count(meetings[1].directory);
+  await until(async()=>await count(meetings[1].directory)>=secondBeforeReload+48000,'unrelated call continues through reload');
+  assert.equal((await manifest(meetings[0].directory)).state,'recording','page reload must not finalize the host');
+  const same=currentStatus().sessions.find(s=>s.tabId===meetings[0].tabId);
+  assert.equal(same.captureId,retained[0].captureId);assert.equal(same.path,retained[0].path);
+  await meetings[0].remote.close();
+  meetings[0].remote=await remoteContext.newPage();await meetings[0].remote.goto(address);
+  await meetings[0].page.click('button');
+  await connectReceiveSlots(meetings[0].page,meetings[0].remote,[[meetings[0].frequency]]);
+  await until(async()=>await count(meetings[0].directory)>=beforeReload.tracks.reduce((n,t)=>n+t.frames,0)+96000,'new document PCM in original folder');
+  const afterReload=await manifest(meetings[0].directory);
+  assert.ok(afterReload.tracks.length>beforeReload.tracks.length,'returned document has a fresh source span');
+  assert.deepEqual((await readdir(audioRoot)).sort(),folderNames,'reload never creates a second folder');
+  assert.equal(currentStatus().sessions.find(s=>s.tabId===meetings[0].tabId).captureId,retained[0].captureId);
+  await meetings[1].page.close();
+  await until(()=>currentStatus()?.sessions.some(s=>s.tabId===meetings[1].tabId&&s.pageState==='closed'),'real tabs.onRemoved reports closed');
+  assert.equal((await manifest(meetings[1].directory)).state,'recording','app owns the closed-tab Stop deadline');
+  await command('stop',meetings[1].tabId,{reason:'tabClosed'});
+  const continued=await count(meetings[0].directory);
+  await until(async()=>await count(meetings[0].directory)>=continued+48000,'returned call survives the other tab close');
+  await command('stop',meetings[0].tabId,{reason:'appQuit'});
+  for(const [index,reason] of [[0,'appQuit'],[1,'tabClosed']]) {
+    const value=await manifest(meetings[index].directory),ends=(value.events||[]).filter(e=>e.type==='end');
+    assert.equal(value.state,'completed');assert.equal(ends.length,1);assert.equal(ends[0].reason,reason);
+  }
+  report.callLifecycle={reloadSameFolder:true,sameCaptureId:true,continuedOtherCall:true,realClosedPageState:true,endReasons:['appQuit','tabClosed']};
   await mkdir(path.join(root,'artifacts'),{recursive:true});await writeFile(path.join(root,'artifacts/independent-sessions.json'),JSON.stringify(report,null,2)+'\n');
   console.log('PASS two independent native sessions: private sink and both tabs muted, isolated tones, clone dedup, individual Stop preserves other capture');
 } catch(error) {

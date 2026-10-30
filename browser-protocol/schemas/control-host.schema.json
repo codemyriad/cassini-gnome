@@ -37,6 +37,20 @@
     },
     "microphone": {
       "type": "boolean"
+    },
+    "keepOnNavigation": {
+      "type": "boolean"
+    },
+    "reason": {
+      "enum": [
+        "user",
+        "callEnded",
+        "tabClosed",
+        "pageGone",
+        "disk",
+        "error",
+        "appQuit"
+      ]
     }
   },
   "required": [
@@ -62,6 +76,45 @@
         "properties": {
           "mode": {
             "const": "tracks"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "keepOnNavigation"
+        ],
+        "properties": {
+          "keepOnNavigation": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "independent"
+        ],
+        "properties": {
+          "independent": {
+            "const": true
+          },
+          "action": {
+            "const": "start"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "reason"
+        ]
+      },
+      "then": {
+        "properties": {
+          "action": {
+            "const": "stop"
           }
         }
       }

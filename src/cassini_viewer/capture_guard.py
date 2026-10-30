@@ -427,7 +427,7 @@ def stop_browser_captures(directory=None, *, cancel_groups=(), quitting=False, g
 
         for path in paths:
             try:
-                record_end(owned_directory(Path(path)), "appQuit" if quitting else "user")
+                record_end(owned_directory(Path(path)), "appQuit" if quitting else reason)
             except (OSError, ValueError):
                 # Optional details must never turn saved audio into a failed Stop.
                 LOG.warning("Could not save browser recording end details", exc_info=True)

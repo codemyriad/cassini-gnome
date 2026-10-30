@@ -184,7 +184,20 @@
       "items": {
         "$ref": "#/$defs/sessionEvent"
       },
-      "$comment": "S-6: optional append-only session timeline, ordered by non-decreasing finite atMs. Readers ignore unknown types/fields. The ordering and UTF-8 source-ID byte bound require checks beyond JSON Schema."
+      "$comment": "S-6: optional append-only session timeline, ordered by non-decreasing finite atMs. Readers ignore unknown types/fields. The ordering and UTF-8 source-ID byte bound require checks beyond JSON Schema. D33: at most one terminal end; ordering, terminal position and restored transition checks are also required.",
+      "contains": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "end"
+          }
+        }
+      },
+      "minContains": 0,
+      "maxContains": 1
     }
   },
   "additionalProperties": true,
@@ -276,10 +289,27 @@
                   "lost",
                   "user",
                   "restored"
-                ],
-                "$comment": "Readers accept reserved restored for forward compatibility; current writers never emit it."
+                ]
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "reason": {
+                      "const": "restored"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "source": {
+                      "const": "browser"
+                    }
+                  }
+                }
+              }
+            ]
           }
         },
         {
@@ -326,6 +356,33 @@
                 }
               }
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "end"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reason"
+            ],
+            "properties": {
+              "reason": {
+                "enum": [
+                  "user",
+                  "callEnded",
+                  "tabClosed",
+                  "pageGone",
+                  "disk",
+                  "error",
+                  "appQuit"
+                ]
+              }
+            }
           }
         }
       ]

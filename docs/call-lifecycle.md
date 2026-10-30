@@ -1,5 +1,8 @@
 # Browser call lifetime (D33)
 
+Shared protocol pin: `bb13da92fa8c3192bb6d9b8444acd3197c772d62` (merged PR #22).
+The extension stays at 0.2.2; this change does not package or upload it.
+
 The broker owns every independent capture and its Library folder. With the
 `page-state-v1` capability it starts the extension with `keepOnNavigation: true`.
 The original capture ID, native connection and clock survive navigation. Older
@@ -31,7 +34,7 @@ every known track end and prior event, on the original session clock. Repeated
 Stop cannot rewrite it. Earlier PCM-gap warnings do not replace an explicit Stop
 cause. New source changes reserve the final slot of the 1000-event budget.
 Older sessions without an end remain readable and do not acquire an inferred
-reason. Recording details (the separate Part A draft) reads this saved evidence.
+reason. Recording details reads this saved evidence.
 
 Tests run the shared literal lifecycle vectors through the real broker, device
 substitute and session writer. Other tests inject source and durability failures,

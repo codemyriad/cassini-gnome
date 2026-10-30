@@ -233,3 +233,26 @@ def test_manual_end_fact_works_without_a_new_session_event(meetings):
     assert read_details(updated).ended == "Stopped by you · 00:03:18"
     unknown_time = replace(updated, metadata=dict(meeting.metadata, recordingDetails=dict(end=dict(reason="user"))))
     assert read_details(unknown_time).ended == "Stopped by you"
+
+
+@pytest.mark.parametrize(
+    "reason,expected",
+    [
+        ("callEnded", "The call ended"),
+        ("tabClosed", "The tab was closed"),
+        ("pageGone", "The meeting page did not come back"),
+    ],
+)
+def test_d33_terminal_session_fact_wins_over_an_older_app_owned_stop(meetings, reason, expected):
+    meeting = meetings["microphone"]
+    path = meeting.directory / "session.json"
+    raw = json.loads(path.read_text())
+    ends = [event for event in raw["events"] if event["type"] == "end"]
+    assert len(ends) == 1
+    ends[0]["reason"] = reason
+    write_json(path, raw)
+    meeting = replace(
+        meeting, metadata=dict(meeting.metadata, recordingDetails=dict(end=dict(reason="user", atMs=83000)))
+    )
+    report = read_details(meeting)
+    assert report.ended.startswith(expected + " · ")

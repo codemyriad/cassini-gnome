@@ -160,18 +160,22 @@ are allowed. Unknown types and extra fields are ignored by readers.
 
 | type | Required event fields besides atMs/type | Values |
 | --- | --- | --- |
-| othersSource | source, reason | source: browser, system, none; reason: start, missing, lost, user, restored (reader-only, reserved) |
+| othersSource | source, reason | source: browser, system, none; reason: start, missing, lost, user, restored |
 | selection | me, others, reason | me/others booleans, at least one true; reason: start, user |
+| end | reason | user, callEnded, tabClosed, pageGone, disk, error, appQuit |
 
 For UI roles, local/microphone tracks are Me; remote/media/tab/system/application
 tracks are The others. These are recording roles, not verified participant names.
 
 A browser path missing at start or lost later may fall back to computer sound:
 append `othersSource` with source=system and reason=missing/lost, and start a new
-system track at that event's atMs. Never fall back to the microphone. Once on
-system, stay there until Stop; reconnecting does not automatically switch back.
-Readers accept the reserved reason `restored` for forward compatibility. Current
-writers never emit it; reconnecting still does not automatically switch back.
+system track at that event's atMs. Never fall back to the microphone. D33 permits
+same-tab browser return before the120s deadline: append browser/restored and start
+new browser spans, checkpointed together, before consuming their PCM. Restored
+is legal only after system/missing or system/lost while The others is selected.
+The folder, original capture clock and microphone choice remain unchanged. Reuse
+sourceTrackId only where the browser actually reports the same opaque source ID;
+labels, titles and URLs never establish identity. See SPEC-CONTROL call lifecycle.
 Show the fallback explanation only when the newest othersSource reason is missing
 or lost. `restored` is not a valid selection reason.
 
@@ -187,6 +191,19 @@ the temporary metadata, then rename atomically as above. A crash must not expose
 a new track without the event explaining it, or an event without its new track.
 Readers may lose events after the last fully synced checkpoint; they do not infer
 them from audio gaps.
+
+An optional terminal `end` is written once when the owning app really stops the
+session, including native recordings. `atMs` is the stop boundary on the original
+session timeline, not an epoch timestamp; it is at least every finalized known
+track end and prior event time. Finalize/sync accepted PCM, then atomically
+checkpoint finalized tracks, saved state and the one end event before acknowledging
+Stop. A failed stop due to I/O records error where a durable checkpoint is possible;
+gaps alone do not change a user Stop into an error. Unknown/old end reasons are
+never guessed by a reader. Repeated Stop/close cannot append a second end or
+change its reason; no event follows end. Reserve one of the1000 event slots for
+it (new source/selection changes at999 events are rejected without modifying the
+current source). Never end merely because a browser path switches to fallback.
+Legacy folders without end remain valid, and version stays1.
 
 `conformance/session-events/` contains the coordinator/GNOME fallback and browser
 off/on fixtures, with hand-written reader expectations and a sparse silent-WAV

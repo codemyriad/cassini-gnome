@@ -1,0 +1,71 @@
+{
+  "durationMs": 5000,
+  "end": {
+    "atMs": 5000,
+    "reason": "callEnded"
+  },
+  "states": [
+    {
+      "atMs": 0,
+      "me": true,
+      "others": true,
+      "source": "browser",
+      "reason": "start",
+      "sinceMs": 0,
+      "fallback": false
+    },
+    {
+      "atMs": 1000,
+      "me": true,
+      "others": true,
+      "source": "system",
+      "reason": "lost",
+      "sinceMs": 1000,
+      "fallback": true
+    },
+    {
+      "atMs": 2999,
+      "me": true,
+      "others": true,
+      "source": "system",
+      "reason": "lost",
+      "sinceMs": 1000,
+      "fallback": true
+    },
+    {
+      "atMs": 3000,
+      "me": true,
+      "others": true,
+      "source": "browser",
+      "reason": "restored",
+      "sinceMs": 3000,
+      "fallback": false
+    },
+    {
+      "atMs": 5000,
+      "me": true,
+      "others": true,
+      "source": "browser",
+      "reason": "restored",
+      "sinceMs": 3000,
+      "fallback": false
+    }
+  ],
+  "trackSpeakers": {
+    "track-mic.wav": "me",
+    "track-remote-before.wav": "track-remote-a",
+    "track-fallback.wav": "others",
+    "track-remote-after.wav": "track-remote-a"
+  },
+  "speakerCount": 3,
+  "trackOffsetsMs": {
+    "track-mic.wav": 0,
+    "track-remote-before.wav": 0,
+    "track-fallback.wav": 1000,
+    "track-remote-after.wav": 3000
+  },
+  "me": true,
+  "others": true,
+  "source": "browser",
+  "fallback": false
+}

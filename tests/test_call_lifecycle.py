@@ -2,7 +2,6 @@
 """Run shared literal D33 actions through the real broker and session writer."""
 
 import json
-import os
 import time
 from concurrent.futures import Future
 from pathlib import Path
@@ -14,12 +13,7 @@ from cassini_viewer.browser_capture import BrowserCapture
 from cassini_viewer.browser_service import BrowserConnection, BrowserService
 from cassini_viewer.call_lifecycle import BROWSER_RETURN_GRACE, CALL_END_GRACE
 
-VECTORS = Path(
-    os.environ.get(
-        "CASSINI_TEST_CALL_VECTORS",
-        Path(__file__).resolve().parents[1] / "browser-protocol/conformance/control/call-lifecycle-vectors.json",
-    )
-)
+VECTORS = Path(__file__).resolve().parents[1] / "browser-protocol/conformance/control/call-lifecycle-vectors.json"
 
 
 class Inline:
