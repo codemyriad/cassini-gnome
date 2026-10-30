@@ -35,8 +35,11 @@ def test_existing_identity_receives_activation_and_new_services_must_not_start(s
     assert forward(NEW + suffix, ["cassini-talk"], connection=bus)
     assert bus.calls[0][-1] == (OLD + suffix,)
     assert bus.calls[1] == (
-        ":1.42", "/" + (OLD + suffix).replace(".", "/"),
-        "org.freedesktop.Application", "Activate", ({},),
+        ":1.42",
+        "/" + (OLD + suffix).replace(".", "/"),
+        "org.freedesktop.Application",
+        "Activate",
+        ({},),
     )
 
 

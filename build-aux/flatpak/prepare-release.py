@@ -48,8 +48,14 @@ def prepare(repo, output, key, homedir, *, legacy_bundle=None):
         if app not in (APP, OLD, APP + ".Locale", OLD + ".Locale"):
             continue
         call(
-            "flatpak", "build-sign", *signing, "--arch=" + ref_arch,
-            *( ["--runtime"] if kind == "runtime" else [] ), str(repo), app, branch,
+            "flatpak",
+            "build-sign",
+            *signing,
+            "--arch=" + ref_arch,
+            *(["--runtime"] if kind == "runtime" else []),
+            str(repo),
+            app,
+            branch,
         )
     call("flatpak", "build-update-repo", *signing, "--title=Cassini talk", "--default-branch=master", str(repo))
     output.mkdir(parents=True, exist_ok=True)
@@ -62,9 +68,14 @@ def prepare(repo, output, key, homedir, *, legacy_bundle=None):
             "DefaultBranch=master\nGPGKey=" + base64.b64encode(public).decode() + "\n"
         )
         call(
-            "flatpak", "build-bundle", "--repo-url=" + URL, "--gpg-keys=" + str(public_file),
+            "flatpak",
+            "build-bundle",
+            "--repo-url=" + URL,
+            "--gpg-keys=" + str(public_file),
             "--runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo",
-            str(repo), str(staging / "cassini-talk.flatpak"), APP,
+            str(repo),
+            str(staging / "cassini-talk.flatpak"),
+            APP,
         )
         for name in ("cassini-talk.gpg", "cassini-talk.flatpakrepo", "cassini-talk.flatpak"):
             os.replace(staging / name, output / name)

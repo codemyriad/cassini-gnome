@@ -39,8 +39,15 @@ def forward(application_id, arguments, *, connection=None):
     def owner():
         try:
             return bus.call_sync(
-                "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetNameOwner",
-                GLib.Variant("(s)", (legacy,)), None, Gio.DBusCallFlags.NONE, 5000, None,
+                "org.freedesktop.DBus",
+                "/org/freedesktop/DBus",
+                "org.freedesktop.DBus",
+                "GetNameOwner",
+                GLib.Variant("(s)", (legacy,)),
+                None,
+                Gio.DBusCallFlags.NONE,
+                5000,
+                None,
             ).unpack()[0]
         except GLib.Error as error:
             if Gio.DBusError.get_remote_error(error) == ABSENT:
@@ -48,14 +55,21 @@ def forward(application_id, arguments, *, connection=None):
             raise  # An unknown owner is not permission to open a second writer.
 
     for method, params in intents:
-        for attempt in range(3):
+        for _attempt in range(3):
             unique = owner()
             if unique is None:
                 return False
             try:
                 bus.call_sync(
-                    unique, path, "org.freedesktop.Application", method, params,
-                    None, Gio.DBusCallFlags.NONE, 5000, None,
+                    unique,
+                    path,
+                    "org.freedesktop.Application",
+                    method,
+                    params,
+                    None,
+                    Gio.DBusCallFlags.NONE,
+                    5000,
+                    None,
                 )
                 if method == "ActivateAction":
                     # D42 has accepted Record. If it restarts before Open is

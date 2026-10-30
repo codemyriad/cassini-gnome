@@ -55,13 +55,36 @@ with tempfile.TemporaryDirectory(prefix="cassini-signing-test-", dir=REPORT.pare
     work = Path(temporary)
     homedir = work / "keyring"
     homedir.mkdir(mode=0o700)
-    run("gpg", "--batch", "--homedir", str(homedir), "--pinentry-mode", "loopback", "--passphrase", "",
-        "--quick-generate-key", "Cassini temporary signing test", "rsa2048", "sign", "1d")
+    run(
+        "gpg",
+        "--batch",
+        "--homedir",
+        str(homedir),
+        "--pinentry-mode",
+        "loopback",
+        "--passphrase",
+        "",
+        "--quick-generate-key",
+        "Cassini temporary signing test",
+        "rsa2048",
+        "sign",
+        "1d",
+    )
     listing = run("gpg", "--batch", "--homedir", str(homedir), "--with-colons", "--list-keys")
     key = next(line.split(":")[9] for line in listing.splitlines() if line.startswith("fpr:"))
     output = work / "artifacts"
-    run(sys.executable, str(ROOT / "build-aux/flatpak/prepare-release.py"), str(REPO), str(output),
-        "--key", key, "--gpg-homedir", str(homedir), "--legacy-bundle", str(BUNDLE))
+    run(
+        sys.executable,
+        str(ROOT / "build-aux/flatpak/prepare-release.py"),
+        str(REPO),
+        str(output),
+        "--key",
+        key,
+        "--gpg-homedir",
+        str(homedir),
+        "--legacy-bundle",
+        str(BUNDLE),
+    )
     # The test uses a local URL but the production artifact must name D45.1's
     # canonical origin. Signature verification is enabled, never bypassed.
     repo_file = output / "cassini-talk.flatpakrepo"
@@ -76,8 +99,17 @@ with tempfile.TemporaryDirectory(prefix="cassini-signing-test-", dir=REPORT.pare
     # Installing a bundle in a separate private installation must configure
     # its canonical update origin even with no network or runtime downloads.
     bundle_env = dict(os.environ, FLATPAK_USER_DIR=str(work / "bundle-installation"))
-    run("flatpak", "install", "--user", "--assumeyes", "--noninteractive", "--no-deps", "--bundle",
-        str(output / "cassini-talk.flatpak"), env=bundle_env)
+    run(
+        "flatpak",
+        "install",
+        "--user",
+        "--assumeyes",
+        "--noninteractive",
+        "--no-deps",
+        "--bundle",
+        str(output / "cassini-talk.flatpak"),
+        env=bundle_env,
+    )
     origin = run("flatpak", "info", "--user", "--show-origin", NEW, env=bundle_env).strip()
     remotes = run("flatpak", "remotes", "--user", "--columns=name,url", env=bundle_env)
     assert any(line.split() == [origin, canonical] for line in remotes.splitlines()), remotes
@@ -107,6 +139,11 @@ assert before["files"] == after["files"] and before["primary"] == after["primary
 old_dir = Path.home() / ".var/app" / OLD
 new_dir = Path.home() / ".var/app" / NEW
 assert old_dir.is_symlink() and old_dir.resolve() == new_dir.resolve()
-REPORT.write_text(json.dumps(dict(before=before, after=after, flatpakManagedRebase=True,
-    signedRepository=True, bundleOrigin=canonical), indent=2) + "\n")
+REPORT.write_text(
+    json.dumps(
+        dict(before=before, after=after, flatpakManagedRebase=True, signedRepository=True, bundleOrigin=canonical),
+        indent=2,
+    )
+    + "\n"
+)
 print("Flatpak's managed rebase retained the old data and absolute Library path")
