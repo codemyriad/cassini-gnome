@@ -6,7 +6,6 @@ from pathlib import Path
 from . import library_location as location
 from .library import LibraryScanner, meeting_id
 from .meeting_store import LOCK, read_metadata, update_metadata
-from .strings import text
 
 
 def title_value(value):
@@ -15,9 +14,20 @@ def title_value(value):
     value = value.strip()
     if len(value) > 500 or any(0xD800 <= ord(char) <= 0xDFFF for char in value):
         raise ValueError("A meeting title supports at most 500 Unicode characters")
-    # R6 otherwise exposes the old captured title again. This is the same
-    # explicit untitled representation used by the Mac D35 implementation.
-    return value or text("library.untitled")
+    # D38.4: a blank name removes the local override.
+    return value or None
+
+
+def renames(meeting, metadata, title):
+    """Whether saving *title* (a title_value result) changes the meeting.
+
+    A blank rename (None) only changes a meeting whose metadata holds a user
+    title or a non-automatic source. Missing meeting.json reads as automatic,
+    like read_metadata, so it never enables a no-op save (D38.4).
+    """
+    if title is not None:
+        return title != meeting.title
+    return metadata.get("title") is not None or metadata.get("titleSource", "meeting-window") != "meeting-window"
 
 
 def rename_meeting(directory, value):
@@ -37,6 +47,6 @@ def rename_meeting(directory, value):
         if meeting is None or meeting.lifecycle != "saved" or not meeting.metadata_editable:
             raise ValueError("Rename requires an editable saved Library meeting")
         current = read_metadata(directory)
-        if title == meeting.title:
+        if not renames(meeting, current, title):
             return current
-        return update_metadata(directory, title=title, titleSource="user")
+        return update_metadata(directory, title=title, titleSource="user" if title is not None else "meeting-window")

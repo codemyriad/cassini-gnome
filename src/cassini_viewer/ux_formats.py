@@ -186,7 +186,9 @@ def size(byte_count, *, approx=False):
         from .strings import text
 
         count = (Decimal(byte_count) / 1024).quantize(Decimal(1), rounding=ROUND_HALF_UP)
-        return ("about " if approx else "") + text("format.size.kb", n=count)
+        if count < 1000:
+            count = max(count, 1) if byte_count else count
+            return ("about " if approx else "") + text("format.size.kb", n=count)
     count = (Decimal(byte_count) / 1048576).quantize(Decimal(1), rounding=ROUND_HALF_UP)
     if count < 1000:
         value = f"{count} MB"

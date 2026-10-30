@@ -64,7 +64,7 @@
     "dc/dc-quiet-jfk-v1-control.wav": "tests/dc/dc-quiet-jfk-v1-control.wav"
   },
   "sha256": {
-    "format-vectors.json": "ee9c9b9585e76c42f09df54d7a8933e7167527fce2ea185e78b51b1059840e51",
+    "format-vectors.json": "8d9449e30b28b117c85f5396de6b0123b1f79cc9b53f6504157b1a0dfffcc791",
     "states-vectors.json": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
     "LIBRARY-RULES.md": "95a0e5068a08efa521f6eed73799b715ab50b2cf6aee374570b5337a6a3bdd2a",
     "meeting.schema.json": "ebd82ff8639112c6145b673aa74169a706454560050a63956702173c403a1162",
@@ -245,6 +245,10 @@
     "dc/dc-quiet-jfk-v1-control.wav": {
       "commit": "196c179",
       "note": "D26.1 coordinator-approved WebRTC/Silero input stage and public DC vector"
+    },
+    "format-vectors.json": {
+      "commit": "8a25902",
+      "note": "D37.10/R37 format-vectors v4 with approved KB cases"
     }
   }
 }

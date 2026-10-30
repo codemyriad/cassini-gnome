@@ -589,6 +589,8 @@ class CassiniWindow(Adw.ApplicationWindow):
         position = self.player.position
         focused = self.matches[self.match_cursor] if 0 <= self.match_cursor < len(self.matches) else None
 
+        displayed = {owner.index: owner.items for owner in [turn] + [aside for _, aside in turn.asides]}
+
         def word_link(owner, i):
             word = owner.words[i]
             current = owner.word_at(position) if owner.index in self.active_turns else -1
@@ -604,36 +606,23 @@ class CassiniWindow(Adw.ApplicationWindow):
                 attrs.append('fgalpha="60%"')
             if word.low_confidence:
                 attrs.append('style="italic"')
-            text = GLib.markup_escape_text(word.text)
+            text = GLib.markup_escape_text(displayed[owner.index][i])
             inner = f"<span {' '.join(attrs)}>{text}</span>" if attrs else text
             return f'<a href="w:{owner.index}/{i}">{inner}</a>'
 
-        asides = {}
-        for after, aside in turn.asides:
-            asides.setdefault(after, []).append(aside)
+        def chip(aside):
+            name = self.speaker_label(aside.speaker)
+            on = aside.is_active(position)
+            bg = accent if on else ("#ffffff" if dark else "#000006")
+            alpha = current_alpha if on else ("10%" if dark else "7%")
+            links = " ".join(word_link(aside, j) for j, value in enumerate(displayed[aside.index]) if value)
+            markup = (
+                f'<span size="small" background="{bg}" bgalpha="{alpha}">'
+                f" <b>{GLib.markup_escape_text(name)}:</b> {links} </span>"
+            )
+            return markup, f" {name}: {aside.text} "
 
-        parts, offsets = [], []
-        length = 0
-        for i, word in enumerate(turn.words):
-            if i:
-                parts.append(" ")
-                length += 1
-            offsets.append(length)
-            parts.append(word_link(turn, i))
-            length += len(word.text.encode())
-            for aside in asides.get(i, ()):
-                name = self.speaker_label(aside.speaker)
-                on = aside.is_active(position)
-                bg = accent if on else ("#ffffff" if dark else "#000006")
-                alpha = current_alpha if on else ("10%" if dark else "7%")
-                chip = (
-                    f'<span size="small" background="{bg}" bgalpha="{alpha}">'
-                    f" <b>{GLib.markup_escape_text(name)}:</b> "
-                    f"{' '.join(word_link(aside, j) for j in range(len(aside.words)))} </span>"
-                )
-                parts.append(f" {chip}")
-                length += 1 + len(f" {name}: {aside.text} ".encode())
-        return "".join(parts), offsets
+        return transcript.join_items(turn, word_link, chip)
 
     def _render_turns(self, indexes):
         for index in indexes:

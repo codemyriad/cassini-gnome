@@ -126,3 +126,38 @@ def test_overlap_badge_uses_word_intersections_not_paragraph_extent():
     turns = transcript.build_turns([w("a", 0, 2000, "One"), w("b", 1500, 2500, "Two")])
     assert turns[0].over == ["b"]
     assert turns[1].over == ["a"]
+
+
+def test_d38_join_items_offsets_match_displayed_text():
+    # Regression (review 118 #3): quote-only items used to leave a leading or
+    # double space, and asides counted text the chip did not show, shifting
+    # every later Pango byte offset.
+    def link(owner, i):
+        return f"[{owner.items[i]}]"
+
+    def chip(aside):
+        links = " ".join(link(aside, j) for j, value in enumerate(aside.items) if value)
+        return f"< B: {links} >", f" B: {aside.text} "
+
+    leading = transcript.Turn(0, "a", [w("a", 0, 1, '"'), w("a", 1, 2, "Hi"), w("a", 2, 3, "you")], 0, 0, 3)
+    assert transcript.join_items(leading, link, chip) == ("[Hi] [you]", [0, 0, 3])
+    turn = transcript.Turn(0, "a", [w("a", 0, 1, "Hi"), w("a", 1, 2, ' "'), w("a", 2, 3, "café")], 0, 0, 3)
+    assert turn.items == ("Hi", "", "café")
+    assert transcript.join_items(turn, link, chip) == ("[Hi] [café]", [0, 2, 3])
+    aside = transcript.Turn(1, "b", [w("b", 1, 2, "ok"), w("b", 2, 3, '"')], 1, 1, 3)
+    turn.asides.append((1, aside))
+    markup, offsets = transcript.join_items(turn, link, chip)
+    assert markup == "[Hi] < B: [ok] > [café]"
+    data = "Hi  B: ok  café".encode()
+    assert offsets == [0, 2, data.index("café".encode())] == [0, 2, 11]
+    assert data[offsets[2] :].decode() == "café"
+
+
+def test_d38_in_reader_search_matches_displayed_text():
+    # Regression (review 118 #3): search used the raw items, so a curly quote
+    # on screen found nothing and '"' counted an invisible item.
+    turns = transcript.build_turns([w("a", 0, 100, 'He "said'), w("a", 100, 200, 'it"'), w("a", 200, 300, '"')])
+    assert [t.text for t in turns] == ["He “said it”"]
+    assert transcript.find_matches(turns, "“said") == [(0, 0)]
+    assert transcript.find_matches(turns, "”") == [(0, 1)]
+    assert transcript.find_matches(turns, '"') == []

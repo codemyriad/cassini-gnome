@@ -640,7 +640,7 @@ class LibraryScanner:
             transcript=transcript,
             eta_minutes=eta,
             error=error,
-            title=title or "Untitled meeting",
+            title=title or text("library.untitled"),
             title_is_fallback=title is None,
             started_at_ms=started,
             duration_ms=duration,
@@ -768,7 +768,8 @@ def _unreadable(directory, identifier, activity):
     return Meeting(
         id=identifier,
         directory=directory,
-        title="Untitled meeting",
+        title=text("library.untitled"),
+        title_is_fallback=True,
         started_at_ms=None,
         duration_ms=None,
         lifecycle=activity if activity in ("recording", "saving") else "saved",
@@ -846,6 +847,8 @@ def _quote(words, override):
     if not candidates:
         return None
     chosen = min(candidates, key=lambda t: (-(t[2] - t[1]), t[1], t[3]))
+    # R8.3 keeps the pull quote verbatim, straight quotes included; D38.5
+    # cleans displayed turn text only (r8-consecutive-quote).
     text = " ".join(" ".join(chosen[4]).split())
     return f"“{text}”" if text else None
 
