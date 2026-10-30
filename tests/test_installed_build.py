@@ -125,7 +125,7 @@ def application():
     app = SimpleNamespace(
         hold=lambda: held.append(True),
         release=lambda: held.pop(),
-        finish_quit=lambda: finished.append(True),
+        finish_quit=lambda **_kwargs: finished.append(True),
         get_windows=lambda: windows,
         browser_watch=None,
         native_captures={},
@@ -325,3 +325,212 @@ def test_record_handoff_has_a_private_launcher_argument(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "execv", lambda program, args: calls.append(args))
     running.reexec(show=True, automatic=False, record=True)
     assert calls == [[str(launcher), "--cassini-resume-record"]]
+
+
+@pytest.mark.parametrize("guard", ["_capture_background", "_capture_background_saving", "_capture_confirmation"])
+def test_hidden_save_and_confirmation_guard_restart_until_finished(guard):
+    app, held, finished, _ = application()
+    setattr(app, guard, True)
+    refresh, clock = controller(app, SimpleNamespace(changed=lambda: True, restart=None))
+    refresh.check()
+    clock.finish()
+    assert refresh.pending and not refresh.can_restart and not finished and not held
+    setattr(app, guard, False)
+    refresh.capture_changed()
+    clock.finish()
+    assert finished and not held
+
+
+def test_preparation_is_durable_before_restart_and_new_queue_can_resume(tmp_path, monkeypatch):
+    import threading
+
+    from test_library import capture
+
+    from cassini_viewer.library import LibraryScanner
+    from cassini_viewer.meeting_store import read_metadata
+    from cassini_viewer.transcription import TranscriptionQueue
+
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    session = capture(tmp_path)
+    entered, release, working, finish_job = (threading.Event() for _ in range(4))
+    app, held, finished, _ = application()
+    app._transcription_holds = 1
+    refresh, clock = controller(app, SimpleNamespace(changed=lambda: True, restart=None))
+    changes = []
+    queue = app.transcriber = TranscriptionQueue(changes.append, lambda _: None, root=tmp_path, bundle=tmp_path)
+    original = queue._mark_queued
+
+    def blocked(*args):
+        entered.set()
+        assert release.wait(5)
+        return original(*args)
+
+    def job(*_args):
+        working.set()
+        assert finish_job.wait(5)
+
+    monkeypatch.setattr(queue, "_mark_queued", blocked)
+    monkeypatch.setattr(queue, "_job", job)
+
+    def quit(**_kwargs):
+        assert read_metadata(session.directory)["transcript"]["status"] == "queued"
+        queue.close()
+        finished.append(True)
+
+    app.finish_quit = quit
+    try:
+        assert queue.enqueue(session.directory)
+        until(entered.is_set)
+        refresh.check()
+        clock.finish()
+        assert not finished and queue.preparing() and not queue.closed
+        assert read_metadata(session.directory)["transcript"]["status"] == "none"
+        release.set()
+        until(working.is_set)
+        until(lambda: bool(changes))
+        assert not queue.preparing() and queue.pending, "Inference must remain resumable without waiting for it"
+        refresh.capture_changed()
+        clock.finish()
+        assert finished and not held and refresh.installed.restart["writing"]
+        meeting = LibraryScanner(tmp_path).scan().meetings[0]
+        assert meeting.transcript == "queued"
+        resumed = TranscriptionQueue(lambda _: None, lambda _: None, root=tmp_path, bundle=tmp_path)
+        observed = []
+        monkeypatch.setattr(resumed, "_job", lambda *_args: observed.append(True))
+        try:
+            assert resumed.enqueue(meeting.directory, resume=True)
+            until(lambda: bool(observed))
+        finally:
+            resumed.close()
+    finally:
+        release.set()
+        finish_job.set()
+        queue.close()
+        queue.executor.shutdown(wait=True)
+
+
+class DeferredTrash:
+    def __init__(self):
+        self.pending = True
+
+    def flush(self, done, *, failed):
+        self.done, self.failed = done, failed
+        return self.pending
+
+
+def test_trash_failure_restores_activation_and_future_restart():
+    app, held, finished, _ = application()
+    app.meeting_trash = trash = DeferredTrash()
+    installed = SimpleNamespace(changed=lambda: True, restart=None)
+    refresh, clock = controller(app, installed)
+    called = []
+    refresh.check(lambda: called.append("activate"), show=True)
+    clock.finish()
+    assert refresh.flushing and not refresh.restarting and held and not refresh.can_restart
+    refresh.check(lambda: called.append("open"), files=["file:///meeting.opus"])
+    refresh.check(lambda: called.append("record"), record=True)
+    trash.pending = False
+    trash.failed()
+    assert called == ["activate", "open", "record"] and not finished and not held
+    assert not refresh.flushing and not refresh.restarting and installed.restart is None
+    assert not refresh.show and not refresh.record and not refresh.files and not refresh.callbacks
+    refresh.check()
+    clock.finish()
+    assert finished and not installed.restart.get("record") and installed.restart["files"] == ()
+
+
+def test_capture_started_during_trash_flush_is_rechecked_before_quitting():
+    app, held, finished, _ = application()
+    app.meeting_trash = trash = DeferredTrash()
+    refresh, clock = controller(app, SimpleNamespace(changed=lambda: True, restart=None))
+    refresh.check()
+    clock.finish()
+    recorder = SimpleNamespace(pipeline=object(), _finishing=False)
+    app.native_captures = {"new": recorder}
+    trash.pending = False
+    trash.done()
+    clock.finish()
+    assert not finished and not held and not refresh.restarting and not refresh.can_restart
+    recorder.pipeline = None
+    refresh.capture_changed()
+    clock.finish()
+    assert finished and not held
+
+
+def test_changed_broker_state_during_worker_requires_a_fresh_check(monkeypatch):
+    import threading
+
+    from cassini_viewer import browser_service
+
+    app, held, finished, _ = application()
+    app.browser_watch = object()
+    entered, release = threading.Event(), threading.Event()
+    replies = []
+
+    def request():
+        if not replies:
+            replies.append(True)
+            entered.set()
+            assert release.wait(5)
+            return dict(statuses=[dict(recording=True)])
+        replies.append(False)
+        return dict(statuses=[])
+
+    monkeypatch.setattr(browser_service, "request", request)
+    refresh, clock = controller(app, SimpleNamespace(changed=lambda: True, restart=None))
+    refresh.check()
+    until(entered.is_set)
+    refresh.check()  # Stop completed after the worker observed the old state.
+    release.set()
+    clock.finish()
+    assert not finished and held
+    clock.finish()
+    assert replies == [True, False] and finished and not held
+
+
+def test_live_broker_state_disables_restart_banner(monkeypatch):
+    from cassini_viewer import browser_service
+
+    app, held, finished, windows = application()
+    app.browser_watch = object()
+    monkeypatch.setattr(browser_service, "request", lambda: dict(statuses=[dict(recording=True)]))
+    refresh, clock = controller(app, SimpleNamespace(changed=lambda: True, restart=None))
+    enabled = []
+    windows.append(SimpleNamespace(update_build_banner=lambda: enabled.append(refresh.can_restart)))
+    refresh.check()
+    clock.finish()
+    assert refresh.browser_busy and refresh.pending and enabled == [False]
+    assert not finished and not held
+
+
+def test_partial_install_retry_exhaustion_clears_intent_and_next_request_retries():
+    app, held, finished, _ = application()
+    calls = []
+
+    def changed():
+        calls.append(True)
+        raise OSError("generated incomplete install")
+
+    refresh, clock = controller(app, SimpleNamespace(changed=changed, restart=None))
+    called = []
+    refresh.check(lambda: called.append(True), show=True, files=["file:///old.opus"], record=True)
+    for attempt in range(21):
+        clock.finish()
+        if attempt < 20:
+            clock.advance(0.5)
+    assert len(calls) == 21 and called == [True] and not held and not finished
+    assert refresh.attempts == 0 and not refresh.show and not refresh.record and not refresh.files
+    refresh.check()
+    clock.finish()
+    assert len(calls) == 22 and refresh.attempts == 1 and held and clock.timers
+    refresh.close()
+    assert not held
+
+
+def test_visible_reexec_preserves_automatic_recording_hold(tmp_path, monkeypatch):
+    _, root, launcher = payload(tmp_path)
+    running = InstalledBuild(root, launcher, "0.3.0")
+    calls = []
+    monkeypatch.setattr(os, "execv", lambda program, args: calls.append(args))
+    running.reexec(show=True, automatic=True, files=["file:///meeting.opus"], record=True)
+    assert calls == [[str(launcher), "file:///meeting.opus", "--cassini-resume-record", "--cassini-resume-automatic"]]

@@ -16,6 +16,10 @@ def recording_busy(app):
         or getattr(app, "_browser_stops", ())
         or getattr(app, "_source_changes", ())
         or getattr(app, "_auto_recording_pending", None)
+        or getattr(app, "_capture_background", False)
+        or getattr(app, "_capture_background_saving", False)
+        or getattr(app, "_capture_confirmation", None)
+        or (getattr(app, "transcriber", None) is not None and app.transcriber.preparing())
     )
 
 
@@ -29,6 +33,9 @@ class BuildRefresh:
         self.post, self.later, self.cancel = post, later, cancel
         self.pending = self.restarting = self.closed = self.held = False
         self.future = None
+        self.revision = 0
+        self.browser_busy = self.flushing = False
+        self._activity_busy = None
         self.timer = 0
         self.callbacks = []
         self.show = False
@@ -41,6 +48,7 @@ class BuildRefresh:
     def check(self, callback=None, *, show=False, files=(), record=False):
         if self.closed:
             return
+        self.revision += 1
         self.show |= show
         self.record |= record
         self.files.extend(uri for uri in files if uri not in self.files)
@@ -53,7 +61,7 @@ class BuildRefresh:
             if record:
                 restart["record"] = True
             return
-        if self.future is not None:
+        if self.future is not None or self.flushing:
             return
         if self.timer:
             self.cancel(self.timer)
@@ -61,7 +69,9 @@ class BuildRefresh:
         if not self.held:
             self.app.hold()
             self.held = True
+        revision = self.revision
         future = self.future = Future()
+        future.revision = revision
         future.add_done_callback(lambda result: self.post(self._finished, result))
 
         def run():
@@ -86,6 +96,11 @@ class BuildRefresh:
         self.future = None
         if self.closed:
             return False
+        # A capture/activation transition during IO invalidates its snapshot.
+        # Keep the accumulated intent and inspect the current state again.
+        if future.revision != self.revision:
+            self.check()
+            return False
         changed = browser = False
         try:
             changed, browser = future.result()
@@ -99,19 +114,24 @@ class BuildRefresh:
             if self.attempts <= 20:
                 self.timer = self.later(500, self._retry)
                 return False
-            callbacks, self.callbacks = self.callbacks, []
-            try:
-                for callback in callbacks:
-                    callback()
-            finally:
-                self._release()
+            self.attempts = 0
+            self._last_error = None
+            self._continue_current()
             return False
         else:
             self.attempts = 0
             self._last_error = None
             self.pending = changed
+            self.browser_busy = browser
         self._notify()
         if self.pending and not browser and not recording_busy(self.app):
+            trash = getattr(self.app, "meeting_trash", None)
+            if trash is not None:
+                self.flushing = True
+                if trash.flush(self._flushed, failed=self._flush_failed):
+                    self._notify()
+                    return False
+                self.flushing = False
             self.restarting = True
             self.installed.restart = dict(
                 show=self.show or any(w.get_visible() for w in self.app.get_windows()),
@@ -121,19 +141,37 @@ class BuildRefresh:
             )
             if self.record:
                 self.installed.restart["record"] = True
+            self._notify()
             self._release()
-            self.app.finish_quit()
+            # Trash has already drained. No async gap is allowed between the
+            # final safety check and closing the queue/process.
+            self.app.finish_quit(trash_flushed=True)
             return False
+        self._continue_current()
+        return False
+
+    def _flushed(self):
+        if self.closed:
+            return
+        self.flushing = False
+        # Capture may have started while the native Trash operation ran.
+        self.check()
+
+    def _flush_failed(self):
+        self.flushing = self.restarting = False
+        self.installed.restart = None
+        self._notify()
+        self._continue_current()
+
+    def _continue_current(self):
         callbacks, self.callbacks = self.callbacks, []
-        self.show = False
-        self.record = False
+        self.show = self.record = False
         self.files = []
         try:
             for callback in callbacks:
                 callback()
         finally:
             self._release()
-        return False
 
     def _retry(self):
         self.timer = 0
@@ -141,14 +179,21 @@ class BuildRefresh:
         return False
 
     def capture_changed(self):
-        if not self.pending:
-            return
+        busy = recording_busy(self.app)
+        changed = busy != self._activity_busy
+        self._activity_busy = busy
         self._notify()
-        if self.pending and not self.restarting and not recording_busy(self.app):
+        if changed and self.future is not None:
+            self.revision += 1
+        if self.pending and not self.restarting and not self.flushing and not busy and (changed or self.future is None):
             self.check()
 
+    @property
+    def can_restart(self):
+        return self.pending and not (self.restarting or self.flushing or self.browser_busy or recording_busy(self.app))
+
     def _notify(self):
-        signature = self.pending, recording_busy(self.app)
+        signature = self.pending, self.can_restart
         if signature == self._banner_signature:
             return
         self._banner_signature = signature

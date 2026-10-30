@@ -228,3 +228,31 @@ def test_unavailable_library_root_does_not_discard_private_prints(roots):
     with pytest.raises(FileNotFoundError, match="unavailable"):
         trash_owned(session.directory, cleanup=TrashCleanup(store))
     assert cache.read_bytes() == before
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_flush_reports_failure_to_restart_and_never_calls_success_on_failure(tmp_path, failure):
+    from concurrent.futures import Future
+
+    from cassini_viewer.meeting_trash import MeetingTrash
+
+    held, called = [True], []
+    meeting = SimpleNamespace(directory=tmp_path / "Recording-test", key="test")
+    window = SimpleNamespace(present=lambda: called.append("present"))
+    operation = SimpleNamespace(meeting=meeting, window=window, phase="committing")
+    app = SimpleNamespace(get_windows=lambda: [], discard_meeting_paths=lambda _: None, release=lambda: held.pop())
+    trash = MeetingTrash.__new__(MeetingTrash)
+    trash.app = app
+    trash.operations = {meeting.directory: operation}
+    trash.waiters, trash.errors, trash.hidden = [], {}, {}
+    trash.failed_flush = False
+    trash._refresh = lambda: None
+    assert trash.flush(lambda: called.append("success"), failed=lambda: called.append("failed"))
+    result = Future()
+    if failure:
+        result.set_exception(OSError("generated Trash write failure"))
+    else:
+        result.set_result(None)
+    trash._complete(operation, result)
+    assert called == (["present", "failed"] if failure else ["success"])
+    assert not held and not trash.waiters and not trash.operations and not trash.failed_flush

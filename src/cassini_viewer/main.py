@@ -149,6 +149,8 @@ class CassiniApplication(Adw.Application):
         Adw.Application.do_startup(self)
         if self.build_refresh:
             self.build_refresh.installed.announce()
+        # Restore the armed state before Watch can publish its first snapshot.
+        self._restore_automatic()
         from .main_loop_watchdog import MainLoopWatchdog
 
         self._watchdog = MainLoopWatchdog()
@@ -246,11 +248,19 @@ class CassiniApplication(Adw.Application):
             window.add_css_class("devel")
         return window
 
-    def do_activate(self):
+    def _restore_automatic(self):
+        if self._resume_automatic:
+            self.set_auto_recording_hold(True)
+            self._resume_automatic = False
+
+    def _take_resume_intent(self):
+        self._restore_automatic()
         background, self._resume_background = self._resume_background, False
         record, self._resume_record = self._resume_record, False
-        if background and self._resume_automatic:
-            self.set_auto_recording_hold(True)
+        return background, record
+
+    def do_activate(self):
+        background, record = self._take_resume_intent()
 
         def callback():
             window = self._activate_current(background=background)
@@ -301,8 +311,21 @@ class CassiniApplication(Adw.Application):
             self.build_refresh.check(show=True)
 
     def do_open(self, files, _n_files, _hint):
-        for file in files:
-            self.open_in_new_window(file)
+        # GApplication dispatches Open instead of Activate when a restart also
+        # carries files. Consume the same one-shot recording/background intent.
+        _background, record = self._take_resume_intent()
+
+        def opened():
+            window = self._activate_current()
+            for file in files:
+                window.open_file(file)
+            if record:
+                self._record_current()
+
+        if self.build_refresh:
+            self.build_refresh.check(opened, show=True, files=[f.get_uri() for f in files], record=record)
+        else:
+            opened()
 
     def open_in_new_window(self, file):
         """Import/open only after the installed build check completes."""
@@ -350,8 +373,8 @@ class CassiniApplication(Adw.Application):
             return
         self.finish_quit()
 
-    def finish_quit(self):
-        if self.meeting_trash.flush(self.finish_quit):
+    def finish_quit(self, *, trash_flushed=False):
+        if not trash_flushed and self.meeting_trash.flush(self.finish_quit):
             return
         from .capture_guard import finish_close
 
@@ -517,7 +540,9 @@ class CassiniApplication(Adw.Application):
         return False
 
     def _browser_changed(self, snapshot):
-        was_recording = self.browser_capture_active()
+        # BrowserActivity can lag Watch by a tick. Its stale window snapshot
+        # must not hide the broker's recording -> idle transition.
+        was_recording = any(s.get("recording") for s in self._browser_snapshot.get("statuses", ()))
         snapshot = dict(snapshot)
         revision = snapshot.get("autoRecordRevision", 0)
         if type(revision) is not int or revision < self._auto_recording_revision:
@@ -539,7 +564,7 @@ class CassiniApplication(Adw.Application):
             window._browser_snapshot = snapshot
         self._native_changed()
         if self.build_refresh:
-            if was_recording and not self.browser_capture_active():
+            if was_recording and not any(s.get("recording") for s in snapshot.get("statuses", ())):
                 self.build_refresh.check()
             else:
                 self.build_refresh.capture_changed()
@@ -844,6 +869,8 @@ class CassiniApplication(Adw.Application):
                     self._browser_stops.discard(key)
                     self.release()
                 self._native_changed()
+                if self.build_refresh:
+                    self.build_refresh.check()
                 return False
 
             GLib.idle_add(delivered)
@@ -962,6 +989,8 @@ class CassiniApplication(Adw.Application):
                 dialog.refresh_voices()
 
     def _transcription_changed(self):
+        if self.build_refresh:
+            self.build_refresh.capture_changed()
         self._refresh_speaker_dialogs()
         for window in self.get_windows():
             if hasattr(window, "monitor"):

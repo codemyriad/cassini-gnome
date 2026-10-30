@@ -235,12 +235,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
 
     def update_build_banner(self):
-        from .build_refresh import recording_busy
-
         app = self.get_application()
         refresh = app.build_refresh
         self.update_banner.set_revealed(bool(refresh and refresh.pending))
-        app.lookup_action("restart").set_enabled(bool(refresh and refresh.pending and not recording_busy(app)))
+        app.lookup_action("restart").set_enabled(bool(refresh and refresh.can_restart))
 
     def _text_focused(self):
         widget = self.get_focus()
@@ -572,6 +570,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.browser_status.render()
 
     def _activity_tick(self):
+        refresh = self.get_application().build_refresh
+        if refresh:
+            refresh.capture_changed()
         activity = dict(self._activity_source.snapshot) if self._activity_source else dict(self._fixture_activity)
         app = self.get_application()
         activity.update(recorder_activity(app.get_windows() + [app]))

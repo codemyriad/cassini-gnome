@@ -168,8 +168,8 @@ class InstalledBuild:
             arguments.append("--cassini-resume-background")
             if writing:
                 arguments.append("--cassini-resume-writing")
-            if automatic:
-                arguments.append("--cassini-resume-automatic")
+        if automatic:
+            arguments.append("--cassini-resume-automatic")
         if self.flatpak:
             from .flatpak_bridge import deployment, detached_command, host_info
 
