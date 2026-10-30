@@ -11,6 +11,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Use build-aux/ux-screenshot.sh")
@@ -27,7 +28,6 @@ Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD
 from cassini_viewer.browser_service import BrowserService, request, send_packet  # noqa: E402
 from cassini_viewer.browser_service import connect as broker_connect  # noqa: E402
 from cassini_viewer.folder_player import FolderPlayer  # noqa: E402
-from cassini_viewer.global_shortcut import GlobalShortcut  # noqa: E402
 from cassini_viewer.library_window import LibraryWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
 from cassini_viewer.player import Player  # noqa: E402
@@ -92,12 +92,17 @@ with tempfile.TemporaryDirectory() as temporary:
     assert ready.wait(2)
     desktop = DesktopServices()
     app = CassiniApplication("com.gocassini.SettingsTest", "test", "development")
-    app.register(None)
+    # Exercise real startup without the screenshot/audio opt-out. Everything,
+    # including the desktop portal service and browser profiles, is private.
+    with patch.dict(os.environ):
+        os.environ.pop("CASSINI_SCREENSHOT_ISOLATED", None)
+        os.environ.pop("CASSINI_ISOLATED_AUDIO", None)
+        app.register(None)
+    assert app.global_shortcut is None, "Fresh startup must not ask for global shortcuts"
+    assert not desktop.calls
     app.activate()
     window = app.get_active_window()
     until(lambda: not window._pending)
-    app.global_shortcut = GlobalShortcut(app.on_global_record, connection=desktop.bus, settings=app.recording_settings)
-    until(lambda: app.global_shortcut.bound)
     from cassini_viewer.settings_dialog import SettingsDialog
 
     dialog = SettingsDialog(app, service_path=path)
@@ -111,6 +116,23 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog.explain.set_active(True)
     assert not app.recording_settings.get_boolean("skip-record-first")
     assert dialog.shortcut.get_subtitle() == "Ctrl+Alt+R"
+    assert not app.recording_settings.get_boolean("record-shortcut-enabled")
+    assert dialog.change_shortcut.get_sensitive() and not desktop.calls
+    # Declining must leave opt-in false and allow another explicit attempt.
+    desktop.denied = True
+    dialog.change_shortcut.emit("clicked")
+    until(lambda: app.global_shortcut and app.global_shortcut.error)
+    assert not app.recording_settings.get_boolean("record-shortcut-enabled")
+    dialog.refresh()
+    assert dialog.change_shortcut.get_sensitive()
+    desktop.denied = False
+    dialog.change_shortcut.emit("clicked")
+    pending = app.global_shortcut
+    dialog.change_shortcut.emit("clicked")
+    assert app.global_shortcut is pending, "Repeated clicks must not create overlapping sessions"
+    until(lambda: app.global_shortcut.bound)
+    assert app.recording_settings.get_boolean("record-shortcut-enabled")
+    assert [c["method"] for c in desktop.calls] == ["CreateSession", "CreateSession", "ListShortcuts", "BindShortcuts"]
     desktop.shortcut_description = "Ctrl+Shift+R"
     dialog.change_shortcut.emit("clicked")
     until(lambda: app.global_shortcut.trigger_description == "Ctrl+Shift+R")
@@ -162,12 +184,16 @@ with tempfile.TemporaryDirectory() as temporary:
     assert not app._auto_recording_held
     assert json.loads((tmp / "browser-config.json").read_text())["autoRecord"] is False
     app.global_shortcut.close()
-    app.global_shortcut = GlobalShortcut(app.on_global_record, connection=desktop.bus, settings=app.recording_settings)
-    until(lambda: app.global_shortcut.bound)
-    assert app.global_shortcut.trigger_description == "Ctrl+Shift+R"
+    restored = CassiniApplication("com.gocassini.SettingsRestoreTest", "test", "development")
+    with patch.dict(os.environ):
+        os.environ.pop("CASSINI_SCREENSHOT_ISOLATED", None)
+        os.environ.pop("CASSINI_ISOLATED_AUDIO", None)
+        restored.register(None)
+    until(lambda: restored.global_shortcut and restored.global_shortcut.bound)
+    assert restored.global_shortcut.trigger_description == "Ctrl+Shift+R"
     binding = [c for c in desktop.calls if c["method"] == "BindShortcuts"][-1]
     assert "preferred_trigger" not in binding["values"][1][0][1]
-    app.global_shortcut.close()
+    restored.do_shutdown()
     desktop.close()
     window.close()
     app.do_shutdown()

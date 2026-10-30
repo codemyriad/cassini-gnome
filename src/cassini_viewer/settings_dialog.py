@@ -68,9 +68,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.pages["recording"].add(group)
         self.shortcut = Adw.ActionRow(title=text("settings.recording.shortcut.title"), use_markup=False)
         self.change_shortcut = Gtk.Button(label=text("settings.recording.changeShortcut"), valign=Gtk.Align.CENTER)
-        self.change_shortcut.connect(
-            "clicked", lambda *_: self.app.global_shortcut.configure() if self.app.global_shortcut else None
-        )
+        self.change_shortcut.connect("clicked", lambda *_: self.app.configure_global_shortcut())
         self.shortcut.add_suffix(self.change_shortcut)
         group.add(self.shortcut)
         self.explain = Adw.SwitchRow(title=text("settings.recording.firstRecord.title"), use_markup=False)
@@ -624,7 +622,12 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.shortcut.set_subtitle(
             shortcut.trigger_description if shortcut else self.settings.get_string("record-shortcut-description")
         )
-        self.change_shortcut.set_sensitive(bool(shortcut and shortcut.bound and shortcut.configure_supported))
+        self.change_shortcut.set_sensitive(
+            shortcut is None
+            or shortcut.closed
+            or bool(shortcut.error)
+            or (shortcut.bound and shortcut.configure_supported)
+        )
         mover = self.app.library_relocator
         self.render_moves(mover.state, moving=mover.running, error=mover._error)
         self.render_browser()
