@@ -96,6 +96,9 @@ class CassiniApplication(Adw.Application):
         self.library_relocator = None
         self.comfort = None
         self.global_shortcut = None
+        from .background_recording import BackgroundRecording
+
+        self.background_recording = BackgroundRecording()
         self._pending_recording = None
         from .meeting_trash import MeetingTrash
 
@@ -949,6 +952,7 @@ class CassiniApplication(Adw.Application):
         return getattr(self, "_capture_background", False) and not self._quitting and any(capture_targets(self))
 
     def do_shutdown(self):
+        self.background_recording.close()
         if self.global_shortcut:
             self.global_shortcut.close()
         if self.comfort:

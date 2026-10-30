@@ -246,7 +246,7 @@ try:
     )
     until(lambda: "recording" in services.notifications, "hidden GNotification delivered")
     payload = services.notifications["recording"]
-    assert [b["label"] for b in payload["buttons"]] == ["Stop", "Open Cassini"]
+    assert [b["label"] for b in payload["buttons"]] == ["Stop", "Show"]
     assert "browser" not in payload["body"], "Native notification claims browser capture"
     services.app_action(app, "open-recording")
     until(window.get_visible, "notification Open action restores Cassini")

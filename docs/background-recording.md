@@ -1,0 +1,9 @@
+# Background recording (D35.3)
+
+The capture close dialog has Cancel, Keep Recording in Background, and Stop and keep it. Its Escape/close response is Cancel: it dismisses the dialog without hiding a window, requesting permission, acquiring a background hold or changing capture.
+
+Only the explicit background choice calls the Background portal's `RequestBackground`, with `autostart: false` and no launch command. Permission response subscription precedes the method call. Until approval, the recording stays visible. Denial, unavailable service, a failed request or a bounded request timeout leaves it visible. A late approval cannot hide a finished recording. App holds cover the pending request and approved capture independently, and are released on every completion path.
+
+A notification is sent immediately when hidden, even before the first Library scan. It remains available with Stop and Show actions; known meetings include their title and start time using the existing shared Recording-since copy. The notification is withdrawn on return or completion. The Background v2 status shows recording progress; status calls are deduplicated, flattened to one line and bounded to 96 characters. A desktop without SetStatus still supports the permission and notification paths. No automatic start or global shortcut permission is requested here.
+
+`tests/ui/background.py` drives the real close dialog, native Escape, private portal responses and notification actions over D-Bus, with a real synthetic GStreamer capture. It covers Cancel, denial, pending approval, late approval after Stop, notification Show/Stop, errors, request cancellation and status bounds. The test rejects Gtk-WARNING/CRITICAL and saves a 1120×720 `background.png` in `ux-boards`. The 20 existing process-exit/hold scenarios in `tests/ui/quit.py` continue to run separately. Everything uses a private display, bus and synthetic audio.
