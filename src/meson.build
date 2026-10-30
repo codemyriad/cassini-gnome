@@ -116,6 +116,7 @@ install_data(
   'cassini_viewer/capture_guard.py',
   'cassini_viewer/background_recording.py',
   'cassini_viewer/windowless.py',
+  'cassini_viewer/status_notifier.py',
   'cassini_viewer/capture_sources.py',
   'cassini_viewer/session_events.py',
   'cassini_viewer/what_is_recorded.py',

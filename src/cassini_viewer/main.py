@@ -107,6 +107,8 @@ class CassiniApplication(Adw.Application):
         from .windowless import WindowlessBackground
 
         self.windowless_background = WindowlessBackground(self)
+        self.status_notifier = None
+        self._sni_activation_token = ""
         self._pending_recording = None
         from .meeting_trash import MeetingTrash
 
@@ -142,6 +144,10 @@ class CassiniApplication(Adw.Application):
 
     def do_startup(self):
         Adw.Application.do_startup(self)
+        from .status_notifier import StatusNotifier
+
+        if bus := self.get_dbus_connection():
+            self.status_notifier = StatusNotifier(self, bus)
         from .main_loop_watchdog import MainLoopWatchdog
 
         self._watchdog = MainLoopWatchdog()
@@ -248,6 +254,9 @@ class CassiniApplication(Adw.Application):
         window = next((w for w in self.get_windows() if isinstance(w, LibraryWindow)), None)
         if window is None:
             window = LibraryWindow(self)
+        if self._sni_activation_token:
+            window.set_startup_id(self._sni_activation_token)
+            self._sni_activation_token = ""
         window.present()
         self.windowless_background.refresh()
         from .capture_guard import refresh_capture_background
@@ -686,6 +695,7 @@ class CassiniApplication(Adw.Application):
             self.record_first.refresh_permissions()
         if self.comfort:
             self.comfort.native_level()
+        self.windowless_background.refresh()
         for window in self.get_windows():
             if hasattr(window, "capture_changed"):
                 window.capture_changed()
@@ -1038,6 +1048,8 @@ class CassiniApplication(Adw.Application):
         return getattr(self, "_capture_background", False) and not self._quitting and any(capture_targets(self))
 
     def do_shutdown(self):
+        if self.status_notifier:
+            self.status_notifier.close()
         if self._watchdog:
             self._watchdog.close()
             self._watchdog = None

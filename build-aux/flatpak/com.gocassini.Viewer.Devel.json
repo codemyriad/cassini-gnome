@@ -12,7 +12,8 @@
         "--device=dri",
         "--socket=pulseaudio",
         "--filesystem=xdg-music/Cassini:create",
-        "--talk-name=org.freedesktop.Flatpak"
+        "--talk-name=org.freedesktop.Flatpak",
+        "--talk-name=org.kde.StatusNotifierWatcher"
     ],
     "cleanup": [
         "/include",

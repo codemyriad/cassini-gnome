@@ -209,15 +209,19 @@ class RecordingComfort:
             state.update(line=native.line, minutes=native.minutes_left)
             self._disk_notification(None, native.line, native.minutes_left, key=key)
         self._refresh_pages()
-        hidden = (bool(meetings) or any(capture_targets(self.app))) and not any(
-            w.get_visible() for w in self.app.get_windows()
+        recording = bool(meetings) or any(capture_targets(self.app))
+        meeting = min(
+            meetings.values(),
+            key=lambda m: (m.started_at_ms if m.started_at_ms is not None else float("inf"), m.key),
+            default=None,
         )
+        status = (
+            text("hidden.status", liveBig=fmt.live_big(self.elapsed(meeting) if meeting else 0)) if recording else ""
+        )
+        self.app.windowless_background.refresh(status)
+        hidden = recording and not any(w.get_visible() for w in self.app.get_windows())
         if hidden:
-            if meetings:
-                meeting = min(
-                    meetings.values(),
-                    key=lambda m: (m.started_at_ms if m.started_at_ms is not None else float("inf"), m.key),
-                )
+            if meeting:
                 payload = notification_payload(
                     meeting,
                     self.elapsed(meeting),
@@ -229,7 +233,6 @@ class RecordingComfort:
                     and text("errors.othersFallback.line") not in payload["body"]
                 ):
                     payload["body"] += "\n" + text("errors.othersFallback.line")
-                status = text("hidden.status", liveBig=fmt.live_big(self.elapsed(meeting)))
             else:
                 # A new capture can precede Library discovery. Its controls
                 # must already be available when the last window is hidden.
@@ -242,8 +245,6 @@ class RecordingComfort:
                     ],
                     defaultAction="app.open-recording",
                 )
-                status = text("recording.background.notification")
-            self.app.windowless_background.refresh(status)
             self.last_payload = payload
             notification = Gio.Notification.new(payload["title"])
             notification.set_body(payload["body"])
@@ -255,8 +256,6 @@ class RecordingComfort:
                 notification.add_button(button["label"], button["action"])
             self.app.send_notification("recording", notification)
             self.notification_visible = True
-        else:
-            self.app.windowless_background.refresh()
         if not hidden and self.notification_visible:
             self.app.withdraw_notification("recording")
             self.notification_visible = False

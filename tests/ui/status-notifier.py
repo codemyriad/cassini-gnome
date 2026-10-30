@@ -147,14 +147,16 @@ assert prop("ToolTip")[2] == "Recording, 00:12"
 pixmap = prop("IconPixmap")[0]
 assert pixmap[:2] == (24, 24) and len(pixmap[2]) == 24 * 24 * 4
 call(ITEM_PATH, ITEM, "ProvideXdgActivationToken", GLib.Variant("(s)", ("test-token",)))
-assert app._sni_activation_token == "test-token"
+assert notifier.activation_token == "test-token"
+call(ITEM_PATH, ITEM, "Activate", GLib.Variant("(ii)", (0, 0)))
+assert app._sni_activation_token == "test-token" and not notifier.activation_token
 call(
     MENU_PATH,
     MENU,
     "EventGroup",
     GLib.Variant("(a(isvu))", ([(1, "clicked", GLib.Variant("s", ""), 0), (3, "clicked", GLib.Variant("s", ""), 0)],)),
 )
-assert actions == ["open", "stop-recording"]
+assert actions == ["open", "open", "stop-recording"]
 changes = []
 subscription = client.signal_subscribe(
     server.get_unique_name(),

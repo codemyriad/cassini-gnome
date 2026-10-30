@@ -299,6 +299,7 @@ def test_both_flatpak_recipes_add_only_the_approved_bus_permission():
             "--socket=pulseaudio",
             "--filesystem=xdg-music/Cassini:create",
             "--talk-name=org.freedesktop.Flatpak",
+            "--talk-name=org.kde.StatusNotifierWatcher",
         ]
 
 
