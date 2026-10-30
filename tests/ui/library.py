@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Use build-aux/ux-screenshot.sh")
@@ -238,6 +239,22 @@ with tempfile.TemporaryDirectory() as tmp:
     assert empty.root_box.get_visible_child_name() == "empty"
     labels = [w.get_label() for w in walk(empty) if isinstance(w, Gtk.Label)]
     assert text("firstRun.title") in labels and text("firstRun.footer") in labels
+    assert empty.privacy_footer.get_visible()
+    # A sandbox fallback is the initial Library too, but its footer must not
+    # claim Music/Cassini. Settings/Show in Files use the actual primary path.
+    from cassini_viewer import library_location
+
+    fallback = Path(tmp) / "private-data/cassini/Library"
+    with (
+        patch.dict(os.environ),
+        patch.object(library_location, "initial_root", return_value=fallback),
+        patch.object(library_location, "primary", return_value=fallback),
+    ):
+        os.environ.pop("CASSINI_LIBRARY_DIR", None)
+        empty._updated(empty.snapshot)
+        assert not empty.privacy_footer.get_visible()
+    empty._updated(empty.snapshot)
+    assert empty.privacy_footer.get_visible()
     app.activate_action("record", None)
     assert app.record_first is not None and app.recorder is None, "Opening Record must not start devices"
     app.record_first.close()
