@@ -20,3 +20,20 @@ Native builds register their actual installed desktop ID (`com.gocassini.Viewer`
 
 Registry API: <https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.host.portal.Registry.html>.
 Portal host rejection: <https://github.com/flatpak/xdg-desktop-portal/blob/8c3efadd0f3d619847c97965865c7a22c844a3c9/desktop-portal/background.c>.
+
+## Optional indicator (D41.2 work in progress)
+
+`status_notifier.py` implements the StatusNotifierItem and dbusmenu interfaces
+through Gio. It watches an existing watcher without activating one, exports on
+its unique session-bus connection, and registers only when a real host is
+reported. Idle visibility and recording visibility are separate. A timer-label
+change updates only the status row; an unchanged snapshot emits nothing.
+
+The protocol references are [KDE's item interface](https://github.com/KDE/kstatusnotifieritem/blob/master/src/org.kde.StatusNotifierItem.xml)
+and Ubuntu AppIndicator's [menu](https://github.com/ubuntu/gnome-shell-extension-appindicator/blob/master/interfaces-xml/DBusMenu.xml)
+and [watcher](https://github.com/ubuntu/gnome-shell-extension-appindicator/blob/master/interfaces-xml/StatusNotifierWatcher.xml)
+interfaces. `tests/ui/status-notifier.py` exercises the actual wire replies and
+a fake watcher on a private session bus, including missing watcher/host, unique
+registration, action guards, timer updates and teardown. Desktop integration,
+Flatpak access, icon rendering and the GNOME privacy-indicator measurements
+remain part of the D41 draft; this component is not yet wired into the app.
