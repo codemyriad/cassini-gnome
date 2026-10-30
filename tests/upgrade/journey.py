@@ -24,9 +24,12 @@ assert installed("cassini-viewer") == "install ok installed 0.3.0"
 assert not Path("/usr/bin/cassini-talk").exists()
 old = Gio.Settings.new(OLD)
 old.set_int("window-width", 935)
-old.set_string("speech-model", "parakeet-ultra-0.6b-int8")
+# The fixture has no optional model installed. Selecting a missing Parakeet
+# would deliberately trigger the existing model fallback at app startup.
+old.set_string("speech-model", "whistle")
 old.set_string("record-shortcut-description", "Ctrl+Alt+F9")
 old.set_boolean("skip-record-first", True)
+old.set_boolean("follow-along", False)
 Gio.Settings.sync()
 # Private user data must not be moved or rewritten by an identity change.
 sentinels = {}
@@ -84,7 +87,7 @@ with (OUT / "application.log").open("w") as log:
             time.sleep(0.05)
         else:
             raise AssertionError("The upgraded app did not migrate settings on startup")
-        for key in ("speech-model", "record-shortcut-description", "skip-record-first"):
+        for key in ("speech-model", "record-shortcut-description", "skip-record-first", "follow-along", "window-width"):
             assert current.get_value(key) == old.get_value(key), key
         for name, digest in sentinels.items():
             assert hashlib.sha256((home / name).read_bytes()).hexdigest() == digest, name
