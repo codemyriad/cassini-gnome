@@ -254,6 +254,15 @@ with tempfile.TemporaryDirectory() as temporary:
     shutil.copytree(paths["microphone"], outside)
     outside_metadata = json.loads((outside / "meeting.json").read_text())
     outside_metadata["title"] = "Opened outside this Library"
+    from cassini_viewer.nemotron_model import MODEL_ID, REVISION
+
+    outside_metadata["recordingDetails"]["writingDown"].update(
+        wallDurationMs=15680,
+        resumed=True,
+        speakerSeparation=dict(
+            status="completed", modelId=MODEL_ID, modelRevision=REVISION, speakersFound=2, reused=False
+        ),
+    )
     write_json(outside / "meeting.json", outside_metadata)
     external = LibraryScanner(outside.parent).scan().meetings[0]
     assert external.key in {m.key for m in window.snapshot.meetings}
@@ -264,6 +273,9 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: dialog.report is not None)
     assert dialog.report.folder == str(outside)
     assert dialog.report.title == outside_metadata["title"]
+    assert REVISION in dialog.report.plain_text()
+    assert dict(dialog.report.writing)["Time taken"] == "15.68 s (resumed; this run)"
+    shot(window, "speaker-separation")
     assert not window.lookup_action("move-to-trash").get_enabled()
     window._updated(window._source_snapshot)
     assert dialog._current().directory == outside
