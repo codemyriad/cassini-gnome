@@ -521,7 +521,7 @@ def wave_info(path, directory):
     return {"sampleRate": rate, "channels": channels, "frames": (size - 44) // alignment}
 
 
-def recover_session(directory):
+def recover_session(directory, pairs=None):
     files = sorted(directory.glob("track-*.wav"))
     if len(files) > 64:
         raise ValueError("Too many recording tracks to recover")
@@ -534,7 +534,7 @@ def recover_session(directory):
         tracks.append(
             dict(id=file.stem, file=file.name, label="Recovered audio", kind="media", labelSource="recovered", **info)
         )
-    tracks += recover_compacted(directory, [file.name for file in files])
+    tracks += recover_compacted(directory, [file.name for file in files], pairs)
     if not tracks:
         raise ValueError("No readable recording metadata or PCM WAV tracks were found")
     return dict(
@@ -550,21 +550,31 @@ def recover_session(directory):
     )
 
 
-def recover_compacted(directory, wavs):
-    """S-12 §5 salvage of committed `tracks/*.opus` spans without session.json.
+def recover_compacted(directory, wavs, pairs=None):
+    """S-12 §5 salvage of committed `tracks/*.opus` spans without a usable session.json.
 
-    With no span records left there is no `sourceFile` pairing, so an Opus
-    span is recovered only from a folder without WAVs (S-12 §11); nothing is
-    ever deleted here.
+    Surviving `sourceFile` records (given, or read from a damaged session.json
+    that still parses) pair Opus spans with their WAVs, as the scanner does.
+    Without a record an Opus span is used only when no WAV is left (S-12 §11).
+    A symlinked session folder yields no Opus span; nothing is ever deleted.
     """
+    import errno
+
     from . import track_source
 
-    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        fd = os.open(directory, track_source.NOFOLLOW_DIRECTORY)
+    except OSError as error:
+        if error.errno in (errno.ELOOP, errno.ENOTDIR):
+            return []
+        raise
     try:
         names = track_source.recovered_opus(fd, limit=65)
+        if pairs is None:
+            pairs = track_source.surviving_pairs(fd)
     finally:
         os.close(fd)
-    names = [v["file"] for v in track_source.salvage_values(wavs, names, limit=None) if v.get("codec") == "opus"]
+    names = [v["file"] for v in track_source.salvage_values(wavs, names, pairs, limit=None) if v.get("codec") == "opus"]
     if len(names) > 64:
         raise ValueError("Too many recording tracks to recover")
     tracks = []

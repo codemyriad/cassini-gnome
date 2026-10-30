@@ -530,3 +530,43 @@ def test_salvage_values_rules():
     assert [v["file"] for v in track_source.salvage_values(wav, opus, pairs)] == ["track-a.wav", "tracks/b.opus"]
     bad = dict(tracks=[dict(file="tracks/a.opus", codec="opus", decodedRate=48000, sourceFile="../x.wav")])
     assert track_source.salvage_pairs(bad) == {} and track_source.salvage_pairs(None) == {}
+
+
+def test_recovery_pairs_surviving_source_file_records_like_the_scanner(tmp_path):
+    from cassini_viewer.recording_session import recover_session
+
+    directory = capture(tmp_path)
+    compact(directory, "mic", keep_wav=True)
+    compact(directory, "remote")
+    manifest = json.loads((directory / "session.json").read_text())
+    manifest["version"] = 99  # damaged, but its span records survive
+    (directory / "session.json").write_text(json.dumps(manifest))
+    scanned = LibraryScanner(tmp_path).scan().meetings[0]
+    recovered = recover_session(directory)
+    assert sorted(t["file"].split("/")[-1] for t in recovered["tracks"]) == sorted(t.path.name for t in scanned.tracks)
+    assert sorted(t["file"].split("/")[0] for t in recovered["tracks"]) == [
+        next(directory.glob("track-*.wav")).name,
+        "tracks",
+    ]
+
+
+def test_a_symlinked_session_folder_is_never_followed(tmp_path):
+    from cassini_viewer.recording_session import recover_session
+
+    directory = capture(tmp_path / "real")
+    compact(directory, "mic")
+    compact(directory, "remote")
+    link = tmp_path / "Library" / directory.name
+    link.parent.mkdir()
+    link.symlink_to(directory, target_is_directory=True)
+    span = json.loads((directory / "session.json").read_text())["tracks"][0]
+    with pytest.raises(OSError):
+        track_source.inspect(link, span)
+    with pytest.raises(OSError):
+        track_source.OpusDecoder(link / "tracks" / "mic.opus")
+    with pytest.raises(OSError):
+        load_session(link / "session.json")
+    (directory / "session.json").unlink()
+    with pytest.raises(ValueError, match="No readable"):
+        recover_session(link)
+    assert len(recover_session(directory)["tracks"]) == 2

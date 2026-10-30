@@ -112,6 +112,18 @@ def salvage_pairs(manifest):
     return pairs
 
 
+def surviving_pairs(directory_fd, limit=1024 * 1024):
+    """salvage_pairs() of a damaged session.json that still parses; {} otherwise."""
+    from .recording_session import strict_json
+
+    try:
+        with regular(directory_fd, "session.json") as (stream, _info):
+            data = stream.read(limit + 1)
+        return salvage_pairs(strict_json(data)) if len(data) <= limit else {}
+    except (OSError, ValueError):
+        return {}
+
+
 def salvage_values(wavs, compacted, pairs=None, limit=64):
     """Span records for salvage without a trustworthy session.json.
 
@@ -151,7 +163,7 @@ def open_track(path, codec="pcm"):
     elif codec == "opus":
         if path.parent.name != TRACKS:
             raise ValueError("unsafe-reference")
-        session = os.open(path.parent.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        session = os.open(path.parent.parent, NOFOLLOW_DIRECTORY)
         try:
             folder = os.open(TRACKS, NOFOLLOW_DIRECTORY, dir_fd=session)
         finally:
@@ -286,7 +298,7 @@ def describe(value, load, *, recovered=False):
 
 def inspect(directory, value, *, recovered=False):
     """describe() for one span of a session folder path, without a cache."""
-    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    fd = os.open(directory, NOFOLLOW_DIRECTORY)
     try:
 
         def load(parts, _kind, loader):
