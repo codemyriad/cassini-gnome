@@ -36,6 +36,29 @@ directory=${destination%/*}
 # to diffutils, which is not guaranteed on a host with only coreutils.
 content=$(cat; printf '.')
 content=${content%.}
+# Compare-and-swap under the same flock inode as native registration. Never
+# replace a valid release manifest installed since the sandbox inspected it.
+if [ -n "${3:-}" ]; then
+ ancestor=$directory
+ while [ ! -e "$ancestor" ] && [ "$ancestor" != / ]; do ancestor=${ancestor%/*}; done
+ [ -w "$ancestor" ] || exit 77
+ mkdir -p -- "$directory"
+ lock=$directory/.cassini-registration.lock
+ [ ! -L "$lock" ] && { [ ! -e "$lock" ] || [ -f "$lock" ]; } || exit 78
+ exec 9>>"$lock"
+ locked=false
+ for attempt in 1 2 3 4 5 6 7 8 9 10; do
+  if flock -n 9; then locked=true; break; fi
+  sleep .05
+ done
+ [ "$locked" = true ] || exit 75
+ [ ! -L "$destination" ] || exit 78
+ if [ -e "$destination" ]; then
+  [ -f "$destination" ] || exit 78
+  actual=$(sha256sum < "$destination"); actual=${actual%% *}
+ else actual=missing; fi
+ [ "$actual" = "$3" ] || exit 75
+fi
 [ ! -L "$destination" ] || exit 78
 if [ -e "$destination" ] && [ ! -f "$destination" ]; then exit 78; fi
 if [ -f "$destination" ]; then
@@ -277,14 +300,14 @@ done"""
         raise OSError("Could not inspect host browser profiles") from error
 
 
-def _write(path, content, mode):
+def _write(path, content, mode, *, expected=None):
     from .companion import SetupError
 
     if len(content.encode()) > 65536:
         raise SetupError("unsafe")
     try:
         subprocess.run(
-            host_command(["/bin/sh", "-c", WRITE, "cassini-register", str(path), mode], watch=True),
+            host_command(["/bin/sh", "-c", WRITE, "cassini-register", str(path), mode, expected or ""], watch=True),
             input=content.encode(),
             capture_output=True,
             check=True,
@@ -335,8 +358,9 @@ def cleanup_legacy(browsers=None):
     return _cleanup_legacy_directories(manifest_directories(config=config, browsers=browsers))
 
 
-def register(browsers=None):
+def register(browsers=None, *, force=False):
     from .companion import ORIGIN, SetupError
+    from .registration import decision, protected_build
 
     target = deployment()
     config, data, flatpak, executables = host_info()
@@ -358,6 +382,8 @@ def register(browsers=None):
         executable = directory / command
         _write(executable, content, "700")
         hosts[name] = executable
+    paths = [browser.config / "NativeMessagingHosts" / (name + ".json") for browser in browsers for name in hosts]
+    previous = _registration_files(paths, allow_unsafe=True)
     written, errors = [], []
     for browser in browsers:
         for name, executable in hosts.items():
@@ -370,7 +396,33 @@ def register(browsers=None):
                 allowed_origins=[ORIGIN],
             )
             try:
-                _write(destination, json.dumps(manifest, indent=2) + "\n", "600")
+                if isinstance(previous[destination], Exception):
+                    raise previous[destination]
+                replace, dead = decision(
+                    previous[destination],
+                    manifest,
+                    force=force,
+                    protected=protected_build(),
+                    target_ready=_registered_host_ready,
+                )
+                from .registration import manifest as read_manifest
+
+                if replace and not dead and read_manifest(previous[destination]) == manifest:
+                    written.append(destination)
+                    continue
+                if replace:
+                    import hashlib
+
+                    expected = (
+                        hashlib.sha256(previous[destination]).hexdigest()
+                        if previous[destination] is not None
+                        else "missing"
+                    )
+                    _write(destination, json.dumps(manifest, indent=2) + "\n", "600", expected=expected)
+                    if dead:
+                        from .installed_build import lifecycle_log
+
+                        lifecycle_log("Repaired a dead browser companion registration: %s", destination)
                 written.append(destination)
             except SetupError as error:
                 if error.retryable:
@@ -380,3 +432,89 @@ def register(browsers=None):
     if errors:
         raise errors[0]
     return written
+
+
+def _registration_files(paths, *, allow_unsafe=False):
+    """Bounded snapshot of known host files; native writes are atomic too."""
+    from .companion import SetupError
+
+    paths = list(paths)
+    script = r"""set -eu
+for path in "$@"; do
+ if [ -L "$path" ] || { [ -e "$path" ] && [ ! -f "$path" ]; }; then
+  printf 'unsafe\0\0'; continue
+ fi
+ if [ -e "$path" ]; then
+  printf 'present\0'; head -c 65537 -- "$path"
+ else printf 'missing\0'; fi
+ printf '\0'
+done"""
+    try:
+        result = subprocess.run(
+            host_command(["/bin/sh", "-c", script, "cassini-registrations", *map(str, paths)], watch=True),
+            capture_output=True,
+            check=True,
+            timeout=3,
+        )
+        if len(result.stdout) > len(paths) * 65548:
+            raise SetupError("unsafe")
+        parts = result.stdout.split(b"\0")
+        if len(parts) != len(paths) * 2 + 1 or parts[-1] != b"":
+            raise SetupError("unsafe")
+        files = {}
+        for path, mode, data in zip(paths, parts[0:-1:2], parts[1:-1:2], strict=True):
+            if mode not in (b"present", b"missing", b"unsafe"):
+                raise SetupError("unsafe")
+            if mode == b"unsafe" or len(data) > 65536:
+                if not allow_unsafe:
+                    raise SetupError("unsafe")
+                files[path] = SetupError("unsafe")
+            else:
+                files[path] = data if mode == b"present" else None
+        return files
+    except subprocess.CalledProcessError as error:
+        raise SetupError(
+            "unsafe" if error.returncode == 78 else "temporary", retryable=error.returncode != 78
+        ) from error
+    except subprocess.SubprocessError as error:
+        raise SetupError("temporary", retryable=True) from error
+
+
+def _registered_host_ready(path):
+    from .registration import APPLICATIONS, installed_relay, relay_target
+
+    def run(command, **kwargs):
+        return subprocess.run(host_command(command, watch=True), **kwargs)
+
+    result = run(
+        ["/bin/sh", "-c", '[ -f "$1" ] && [ -x "$1" ]', "cassini-registration-target", str(path)],
+        capture_output=True,
+        timeout=2,
+    )
+    if result.returncode:
+        return False
+    path = Path(path)
+    if path.parent.name not in APPLICATIONS or path.parent.parent.name != "native-hosts":
+        return True
+    target = relay_target(path, _registration_files([path])[path] or b"")
+    if target is False:
+        raise OSError("Could not identify the registered Flatpak relay")
+    if target is None:
+        return True
+    _, _, flatpak, _ = host_info()
+    return installed_relay(target, run=run, flatpak=flatpak)
+
+
+def registration_health(browsers):
+    from .registration import manifest
+
+    paths = [
+        browser.config / "NativeMessagingHosts" / (name + ".json")
+        for browser in browsers
+        for name in ("io.codemyriad.cassini", "io.codemyriad.cassini.control")
+    ]
+    for raw in _registration_files(paths).values():
+        value = manifest(raw)
+        if value is None or not _registered_host_ready(value["path"]):
+            return True
+    return False

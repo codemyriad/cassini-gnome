@@ -140,7 +140,7 @@ class CompanionSetup(Adw.Dialog):
 
     def _connect(self, *_):
         self.local_error = None
-        self.app.retry_browser_connection()
+        self.app.retry_browser_connection(force=True)
         self.render()
 
     def _submit(self, call, action):

@@ -37,6 +37,11 @@ locale.textdomain("cassini-viewer")
 gettext.install("cassini-viewer", localedir)
 
 if __name__ == "__main__":
+    # Freeze the running identity before lazy imports can see a later upgrade.
+    from cassini_viewer.installed_build import InstalledBuild
+
+    installed = InstalledBuild(pkgdatadir, Path(__file__).resolve(), VERSION,
+                               flatpak=bool(os.environ.get("FLATPAK_ID")))
     from cassini_viewer import runtime
 
     runtime.check()
@@ -51,4 +56,7 @@ if __name__ == "__main__":
         sys.exit(capture(APPLICATION_ID, VERSION, PROFILE))
     from cassini_viewer import main
 
-    sys.exit(main.main(APPLICATION_ID, VERSION, PROFILE))
+    result = main.main(APPLICATION_ID, VERSION, PROFILE, installed_build=installed)
+    if installed.restart is not None:
+        installed.reexec(**installed.restart)
+    sys.exit(result)

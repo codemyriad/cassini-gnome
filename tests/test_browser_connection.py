@@ -46,6 +46,7 @@ class Clock:
             post=self.post,
             cancel=lambda key: self.timers.pop(key),
             jitter=lambda *_: 0,
+            health_check=lambda _browsers: False,
         )
 
 
@@ -175,7 +176,7 @@ def test_startup_registers_both_hosts_preserves_mtime_and_repairs_an_updated_pat
         controller.trigger()  # Application launch, no Connect action.
         clock.finish()
         assert controller.snapshot()["phase"] == "waiting"
-        files = tuple((browser.config / "NativeMessagingHosts").iterdir())
+        files = tuple((browser.config / "NativeMessagingHosts").glob("*.json"))
         assert {p.stem for p in files} == set(hosts)
         original = {p: (p.read_bytes(), p.stat().st_mtime_ns, p.stat().st_ino) for p in files}
         controller.trigger()
@@ -185,7 +186,7 @@ def test_startup_registers_both_hosts_preserves_mtime_and_repairs_an_updated_pat
         updated.write_bytes(executable.read_bytes())
         updated.chmod(0o700)
         hosts.update({name: updated for name in hosts})
-        controller.trigger()
+        controller.trigger(force=True)  # Explicit Set up authorizes this source build.
         clock.finish()
         assert all(str(updated).encode() in p.read_bytes() for p in files)
         controller.observe(dict(connectedBrowsers=1, browserNames=["Chromium"]))

@@ -303,7 +303,18 @@ def profile_inventory():
     return hashlib.sha256(json.dumps([values, profiles], sort_keys=True).encode()).hexdigest()
 
 
-def _register_browser(browser, hosts):
+def _register_browser(browser, hosts, *, force=False):
+    from .registration import directory_lock
+
+    directory = browser.config / "NativeMessagingHosts"
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with directory_lock(directory):
+        return _register_locked(browser, hosts, force=force)
+
+
+def _register_locked(browser, hosts, *, force=False):
+    from .registration import decision, native_read, native_target, protected_build
+
     written = []
     directory = browser.config / "NativeMessagingHosts"
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -319,18 +330,18 @@ def _register_browser(browser, hosts):
             allowed_origins=[ORIGIN],
         )
         destination = directory / (name + ".json")
-        try:
-            with os.fdopen(os.open(destination, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
-                if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-                    raise SetupError("unsafe")
-                previous = stream.read(MANIFEST_LIMIT + 1)
-            if len(previous) <= MANIFEST_LIMIT and json.loads(previous) == data:
-                written.append(destination)
-                continue
-        except FileNotFoundError:
-            pass
-        except (ValueError, UnicodeError):
-            pass  # A damaged own manifest is replaced atomically.
+        previous = native_read(destination)
+        replace, dead = decision(previous, data, force=force, protected=protected_build(), target_ready=native_target)
+        if not replace:
+            written.append(destination)
+            continue
+        if previous is not None:
+            try:
+                if json.loads(previous) == data and not dead:
+                    written.append(destination)
+                    continue
+            except (ValueError, UnicodeError):
+                pass
         temporary = None
         try:
             with tempfile.NamedTemporaryFile(mode="w", dir=directory, delete=False) as stream:
@@ -346,18 +357,22 @@ def _register_browser(browser, hosts):
             finally:
                 os.close(descriptor)
             written.append(destination)
+            if dead:
+                from .installed_build import lifecycle_log
+
+                lifecycle_log("Repaired a dead browser companion registration: %s", destination)
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
     return written
 
 
-def register(*, browsers=None, hosts=None):
+def register(*, browsers=None, hosts=None, force=False):
     """Atomically write both exact-origin manifests, only under user configs."""
     if in_flatpak():
         from .flatpak_bridge import register as host_register
 
-        return host_register(browsers)
+        return host_register(browsers, force=force)
     browsers = installed_browsers() if browsers is None else browsers
     hosts = host_paths() if hosts is None else hosts
     if not browsers:
@@ -365,7 +380,7 @@ def register(*, browsers=None, hosts=None):
     written, errors = [], []
     for browser in browsers:
         try:
-            written.extend(_register_browser(browser, hosts))
+            written.extend(_register_browser(browser, hosts, force=force))
         except OSError as error:
             errors.append(error)
     cleanup_legacy(browsers=browsers)

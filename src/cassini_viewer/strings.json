@@ -2023,6 +2023,7 @@
    "id": "hidden.menu.stopRecording",
    "en": "Stop Recording",
    "platforms": [
+    "gnome",
     "mac"
    ],
    "role": "menuitem",
@@ -2030,7 +2031,7 @@
     "RecordHidden-mac"
    ],
    "milestone": "UX9",
-   "note": "The only place 'Stop Recording' is allowed (HARMONY 2). The system draws the trailing shortcut glyph from common.shortcut.recordAnywhere.",
+   "note": "The only place 'Stop Recording' is allowed (HARMONY 2). The system draws the trailing shortcut glyph from common.shortcut.recordAnywhere. D41.2: also the GNOME top-bar indicator menu.",
    "status": "drawn"
   },
   {
@@ -2084,6 +2085,92 @@
    },
    "note": "GNOME: GNotification title. Mac: the first, bold, non-interactive line of the MenuBarExtra menu. The Mac menu-bar label is a dot plus format liveBadge ('12:48'); that is a format, not catalog text. Proposed, not drawn: also use this as the VoiceOver label of the menu bar extra.",
    "status": "drawn"
+  },
+  {
+   "id": "hidden.status.watching",
+   "en": "Ready to record browser meetings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D41",
+   "status": "harmony",
+   "note": "Coordinator (D41). Cassini is running with no window and automatic recording is on. GNOME: Background status (portal SetStatus) under Cassini in Background Apps. Mac: the first, non-interactive line of the idle menu bar menu. While recording, hidden.status wins."
+  },
+  {
+   "id": "hidden.firstClose.title",
+   "en": "Cassini is still running",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "notification-title",
+   "boards": [],
+   "milestone": "D41",
+   "status": "harmony",
+   "note": "Coordinator (D41). GNOME only, once ever: the first time the last window closes while automatic recording is on and nothing is recording."
+  },
+  {
+   "id": "hidden.firstClose.body",
+   "en": "It records browser meetings automatically. To open it, use Background Apps in the system menu.",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "notification-body",
+   "boards": [],
+   "milestone": "D41",
+   "status": "harmony",
+   "note": "Coordinator (D41). GNOME only, with hidden.firstClose.title. Default action opens Cassini."
+  },
+  {
+   "id": "hidden.menu.settings",
+   "en": "Settings…",
+   "platforms": [
+    "mac"
+   ],
+   "role": "menu-item",
+   "boards": [],
+   "milestone": "D41",
+   "status": "harmony",
+   "note": "Coordinator (D41). Mac idle and recording menu bar menu; opens Settings (⌘,)."
+  },
+  {
+   "id": "hidden.menu.quit",
+   "en": "Quit Cassini",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "menu-item",
+   "boards": [],
+   "milestone": "D41",
+   "status": "harmony",
+   "note": "Coordinator (D41). Mac menu bar menu, last item. While recording, quitting stops and keeps every recording, as ⌘Q does. D41.2: also the GNOME top-bar indicator menu."
+  },
+  {
+   "id": "hidden.menu.openLibrary",
+   "en": "Open Cassini",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "menu-item",
+   "boards": [],
+   "milestone": "D41.2",
+   "status": "harmony",
+   "note": "Coordinator (D41.2). GNOME top-bar indicator menu; same text as hidden.openCassini. Other items reuse hidden.status / hidden.status.watching (non-interactive first line), hidden.menu.stopRecording (now also GNOME), hidden.menu.quit (now also GNOME)."
+  },
+  {
+   "id": "settings.general.menuBar",
+   "en": "Show Cassini in the menu bar",
+   "platforms": [
+    "mac"
+   ],
+   "role": "switch",
+   "boards": [],
+   "milestone": "D41",
+   "status": "harmony",
+   "note": "Coordinator (D41). Mac Settings. Default on. Off hides the idle menu bar item only; the recording item always shows."
   },
   {
    "id": "library.group.unknownDate",
@@ -5863,6 +5950,61 @@
    "status": "harmony"
   },
   {
+   "id": "browser.state.updating",
+   "en": "Updating the browser companion…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D40",
+   "status": "harmony",
+   "note": "Coordinator (D40). While Cassini has asked an older companion to reload itself and it hasn't reconnected yet (at most ~10 s, then needsUpdate or connected)."
+  },
+  {
+   "id": "browser.state.needsUpdate",
+   "en": "The browser companion needs an update",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D40",
+   "status": "harmony",
+   "note": "Coordinator (D40). Connected companion is older than this app's minimum and couldn't update itself. Browser meetings fall back to how they record without the companion."
+  },
+  {
+   "id": "companion.update.restart",
+   "en": "Restart {browser} to finish updating the browser companion.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "D40",
+   "status": "harmony",
+   "note": "Coordinator (D40). Under needsUpdate, in the setup guide, Preferences and the meeting card.",
+   "placeholders": {
+    "browser": "display name of the browser running the old companion"
+   }
+  },
+  {
+   "id": "browser.state.appTooOld",
+   "en": "Update Cassini to use this browser companion",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D40",
+   "status": "harmony",
+   "note": "Coordinator (D40). The companion speaks a newer wire version than this app supports."
+  },
+  {
    "id": "format.size.kb",
    "en": "{n} KB",
    "role": "caption",
@@ -7787,6 +7929,32 @@
    "milestone": "fix-setup-speed",
    "status": "harmony",
    "note": "GNOME R45, published by the coordinator. Keyboard Shortcuts, Ctrl+[ (Mac ⌘[)."
+  },
+  {
+   "id": "update.restartNeeded",
+   "en": "Cassini was updated. Restart it to use the new version.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "banner",
+   "boards": [],
+   "milestone": "D42",
+   "status": "harmony",
+   "note": "Coordinator (D42). Shown in the Library when the installed version differs from the running one and a recording kept Cassini from restarting by itself. Action update.restart, enabled once nothing records."
+  },
+  {
+   "id": "update.restart",
+   "en": "Restart",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D42",
+   "status": "harmony",
+   "note": "Coordinator (D42). Action of update.restartNeeded; restarts Cassini and reopens the same window."
   }
  ]
 }

@@ -28,10 +28,18 @@ def host(tmp_path, monkeypatch):
     fake = tools / "flatpak"
     fake.write_text(
         f"#!{sys.executable}\nimport json,sys\nfrom pathlib import Path\n"
+        f"if sys.argv[1]=='list': print('com.gocassini.Viewer.Devel x86_64 master' if Path({str(directory / 'deployment')!r}).exists() else '');sys.exit(0)\n"
+        f"if sys.argv[1]=='info': print({str(directory / 'deployment')!r});sys.exit(0)\n"
         f"Path({str(directory / 'arguments.json')!r}).write_text(json.dumps(sys.argv[1:]))\n"
         "sys.stdout.buffer.write(sys.stdin.buffer.read())\n"
     )
     fake.chmod(0o700)
+    deployed = directory / "deployment/files/bin"
+    deployed.mkdir(parents=True)
+    for name in ("cassini-browser-host", "cassini-browser-control-host"):
+        path = deployed / name
+        path.write_text("#!/bin/sh\ncat\n")
+        path.chmod(0o700)
     for command in ("google-chrome-stable", "chromium", "microsoft-edge", "brave"):
         path = tools / command
         path.write_text("#!/bin/sh\nexit 0\n")
@@ -70,7 +78,7 @@ def test_host_inventory_and_registration_use_host_configs_and_shell_safe_paths(h
     assert bridge.register() == paths
     assert originals == {p: (p.stat().st_mtime_ns, p.stat().st_ino) for p in paths}
     assert stub_originals == {p: (p.stat().st_mtime_ns, p.stat().st_ino) for p in stubs}
-    assert not list(host.rglob(".cassini-*"))
+    assert not [p for p in host.rglob(".cassini-*") if p.name != ".cassini-registration.lock"]
 
 
 @pytest.mark.parametrize(

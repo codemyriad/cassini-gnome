@@ -78,7 +78,9 @@ def test_registers_both_hosts_atomically_with_exact_origin_and_private_permissio
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
         assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
     assert companion.register(browsers=browsers, hosts=hosts) == written
-    assert all(sorted(p.name for p in path.parent.iterdir()) == sorted(n + ".json" for n in hosts) for path in written)
+    assert all(
+        sorted(p.name for p in path.parent.glob("*.json")) == sorted(n + ".json" for n in hosts) for path in written
+    )
 
 
 def test_failed_manifest_publication_preserves_old_registration_and_removes_temporary(tmp_path, monkeypatch):
@@ -87,7 +89,7 @@ def test_failed_manifest_publication_preserves_old_registration_and_removes_temp
     executable.chmod(0o700)
     browser = companion.Browser("Chromium", "/bin/chromium", tmp_path / "config")
     hosts = {"io.codemyriad.cassini": executable}
-    (destination,) = companion.register(browsers=[browser], hosts=hosts)
+    (destination,) = companion.register(browsers=[browser], hosts=hosts, force=True)
     old = destination.read_bytes()
 
     def failed(*_):
@@ -98,9 +100,10 @@ def test_failed_manifest_publication_preserves_old_registration_and_removes_temp
     new.write_text("#!/bin/sh\n")
     new.chmod(0o700)
     with pytest.raises(OSError, match="rename"):
-        companion.register(browsers=[browser], hosts={"io.codemyriad.cassini": new})
+        companion.register(browsers=[browser], hosts={"io.codemyriad.cassini": new}, force=True)
     assert destination.read_bytes() == old
-    assert list(destination.parent.iterdir()) == [destination]
+    assert list(destination.parent.glob("*.json")) == [destination]
+    assert {p.name for p in destination.parent.iterdir()} == {destination.name, ".cassini-registration.lock"}
 
 
 def test_an_unwritable_browser_does_not_prevent_other_browsers_registration(tmp_path, monkeypatch):
