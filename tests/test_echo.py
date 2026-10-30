@@ -31,6 +31,7 @@ def test_exact_shared_echo_bytes_and_synthetic_source_pins():
 
 @pytest.mark.parametrize("rate,channels", [(16000, 1), (48000, 2)])
 def test_rms_uses_meeting_offset_stereo_average_and_bounded_unchanged_pcm(tmp_path, rate, channels):
+    pytest.importorskip("numpy")  # Optional source-only profile; offline probe always requires it.
     path = tmp_path / "mic.wav"
     frames = ([1000] if channels == 1 else [2000, 0]) * rate
     with wave.open(str(path), "wb") as stream:
