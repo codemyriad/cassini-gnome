@@ -108,6 +108,7 @@ class StatusNotifier:
             connection, WATCHER, Gio.BusNameWatcherFlags.NONE, self._appeared, self._vanished
         )
         self.pixels = recording_pixels()
+        self.activation_token = ""
 
     def update(self, *, recording, message="", windowless=False, automatic=False):
         wanted = bool(recording or (windowless and automatic))
@@ -266,10 +267,15 @@ class StatusNotifier:
     def _item_method(self, _bus, _sender, _path, _interface, method, parameters, invocation):
         if method == "ProvideXdgActivationToken":
             # A host-issued activation token belongs only to this UI action.
-            self.app._sni_activation_token = parameters.unpack()[0]
+            self.activation_token = parameters.unpack()[0]
         elif method in ("Activate", "SecondaryActivate"):
-            self.app.activate()
+            self._open()
         invocation.return_value(None)
+
+    def _open(self):
+        if self.activation_token:
+            self.app._sni_activation_token, self.activation_token = self.activation_token, ""
+        self.app.activate()
 
     def _layout(self, parent, depth, names):
         if parent not in self.rows:
@@ -287,7 +293,7 @@ class StatusNotifier:
         row = self.rows[identifier]
         if event == "clicked" and row.get("enabled") and row.get("visible"):
             if identifier == 2:
-                self.app.activate()
+                self._open()
             action = {3: "stop-recording", 5: "quit"}.get(identifier)
             if action:
                 self.app.activate_action(action, None)

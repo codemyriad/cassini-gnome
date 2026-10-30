@@ -13,7 +13,8 @@
         "--socket=pulseaudio",
         "--filesystem=xdg-music/Cassini:create",
         "--talk-name=org.freedesktop.Flatpak",
-        "--talk-name=com.gocassini.Viewer.Devel"
+        "--talk-name=com.gocassini.Viewer.Devel",
+        "--talk-name=org.kde.StatusNotifierWatcher"
     ],
     "cleanup": [
         "/include",

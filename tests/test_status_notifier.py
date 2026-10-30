@@ -30,6 +30,7 @@ def item():
         activate=lambda: calls.append("open"), activate_action=lambda name, _: calls.append(name)
     )
     notifier.rows = menu_rows("Ready to record browser meetings", False)
+    notifier.activation_token = ""
     return notifier, calls
 
 

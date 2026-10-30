@@ -114,6 +114,8 @@ class CassiniApplication(Adw.Application):
         from .windowless import WindowlessBackground
 
         self.windowless_background = WindowlessBackground(self)
+        self.status_notifier = None
+        self._sni_activation_token = ""
         self._pending_recording = None
         from .meeting_trash import MeetingTrash
 
@@ -154,6 +156,10 @@ class CassiniApplication(Adw.Application):
             self.build_refresh.installed.announce()
         # Restore the armed state before Watch can publish its first snapshot.
         self._restore_automatic()
+        from .status_notifier import StatusNotifier
+
+        if bus := self.get_dbus_connection():
+            self.status_notifier = StatusNotifier(self, bus)
         from .main_loop_watchdog import MainLoopWatchdog
 
         self._watchdog = MainLoopWatchdog()
@@ -303,6 +309,9 @@ class CassiniApplication(Adw.Application):
 
             GLib.timeout_add(100, scanned)
         else:
+            if self._sni_activation_token:
+                window.set_startup_id(self._sni_activation_token)
+                self._sni_activation_token = ""
             window.present()
             self.windowless_background.refresh()
             from .capture_guard import refresh_capture_background
@@ -785,6 +794,7 @@ class CassiniApplication(Adw.Application):
             self.record_first.refresh_permissions()
         if self.comfort:
             self.comfort.native_level()
+        self.windowless_background.refresh()
         for window in self.get_windows():
             if hasattr(window, "capture_changed"):
                 window.capture_changed()
@@ -1152,6 +1162,8 @@ class CassiniApplication(Adw.Application):
     def do_shutdown(self):
         if self.build_refresh:
             self.build_refresh.close()
+        if self.status_notifier:
+            self.status_notifier.close()
         if self._watchdog:
             self._watchdog.close()
             self._watchdog = None

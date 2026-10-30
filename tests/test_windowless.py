@@ -126,3 +126,44 @@ def test_unarmed_windowless_app_does_not_claim_ready_to_record():
     WindowlessBackground(app).refresh()
     assert not app.background_recording.requests and not notifications
     assert app.background_recording.statuses[-1] == ""
+
+
+def test_indicator_remains_visible_for_recording_with_library_open():
+    app, window, _ = application()
+    updates = []
+
+    def update(**values):
+        updates.append(values)
+        app.status_notifier.recording = values["recording"]
+        app.status_notifier.message = values["message"]
+
+    app.status_notifier = SimpleNamespace(recording=False, message="", update=update)
+    recorder = SimpleNamespace(pipeline=object())
+    app.native_captures = {"one": recorder}
+    presence = WindowlessBackground(app)
+    presence.refresh("Recording, 00:12")
+    assert updates[-1] == dict(recording=True, message="Recording, 00:12", windowless=False, automatic=True)
+    assert not app.background_recording.requests
+    presence.refresh()  # Activation/level refresh before the next timer tick.
+    assert updates[-1]["recording"] and updates[-1]["message"] == "Recording, 00:12"
+    app._quitting = True
+    presence.refresh()
+    assert updates[-1]["recording"], "Capture must stay visible until audio finishes"
+    app.native_captures = {}
+    presence.refresh()
+    assert not updates[-1]["recording"] and not updates[-1]["automatic"]
+
+
+def test_idle_indicator_only_runs_when_automatic_recording_is_armed_and_windowless():
+    app, window, _ = application()
+    updates = []
+    app.status_notifier = SimpleNamespace(recording=False, message="", update=lambda **values: updates.append(values))
+    presence = WindowlessBackground(app)
+    presence.refresh()
+    assert not updates[-1]["windowless"]
+    window.visible = False
+    presence.refresh()
+    assert updates[-1]["windowless"] and updates[-1]["automatic"] and not updates[-1]["recording"]
+    app._auto_recording_held = False
+    presence.refresh()
+    assert not updates[-1]["automatic"] and not updates[-1]["recording"]

@@ -36,4 +36,4 @@ interfaces. `tests/ui/status-notifier.py` exercises the actual wire replies and
 a fake watcher on a private session bus, including missing watcher/host, unique
 registration, action guards, timer updates and teardown. Desktop integration,
 Flatpak access, icon rendering and the GNOME privacy-indicator measurements
-remain part of the D41 draft; this component is not yet wired into the app.
+remain part of the D41 draft; the component is now wired into application and capture lifecycles.
