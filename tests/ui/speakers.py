@@ -164,7 +164,15 @@ with tempfile.TemporaryDirectory() as temporary:
     height = window.get_height()
     voices = tuple(LibrarySpeaker(f"voice-{i}", f"Voice {i + 1}", None, i * 1000, i) for i in range(20))
     words = tuple(Word(voice.id, i * 1000, i * 1000 + 100, "Spoken") for i, voice in enumerate(voices))
-    page.update(replace(page.meeting, speakers=voices, words=words, turns=reading_turns(words)))
+    crowded = replace(page.meeting, speakers=voices, words=words, turns=reading_turns(words))
+    snapshot = window._source_snapshot or window.snapshot
+    window._library_scanned(
+        replace(snapshot, meetings=tuple(crowded if m.key == crowded.key else m for m in snapshot.meetings))
+    )
+    # The real one-second refresh must retain the fixture while GTK allocates
+    # the scroller. Updating only the page races this refresh back to 3 voices.
+    window._activity_tick()
+    assert len(page.meeting.speakers) == 20
     # Outside folders are readable, but offer no name/edit controls.
     adjustment = page.speakers_scroller.get_vadjustment()
     until(lambda: adjustment.get_page_size() > 0 and adjustment.get_upper() > adjustment.get_page_size())
