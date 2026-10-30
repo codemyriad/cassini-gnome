@@ -140,6 +140,20 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog.entry.set_text("The others")
     assert not dialog.remember.get_sensitive() and not dialog.remember.get_active()
     assert "Future meetings" not in dialog.remember_description.get_label()
+    dialog.save.emit("clicked")
+    until(lambda: dialog.closed and any(s.id == "guest" and s.name == "The others" for s in page.meeting.speakers))
+    assert not app.voice_store.snapshot()["voices"], "The generic label was enrolled as a person"
+    page.name_speakers("guest")
+    dialog = page.speakers_dialog
+    until(lambda: dialog.voices_loaded)
+    assert dialog.entry.get_text() == "The others"
+    assert not dialog.remember.get_sensitive() and not dialog.remember.get_active()
+    dialog.save.emit("clicked")  # Saving the prefilled source label still never enrols it.
+    until(lambda: dialog.closed)
+    assert not app.voice_store.snapshot()["voices"]
+    page.name_speakers("guest")
+    dialog = page.speakers_dialog
+    until(lambda: dialog.voices_loaded)
     dialog.entry.set_text("Speaker 7")
     assert not dialog.remember.get_sensitive() and not dialog.remember.get_active()
     assert "Future meetings" not in dialog.remember_description.get_label()
