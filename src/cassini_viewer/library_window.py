@@ -62,6 +62,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             else None
         )
         self.tz = fmt.local_timezone(os.environ.get("TZ") or GLib.TimeZone.new_local().get_identifier())
+        self._rate = 1.0
         self.player = Player()
         self._playback_failed = False
         self._connect_player()
@@ -109,10 +110,15 @@ class LibraryWindow(Adw.ApplicationWindow):
             ("play-pause", self._play_selected),
             ("skip-back", lambda *_: self.player.skip(-10000)),
             ("skip-forward", lambda *_: self.player.skip(10000)),
+            ("rate-up", lambda *_: self._step_rate(1)),
+            ("rate-down", lambda *_: self._step_rate(-1)),
         ):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", lambda _action, _param, call=callback: call())
             self.add_action(action)
+        rate = Gio.SimpleAction.new_stateful("rate", GLib.VariantType.new("s"), GLib.Variant("s", "1"))
+        rate.connect("change-state", self._change_rate)
+        self.add_action(rate)
         target = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
         target.connect("drop", self._drop_files)
         self.add_controller(target)
@@ -1060,6 +1066,23 @@ class LibraryWindow(Adw.ApplicationWindow):
         if self._ensure_player(meeting):
             self.player.toggle()
 
+    RATES = ("0.75", "1", "1.25", "1.5", "1.75", "2")
+
+    def _change_rate(self, action, value):
+        if value.get_string() not in self.RATES:
+            return
+        action.set_state(value)
+        self._rate = float(value.get_string())
+        self.player.set_rate(self._rate)
+        if self.meeting_page:
+            self.meeting_page.rate_changed(self._rate)
+
+    def _step_rate(self, direction):
+        action = self.lookup_action("rate")
+        index = self.RATES.index(action.get_state().get_string())
+        index = max(0, min(len(self.RATES) - 1, index + direction))
+        action.change_state(GLib.Variant("s", self.RATES[index]))
+
     def _ensure_player(self, meeting):
         if self._loaded_key == meeting.key and self._loaded_directory == meeting.directory:
             return not self._playback_failed
@@ -1069,6 +1092,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         if type(self.player) is not desired:
             self.player.shutdown()
             self.player = desired()
+            self.player.set_rate(self._rate)
             self._connect_player()
         self._playback_failed = False
         try:
@@ -1081,6 +1105,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         if not self._playback_failed:
             self._loaded_key = meeting.key
             self._loaded_directory = meeting.directory
+        self.player.set_rate(self._rate)
         return not self._playback_failed
 
     def _stop_playback(self, *, clear_selection=False):
@@ -1118,6 +1143,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             desired = FolderPlayer if meeting.origin == "own" else Player
             self.player.shutdown()
             self.player = desired()
+            self.player.set_rate(self._rate)
             self._connect_player()
         self.meeting_page = MeetingPage(self, meeting)
         self.navigation.push(self.meeting_page)

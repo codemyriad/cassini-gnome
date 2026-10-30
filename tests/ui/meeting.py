@@ -83,11 +83,38 @@ with tempfile.TemporaryDirectory() as temporary:
     assert all(v in labels(page.speakers) for v in ["43%", "36%", "21%", "Named by you", "Not named yet"])
     # Imported recognition metadata has no corresponding local saved voice.
     assert "Recognised from saved voices" not in labels(page.speakers)
+    menu_changes = []
+    handler = page.more_menu.connect("items-changed", lambda *_: menu_changes.append(1))
+    page.update(meeting)
+    page.update(meeting)
+    assert not menu_changes, "An unchanged meeting must not rebuild the More menu"
+    page.more_menu.disconnect(handler)
     window.player.seek(192000)
     current = next(row for row in page.bound.values() if row[0].speaker == "guest")
     assert "background=" in current[1].get_label()
     assert 'alpha="60%"' in page.bound[3][1].get_label()
     assert page.elapsed.get_label() == "00:03:12" and page.total.get_label() == "00:47:05"
+    assert isinstance(page.rate_button, Gtk.MenuButton)
+    window.activate_action("win.rate", GLib.Variant("s", "1.5"))
+    assert window.player.rate == 1.5 and page.rate_button.get_label() == "1.5×"
+    assert window.lookup_action("rate").get_state().get_string() == "1.5"
+    window.activate_action("win.rate", GLib.Variant("s", "nan"))
+    assert window.player.rate == 1.5, "Invalid rate must be ignored"
+    # Real GStreamer clock, synchronised fakesink: 4 wall seconds at 2×.
+    window.activate_action("win.rate", GLib.Variant("s", "2"))
+    window.player.seek(10000)
+    until(lambda: window.player._prerolled)
+    window.player.play()
+    until(lambda: window.player.position > 10100)
+    started, position = time.monotonic(), window.player.position
+    until(lambda: time.monotonic() - started >= 4)
+    advance = window.player.position - position
+    window.player.pause()
+    assert 7000 <= advance <= 9000, ("2× clock advance", advance)
+    print(f"PASS real 2× playback: {advance} ms in 4 wall seconds", flush=True)
+    window.activate_action("win.rate", GLib.Variant("s", "1.5"))
+    window.player.seek(192000)
+
     current[1].emit("activate-link", "item:0")
     until(lambda: window.player.position == 188000)
     page.seek.emit("change-value", Gtk.ScrollType.JUMP, 190000)
@@ -233,6 +260,12 @@ with tempfile.TemporaryDirectory() as temporary:
     window.read_button.emit("clicked")
     until(lambda: window.meeting_page is not None)
     assert window.meeting_page.meeting.words
+    assert not isinstance(window.player, FolderPlayer), "Received meeting must exercise player replacement"
+    assert window.player.rate == 1.5 and window.meeting_page.rate_button.get_label() == "1.5×"
+    subprocess.run(["xdotool", "key", "ctrl+bracketright"], check=True)
+    until(lambda: window.player.rate == 1.75)
+    assert window.meeting_page.rate_button.get_label() == "1.75×"
+
     assert len(app.get_windows()) == 1, "File opens belong to the pushed reading page"
     # Library files opened via Open/CLI remain attached to live model updates.
     own = next(m for m in window.snapshot.meetings if m.title == "Client call, Rossi & Partners")

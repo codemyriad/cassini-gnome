@@ -20,6 +20,7 @@
 import logging
 import os
 import sys
+import time
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from gettext import gettext as _
 from pathlib import Path
@@ -48,6 +49,8 @@ class CassiniApplication(Adw.Application):
         self.version = version
         self.profile = profile
         self.settings_schema = "com.gocassini.Viewer"
+        self._recording_settings = None
+        self._watchdog = None
         self.transcriber = None
         self.speech_models = None
         self.diarization_models = None
@@ -119,6 +122,8 @@ class CassiniApplication(Adw.Application):
         self.set_accels_for_action("win.play-pause", ["space", "AudioPlay", "AudioPause"])
         self.set_accels_for_action("win.skip-back", ["Left"])
         self.set_accels_for_action("win.skip-forward", ["Right"])
+        self.set_accels_for_action("win.rate-up", ["<primary>bracketright"])
+        self.set_accels_for_action("win.rate-down", ["<primary>bracketleft"])
         self.set_accels_for_action("win.back-library", ["<alt>Left"])
         self.set_accels_for_action("win.nudge-forward", ["<alt>Right"])
         self.set_accels_for_action("win.rename", ["F2"])
@@ -134,6 +139,9 @@ class CassiniApplication(Adw.Application):
 
     def do_startup(self):
         Adw.Application.do_startup(self)
+        from .main_loop_watchdog import MainLoopWatchdog
+
+        self._watchdog = MainLoopWatchdog()
         Gst.init(None)
         from .recording_comfort import RecordingComfort
 
@@ -351,24 +359,45 @@ class CassiniApplication(Adw.Application):
         return GLib.SOURCE_REMOVE
 
     def on_companion_setup(self, *_args, parent=None):
+        started = time.monotonic()
         if not self.browser_companion_available:
+            logging.getLogger(__name__).warning("Companion setup unavailable; sheet not presented")
             return None
         from .companion_setup import CompanionSetup
 
+        target = parent or self.get_active_window()
         dialog = getattr(self, "companion_setup", None)
-        if dialog is None or dialog.closed:
+        if dialog is not None and (dialog.closed or dialog.get_root() is not (target.get_root() or target)):
+            if not dialog.closed:
+                dialog.discard()
+            dialog = None
+        if dialog is None:
             dialog = self.companion_setup = CompanionSetup(self)
-        dialog.present(parent or self.get_active_window())
+        dialog.present(target)
+
+        def mapped(*_args):
+            if dialog.get_mapped():
+                logging.getLogger(__name__).warning(
+                    "Companion setup click to mapped: %.1f ms", (time.monotonic() - started) * 1000
+                )
+                if handler:
+                    dialog.disconnect(handler)
+
+        handler = 0
+        if dialog.get_mapped():
+            mapped()
+        else:
+            handler = dialog.connect("notify::mapped", mapped)
         return dialog
 
     def on_companion_add(self, *_args, parent=None):
-        dialog = self.on_companion_setup(parent=parent)
-        if dialog:
-            dialog._add()
+        return self.on_companion_setup(parent=parent)
 
     @property
     def recording_settings(self):
-        return Gio.Settings.new(self.settings_schema)
+        if self._recording_settings is None:
+            self._recording_settings = Gio.Settings.new(self.settings_schema)
+        return self._recording_settings
 
     @property
     def recorder(self):
@@ -999,6 +1028,9 @@ class CassiniApplication(Adw.Application):
         return getattr(self, "_capture_background", False) and not self._quitting and any(capture_targets(self))
 
     def do_shutdown(self):
+        if self._watchdog:
+            self._watchdog.close()
+            self._watchdog = None
         self.background_recording.close()
         if self.global_shortcut:
             self.global_shortcut.close()
@@ -1046,6 +1078,8 @@ class CassiniApplication(Adw.Application):
                     "win.rename": "meeting.renameEllipsis",
                     "win.skip-back": "player.back10",
                     "win.skip-forward": "player.forward10",
+                    "win.rate-up": "player.speed.increase",
+                    "win.rate-down": "player.speed.decrease",
                 }.get(item.get_action_name())
                 if identifier:
                     from .strings import text

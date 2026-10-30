@@ -11,6 +11,7 @@ class BrowserStatus(Gtk.Box):
     def __init__(self, app, parent):
         super().__init__(spacing=8, margin_start=16, margin_end=16, margin_top=8, margin_bottom=8)
         self.app = app
+        self._signature = None
         self.message = Gtk.Label(xalign=0, wrap=True, hexpand=True, css_classes=["caption", "dim-label"])
         self.append(self.message)
         self.add = Gtk.Button(valign=Gtk.Align.CENTER, css_classes=["flat"])
@@ -24,6 +25,10 @@ class BrowserStatus(Gtk.Box):
     def render(self):
         controller = self.app.browser_connection
         state = controller.snapshot() if controller else None
+        signature = state, self.app.browser_companion_available
+        if signature == self._signature:
+            return
+        self._signature = signature
         self.set_visible(
             bool(
                 state

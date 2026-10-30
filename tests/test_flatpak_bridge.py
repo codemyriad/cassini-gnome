@@ -365,3 +365,16 @@ def test_host_manifest_comparison_needs_no_diffutils_and_preserves_trailing_newl
     bridge._write(path, changed, "600")
     assert path.read_text() == changed
     assert not list(path.parent.glob(".cassini-*"))
+
+
+def test_host_flatpak_browser_detection_and_registration_use_host_home(host):
+    applications = host / "data/applications"
+    applications.mkdir(parents=True)
+    (applications / "org.chromium.Chromium.desktop").write_text(
+        "[Desktop Entry]\nExec=flatpak run org.chromium.Chromium %U\n"
+    )
+    browsers = bridge.installed_browsers()
+    browser = next(b for b in browsers if b.arguments)
+    assert browser.config == host / ".var/app/org.chromium.Chromium/config/chromium"
+    paths = bridge.register(browsers=[browser])
+    assert len(paths) == 2 and all(p.parent == browser.config / "NativeMessagingHosts" for p in paths)

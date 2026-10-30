@@ -19,6 +19,7 @@ COMMANDS = (
     "microsoft-edge-stable",
     "brave-browser",
     "brave",
+    "/snap/bin/chromium",
 )
 PROBE = """set -eu
 printf '%s\\0' "${XDG_CONFIG_HOME:-$HOME/.config}" "${XDG_DATA_HOME:-$HOME/.local/share}"
@@ -150,11 +151,51 @@ def available():
 
 
 def installed_browsers():
+    from .companion import DESKTOP_NAMES
     from .companion import installed_browsers as detect
 
     deployment()
-    config, _, _, executables = host_info()
-    return detect(config=config, which=executables.get, host=False)
+    config, data, flatpak, executables = host_info()
+    # Read only known browser desktop entries, on the host worker. Never infer
+    # a host home directory from XDG_CONFIG_HOME, which may be relocated.
+    script = r"""set -eu
+printf '%s\0' "$HOME"
+for root in "${XDG_DATA_HOME:-$HOME/.local/share}/applications" "$HOME/.local/share/flatpak/exports/share/applications" /var/lib/flatpak/exports/share/applications /var/lib/snapd/desktop/applications /usr/local/share/applications /usr/share/applications; do
+    for name in "$@"; do
+        if [ -r "$root/$name" ]; then
+            printf '%s\0' "$name"
+            head -c 65536 -- "$root/$name"
+            printf '\0'
+        fi
+    done
+done
+"""
+    result = subprocess.run(
+        host_command(["/bin/sh", "-c", script, "cassini-desktops", *DESKTOP_NAMES], watch=True),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        check=True,
+        timeout=2,
+    )
+    try:
+        values = result.stdout.decode().split("\0")
+        home = Path(values.pop(0))
+        if not home.is_absolute() or values[-1] != "" or len(values) % 2 != 1:
+            raise ValueError("Invalid host desktop inventory")
+        desktops = {}
+        for name, content in zip(values[0:-1:2], values[1:-1:2], strict=True):
+            if name not in DESKTOP_NAMES:
+                raise ValueError("Unknown host desktop entry")
+            desktops.setdefault(name, content)
+    except (UnicodeError, ValueError, IndexError) as error:
+        raise OSError("Could not inspect host browsers") from error
+    return detect(
+        config=config,
+        which=lambda command: flatpak if command == "flatpak" else executables.get(command),
+        host=False,
+        home=home,
+        desktops=desktops,
+    )
 
 
 def broker_command(socket_path):
@@ -270,11 +311,10 @@ def cleanup_legacy(browsers=None):
 
 def register(browsers=None):
     from .companion import ORIGIN, SetupError
-    from .companion import installed_browsers as detect
 
     target = deployment()
     config, data, flatpak, executables = host_info()
-    browsers = detect(config=config, which=executables.get, host=False) if browsers is None else browsers
+    browsers = installed_browsers() if browsers is None else browsers
     if not browsers:
         raise SetupError("noBrowser")
     directory = data / "cassini/native-hosts" / target.application

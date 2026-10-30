@@ -127,6 +127,9 @@ class MeetingPage(Adw.NavigationPage):
         content.set_content(center)
         split.set_content(Adw.NavigationPage.new(content, meeting.title))
         self._companion = self._companion_card()
+        self._companion.set_margin_start(48)
+        self._companion.set_margin_end(48)
+        center.insert_child_after(self._companion, self.lines)
         self._build_player(outer)
         self._style_manager = Adw.StyleManager.get_default()
         self._style_signal = self._style_manager.connect("notify::dark", lambda *_: self.update(self.meeting))
@@ -151,7 +154,9 @@ class MeetingPage(Adw.NavigationPage):
         body.append(label(text("meeting.companionCard.title"), "heading", xalign=0, wrap=True))
         body.append(label(text("meeting.companionCard.body"), xalign=0, wrap=True))
         buttons = Gtk.Box(spacing=12)
-        setup = Gtk.Button(label=text("meeting.companionCard.setUp"), css_classes=["suggested-action"])
+        setup = self.companion_setup_button = Gtk.Button(
+            label=text("meeting.companionCard.setUp"), css_classes=["suggested-action"]
+        )
         setup.connect("clicked", lambda *_: self.window.get_application().on_companion_setup(parent=self.window))
         later = Gtk.Button(label=text("common.notNow"), css_classes=["flat"])
         later.connect("clicked", self._dismiss_card)
@@ -205,9 +210,39 @@ class MeetingPage(Adw.NavigationPage):
         bar.append(self.seek)
         self.total = label(fmt.position(self.meeting.duration_ms or 0), "small", "dim-label")
         bar.append(self.total)
-        # Rate menu copy is undrawn; display the actual rate without a dead click.
-        bar.append(label(text("format.playbackRate", rate=f"{self.player.rate:g}"), "small", "badge", "badge-grey"))
+        rates = Gio.Menu()
+        for rate in ("0.75", "1", "1.25", "1.5", "1.75", "2"):
+            item = Gio.MenuItem.new(f"{rate}×", None)
+            item.set_action_and_target_value("win.rate", GLib.Variant("s", rate))
+            rates.append_item(item)
+        # The internal toggle owns GTK's AT-SPI action. Name that real
+        # control and expose the surrounding MenuButton as a group.
+        self.rate_button = Gtk.MenuButton(
+            menu_model=rates, css_classes=["flat"], valign=Gtk.Align.CENTER, accessible_role=Gtk.AccessibleRole.GROUP
+        )
+        self.rate_button.get_popover().connect("map", self._name_rate_items)
+        self.rate_changed(self.window._rate)
+        bar.append(self.rate_button)
         outer.append(bar)
+
+    def _name_rate_items(self, widget):
+        # GTK's model buttons do not consistently derive an AT-SPI name from
+        # their displayed label. Name the actionable items using their target.
+        if isinstance(widget, Gtk.Actionable) and widget.get_action_name() == "win.rate":
+            target = widget.get_action_target_value()
+            if target is not None and target.get_string() in self.window.RATES:
+                widget.update_property([Gtk.AccessibleProperty.LABEL], [f"{target.get_string()}×"])
+        child = widget.get_first_child()
+        while child:
+            self._name_rate_items(child)
+            child = child.get_next_sibling()
+
+    def rate_changed(self, rate):
+        value = f"{rate:g}×"
+        self.rate_button.set_label(value)
+        name = text("player.speed.a11y", rate=value)
+        self.rate_button.update_property([Gtk.AccessibleProperty.LABEL], [name])
+        self.rate_button.get_first_child().update_property([Gtk.AccessibleProperty.LABEL], [name])
 
     def _seek(self, _scale, _scroll, value):
         if not self._updating:
@@ -220,9 +255,6 @@ class MeetingPage(Adw.NavigationPage):
 
     def _bind(self, _factory, item):
         turn = item.get_item().turn
-        if turn is None:
-            item.set_child(self._companion)
-            return
         speaker = next(s for s in self.meeting.speakers if s.id == turn.speaker)
         row = Gtk.Box(spacing=16, margin_bottom=24)
         names = box(5, width_request=120, valign=Gtk.Align.START)
@@ -303,18 +335,6 @@ class MeetingPage(Adw.NavigationPage):
             self.speakers_dialog.update(meeting)
         undo = bool(meeting.metadata_editable and meeting.metadata.get("speakerMerges"))
         self.window.lookup_action("undo-speaker-merge").set_enabled(undo and self._speaker_future is None)
-        self.more_menu.remove_all()
-        self.more_menu.append_item(self.window.rename_item())
-        self.more_menu.append(text("details.menu"), "win.recording-details")
-        self.more_menu.append(text("common.exportEllipsis"), "win.export")
-        if undo:
-            self.more_menu.append(text("meeting.undoMerge"), "win.undo-speaker-merge")
-        if self.window.get_application().meeting_trash.allowed(meeting, self.window):
-            section = Gio.Menu()
-            from .meeting_trash import menu_item
-
-            section.append_item(menu_item())
-            self.more_menu.append_section(None, section)
         dark = self._style_manager.get_dark()
         matches = frozenset(
             s.id
@@ -322,6 +342,8 @@ class MeetingPage(Adw.NavigationPage):
             if self.window.get_application().voice_store.has_match(meeting.directory, s.id)
         )
         signature = (
+            undo,
+            self.window.get_application().meeting_trash.allowed(meeting, self.window),
             matches,
             id(meeting.words),
             meeting.speakers,
@@ -334,6 +356,18 @@ class MeetingPage(Adw.NavigationPage):
         if signature == self._signature:
             return
         self._signature = signature
+        self.more_menu.remove_all()
+        self.more_menu.append_item(self.window.rename_item())
+        self.more_menu.append(text("details.menu"), "win.recording-details")
+        self.more_menu.append(text("common.exportEllipsis"), "win.export")
+        if undo:
+            self.more_menu.append(text("meeting.undoMerge"), "win.undo-speaker-merge")
+        if self.window.get_application().meeting_trash.allowed(meeting, self.window):
+            section = Gio.Menu()
+            from .meeting_trash import menu_item
+
+            section.append_item(menu_item())
+            self.more_menu.append_section(None, section)
         while child := self.speakers.get_first_child():
             self.speakers.remove(child)
         self.speakers.append(label(text("common.speakers"), "small", "heading", "dim-label", xalign=0))
@@ -414,8 +448,6 @@ class MeetingPage(Adw.NavigationPage):
                     callback=lambda: app.write_down(meeting),
                 )
             )
-        if not self.store.get_n_items():
-            self.store.append(TurnItem(None))
         common = 0
         if self._theme == dark and self._speaker_signature == meeting.speakers and self._match_signature == matches:
             for before, after in zip(self._turns, meeting.turns, strict=False):
@@ -425,7 +457,7 @@ class MeetingPage(Adw.NavigationPage):
         removed = len(self._turns) - common
         additions = [TurnItem(turn) for turn in meeting.turns[common:]]
         if removed or additions:
-            self.store.splice(common + 1, removed, additions)
+            self.store.splice(common, removed, additions)
         self._turns = meeting.turns
         self._theme = dark
         self._speaker_signature = meeting.speakers
@@ -503,7 +535,7 @@ class MeetingPage(Adw.NavigationPage):
             and (index != self._reading_index or explicit_seek or resumed)
         ):
             self._reading_index = index
-            self.list.scroll_to(index + 1, Gtk.ListScrollFlags.NONE, None)
+            self.list.scroll_to(index, Gtk.ListScrollFlags.NONE, None)
         self._updating = True
         self.elapsed.set_label(fmt.position(self.player.position))
         self.seek.set_value(self.player.position)

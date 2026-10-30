@@ -142,3 +142,37 @@ def test_source_checkout_registers_its_own_hosts_before_any_installed_old_versio
 def test_flatpak_without_the_host_bridge_never_offers_setup(monkeypatch):
     monkeypatch.setenv("FLATPAK_ID", "com.gocassini.Viewer")
     assert not companion.available()
+
+
+def test_snap_uses_its_real_profile_not_xdg_config(tmp_path):
+    browsers = companion.installed_browsers(
+        config=tmp_path / "custom",
+        home=tmp_path,
+        desktops={},
+        host=False,
+        which=lambda c: c if c == "/snap/bin/chromium" else None,
+    )
+    assert browsers == [companion.Browser("Chromium", "/snap/bin/chromium", tmp_path / "snap/chromium/common/chromium")]
+
+
+def test_desktop_browser_with_absolute_executable_and_flatpak_profiles(tmp_path, monkeypatch):
+    monkeypatch.setattr(companion, "in_flatpak", lambda: False)
+    desktops = {
+        "google-chrome.desktop": "[Desktop Entry]\nExec=/opt/google/chrome/google-chrome %U\n",
+        "org.chromium.Chromium.desktop": "[Desktop Entry]\nExec=/usr/bin/flatpak run --branch=stable org.chromium.Chromium @@u %U @@\n",
+        "com.brave.Browser.desktop": "[Desktop Entry]\nHidden=true\nExec=flatpak run com.brave.Browser\n",
+    }
+    browsers = companion.installed_browsers(
+        config=tmp_path / "xdg",
+        home=tmp_path,
+        desktops=desktops,
+        host=False,
+        which=lambda c: {"/opt/google/chrome/google-chrome": c, "flatpak": "/usr/bin/flatpak"}.get(c),
+    )
+    assert len(browsers) == 2
+    assert browsers[0].config == tmp_path / "xdg/google-chrome"
+    chromium = browsers[1]
+    assert chromium.config == tmp_path / ".var/app/org.chromium.Chromium/config/chromium"
+    calls = []
+    companion.open_add(chromium, launch=lambda command, **kw: calls.append(command))
+    assert calls == [["/usr/bin/flatpak", "run", "org.chromium.Chromium", companion.ADD_URL]]
