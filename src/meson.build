@@ -230,8 +230,9 @@ if pytest.found()
     workdir: meson.project_source_root(),
     # The suite re-runs both conformance suites as subprocesses, alongside
     # Meson's own conformance tests: 11-21 s in a package build container,
-    # over Meson's 30 s default on a loaded builder.
-    timeout: 120,
+    # over Meson's 30 s default on a loaded builder. Library v2 adds a 60 min
+    # alignment golden, a scaled long meeting and a SIGKILL crash matrix.
+    timeout: 240,
   )
 endif
 

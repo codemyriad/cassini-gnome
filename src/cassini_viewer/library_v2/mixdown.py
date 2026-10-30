@@ -356,23 +356,25 @@ class Limiter:
         if not n:
             return np.zeros(0)
         magnitude = np.concatenate([self.history, np.abs(block)])
-        peaks = sliding_max(magnitude, self.lookahead + 1)
         self.history = magnitude[-self.lookahead :]
-        with np.errstate(divide="ignore"):
-            need = np.where(peaks > 0, np.minimum(1.0, self.limit / np.where(peaks > 0, peaks, 1)), 1.0)
         first = max(0, self.lookahead - self.count)  # the first sample here that updates the gain
         self.count += n
         delay = np.concatenate([self.pending, block])
         if first >= n:
             self.pending = delay
             return np.zeros(0)
-        drop = 1 - need[first:]
-        steps = np.arange(len(drop), dtype=np.float64) * self.log_decay
-        with np.errstate(divide="ignore"):
-            terms = np.log(drop) - steps
-            start = math.log(self.attenuation) + self.log_decay if self.attenuation > 0 else -math.inf
-        running = np.maximum(np.maximum.accumulate(terms), start)
-        attenuation = np.exp(running + steps)
+        steps = np.arange(n - first, dtype=np.float64) * self.log_decay
+        if magnitude.max() <= self.limit:
+            # No peak reaches the ceiling: need = 1 everywhere, so h only decays (the usual case).
+            attenuation = self.attenuation * np.exp(steps + self.log_decay)
+        else:
+            peaks = sliding_max(magnitude, self.lookahead + 1)
+            with np.errstate(divide="ignore"):
+                need = np.where(peaks > 0, np.minimum(1.0, self.limit / np.where(peaks > 0, peaks, 1)), 1.0)
+                terms = np.log(1 - need[first:]) - steps
+                start = math.log(self.attenuation) + self.log_decay if self.attenuation > 0 else -math.inf
+            running = np.maximum(np.maximum.accumulate(terms), start)
+            attenuation = np.exp(running + steps)
         self.attenuation = float(attenuation[-1])
         out = delay[: len(attenuation)] * (1 - attenuation)
         self.pending = delay[len(attenuation) :]

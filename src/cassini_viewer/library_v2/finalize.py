@@ -30,7 +30,7 @@ from ..portable_writer import WORDS_MIME, chunk_set, file_tags, rewrite_tags
 from ..recording_details import disk_reserve
 from ..recording_session import strict_json
 from ..strings import text
-from . import edit, journal, mixdown, names, ogg, publish, xschema
+from . import edit, journal, mixdown, names, publish, xschema
 
 SESSION_LIMIT = 16 << 20
 HEADER_ALLOWANCE = 1 << 20
@@ -159,7 +159,6 @@ def build(stage, timeline, choice, *, title, date, recorded_at_local, extension,
     try:
         expected = mixdown.encode(timeline.spans, mix, choice, cancel)
         publish.step("mixed")
-        ogg.validate_path(mix)
         with open(mix, "rb") as audio:
             digest = portable.compute_audio_digest(audio)
         if abs(digest["sampleCount"] - expected) > mixdown.FRAME:

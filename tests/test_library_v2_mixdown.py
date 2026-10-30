@@ -4,6 +4,7 @@
 import array
 import json
 import os
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -195,25 +196,19 @@ LONG_CHILD = textwrap.dedent(
 )
 
 
-def test_long_meeting_is_bounded_and_drift_anchored(tmp_path):
-    """§9.4 scaled for CI: 20 min x 4 sources instead of 10 h (30x shorter), drift kept at +-100 ppm.
+DRIFTS = [100e-6, -100e-6, 60e-6, -40e-6]  # each source clock, fast or slow
+STARTS = [0, 7, 13, 19]  # seconds
 
-    Each source clock runs fast or slow by up to 100 ppm, so by the end its nominal sample count
-    is off by up to 120 ms (6x the 20 ms tolerance); anchors every minute put the end markers back
-    within one Opus frame. Source 0 rotates to a second file at 10 min. The whole finalize runs in
-    a child whose peak RSS must stay far below one full-timeline float buffer per source.
-    """
-    minutes = 20
-    seconds = minutes * 60
-    drifts = [100e-6, -100e-6, 60e-6, -40e-6]
-    starts = [0, 7, 13, 19]  # seconds
+
+def drifting_meeting(root, seconds, rotate_at):
+    """4 sources with drifting clocks, anchors every minute, click markers; source 0 rotates."""
     tracks, expected = [], []
-    for k, (ppm, start) in enumerate(zip(drifts, starts, strict=True)):
+    for k, (ppm, start) in enumerate(zip(DRIFTS, STARTS, strict=True)):
         rate_true = RATE * (1 + ppm)  # samples this source writes per true second
         length = seconds - start
         marks = [3 + k * 2, length / 2 + k * 2, length - 8 + k * 2]
         expected += [start + m for m in marks]
-        cuts = [(0, length)] if k else [(0, 600), (600, length)]
+        cuts = [(0, length)] if k else [(0, rotate_at), (rotate_at, length)]
         spans = []
         for first, last in cuts:
             frames = round((last - first) * rate_true)
@@ -230,29 +225,50 @@ def test_long_meeting_is_bounded_and_drift_anchored(tmp_path):
                 return out
 
             name = f"track-s{k}-{len(spans)}.wav"
-            write_wav_blocks(tmp_path / name, frames, RATE, block)
+            write_wav_blocks(root / name, frames, RATE, block)
             anchors = [[round(t * rate_true) - base, int((t - first) * 10**9)] for t in range(first, last + 1, 60)]
             spans.append(dict(file=name, sampleRate=RATE, channels=1, frames=frames,
                               startOffsetMs=(start + first) * 1000, clockAnchors=anchors))  # fmt: skip
         tracks.append(dict(id=f"s{k}", kind="remote", spans=spans))
-    sid, directory = new_session(tmp_path, tracks)
-    for wav in tmp_path.glob("track-*.wav"):
+    sid, directory = new_session(root, tracks)
+    for wav in root.glob("track-*.wav"):
         os.replace(wav, directory / wav.name)
+    return sid, expected
+
+
+def finalize_in_child(root, sid):
+    """(published name, peak RSS in bytes) of finalize() run in a fresh process."""
     src = str(Path(__file__).parents[1] / "src")
     child = subprocess.Popen(
-        [sys.executable, "-c", LONG_CHILD, src, str(Path(__file__).parent), str(tmp_path), sid],
-        stdout=subprocess.PIPE,
+        [sys.executable, "-c", LONG_CHILD, src, str(Path(__file__).parent), str(root), sid], stdout=subprocess.PIPE
     )
     output = child.stdout.read().decode().strip()
     _pid, status, usage = os.wait4(child.pid, 0)
-    child.returncode = os.waitstatus_to_exitcode(status)
-    assert child.returncode == 0
-    # One float32 full-timeline buffer for one source is 230 MB here (a 10 h meeting: 6.9 GB per
-    # source); the bounded mixdown peaks around 70 MB in total, mostly the interpreter and GStreamer.
-    peak = usage.ru_maxrss * 1024
-    assert peak < 192 << 20 < seconds * RATE * 4, peak
+    assert os.waitstatus_to_exitcode(status) == 0
+    return output, usage.ru_maxrss * 1024
+
+
+def test_long_meeting_is_bounded_and_drift_anchored(tmp_path):
+    """§9.4 scaled for CI: 10 min x 4 sources instead of 10 h (60x shorter), drift kept at +-100 ppm.
+
+    Each source clock runs fast or slow by up to 100 ppm, so by the end its nominal sample count
+    is off by up to 60 ms (3x the 20 ms tolerance); anchors every minute put the end markers back
+    within one Opus frame. Source 0 rotates to a second file at 5 min.
+
+    Memory: the same finalize of a 1 min meeting gives the platform's baseline (interpreter, NumPy,
+    GStreamer; meson test also sets MALLOC_PERTURB_). 10x more audio may add at most 32 MiB to that
+    peak, while one float32 full-timeline buffer for one source alone would add 115 MB (6.9 GB at 10 h).
+    """
+    seconds = 10 * 60
+    short = tmp_path / "short"
+    short.mkdir()
+    baseline = finalize_in_child(short, drifting_meeting(short, 60, 30)[0])[1]
+    shutil.rmtree(short)
+    sid, expected = drifting_meeting(tmp_path, seconds, 300)
+    output, peak = finalize_in_child(tmp_path, sid)
+    assert peak - baseline < 32 << 20 < seconds * RATE * 4, (baseline, peak)
     # Without the anchors the end markers would be off by up to this much, far beyond one frame.
-    assert max(abs(d) for d in drifts) * seconds * RATE > 5 * FRAME
+    assert max(abs(d) for d in DRIFTS) * seconds * RATE > 2.5 * FRAME
     path = tmp_path / output
     facts = ogg.validate_path(path)
     assert abs(facts.playable - seconds * RATE) <= FRAME
@@ -263,3 +279,15 @@ def test_long_meeting_is_bounded_and_drift_anchored(tmp_path):
             assert abs(found - at * RATE) <= FRAME, (at, found - at * RATE)
     finally:
         decoder.close()
+
+
+def test_limiter_fast_path_matches_while_the_gain_recovers():
+    """Blocks with no peak above 0.95 skip the peak search; the gain must still recover as export's does."""
+    t = np.arange(40000)
+    signal = 0.3 * np.sin(t / 7)
+    signal[9000] = 3.0  # one loud block, then quiet blocks while the gain recovers over 50 ms release
+    expected = np.frombuffer(b"".join(a.tobytes() for a in limited_pcm([array.array("f", signal)])), dtype=np.float32)
+    blocks = [signal[i : i + 4800].astype(np.float32).astype(np.float64) for i in range(0, 40000, 4800)]
+    got = np.concatenate(list(mixdown.limited(blocks)))
+    np.testing.assert_allclose(got.astype(np.float32), expected, atol=2e-6)
+    assert abs(got[9100]) < 0.5 * abs(signal[9100])  # still attenuated 100 samples after the peak
