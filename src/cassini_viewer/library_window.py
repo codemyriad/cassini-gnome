@@ -330,11 +330,11 @@ class LibraryWindow(Adw.ApplicationWindow):
             justify=Gtk.Justification.CENTER,
             halign=Gtk.Align.CENTER,
             wrap=True,
-            width_request=400,
+            width_request=320,
         )
         title.set_max_width_chars(28)
         title.set_halign(Gtk.Align.FILL)
-        center.append(Adw.Clamp(maximum_size=440, tightening_threshold=440, child=title))
+        center.append(Adw.Clamp(maximum_size=320, tightening_threshold=320, child=title))
         body = label(text("firstRun.body"), "dim-label", justify=Gtk.Justification.CENTER, wrap=True, width_request=460)
         body.set_max_width_chars(50)
         center.append(body)
