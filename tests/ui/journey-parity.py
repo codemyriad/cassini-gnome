@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Use build-aux/ux-screenshot.sh")
@@ -298,11 +299,18 @@ with tempfile.TemporaryDirectory() as temporary:
         )
     )
     native = app.recorder
-    update_metadata(native.session.directory, title="Global stop title", titleSource="user")
     other = Gtk.Window(title="Another app", child=Gtk.Label(label="Private focus target"))
     other.present()
     focus(other)
     until(lambda: not window.is_active())
+    until(lambda: window.recording_page is not None)
+    page = window.recording_page
+    timeout_add = GLib.timeout_add
+    with patch.object(
+        GLib, "timeout_add", lambda interval, *a, **kw: timeout_add(10000 if interval == 250 else interval, *a, **kw)
+    ):
+        page.title_entry.set_text("Global stop title")
+    assert page._dirty, "Fixture must retain the last debounced edit until global Stop"
     services.activate()
     identifier = "saved-" + native.session.directory.name
     until(lambda: native.pipeline is None and not native._finishing and identifier in services.notifications)

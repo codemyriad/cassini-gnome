@@ -937,6 +937,9 @@ class CassiniApplication(Adw.Application):
                 self.write_down(path)
 
     def on_stop_recording(self, *_):
+        for window in self.get_windows():
+            if page := getattr(window, "recording_page", None):
+                page.flush_edits()
         self._record_start_generation += 1
         self.stop_native()
         if self.browser_capture_active() or self._record_start_future:

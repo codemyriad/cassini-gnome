@@ -325,7 +325,7 @@ class RecordingComfort:
             return
         self.app.hold()
         try:
-            future = self.executor.submit(live_meeting, directory, "saved")
+            future = self.editor.submit(live_meeting, directory, "saved")
         except RuntimeError:
             self.app.release()
             return

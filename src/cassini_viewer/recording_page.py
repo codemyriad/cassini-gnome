@@ -264,6 +264,12 @@ class RecordingPage(Adw.NavigationPage):
                     )
                 )
 
+    def flush_edits(self):
+        if self._save_timer:
+            GLib.source_remove(self._save_timer)
+            self._save_timer = 0
+        self._save()
+
     def close(self):
         if self._closed:
             return
@@ -271,9 +277,6 @@ class RecordingPage(Adw.NavigationPage):
         if self.sources_dialog is not None and not self.sources_dialog.closed:
             self.sources_dialog.force_close()
         self.window._editor_focus(self.title_entry, False)
-        if self._save_timer:
-            GLib.source_remove(self._save_timer)
-            self._save_timer = 0
-        self._save()
+        self.flush_edits()
         if self.capture._controls in self.window._capture_headers:
             self.window._capture_headers.remove(self.capture._controls)

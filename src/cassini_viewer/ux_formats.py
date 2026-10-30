@@ -116,9 +116,13 @@ def row_time(at_ms, *, tz):
     at = _local(at_ms, tz)
     try:
         pattern = locale.nl_langinfo(locale.T_FMT)
+        language = locale.getlocale(locale.LC_TIME)[0] or "C"
     except (AttributeError, ValueError):
-        pattern = "%H:%M"
-    if any(token in pattern for token in ("%I", "%l", "%r")) and "%H" not in pattern:
+        pattern, language = "%H:%M", "C"
+    # musl accepts locale names but supplies the C LC_TIME template. Honour
+    # the US clock style even when those locale tables are unavailable.
+    us_fallback = pattern == "%H:%M:%S" and language.rsplit("_", 1)[-1] == "US"
+    if us_fallback or (any(token in pattern for token in ("%I", "%l", "%r")) and "%H" not in pattern):
         return at.strftime("%I:%M %p").lstrip("0")
     return f"{at.hour:02d}:{at.minute:02d}"
 
