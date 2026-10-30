@@ -31,7 +31,9 @@ mkdir -p -- "$parent"
 locked=false
 for attempt in 1 2 3 4 5 6 7 8 9 10; do
     if mkdir -- "$lock" 2>/dev/null; then locked=true; break; fi
-    [ -d "$lock" ] && [ ! -L "$lock" ] || exit 78
+    [ ! -L "$lock" ] || exit 78
+    # A directory may be released/reacquired between any two probes. Treat a
+    # missing/non-directory lock as contention, without claiming ownership.
     if [ -f "$lock/pid" ] && [ ! -L "$lock/pid" ]; then
         owner=$(head -c 24 -- "$lock/pid" 2>/dev/null || :)
         case "$owner" in
@@ -162,8 +164,10 @@ def bundle_files(directory):
         if path.is_dir():
             continue
         name = relative.as_posix()
-        if path.suffix.lower() in (".pem", ".key", ".p12", ".pfx", ".pkcs8", ".pkcs12", ".keystore") or any(
-            c in name for c in "\r\n\\\0"
+        if (
+            name == "DONE"
+            or path.suffix.lower() in (".pem", ".key", ".p12", ".pfx", ".pkcs8", ".pkcs12", ".keystore")
+            or any(c in name for c in "\r\n\\\0")
         ):
             raise ValueError("Unexpected companion resource")
         if not stat.S_ISREG(path.stat().st_mode):
@@ -192,12 +196,16 @@ def _run(operation, destination, expected="missing", payload=None):
 
         deployment()
         command = host_command(command, watch=True)
-    result = subprocess.run(command, input=payload, capture_output=True, timeout=10)
+    try:
+        result = subprocess.run(command, input=payload, capture_output=True, timeout=10)
+    except subprocess.TimeoutExpired as error:
+        raise OSError(errno.ETIMEDOUT, "Browser companion preparation timed out") from error
     if result.returncode:
         error = OSError(
             errno.EAGAIN if result.returncode == 75 else errno.EIO, "Could not prepare the browser companion"
         )
         error.returncode = result.returncode
+        error.add_note(f"{operation} exit {result.returncode}: {result.stderr[:512].decode(errors='replace')}")
         raise error
     if len(result.stdout) > 65536:
         raise ValueError("Installed companion manifest exceeds limit")

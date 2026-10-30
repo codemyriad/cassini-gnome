@@ -43,6 +43,14 @@ def dispatch(packet):
     try:
         window = app.get_active_window()
         action = packet.get("action", "state")
+        if action == "clipboard":
+            clipboard = window.get_display().get_clipboard()
+
+            def copied(c, result):
+                print(json.dumps(dict(value=c.read_text_finish(result), local=c.is_local())), flush=True)
+
+            clipboard.read_text_async(None, copied)
+            return GLib.SOURCE_REMOVE
         if action == "add":
             app.on_preferences()
             settings = app.settings_dialog
@@ -60,6 +68,9 @@ def dispatch(packet):
         elif action == "done":
             assert guide.done.get_sensitive()
             guide.done.emit("clicked")
+        elif action == "address":
+            # R44 test scaffolding until the published guide copy action lands.
+            window.get_display().get_clipboard().set("chrome://extensions/")
         elif action == "quit":
             app.on_quit()
         elif action == "shot":

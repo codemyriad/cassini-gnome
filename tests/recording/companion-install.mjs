@@ -29,11 +29,13 @@ await chmod(wrapper, 0o700);
 const environment = {...process.env, PATH: bin+':'+process.env.PATH, CASSINI_LIBRARY_DIR:path.join(out,'Library')};
 const evidence = {method:'actual Developer mode and Load unpacked UI', expectedID:'pcafdaahfhjiolfpfnlhmljfgoabbaij', storeRequests:[], stages:[]};
 let app, context;
+const gtkDiagnostics=[];
 const pending=[];
 function launchApp(label) {
  app = spawn('/usr/bin/python3',[path.join(root,'tests/recording/companion-ui.py'),'--build',build,'--bundle',resource],
              {stdio:['pipe','pipe','pipe'],env:environment});
  app.stderr.pipe(createWriteStream(path.join(out,label+'.log')));
+ createInterface({input:app.stderr}).on('line',line=>{if(/(?:Gtk|Adw|GLib-GObject)-(?:WARNING|CRITICAL)|Traceback \(most recent call last\)/.test(line))gtkDiagnostics.push(line);});
  createInterface({input:app.stdout}).on('line',line=>{
   try {const value=JSON.parse(line); pending.shift()?.(value);} catch {evidence.stages.push({output:line});}
  });
@@ -58,7 +60,7 @@ async function launchBrowser() {
  return context.pages()[0];
 }
 async function stopApp() {
- const exited=new Promise(resolve=>app.once('exit',resolve));
+ const exited=new Promise(resolve=>app.once('close',resolve));
  await call('quit');
  await Promise.race([exited,new Promise((_,reject)=>setTimeout(()=>reject(new Error('App did not quit')),12000))]);
 }
@@ -76,9 +78,18 @@ try {
  const id=[...createHash('sha256').update(Buffer.from(installed.key,'base64')).digest('hex').slice(0,32)].map(c=>String.fromCharCode(97+parseInt(c,16))).join('');
  assert.equal(id,evidence.expectedID);
  await call('shot',{path:path.join(out,'companion-local-guide.png')});
- await call('copy');
+ await poll(async()=>{try {await access(path.join(out,'companion-local-guide.png'));return true;} catch {return false;}},'rendered guide screenshot');
  await call('open');
- const page=await poll(()=>context.pages().find(page=>page.url().startsWith('chrome://extensions')),'app opens Extensions page');
+ // R44: pending catalog/spec amendment. Chromium rejects external chrome://
+ // navigation; emulate the user's explicit address-bar navigation, never CDP.
+ const newTab=await poll(()=>context.pages().find(page=>page.url().startsWith('chrome://new-tab-page')),'browser opens a new tab');
+ await newTab.bringToFront();
+ await call('address');
+ execFileSync('xdotool',['key','--clearmodifiers','ctrl+l']);
+ execFileSync('xdotool',['key','--clearmodifiers','ctrl+v']);
+ await poll(async()=>{execFileSync('xdotool',['key','--clearmodifiers','ctrl+a','ctrl+c']);const copied=await call('clipboard');evidence.lastAddressClipboard=copied;return !copied.local && copied.value==='chrome://extensions/';},'address paste accepted by the native browser');
+ execFileSync('xdotool',['key','--clearmodifiers','Return']);
+ const page=await poll(()=>context.pages().find(page=>page.url().startsWith('chrome://extensions')),'user opens Extensions page');
  await page.waitForSelector('extensions-manager');
  const manager=page.locator('extensions-manager');
  const toggle=manager.locator('extensions-toolbar').locator('#devMode');
@@ -86,19 +97,23 @@ try {
  const load=manager.locator('extensions-toolbar').locator('#loadUnpacked');
  await load.waitFor({state:'visible'});
  const click=load.click();
- await new Promise(r=>setTimeout(r,250));
+ const picker=await poll(()=>{
+  const title=execFileSync('xdotool',['getwindowfocus','getwindowname'],{encoding:'utf8'}).trim();
+  return /select|directory|folder/i.test(title) ? title : null;
+ },'native extension directory picker');
+ evidence.stages.push({picker});
+ await call('copy');
  execFileSync('xdotool',['key','--clearmodifiers','ctrl+l']);
  execFileSync('xdotool',['key','--clearmodifiers','ctrl+v']);
- execFileSync('xdotool',['key','--clearmodifiers','Return']);
+ const selection=JSON.parse(execFileSync('/usr/bin/python3',[path.join(root,'tests/recording/companion-picker.py'),state.folder],{encoding:'utf8'}));
+ assert.equal(selection.accepted,true);
+ evidence.stages.push(selection);
  await click;
- await poll(async()=>{
-  const loaded=await manager.locator('extensions-item').evaluateAll(items=>items.map(item=>({id:item.id,name:item.data?.name,version:item.data?.version})));
-  if(loaded.some(item=>item.id===id)) return loaded;
-  // The native folder chooser navigates on its first Enter and accepts on a
-  // second. Both are real key events; no developerPrivate API or profile edit.
-  execFileSync('xdotool',['key','--clearmodifiers','Return']);
-  return null;
+ const loaded=await poll(async()=>{
+  const values=await manager.locator('extensions-item').evaluateAll(items=>items.map(item=>({id:item.id,name:item.data?.name,version:item.data?.version})));
+  return values.some(item=>item.id===id) ? values : null;
  },'Load unpacked installs the copied folder');
+ evidence.stages.push({loaded});
  await poll(async()=>(await call()).connected,'real companion handshake');
  assert.equal((await call()).done,true);
  evidence.stages.push({stage:'installed',id,version:installed.version,path:state.folder,connected:true});
@@ -122,14 +137,18 @@ try {
  await poll(async()=>(await call()).connected,'updated companion handshake');
  evidence.stages.push({stage:'updated',id,version,path:state.folder,connected:true});
  assert.deepEqual(evidence.storeRequests,[]);
+ await stopApp();
+ assert.deepEqual(gtkDiagnostics,[]);
+ evidence.gtkDiagnostics=gtkDiagnostics;
  console.log('PASS actual Chromium Add from Cassini: fresh profile, native picker, pinned ID, handshake and same-path app update');
 } catch(error) {
  evidence.error=String(error.stack||error);
+ try {execFileSync('import',['-window','root',path.join(out,'desktop-failure.png')]);} catch {}
  if(context) {
   evidence.pages=context.pages().map(page=>page.url());
   const session=await context.newCDPSession(context.pages()[0]).catch(()=>null);
   if(session) evidence.targets=await session.send('Target.getTargets').catch(()=>null);
-  await context.pages()[0]?.screenshot({path:path.join(out,'browser-failure.png')}).catch(()=>{});
+  await context.pages().at(-1)?.screenshot({path:path.join(out,'browser-failure.png')}).catch(()=>{});
  }
  throw error;
 } finally {

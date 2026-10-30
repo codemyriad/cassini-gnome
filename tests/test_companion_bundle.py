@@ -3,7 +3,9 @@
 
 import json
 import os
+import shlex
 import shutil
+import subprocess
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -71,7 +73,7 @@ def test_pinned_id_and_browser_version_comparison():
         bundle.identity(dict(key="incorrect"))
 
 
-@pytest.mark.parametrize("unsafe", ["symlink", "private-key", "fifo"])
+@pytest.mark.parametrize("unsafe", ["symlink", "private-key", "fifo", "terminator"])
 def test_unsafe_resource_never_gets_copied(tmp_path, unsafe):
     root = source(tmp_path)
     target = tmp_path / "destination"
@@ -81,6 +83,8 @@ def test_unsafe_resource_never_gets_copied(tmp_path, unsafe):
         (root / "link.txt").symlink_to(outside)
     elif unsafe == "private-key":
         (root / "secret.PEM").write_text("PRIVATE_SENTINEL")
+    elif unsafe == "terminator":
+        (root / "DONE").write_text("ambiguous transfer sentinel")
     else:
         os.mkfifo(root / "fifo")
     with pytest.raises(ValueError):
@@ -158,8 +162,14 @@ def test_concurrent_versions_cannot_downgrade_the_copy(tmp_path, monkeypatch):
     monkeypatch.setattr(bundle, "_run", synchronize)
     with ThreadPoolExecutor(max_workers=2) as executor:
         futures = [executor.submit(bundle.prepare, root, destination=target) for root in (low, high)]
+        failures = []
         for future in futures:
-            assert future.result(timeout=10) == target
+            try:
+                assert future.result(timeout=10) == target
+            except Exception as error:
+                failures.append(error)
+        if failures:
+            raise ExceptionGroup("Concurrent copy failed", failures)
     assert json.loads((target / "manifest.json").read_text())["version"] == "0.2.4"
 
 
@@ -204,3 +214,39 @@ def test_store_flag_defaults_off_and_accepts_only_json_boolean_true(tmp_path):
         path = tmp_path / f"{index}.json"
         path.write_text(json.dumps(dict(storeListingPublic=value)))
         assert bundle.store_listing_public(path) is (value is True)
+
+
+def test_host_copy_timeout_is_an_os_error_and_cannot_break_an_existing_connection(tmp_path, monkeypatch):
+    def timeout(*args, **kwargs):
+        assert kwargs["timeout"] == 10
+        raise subprocess.TimeoutExpired(args[0], 10)
+
+    monkeypatch.setattr(bundle.subprocess, "run", timeout)
+    with pytest.raises(OSError, match="timed out"):
+        bundle.prepare(source(tmp_path), destination=tmp_path / "destination")
+
+
+def test_an_owner_can_release_its_lock_after_mkdir_reports_busy(tmp_path, monkeypatch):
+    root = source(tmp_path)
+    target = tmp_path / "data/browser-companion"
+    commands = tmp_path / "commands"
+    commands.mkdir()
+    marker = tmp_path / "released"
+    lock = target.parent / ".browser-companion.lock"
+    mkdir = shutil.which("mkdir")
+    command = commands / "mkdir"
+    command.write_text(
+        "#!/bin/sh\n"
+        f'if [ "$2" = {shlex.quote(str(lock))} ] && [ ! -f {shlex.quote(str(marker))} ]; then\n'
+        f"  : > {shlex.quote(str(marker))}\n"
+        f'  {shlex.quote(mkdir)} -- "$2"\n'
+        '  rmdir -- "$2"\n'
+        "  exit 1\n"
+        "fi\n"
+        f'exec {shlex.quote(mkdir)} "$@"\n'
+    )
+    command.chmod(0o700)
+    monkeypatch.setenv("PATH", str(commands) + os.pathsep + os.defpath)
+    bundle.prepare(root, destination=target)
+    assert marker.exists() and (target / "manifest.json").is_file()
+    assert not lock.exists()

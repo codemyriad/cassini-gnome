@@ -167,7 +167,7 @@ def open_add(browser, *, launch=subprocess.Popen):
 
 def open_extensions(browser, *, launch=subprocess.Popen):
     url = "edge://extensions/" if browser.name == "Edge" else "chrome://extensions/"
-    return open_url(browser, "--app=" + url, launch=launch)
+    return open_url(browser, url, launch=launch)
 
 
 def open_url(browser, url, *, launch=subprocess.Popen):
