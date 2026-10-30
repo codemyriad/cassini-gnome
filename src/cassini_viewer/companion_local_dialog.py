@@ -93,7 +93,8 @@ class LocalCompanionDialog(Adw.Dialog):
 
         def work():
             try:
-                companion.open_new_tab(self.browser)
+                process = companion.open_new_tab(self.browser)
+                companion.check_browser_launch(process)
                 error = None
             except Exception as problem:
                 LOG.warning("Could not open the browser: %s", problem)

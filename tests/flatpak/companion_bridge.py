@@ -96,6 +96,18 @@ def worker(application, private, report):
     assert (manifest.stat().st_ino, manifest.stat().st_mtime_ns) == (first.st_ino, first.st_mtime_ns)
     prepared.update(inode=first.st_ino, mtime=first.st_mtime_ns)
 
+    # Exercise an atomic refresh using the actual installed copy module and
+    # host filesystem. No sandbox filesystem grant is needed for publication.
+    prepared["upgradedVersion"] = inside(
+        "import json,shutil,tempfile;from pathlib import Path;"
+        "from cassini_viewer.companion_bundle import prepare,bundle_directory,_run;"
+        "temporary=tempfile.TemporaryDirectory();p=Path(temporary.name)/'extension';"
+        "shutil.copytree(bundle_directory(),p);m=json.loads((p/'manifest.json').read_text());"
+        "m['version']='0.2.3';(p/'manifest.json').write_text(json.dumps(m));"
+        "target=prepare(p);print(json.dumps(json.loads(_run('inspect',target))['version']))"
+    )
+    assert prepared["upgradedVersion"] == "0.2.3"
+
     command = private / "bin/google-chrome"
     command.parent.mkdir()
     command.write_text(
@@ -105,6 +117,18 @@ def worker(application, private, report):
     command.chmod(0o700)
     for name in ("chromium", "microsoft-edge", "brave-browser"):
         (command.parent / name).symlink_to(command.name)
+    failing = private / "bin/exit-42"
+    failing.write_text("#!/bin/sh\nexit 42\n")
+    failing.chmod(0o700)
+    failure = inside(
+        "import json;from pathlib import Path;from cassini_viewer import companion;\n"
+        f"browser=companion.Browser('Chrome',{str(failing)!r},Path({str(private / 'config')!r}))\n"
+        "try:\n companion.check_browser_launch(companion.open_new_tab(browser))\n"
+        "except OSError as error:\n print(json.dumps(str(error)))\n"
+        "else:\n raise AssertionError('Host exit42 was hidden')\n"
+    )
+    assert "status 42" in failure
+
     # D27: exercise cleanup from the installed sandbox, against the host's
     # private config. Matching origins alone must never delete another app.
     legacy = private / "config/chromium/NativeMessagingHosts/com.codemyriad.cassini.json"
@@ -275,6 +299,7 @@ def worker(application, private, report):
             json.dumps(
                 dict(
                     hostCompanion=prepared,
+                    hostExit42Reported=True,
                     unchangedCopyKeepsInode=True,
                     installedManifestPermission=True,
                     extraGrants=False,

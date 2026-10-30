@@ -50,8 +50,8 @@ managed() {
     [ -d "$1" ] && [ ! -L "$1" ] && [ -f "$1/.cassini-copy" ] && [ ! -L "$1/.cassini-copy" ] &&
         [ "$(head -c 128 -- "$1/.cassini-copy")" = io.codemyriad.cassini.browser-companion-v1 ]
 }
-# Recover a crash between the two portable renames. A successful new publish
-# never deletes the only copy; recovery is confined to our marked sibling.
+# Recover an interrupted preparation from the earlier pre-release two-rename
+# layout. New publications below never remove the stable path.
 if [ ! -e "$destination" ] && [ -e "$previous" ]; then
     managed "$previous" || exit 78
     mv -T -- "$previous" "$destination"
@@ -64,7 +64,7 @@ if [ "$operation" = inspect ]; then
     exit 0
 fi
 [ "$operation" = publish ] || exit 78
-# Compare-and-swap under the directory lock: a second app must never replace
+# Compare-and-swap under the kernel lock: a second app must never replace
 # a newer copy installed since the caller inspected the manifest.
 if [ -e "$destination" ]; then
     managed "$destination" || exit 78
@@ -86,14 +86,32 @@ done
 [ "$name" = DONE ] && [ -f "$stage/manifest.json" ] || exit 78
 printf '%s' io.codemyriad.cassini.browser-companion-v1 > "$stage/.cassini-copy"
 if [ -e "$destination" ]; then
-    if [ -e "$previous" ]; then managed "$previous" || exit 78; rm -rf -- "$previous"; fi
-    mv -T -- "$destination" "$previous"
-    if ! mv -T -- "$stage" "$destination"; then
-        mv -T -- "$previous" "$destination"
-        exit 1
-    fi
-    stage=''
-    rm -rf -- "$previous"
+    # GNU mv uses renameat2(RENAME_EXCHANGE). Both paths are on the same
+    # filesystem; --no-copy forbids any future copy/delete fallback. If the
+    # host utility or filesystem cannot exchange, retain the published copy.
+    case "$(mv --help 2>/dev/null)" in
+        *--exchange*) mv -T --exchange --no-copy -- "$stage" "$destination" ;;
+        *)
+            # Older Flatpak hosts may have coreutils before --exchange. Use
+            # an already-present isolated Python only as an optional syscall
+            # adapter; modern hosts still need no Python at all.
+            command -v python3 >/dev/null 2>&1 || exit 78
+            python3 -I - "$stage" "$destination" <<'CASSINI_RENAME'
+import ctypes
+import os
+import sys
+libc = ctypes.CDLL(None, use_errno=True)
+exchange = libc.renameat2
+exchange.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+exchange.restype = ctypes.c_int
+if exchange(-100, os.fsencode(sys.argv[1]), -100, os.fsencode(sys.argv[2]), 2):
+    code = ctypes.get_errno()
+    raise OSError(code, os.strerror(code))
+CASSINI_RENAME
+            ;;
+    esac
+    # stage now names the old complete copy. The EXIT trap removes only it;
+    # SIGTERM before or after the syscall always leaves destination populated.
 else
     mv -T -- "$stage" "$destination"
     stage=''

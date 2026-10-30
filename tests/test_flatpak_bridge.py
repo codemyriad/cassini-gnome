@@ -257,7 +257,7 @@ def test_sandbox_add_uses_host_browser_without_sandbox_environment_overrides(mon
         if local
         else args[0][-2:] == ["/host/google-chrome", companion.ADD_URL]
     )
-    assert args[0][3:5] == ["/bin/sh", "-c"] and args[0][5].endswith(" &")
+    assert args[0][3:5] == ["/bin/sh", "-c"] and args[0][5] == bridge.BROWSER_LAUNCH
     assert "env" not in options and "shell" not in options
 
 
@@ -400,3 +400,41 @@ def test_desktop_probe_process_failures_are_reported_as_io_errors(host, monkeypa
     with pytest.raises(OSError, match="Could not inspect host browsers") as caught:
         bridge.installed_browsers()
     assert caught.value.__cause__ is error
+
+
+@pytest.mark.parametrize("code", [0, 42])
+def test_host_browser_early_exit_crosses_the_real_shell_bridge(tmp_path, monkeypatch, code):
+    launcher = tmp_path / "host-browser"
+    launcher.write_text(f"#!/bin/sh\nexit {code}\n")
+    launcher.chmod(0o700)
+    monkeypatch.setattr(companion, "in_flatpak", lambda: True)
+    # Run the exact host-side shell without a real desktop or host service.
+    monkeypatch.setattr(bridge, "host_command", lambda command, **_kwargs: command)
+    process = companion.open_new_tab(companion.Browser("Chrome", str(launcher), tmp_path))
+    if code:
+        with pytest.raises(OSError, match="status 42"):
+            companion.check_browser_launch(process)
+    else:
+        companion.check_browser_launch(process)
+
+
+def test_host_browser_probe_detaches_a_live_process_without_waiting_for_its_lifetime(tmp_path, monkeypatch):
+    entered, release, finished = tmp_path / "entered", tmp_path / "release", tmp_path / "finished"
+    launcher = tmp_path / "host-browser"
+    launcher.write_text(
+        f'#!/bin/sh\n: > "{entered}"\nwhile [ ! -f "{release}" ]; do sleep .01; done\n: > "{finished}"\n'
+    )
+    launcher.chmod(0o700)
+    monkeypatch.setattr(companion, "in_flatpak", lambda: True)
+    monkeypatch.setattr(bridge, "host_command", lambda command, **_kwargs: command)
+    process = companion.open_new_tab(companion.Browser("Chrome", str(launcher), tmp_path))
+    try:
+        companion.check_browser_launch(process)
+        assert process.returncode == 0 and entered.exists() and not release.exists()
+    finally:
+        release.touch()
+        process.wait(timeout=2)
+    deadline = time.monotonic() + 2
+    while not finished.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert finished.exists(), "The detached browser must survive its launcher and finish normally"

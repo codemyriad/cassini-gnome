@@ -136,7 +136,7 @@ class CompanionSetup(Adw.Dialog):
         browser = next((b for b in browsers if b.name in self.browser_names), browsers[0])
         if local:
             return browser, companion_bundle.prepare()
-        companion.open_add(browser)
+        companion.check_browser_launch(companion.open_add(browser))
 
     def _connect(self, *_):
         self.local_error = None

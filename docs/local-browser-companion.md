@@ -4,15 +4,24 @@ Cassini prepares its reviewed browser extension in the host data directory:
 `$XDG_DATA_HOME/cassini/browser-companion`, normally
 `~/.local/share/cassini/browser-companion`. The Flatpak uses the existing host
 bridge and the host's data directory. It adds no filesystem or D-Bus permission
-and requires no Python on the host. Linux `flock` provides the shared lock
-(util-linux or BusyBox; no timeout extension is needed).
+and installs no host helper or Python dependency. Linux `flock` provides the
+shared lock (util-linux or BusyBox; no timeout extension is needed).
 
 The public manifest key must resolve to
 `pcafdaahfhjiolfpfnlhmljfgoabbaij`. Resources are bounded regular files; symlinks,
 private-key files and ambiguous transport names are refused. A same or newer
 installed version keeps its files, inodes and timestamps. A newer app bundle is
 staged beside the destination and published under a bounded kernel file lock with
-a manifest compare-and-swap. Failed staging/rename retains the previous copy.
+a manifest compare-and-swap. A refresh exchanges complete directories in one
+`renameat2(RENAME_EXCHANGE)` operation through GNU `mv -T --exchange --no-copy`.
+The stable path stays populated even if the process is killed at publication;
+failed staging or exchange retains the previous copy.
+Refresh uses GNU coreutils 9.5+ or, on an older host, an already-present isolated
+Python 3 as a stdlib-only adapter to the same renameat2 syscall. Modern hosts
+need no host Python. If neither adapter or filesystem exchange support is
+available, preparation fails with the existing copy intact; it never falls back to a two-rename gap. Initial installation and unchanged copies
+do not need the exchange option. Chromium canonicalizes an unpacked folder’s
+path, so swapping a folder symlink would pin the browser to an old generation.
 The browser reads an update at its next start. No browser preference, policy or
 extension-installation database is edited.
 
@@ -32,7 +41,11 @@ Edge uses `edge://extensions/`, and [Brave uses `brave://extensions/`](https://s
 Chromium rejects internal URLs passed on the command line; the app never types
 into the browser or edits a profile/policy to bypass that restriction.
 
-The address is copied before launch. A launch failure keeps it available and
+The address is copied before launch. A worker checks early process exit for up
+to 0.5 seconds natively or 2 seconds through Flatpak. The host bridge reports
+early nonzero exit status instead of immediately returning success from a
+background command; a browser still running after the bounded probe is detached
+and survives the app. A launch failure keeps the copied address available and
 shows the published inline failure line with Try again. A failed stable-folder
 preparation likewise shows its true failure and retry action. All copy comes
 from coordinator catalog 9ebdad477452046a54284df5be1c7b4d89d7643b verbatim.
@@ -47,11 +60,11 @@ updates after app/browser restart; the shipping extension remains 0.2.2.
 ## Validation
 
 The source tests cover pinned identity, newer-only/idempotent writes, unsafe
-files, partial staging, rollback and crash recovery, concurrent versions, a
-busy owner, crash-released kernel lock, a host-data path, and a minimal
+files, partial staging, failed exchanges, SIGTERM/SIGKILL immediately before/after
+publication, concurrent browser readers and versions, a busy owner, crash-released kernel lock, a host-data path, and a minimal
 host PATH without Python or diffutils. The lock file remains in place so
-all contenders use the same inode; there is no PID-based stale-lock cleanup. The installed Flatpak bridge smoke also
-checks the real host-data copy and unchanged inode/timestamp on another launch.
+all contenders use the same inode; there is no PID-based stale-lock cleanup.
+The installed Flatpak bridge smoke also checks the real host-data copy and unchanged inode/timestamp on another launch.
 
 The GUI test uses the existing private display harness. The fresh-browser proof
 uses `tests/recording/run.sh` with a private Xvfb, D-Bus, Pulse server, XDG roots

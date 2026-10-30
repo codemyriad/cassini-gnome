@@ -2,6 +2,7 @@
 """Per-user companion registration; no root, shell commands or manual IDs."""
 
 import configparser
+import errno
 import hashlib
 import json
 import logging
@@ -240,8 +241,18 @@ def open_url(browser, url, *, new_tab=False, launch=subprocess.Popen):
     if in_flatpak():
         from .flatpak_bridge import detached_command
 
-        command = detached_command(command)
+        command = detached_command(command, check_early_exit=True)
     return launch(command, stdin=subprocess.DEVNULL, start_new_session=True)
+
+
+def check_browser_launch(process):
+    """Worker-only bounded probe; a still-running browser is left untouched."""
+    try:
+        result = process.wait(timeout=2.0 if in_flatpak() else 0.5)
+    except subprocess.TimeoutExpired:
+        return
+    if result:
+        raise OSError(errno.EIO, f"Browser launcher exited with status {result}")
 
 
 def host_paths():

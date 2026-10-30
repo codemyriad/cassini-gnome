@@ -5,6 +5,8 @@ import base64
 import hashlib
 import json
 import stat
+import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -198,3 +200,30 @@ def test_local_install_opens_a_new_blank_tab_without_launching_an_internal_url(t
     ((args, options),) = calls
     assert args == (["/usr/bin/flatpak", "run", "org.chromium.Chromium", "--new-tab", "about:blank"],)
     assert "shell" not in options
+
+
+@pytest.mark.parametrize("code", [0, 42])
+def test_real_browser_launcher_early_exit_is_reported(tmp_path, monkeypatch, code):
+    monkeypatch.setattr(companion, "in_flatpak", lambda: False)
+    launcher = tmp_path / "browser"
+    launcher.write_text(f"#!/bin/sh\nexit {code}\n")
+    launcher.chmod(0o700)
+    process = companion.open_new_tab(companion.Browser("Chrome", str(launcher), tmp_path))
+    if code:
+        with pytest.raises(OSError, match="status 42"):
+            companion.check_browser_launch(process)
+    else:
+        companion.check_browser_launch(process)
+
+
+def test_browser_launch_probe_is_bounded_and_does_not_kill_a_live_browser(tmp_path, monkeypatch):
+    monkeypatch.setattr(companion, "in_flatpak", lambda: False)
+    process = subprocess.Popen(["/bin/sleep", "10"])
+    try:
+        start = time.monotonic()
+        companion.check_browser_launch(process)
+        assert time.monotonic() - start < 1.5
+        assert process.poll() is None
+    finally:
+        process.terminate()
+        process.wait(timeout=2)

@@ -214,6 +214,7 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
             launch_entered.set()
             assert launch_release.wait(2)
             launches.append(browser.name)
+            return subprocess.Popen(["/bin/true"])
 
         guards.enter_context(patch.object(companion, "open_add", open_add))
         app = CassiniApplication("com.gocassini.CompanionClickTest", "test", "development")

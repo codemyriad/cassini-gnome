@@ -111,7 +111,10 @@ with tempfile.TemporaryDirectory() as temporary:
     companion.installed_browsers = lambda: browsers
     companion_bundle.store_listing_public = lambda: True
     launches = []
-    companion.open_add = lambda browser: launches.append((browser.name, companion.ADD_URL))
+    companion.open_add = lambda browser: (
+        launches.append((browser.name, companion.ADD_URL)),
+        subprocess.Popen(["/bin/true"]),
+    )[1]
     app = CassiniApplication("com.gocassini.CompanionTest", "test", "development")
     # Actual launch starts registration, with only private configs/executables.
     # Browser transport is supplied by the real private service below.
@@ -170,7 +173,7 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: bool(copy_values))
     assert copy_values[-1] == str(local.folder)
     extension_pages = []
-    companion.open_new_tab = lambda browser: extension_pages.append(browser.name)
+    companion.open_new_tab = lambda browser: (extension_pages.append(browser.name), subprocess.Popen(["/bin/true"]))[1]
     local.address_button.emit("clicked")
     until(lambda: bool(extension_pages) and not local.opening)
     assert extension_pages == ["Chrome"] and not local.done.get_sensitive()
@@ -179,7 +182,17 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: bool(copy_values))
     assert copy_values[-1] == "chrome://extensions/"
     assert local.address_button.get_label() == "Copy Address and Open Chrome"
-    with patch.object(companion, "open_new_tab", side_effect=OSError("synthetic new-tab launch failure")):
+    failing_launcher = tmp / "exit-42"
+    failing_launcher.write_text("#!/bin/sh\nexit 42\n")
+    failing_launcher.chmod(0o700)
+    # Exercise an actual child failure rather than a mocked Python exception.
+    with patch.object(
+        companion,
+        "open_new_tab",
+        side_effect=lambda browser: companion.open_url(
+            companion.Browser(browser.name, str(failing_launcher), browser.config), "about:blank", new_tab=True
+        ),
+    ):
         local.address_button.emit("clicked")
         until(lambda: local.failed and not local.opening)
         assert local.address_button.get_label() == "Try again" and local.address_button.get_sensitive()

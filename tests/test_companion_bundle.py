@@ -128,7 +128,7 @@ def test_partial_stage_failure_keeps_previous_copy_and_removes_temporary_files(t
     assert list(target.parent.glob(".browser-companion*")) == [target.parent / ".browser-companion.lock"]
 
 
-def test_failed_publish_rename_rolls_back_and_next_start_recovers_a_crash(tmp_path, monkeypatch):
+def test_failed_atomic_exchange_keeps_copy_and_recovers_a_legacy_crash(tmp_path, monkeypatch):
     old, new = source(tmp_path), source(tmp_path, "0.2.3")
     target = tmp_path / "destination"
     bundle.prepare(old, destination=target)
@@ -137,7 +137,7 @@ def test_failed_publish_rename_rolls_back_and_next_start_recovers_a_crash(tmp_pa
     commands.mkdir()
     real_mv = shutil.which("mv")
     script = commands / "mv"
-    script.write_text('#!/bin/sh\ncase "$3" in */.browser-companion-*) exit 1 ;; esac\nexec ' + real_mv + ' "$@"\n')
+    script.write_text('#!/bin/sh\n[ "$2" != --exchange ] || exit 42\nexec ' + real_mv + ' "$@"\n')
     script.chmod(0o700)
     monkeypatch.setenv("PATH", str(commands) + os.pathsep + os.defpath)
     with pytest.raises(OSError):
@@ -273,3 +273,135 @@ def test_kernel_lock_recovers_after_owner_is_killed_without_cleanup(tmp_path):
             owner.kill()
             owner.wait(timeout=3)
         owner.stdout.close()
+
+
+@pytest.mark.parametrize("boundary", ["before", "after"])
+@pytest.mark.parametrize("termination", ["TERM", "KILL"])
+def test_interruption_at_publication_never_removes_stable_path(tmp_path, monkeypatch, boundary, termination):
+    old, new = source(tmp_path), source(tmp_path, "0.2.3")
+    target = tmp_path / "destination"
+    bundle.prepare(old, destination=target)
+    commands = tmp_path / "commands"
+    commands.mkdir()
+    marker = tmp_path / "interrupted"
+    previous = target.parent / ".browser-companion.previous"
+    real_mv = shlex.quote(shutil.which("mv"))
+    script = commands / "mv"
+    script.write_text(
+        "#!/bin/sh\n"
+        f'if [ "$2" = --exchange ] || {{ [ "$3" = {shlex.quote(str(target))} ] && '
+        f'[ "$4" = {shlex.quote(str(previous))} ]; }}; then\n'
+        + (f'  {real_mv} "$@" || exit $?\n' if boundary == "after" else "")
+        + f"  : > {shlex.quote(str(marker))}\n"
+        + f'  kill -{termination} "$PPID"\n  exit 1\nfi\n'
+        + f'exec {real_mv} "$@"\n'
+    )
+    script.chmod(0o700)
+    monkeypatch.setenv("PATH", str(commands) + os.pathsep + os.defpath)
+    with pytest.raises(OSError):
+        bundle.prepare(new, destination=target)
+    assert marker.exists(), "The publication boundary must actually have been interrupted"
+    expected = "0.2.2" if boundary == "before" else "0.2.3"
+    assert json.loads((target / "manifest.json").read_text())["version"] == expected
+    assert (target / "app.js").read_text() == f"console.log({expected!r})"
+
+
+def test_browser_reader_never_sees_missing_copy_during_publication(tmp_path, monkeypatch):
+    old, new = source(tmp_path), source(tmp_path, "0.2.3")
+    target = tmp_path / "destination"
+    bundle.prepare(old, destination=target)
+    commands = tmp_path / "commands"
+    commands.mkdir()
+    previous = target.parent / ".browser-companion.previous"
+    real_mv = shlex.quote(shutil.which("mv"))
+    script = commands / "mv"
+    # Deliberate fault injection holds the publication boundary open. The old
+    # two-rename publisher exposes ENOENT here; an exchange keeps a full copy.
+    script.write_text(
+        "#!/bin/sh\n"
+        f'if [ "$2" = --exchange ] || {{ [ "$3" = {shlex.quote(str(target))} ] && '
+        f'[ "$4" = {shlex.quote(str(previous))} ]; }}; then\n'
+        f'  {real_mv} "$@" || exit $?\n  sleep .1\n  exit 0\nfi\n'
+        f'exec {real_mv} "$@"\n'
+    )
+    script.chmod(0o700)
+    monkeypatch.setenv("PATH", str(commands) + os.pathsep + os.defpath)
+    stop, ready = threading.Event(), threading.Event()
+    failures, observed = [], []
+
+    def read():
+        while not stop.is_set():
+            try:
+                value = json.loads((target / "manifest.json").read_bytes())
+                assert value["version"] in ("0.2.2", "0.2.3")
+                assert (target / "app.js").read_bytes()
+                observed.append(value["version"])
+                ready.set()
+            except Exception as error:
+                failures.append(error)
+                ready.set()
+                return
+
+    reader = threading.Thread(target=read)
+    reader.start()
+    try:
+        assert ready.wait(2)
+        bundle.prepare(new, destination=target)
+    finally:
+        stop.set()
+        reader.join(timeout=2)
+    assert not reader.is_alive()
+    assert not failures, repr(failures)
+    assert "0.2.2" in observed and "0.2.3" in observed
+
+
+def test_host_without_atomic_exchange_keeps_its_existing_copy(tmp_path, monkeypatch):
+    old, new = source(tmp_path), source(tmp_path, "0.2.3")
+    target = tmp_path / "destination"
+    bundle.prepare(old, destination=target)
+    before = fingerprint(target)
+    commands = tmp_path / "commands"
+    commands.mkdir()
+    real_mv = shlex.quote(shutil.which("mv"))
+    script = commands / "mv"
+    script.write_text(f'#!/bin/sh\n[ "$2" != --exchange ] || exit 2\nexec {real_mv} "$@"\n')
+    script.chmod(0o700)
+    monkeypatch.setenv("PATH", str(commands) + os.pathsep + os.defpath)
+    with pytest.raises(OSError):
+        bundle.prepare(new, destination=target)
+    assert fingerprint(target) == before
+
+
+def test_older_coreutils_can_use_an_existing_python_for_atomic_exchange(tmp_path, monkeypatch):
+    old, new = source(tmp_path), source(tmp_path, "0.2.3")
+    target = tmp_path / "destination"
+    bundle.prepare(old, destination=target)
+    commands = tmp_path / "commands"
+    commands.mkdir()
+    real_mv = shlex.quote(shutil.which("mv"))
+    script = commands / "mv"
+    script.write_text(f'#!/bin/sh\n[ "$1" != --help ] || exit 0\nexec {real_mv} "$@"\n')
+    script.chmod(0o700)
+    monkeypatch.setenv("PATH", str(commands) + os.pathsep + os.defpath)
+    bundle.prepare(new, destination=target)
+    assert json.loads((target / "manifest.json").read_text())["version"] == "0.2.3"
+    assert (target / "app.js").read_bytes() == (new / "app.js").read_bytes()
+
+
+def test_old_host_without_either_exchange_adapter_retains_the_complete_copy(tmp_path, monkeypatch):
+    old, new = source(tmp_path), source(tmp_path, "0.2.3")
+    target = tmp_path / "destination"
+    bundle.prepare(old, destination=target)
+    before = fingerprint(target)
+    commands = tmp_path / "commands"
+    commands.mkdir()
+    real_mv = shlex.quote(shutil.which("mv"))
+    script = commands / "mv"
+    script.write_text(f'#!/bin/sh\n[ "$1" != --help ] || exit 0\nexec {real_mv} "$@"\n')
+    script.chmod(0o700)
+    for name in ("head", "mkdir", "rm", "base64", "mktemp", "chmod", "sha256sum", "sleep", "flock"):
+        (commands / name).symlink_to(shutil.which(name))
+    monkeypatch.setenv("PATH", str(commands))
+    with pytest.raises(OSError):
+        bundle.prepare(new, destination=target)
+    assert fingerprint(target) == before
