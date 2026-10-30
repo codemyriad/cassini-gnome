@@ -148,7 +148,7 @@ class InstalledBuild:
         if (value["version"], value["buildId"]) == (self.running_version, self.running["buildId"]):
             return False
         pairs = [(str(root / name), digest) for name, digest in value["files"].items()]
-        pairs.append((str(Path(location) / "files/bin/cassini-viewer"), value["launcher"]))
+        pairs.append((str(Path(location) / "files/bin/cassini-talk"), value["launcher"]))
         checks = "".join(f"{digest}  {name}\n" for name, digest in pairs).encode()
         subprocess.run(
             host_command(["sha256sum", "-c"], watch=True),
@@ -181,7 +181,7 @@ class InstalledBuild:
                     "run",
                     "--arch=" + target.arch,
                     "--branch=" + target.branch,
-                    "--command=cassini-viewer",
+                    "--command=cassini-talk",
                     target.application,
                     *arguments,
                 ]

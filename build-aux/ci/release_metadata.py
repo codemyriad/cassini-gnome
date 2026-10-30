@@ -29,7 +29,7 @@ def check(root, tag=None):
         "news": value(root, "NEWS", r"^Version (\d+\.\d+\.\d+)$"),
         "man": value(root, "data/cassini-viewer.1", r'\A\.TH [^\n]*"cassini-viewer ([^"]+)"'),
     }
-    release = ET.parse(root / "data/com.gocassini.Viewer.metainfo.xml.in").find("releases/release")
+    release = ET.parse(root / "data/io.codemyriad.CassiniTalk.metainfo.xml.in").find("releases/release")
     if release is None:
         raise ValueError("Metainfo has no release entry")
     versions["metainfo"] = release.get("version")

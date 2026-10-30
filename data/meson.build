@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 desktop_conf = configuration_data()
 desktop_conf.set('APP_ID', application_id)
+desktop_conf.set('APP_NAME', application_name)
 desktop_file = i18n.merge_file(
         input: configure_file(
-          input: 'com.gocassini.Viewer.desktop.in',
-          output: 'com.gocassini.Viewer.desktop.in.in',
+          input: 'io.codemyriad.CassiniTalk.desktop.in',
+          output: 'io.codemyriad.CassiniTalk.desktop.in.in',
           configuration: desktop_conf,
         ),
        output: application_id + '.desktop',
@@ -21,10 +22,11 @@ endif
 
 metainfo_conf = configuration_data()
 metainfo_conf.set('APP_ID', application_id)
+metainfo_conf.set('APP_NAME', application_name)
 appstream_file = i18n.merge_file(
         input: configure_file(
-          input: 'com.gocassini.Viewer.metainfo.xml.in',
-          output: 'com.gocassini.Viewer.metainfo.xml.in.in',
+          input: 'io.codemyriad.CassiniTalk.metainfo.xml.in',
+          output: 'io.codemyriad.CassiniTalk.metainfo.xml.in.in',
           configuration: metainfo_conf,
         ),
        output: application_id + '.metainfo.xml',
@@ -39,7 +41,7 @@ if appstreamcli.found()
     args: ['validate', '--no-net', '--explain', appstream_file])
 endif
 
-install_data('com.gocassini.Viewer.gschema.xml',
+install_data('io.codemyriad.CassiniTalk.gschema.xml',
   install_dir: get_option('datadir') / 'glib-2.0' / 'schemas',
 )
 
@@ -49,11 +51,11 @@ if compile_schemas.found()
     args: ['--strict', '--dry-run', meson.current_source_dir()])
 endif
 
-install_data('icons/hicolor/scalable/apps/com.gocassini.Viewer.svg',
+install_data('icons/hicolor/scalable/apps/io.codemyriad.CassiniTalk.svg',
   install_dir: get_option('datadir') / 'icons' / 'hicolor' / 'scalable' / 'apps',
   rename: application_id + '.svg',
 )
-install_data('icons/hicolor/symbolic/apps/com.gocassini.Viewer-symbolic.svg',
+install_data('icons/hicolor/symbolic/apps/io.codemyriad.CassiniTalk-symbolic.svg',
   install_dir: get_option('datadir') / 'icons' / 'hicolor' / 'symbolic' / 'apps',
   rename: application_id + '-symbolic.svg',
 )
@@ -62,7 +64,7 @@ service_conf = configuration_data()
 service_conf.set('APP_ID', application_id)
 service_conf.set('BINDIR', get_option('prefix') / get_option('bindir'))
 configure_file(
-  input: 'com.gocassini.Viewer.service.in',
+  input: 'io.codemyriad.CassiniTalk.service.in',
   output: application_id + '.service',
   configuration: service_conf,
   install_dir: get_option('datadir') / 'dbus-1' / 'services',

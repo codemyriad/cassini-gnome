@@ -145,7 +145,7 @@ def test_source_checkout_registers_its_own_hosts_before_any_installed_old_versio
 
 
 def test_flatpak_without_the_host_bridge_never_offers_setup(monkeypatch):
-    monkeypatch.setenv("FLATPAK_ID", "com.gocassini.Viewer")
+    monkeypatch.setenv("FLATPAK_ID", "io.codemyriad.CassiniTalk")
     assert not companion.available()
 
 

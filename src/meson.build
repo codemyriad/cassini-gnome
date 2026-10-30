@@ -41,17 +41,20 @@ conf.set('bindir', get_option('prefix') / get_option('bindir'))
 
 launcher = configure_file(
   input: 'cassini-viewer.in',
-  output: 'cassini-viewer',
+  output: 'cassini-talk',
   configuration: conf,
   install: true,
   install_dir: get_option('bindir'),
   install_mode: 'r-xr-xr-x',
 )
 
+install_symlink('cassini-viewer', pointing_to: 'cassini-talk', install_dir: get_option('bindir'))
+
 viewer_sources = files(
   'cassini_viewer/__init__.py',
   'cassini_viewer/colors.py',
   'cassini_viewer/main.py',
+  'cassini_viewer/identity.py',
   'cassini_viewer/main_loop_watchdog.py',
   'cassini_viewer/installed_build.py',
   'cassini_viewer/build_refresh.py',

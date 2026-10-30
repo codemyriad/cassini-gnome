@@ -27,7 +27,7 @@ def vertical(spacing=0, **kwargs):
 
 class LibraryWindow(Adw.ApplicationWindow):
     def __init__(self, application):
-        super().__init__(application=application, title=text("library.title"), default_width=1120, default_height=720)
+        super().__init__(application=application, title=text("app.name"), default_width=1120, default_height=720)
         self.add_css_class("library-window")
         self._pending = True
         self.selected = None
@@ -74,7 +74,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._fixture_activity = json.loads(Path(os.environ["CASSINI_SCREENSHOT_ACTIVITY"]).read_text())
         self.root_box = Gtk.Stack()
         self.navigation = Adw.NavigationView()
-        self.navigation.add(Adw.NavigationPage.new(self.root_box, text("library.title")))
+        self.navigation.add(Adw.NavigationPage.new(self.root_box, text("app.name")))
         self.navigation.connect("popped", self._page_popped)
         self.toasts = Adw.ToastOverlay(child=self.navigation)
         self.update_banner = Adw.Banner(
@@ -361,7 +361,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             decoration_layout=":close",
             css_classes=["library-header"],
         )
-        header.set_title_widget(label(text("library.title"), "heading"))
+        header.set_title_widget(label(text("app.name"), "heading"))
         if record:
             header.pack_start(self.capture_controls())
         if close:
@@ -371,7 +371,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             menu.append(text("common.exportEllipsis"), "win.export")
             menu.append(text("settings.title"), "app.preferences")
             menu.append(_("_Keyboard Shortcuts"), "app.shortcuts")
-            menu.append(_("_About Cassini"), "app.about")
+            menu.append(_("_About Cassini").replace("Cassini", text("app.name")), "app.about")
             button = Gtk.MenuButton(
                 icon_name="open-menu-symbolic", menu_model=menu, tooltip_text=text("common.mainMenu"), primary=True
             )
@@ -1191,7 +1191,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._refresh_export()
 
     def back_to_library(self, *_):
-        self.set_title(text("library.title"))
+        self.set_title(text("app.name"))
         if self.search_page:
             self.search_page.close()
             self.search_page = None
@@ -1225,7 +1225,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._stop_playback()
             self.monitor.refresh()
 
-        self.set_title(self.meeting_page.meeting.title if self.meeting_page else text("library.title"))
+        self.set_title(self.meeting_page.meeting.title if self.meeting_page else text("app.name"))
 
     def open_file(self, file):
         from pathlib import Path

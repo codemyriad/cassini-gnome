@@ -16,7 +16,8 @@ SHERPA_SUMS_SHA = "fa59734ebf92a17c5edc6793b74c8f8e0a184df640597d62f1208ceb0d66c
 
 WHEELS = PINS["onnxruntime"]["wheels"]
 FLATPAK = [
-    ROOT / "build-aux/flatpak" / name for name in ("com.gocassini.Viewer.json", "com.gocassini.Viewer.Devel.json")
+    ROOT / "build-aux/flatpak" / name
+    for name in ("io.codemyriad.CassiniTalk.json", "io.codemyriad.CassiniTalk.Devel.json")
 ]
 
 

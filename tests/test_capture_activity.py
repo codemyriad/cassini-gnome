@@ -138,7 +138,7 @@ def test_desktop_probe_failure_preserves_watch_lease_and_status_polling(service,
 
     monkeypatch.setattr(companion, "in_flatpak", lambda: True)
     monkeypatch.setattr(
-        flatpak_bridge, "deployment", lambda: flatpak_bridge.Deployment("com.gocassini.Viewer", "x86_64", "stable")
+        flatpak_bridge, "deployment", lambda: flatpak_bridge.Deployment("io.codemyriad.CassiniTalk", "x86_64", "stable")
     )
     monkeypatch.setattr(
         flatpak_bridge,

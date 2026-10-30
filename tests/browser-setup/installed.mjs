@@ -77,7 +77,7 @@ try {
  report.hosts = names;
  report.manifestsUnchanged = true;
  await context.close(); context = null;
- await execute('gapplication', ['action', 'com.gocassini.Viewer', 'quit'], {env, timeout: 4000});
+ await execute('gapplication', ['action', 'io.codemyriad.CassiniTalk', 'quit'], {env, timeout: 4000});
  const deadline = Date.now() + 5000;
  while (app.exitCode === null && app.signalCode === null && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
  assert.equal(app.exitCode, 0, 'application did not quit promptly');

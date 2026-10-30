@@ -25,7 +25,7 @@ def generate(source, build, inputs, version, profile, application):
     for path in map(Path, inputs):
         path = path.resolve()
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        if path == build / "src/cassini-viewer":
+        if path in (build / "src/cassini-talk", build / "src/cassini-viewer"):
             launcher = digest
         elif path == build / "src/paths.json":
             files["cassini_viewer/paths.json"] = digest

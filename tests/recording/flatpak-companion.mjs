@@ -8,7 +8,7 @@ import {chromium} from 'playwright';
 assert.equal(process.env.CASSINI_ISOLATED_AUDIO, '1', 'Use tests/recording/run.sh');
 assert.ok(!process.env.WAYLAND_DISPLAY);
 assert.match(process.env.PULSE_SERVER || '', /^unix:\/tmp\/cassini-audio-/);
-const application = process.env.CASSINI_TEST_FLATPAK_ID || 'com.gocassini.Viewer.Devel';
+const application = process.env.CASSINI_TEST_FLATPAK_ID || 'io.codemyriad.CassiniTalk.Devel';
 const root = path.resolve(import.meta.dirname, '../..'), evidence = {scenarios: [], console: []};
 const artifacts = process.env.CASSINI_TEST_ARTIFACTS;
 const config = process.env.XDG_CONFIG_HOME, home = process.env.HOME;

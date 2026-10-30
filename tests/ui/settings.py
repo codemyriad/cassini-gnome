@@ -64,7 +64,9 @@ with tempfile.TemporaryDirectory() as temporary:
     subprocess.run([sys.executable, str(ROOT / "ux/library-vectors/make.py"), str(tmp / "fixtures")], check=True)
     schemas = tmp / "schemas"
     schemas.mkdir()
-    shutil.copyfile(ROOT / "data/com.gocassini.Viewer.gschema.xml", schemas / "com.gocassini.Viewer.gschema.xml")
+    shutil.copyfile(
+        ROOT / "data/io.codemyriad.CassiniTalk.gschema.xml", schemas / "io.codemyriad.CassiniTalk.gschema.xml"
+    )
     subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
     os.environ.update(
         GSETTINGS_SCHEMA_DIR=str(schemas),

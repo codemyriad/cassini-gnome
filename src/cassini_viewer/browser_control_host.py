@@ -19,7 +19,7 @@ def parent_browser_info():
     """Optional local broker hint; never change the shared extension protocol."""
     # The host-side relay sees Chromium's real PID; the nested sandbox cannot.
     # Accept this local hint only in Flatpak, never from extension messages.
-    if os.environ.get("FLATPAK_ID") in {"com.gocassini.Viewer", "com.gocassini.Viewer.Devel"}:
+    if os.environ.get("FLATPAK_ID") in {"io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"}:
         name = os.environ.get("CASSINI_HOST_BROWSER_NAME")
         instance = os.environ.get("CASSINI_HOST_BROWSER_INSTANCE", "")
         if name in {"Chrome", "Chromium", "Edge", "Brave"} and re.fullmatch(r"[0-9]{1,20}:[0-9]{1,30}", instance):

@@ -28,7 +28,7 @@ def host(tmp_path, monkeypatch):
     fake = tools / "flatpak"
     fake.write_text(
         f"#!{sys.executable}\nimport json,sys\nfrom pathlib import Path\n"
-        f"if sys.argv[1]=='list': print('com.gocassini.Viewer.Devel x86_64 master' if Path({str(directory / 'deployment')!r}).exists() else '');sys.exit(0)\n"
+        f"if sys.argv[1]=='list': print('io.codemyriad.CassiniTalk.Devel x86_64 master' if Path({str(directory / 'deployment')!r}).exists() else '');sys.exit(0)\n"
         f"if sys.argv[1]=='info': print({str(directory / 'deployment')!r});sys.exit(0)\n"
         f"Path({str(directory / 'arguments.json')!r}).write_text(json.dumps(sys.argv[1:]))\n"
         "sys.stdout.buffer.write(sys.stdin.buffer.read())\n"
@@ -50,7 +50,7 @@ def host(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(directory / "data"))
     monkeypatch.setattr(bridge, "host_command", lambda command, **_: command)
     monkeypatch.setattr(
-        bridge, "deployment", lambda: bridge.Deployment("com.gocassini.Viewer.Devel", "x86_64", "master")
+        bridge, "deployment", lambda: bridge.Deployment("io.codemyriad.CassiniTalk.Devel", "x86_64", "master")
     )
     return directory
 
@@ -66,7 +66,7 @@ def test_host_inventory_and_registration_use_host_configs_and_shell_safe_paths(h
         assert manifest["allowed_origins"] == [companion.ORIGIN]
         assert manifest["type"] == "stdio" and manifest["name"] == path.stem
         executable = Path(manifest["path"])
-        assert executable.is_relative_to(host / "data/cassini/native-hosts/com.gocassini.Viewer.Devel")
+        assert executable.is_relative_to(host / "data/cassini/native-hosts/io.codemyriad.CassiniTalk.Devel")
         assert stat.S_IMODE(executable.stat().st_mode) == 0o700
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
         assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
@@ -90,7 +90,7 @@ def test_probe_retries_only_a_recoverable_host_failure(monkeypatch, failure, exp
     def deployment():
         if failure == "permission":
             raise OSError("Sandbox host access is not granted")
-        return bridge.Deployment("com.gocassini.Viewer", "x86_64", "master")
+        return bridge.Deployment("io.codemyriad.CassiniTalk", "x86_64", "master")
 
     def host_info():
         calls.append(1)
@@ -140,7 +140,7 @@ def test_actual_host_stub_keeps_binary_native_frames_and_selects_its_deployment(
         assert output.stdout == data and not output.stderr
         arguments = json.loads((host / "arguments.json").read_text())
         assert arguments[:4] == ["run", "--unshare=network", "--arch=x86_64", "--branch=master"]
-        assert arguments[-1] == "com.gocassini.Viewer.Devel"
+        assert arguments[-1] == "io.codemyriad.CassiniTalk.Devel"
         command = "cassini-browser-control-host" if manifest["name"].endswith(".control") else "cassini-browser-host"
         assert arguments[4] == "--command=" + command
 
@@ -231,15 +231,17 @@ def test_deployment_requires_effective_permission_and_known_app(tmp_path):
     for application in sorted(bridge.APPLICATIONS):
         path.write_text(template.format(application, "talk"))
         assert bridge.deployment(path) == bridge.Deployment(application, "x86_64", "master")
-    for application, permission in (("other.App", "talk"), ("com.gocassini.Viewer", "none")):
+    for application, permission in (("other.App", "talk"), ("io.codemyriad.CassiniTalk", "none")):
         path.write_text(template.format(application, permission))
         with pytest.raises(OSError, match="unavailable"):
             bridge.deployment(path)
 
 
 def test_missing_host_service_disables_companion(monkeypatch):
-    monkeypatch.setenv("FLATPAK_ID", "com.gocassini.Viewer")
-    monkeypatch.setattr(bridge, "deployment", lambda: bridge.Deployment("com.gocassini.Viewer", "x86_64", "master"))
+    monkeypatch.setenv("FLATPAK_ID", "io.codemyriad.CassiniTalk")
+    monkeypatch.setattr(
+        bridge, "deployment", lambda: bridge.Deployment("io.codemyriad.CassiniTalk", "x86_64", "master")
+    )
 
     def unreachable():
         raise OSError("Private session has no host service")
@@ -252,7 +254,7 @@ def test_missing_host_service_disables_companion(monkeypatch):
 
 @pytest.mark.parametrize("local", [False, True])
 def test_sandbox_add_uses_host_browser_without_sandbox_environment_overrides(monkeypatch, tmp_path, local):
-    monkeypatch.setenv("FLATPAK_ID", "com.gocassini.Viewer")
+    monkeypatch.setenv("FLATPAK_ID", "io.codemyriad.CassiniTalk")
     monkeypatch.setattr(bridge.shutil, "which", lambda _: "/usr/bin/flatpak-spawn")
     calls = []
     (companion.open_new_tab if local else companion.open_add)(
@@ -273,17 +275,17 @@ def test_flatpak_broker_is_shared_by_its_hosts_but_separate_from_native_and_deve
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
     monkeypatch.delenv("FLATPAK_ID", raising=False)
     native = service_path()
-    monkeypatch.setenv("FLATPAK_ID", "com.gocassini.Viewer")
+    monkeypatch.setenv("FLATPAK_ID", "io.codemyriad.CassiniTalk")
     regular = service_path()
-    assert regular == tmp_path / "app/com.gocassini.Viewer/cassini/browser-v2.sock"
-    monkeypatch.setenv("FLATPAK_ID", "com.gocassini.Viewer.Devel")
+    assert regular == tmp_path / "app/io.codemyriad.CassiniTalk/cassini/browser-v2.sock"
+    monkeypatch.setenv("FLATPAK_ID", "io.codemyriad.CassiniTalk.Devel")
     assert len({native, regular, service_path()}) == 3
 
 
 def test_only_flatpak_accepts_valid_host_browser_process_hint(monkeypatch):
     monkeypatch.setenv("CASSINI_HOST_BROWSER_NAME", "Brave")
     monkeypatch.setenv("CASSINI_HOST_BROWSER_INSTANCE", "1234:5678")
-    monkeypatch.setenv("FLATPAK_ID", "com.gocassini.Viewer")
+    monkeypatch.setenv("FLATPAK_ID", "io.codemyriad.CassiniTalk")
     assert parent_browser_info() == dict(browserName="Brave", browserInstance="1234:5678")
     for invalid in ("", "1:bad", "1:2\n", "1" * 201):
         monkeypatch.setenv("CASSINI_HOST_BROWSER_INSTANCE", invalid)
@@ -345,7 +347,7 @@ def test_dedicated_broker_launch_returns_before_its_host_child_finishes(host):
         'if [ -d "$HOME" ]; then printf done > "$HOME/broker-finished"; fi\n'
     )
     fake.chmod(0o700)
-    command = bridge.broker_command("/run/user/1000/app/com.gocassini.Viewer.Devel/cassini/browser-v2.sock")
+    command = bridge.broker_command("/run/user/1000/app/io.codemyriad.CassiniTalk.Devel/cassini/browser-v2.sock")
     assert "--unshare=network" in command
     try:
         completed = subprocess.run(command, capture_output=True, check=True, timeout=2)

@@ -50,9 +50,9 @@ step "meson install"
 DESTDIR=/build/dest meson install -C /build/b --quiet
 for f in usr/bin/cassini-viewer usr/bin/cassini-browser-host usr/bin/cassini-browser-control-host \
          usr/share/cassini-viewer/browser-extension/manifest.json usr/share/cassini-viewer/cassini-viewer.gresource \
-         usr/share/applications/com.gocassini.Viewer.desktop \
-         usr/share/metainfo/com.gocassini.Viewer.metainfo.xml \
-         usr/share/glib-2.0/schemas/com.gocassini.Viewer.gschema.xml \
+         usr/share/applications/io.codemyriad.CassiniTalk.desktop \
+         usr/share/metainfo/io.codemyriad.CassiniTalk.metainfo.xml \
+         usr/share/glib-2.0/schemas/io.codemyriad.CassiniTalk.gschema.xml \
          usr/share/cassini-viewer/cassini_viewer/main.py; do
   [ -e "/build/dest/$f" ] || { echo "not installed: /$f"; exit 1; }
 done

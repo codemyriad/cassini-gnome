@@ -89,7 +89,7 @@ def candidate(tmp_path):
         "NEWS": "Version 7.8.9\n~~~~~~~~~~~~~\nNot released yet.\n",
         "browser-extension/manifest.json": '{"version":"0.2.2"}\n',
         "data/cassini-viewer.1": '.TH CASSINI-VIEWER 1 "October 2026" "cassini-viewer 7.8.9" "User Commands"\n',
-        "data/com.gocassini.Viewer.metainfo.xml.in": (
+        "data/io.codemyriad.CassiniTalk.metainfo.xml.in": (
             '<component><releases><release version="7.8.9" date="2026-10-29"/></releases></component>'
         ),
     }
@@ -119,7 +119,7 @@ def test_release_metadata_accepts_a_consistent_candidate_without_creating_a_tag(
         "build-aux/arch/PKGBUILD",
         "NEWS",
         "data/cassini-viewer.1",
-        "data/com.gocassini.Viewer.metainfo.xml.in",
+        "data/io.codemyriad.CassiniTalk.metainfo.xml.in",
     ],
 )
 def test_release_metadata_rejects_any_stale_package_or_notes_version(candidate, name):
@@ -131,7 +131,7 @@ def test_release_metadata_rejects_any_stale_package_or_notes_version(candidate, 
 
 @pytest.mark.parametrize("replacement", [' date="2026-02-30"', ""])
 def test_release_metadata_requires_a_real_metainfo_date(candidate, replacement):
-    path = candidate / "data/com.gocassini.Viewer.metainfo.xml.in"
+    path = candidate / "data/io.codemyriad.CassiniTalk.metainfo.xml.in"
     path.write_text(path.read_text().replace(' date="2026-10-29"', replacement))
     with pytest.raises(ValueError):
         module("release_metadata").check(candidate)
@@ -146,14 +146,14 @@ def test_release_metadata_rejects_the_old_browser_companion(candidate):
 def test_installed_metadata_validation_checks_the_packaged_files_and_both_validators(tmp_path):
     prefix = tmp_path / "usr"
     launcher = prefix / "bin/cassini-viewer"
-    metainfo = prefix / "share/metainfo/com.gocassini.Viewer.metainfo.xml"
-    desktop = prefix / "share/applications/com.gocassini.Viewer.desktop"
+    metainfo = prefix / "share/metainfo/io.codemyriad.CassiniTalk.metainfo.xml"
+    desktop = prefix / "share/applications/io.codemyriad.CassiniTalk.desktop"
     extension = prefix / "share/cassini-viewer/browser-extension/manifest.json"
     for path in (launcher, metainfo, desktop, extension):
         path.parent.mkdir(parents=True, exist_ok=True)
     launcher.write_text('VERSION = "7.8.9"\n')
     metainfo.write_text(
-        '<component><id>com.gocassini.Viewer</id><releases><release version="7.8.9"/></releases></component>'
+        '<component><id>io.codemyriad.CassiniTalk</id><releases><release version="7.8.9"/></releases></component>'
     )
     desktop.write_text("[Desktop Entry]\n")
     extension.write_text('{"version":"0.2.2"}\n')
@@ -164,7 +164,7 @@ def test_installed_metadata_validation_checks_the_packaged_files_and_both_valida
         calls.append(command)
 
     policy = module("validate_installed")
-    result = policy.validate(prefix, "com.gocassini.Viewer", "7.8.9", run=run)
+    result = policy.validate(prefix, "io.codemyriad.CassiniTalk", "7.8.9", run=run)
     assert result["version"] == "7.8.9" and result["appstream"] == result["desktop"] == "passed"
     assert result["extensionVersion"] == "0.2.2"
     assert calls == [
@@ -175,10 +175,10 @@ def test_installed_metadata_validation_checks_the_packaged_files_and_both_valida
         original = path.read_text()
         path.write_text(original.replace("7.8.9", "7.8.8"))
         with pytest.raises(ValueError, match="version"):
-            policy.validate(prefix, "com.gocassini.Viewer", "7.8.9", run=run)
+            policy.validate(prefix, "io.codemyriad.CassiniTalk", "7.8.9", run=run)
         path.write_text(original)
     calls.clear()
     extension.write_text('{"version":"0.2.1"}\n')
     with pytest.raises(ValueError, match="Installed browser companion version must be 0.2.2"):
-        policy.validate(prefix, "com.gocassini.Viewer", "7.8.9", run=run)
+        policy.validate(prefix, "io.codemyriad.CassiniTalk", "7.8.9", run=run)
     assert calls == []

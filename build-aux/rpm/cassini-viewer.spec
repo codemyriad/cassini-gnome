@@ -210,14 +210,14 @@ python3 sherpa/fetch.py --cache .sherpa-cache --verify %{buildroot}%{_libdir}/%{
 %{_bindir}/cassini-browser-control-host
 %{_datadir}/%{name}/*
 %{_libdir}/%{name}
-%{_datadir}/applications/com.gocassini.Viewer.desktop
-%{_datadir}/metainfo/com.gocassini.Viewer.metainfo.xml
-%{_datadir}/glib-2.0/schemas/com.gocassini.Viewer.gschema.xml
-%{_datadir}/icons/hicolor/scalable/apps/com.gocassini.Viewer.svg
-%{_datadir}/icons/hicolor/symbolic/apps/com.gocassini.Viewer-symbolic.svg
+%{_datadir}/applications/io.codemyriad.CassiniTalk.desktop
+%{_datadir}/metainfo/io.codemyriad.CassiniTalk.metainfo.xml
+%{_datadir}/glib-2.0/schemas/io.codemyriad.CassiniTalk.gschema.xml
+%{_datadir}/icons/hicolor/scalable/apps/io.codemyriad.CassiniTalk.svg
+%{_datadir}/icons/hicolor/symbolic/apps/io.codemyriad.CassiniTalk-symbolic.svg
 %dir %{_datadir}/dbus-1
 %dir %{_datadir}/dbus-1/services
-%{_datadir}/dbus-1/services/com.gocassini.Viewer.service
+%{_datadir}/dbus-1/services/io.codemyriad.CassiniTalk.service
 %{_mandir}/man1/%{name}.1*
 
 %changelog

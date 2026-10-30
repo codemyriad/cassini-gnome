@@ -72,7 +72,9 @@ with tempfile.TemporaryDirectory() as tmp:
     os.environ["CASSINI_SCREENSHOT_NOW"] = "1793107080000"
     schema_dir = Path(tmp) / "schemas"
     schema_dir.mkdir()
-    shutil.copyfile(ROOT / "data/com.gocassini.Viewer.gschema.xml", schema_dir / "com.gocassini.Viewer.gschema.xml")
+    shutil.copyfile(
+        ROOT / "data/io.codemyriad.CassiniTalk.gschema.xml", schema_dir / "io.codemyriad.CassiniTalk.gschema.xml"
+    )
     subprocess.run(["glib-compile-schemas", str(schema_dir)], check=True)
     os.environ["GSETTINGS_SCHEMA_DIR"] = str(schema_dir)
     app = CassiniApplication("com.gocassini.LibraryTest", "test", "development")

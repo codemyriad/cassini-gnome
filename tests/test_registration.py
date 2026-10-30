@@ -91,7 +91,7 @@ def test_unknown_flatpak_inventory_error_does_not_discard_valid_foreign_registra
 
     with pytest.raises(OSError):
         registration.installed_relay(
-            ("com.gocassini.Viewer.Devel", "x86_64", "master", "cassini-browser-host"),
+            ("io.codemyriad.CassiniTalk.Devel", "x86_64", "master", "cassini-browser-host"),
             run=unavailable,
             flatpak="/flatpak",
         )

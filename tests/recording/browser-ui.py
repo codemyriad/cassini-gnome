@@ -20,7 +20,7 @@ root = Path(__file__).resolve().parents[2]
 build = Path(args.build).resolve()
 schemas = Path(os.environ["XDG_RUNTIME_DIR"]) / "browser-test-schemas"
 schemas.mkdir()
-shutil.copyfile(root / "data/com.gocassini.Viewer.gschema.xml", schemas / "com.gocassini.Viewer.gschema.xml")
+shutil.copyfile(root / "data/io.codemyriad.CassiniTalk.gschema.xml", schemas / "io.codemyriad.CassiniTalk.gschema.xml")
 subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
 os.environ["GSETTINGS_SCHEMA_DIR"] = str(schemas)
 import gi  # noqa: E402
@@ -39,7 +39,7 @@ from cassini_viewer.library_window import LibraryWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
 
 services = DesktopServices()
-app = CassiniApplication("com.gocassini.Viewer.BrowserTest", "test", "development")
+app = CassiniApplication("io.codemyriad.CassiniTalk.BrowserTest", "test", "development")
 # The RPC test server stays available while checking normal windowless auto-record.
 app.hold()
 # Production deliberately avoids shortcut registration in isolated-audio runs.

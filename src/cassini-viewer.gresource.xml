@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
-  <gresource prefix="/com/gocassini/Viewer">
+  <gresource prefix="/io/codemyriad/CassiniTalk">
     <file preprocess="xml-stripblanks">ui/window.ui</file>
     <file preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
     <file>style.css</file>

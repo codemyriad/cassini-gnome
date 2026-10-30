@@ -134,7 +134,9 @@ with tempfile.TemporaryDirectory() as temporary:
     subprocess.run([sys.executable, str(ROOT / "ux/library-vectors/make.py"), str(root / "fixtures")], check=True)
     schemas = root / "schemas"
     schemas.mkdir()
-    shutil.copyfile(ROOT / "data/com.gocassini.Viewer.gschema.xml", schemas / "com.gocassini.Viewer.gschema.xml")
+    shutil.copyfile(
+        ROOT / "data/io.codemyriad.CassiniTalk.gschema.xml", schemas / "io.codemyriad.CassiniTalk.gschema.xml"
+    )
     subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
     os.environ.update(GSETTINGS_SCHEMA_DIR=str(schemas), CASSINI_LIBRARY_DIR=str(root / "fixtures/main/root"))
     Gtk.Settings.get_default().props.gtk_enable_animations = False

@@ -5,7 +5,7 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later AND Apache-2.0 AND MIT</project_license>
 
-  <name>Cassini</name>
+  <name translate="no">@APP_NAME@</name>
   <summary>Read along with meeting recordings</summary>
   <description>
     <p>
@@ -27,7 +27,7 @@
     </p>
   </description>
 
-  <developer id="com.gocassini">
+  <developer id="io.codemyriad">
     <name>Codemyriad</name>
   </developer>
 
@@ -39,8 +39,10 @@
   <url type="vcs-browser">https://github.com/codemyriad/cassini-gnome</url>
   <url type="contribute">https://github.com/codemyriad/cassini-gnome/blob/main/CONTRIBUTING.md</url>
 
+  <replaces><id>com.gocassini.Viewer</id></replaces>
+
   <provides>
-    <binary>cassini-viewer</binary>
+    <binary>cassini-talk</binary>
     <mediatype>audio/ogg</mediatype>
     <mediatype>audio/x-opus+ogg</mediatype>
   </provides>

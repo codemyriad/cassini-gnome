@@ -31,7 +31,7 @@ from test_ci_release import module
         ("tests/test_future_ui_dependency.py", {"boards"}),
         ("tests/new_helpers.py", {"boards"}),
         ("tests/ux/states-vectors.json", {"boards", "library"}),
-        ("data/com.gocassini.Viewer.gschema.xml", {"boards", "library", "offline"}),
+        ("data/io.codemyriad.CassiniTalk.gschema.xml", {"boards", "library", "offline"}),
         ("meson_options.txt", {"boards", "library", "offline"}),
         (".github/workflows/ci.yml", {"boards", "library", "offline"}),
         ("build-aux/ci/product.py", {"boards", "library", "offline"}),

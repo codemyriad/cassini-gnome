@@ -21,7 +21,7 @@ Copyright: 2026 Codemyriad
 License: CC0-1.0
 Comment: Conformance vectors vendored from https://github.com/codemyriad/cassini-format
 
-Files: data/com.gocassini.Viewer.metainfo.xml.in
+Files: data/io.codemyriad.CassiniTalk.metainfo.xml.in
 Copyright: 2026 Silvio Tomatis
 License: CC0-1.0
 

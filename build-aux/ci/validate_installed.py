@@ -41,7 +41,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("version")
     parser.add_argument("--prefix", type=Path, default=Path("/usr"))
-    parser.add_argument("--app-id", default="com.gocassini.Viewer")
+    parser.add_argument("--app-id", default="io.codemyriad.CassiniTalk")
     args = parser.parse_args()
     print(json.dumps(validate(args.prefix, args.app_id, args.version), indent=2))
 

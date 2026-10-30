@@ -33,7 +33,7 @@ def service_path():
     runtime = os.environ.get("XDG_RUNTIME_DIR")
     parent = Path(runtime) if runtime else Path("/tmp") / f"cassini-{os.getuid()}"
     application = os.environ.get("FLATPAK_ID")
-    if runtime and application in {"com.gocassini.Viewer", "com.gocassini.Viewer.Devel"}:
+    if runtime and application in {"io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"}:
         # Shared by separate native-host/UI sandboxes of this deployment, but
         # distinct from native Cassini and the other Flatpak application ID.
         parent = parent / "app" / application
@@ -81,7 +81,7 @@ def ensure_service(path=None, *, cancelled=None):
     env = dict(os.environ)
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
     command = [sys.executable, "-m", "cassini_viewer.browser_service", "--serve", str(target)]
-    if os.environ.get("FLATPAK_ID") in {"com.gocassini.Viewer", "com.gocassini.Viewer.Devel"}:
+    if os.environ.get("FLATPAK_ID") in {"io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"}:
         from .flatpak_bridge import broker_command
 
         command = broker_command(target)

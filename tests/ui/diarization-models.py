@@ -55,7 +55,9 @@ try:
         tmp = Path(temporary)
         schemas = tmp / "schemas"
         schemas.mkdir()
-        shutil.copyfile(ROOT / "data/com.gocassini.Viewer.gschema.xml", schemas / "com.gocassini.Viewer.gschema.xml")
+        shutil.copyfile(
+            ROOT / "data/io.codemyriad.CassiniTalk.gschema.xml", schemas / "io.codemyriad.CassiniTalk.gschema.xml"
+        )
         subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
         os.environ.update(GSETTINGS_SCHEMA_DIR=str(schemas), CASSINI_LIBRARY_DIR=str(tmp / "library"))
         Gtk.Settings.get_default().props.gtk_enable_animations = False

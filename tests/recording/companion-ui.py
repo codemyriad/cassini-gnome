@@ -20,7 +20,7 @@ args = parser.parse_args()
 root = Path(__file__).resolve().parents[2]
 schemas = Path(os.environ["XDG_RUNTIME_DIR"]) / "companion-schemas"
 schemas.mkdir(exist_ok=True)
-shutil.copyfile(root / "data/com.gocassini.Viewer.gschema.xml", schemas / "com.gocassini.Viewer.gschema.xml")
+shutil.copyfile(root / "data/io.codemyriad.CassiniTalk.gschema.xml", schemas / "io.codemyriad.CassiniTalk.gschema.xml")
 subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
 os.environ["GSETTINGS_SCHEMA_DIR"] = str(schemas)
 import gi  # noqa: E402

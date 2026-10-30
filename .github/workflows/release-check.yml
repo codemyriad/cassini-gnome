@@ -50,7 +50,7 @@ jobs:
       - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
         with:
           bundle: cassini-viewer.flatpak
-          manifest-path: build-aux/flatpak/com.gocassini.Viewer.json
+          manifest-path: build-aux/flatpak/io.codemyriad.CassiniTalk.json
           cache-key: flatpak-builder-${{ github.sha }}
       - name: Validate exported metadata and launcher in the SDK
         run: |
@@ -64,7 +64,7 @@ jobs:
       - name: Install stable bundle and run the existing offline smoke checks
         env:
           CASSINI_PARAKEET_TEST_CACHE: ${{ runner.temp }}/parakeet-models
-        run: build-aux/flatpak/smoke.sh cassini-viewer.flatpak com.gocassini.Viewer
+        run: build-aux/flatpak/smoke.sh cassini-viewer.flatpak io.codemyriad.CassiniTalk
       - uses: actions/upload-artifact@v4
         if: always()
         with:

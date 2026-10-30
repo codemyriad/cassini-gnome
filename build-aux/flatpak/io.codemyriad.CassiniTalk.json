@@ -1,5 +1,5 @@
 {
-    "id": "com.gocassini.Viewer.Devel",
+    "id": "io.codemyriad.CassiniTalk",
     "runtime": "org.gnome.Platform",
     "runtime-version": "50",
     "sdk": "org.gnome.Sdk",
@@ -51,7 +51,7 @@
             "name": "cassini-viewer",
             "buildsystem": "meson",
             "config-opts": [
-                "-Dprofile=development"
+                "-Dprofile=default"
             ],
             "run-tests": true,
             "build-options": {

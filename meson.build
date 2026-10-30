@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-project('cassini-viewer',
+project('cassini-talk',
           version: '0.3.0',
     meson_version: '>= 1.0.0',
   default_options: [ 'warning_level=2', 'werror=false', ],
@@ -10,26 +10,28 @@ i18n = import('i18n')
 gnome = import('gnome')
 python = import('python')
 
-base_id = 'com.gocassini.Viewer'
+application_name = run_command(find_program('python3'), files('build-aux/product-name.py'), files('src/cassini_viewer/strings.json'), check: true).stdout().strip()
+
+base_id = 'io.codemyriad.CassiniTalk'
 if get_option('profile') == 'development'
   application_id = base_id + '.Devel'
 else
   application_id = base_id
 endif
 
-pkgdatadir = get_option('prefix') / get_option('datadir') / meson.project_name()
+pkgdatadir = get_option('prefix') / get_option('datadir') / 'cassini-viewer'
 moduledir = pkgdatadir / 'cassini_viewer'
 # The pinned ONNX Runtime wheel, unpacked (-Dwhistle=enabled): native code,
 # private to the app, and loaded only by the recognition child.
 if get_option('whistle').enabled()
-  onnxruntime_dir = get_option('prefix') / get_option('libdir') / meson.project_name() / 'python'
+  onnxruntime_dir = get_option('prefix') / get_option('libdir') / 'cassini-viewer' / 'python'
 else
   onnxruntime_dir = ''
 endif
 
 sherpa_dir = ''
 if get_option('sherpa').enabled()
-  sherpa_dir = get_option('prefix') / get_option('libdir') / meson.project_name() / 'sherpa'
+  sherpa_dir = get_option('prefix') / get_option('libdir') / 'cassini-viewer' / 'sherpa'
 endif
 
 # Runtime requirements, checked by gi.require_version() at startup:

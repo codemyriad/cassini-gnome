@@ -28,7 +28,7 @@ jobs:
       - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
         with:
           bundle: cassini-viewer-devel.flatpak
-          manifest-path: build-aux/flatpak/com.gocassini.Viewer.Devel.json
+          manifest-path: build-aux/flatpak/io.codemyriad.CassiniTalk.Devel.json
           cache-key: flatpak-builder-${{ github.sha }}
       - uses: actions/cache@v4
         with:
@@ -39,7 +39,7 @@ jobs:
       - name: Smoke-test the installed Flatpak offline
         env:
           CASSINI_PARAKEET_TEST_CACHE: ${{ runner.temp }}/parakeet-models
-        run: build-aux/flatpak/smoke.sh cassini-viewer-devel.flatpak com.gocassini.Viewer.Devel
+        run: build-aux/flatpak/smoke.sh cassini-viewer-devel.flatpak io.codemyriad.CassiniTalk.Devel
       - uses: actions/upload-artifact@v4
         if: always()
         with:
