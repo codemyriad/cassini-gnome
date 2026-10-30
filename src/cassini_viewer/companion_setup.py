@@ -2,8 +2,8 @@
 """UX10 setup: installation and registration are not a connection handshake."""
 
 import logging
-from concurrent.futures import ThreadPoolExecutor
-from threading import Event
+from concurrent.futures import Future
+from threading import Event, Thread
 
 from gi.repository import Adw, GLib, Gtk
 
@@ -20,7 +20,8 @@ class CompanionSetup(Adw.Dialog):
         self.app, self.service_path = app, service_path
         self.closed = False
         self.cancelled = Event()
-        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-companion")
+        self._render_signature = None
+        self._future_action = None
         self.future = None
         self.working = self.failed = self.add_requested = False
         self.local_error = None
@@ -108,6 +109,7 @@ class CompanionSetup(Adw.Dialog):
         return row, badge, detail, button
 
     def _add(self, *_):
+        self.local_error = None
         self.add_requested = True
         self.poll()
 
@@ -126,8 +128,21 @@ class CompanionSetup(Adw.Dialog):
     def _submit(self, call, action):
         if self.future is not None or self.closed:
             return False
-        self.future = self.executor.submit(call)
-        self.future.add_done_callback(lambda future: GLib.idle_add(self._received, future, action))
+        self._future_action = action
+        future = self.future = Future()
+
+        def work():
+            if not future.set_running_or_notify_cancel():
+                return
+            try:
+                result = call()
+            except Exception as error:
+                future.set_exception(error)
+            else:
+                future.set_result(result)
+
+        future.add_done_callback(lambda future: GLib.idle_add(self._received, future, action))
+        Thread(target=work, name="cassini-companion", daemon=True).start()
         return True
 
     def _snapshot(self):
@@ -151,7 +166,10 @@ class CompanionSetup(Adw.Dialog):
         return GLib.SOURCE_CONTINUE
 
     def _received(self, future, action):
+        if not future.done():
+            return False
         self.future = None
+        self._future_action = None
         if self.closed:
             return False
         try:
@@ -171,23 +189,34 @@ class CompanionSetup(Adw.Dialog):
 
     def render(self):
         controller = self.app.browser_connection
-        state = controller.snapshot() if controller else dict(phase="settingUp", names=(), browser=None)
+        state = (
+            controller.snapshot()
+            if controller
+            else dict(phase="settingUp", names=(), browser=None, everConnected=False)
+        )
         if state["phase"] == "connected":
             self.local_error = None
         if self.local_error:
             state = dict(state, phase="failed", reason=self.local_error.reason)
+        signature = (
+            tuple(state.items()),
+            self._future_action,
+            self.future is not None,
+            self.app.browser_companion_available,
+        )
+        if signature == self._render_signature:
+            return
+        self._render_signature = signature
         self.connected = state["phase"] == "connected"
         self.working, self.failed = state["phase"] == "settingUp", state["phase"] == "failed"
         if self.connected and state["names"]:
             self.browser_names = list(state["names"])
-        added = self.connected or bool(self.browser_names)
+        added = self.connected or bool(self.browser_names) or state.get("everConnected", False)
         if self.browser_names:
             key = "companion.addStep.doneSeveral" if len(self.browser_names) > 1 else "companion.addStep.done"
             self.add_caption.set_label(text(key, browser=self.browser_names[0], browsers=", ".join(self.browser_names)))
         else:
-            self.add_caption.set_label(
-                text("settings.browser.status.connectedGeneric") if added else text("companion.addStep.notAdded")
-            )
+            self.add_caption.set_label(text("common.done") if added else text("companion.addStep.notAdded"))
         self.add_button.set_visible(not added)
         self.add_button.set_sensitive(state["browser"] is not None and self.future is None)
         self.add_button.set_label(add_text(state))
@@ -199,6 +228,8 @@ class CompanionSetup(Adw.Dialog):
         self.connect_caption.set_visible(added)
         if state["phase"] == "needsBrowser":
             self.add_caption.set_label(state_text(state))
+        if self._future_action == "add" and state["browser"]:
+            self.add_caption.set_label(text("companion.opening", browser=state["browser"].name))
         self.connect_button.set_visible(added and self.failed and self.app.browser_companion_available)
         self.connect_button.set_sensitive(not self.working)
         self.connect_button.set_label(text("common.tryAgain"))
@@ -215,7 +246,7 @@ class CompanionSetup(Adw.Dialog):
             else None
         )
         for n, row, badge, done, working in (
-            (1, self.add_row, self.add_badge, added, False),
+            (1, self.add_row, self.add_badge, added, self._future_action == "add"),
             (2, self.connect_row, self.connect_badge, self.connected, added and self.working),
         ):
             badge.set_label("✓" if done else str(n))
@@ -223,10 +254,16 @@ class CompanionSetup(Adw.Dialog):
             state = "done" if done else "working" if working else "pending"
             row.update_property([Gtk.AccessibleProperty.LABEL], [text("companion.step.a11y." + state, n=n)])
 
+    def discard(self):
+        self.force_close()
+        # force_close on an unmounted sheet need not emit closed.
+        self._closed()
+
     def _closed(self, *_):
         self.closed = True
         self.cancelled.set()
         if self.timer:
             GLib.source_remove(self.timer)
             self.timer = 0
-        self.executor.shutdown(wait=False, cancel_futures=True)
+        if self.future:
+            self.future.cancel()

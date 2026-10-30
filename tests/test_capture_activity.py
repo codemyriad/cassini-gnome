@@ -116,3 +116,51 @@ def test_native_identity_only_comes_from_controller_owned_session(tmp_path):
         recorder=SimpleNamespace(pipeline=object(), path=str(tmp_path / "cassini-2026-10-27.opus"), stopping=False)
     )
     assert not recorder_activity([standalone]), "Standalone audio must never acquire an invented Library UUID"
+
+
+@pytest.mark.parametrize("failure", ["timeout", "exit"])
+def test_desktop_probe_failure_preserves_watch_lease_and_status_polling(service, tmp_path, monkeypatch, failure):  # noqa: F811
+    import subprocess
+
+    from cassini_viewer import browser_watch, companion, flatpak_bridge
+
+    failed = [False]
+    real_run = subprocess.run
+
+    def run(command, **kwargs):
+        if "cassini-desktops" in command:
+            if failed[0]:
+                if failure == "timeout":
+                    raise subprocess.TimeoutExpired(command, 2)
+                raise subprocess.CalledProcessError(1, command)
+            return subprocess.CompletedProcess(command, 0, stdout=(str(tmp_path) + "\0").encode())
+        return real_run(command, **kwargs)
+
+    monkeypatch.setattr(companion, "in_flatpak", lambda: True)
+    monkeypatch.setattr(
+        flatpak_bridge, "deployment", lambda: flatpak_bridge.Deployment("com.gocassini.Viewer", "x86_64", "stable")
+    )
+    monkeypatch.setattr(
+        flatpak_bridge,
+        "host_info",
+        lambda: (tmp_path / "config", tmp_path / "data", "/usr/bin/flatpak", {"chromium": "/host/bin/chromium"}),
+    )
+    monkeypatch.setattr(flatpak_bridge, "host_command", lambda command, **_: command)
+    monkeypatch.setattr(flatpak_bridge.subprocess, "run", run)
+    statuses, profiles = [], []
+    watcher = browser_watch.BrowserWatch(
+        statuses.append, path=service[1], profiles_changed=lambda: profiles.append(watcher._profiles)
+    )
+    try:
+        spin_until(lambda: watcher.future is None and watcher.lease is not None)
+        lease = watcher.lease
+        delivered = len(statuses)
+        failed[0] = True
+        watcher._profile_checked = float("-inf")
+        watcher.poll()
+        spin_until(lambda: watcher.future is None)
+        assert watcher.lease is lease and lease.fileno() >= 0, "A profile probe must not drop the application lease"
+        assert len(statuses) > delivered, "Broker status polling must continue after the probe fails"
+        assert profiles[-1] == "unavailable"
+    finally:
+        watcher.close()

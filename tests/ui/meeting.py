@@ -83,11 +83,38 @@ with tempfile.TemporaryDirectory() as temporary:
     assert all(v in labels(page.speakers) for v in ["43%", "36%", "21%", "Named by you", "Not named yet"])
     # Imported recognition metadata has no corresponding local saved voice.
     assert "Recognised from saved voices" not in labels(page.speakers)
+    menu_changes = []
+    handler = page.more_menu.connect("items-changed", lambda *_: menu_changes.append(1))
+    page.update(meeting)
+    page.update(meeting)
+    assert not menu_changes, "An unchanged meeting must not rebuild the More menu"
+    page.more_menu.disconnect(handler)
     window.player.seek(192000)
     current = next(row for row in page.bound.values() if row[0].speaker == "guest")
     assert "background=" in current[1].get_label()
     assert 'alpha="60%"' in page.bound[3][1].get_label()
     assert page.elapsed.get_label() == "00:03:12" and page.total.get_label() == "00:47:05"
+    assert isinstance(page.rate_button, Gtk.MenuButton)
+    window.activate_action("win.rate", GLib.Variant("s", "1.5"))
+    assert window.player.rate == 1.5 and page.rate_button.get_label() == "1.5×"
+    assert window.lookup_action("rate").get_state().get_string() == "1.5"
+    window.activate_action("win.rate", GLib.Variant("s", "nan"))
+    assert window.player.rate == 1.5, "Invalid rate must be ignored"
+    # Real GStreamer clock, synchronised fakesink: 4 wall seconds at 2×.
+    window.activate_action("win.rate", GLib.Variant("s", "2"))
+    window.player.seek(10000)
+    until(lambda: window.player._prerolled)
+    window.player.play()
+    until(lambda: window.player.position > 10100)
+    started, position = time.monotonic(), window.player.position
+    until(lambda: time.monotonic() - started >= 4)
+    advance = window.player.position - position
+    window.player.pause()
+    assert 7000 <= advance <= 9000, ("2× clock advance", advance)
+    print(f"PASS real 2× playback: {advance} ms in 4 wall seconds", flush=True)
+    window.activate_action("win.rate", GLib.Variant("s", "1.5"))
+    window.player.seek(192000)
+
     current[1].emit("activate-link", "item:0")
     until(lambda: window.player.position == 188000)
     page.seek.emit("change-value", Gtk.ScrollType.JUMP, 190000)
@@ -147,9 +174,13 @@ with tempfile.TemporaryDirectory() as temporary:
             retry.assert_called_once_with(empty)
         page.update(meeting)
         window._selected(None, SimpleNamespace(meeting=meeting))
-    # Synthetic growth owns its model until it is restored. Live Library
-    # notifications must not replace it with the on-disk fixture mid-assertion.
-    with patch.object(window.monitor, "callback", lambda _snapshot: None):
+    # Both scans and the independent one-second refresh must keep reading the
+    # synthetic fixture throughout this block. Restore the real model afterwards.
+    with (
+        patch.object(window.monitor, "callback", lambda _snapshot: None),
+        patch.object(window, "_source_snapshot", window._source_snapshot),
+        patch.object(window, "snapshot", window.snapshot),
+    ):
         # Growing transcripts splice stable rows and never drag a paused reader back.
         from dataclasses import replace
 
@@ -160,7 +191,22 @@ with tempfile.TemporaryDirectory() as temporary:
             Word(meeting.speakers[i % len(meeting.speakers)].id, i * 1000, i * 1000 + 900, f"Item {i}")
             for i in range(400)
         )
-        page.update(replace(meeting, words=timed, turns=reading_turns(timed)))
+
+        def show_synthetic(words):
+            current = replace(meeting, words=words, turns=reading_turns(words))
+            snapshot = replace(
+                window._source_snapshot,
+                meetings=tuple(current if m.key == current.key else m for m in window._source_snapshot.meetings),
+            )
+            window._source_snapshot = snapshot
+            window._updated(snapshot)
+            # Exercise the refresh that used to revert this test's model on
+            # slower hosted layout, rather than depending on timer alignment.
+            window._activity_tick()
+            assert page.meeting.words is words
+            assert page.store.get_n_items() == len(current.turns)
+
+        show_synthetic(timed)
         until(lambda: page.scroller.get_vadjustment().get_upper() > 5000)
         adjustment = page.scroller.get_vadjustment()
         adjustment.set_value(1500)
@@ -180,7 +226,7 @@ with tempfile.TemporaryDirectory() as temporary:
         stable = page.store.get_item(1)
         anchor = visible_anchor()
         grown = timed + (Word(meeting.speakers[0].id, 400000, 400900, "New words"),)
-        page.update(replace(meeting, words=grown, turns=reading_turns(grown)))
+        show_synthetic(grown)
         frames = []
         page.list.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 2)[1])
         until(lambda: len(frames) >= 2)
@@ -233,6 +279,18 @@ with tempfile.TemporaryDirectory() as temporary:
     window.read_button.emit("clicked")
     until(lambda: window.meeting_page is not None)
     assert window.meeting_page.meeting.words
+    assert not isinstance(window.player, FolderPlayer), "Received meeting must exercise player replacement"
+    assert window.player.rate == 1.5 and window.meeting_page.rate_button.get_label() == "1.5×"
+    subprocess.run(["xdotool", "key", "ctrl+bracketright"], check=True)
+    until(lambda: window.player.rate == 1.75)
+    assert window.meeting_page.rate_button.get_label() == "1.75×"
+    app.on_shortcuts()
+    until(lambda: app.shortcuts_dialog and app.shortcuts_dialog.get_mapped())
+    shortcut_labels = labels(app.shortcuts_dialog)
+    assert "Increase playback speed" in shortcut_labels and "Decrease playback speed" in shortcut_labels
+    app.shortcuts_dialog.close()
+    until(lambda: app.shortcuts_dialog is None)
+
     assert len(app.get_windows()) == 1, "File opens belong to the pushed reading page"
     # Library files opened via Open/CLI remain attached to live model updates.
     own = next(m for m in window.snapshot.meetings if m.title == "Client call, Rossi & Partners")

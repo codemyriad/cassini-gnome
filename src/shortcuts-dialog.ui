@@ -78,6 +78,8 @@
             <property name="action-name">win.skip-forward</property>
           </object>
         </child>
+        <child><object class="AdwShortcutsItem"><property name="action-name">win.rate-up</property></object></child>
+        <child><object class="AdwShortcutsItem"><property name="action-name">win.rate-down</property></object></child>
       </object>
     </child>
     <child>

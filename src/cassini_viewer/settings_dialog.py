@@ -519,7 +519,7 @@ class SettingsDialog(Adw.PreferencesDialog):
 
         def ready(result):
             def launch():
-                if not self.closed:
+                if not self.closed and result.done():
                     try:
                         result.result()
                         Gtk.FileLauncher(file=Gio.File.new_for_path(str(root))).launch(
@@ -589,6 +589,8 @@ class SettingsDialog(Adw.PreferencesDialog):
                 GLib.idle_add(self.app.finish_auto_recording_change, token, result)
 
     def _received(self, future):
+        if not future.done():
+            return False
         self._future = None
         if self.closed:
             return False

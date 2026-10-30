@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Per-user companion registration; no root, shell commands or manual IDs."""
 
+import configparser
 import hashlib
 import json
 import logging
 import os
+import shlex
 import shutil
 import stat
 import subprocess
@@ -17,6 +19,8 @@ EXTENSION_ID = "pcafdaahfhjiolfpfnlhmljfgoabbaij"
 ADD_URL = "https://chromewebstore.google.com/detail/" + EXTENSION_ID
 ORIGIN = "chrome-extension://" + EXTENSION_ID + "/"
 MANIFEST_LIMIT = 65536
+# Mount identity cannot change inside this process; avoid filesystem probes on clicks.
+_FLATPAK_INFO = Path("/.flatpak-info").is_file()
 LEGACY_HOSTS = {
     "com.codemyriad.cassini": {"cassini-browser-host", "native_host.py", "com.codemyriad.cassini.py"},
     "com.codemyriad.cassini.control": {
@@ -122,10 +126,11 @@ class Browser:
     name: str
     executable: str
     config: Path
+    arguments: tuple[str, ...] = ()
 
 
 def in_flatpak():
-    return bool(os.environ.get("FLATPAK_ID") or Path("/.flatpak-info").is_file())
+    return bool(os.environ.get("FLATPAK_ID") or _FLATPAK_INFO)
 
 
 def probe():
@@ -141,28 +146,84 @@ def available():
     return probe()[0]
 
 
-def installed_browsers(*, config=None, which=shutil.which, host=True):
+BROWSER_APPS = (
+    ("Chrome", ("google-chrome", "google-chrome-stable"), "google-chrome", "com.google.Chrome"),
+    ("Chromium", ("chromium", "chromium-browser"), "chromium", "org.chromium.Chromium"),
+    ("Edge", ("microsoft-edge", "microsoft-edge-stable"), "microsoft-edge", "com.microsoft.Edge"),
+    ("Brave", ("brave-browser", "brave"), "BraveSoftware/Brave-Browser", "com.brave.Browser"),
+)
+DESKTOP_NAMES = tuple(
+    dict.fromkeys(name + ".desktop" for _, commands, _, app in BROWSER_APPS for name in (*commands, app))
+)
+
+
+def desktop_inventory(home, data):
+    entries = {}
+    roots = (
+        data / "applications",
+        home / ".local/share/flatpak/exports/share/applications",
+        Path("/var/lib/flatpak/exports/share/applications"),
+        Path("/var/lib/snapd/desktop/applications"),
+        *(Path(p) / "applications" for p in os.environ.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share").split(":")),
+    )
+    for root in roots:
+        for name in DESKTOP_NAMES:
+            if name in entries:
+                continue
+            try:
+                with (root / name).open() as stream:
+                    entries[name] = stream.read(65536)
+            except (OSError, UnicodeError):
+                pass
+    return entries
+
+
+def installed_browsers(*, config=None, which=shutil.which, host=True, home=None, desktops=None):
     if host and in_flatpak():
         from .flatpak_bridge import installed_browsers as host_browsers
 
         return host_browsers()
-    config = Path(config or os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    home = Path(home or Path.home())
+    config = Path(config or os.environ.get("XDG_CONFIG_HOME", home / ".config"))
+    if desktops is None:
+        data = Path(os.environ.get("XDG_DATA_HOME", home / ".local/share"))
+        desktops = desktop_inventory(home, data)
+    parsed = {}
+    for name, content in desktops.items():
+        parser = configparser.ConfigParser(interpolation=None, strict=False)
+        try:
+            parser.read_string(content)
+            entry = parser["Desktop Entry"]
+            if entry.get("Hidden", "false").lower() != "true":
+                parsed[name] = shlex.split(entry.get("Exec", ""))
+        except (configparser.Error, KeyError, ValueError):
+            continue
     result = []
-    for name, commands, directory in (
-        ("Chrome", ("google-chrome", "google-chrome-stable"), "google-chrome"),
-        ("Chromium", ("chromium", "chromium-browser"), "chromium"),
-        ("Edge", ("microsoft-edge", "microsoft-edge-stable"), "microsoft-edge"),
-        ("Brave", ("brave-browser", "brave"), "BraveSoftware/Brave-Browser"),
-    ):
+    for name, commands, directory, app in BROWSER_APPS:
         executable = next((path for command in commands if (path := which(command))), None)
+        root = config / directory
+        snap = which("/snap/bin/chromium") if name == "Chromium" else None
+        if snap == "/snap/bin/chromium":
+            executable, root = snap, home / "snap/chromium/common/chromium"
+        if not executable:
+            for command in commands:
+                words = parsed.get(command + ".desktop", ())
+                if words and (Path(words[0]).name in commands) and (path := which(words[0])):
+                    executable = path
+                    break
         if executable:
-            result.append(Browser(name, executable, config / directory))
+            result.append(Browser(name, executable, root))
+        # The native and Flatpak editions can coexist; register both profiles.
+        words = parsed.get(app + ".desktop", ())
+        flatpak = which("flatpak")
+        if words and app in words and "run" in words and Path(words[0]).name == "flatpak" and flatpak:
+            result.append(Browser(name, flatpak, home / ".var/app" / app / "config" / directory, ("run", app)))
     return result
 
 
 def open_add(browser, *, launch=subprocess.Popen):
     """The sole Add entry point; a click never means the extension is installed."""
-    command = [browser.executable, ADD_URL]
+    command = [browser.executable, *browser.arguments, ADD_URL]
     if in_flatpak():
         from .flatpak_bridge import detached_command
 
@@ -214,7 +275,7 @@ def profile_inventory():
                 profiles.append((str(browser.config), False, []))
             except OSError as error:
                 profiles.append((str(browser.config), "unavailable-" + str(error.errno), []))
-    values = [(b.name, b.executable, str(b.config)) for b in browsers]
+    values = [(b.name, b.executable, b.arguments, str(b.config)) for b in browsers]
     return hashlib.sha256(json.dumps([values, profiles], sort_keys=True).encode()).hexdigest()
 
 
