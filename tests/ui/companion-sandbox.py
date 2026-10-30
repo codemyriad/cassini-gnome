@@ -156,6 +156,9 @@ with tempfile.TemporaryDirectory() as temporary:
                     bridge, "deployment", return_value=bridge.Deployment("com.gocassini.Viewer", "x86_64", "master")
                 ),
                 patch.object(bridge, "host_info", side_effect=host_info),
+                # The new bounded desktop inventory runs against this private
+                # home, never flatpak-spawn or the user's host desktop.
+                patch.object(bridge, "host_command", side_effect=lambda command, **_: command),
                 patch.object(SettingsDialog, "_call", return_value={}),
             ):
                 app.retry_browser_connection()

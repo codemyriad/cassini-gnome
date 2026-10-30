@@ -231,3 +231,19 @@ def test_registration_failure_keeps_the_installed_browser_available_for_add(tmp_
         assert controller.snapshot()["browser"] == browser
     finally:
         controller.close()
+
+
+def test_identical_observations_do_not_render_again():
+    changes = []
+    controller = Clock().connection(lambda: (), lambda: changes.append(1))
+    for _ in range(20):
+        controller.observe(dict(connectedBrowsers=0, browserNames=[]))
+    assert not changes
+    controller.observe(dict(connectedBrowsers=1, browserNames=["Chrome"]))
+    assert controller.snapshot()["everConnected"]
+    for _ in range(20):
+        controller.observe(dict(connectedBrowsers=1, browserNames=["Chrome"]))
+    assert len(changes) == 1
+    controller.observe(dict(connectedBrowsers=0, browserNames=[]))
+    assert len(changes) == 2 and controller.snapshot()["everConnected"]
+    controller.close()

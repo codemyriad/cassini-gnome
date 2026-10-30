@@ -52,7 +52,7 @@ from cassini_viewer.main import CassiniApplication  # noqa: E402
 
 
 def until(check):
-    end = time.monotonic() + 10
+    end = time.monotonic() + 2
     context = GLib.MainContext.default()
     while time.monotonic() < end:
         for _ in range(64):
@@ -241,6 +241,13 @@ with tempfile.TemporaryDirectory() as temporary:
     settings.force_close()
     dialog.force_close()
     until(lambda: dialog.closed)
+    reopened = app.on_companion_setup(parent=window)
+    until(reopened.get_mapped)
+    assert reopened.add_badge.get_label() == "✓" and not reopened.add_button.get_visible()
+    assert reopened.add_caption.get_label() == "Done"
+    assert reopened.connect_row.get_visible() and not reopened.done.get_sensitive()
+    reopened.force_close()
+    until(lambda: reopened.closed)
     window.close()
     app.do_shutdown()
     service.closed.set()

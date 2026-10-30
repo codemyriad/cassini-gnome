@@ -110,6 +110,15 @@ def child():
             window.back_to_library()
             window.open_meeting(meeting)
             window.meeting_page.name_speakers = name_speaker
+            window.meeting_page.rate_button.get_popover().connect("map", lambda *_: record_event("speed-menu"))
+
+            def changed(button, *_):
+                if button.get_label() == "1.5×":
+                    assert window.player.rate == 1.5
+                    assert window.lookup_action("rate").get_state().get_string() == "1.5"
+                    record_event("speed-changed")
+
+            window.meeting_page.rate_button.connect("notify::label", changed)
 
         def name_speaker(_identifier):
             record_event("speaker")
@@ -147,7 +156,13 @@ def parent():
 
     def buttons():
         def walk(node):
-            if node.get_role() == Atspi.Role.PUSH_BUTTON:
+            if node.get_role() in (
+                Atspi.Role.PUSH_BUTTON,
+                Atspi.Role.TOGGLE_BUTTON,
+                Atspi.Role.RADIO_MENU_ITEM,
+                Atspi.Role.RADIO_BUTTON,
+                Atspi.Role.MENU_ITEM,
+            ):
                 yield node
             for index in range(node.get_child_count()):
                 item = node.get_child_at_index(index)
@@ -206,6 +221,8 @@ def parent():
             activate("Record", None)
             activate("Start recording", "start")
             activate("Stop", "stop")
+            activate("Playback speed, 1×", "speed-menu")
+            activate("1.5×", "speed-changed")
             activate("Marta", "speaker")
             activate("Play from 00:00:04", "search-play")
             assert process.wait(10) == 0

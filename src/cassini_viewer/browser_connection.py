@@ -146,10 +146,12 @@ class BrowserConnection:
     def observe(self, snapshot):
         if self.closed:
             return
+        before = self.connected, self.names
         self.connected = bool(snapshot.get("connectedBrowsers", snapshot.get("browsers")))
         self.ever_connected |= self.connected
         self.names = tuple(snapshot.get("browserNames", []))
-        self.changed()
+        if before != (self.connected, self.names):
+            self.changed()
 
     def trigger(self):
         if self.closed:
@@ -190,6 +192,8 @@ class BrowserConnection:
         return False
 
     def _finished(self, future, revision):
+        if not future.done():
+            return False
         self.future = None
         if self.closed:
             return False

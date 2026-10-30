@@ -52,6 +52,7 @@ install_data(
   'cassini_viewer/__init__.py',
   'cassini_viewer/colors.py',
   'cassini_viewer/main.py',
+  'cassini_viewer/main_loop_watchdog.py',
   'cassini_viewer/library_window.py',
   'cassini_viewer/meeting_trash.py',
   'cassini_viewer/trash_cleanup.py',

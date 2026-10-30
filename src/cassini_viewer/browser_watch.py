@@ -86,6 +86,8 @@ class BrowserWatch:
         return GLib.SOURCE_CONTINUE
 
     def _received(self, future):
+        if not future.done():
+            return False
         self.future = None
         if not self.closed.is_set():
             if self._profiles is not None and self._profiles != self._delivered_profiles:

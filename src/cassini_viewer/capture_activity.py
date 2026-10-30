@@ -78,6 +78,8 @@ class BrowserActivity:
         return GLib.SOURCE_CONTINUE
 
     def _complete(self, future):
+        if not future.done():
+            return False
         self.future = None
         if not self.closed:
             value, connected, paths = future.result()
