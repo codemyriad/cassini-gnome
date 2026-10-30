@@ -407,3 +407,143 @@ def test_an_empty_trailing_eos_page_is_rejected(tmp_path):
     path.write_bytes(bytes(data[:last]) + bytes(page) + bytes(extra))
     with pytest.raises(ogg.OggError, match="end-of-stream"):
         ogg.validate_path(path)
+
+
+# ---- second review round (46a5f2f) ---------------------------------------------------------
+
+
+class Died(BaseException):
+    """A process death between two steps, without leaving the test process."""
+
+
+def die_at(monkeypatch, name):
+    def hook(step):
+        if step == name:
+            raise Died()
+
+    monkeypatch.setattr(publish, "CHECKPOINT", hook)
+
+
+def into_bin(monkeypatch, tmp_path):
+    bin_ = tmp_path / "trash"
+    bin_.mkdir(exist_ok=True)
+    monkeypatch.setattr(publish, "TRASH", lambda path: os.rename(path, bin_ / path.name))
+    return bin_
+
+
+def test_delete_after_a_rename_that_crashed_before_placement_trashes_the_renamed_file(tmp_path, monkeypatch):
+    sid, directory = simple_session(tmp_path, 0.5)
+    finalize(tmp_path, sid)
+    die_at(monkeypatch, "staged")
+    with pytest.raises(Died):
+        edit.edit_meeting(tmp_path, "Recording", sid, dict(title="Renamed", titleSource="user"))
+    monkeypatch.setattr(publish, "CHECKPOINT", None)
+    bin_ = into_bin(monkeypatch, tmp_path)
+    layout = journal.Layout(tmp_path)
+    with journal.LibraryLock(layout):
+        stale = publish.find_file(layout, "Recording", sid)
+        assert stale == OLD  # what a caller saw before the replay
+        publish.delete(layout, origin="Recording", session_id=sid, file_name=stale)
+    assert root_files(tmp_path) == [] and rows(tmp_path) == {}
+    assert sorted(os.listdir(bin_)) == sorted(["2026-10-30--18.02-Renamed.opus", directory.name])
+    clean(tmp_path)
+
+
+def test_the_link_window_never_removes_a_copy_when_the_new_name_was_overwritten(tmp_path, monkeypatch):
+    sid, directory = simple_session(tmp_path, 0.5)
+    finalize(tmp_path, sid)
+    other_id, _ = simple_session(tmp_path, 0.5, title="Other")
+    other = (tmp_path / finalize(tmp_path, other_id).name).read_bytes()
+    rename = fsutil.rename_noreplace
+
+    def link_then_die(source, target):
+        if Path(source).name.endswith(".opus.stage") and Path(target).name.endswith("Renamed.opus"):
+            os.link(source, target)  # the fallback's first half
+            raise Died()
+        return rename(source, target)
+
+    monkeypatch.setattr(fsutil, "rename_noreplace", link_then_die)
+    with pytest.raises(publish.PendingCommit):
+        edit.edit_meeting(tmp_path, "Recording", sid, dict(title="Renamed", titleSource="user"))
+    monkeypatch.setattr(fsutil, "rename_noreplace", rename)
+    (tmp_path / "2026-10-30--18.02-Renamed.opus").write_bytes(other)  # in place: the stage changes too
+    report = journal.recover(tmp_path)
+    assert len(report.kept) == 1 and publish.file_identity(tmp_path / OLD)[:2] == ("Recording", sid)
+    assert any(n.endswith(".opus.stage") for n in os.listdir(tmp_path / ".cassini/staging"))
+
+
+def test_settle_leaves_another_file_at_the_old_name_and_retires(tmp_path, monkeypatch):
+    sid, directory = simple_session(tmp_path, 0.5)
+    finalize(tmp_path, sid)
+    other_id, _ = simple_session(tmp_path, 0.5, title="Other")
+    other_name = finalize(tmp_path, other_id).name
+    die_at(monkeypatch, "after-meeting")
+    with pytest.raises(publish.PendingCommit):
+        edit.edit_meeting(tmp_path, "Recording", sid, dict(title="Renamed", titleSource="user"))
+    monkeypatch.setattr(publish, "CHECKPOINT", None)
+    os.replace(tmp_path / other_name, tmp_path / OLD)  # another meeting took the old name
+    report = journal.recover(tmp_path)
+    assert not report.kept and publish.file_identity(tmp_path / OLD)[1] == other_id
+    assert publish.file_identity(tmp_path / "2026-10-30--18.02-Renamed.opus")[1:] == (sid, 2)
+    clean(tmp_path)
+
+
+def test_a_name_taken_after_the_original_moved_aside_takes_the_next_suffix(tmp_path, monkeypatch):
+    emulate_case_insensitive(monkeypatch.setattr)
+    sid, directory = simple_session(tmp_path, 0.5)
+    finalize(tmp_path, sid)
+    die_at(monkeypatch, "case-temp")
+    with pytest.raises(publish.PendingCommit):
+        edit.edit_meeting(tmp_path, "Recording", sid, dict(title="WEEKLY sync", titleSource="user"))
+    monkeypatch.setattr(publish, "CHECKPOINT", None)
+    (tmp_path / "2026-10-30--18.02-weekly SYNC.opus").write_bytes(b"someone else")  # same casefold name
+    report = journal.recover(tmp_path)
+    assert not report.kept
+    assert sorted(root_files(tmp_path)) == [
+        "2026-10-30--18.02-WEEKLY sync (2).opus",
+        "2026-10-30--18.02-weekly SYNC.opus",
+    ]
+    assert not [n for n in os.listdir(tmp_path) if n.startswith(".cassini-case-")]
+    assert (tmp_path / "2026-10-30--18.02-weekly SYNC.opus").read_bytes() == b"someone else"
+    clean(tmp_path)
+
+
+def test_a_symlinked_session_folder_is_refused(tmp_path):
+    sid, directory = simple_session(tmp_path, 0.5)
+    finalize(tmp_path, sid)
+    elsewhere = tmp_path / "elsewhere"
+    os.rename(directory, elsewhere)
+    (elsewhere / "meeting.json").unlink()
+    os.symlink(elsewhere, directory)
+    with pytest.raises(publish.Kept):
+        edit.edit_meeting(tmp_path, "Recording", sid, dict(title="Through a link", titleSource="user"))
+    assert not (elsewhere / "meeting.json").exists() and root_files(tmp_path) == [OLD]
+
+
+def test_recovery_completes_when_the_session_folder_went_meanwhile(tmp_path, monkeypatch):
+    sid, directory = simple_session(tmp_path, 0.5)
+    finalize(tmp_path, sid)
+    die_at(monkeypatch, "renamed")
+    with pytest.raises(Died):
+        edit.edit_meeting(tmp_path, "Recording", sid, dict(title="Renamed", titleSource="user"))
+    monkeypatch.setattr(publish, "CHECKPOINT", None)
+    shutil.rmtree(directory)
+    assert not journal.recover(tmp_path).kept
+    assert root_files(tmp_path) == ["2026-10-30--18.02-Renamed.opus"]
+    clean(tmp_path)
+
+
+def test_a_file_with_a_non_integer_revision_has_no_identity(tmp_path):
+    sid, _ = simple_session(tmp_path, 0.5)
+    finalize(tmp_path, sid)
+    path = tmp_path / OLD
+    live = portable.read_meeting(str(path))
+    manifest = live.manifest
+    manifest["x"]["codemyriad.io"]["revision"] = "2"
+    replacements, _ = edit.chunk_set(edit.MANIFEST_PREFIX, manifest, edit.MANIFEST_MIME)
+    with open(path, "rb") as stream:
+        vendor, fields = edit.comment_fields(stream)
+    damaged = tmp_path / "2026-10-30--18.02-Damaged.opus"
+    edit.rewrite(path, damaged, edit.edited_fields(fields, replacements), vendor)
+    assert publish.file_identity(damaged) is None
+    assert publish.find_file(journal.Layout(tmp_path), "Recording", sid) == OLD

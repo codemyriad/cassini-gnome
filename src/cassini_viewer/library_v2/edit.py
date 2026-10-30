@@ -153,6 +153,8 @@ def edit_meeting(root, origin, session_id, changes, *, untitled=None):
         if report.blocks(origin, session_id):
             raise publish.PendingCommit("An earlier change to this meeting has not finished")
         session = layout.session(origin, session_id)
+        if session.is_symlink():
+            raise publish.Kept("The session folder is a link; it was kept")
         name = publish.find_file(layout, origin, session_id)
         if name is None:
             raise FileNotFoundError("The meeting's file is missing")
