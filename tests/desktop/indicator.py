@@ -6,11 +6,13 @@ import json
 import subprocess
 import wave
 
+from gi.repository import GLib
 from windowless import (
     HOME,
     OUT,
     action,
     broker_configure,
+    call,
     capture_inputs,
     choose_recording_sources,
     click,
@@ -102,7 +104,32 @@ for appid in ("com.gocassini.Viewer", "com.gocassini.Viewer.Devel"):
     broker_configure(appid)
     assert not (indicator(appid) or {}).get("visible"), "Idle with a visible Library should be passive"
     close_window(appid)
-    until(lambda appid=appid: not windows(appid) and (indicator(appid) or {}).get("visible"), "idle SNI visible")
+    try:
+        until(lambda appid=appid: not windows(appid) and (indicator(appid) or {}).get("visible"), "idle SNI visible")
+    except AssertionError:
+        try:
+            properties = call(
+                appid,
+                "/StatusNotifierItem",
+                "org.freedesktop.DBus.Properties",
+                "GetAll",
+                GLib.Variant("(s)", ("org.kde.StatusNotifierItem",)),
+            )[0]
+            properties = {key: properties[key] for key in ("Id", "Status", "Title")}
+        except GLib.Error as error:
+            properties = str(error)
+        print(
+            "SNI idle diagnostic",
+            dict(
+                app=appid, owner=owner(appid), windows=windows(appid), indicator=indicator(appid), properties=properties
+            ),
+            shell(
+                "Object.values(Main.panel.statusArea).filter(a=>a?._indicator?.id).map(a=>({id:a._indicator.id,ready:a._indicator.isReady,status:a._indicator.status}))"
+            ),
+            flush=True,
+        )
+        screenshot("indicator-idle-failed.png")
+        raise
     until(lambda appid=appid: idle_notifications(appid), "still-running notification")
     assert idle_notifications(appid) == 1
     idle = indicator(appid)
@@ -125,7 +152,7 @@ for appid in ("com.gocassini.Viewer", "com.gocassini.Viewer.Devel"):
         ("Me", True, False, ["mic"]),
         ("The others", False, True, ["speakers.monitor"]),
     ]:
-        choose_recording_sources(manifest, label, me, others)
+        choose_recording_sources(manifest, label, me, others, appid)
         until(lambda expected=expected: capture_inputs() == expected, "actual source streams " + label)
         measured = measured_privacy(expected)
         privacy.append(dict(path="mic" if me else "system", inputs=capture_inputs(), indicator=measured))

@@ -306,15 +306,21 @@ def selected(manifest, me, others):
     return selection.get("me") is me and selection.get("others") is others
 
 
-def choose_recording_sources(manifest, label, me, others):
+def choose_recording_sources(manifest, label, me, others, appid):
     click("Change what is recorded")
+    assert shell(
+        "(() => {const w=imports.gi.Shell.AppSystem.get_default().lookup_app("
+        + json.dumps(appid + ".desktop")
+        + ")?.get_windows()[0];if(!w)return false;w.activate(global.get_current_time());return true;})()"
+    )
 
     def radio():
         candidates = []
         for node in walk(Atspi.get_desktop(0)):
             if node.get_name() != label or node.get_role_name() != "radio button":
                 continue
-            if not node.get_state_set().contains(Atspi.StateType.SHOWING):
+            state = node.get_state_set()
+            if not state.contains(Atspi.StateType.SHOWING) or not state.contains(Atspi.StateType.SENSITIVE):
                 continue
             rectangle = node.get_component_iface().get_extents(Atspi.CoordType.SCREEN)
             if rectangle.width > 0:
@@ -322,9 +328,69 @@ def choose_recording_sources(manifest, label, me, others):
         return min(candidates, key=lambda value: value[0])[1] if candidates else None
 
     choice = until(radio, "source radio " + label)
-    assert choice.get_action_iface().do_action(0), "Source radio action refused"
-    until(lambda: selected(manifest, me, others), "source selection " + label)
-    click("Close", dialog="What is recorded")
+    # Wayland GTK cannot supply global coordinates or implement AT-SPI
+    # GrabFocus for these radio prefixes. Click the real row using its window
+    # coordinates and the private compositor's authoritative window position.
+    row = choice
+    current = choice.get_parent()
+    while current and current.get_role_name() not in ("radio group", "dialog"):
+        box = current.get_component_iface().get_extents(Atspi.CoordType.WINDOW)
+        if box.width > 100 and 20 < box.height < 100:
+            row = current
+        current = current.get_parent()
+    box = row.get_component_iface().get_extents(Atspi.CoordType.WINDOW)
+    frame = shell(
+        "(() => {const w=imports.gi.Shell.AppSystem.get_default().lookup_app("
+        + json.dumps(appid + ".desktop")
+        + ").get_windows()[0];const r=w.get_frame_rect();return {x:r.x,y:r.y};})()"
+    )
+    x, y = frame["x"] + box.x + box.width / 2, frame["y"] + box.y + box.height / 2
+
+    def pointer_ready():
+        pointer = shell("global.get_pointer()")
+        if abs(pointer[0] - x) < 2 and abs(pointer[1] - y) < 2:
+            return True
+        # Mutter initializes a headless virtual pointer on its first motion;
+        # it may ignore that event's x coordinate. Moving is idempotent: keep
+        # placing it until the compositor reports the actual target position.
+        shell(
+            "(() => {global._cassiniQaPointer??=imports.gi.Clutter.get_default_backend().get_default_seat().create_virtual_device("
+            "imports.gi.Clutter.InputDeviceType.POINTER_DEVICE);"
+            f"global._cassiniQaPointer.notify_absolute_motion(imports.gi.GLib.get_monotonic_time(),{x},{y});return true;}})()"
+        )
+        return False
+
+    until(pointer_ready, "pointer reaches source row " + label)
+    assert shell(
+        "(() => {const t=imports.gi.GLib.get_monotonic_time();"
+        "global._cassiniQaPointer.notify_button(t,1,imports.gi.Clutter.ButtonState.PRESSED);"
+        "imports.gi.GLib.idle_add(imports.gi.GLib.PRIORITY_DEFAULT_IDLE,()=>{"
+        "global._cassiniQaPointer.notify_button(imports.gi.GLib.get_monotonic_time(),1,imports.gi.Clutter.ButtonState.RELEASED);"
+        "return imports.gi.GLib.SOURCE_REMOVE;});return true;})()"
+    )
+    try:
+        until(lambda: selected(manifest, me, others), "source selection " + label)
+    except AssertionError:
+        print(
+            "SOURCE CLICK",
+            dict(
+                target=[x, y],
+                frame=frame,
+                box=[box.x, box.y, box.width, box.height],
+                pointer=shell("global.get_pointer()"),
+                states=[str(state) for state in choice.get_state_set().get_states()],
+            ),
+            flush=True,
+        )
+        call(
+            "org.gnome.Shell.Screenshot",
+            "/org/gnome/Shell/Screenshot",
+            "org.gnome.Shell.Screenshot",
+            "Screenshot",
+            GLib.Variant("(bbs)", (True, False, str(OUT / "source-selection-failed.png"))),
+        )
+        raise
+    click("Done", dialog="What is recorded")
 
 
 def recording(root):
@@ -339,8 +405,23 @@ def prepare_desktop():
     until(lambda: (Path(os.environ["XDG_RUNTIME_DIR"]) / "wayland-0").exists(), "private Wayland socket")
     os.environ["WAYLAND_DISPLAY"] = "wayland-0"
     until(lambda: shell("Main.overview.hide(); true"), "GNOME Shell ready")
+    until(
+        lambda: shell("!!Main.panel.statusArea.quickSettings._volumeInput?._indicator"), "GNOME audio indicators ready"
+    )
     version = subprocess.check_output(["gnome-shell", "--version"], text=True).strip()
     assert version.startswith("GNOME Shell 50"), version
+    # PipeWire's shipped pipewire.conf documents the adapter/audiotestsrc
+    # factory. It generates microphone PCM without opening a loopback capture
+    # stream, so an idle privacy indicator remains a meaningful baseline.
+    config = HOME / ".config/pipewire/pipewire.conf.d"
+    config.mkdir(parents=True, exist_ok=True)
+    (config / "90-cassini-qa-source.conf").write_text(
+        "context.spa-libs = { audiotestsrc = audiotestsrc/libspa-audiotestsrc }\n"
+        "context.objects = [{ factory = adapter args = { factory.name = audiotestsrc "
+        'node.name = mic node.description = "QA microphone" media.class = Audio/Source '
+        "audio.position = [ MONO ] audio.rate = 48000 node.always-process = true "
+        "node.param.Props = { live = false } } }]\n"
+    )
     subprocess.Popen(["pipewire"], stdout=(OUT / "pipewire.log").open("w"), stderr=subprocess.STDOUT)
     until(lambda: (Path(os.environ["XDG_RUNTIME_DIR"]) / "pipewire-0").exists(), "PipeWire")
     subprocess.Popen(["wireplumber"], stdout=(OUT / "wireplumber.log").open("w"), stderr=subprocess.STDOUT)
@@ -358,20 +439,6 @@ def prepare_desktop():
             ),
             "private audio " + name,
         )
-    # A virtual source node, rather than module-remap-source: the latter opens
-    # a loopback capture stream that would light GNOME's privacy indicator even
-    # before Cassini records anything and invalidate the D41.1 measurements.
-    subprocess.run(
-        [
-            "pw-cli",
-            "create-node",
-            "adapter",
-            "{ factory.name=support.null-audio-sink node.name=mic media.class=Audio/Source/Virtual "
-            "object.linger=true audio.position=[MONO] monitor.passthrough=true }",
-        ],
-        check=True,
-        capture_output=True,
-    )
     until(
         lambda: any(
             line.split()[1] == "mic"
@@ -440,9 +507,25 @@ def main():
         probe = None if flatpak else host_status_probe(appid)
         if probe:
             case["hostPortal"] = probe
-        can_list = flatpak or probe["statusAccepted"]
+        can_list = flatpak  # D41.3: native builds use SNI / app-grid, never claim Background Apps.
         if can_list:
-            row = until(lambda appid=appid: status_row(appid), "watching status in real Background Apps")
+            try:
+                row = until(lambda appid=appid: status_row(appid), "watching status in real Background Apps")
+            except AssertionError:
+                rows = call(
+                    "org.freedesktop.background.Monitor",
+                    "/org/freedesktop/background/monitor",
+                    "org.freedesktop.DBus.Properties",
+                    "Get",
+                    GLib.Variant("(ss)", ("org.freedesktop.background.Monitor", "BackgroundApps")),
+                )[0]
+                print(
+                    "BACKGROUND STATUS",
+                    dict(app=appid, owner=owner(appid), windows=windows(appid), rows=rows),
+                    flush=True,
+                )
+                screenshot("background-status-failed.png")
+                raise
             assert row.get("message") == "Ready to record browser meetings", row
             case["idleStatus"] = row["message"]
             until(lambda appid=appid: idle_notifications(appid), "one-time still-running notification")
