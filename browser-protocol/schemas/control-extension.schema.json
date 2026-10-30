@@ -59,6 +59,13 @@
               },
               "heard": {
                 "type": "boolean"
+              },
+              "pageState": {
+                "enum": [
+                  "present",
+                  "closed",
+                  "navigating"
+                ]
               }
             },
             "required": [
@@ -157,6 +164,13 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 128
+              },
+              "pageState": {
+                "enum": [
+                  "present",
+                  "closed",
+                  "navigating"
+                ]
               }
             },
             "required": [
@@ -167,6 +181,13 @@
             ],
             "additionalProperties": true
           }
+        },
+        "pageState": {
+          "enum": [
+            "present",
+            "closed",
+            "navigating"
+          ]
         }
       },
       "required": [
@@ -285,6 +306,13 @@
         },
         "stopping": {
           "type": "boolean"
+        },
+        "pageState": {
+          "enum": [
+            "present",
+            "closed",
+            "navigating"
+          ]
         }
       },
       "required": [

@@ -5,6 +5,21 @@ async function hasOffscreenDocument() {
 }
 
 const frames = new Set();
+// Browser-owned lifecycle evidence, never supplied by a page-posted packet.
+const pageStates = new Map();
+const pageState = tabId => pageStates.get(tabId) || "present";
+function setPageState(tabId, value) {
+  if (pageState(tabId) === "closed" && value !== "closed") return;
+  if (pageStates.get(tabId) === value) return;
+  pageStates.set(tabId, value);
+  if (sessions.has(tabId)) void persistSessions().catch(() => {});
+  // Idle pages do not retain unbounded tombstones; active sessions are <=100.
+  if (pageStates.size > 100) for (const key of pageStates.keys()) {
+    if (!sessions.has(key)) pageStates.delete(key);
+    if (pageStates.size <= 100) break;
+  }
+  notifyControl();
+}
 const sessions = new Map();
 const pendingStarts = new Map();
 const saved = new Map();
@@ -15,7 +30,7 @@ let storageTail = Promise.resolve();
 function persistSessions() {
   const write = async () => {
     const values = [...sessions.values()].filter(s => s.path).map(s =>
-      ({ recording: true, mode: s.mode, path: s.path, tabId: s.tabId, startedAt: s.origin, captureId: s.token }));
+      ({ recording: true, mode: s.mode, path: s.path, tabId: s.tabId, startedAt: s.origin, captureId: s.token, pageState: pageState(s.tabId) }));
     if (values.length) await chrome.storage.session.set({ cassiniActive: values[0], cassiniSessions: values });
     else { await chrome.storage.session.remove("cassiniActive"); await chrome.storage.session.remove("cassiniSessions"); }
   };
@@ -26,8 +41,9 @@ const recovery = (async () => {
   const stored = await chrome.storage.session.get(["cassiniActive", "cassiniSessions"]);
   const previous = Array.isArray(stored.cassiniSessions) ? stored.cassiniSessions.slice(0, 100) : stored.cassiniActive ? [stored.cassiniActive] : [];
   for (const value of previous) {
+    pageStates.set(value.tabId, value.pageState === "closed" ? "closed" : "navigating");
     const status = { recording: false, tabId: value.tabId ?? null, path: value.path, captureId: value.captureId,
-      message: "Recording was interrupted. Audio recorded so far was saved." };
+      message: "Recording was interrupted. Audio recorded so far was saved.", pageState: value.pageState || "navigating" };
     saved.set(value.tabId, status); interrupted.push(status); lastStatus = status;
     if (value.mode === "tab" && await hasOffscreenDocument()) await chrome.offscreen.closeDocument();
   }
@@ -81,12 +97,12 @@ class NativeHost {
 
 function status(session = firstSession()) {
   return session ? { recording: true, stopping: session.stopping, tracks: session.tracks, tabId: session.tabId, mode: session.mode,
-    message: session.warning || (!session.tracks ? "Waiting for audio. Join the call, or record the whole tab instead." : `${session.stopping ? "Saving" : "Recording"} ${session.mode === "tracks" ? "separate tracks" : "the whole tab"} · ${session.tracks} ${session.tracks === 1 ? "recorded track" : "recorded tracks"}`), path: session.path } : lastStatus;
+    pageState: pageState(session.tabId), message: session.warning || (!session.tracks ? "Waiting for audio. Join the call, or record the whole tab instead." : `${session.stopping ? "Saving" : "Recording"} ${session.mode === "tracks" ? "separate tracks" : "the whole tab"} · ${session.tracks} ${session.tracks === 1 ? "recorded track" : "recorded tracks"}`), path: session.path } : lastStatus;
 }
 function failure(message, session = firstSession()) {
   if (session) { session.problem ??= message; session.loss = true; notifyControl(); void stop(session); }
 }
-async function stop(session = firstSession()) {
+async function stop(session = firstSession(), reason = "user") {
   if (!session) { for (const request of pendingStarts.values()) request.cancelled = true; return; }
   if (session.stopPromise) return session.stopPromise;
   session.stopping = true;
@@ -106,11 +122,12 @@ async function stop(session = firstSession()) {
         if (response?.error) session.problem ??= response.error;
       }
       const packet = { type: "stop", problem: session.problem };
+      if (session.keepOnNavigation && !session.loss) packet.reason = reason;
       if (session.independent && session.loss) packet.failureReason = "lost";
       const result = session.host ? await session.host.send(packet) : {};
-      lastStatus = { recording: false, tabId: session.tabId, path: result.path, message: session.problem || result.problem || "Saved on this computer." };
+      lastStatus = { recording: false, tabId: session.tabId, pageState: pageState(session.tabId), path: result.path, message: session.problem || result.problem || "Saved on this computer." };
     } catch (error) {
-      lastStatus = { recording: false, tabId: session.tabId, path: session.path, message: session.problem || error.message };
+      lastStatus = { recording: false, tabId: session.tabId, pageState: pageState(session.tabId), path: session.path, message: session.problem || error.message };
     } finally {
       session.host?.close();
       if (sessions.get(session.tabId) === session) sessions.delete(session.tabId);
@@ -143,7 +160,7 @@ async function start(mode, tabId = null, options = {}) {
     if (request.cancelled) throw new Error("Recording could not start.");
     if (!Number.isSafeInteger(tab?.id) || tab.id < 0 || !/^https?:/.test(tab.url || "")) throw new Error("Open the meeting tab first. Recording works on web pages only.");
     if (sessions.has(tab.id)) throw new Error("A recording is already running. Stop it before starting another.");
-    const session = { mode, tabId: tab.id, independent: options.independent === true, captureLocal: options.captureLocal !== false, token: crypto.randomUUID(), origin: Date.now(),
+    const session = { mode, tabId: tab.id, independent: options.independent === true, captureLocal: options.captureLocal !== false, keepOnNavigation: options.keepOnNavigation === true, token: crypto.randomUUID(), origin: Date.now(),
       frames: new Set(), tracks: 0, stopping: false, problem: null };
     sessions.set(tab.id, session);
     notifyControl();
@@ -207,7 +224,9 @@ async function start(mode, tabId = null, options = {}) {
 
 chrome.runtime.onConnect.addListener(port => {
   if (port.name !== "cassini-frame" || port.sender?.id !== chrome.runtime.id || !port.sender.tab) return;
-  const frame = { port, tabId: port.sender.tab.id, sourceCount: 0, heard: false };
+  const frame = { port, tabId: port.sender.tab.id, frameId: port.sender.frameId ?? 0, sourceCount: 0, heard: false };
+  if (pageState(frame.tabId) === "closed") return;
+  if (frame.frameId === 0) setPageState(frame.tabId, "present");
   frames.add(frame);
   port.postMessage({ type: "discover" });
   // Newly inserted frames may carry meeting tracks; they share the original session clock.
@@ -217,7 +236,16 @@ chrome.runtime.onConnect.addListener(port => {
     port.postMessage({ type: "start", token: current.token, origin: current.origin, captureLocal: current.captureLocal });
   }
   port.onMessage.addListener(async message => {
+    if (!frames.has(frame)) return;
+    if (message.type === "pageState") {
+      if (!frame.obsolete && frame.frameId === 0 && ["present", "navigating"].includes(message.state)) {
+        setPageState(frame.tabId, message.state);
+        if (message.state === "navigating") { frame.sourceCount = 0; frame.heard = false; }
+      }
+      return;
+    }
     if (message.type === "discovery") {
+      if (frame.obsolete || pageState(frame.tabId) === "closed") return;
       if (Number.isInteger(message.sourceCount) && message.sourceCount >= 0 && message.sourceCount <= 64 &&
           (frame.sourceCount !== message.sourceCount || frame.heard !== (message.heard === true))) {
         frame.sourceCount = message.sourceCount;
@@ -228,6 +256,12 @@ chrome.runtime.onConnect.addListener(port => {
     }
     const session = sessions.get(frame.tabId);
     if (!session?.frames.has(frame)) return;
+    if (session.keepOnNavigation && (frame.obsolete || pageState(frame.tabId) !== "present") &&
+        ["stopped", "error"].includes(message.type) && !session.stopping) {
+      session.frames.delete(frame);
+      frame.sourceCount = 0; frame.heard = false;
+      frame.finished?.(); notifyControl(); return;
+    }
     if (message.type === "stopped") {
       if (!session.stopping) failure("The meeting page stopped sending audio. The recording so far was saved.", session);
       frame.finished?.(); return;
@@ -255,7 +289,9 @@ chrome.runtime.onConnect.addListener(port => {
     const session = sessions.get(frame.tabId);
     if (session?.frames.has(frame)) {
       session.frames.delete(frame);
-      if (!session.stopping) failure("The meeting page closed or navigated away. The recording so far was saved.", session);
+      if (!session.stopping && !session.keepOnNavigation) failure("The meeting page closed or navigated away. The recording so far was saved.", session);
+      if (session.keepOnNavigation && ![...frames].some(f => f.tabId === frame.tabId && f.sourceCount > 0))
+        setPageState(frame.tabId, "navigating");
     }
   });
 });
@@ -286,25 +322,33 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   return true;
 });
 chrome.tabs.onRemoved.addListener(id => {
+  if (!sessions.has(id) && ![...frames].some(f => f.tabId === id)) return;
+  setPageState(id, "closed");
   for (const frame of frames) if (frame.tabId === id) { frame.sourceCount = 0; frame.heard = false; }
   const session = sessions.get(id);
-  if (session) failure("The meeting tab was closed. The recording so far was saved.", session);
+  if (session && !session.keepOnNavigation) failure("The meeting tab was closed. The recording so far was saved.", session);
+  if (session?.keepOnNavigation) for (const frame of [...session.frames]) {
+    session.frames.delete(frame); frames.delete(frame); frame.obsolete = true; frame.finished?.();
+  }
   notifyControl();
 });
 chrome.tabs.onUpdated.addListener((id, change) => {
-  if (change.status === "loading") for (const frame of frames) if (frame.tabId === id) { frame.sourceCount = 0; frame.heard = false; }
+  if (change.status === "loading") {
+    if (sessions.has(id) || [...frames].some(f => f.tabId === id)) setPageState(id, "navigating");
+    for (const frame of frames) if (frame.tabId === id) { frame.sourceCount = 0; frame.heard = false; frame.obsolete = true; }
+  }
   if (change.status || change.title !== undefined || change.url !== undefined) notifyControl();
 });
 
 function controlStatus(tabId = null) {
   const value = tabId === null ? status() : sessions.has(tabId) ? status(sessions.get(tabId)) : saved.get(tabId) || { recording: false, tabId, path: null, message: lastStatus.message };
   const packet = { type: "status", recording: value.recording, tabId: value.tabId ?? null,
-    path: value.path ?? null, message: value.message, tracks: value.tracks ?? 0, stopping: !!value.stopping };
+    path: value.path ?? null, message: value.message, pageState: value.tabId == null ? undefined : value.pageState || pageState(value.tabId), tracks: value.tracks ?? 0, stopping: !!value.stopping };
   if (interrupted.length) packet.interrupted = interrupted;
   packet.sessions = [...sessions.values()].map(session => {
     const value = status(session);
     return { recording: true, tabId: session.tabId, path: session.path ?? null, captureId: session.token, tracks: session.tracks,
-      stopping: session.stopping, message: value.message };
+      stopping: session.stopping, message: value.message, pageState: pageState(session.tabId) };
   });
   return packet;
 }
@@ -317,7 +361,7 @@ async function meetings() {
       const tab = await chrome.tabs.get(tabId);
       if (!/^https?:/.test(tab.url || "")) return null;
       const heard = [...frames].some(frame => frame.tabId === tabId && frame.sourceCount > 0 && frame.heard);
-      return { tabId, title: [...(tab.title || "Meeting")].slice(0, 200).join(""), url: new URL(tab.url).href.slice(0, 2048), sourceCount, heard };
+      return { tabId, title: [...(tab.title || "Meeting")].slice(0, 200).join(""), url: new URL(tab.url).href.slice(0, 2048), sourceCount, heard, pageState: pageState(tabId) };
     } catch { return null; }
   }));
   return { type: "meetings", meetings: found.filter(Boolean) };
@@ -329,11 +373,11 @@ async function controlCommand(command) {
     if (![...frames].some(frame => frame.tabId === command.tabId && frame.sourceCount > 0))
       throw new Error("No audio is available from that meeting yet.");
     await start("tracks", command.tabId, { independent: command.independent === true,
-      captureLocal: command.captureLocal, microphone: command.microphone });
+      captureLocal: command.captureLocal, microphone: command.microphone, keepOnNavigation: command.keepOnNavigation });
   } else {
     if (!command.independent && firstSession() && firstSession().tabId !== command.tabId) throw new Error("A recording is already running. Stop it before starting another.");
     const session = sessions.get(command.tabId);
-    if (session) await stop(session);
+    if (session) await stop(session, command.reason);
     else if (pendingStarts.has(command.tabId)) pendingStarts.get(command.tabId).cancelled = true;
   }
   return controlStatus(command.independent ? command.tabId : null);
@@ -346,7 +390,7 @@ function cancelPendingStart(command) {
 }
 function notifyControl() { appControl.publish(); }
 const appControl = new AppControl({
-  runtime: chrome.runtime, alarms: chrome.alarms, capabilities: ["independent-sessions-v1", "call-evidence-v1"], cancelPending: cancelPendingStart,
+  runtime: chrome.runtime, alarms: chrome.alarms, capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1"], cancelPending: cancelPendingStart,
   connected: async () => {
     await recovery;
     const tabs = await chrome.tabs.query({});

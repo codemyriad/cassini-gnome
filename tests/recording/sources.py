@@ -242,7 +242,8 @@ try:
     assert all(t["ended"] and t["endOffsetMs"] >= t["startOffsetMs"] for t in session.manifest["tracks"])
     saved = json.loads((session.directory / "session.json").read_text())
     assert saved == session.manifest
-    assert saved["events"] == before_events and len(saved["events"]) == 7
+    assert saved["events"][:-1] == before_events and len(before_events) == 7
+    assert saved["events"][-1]["type"] == "end" and saved["events"][-1]["reason"] == "user"
     evidence.update(
         passed=True,
         releasedOffSources=True,

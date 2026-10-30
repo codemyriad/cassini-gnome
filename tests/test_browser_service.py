@@ -253,3 +253,27 @@ def test_shared_control_host_vectors():
     count = len(json.loads(runner.with_name("vectors.json").read_text()))
     assert result.returncode == 0, result.stdout + result.stderr
     assert f"{count} passed, 0 failed" in result.stdout
+
+
+def test_lifecycle_uses_latest_explicit_page_fact_not_an_older_snapshot(tmp_path, monkeypatch):
+    from cassini_viewer.browser_service import BrowserConnection
+
+    service = BrowserService(tmp_path / "settings.json")
+    browser = BrowserConnection(None)
+    monkeypatch.setattr(service, "policy", lambda: None)
+    try:
+        service.update(browser, dict(type="meetings", meetings=[dict(meeting(), pageState="present")]))
+        service.update(
+            browser,
+            dict(type="status", recording=True, sessions=[dict(tabId=3, recording=True, pageState="navigating")]),
+        )
+        assert browser.meetings[3]["pageState"] == "present"  # Older inventory is still retained.
+        assert browser.page_states[3] == "navigating"
+        service.update(browser, dict(type="meetings", meetings=[dict(meeting(), pageState="present")]))
+        assert browser.states[3]["pageState"] == "navigating"  # Older status must not take priority either.
+        assert browser.page_states[3] == "present"
+        service.update(browser, dict(type="status", recording=False, sessions=[]))
+        service.update(browser, dict(type="meetings", meetings=[]))
+        assert not browser.page_states  # Bounded to current meeting/session inventory.
+    finally:
+        service.workers.shutdown()

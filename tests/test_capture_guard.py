@@ -97,3 +97,23 @@ def test_remember_browser_paths_before_library_scan_finishes(tmp_path):
     window = SimpleNamespace(_activity_source=SimpleNamespace(paths={"new": path}, snapshot={"new": "recording"}))
     app = SimpleNamespace(get_windows=lambda: [window])
     assert remember_capture_paths(app) == {path}
+
+
+@pytest.mark.parametrize("reason", ["user", "disk", "error", "appQuit"])
+def test_browser_stop_records_the_same_requested_cause_in_optional_details(tmp_path, monkeypatch, reason):
+    from cassini_viewer import browser_service
+    from cassini_viewer.capture_guard import stop_browser_captures
+
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    session = capture(tmp_path)
+    path = str(session.directory)
+
+    def request(action="status", **values):
+        if action == "stop-all":
+            assert values["reason"] == reason
+            return dict(statuses=[], stoppedPaths=[path])
+        return dict(protocol=2, statuses=[dict(recording=True, path=path)])
+
+    monkeypatch.setattr(browser_service, "request", request)
+    assert stop_browser_captures(reason=reason) == [path]
+    assert read_metadata(session.directory)["recordingDetails"]["end"]["reason"] == reason

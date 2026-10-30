@@ -46,8 +46,8 @@ async function setup(sourceCount = 3, previous = {}) {
   const background = fs.readFileSync(path.join(extension, 'background.js'), 'utf8').replace(/^import .*\n/, '').replace('runtime: chrome.runtime, alarms: chrome.alarms,', 'runtime: chrome.runtime, alarms: chrome.alarms, later: controlLater, cancel: controlCancel,');
   vm.runInContext(background + '\nglobalThis.api={status,controlStatus,appControl,frames,start,stop,meetings};', context);
   await until(() => ports.length && ports[0].sent.some(m => m.type === 'status'));
-  function frame(tabId = 2, count = sourceCount) {
-    const port = { name: 'cassini-frame', sender: { id: 'extension', tab: { id: tabId } }, onMessage: event(), onDisconnect: event(), sent: [],
+  function frame(tabId = 2, count = sourceCount, frameId = 0) {
+    const port = { name: 'cassini-frame', sender: { id: 'extension', tab: { id: tabId }, frameId }, onMessage: event(), onDisconnect: event(), sent: [],
       postMessage(message) { this.sent.push(message); if (message.type === 'stop') queueMicrotask(() => this.onMessage.emit({ type: 'stopped' })); } };
     chrome.runtime.onConnect.emit(port); port.onMessage.emit({ type: 'discovery', sourceCount: count, title: 'Spoofed title', url: 'https://spoofed.invalid/' }); pages.push(port); return port;
   }

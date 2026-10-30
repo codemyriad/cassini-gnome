@@ -58,7 +58,8 @@ def test_off_side_discards_pcm_but_checks_sequence_geometry_and_new_span_offsets
     assert (session.directory / resumed["file"]).read_bytes()[44:] == b"\x03\x00" * 480
     assert (session.directory / old["file"]).read_bytes() == before
     saved = json.loads((session.directory / "session.json").read_text())
-    assert saved["events"][-1]["atMs"] == resumed["startOffsetMs"]
+    assert saved["events"][-2]["atMs"] == resumed["startOffsetMs"]
+    assert saved["events"][-1] == dict(type="end", atMs=510, reason="user")
 
 
 def test_fallback_never_switches_a_browser_source_back_or_reuses_its_wav(tmp_path):

@@ -155,7 +155,10 @@ try {
  for (const directory of directories) {
   const saved = await samples(directory);
   assert.equal(saved.manifest.state, 'completed');
-  assert.ok(!(saved.manifest.events || []).some(event => event.type === 'end'), 'no protocol end events were added');
+  const ends=(saved.manifest.events || []).filter(event => event.type === 'end');
+  assert.equal(ends.length,1,'manual Stop checkpoints exactly one terminal session event');
+  assert.equal(ends[0].reason,'user');
+  assert.ok(saved.manifest.tracks.every(track=>track.endOffsetMs===null || ends[0].atMs>=track.endOffsetMs),'terminal event follows every finalized known track end');
   await poll(async () => {
    try {
     const metadata = JSON.parse(await readFile(path.join(directory, 'meeting.json')));

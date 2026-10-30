@@ -64,6 +64,7 @@ class NativeRecorder(GObject.Object):
         if self.pipeline is not None or self.starting or self.stopping or self._changing_sources or self._finishing:
             raise RuntimeError("Already recording")
         self.starting = True
+        self._start_us = GLib.get_monotonic_time()
         self._stop_requested = False
         self.session = None
         self.stopping = self._finishing = False
@@ -99,7 +100,7 @@ class NativeRecorder(GObject.Object):
                 session.manifest["tracks"][-1]["startOffsetMs"] = 0
             return session, space_left(session.directory)
         except Exception as error:
-            session.finish(str(error))
+            session.finish(str(error), reason="error")
             raise
 
     def _prepared(self, future, test):
@@ -132,6 +133,7 @@ class NativeRecorder(GObject.Object):
             self.emit("changed")
             if reserve:
                 self.line = "errors.diskStopped.line"
+                self.end_reason = "disk"
                 self.stop()
             elif self._stop_requested:
                 self.stop()
@@ -356,13 +358,14 @@ class NativeRecorder(GObject.Object):
                 GLib.source_remove(timer)
         self._timeout = self._disk_timer = 0
         pipeline, session = self.pipeline, self.session
+        reason = "error" if problem else (self.end_reason or "user")
+        at_ms = max(0, (GLib.get_monotonic_time() - self._start_us) / 1000)
 
         def finish():
             if pipeline is not None:
                 pipeline.set_state(Gst.State.NULL)
             with self._lock:
-                session.finish(problem)
-            reason = "error" if problem else self.end_reason
+                session.finish(problem, reason=reason, at_ms=at_ms)
             if reason:
                 from .capture_facts import record_end
 
