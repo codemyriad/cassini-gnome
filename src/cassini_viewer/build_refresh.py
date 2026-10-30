@@ -32,15 +32,17 @@ class BuildRefresh:
         self.timer = 0
         self.callbacks = []
         self.show = False
+        self.record = False
         self.files = []
         self.attempts = 0
         self._last_error = None
         self._banner_signature = None
 
-    def check(self, callback=None, *, show=False, files=()):
+    def check(self, callback=None, *, show=False, files=(), record=False):
         if self.closed:
             return
         self.show |= show
+        self.record |= record
         self.files.extend(uri for uri in files if uri not in self.files)
         if callback:
             self.callbacks.append(callback)
@@ -48,6 +50,8 @@ class BuildRefresh:
             restart = self.installed.restart
             restart["show"] |= show
             restart["files"] = tuple(dict.fromkeys((*restart["files"], *files)))
+            if record:
+                restart["record"] = True
             return
         if self.future is not None:
             return
@@ -115,11 +119,14 @@ class BuildRefresh:
                 files=tuple(self.files),
                 writing=bool(self.app._transcription_holds),
             )
+            if self.record:
+                self.installed.restart["record"] = True
             self._release()
             self.app.finish_quit()
             return False
         callbacks, self.callbacks = self.callbacks, []
         self.show = False
+        self.record = False
         self.files = []
         try:
             for callback in callbacks:

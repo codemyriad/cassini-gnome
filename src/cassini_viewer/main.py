@@ -54,6 +54,7 @@ class CassiniApplication(Adw.Application):
         self._resume_background = False
         self._resume_automatic = False
         self._resume_writing = False
+        self._resume_record = False
         self.settings_schema = "com.gocassini.Viewer"
         self._recording_settings = None
         self._watchdog = None
@@ -247,14 +248,18 @@ class CassiniApplication(Adw.Application):
 
     def do_activate(self):
         background, self._resume_background = self._resume_background, False
+        record, self._resume_record = self._resume_record, False
         if background and self._resume_automatic:
             self.set_auto_recording_hold(True)
 
         def callback():
-            return self._activate_current(background=background)
+            window = self._activate_current(background=background)
+            if record:
+                self._record_current()
+            return window
 
         if self.build_refresh:
-            self.build_refresh.check(callback, show=not background)
+            self.build_refresh.check(callback, show=not background, record=record)
         else:
             callback()
 
@@ -556,7 +561,17 @@ class CassiniApplication(Adw.Application):
         ):
             self.on_stop_recording()
             return
-        self.do_activate()
+
+        def record():
+            self._activate_current()
+            self._record_current()
+
+        if self.build_refresh:
+            self.build_refresh.check(record, show=True, record=True)
+        else:
+            record()
+
+    def _record_current(self):
         if self.recording_settings.get_boolean("skip-record-first"):
             self.start_recordings()
         elif not self.record_first:
@@ -1042,12 +1057,17 @@ class CassiniApplication(Adw.Application):
             self.stop_browser_recordings()
 
     def on_open_recording(self, *_):
-        self.do_activate()
-        window = self.get_active_window()
-        if hasattr(window, "open_live_recording"):
-            window.open_live_recording()
-        if self.comfort:
-            self.comfort.tick()
+        def present():
+            window = self._activate_current()
+            if hasattr(window, "open_live_recording"):
+                window.open_live_recording()
+            if self.comfort:
+                self.comfort.tick()
+
+        if self.build_refresh:
+            self.build_refresh.check(present, show=True)
+        else:
+            present()
 
     def begin_exit(self):
         self._quitting = True
@@ -1211,9 +1231,16 @@ def main(application_id, version, profile, *, installed_build=None):
     app._resume_background = "--cassini-resume-background" in sys.argv
     app._resume_automatic = "--cassini-resume-automatic" in sys.argv
     app._resume_writing = "--cassini-resume-writing" in sys.argv
+    app._resume_record = "--cassini-resume-record" in sys.argv
     sys.argv[:] = [
         arg
         for arg in sys.argv
-        if arg not in ("--cassini-resume-background", "--cassini-resume-automatic", "--cassini-resume-writing")
+        if arg
+        not in (
+            "--cassini-resume-background",
+            "--cassini-resume-automatic",
+            "--cassini-resume-writing",
+            "--cassini-resume-record",
+        )
     ]
     return app.run(sys.argv)

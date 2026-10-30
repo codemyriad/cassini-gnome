@@ -261,9 +261,14 @@ try:
     assert "CASSINI_TEST_IMAGE=N2" in log_path.read_text()
     saved = json.loads(manifest.read_text())
     assert saved["state"] == "completed"
+    report["savedTracks"] = []
+    (OUT / "saved-session.json").write_text(json.dumps(saved, indent=2) + "\n")
     for track in saved["tracks"]:
         with wave.open(str(manifest.parent / track["file"]), "rb") as wav:
             assert wav.getnframes() == track["frames"] > 0
+            report["savedTracks"].append(
+                dict(kind=track["kind"], manifestFrames=track["frames"], wavFrames=wav.getnframes())
+            )
     report["recording"] = dict(build=second["buildId"], deferred=True, restartDisabled=True, finalizedAudioKept=True)
 
     # Leave an executable relay behind but no installed Flatpak deployment.

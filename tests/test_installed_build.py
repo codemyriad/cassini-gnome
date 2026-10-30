@@ -30,6 +30,7 @@ def payload(root, text="old", *, version="0.3.0"):
     launcher = build / "src/cassini-viewer"
     launcher.parent.mkdir(parents=True, exist_ok=True)
     launcher.write_text("#!/usr/bin/python3\n")
+    launcher.chmod(0o755)
     value = identity.generate(source, build, [module, launcher], version, "default", "com.gocassini.Viewer")
     installed = root / "install"
     (installed / "cassini_viewer").mkdir(parents=True, exist_ok=True)
@@ -57,6 +58,17 @@ def test_manifest_published_before_files_never_restarts(tmp_path):
     with pytest.raises(OSError, match="still being installed"):
         running.changed()
     module.write_text("new")
+    assert running.changed()
+
+
+def test_new_launcher_must_be_executable_before_restart(tmp_path):
+    _, root, launcher = payload(tmp_path)
+    running = InstalledBuild(root, launcher, "0.3.0")
+    payload(tmp_path, "new")
+    launcher.chmod(0o644)
+    with pytest.raises(OSError, match="still being installed"):
+        running.changed()
+    launcher.chmod(0o755)
     assert running.changed()
 
 
@@ -280,3 +292,23 @@ def test_activation_callback_runs_before_last_hold_is_released():
     refresh.check(lambda: observed.append(bool(held)), show=True)
     clock.finish()
     assert observed == [True] and not held
+
+
+def test_record_request_hands_off_to_new_build_instead_of_starting_old_code():
+    app, held, finished, _ = application()
+    installed = SimpleNamespace(changed=lambda: True, restart=None)
+    refresh, clock = controller(app, installed)
+    recorded = []
+    refresh.check(lambda: recorded.append(True), show=True, record=True)
+    clock.finish()
+    assert finished and not recorded and not held
+    assert installed.restart["record"] is True
+
+
+def test_record_handoff_has_a_private_launcher_argument(tmp_path, monkeypatch):
+    _, root, launcher = payload(tmp_path)
+    running = InstalledBuild(root, launcher, "0.3.0")
+    calls = []
+    monkeypatch.setattr(os, "execv", lambda program, args: calls.append(args))
+    running.reexec(show=True, automatic=False, record=True)
+    assert calls == [[str(launcher), "--cassini-resume-record"]]

@@ -89,8 +89,10 @@ def file_digest(path):
 def verified(value, root, launcher):
     """An unpack in progress is not a completed upgrade, even at the same version."""
     try:
-        return file_digest(launcher) == value["launcher"] and all(
-            file_digest(Path(root) / name) == digest for name, digest in value["files"].items()
+        return (
+            os.access(launcher, os.X_OK)
+            and file_digest(launcher) == value["launcher"]
+            and all(file_digest(Path(root) / name) == digest for name, digest in value["files"].items())
         )
     except OSError:
         return False
@@ -158,8 +160,10 @@ class InstalledBuild:
         )
         return True
 
-    def reexec(self, *, show, automatic, files=(), writing=False):
+    def reexec(self, *, show, automatic, files=(), writing=False, record=False):
         arguments = list(files)
+        if record:
+            arguments.append("--cassini-resume-record")
         if not show:
             arguments.append("--cassini-resume-background")
             if writing:
