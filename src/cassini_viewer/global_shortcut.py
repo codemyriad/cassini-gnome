@@ -127,6 +127,9 @@ class GlobalShortcut:
 
     def _bound(self, result):
         self.bound = any(identifier == "record" for identifier, _ in result.get("shortcuts", []))
+        if self.bound and self.settings:
+            # Persist consent only after the desktop has accepted the binding.
+            self.settings.set_boolean("record-shortcut-enabled", True)
         for identifier, properties in result.get("shortcuts", []):
             if identifier == "record" and properties.get("trigger_description"):
                 self.trigger_description = properties["trigger_description"]

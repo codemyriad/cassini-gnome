@@ -166,10 +166,27 @@ class CassiniApplication(Adw.Application):
         from .library_relocator import LibraryRelocator
 
         self.library_relocator = LibraryRelocator(self)
-        if not os.environ.get("CASSINI_SCREENSHOT_ISOLATED") and not os.environ.get("CASSINI_ISOLATED_AUDIO"):
+        if (
+            self.recording_settings.get_boolean("record-shortcut-enabled")
+            and not os.environ.get("CASSINI_SCREENSHOT_ISOLATED")
+            and not os.environ.get("CASSINI_ISOLATED_AUDIO")
+        ):
             from .global_shortcut import GlobalShortcut
 
             self.global_shortcut = GlobalShortcut(self.on_global_record, settings=self.recording_settings)
+
+    def configure_global_shortcut(self):
+        """Only Settings may initiate the first desktop permission request."""
+        shortcut = self.global_shortcut
+        if shortcut and not shortcut.closed and not shortcut.error:
+            if shortcut.bound:
+                shortcut.configure()
+            return
+        if shortcut:
+            shortcut.close()
+        from .global_shortcut import GlobalShortcut
+
+        self.global_shortcut = GlobalShortcut(self.on_global_record, settings=self.recording_settings)
 
     def _add_action(self, name, callback, accels=None):
         action = Gio.SimpleAction.new(name, None)
