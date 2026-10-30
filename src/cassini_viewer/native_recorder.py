@@ -15,6 +15,7 @@ from .native_timing import NS, NativeTimeline
 from .recorder import request_eos
 from .recording_details import ACMeter, space_left
 from .recording_session import RecordingSession
+from .spectro_source import SpectroSource
 
 RATE = 48000
 
@@ -53,6 +54,7 @@ class NativeRecorder(GObject.Object):
         self._retired_branches = set()
         self._timelines = {}
         self._ac_meters = {}
+        self.spectrogram = SpectroSource()
 
     @property
     def activity(self):
@@ -77,6 +79,7 @@ class NativeRecorder(GObject.Object):
         self._retired_branches = set()
         self._timelines = {}
         self._ac_meters = {}
+        self.spectrogram = SpectroSource()
         future = self._executor.submit(self._prepare, Path(parent) if parent is not None else None)
         future.add_done_callback(lambda f: GLib.idle_add(self._prepared, f, test))
 
@@ -213,6 +216,7 @@ class NativeRecorder(GObject.Object):
                 elif "system" in added:
                     events.append(dict(atMs=at, type="othersSource", source="system", reason="user"))
                 identifiers = dict(self._track_ids)
+                retired_ids = [identifiers[kind] for kind in removed]
                 with self.session.change(events):
                     for kind in removed:
                         self.session.end_track(identifiers.pop(kind))
@@ -231,6 +235,8 @@ class NativeRecorder(GObject.Object):
                     self._branches[kind] = attempt["branch"]
                     self._pending_sources.pop(kind)
                 committed = True
+            for identifier in retired_ids:
+                self.spectrogram.retire(identifier)
             for kind in removed:
                 self.levels[0 if kind == "microphone" else 1] = 0
             for branch in retired:
@@ -269,6 +275,7 @@ class NativeRecorder(GObject.Object):
             if buffer.pts == Gst.CLOCK_TIME_NONE:
                 raise ValueError("Audio source has no clock timestamp")
             data = buffer.extract_dup(0, buffer.get_size())
+            picture = None
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
                 if attempt is not None:
@@ -292,6 +299,25 @@ class NativeRecorder(GObject.Object):
                         timeline = self._timelines.setdefault(stored, NativeTimeline(rate))
                         offset, gap = timeline.map(host_ns, frames, offset)
                         self.session.append_native(stored, data, offset, gap_frames=gap)
+                        source = self.spectrogram
+                        if source.active:
+                            track = next(t for t in self.session.manifest["tracks"] if t["id"] == stored)
+                            picture = (source, stored, data, offset, rate, channels, track["startOffsetMs"], gap)
+            # No conversion or FFT while the WAV writer/selection lock is held.
+            if picture is not None:
+                source, stored, data, offset, rate, channels, start, gap = picture
+                source.observe(
+                    stored,
+                    data,
+                    offset,
+                    rate=rate,
+                    channels=channels,
+                    kind=identifier,
+                    start_ms=start,
+                    gap_frames=gap,
+                    now_ms=(GLib.get_monotonic_time() - self._start_us) / 1000,
+                    level=self.levels[0 if identifier == "microphone" else 1],
+                )
         except Exception as error:
             with self._lock:
                 attempt = self._pending_sources.get(identifier)

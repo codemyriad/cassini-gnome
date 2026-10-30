@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """D36 bounded, observer-owned analysis state. WIP: not wired into capture yet."""
 
+import logging
 import math
 import threading
 import time
@@ -9,6 +10,8 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 
 from .spectro_analysis import Quantizer, Track
+
+LOG = logging.getLogger(__name__)
 
 
 @dataclass(eq=False)
@@ -36,12 +39,27 @@ class SpectroSource:
 
     def __init__(self):
         self.lock = threading.RLock()
-        self.subscribers, self.tracks = set(), {}
+        self.subscribers, self.tracks, self.retired = set(), {}, set()
+        self.problem = None
         self.selected, self.next_selection_ms = set(), 0
         self.pending = {side: {} for side in ("me", "others")}
         self.quantizers = {side: Quantizer() for side in ("me", "others")}
         self.released = {side: -1 for side in ("me", "others")}
         self.calls = self.analysed = self.analysis_ns = self.late = self.overflow = 0
+
+    @property
+    def active(self):
+        return bool(self.subscribers) and self.problem is None
+
+    def observe(self, *args, **kwargs):
+        try:
+            self.feed(*args, **kwargs)
+        except Exception as error:
+            # A decorative picture must never turn accepted PCM into an audio
+            # error, or prevent the next buffer from reaching the WAV writer.
+            if self.problem is None:
+                self.problem = str(error)
+                LOG.exception("Recording sound indicator failed; saved audio is retained")
 
     def subscribe(self):
         with self.lock:
@@ -66,6 +84,7 @@ class SpectroSource:
 
     def retire(self, identifier):
         with self.lock:
+            self.retired.add(identifier)
             self.tracks.pop(identifier, None)
             self.selected.discard(identifier)
 
@@ -81,7 +100,7 @@ class SpectroSource:
 
     def feed(self, identifier, data, offset_ms, *, rate, channels, kind, start_ms, now_ms, level, gap_frames=0):
         with self.lock:
-            if not self.subscribers:
+            if not self.active or identifier in self.retired:
                 return
             started = time.perf_counter_ns()
             self.calls += 1

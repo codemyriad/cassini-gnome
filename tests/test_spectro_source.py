@@ -86,6 +86,9 @@ def test_each_lane_chooses_only_three_tracks_once_per_second_and_retires():
     assert source.tracks["0"].analysis.total == 4800
     source.retire("3")
     assert "3" not in source.selected and "3" not in source.tracks
+    before = source.calls
+    feed(source, "3", offset=100, now=1100)
+    assert "3" not in source.tracks and source.calls == before
     assert source.drain(sub, 1100)["others"]
 
 

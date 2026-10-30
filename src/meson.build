@@ -132,6 +132,8 @@ install_data(
   'cassini_viewer/folder_player.py',
   'cassini_viewer/recorder.py',
   'cassini_viewer/native_recorder.py',
+  'cassini_viewer/spectro_analysis.py',
+  'cassini_viewer/spectro_source.py',
   'cassini_viewer/recording_page.py',
   'cassini_viewer/recording_comfort.py',
   'cassini_viewer/recording_details.py',

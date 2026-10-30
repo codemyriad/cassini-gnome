@@ -2,6 +2,7 @@
 """Input-clock conformance; no microphone, sound server or desktop connection."""
 
 import json
+import threading
 import wave
 from pathlib import Path
 from types import SimpleNamespace
@@ -225,3 +226,68 @@ def test_selection_prefix_before_first_buffer_is_aligned_but_not_a_loss(tmp_path
             assert audio.readframes(8000) == b"\1\0" * 8000
     finally:
         session.finish()
+
+
+def test_spectrogram_observes_only_admitted_pcm_after_the_writer_lock(tmp_path, monkeypatch):
+    from test_spectro_analysis import tone
+
+    NativeRecorder, Gst = recorder_class()
+    session = RecordingSession(tmp_path)
+    session.add_track("microphone", "Me", "microphone", 48000, 1)
+    recorder = NativeRecorder()
+    recorder.session = session
+    source = recorder.spectrogram
+    sub = source.subscribe()
+    observed, observe = [], source.observe
+
+    def outside(*args, **kwargs):
+        assert recorder._lock.acquire(False), "FFT ran under the WAV/selection lock"
+        recorder._lock.release()
+        observed.append((args, kwargs))
+        return observe(*args, **kwargs)
+
+    monkeypatch.setattr(source, "observe", outside)
+    pcm = tone(4800, amplitude=500)
+    try:
+        assert feed(recorder, "microphone", pcm, 0) == Gst.FlowReturn.OK
+        assert len(observed) == 1 and observed[0][0][1] == pcm
+        assert source.drain(sub, 100)["me"]
+        source.unsubscribe(sub)
+        before = source.analysed
+        assert feed(recorder, "microphone", pcm, 100_000_000) == Gst.FlowReturn.OK
+        assert source.analysed == before and len(observed) == 1
+        recorder._pending_sources["microphone"] = dict(ready=threading.Event())
+        assert feed(recorder, "microphone", pcm, 200_000_000) == Gst.FlowReturn.OK
+        assert len(observed) == 1, "Readiness PCM reached the picture"
+        recorder._pending_sources.clear()
+        session.finish()
+        with wave.open(str(session.directory / session.manifest["tracks"][0]["file"])) as audio:
+            assert audio.readframes(audio.getnframes()) == pcm + pcm
+    finally:
+        session.finish()
+        recorder.close()
+
+
+def test_spectrogram_failure_never_interrupts_saved_pcm(tmp_path, monkeypatch):
+    NativeRecorder, Gst = recorder_class()
+    session = RecordingSession(tmp_path)
+    session.add_track("microphone", "Me", "microphone", 48000, 1)
+    recorder = NativeRecorder()
+    recorder.session = session
+    recorder.spectrogram.subscribe()
+
+    def failure(*args, **kwargs):
+        raise OSError("synthetic analysis failure")
+
+    monkeypatch.setattr(recorder.spectrogram, "feed", failure)
+    pcm = (-2060).to_bytes(2, "little", signed=True) * 4800
+    try:
+        for second in range(2):
+            assert feed(recorder, "microphone", pcm, second * 100_000_000) == Gst.FlowReturn.OK
+        assert recorder.spectrogram.problem == "synthetic analysis failure"
+        session.finish()
+        with wave.open(str(session.directory / session.manifest["tracks"][0]["file"])) as audio:
+            assert audio.readframes(audio.getnframes()) == pcm + pcm
+    finally:
+        session.finish()
+        recorder.close()
