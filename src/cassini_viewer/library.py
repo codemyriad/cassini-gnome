@@ -202,6 +202,7 @@ class Meeting(MeetingState):
     legacy_transcript_file: Path | None = None
     has_audio: bool = False
     metadata_editable: bool = True
+    title_is_fallback: bool = False
     diagnostics: tuple[Diagnostic, ...] = ()
     metadata: dict = field(default_factory=dict, compare=False, repr=False)
     notes: tuple[dict, ...] = ()
@@ -615,7 +616,7 @@ class LibraryScanner:
             embedded.tags.get("TITLE") if embedded else None,
             Path(received_name).stem if received_name else None,
         ]
-        title = next((t.strip() for t in title_values if isinstance(t, str) and t.strip()), "Untitled meeting")
+        title = next((t.strip() for t in title_values if isinstance(t, str) and t.strip()), None)
         reference = (metadata.get("transcript") or {}).get("reference") or {}
         legacy_transcript_file = (
             audio_file
@@ -639,7 +640,8 @@ class LibraryScanner:
             transcript=transcript,
             eta_minutes=eta,
             error=error,
-            title=title,
+            title=title or "Untitled meeting",
+            title_is_fallback=title is None,
             started_at_ms=started,
             duration_ms=duration,
             words=tuple(words),

@@ -113,6 +113,31 @@ with tempfile.TemporaryDirectory() as tmp:
     assert data["notes"] == [dict(atMs=700000, text="Decision on the travel budget around here")]
     assert data["notes"][0] == dict(atMs=700000, text="Decision on the travel budget around here")
     assert page.headline.get_label() == "Renamed while recording"
+    # GTK4 focuses the Entry's inner GtkText. A scanner refresh after the
+    # debounce must not reset the user's caret or current selection.
+    until(lambda: not page._dirty and not page._saving)
+    page.title_entry.grab_focus()
+    until(lambda: window.get_focus() is not None and window.get_focus().is_ancestor(page.title_entry))
+    page.title_entry.set_position(-1)
+    position = page.title_entry.get_position()
+    page.update(page.meeting)
+    assert page.title_entry.get_position() == position, "Refresh reset the focused title caret"
+    page.title_entry.select_region(0, -1)
+    selection = page.title_entry.get_selection_bounds()
+    page.update(page.meeting)
+    assert page.title_entry.get_selection_bounds() == selection, "Refresh cleared the title selection"
+    from dataclasses import replace
+
+    current = page.meeting
+    page.update(replace(current, title="An earlier scanner title"))
+    assert page.title_entry.get_text() == "Renamed while recording", "Refresh overwrote an active edit"
+    page.meeting = current
+    window.set_focus(None)
+    changes = []
+    handler = page.title_entry.connect("changed", lambda *_: changes.append(True))
+    page.update(current)
+    page.title_entry.disconnect(handler)
+    assert not changes, "An unchanged unfocused title was rewritten"
     assert all((live.directory / name).read_bytes() == data for name, data in before.items())
     app.comfort.states[live.key] = dict(levels=[0.0, 0.6], voices=4, silent=False, line=None, minutes=50)
     app.comfort.clocks[live.key] = SilenceClock(GLib.get_monotonic_time() / 1e6 - 20)

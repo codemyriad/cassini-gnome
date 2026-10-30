@@ -428,3 +428,14 @@ def test_long_preview_bounds_legacy_grouping_and_retains_full_reading_body(tmp_p
     assert len(result) == 3
     assert sum(len(turn.words) for turn in scanner._preview_cache["long"][2]) == 20000
     assert scanner._preview("long", words) is result and observed == [32]
+
+
+def test_default_title_is_a_placeholder_but_real_identical_titles_are_not(tmp_path):
+    session = RecordingSession(tmp_path, "")
+    session.finish()
+    write_metadata(session.directory)
+    default = scan_library(tmp_path).meetings[0]
+    assert default.title == "Untitled meeting" and default.title_is_fallback
+    write_metadata(session.directory, title="Untitled meeting", titleSource="user")
+    named = scan_library(tmp_path).meetings[0]
+    assert named.title == "Untitled meeting" and not named.title_is_fallback
