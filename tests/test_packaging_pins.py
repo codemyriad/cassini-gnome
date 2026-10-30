@@ -53,7 +53,10 @@ def test_rpm_requires_its_python_abi_and_not_the_distribution_onnxruntime():
     assert "Requires:       python(abi) = %{python3_version}" in spec
     assert "Requires:       python3dist(numpy)" in spec
     assert not re.search(r"^(Build)?Requires:.*onnxruntime", spec, re.M)
-    assert "%{_libdir}/%{name}\n" in spec and "verify.py --onnxruntime %{buildroot}%{_libdir}/%{name}/python" in spec
+    assert (
+        "%{_libdir}/cassini-viewer\n" in spec
+        and "verify.py --onnxruntime %{buildroot}%{_libdir}/cassini-viewer/python" in spec
+    )
     assert "%license whistle/LICENSE-ONNXRuntime-MIT.txt" in spec
 
 
@@ -126,7 +129,8 @@ def test_flatpak_bundles_whistle_and_matching_wheels_only_on_x86_64(path):
 def test_debian_package_is_amd64_and_keeps_the_bundle_unstripped():
     control = (ROOT / "debian/control").read_text()
     rules = (ROOT / "debian/rules").read_text()
-    assert "Architecture: amd64" in control and "Architecture: all" not in control
+    app = control.split("Package: cassini-talk\n", 1)[1].split("\nPackage:", 1)[0]
+    assert "Architecture: amd64" in app and "Architecture: all" not in app
     assert re.search(r"^\s+python3-numpy,$", control, re.M) and "onnxruntime" not in control
     assert re.search(r"^\s+\$\{cassini:Python\},$", control, re.M) and "-Vcassini:Python=" in rules
     assert "-Dwhistle=enabled" in rules

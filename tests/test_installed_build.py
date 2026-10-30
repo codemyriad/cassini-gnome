@@ -261,7 +261,7 @@ def test_flatpak_checks_current_host_deployment_instead_of_running_app_mount(tmp
     location = tmp_path / "deployment"
     root = location / "files/share/cassini-viewer"
     shutil.copytree(new_root, root)
-    launcher = location / "files/bin/cassini-viewer"
+    launcher = location / "files/bin/cassini-talk"
     launcher.parent.mkdir(parents=True)
     shutil.copyfile(new_launcher, launcher)
     fake = tmp_path / "flatpak"

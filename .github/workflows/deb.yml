@@ -47,9 +47,21 @@ jobs:
       # network, smoke-tests it and writes the D11 goldens down with it.
       # Retried once because distribution mirrors occasionally time out.
       - run: build-aux/deb/build.sh "${{ matrix.base }}" || build-aux/deb/build.sh "${{ matrix.base }}"
+      - name: Upgrade the published Cassini Viewer 0.3.0 to Cassini talk
+        if: matrix.base == 'ubuntu:26.04'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tests/upgrade/run.sh dist/cassini-talk_*.deb dist/cassini-viewer_*_all.deb "$RUNNER_TEMP/product-upgrade"
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.base == 'ubuntu:26.04'
+        with:
+          name: cassini-talk-upgrade
+          path: |
+            ${{ runner.temp }}/product-upgrade/*.json
+            ${{ runner.temp }}/product-upgrade/*.log
       - name: Installed package restarts after upgrades and preserves active audio
         if: matrix.base == 'ubuntu:26.04'
-        run: tests/build-refresh/run.sh dist/*.deb "$RUNNER_TEMP/build-refresh"
+        run: tests/build-refresh/run.sh dist/cassini-talk_*.deb "$RUNNER_TEMP/build-refresh"
       - uses: actions/upload-artifact@v4
         if: always() && matrix.base == 'ubuntu:26.04'
         with:
@@ -76,7 +88,7 @@ jobs:
           tests/recording/node_modules/.bin/playwright install chromium
       - name: Installed package connects a fresh real extension without Connect
         if: matrix.base == 'ubuntu:26.04'
-        run: tests/browser-setup/run.sh dist/*.deb "$RUNNER_TEMP/browser-startup"
+        run: tests/browser-setup/run.sh dist/cassini-talk_*.deb "$RUNNER_TEMP/browser-startup"
       - uses: actions/upload-artifact@v4
         if: always() && matrix.base == 'ubuntu:26.04'
         with:

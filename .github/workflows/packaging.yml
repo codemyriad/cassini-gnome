@@ -27,7 +27,7 @@ jobs:
         run: python3 tests/flatpak/prepare_trash_portal.py --output "$PWD/_ci-trash-portal"
       - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
         with:
-          bundle: cassini-viewer-devel.flatpak
+          bundle: cassini-talk-devel.flatpak
           manifest-path: build-aux/flatpak/io.codemyriad.CassiniTalk.Devel.json
           cache-key: flatpak-builder-${{ github.sha }}
       - uses: actions/cache@v4
@@ -39,7 +39,7 @@ jobs:
       - name: Smoke-test the installed Flatpak offline
         env:
           CASSINI_PARAKEET_TEST_CACHE: ${{ runner.temp }}/parakeet-models
-        run: build-aux/flatpak/smoke.sh cassini-viewer-devel.flatpak io.codemyriad.CassiniTalk.Devel
+        run: build-aux/flatpak/smoke.sh cassini-talk-devel.flatpak io.codemyriad.CassiniTalk.Devel
       - uses: actions/upload-artifact@v4
         if: always()
         with:

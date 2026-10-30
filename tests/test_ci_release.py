@@ -82,8 +82,8 @@ def test_usage_api_minutes_are_separate_from_rounded_resource_estimates():
 @pytest.fixture
 def candidate(tmp_path):
     files = {
-        "meson.build": "project('cassini-viewer',\n version: '7.8.9',\n)\n",
-        "debian/changelog": "cassini-viewer (7.8.9) UNRELEASED; urgency=medium\n",
+        "meson.build": "project('cassini-talk',\n version: '7.8.9',\n)\n",
+        "debian/changelog": "cassini-talk (7.8.9+talk1) UNRELEASED; urgency=medium\n",
         "build-aux/rpm/cassini-viewer.spec": "Version: 7.8.9\n",
         "build-aux/arch/PKGBUILD": "pkgver=7.8.9\n",
         "NEWS": "Version 7.8.9\n~~~~~~~~~~~~~\nNot released yet.\n",
@@ -145,7 +145,7 @@ def test_release_metadata_rejects_the_old_browser_companion(candidate):
 
 def test_installed_metadata_validation_checks_the_packaged_files_and_both_validators(tmp_path):
     prefix = tmp_path / "usr"
-    launcher = prefix / "bin/cassini-viewer"
+    launcher = prefix / "bin/cassini-talk"
     metainfo = prefix / "share/metainfo/io.codemyriad.CassiniTalk.metainfo.xml"
     desktop = prefix / "share/applications/io.codemyriad.CassiniTalk.desktop"
     extension = prefix / "share/cassini-viewer/browser-extension/manifest.json"

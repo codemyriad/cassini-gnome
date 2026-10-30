@@ -21,7 +21,7 @@ mkdir -p dist
 # Per base image, so parallel builds (make -j packages) do not swap names.
 name_file=.rpm-name-$(image_slug "$BASE")
 container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z "$BASE" sh -ec '
-  top=/build/rpmbuild src=/build/cassini-viewer-$VERSION
+  top=/build/rpmbuild src=/build/cassini-talk-$VERSION
   mkdir -p $top/SOURCES $top/SPECS "$src"
   spec=$top/SPECS/cassini-viewer.spec
   install -m 644 /in/build-aux/rpm/cassini-viewer.spec "$spec"
@@ -54,11 +54,11 @@ for info in pins[\"onnxruntime\"][\"wheels\"].values():
   cp -a /in/. "$src"
   cd "$src"
   rm -rf .whistle-cache .sherpa-cache .git _build* _install _flatpak build builddir dist repo .flatpak-builder .venv obj-* \
-    .pytest_cache .ruff_cache debian/.debhelper debian/cassini-viewer \
+    .pytest_cache .ruff_cache debian/.debhelper debian/cassini-viewer debian/cassini-talk debian/tmp \
     tests/recording/node_modules tests/recording/artifacts *.flatpak
   find . -name __pycache__ -prune -exec rm -rf {} +
   cd /build
-  tar -cJf $top/SOURCES/cassini-viewer-$VERSION.tar.xz cassini-viewer-$VERSION
+  tar -cJf $top/SOURCES/cassini-talk-$VERSION.tar.xz cassini-talk-$VERSION
 
   # openSUSE defines no %{dist}; tag its RPMs with the distro so they do not
   # clash in dist/ with builds for other distros.
@@ -73,8 +73,8 @@ for info in pins[\"onnxruntime\"][\"wheels\"].values():
   fi
 
   install_rpm $top/RPMS/x86_64/*.rpm
-  test -x /usr/bin/cassini-viewer
-  head -n1 /usr/bin/cassini-viewer | grep -qx "#!/usr/bin/python3"
+  test -x /usr/bin/cassini-talk
+  head -n1 /usr/bin/cassini-talk | grep -qx "#!/usr/bin/python3"
   python3 -I /in/build-aux/smoke-installed.py
   python3 -I /in/build-aux/ci/validate_installed.py "$VERSION"
 

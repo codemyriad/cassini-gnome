@@ -3,7 +3,7 @@
     "runtime": "org.gnome.Platform",
     "runtime-version": "50",
     "sdk": "org.gnome.Sdk",
-    "command": "cassini-viewer",
+    "command": "cassini-talk",
     "finish-args": [
         "--share=ipc",
         "--share=network",
@@ -48,7 +48,7 @@
             ]
         },
         {
-            "name": "cassini-viewer",
+            "name": "cassini-talk",
             "buildsystem": "meson",
             "config-opts": [
                 "-Dprofile=development"
@@ -93,7 +93,9 @@
                         "tests/recording/node_modules",
                         "tests/recording/artifacts",
                         ".whistle-cache",
-                        ".sherpa-cache"
+                        ".sherpa-cache",
+                        "debian/cassini-talk",
+                        "debian/tmp"
                     ]
                 },
                 {

@@ -1,6 +1,6 @@
 # Maintainer: Silvio Tomatis <silviot@gmail.com>
 #
-# Builds Cassini Viewer from a tarball of the local source tree, staged next
+# Builds Cassini talk from a tarball of the local source tree, staged next
 # to this file by build-aux/arch/build.sh. Keep pkgver equal to the version
 # in meson.build; build.sh refuses to build when they differ.
 #
@@ -9,9 +9,12 @@
 #   sha256sums=('...')   # fill in with: updpkgsums
 #   _srcdir=cassini-gnome-$pkgver      # GitHub names the top directory after the repo
 
-pkgname=cassini-viewer
+pkgname=cassini-talk
 pkgver=0.3.0
-pkgrel=1
+pkgrel=2
+provides=("cassini-viewer=$pkgver")
+replaces=(cassini-viewer)
+conflicts=(cassini-viewer)
 pkgdesc='Record meetings and read along with their transcripts in the Cassini portable meeting format'
 # The offline writing-down engine is a pinned glibc x86_64 binary.
 arch=(x86_64)
@@ -79,9 +82,9 @@ check() {
 
 package() {
   meson install -C build --destdir "$pkgdir"
-  python "$_srcdir/whistle/verify.py" "$pkgdir/usr/share/$pkgname/whistle"
-  python "$_srcdir/whistle/verify.py" --onnxruntime "$pkgdir/usr/lib/$pkgname/python"
-  python "$_srcdir/sherpa/fetch.py" --cache "$srcdir" --verify "$pkgdir/usr/lib/$pkgname/sherpa"
+  python "$_srcdir/whistle/verify.py" "$pkgdir/usr/share/cassini-viewer/whistle"
+  python "$_srcdir/whistle/verify.py" --onnxruntime "$pkgdir/usr/lib/cassini-viewer/python"
+  python "$_srcdir/sherpa/fetch.py" --cache "$srcdir" --verify "$pkgdir/usr/lib/cassini-viewer/sherpa"
   install -Dm644 -t "$pkgdir/usr/share/licenses/$pkgname/sherpa" \
     "$_srcdir/sherpa/NOTICE.md" "$_srcdir/sherpa/LICENSE-sherpa-Apache-2.0.txt" "$_srcdir/sherpa/LICENSE-ONNXRuntime-MIT.txt"
   install -Dm644 -t "$pkgdir/usr/share/licenses/$pkgname" \

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Smoke-test an installed Cassini Viewer, for the package build scripts:
+# Smoke-test an installed Cassini talk, for the package build scripts:
 #   python3 -I build-aux/smoke-installed.py [datadir] [--whistle GOLDENS]
 # datadir defaults to /usr/share/cassini-viewer. Runs the launcher's startup
 # check, then fails unless every playback and recording GStreamer element is
@@ -37,7 +37,7 @@ runtime.check()  # exits with a readable message if a library is missing or too 
 from cassini_viewer.installed_build import read, verified  # noqa: E402
 
 identity = read(args.datadir / "build-info.json")
-if not verified(identity, args.datadir, args.datadir.parents[1] / "bin/cassini-viewer"):
+if not verified(identity, args.datadir, args.datadir.parents[1] / "bin/cassini-talk"):
     sys.exit("installed build identity does not match the package payload")
 print("installed build identity verified: " + identity["buildId"])
 from gi.repository import Adw, Gst, Gtk  # noqa: E402

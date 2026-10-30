@@ -1,3 +1,11 @@
+cassini-talk (0.3.0+talk1) UNRELEASED; urgency=medium
+
+  * Rename the application and package to Cassini talk (D45).
+  * Preserve the existing Library and migrate explicit settings once.
+  * Keep a transitional cassini-viewer package for existing installations.
+
+ -- Silvio Tomatis <silviot@gmail.com>  Fri, 30 Oct 2026 12:00:00 +0100
+
 cassini-viewer (0.3.0) UNRELEASED; urgency=medium
 
   * Add the meeting Library, import, export and search across meetings.

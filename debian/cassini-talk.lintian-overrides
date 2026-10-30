@@ -20,3 +20,6 @@ embedded-library mbedtls [usr/lib/x86_64-linux-gnu/cassini-viewer/python/onnxrun
 # their approved hashes and make the worker refuse to load them.
 unstripped-binary-or-object [usr/lib/x86_64-linux-gnu/cassini-viewer/sherpa/libonnxruntime.so]
 unstripped-binary-or-object [usr/lib/x86_64-linux-gnu/cassini-viewer/sherpa/libsherpa-onnx-c-api.so]
+
+# The legacy command retains its manual; the new entry shares that documentation.
+no-manual-page [usr/bin/cassini-talk]

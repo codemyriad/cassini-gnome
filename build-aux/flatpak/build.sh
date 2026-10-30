@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build the Flatpak and write a single-file bundle to ./dist.
 #   build-aux/flatpak/build.sh [--devel] [--install] [--smoke]
-#     --devel    build io.codemyriad.CassiniTalk.Devel -> dist/cassini-viewer-devel.flatpak
+#     --devel    build io.codemyriad.CassiniTalk.Devel -> dist/cassini-talk-devel.flatpak
 #     --install  install the bundle for the current user afterwards
 #     --smoke    install it, then smoke-test it offline (build-aux/flatpak/smoke.sh)
 # Needs flatpak plus flatpak-builder (native, or the org.flatpak.Builder app).
@@ -11,12 +11,12 @@ set -eu
 cd "$(dirname "$0")/../.."
 
 APP_ID=io.codemyriad.CassiniTalk
-BUNDLE=cassini-viewer
+BUNDLE=cassini-talk
 INSTALL=
 SMOKE=
 for arg in "$@"; do
   case $arg in
-    --devel) APP_ID=io.codemyriad.CassiniTalk.Devel; BUNDLE=cassini-viewer-devel ;;
+    --devel) APP_ID=io.codemyriad.CassiniTalk.Devel; BUNDLE=cassini-talk-devel ;;
     --install) INSTALL=1 ;;
     --smoke) SMOKE=1 ;;
     -h|--help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;

@@ -27,12 +27,12 @@ container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:r
   echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
 
   # Stage PKGBUILD plus a tarball of the source tree in a scratch dir.
-  name=cassini-viewer-$1
+  name=cassini-talk-$1
   mkdir -p /build/pkg "/build/$name"
   cp -a /in/. "/build/$name"
   cd "/build/$name"
   rm -rf .whistle-cache .sherpa-cache .git _build* _install _flatpak ./*.flatpak build builddir dist obj-* .flatpak-builder repo .venv \
-         .ruff_cache .pytest_cache debian/.debhelper debian/cassini-viewer \
+         .ruff_cache .pytest_cache debian/.debhelper debian/cassini-viewer debian/cassini-talk debian/tmp \
     tests/recording/node_modules tests/recording/artifacts
   find . -name __pycache__ -prune -exec rm -rf {} +
   cd /build
@@ -54,8 +54,8 @@ container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:r
 
   # Install and smoke-test.
   pacman -U --noconfirm "$pkg"
-  test -x /usr/bin/cassini-viewer
-  cassini-viewer --help >/dev/null   # runs the installed launcher headless
+  test -x /usr/bin/cassini-talk
+  cassini-talk --help >/dev/null   # runs the installed launcher headless
   python3 -I /in/build-aux/smoke-installed.py
   python3 -I /in/build-aux/ci/validate_installed.py "$1"
 
