@@ -18,6 +18,7 @@ GTK use only the pure parts; decoding imports GStreamer lazily.
 
 import errno
 import os
+import re
 import stat
 import struct
 import time
@@ -32,6 +33,8 @@ from .portable import ogg_crc
 OPUS_RATE = 48000
 # One 20 ms Opus frame at 48 kHz: the §5 length tolerance.
 OPUS_FRAME = 960
+# §11: span-ids follow the track-id rule.
+SPAN_ID = re.compile(r"(?!\.)[A-Za-z0-9._-]{1,64}")
 # Decoded and discarded before a seek target (RFC 7845 asks for >= 80 ms).
 PREROLL = OPUS_RATE // 4
 TRACKS = "tracks"
@@ -67,24 +70,62 @@ def span_reference(value):
     """(codec, parts) for one session.json span; ValueError for anything unsafe."""
     if not isinstance(value, dict):
         raise ValueError("invalid-track")
-    codec = value.get("codec")
     name = value.get("file")
-    if codec is None:
+    # Only an absent codec (WAV) and "opus" are valid (§11); null or any other
+    # value is an unsupported span, never guessed.
+    if "codec" not in value:
         name = basename(name)
         if not name.startswith("track-") or not name.endswith(".wav"):
             raise ValueError("invalid-track-name")
         return "pcm", (name,)
-    if codec != "opus":
+    if value["codec"] != "opus":
         raise ValueError("unsupported-track-codec")
     if value.get("decodedRate") != OPUS_RATE:
         raise ValueError("unsupported-decoded-rate")
     if not isinstance(name, str) or name.count("/") != 1:
         raise ValueError("unsafe-reference")
     folder, leaf = name.split("/")
-    leaf = basename(leaf)
-    if folder != TRACKS or leaf.startswith(".") or not leaf.endswith(".opus") or len(leaf) <= len(".opus"):
+    if folder != TRACKS or not leaf.endswith(".opus") or not SPAN_ID.fullmatch(leaf[: -len(".opus")]):
         raise ValueError("invalid-track-name")
-    return "opus", (TRACKS, leaf)
+    return "opus", (TRACKS, basename(leaf))
+
+
+def source_file(value):
+    """The original WAV basename a compacted span records (§11), or None."""
+    name = value.get("sourceFile") if isinstance(value, dict) else None
+    try:
+        return span_reference(dict(file=name))[1][0] if name is not None else None
+    except ValueError:
+        return None
+
+
+def salvage_pairs(manifest):
+    """{tracks/<id>.opus: track-*.wav} from whatever span records a damaged session.json still has."""
+    tracks = manifest.get("tracks") if isinstance(manifest, dict) else None
+    pairs = {}
+    for value in tracks[:64] if isinstance(tracks, list) else ():
+        try:
+            if isinstance(value, dict) and value.get("codec") == "opus" and source_file(value):
+                pairs["/".join(span_reference(value)[1])] = source_file(value)
+        except ValueError:
+            continue
+    return pairs
+
+
+def salvage_values(wavs, compacted, pairs=None, limit=64):
+    """Span records for salvage without a trustworthy session.json.
+
+    Every WAV is kept. A compacted span whose `sourceFile` record names a WAV
+    still present is its duplicate and is skipped; one whose WAV is gone is
+    used. Without a record, an Opus span is used only when no WAV is left.
+    """
+    pairs = pairs or {}
+    values = [dict(file=name) for name in wavs]
+    for name in compacted:
+        source = pairs.get(name)
+        if (source is not None and source not in wavs) or (source is None and not wavs):
+            values.append(dict(file=name, codec="opus", decodedRate=OPUS_RATE))
+    return values[:limit]
 
 
 @contextmanager
@@ -236,6 +277,9 @@ def describe(value, load, *, recovered=False):
     rate, frames = value.get("sampleRate"), value.get("frames")
     if type(rate) is not int or not 8000 <= rate <= 192000 or type(frames) is not int or not 0 <= frames <= MAX_FRAMES:
         raise ValueError("track-source-metadata-invalid")
+    if value.get("channels") != opus.channels:
+        # Compaction keeps the channel count (§11): a mismatch is a damaged span.
+        raise ValueError("track-format-mismatch")
     check_length(opus.samples, frames, rate)
     return SpanInfo(codec, parts, frames, rate, opus.channels, opus.samples, OPUS_RATE)
 

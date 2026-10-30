@@ -534,8 +534,7 @@ def recover_session(directory):
         tracks.append(
             dict(id=file.stem, file=file.name, label="Recovered audio", kind="media", labelSource="recovered", **info)
         )
-    if not files:
-        tracks = recover_compacted(directory)
+    tracks += recover_compacted(directory, [file.name for file in files])
     if not tracks:
         raise ValueError("No readable recording metadata or PCM WAV tracks were found")
     return dict(
@@ -551,11 +550,12 @@ def recover_session(directory):
     )
 
 
-def recover_compacted(directory):
-    """S-12 §5 salvage: committed `tracks/*.opus` spans when no WAV remains.
+def recover_compacted(directory, wavs):
+    """S-12 §5 salvage of committed `tracks/*.opus` spans without session.json.
 
-    A WAV and its Opus copy cannot be paired by name, so Opus spans are
-    recovered only from a folder without WAVs; nothing is ever deleted here.
+    With no span records left there is no `sourceFile` pairing, so an Opus
+    span is recovered only from a folder without WAVs (S-12 §11); nothing is
+    ever deleted here.
     """
     from . import track_source
 
@@ -564,6 +564,7 @@ def recover_compacted(directory):
         names = track_source.recovered_opus(fd, limit=65)
     finally:
         os.close(fd)
+    names = [v["file"] for v in track_source.salvage_values(wavs, names, limit=None) if v.get("codec") == "opus"]
     if len(names) > 64:
         raise ValueError("Too many recording tracks to recover")
     tracks = []
@@ -607,7 +608,7 @@ def load_session(path):
     for track in tracks:
         if not isinstance(track, dict) or not isinstance(track.get("file"), str):
             raise ValueError("Invalid recording track")
-        if track.get("codec") is not None:
+        if "codec" in track:
             # S-12 §5 compacted span: source sampleRate/frames stay as written;
             # the confined Opus file must match them in 48 kHz time.
             from . import track_source

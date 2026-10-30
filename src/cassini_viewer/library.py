@@ -479,6 +479,7 @@ class LibraryScanner:
 
     def _capture(self, fd, directory, identifier, names, diagnostics):
         salvaged = False
+        capture = None
         try:
             capture = self._load(fd, directory, "session.json", "json", _json)
             if (
@@ -492,18 +493,19 @@ class LibraryScanner:
                 raise ValueError("capture-identity-or-version")
             values = capture["tracks"]
         except (OSError, ValueError):
+            # Compacted spans pair with their WAVs through a surviving
+            # `sourceFile` record; without one, a WAV wins (S-12 §11).
+            pairs = track_source.salvage_pairs(capture)
             capture, salvaged = {}, True
-            values = [dict(file=name) for name in sorted(names) if name.startswith("track-") and name.endswith(".wav")][
-                :64
-            ]
-            if not values:
-                # Without session.json, compacted spans are salvaged only when no
-                # WAV remains: a WAV and its Opus copy cannot be paired by name.
-                values = [
-                    dict(file=name, codec="opus", decodedRate=track_source.OPUS_RATE)
+            values = track_source.salvage_values(
+                [name for name in sorted(names) if name.startswith("track-") and name.endswith(".wav")],
+                [
+                    name
                     for name in sorted(names)
                     if name.startswith(track_source.TRACKS + "/") and name.endswith(".opus")
-                ][:64]
+                ],
+                pairs,
+            )
             diagnostics.append(Diagnostic(directory / "session.json", "capture-recovered"))
         tracks = []
         identifiers = [

@@ -82,7 +82,7 @@ def compact(directory, identifier, *, keep_wav=False):
         rate, channels = stream.getframerate(), stream.getnchannels()
     (directory / "tracks").mkdir(exist_ok=True)
     encode_opus(pcm, rate, channels, directory / "tracks" / f"{identifier}.opus")
-    span.update(codec="opus", file=f"tracks/{identifier}.opus", decodedRate=48000)
+    span.update(codec="opus", file=f"tracks/{identifier}.opus", decodedRate=48000, sourceFile=wav.name)
     path.write_text(json.dumps(manifest))
     if not keep_wav:
         wav.unlink()
@@ -199,6 +199,14 @@ def test_length_check_is_one_opus_frame_in_48k_time():
         dict(file="tracks/mic.opus", codec="opus", decodedRate=44100),
         dict(file="tracks/mic.opus", codec="opus"),
         dict(file="tracks/mic.opus"),
+        dict(file="track-mic.wav", codec=None),
+        dict(file="track-mic.wav", codec="wav"),
+        dict(file="track-mic.wav", codec="pcm"),
+        dict(file="tracks/a b.opus", codec="opus", decodedRate=48000),
+        dict(file="tracks/a:b.opus", codec="opus", decodedRate=48000),
+        dict(file="tracks/\u00fc.opus", codec="opus", decodedRate=48000),
+        dict(file="tracks/.opus", codec="opus", decodedRate=48000),
+        dict(file="tracks/" + "a" * 65 + ".opus", codec="opus", decodedRate=48000),
     ],
 )
 def test_unsafe_or_unknown_references_are_rejected(span):
@@ -452,3 +460,73 @@ def test_cassini_export_is_equivalent(tmp_path):
         assert abs(magnitude(actual_pcm, start, end, frequency) - magnitude(expected_pcm, start, end, frequency)) < 0.03
     after = {p.relative_to(opus.directory): p.read_bytes() for p in opus.directory.rglob("*") if p.is_file()}
     assert before == after
+
+
+@pytest.mark.parametrize("identifier", ["mic", "a.b-c_D9", "a..b", "-x", "a" * 64])
+def test_span_ids_follow_the_track_id_rule(identifier):
+    value = dict(file=f"tracks/{identifier}.opus", codec="opus", decodedRate=48000)
+    assert track_source.span_reference(value) == ("opus", ("tracks", f"{identifier}.opus"))
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        dict(codec=None),
+        dict(codec="wav"),
+        dict(codec="flac"),
+        dict(channels=2),
+        dict(file="tracks/mic phone.opus"),
+    ],
+)
+def test_unsupported_or_mismatched_spans_are_damaged(tmp_path, change):
+    directory = capture(tmp_path)
+    compact(directory, "mic")
+    if "file" in change:
+        (directory / "tracks" / "mic.opus").rename(directory / change["file"])
+    manifest = json.loads((directory / "session.json").read_text())
+    manifest["tracks"][0].update(change)
+    (directory / "session.json").write_text(json.dumps(manifest))
+    meeting = LibraryScanner(tmp_path).scan().meetings[0]
+    assert [t.kind for t in meeting.tracks] == ["remote"]
+    assert "capture-track-unreadable" in {d.code for d in meeting.diagnostics}
+    with pytest.raises((OSError, ValueError)):
+        load_session(directory / "session.json")
+
+
+def test_an_unknown_codec_on_a_wav_span_is_damaged_not_guessed(tmp_path):
+    directory = capture(tmp_path)
+    manifest = json.loads((directory / "session.json").read_text())
+    manifest["tracks"][1]["codec"] = "pcm"
+    (directory / "session.json").write_text(json.dumps(manifest))
+    meeting = LibraryScanner(tmp_path).scan().meetings[0]
+    assert [t.kind for t in meeting.tracks] == ["microphone"]
+    with pytest.raises(ValueError):
+        load_session(directory / "session.json")
+
+
+def test_salvage_pairs_compacted_spans_with_their_wavs_by_source_file(tmp_path):
+    directory = capture(tmp_path)
+    compact(directory, "mic", keep_wav=True)  # both copies exist: the WAV wins, no duplicate
+    compact(directory, "remote")  # WAV already deleted: the Opus span is used
+    manifest = json.loads((directory / "session.json").read_text())
+    manifest["version"] = 99  # damaged, but its span records survive
+    (directory / "session.json").write_text(json.dumps(manifest))
+    meeting = LibraryScanner(tmp_path).scan().meetings[0]
+    assert "capture-recovered" in {d.code for d in meeting.diagnostics}
+    assert sorted((t.codec, t.path.name.endswith(".wav")) for t in meeting.tracks) == [("opus", False), ("pcm", True)]
+    assert {t.path.name for t in meeting.tracks if t.codec == "opus"} == {"remote.opus"}
+
+    # Without any record, a WAV still present wins and the Opus span is not used.
+    (directory / "session.json").unlink()
+    meeting = LibraryScanner(tmp_path).scan().meetings[0]
+    assert [t.codec for t in meeting.tracks] == ["pcm"]
+
+
+def test_salvage_values_rules():
+    wav, opus = ["track-a.wav"], ["tracks/a.opus", "tracks/b.opus"]
+    assert track_source.salvage_values(wav, opus) == [dict(file="track-a.wav")]
+    assert [v["file"] for v in track_source.salvage_values([], opus)] == opus
+    pairs = {"tracks/a.opus": "track-a.wav", "tracks/b.opus": "track-b.wav"}
+    assert [v["file"] for v in track_source.salvage_values(wav, opus, pairs)] == ["track-a.wav", "tracks/b.opus"]
+    bad = dict(tracks=[dict(file="tracks/a.opus", codec="opus", decodedRate=48000, sourceFile="../x.wav")])
+    assert track_source.salvage_pairs(bad) == {} and track_source.salvage_pairs(None) == {}
