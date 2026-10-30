@@ -584,3 +584,25 @@ def test_lost_page_draining_browser_audio_uses_recovery_grace_not_call_end(serve
     finally:
         client.close()
         peer.close()
+
+
+def test_permission_evidence_requires_native_pcm_not_remote_audio(server):
+    service, path, _ = server
+    client = BrowserAudioProxy(path=path)
+    try:
+        start(client, "permissions", microphone=False)
+        remote(client, "remote-only")
+        assert service.captures["permissions"].snapshot()["permittedSources"] == []
+        capture = service.captures["permissions"]
+        capture.select(True, True)
+        identifier, microphone = capture.native_taps["microphone"]
+        track = next(t for t in capture.host.session.manifest["tracks"] if t["id"] == identifier)
+        microphone.append(b"\1\0" * 4, track["startOffsetMs"] + 100)
+        assert capture.snapshot()["permittedSources"] == ["microphone"]
+        capture.fallback()
+        identifier, system = capture.native_taps["system"]
+        track = next(t for t in capture.host.session.manifest["tracks"] if t["id"] == identifier)
+        system.append(b"\1\0" * 4, track["startOffsetMs"] + 100)
+        assert capture.snapshot()["permittedSources"] == ["microphone", "system"]
+    finally:
+        client.close()

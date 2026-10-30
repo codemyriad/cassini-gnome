@@ -45,6 +45,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._external_meeting = False
         self.export_dialog = None
         self.recording_details_dialog = None
+        self.rename_dialog = None
         self._pending_selection = None
         self._opening_files = 0
         self._list_signature = None
@@ -101,6 +102,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             ("back-library", self.back_to_library),
             ("search", self.toggle_search),
             ("export", self.show_export),
+            ("rename", self.show_rename),
             ("move-to-trash", self.move_to_trash),
             ("recording-details", self.show_recording_details),
             ("undo-speaker-merge", lambda *_: self.meeting_page.undo_speaker_merge() if self.meeting_page else None),
@@ -151,9 +153,43 @@ class LibraryWindow(Adw.ApplicationWindow):
                 )
             )
 
+        rename = self.lookup_action("rename")
+        if rename:
+            rename.set_enabled(self.rename_allowed(meeting))
         trash = self.lookup_action("move-to-trash")
         if trash:
             trash.set_enabled(self.get_application().meeting_trash.allowed(meeting, self) and not self._focused_editors)
+
+    def rename_allowed(self, meeting):
+        app = self.get_application()
+        return bool(
+            meeting
+            and meeting.metadata_editable
+            and meeting.lifecycle == "saved"
+            and not self.recording_page
+            and not self.search_page
+            and not self._external_meeting
+            and not app._quitting
+            and not (app.library_relocator and app.library_relocator.running)
+            and not app.meeting_trash.hides(meeting.directory)
+            and not (self.snapshot and self.snapshot.unavailable)
+        )
+
+    @staticmethod
+    def rename_item():
+        item = Gio.MenuItem.new(text("meeting.renameEllipsis"), "win.rename")
+        item.set_attribute_value("accel", GLib.Variant("s", text("common.shortcut.rename")))
+        return item
+
+    def show_rename(self):
+        from .rename_dialog import RenameDialog
+
+        meeting = self.meeting_page.meeting if self.meeting_page else self.selected
+        if not self.rename_allowed(meeting) or self._text_focused():
+            return
+        if self.rename_dialog is None or self.rename_dialog.closed:
+            self.rename_dialog = RenameDialog(self, meeting)
+        self.rename_dialog.present(self)
 
     def _library_scanned(self, snapshot):
         self._source_snapshot = snapshot
@@ -223,6 +259,7 @@ class LibraryWindow(Adw.ApplicationWindow):
     def _row_menu(self, row, x, y):
         self.rows.select_row(row)
         menu = Gio.Menu()
+        menu.append_item(self.rename_item())
         menu.append(text("common.exportEllipsis"), "win.export")
         if self.get_application().meeting_trash.allowed(row.meeting, self):
             section = Gio.Menu()
@@ -445,7 +482,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         header.pack_start(self.capture_header)
         header.pack_end(self.search_button())
         sidebar.add_top_bar(header)
-        self.rows = Gtk.ListBox(selection_mode=Gtk.SelectionMode.BROWSE, css_classes=["library-rows"])
+        self.rows = Gtk.ListBox(
+            selection_mode=Gtk.SelectionMode.BROWSE, activate_on_single_click=False, css_classes=["library-rows"]
+        )
         self.rows.connect(
             "row-activated", lambda _rows, row: self.open_meeting(row.meeting) if hasattr(row, "meeting") else None
         )
@@ -498,7 +537,7 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def companion_available_changed(self):
         available = self.get_application().browser_companion_available
-        self.first_companion.set_visible(available)
+        self.first_companion.set_visible(False)
         if available and self._activity_source is None and os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
             self._activity_source = BrowserActivity(self._activity_tick)
         if self.meeting_page:
@@ -660,6 +699,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             meeting.legacy_transcript_file,
             meeting.lifecycle,
             meeting.transcript,
+            meeting.eta_minutes,
             meeting.error,
             tuple(t.start_offset_ms for t in meeting.tracks),
             (meeting.metadata.get("received") or {}).get("originalFolderName"),
@@ -741,6 +781,12 @@ class LibraryWindow(Adw.ApplicationWindow):
             current = next((m for m in snapshot.meetings if m.key == self.export_dialog.meeting.key), None)
             if current and not (self.meeting_page and self._external_meeting):
                 self.export_dialog.update(current)
+        if self.rename_dialog and not self.rename_dialog.closed:
+            current = next((m for m in snapshot.meetings if m.key == self.rename_dialog.meeting.key), None)
+            if current is not None and self.rename_allowed(current):
+                self.rename_dialog.update(current)
+            else:
+                self.rename_dialog.force_close()
         self._update_live()
         self._refresh_export()
         self.received_hint.set_visible(
@@ -910,6 +956,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         trash_error = self.trash_error_line(meeting)
         if trash_error:
             self.preview.append(trash_error)
+        elif meeting.transcript in ("queued", "running"):
+            self.preview.append(label(meeting.badge().text, "dim-label", wrap=True, xalign=0))
         elif meeting.transcript == "failed":
             self.preview.append(
                 InlineLine(
@@ -1099,6 +1147,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._refresh_export()
 
     def back_to_library(self, *_):
+        self.set_title(text("library.title"))
         if self.search_page:
             self.search_page.close()
             self.search_page = None
@@ -1131,6 +1180,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._external_meeting = False
             self._stop_playback()
             self.monitor.refresh()
+
+        self.set_title(self.meeting_page.meeting.title if self.meeting_page else text("library.title"))
 
     def open_file(self, file):
         from pathlib import Path
@@ -1200,6 +1251,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.recording_details_dialog.force_close()
         if self.export_dialog and not self.export_dialog.closed:
             self.export_dialog.cancel()
+        if self.rename_dialog and not self.rename_dialog.closed:
+            self.rename_dialog.force_close()
         if self.recording_page:
             self.recording_page.close()
             self.recording_page = None

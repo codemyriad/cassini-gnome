@@ -113,3 +113,21 @@ The GTK regression sends real Escape key events in private Xvfb for saved, fixtu
 and generated-live recordings. Escape closes only the dialog; real recording
 continues. It compares actual content heights and retains the existing warning,
 equal-report, focus and scrolling checks.
+
+## QA checklist (coordinator report 2026-10-30, items 1–9)
+
+1. Live/saving Writing down rows say “After the recording”, verified by the report test.
+2. Manual Stop records optional app-owned end facts without changing session events; an existing session end event wins when reading. Older unknown ends stay unknown.
+3. The bounded transcript-header reader displays language names (including English), without loading a long word array.
+4. Native system audio never claims a browser was missing; only a matching browser capture/event explains a browser fallback.
+5. Native health counters absent from the saved data are hidden; explicitly reported counters are displayed.
+6. Successful new jobs record the actual separation outcome, including models not installed. Older meetings do not acquire inferred processing facts.
+7. Details and Change what is recorded share the recording-change button style.
+8. The dialog follows natural content size. Its facts grid negotiates width without the former constrained-height GtkBox warnings.
+9. Real Escape closes saved, fixture-live and generated-live dialogs while recording continues.
+
+Refreshed against main `5f48fbb`: all seven Meson checks pass (1123 source tests,
+one unavailable-locale skip). The real dialog test passes seven warning-guarded
+open scopes, including many spans, live capture, unchanged reports and preserved
+focus/scroll. Rename menus/keys and the D37 journey test pass alongside it.
+The review PNGs remain 1120×720. This remains a design draft for Silvio.

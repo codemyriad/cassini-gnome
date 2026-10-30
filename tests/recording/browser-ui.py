@@ -56,6 +56,8 @@ app.connect(
 
 def dispatch(packet, result, ready):
     try:
+        from cassini_viewer.capture_guard import recorder_busy
+
         window = next((w for w in app.get_windows() if isinstance(w, LibraryWindow)), None)
         action = packet.get("action", "status")
         if action == "quit":
@@ -113,6 +115,14 @@ def dispatch(packet, result, ready):
             auto=app._browser_snapshot.get("autoRecord", False),
             meetings=app._browser_snapshot.get("meetings", []),
             statuses=app._browser_snapshot.get("statuses", []),
+            recordReady=not (
+                app._record_start_future
+                or app._browser_stops
+                or app.browser_capture_active()
+                or any(recorder_busy(r) for r in app.native_captures.values())
+            ),
+            recordStartPending=app._record_start_future is not None,
+            browserStopsPending=bool(app._browser_stops),
             shortcutBound=bool(app.global_shortcut and app.global_shortcut.bound),
             settingsReady=bool(
                 app.settings_dialog and not app.settings_dialog.closed and app.settings_dialog._future is None

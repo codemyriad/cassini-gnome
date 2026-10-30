@@ -225,12 +225,13 @@ with tempfile.TemporaryDirectory() as tmp:
     app.comfort.tick()
     until(lambda: "recording" in services.notifications)
     payload = services.notifications["recording"]
-    assert payload["title"] == "Recording, 00:12:48"
-    assert [b["label"] for b in payload["buttons"]] == ["Stop", "Open Cassini"]
+    assert payload["title"] == "Cassini is recording"
+    assert [b["label"] for b in payload["buttons"]] == ["Stop", "Show"]
     assert [b["action"] for b in payload["buttons"]] == ["app.stop-recording", "app.open-recording"]
     window._fixed_now += 1000
     app.comfort.tick()
-    until(lambda: services.notifications["recording"]["title"] == "Recording, 00:12:49")
+    until(lambda: services.notifications["recording"]["title"] == "Cassini is recording")
+    assert "Recording since" in services.notifications["recording"]["body"]
     app.activate_action("open-recording", None)
     until(lambda: window.get_visible() and "recording" not in services.notifications)
     window.back_to_library()

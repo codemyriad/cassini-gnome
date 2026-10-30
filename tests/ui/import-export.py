@@ -4,6 +4,7 @@
 
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,16 @@ from pathlib import Path
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Use build-aux/ux-screenshot.sh")
+# GTK writes structured warnings to stderr; a parent checks them so callbacks
+# cannot swallow an assertion and leave CI green. No warning suppression.
+if "--gtk-child" not in sys.argv:
+    result = subprocess.run([sys.executable, __file__, "--gtk-child"], capture_output=True, text=True, timeout=90)
+    print(result.stdout, end="")
+    print(result.stderr, file=sys.stderr, end="")
+    if result.returncode or re.search(r"Gtk-(WARNING|CRITICAL)", result.stderr):
+        raise SystemExit(result.returncode or 1)
+    raise SystemExit(0)
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 import gi  # noqa: E402
@@ -22,7 +33,9 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
-from gi.repository import Gdk, Gio, GLib, Gst, Gtk  # noqa: E402
+gi.require_version("Gsk", "4.0")
+gi.require_version("Graphene", "1.0")
+from gi.repository import Gdk, Gio, GLib, Graphene, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
 from cassini_viewer import portable  # noqa: E402
@@ -48,11 +61,11 @@ def until(check):
     assert check(), "Import/export GUI condition timed out"
 
 
-def labels(widget):
-    values = [widget.get_text()] if isinstance(widget, Gtk.Label) else []
+def labels(widget, *, visible=False):
+    values = [widget.get_text()] if isinstance(widget, Gtk.Label) and (not visible or widget.get_mapped()) else []
     child = widget.get_first_child()
     while child:
-        values += labels(child)
+        values += labels(child, visible=visible)
         child = child.get_next_sibling()
     return values
 
@@ -89,6 +102,7 @@ with tempfile.TemporaryDirectory() as temporary:
     app.register(None)
     app.activate()
     window = app.get_active_window()
+    window.set_default_size(1130, 730)
     until(lambda: not window._pending)
     initial_received = sum(m.origin == "received" for m in window.snapshot.meetings)
     ogg = incoming.with_suffix(".ogg")
@@ -161,10 +175,35 @@ with tempfile.TemporaryDirectory() as temporary:
     assert "Updated while Export is open" in dialog.get_title()
     assert dialog.heading.get_text() == dialog.get_title()
 
-    dialog.destination = tmp / "Exports"
-    dialog._update_folder()
+    assert dialog.destination is None, "Documents must be a suggestion, never an implicit export grant"
+    destination = tmp / "Exports"
+    destination.mkdir()
+    window.toasts.dismiss_all()  # Earlier deliberate failure feedback was already checked.
     dialog.export_button.emit("clicked")
+    until(lambda: any(isinstance(w, Gtk.FileChooserDialog) for w in Gtk.Window.get_toplevels()))
+    chooser = next(w for w in Gtk.Window.get_toplevels() if isinstance(w, Gtk.FileChooserDialog))
+    assert dialog.choosing and not hasattr(dialog, "future"), "No export job before the chooser grants a destination"
+    chooser.set_current_folder(Gio.File.new_for_path(str(destination)))
+    until(
+        lambda: chooser.get_current_folder() is not None and chooser.get_current_folder().get_path() == str(destination)
+    )
+    chooser.response(Gtk.ResponseType.ACCEPT)
     until(lambda: dialog.closed and dialog.output is not None)
+    assert app.recording_settings.get_string("export-folder-uri") == destination.as_uri()
+    assert dialog.success_toast.get_title() == "Exported “Updated while Export is open” to Exports"
+    assert dialog.success_toast.get_button_label() == "Show"
+    until(lambda: not dialog.get_mapped())
+    until(lambda: "Exported “Updated while Export is open” to Exports" in labels(window.toasts, visible=True))
+    ticks = []
+    window.add_tick_callback(lambda *_: (ticks.append(True), len(ticks) < 3)[1])
+    window.queue_draw()
+    until(lambda: len(ticks) >= 3)
+    paintable, snapshot = Gtk.WidgetPaintable.new(window), Gtk.Snapshot.new()
+    paintable.snapshot(snapshot, window.get_width(), window.get_height())
+    viewport = Graphene.Rect()
+    viewport.init(5, 5, 1120, 720)
+    texture = window.get_renderer().render_texture(snapshot.to_node(), viewport)
+    assert texture.save_to_png(os.environ["CASSINI_SCREENSHOT_OUT"])
     exported = portable.read_meeting(str(dialog.output))
     assert portable.verify_audio(str(dialog.output), exported).state == portable.State.OK
     assert len(portable.load_words(exported, exported.default_transcript_id)) == 2
@@ -174,11 +213,31 @@ with tempfile.TemporaryDirectory() as temporary:
     window.lookup_action("export").activate(None)
     until(lambda: window.export_dialog is not dialog)
     dialog = window.export_dialog
-    dialog.destination = tmp / "Exports"
+    assert dialog.destination.get_uri() == destination.as_uri(), "A later export must remember the granted URI"
     dialog.markdown.set_active(True)
+    dialog.choose.emit("clicked")
+    until(lambda: any(isinstance(w, Gtk.FileChooserDialog) for w in Gtk.Window.get_toplevels()))
+    chooser = next(w for w in Gtk.Window.get_toplevels() if isinstance(w, Gtk.FileChooserDialog))
+    selected = tmp / "Chosen export folder"
+    selected.mkdir()
+    chooser.set_current_folder(Gio.File.new_for_path(str(selected)))
+    until(lambda: chooser.get_current_folder() is not None and chooser.get_current_folder().get_path() == str(selected))
+    chooser.response(Gtk.ResponseType.ACCEPT)
+    until(lambda: not dialog.choosing)
+    assert dialog.folder.get_text() == "Save to Chosen export folder" and not list(selected.iterdir())
     dialog.export_button.emit("clicked")
     until(lambda: dialog.closed and dialog.output is not None)
     assert dialog.output.suffix == ".md" and "## Transcript" in dialog.output.read_text()
+    assert not any(isinstance(w, Gtk.FileChooserDialog) for w in Gtk.Window.get_toplevels()), (
+        "Choose must not add a second picker"
+    )
+    shown = []
+    with patch("cassini_viewer.export_dialog.Gtk.FileLauncher") as factory:
+        factory.return_value.open_containing_folder.side_effect = lambda *_: shown.append(
+            factory.call_args.kwargs["file"].get_path()
+        )
+        dialog.success_toast.emit("button-clicked")
+    assert shown == [str(dialog.output)], "Show must reveal the published file"
     window.back_to_library()
     budget = next(m for m in window.snapshot.meetings if m.title == "Budget review")
     window.open_meeting(budget)
@@ -201,16 +260,33 @@ with tempfile.TemporaryDirectory() as temporary:
     assert dialog.names.get_label().count("<b>") == 3 and "&amp;" in dialog.names.get_label()
     dialog.close()
     until(lambda: dialog.closed)
+    # Dismissing a picker keeps Export usable, with no write or lost selection.
+    window.show_export()
+    dialog = window.export_dialog
+    previous_uri = app.recording_settings.get_string("export-folder-uri")
+    dialog.choose.emit("clicked")
+    until(lambda: any(isinstance(w, Gtk.FileChooserDialog) for w in Gtk.Window.get_toplevels()))
+    chooser = next(w for w in Gtk.Window.get_toplevels() if isinstance(w, Gtk.FileChooserDialog))
+    chooser.response(Gtk.ResponseType.CANCEL)
+    until(lambda: not dialog.choosing)
+    assert not dialog.closed and dialog.export_button.get_sensitive() and not hasattr(dialog, "future")
+    assert app.recording_settings.get_string("export-folder-uri") == previous_uri
+    # Cancelling Export itself must also close its outstanding native chooser.
+    dialog.choose.emit("clicked")
+    until(lambda: any(isinstance(w, Gtk.FileChooserDialog) for w in Gtk.Window.get_toplevels()))
+    dialog.cancel()
+    until(lambda: dialog.closed and not any(isinstance(w, Gtk.FileChooserDialog) for w in Gtk.Window.get_toplevels()))
     # Cancel through the actual dialog close path while a real long PCM export
     # is running; no mocked encoder, output or user audio device.
     window.show_export()
     dialog = window.export_dialog
-    dialog.destination = tmp / "Cancelled export"
+    cancelled_destination = tmp / "Cancelled export"
+    dialog.destination = Gio.File.new_for_path(str(cancelled_destination))
     dialog.export_button.emit("clicked")
-    until(lambda: bool(list(dialog.destination.glob(".cassini-*"))))
+    until(lambda: bool(list(cancelled_destination.glob(".cassini-*"))))
     dialog.close()
     assert dialog.cancelled.is_set(), "Escape/close did not cancel until its animation finished"
-    until(lambda: dialog.closed and not list(dialog.destination.iterdir()))
+    until(lambda: dialog.closed and not list(cancelled_destination.iterdir()))
     assert hashlib.sha256(incoming.read_bytes()).hexdigest() == before
     window.back_to_library()
     window._fixture_activity = window._activity = {}

@@ -272,6 +272,7 @@ class MeetingPage(Adw.NavigationPage):
     def update(self, meeting):
         self.meeting = meeting
         self.headline.set_title(meeting.title)
+        self.window.set_title(meeting.title)
         self.headline.set_subtitle(
             fmt.preview_subtitle(
                 meeting.started_at_ms,
@@ -303,6 +304,7 @@ class MeetingPage(Adw.NavigationPage):
         undo = bool(meeting.metadata_editable and meeting.metadata.get("speakerMerges"))
         self.window.lookup_action("undo-speaker-merge").set_enabled(undo and self._speaker_future is None)
         self.more_menu.remove_all()
+        self.more_menu.append_item(self.window.rename_item())
         self.more_menu.append("Recording details…", "win.recording-details")
         self.more_menu.append(text("common.exportEllipsis"), "win.export")
         if undo:

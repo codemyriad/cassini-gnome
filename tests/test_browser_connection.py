@@ -104,12 +104,14 @@ def test_permanent_failures_stop_until_a_trigger(error):
     try:
         controller.trigger()
         clock.finish()
-        assert controller.snapshot()["phase"] == "failed" and not clock.timers
+        phase = "needsBrowser" if getattr(error, "reason", None) == "noBrowser" else "failed"
+        assert controller.snapshot()["phase"] == phase and not clock.timers
         clock.advance(10000)
         assert not clock.posted
         controller.trigger()
         clock.finish()
-        assert controller.snapshot()["phase"] == "failed" and not clock.timers
+        phase = "needsBrowser" if getattr(error, "reason", None) == "noBrowser" else "failed"
+        assert controller.snapshot()["phase"] == phase and not clock.timers
     finally:
         controller.close()
 
@@ -190,5 +192,42 @@ def test_startup_registers_both_hosts_preserves_mtime_and_repairs_an_updated_pat
         assert controller.snapshot()["phase"] == "connected"
         controller.observe(dict(connectedBrowsers=0, browserNames=[]))
         assert controller.snapshot()["phase"] == "waiting"
+    finally:
+        controller.close()
+
+
+def test_no_browser_is_neutral_and_prior_connection_is_latched():
+    from cassini_viewer.browser_connection import state_text
+
+    clock = Clock()
+    controller = clock.connection(lambda: (_ for _ in ()).throw(companion.SetupError("noBrowser")))
+    try:
+        controller.trigger()
+        clock.finish()
+        state = controller.snapshot()
+        assert state["phase"] == "needsBrowser" and state["browser"] is None
+        assert state_text(state) == "Browser meetings need Chrome, Edge, Brave or Chromium."
+        assert not state["everConnected"]
+        controller.observe(dict(connectedBrowsers=1, browserNames=["Chromium"]))
+        controller.observe(dict(connectedBrowsers=0))
+        assert controller.snapshot()["everConnected"]
+    finally:
+        controller.close()
+
+
+def test_registration_failure_keeps_the_installed_browser_available_for_add(tmp_path, monkeypatch):
+    browser = companion.Browser("Chromium", "/test/chromium", tmp_path / "not-started")
+    monkeypatch.setattr(companion, "probe", lambda: (True, False))
+    monkeypatch.setattr(companion, "installed_browsers", lambda: [browser])
+    monkeypatch.setattr(companion, "register", lambda **_: (_ for _ in ()).throw(PermissionError(13, "config")))
+    from cassini_viewer.browser_connection import setup
+
+    clock = Clock()
+    controller = clock.connection(setup)
+    try:
+        controller.trigger()
+        clock.finish()
+        assert controller.snapshot()["phase"] == "failed"
+        assert controller.snapshot()["browser"] == browser
     finally:
         controller.close()

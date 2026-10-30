@@ -22,6 +22,11 @@
         </child>
         <child>
           <object class="AdwShortcutsItem">
+            <property name="action-name">win.rename</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
             <property name="title" translatable="yes">Export Transcript</property>
             <property name="action-name">win.export</property>
           </object>
