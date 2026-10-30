@@ -3,7 +3,8 @@
     "name": "capable-missing-heard-manual-is-allowed",
     "capabilities": [
       "independent-sessions-v1",
-      "call-evidence-v1"
+      "call-evidence-v1",
+      "page-state-v1"
     ],
     "meeting": {
       "tabId": 2,
@@ -20,7 +21,8 @@
     "name": "capable-false-heard-manual-is-allowed",
     "capabilities": [
       "independent-sessions-v1",
-      "call-evidence-v1"
+      "call-evidence-v1",
+      "page-state-v1"
     ],
     "meeting": {
       "tabId": 2,
@@ -38,7 +40,8 @@
     "name": "capable-true-heard-and-receivers",
     "capabilities": [
       "independent-sessions-v1",
-      "call-evidence-v1"
+      "call-evidence-v1",
+      "page-state-v1"
     ],
     "meeting": {
       "tabId": 2,
@@ -56,7 +59,8 @@
     "name": "capable-true-heard-without-receivers",
     "capabilities": [
       "independent-sessions-v1",
-      "call-evidence-v1"
+      "call-evidence-v1",
+      "page-state-v1"
     ],
     "meeting": {
       "tabId": 2,
@@ -157,7 +161,8 @@
     "name": "independent-capable-receiver-bound",
     "capabilities": [
       "independent-sessions-v1",
-      "call-evidence-v1"
+      "call-evidence-v1",
+      "page-state-v1"
     ],
     "meeting": {
       "tabId": 2,

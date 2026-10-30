@@ -41,10 +41,13 @@
   connect();
   window.addEventListener("pagehide", () => {
     hidden = true; sourceCount = 0; heard = false;
+    try { port?.postMessage({ type: "pageState", state: "navigating" }); } catch {}
     try { port?.postMessage({ type: "discovery", sourceCount, heard }); } catch {}
   });
   window.addEventListener("pageshow", () => {
-    hidden = false; connect(); control({ type: "discover" });
+    hidden = false; connect();
+    try { port?.postMessage({ type: "pageState", state: "present" }); } catch {}
+    control({ type: "discover" });
   });
   window.addEventListener("message", event => {
     if (event.source !== window || event.data?.channel !== "cassini-page") return;

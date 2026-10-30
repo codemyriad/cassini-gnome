@@ -1,0 +1,459 @@
+{
+  "version": 1,
+  "constants": {
+    "CALL_END_GRACE": 2,
+    "BROWSER_RETURN_GRACE": 120
+  },
+  "note": "D33 literal expected actions. Milliseconds use a monotonic per-session clock. Every case starts in a live browser session; no new folder/capture identity may be created. Apps run these unchanged. Legacy capability-absent behavior is tested separately.",
+  "cases": [
+    {
+      "name": "present-call-hangup",
+      "steps": [
+        {
+          "atMs": 0,
+          "pageState": "present",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 1999,
+          "pageState": "present",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 2000,
+          "pageState": "present",
+          "sourceCount": 0,
+          "expect": [
+            "stop:callEnded"
+          ]
+        },
+        {
+          "atMs": 3000,
+          "pageState": "present",
+          "sourceCount": 0,
+          "expect": []
+        }
+      ]
+    },
+    {
+      "name": "closed-tab-never-starts-computer-sound",
+      "steps": [
+        {
+          "atMs": 0,
+          "pageState": "closed",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 1999,
+          "pageState": "closed",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 2000,
+          "pageState": "closed",
+          "sourceCount": 0,
+          "expect": [
+            "stop:tabClosed"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "closed-while-already-on-fallback",
+      "steps": [
+        {
+          "atMs": 0,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 2000,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": [
+            "fallback"
+          ]
+        },
+        {
+          "atMs": 5000,
+          "pageState": "closed",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 7000,
+          "pageState": "closed",
+          "sourceCount": 0,
+          "expect": [
+            "stop:tabClosed"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "reload-returns-within-two-minutes-same-folder",
+      "steps": [
+        {
+          "atMs": 0,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 2000,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": [
+            "fallback"
+          ]
+        },
+        {
+          "atMs": 3000,
+          "pageState": "present",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 60000,
+          "pageState": "present",
+          "sourceCount": 2,
+          "expect": [
+            "restore"
+          ]
+        },
+        {
+          "atMs": 70000,
+          "pageState": "present",
+          "sourceCount": 2,
+          "expect": []
+        }
+      ]
+    },
+    {
+      "name": "absent-control-uses-same-return-deadline",
+      "steps": [
+        {
+          "atMs": 0,
+          "pageState": null,
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 2000,
+          "pageState": null,
+          "sourceCount": 0,
+          "expect": [
+            "fallback"
+          ]
+        },
+        {
+          "atMs": 119999,
+          "pageState": "present",
+          "sourceCount": 1,
+          "expect": [
+            "restore"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "return-at-deadline-does-not-resurrect-recording",
+      "steps": [
+        {
+          "atMs": 0,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 2000,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": [
+            "fallback"
+          ]
+        },
+        {
+          "atMs": 120000,
+          "pageState": "present",
+          "sourceCount": 3,
+          "expect": [
+            "stop:pageGone"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "return-after-deadline-before-next-policy-tick",
+      "steps": [
+        {
+          "atMs": 0,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 120001,
+          "pageState": "present",
+          "sourceCount": 3,
+          "expect": [
+            "stop:pageGone"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "new-document-before-audio-keeps-reload-grace",
+      "steps": [
+        {
+          "atMs": 0,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 500,
+          "pageState": "present",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 2000,
+          "pageState": "present",
+          "sourceCount": 0,
+          "expect": [
+            "fallback"
+          ]
+        },
+        {
+          "atMs": 119999,
+          "pageState": "present",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 120000,
+          "pageState": "present",
+          "sourceCount": 0,
+          "expect": [
+            "stop:pageGone"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "quick-reload-needs-no-fallback-span",
+      "steps": [
+        {
+          "atMs": 0,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 1000,
+          "pageState": "present",
+          "sourceCount": 2,
+          "expect": []
+        },
+        {
+          "atMs": 121000,
+          "pageState": "present",
+          "sourceCount": 2,
+          "expect": []
+        }
+      ]
+    },
+    {
+      "name": "brief-source-zero-recovers-before-call-end",
+      "steps": [
+        {
+          "atMs": 0,
+          "pageState": "present",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 1999,
+          "pageState": "present",
+          "sourceCount": 1,
+          "expect": []
+        },
+        {
+          "atMs": 5000,
+          "pageState": "present",
+          "sourceCount": 1,
+          "expect": []
+        }
+      ]
+    },
+    {
+      "name": "another-tab-cannot-restore-this-session",
+      "steps": [
+        {
+          "atMs": 0,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 2000,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": [
+            "fallback"
+          ]
+        },
+        {
+          "atMs": 60000,
+          "pageState": "present",
+          "sourceCount": 3,
+          "sameTab": false,
+          "expect": []
+        },
+        {
+          "atMs": 120000,
+          "pageState": null,
+          "sourceCount": 0,
+          "expect": [
+            "stop:pageGone"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "closed-evidence-cannot-be-undone-by-late-page-message",
+      "steps": [
+        {
+          "atMs": 0,
+          "pageState": "closed",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 1000,
+          "pageState": "present",
+          "sourceCount": 3,
+          "expect": []
+        },
+        {
+          "atMs": 2000,
+          "pageState": "present",
+          "sourceCount": 3,
+          "expect": [
+            "stop:tabClosed"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "others-off-does-not-restore-a-browser-source",
+      "others": false,
+      "steps": [
+        {
+          "atMs": 0,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 2000,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 60000,
+          "pageState": "present",
+          "sourceCount": 2,
+          "expect": []
+        }
+      ]
+    },
+    {
+      "name": "failed-source-restore-keeps-current-system-source",
+      "steps": [
+        {
+          "atMs": 0,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 2000,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": [
+            "fallback"
+          ]
+        },
+        {
+          "atMs": 60000,
+          "pageState": "present",
+          "sourceCount": 2,
+          "restoreReady": false,
+          "expect": []
+        },
+        {
+          "atMs": 60001,
+          "pageState": "present",
+          "sourceCount": 2,
+          "expect": [
+            "restore"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "hangup-after-return-with-failed-source-restore",
+      "steps": [
+        {
+          "atMs": 0,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 2000,
+          "pageState": "navigating",
+          "sourceCount": 0,
+          "expect": [
+            "fallback"
+          ]
+        },
+        {
+          "atMs": 60000,
+          "pageState": "present",
+          "sourceCount": 2,
+          "restoreReady": false,
+          "expect": []
+        },
+        {
+          "atMs": 61000,
+          "pageState": "present",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 62999,
+          "pageState": "present",
+          "sourceCount": 0,
+          "expect": []
+        },
+        {
+          "atMs": 63000,
+          "pageState": "present",
+          "sourceCount": 0,
+          "expect": [
+            "stop:callEnded"
+          ]
+        }
+      ]
+    }
+  ]
+}

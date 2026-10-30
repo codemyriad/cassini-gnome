@@ -61,3 +61,13 @@ cover legacy/null annotations, unknown event types/fields, selection bounds and
 the 1000-event cap. Neither schema validation nor these silent files prove a
 writer's atomic event/track checkpoint: both apps must test crash/failure at
 their real writer boundary and read these same fixtures independently.
+
+
+D33 adds14 literal monotonic lifecycle vectors, checked by
+`python3 conformance/check-call-lifecycle.py` and adopted unchanged by both apps.
+The actual loaded-extension independent-session test also reloads a live call,
+checks the original native connection/capture ID/folder and renewed PCM, closes
+another tab, and verifies explicit terminal reasons through the fixture writer.
+The fake-control driver does not prove desktop fallback or2s/120s real app timers;
+those require the desktop's own adoption tests. Unit cases keep legacy loss behavior,
+late old-document events, subframe bounds and invalid Stop side effects covered.

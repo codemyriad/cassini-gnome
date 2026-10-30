@@ -97,7 +97,10 @@ export class AppControl {
         this.send(port, { type: 'result', requestId: id, ok: false, error: 'Cassini has received too many commands. Reconnect and try again.' });
         return;
       }
-      const validOptions = ['independent', 'captureLocal', 'microphone'].every(key => message[key] === undefined || typeof message[key] === 'boolean');
+      const validOptions = ['independent', 'captureLocal', 'microphone', 'keepOnNavigation'].every(key => message[key] === undefined || typeof message[key] === 'boolean')
+        && (message.keepOnNavigation !== true || (message.action === 'start' && message.independent === true))
+        && (message.reason === undefined || (message.action === 'stop' &&
+            ['user', 'callEnded', 'tabClosed', 'pageGone', 'disk', 'error', 'appQuit'].includes(message.reason)));
       if (message.independent === true && message.action === 'stop' && Number.isSafeInteger(message.tabId) && message.tabId >= 0 && validOptions)
         this.cancelPending(message);
       const execute = async () => {
@@ -107,10 +110,11 @@ export class AppControl {
             throw new Error('Choose a meeting to record.');
           if (message.action === 'start' && message.mode !== 'tracks')
             throw new Error('To record the whole tab, click Record the whole tab in the browser.');
-          for (const key of ['independent', 'captureLocal', 'microphone']) {
+          for (const key of ['independent', 'captureLocal', 'microphone', 'keepOnNavigation']) {
             if (message[key] !== undefined && typeof message[key] !== 'boolean')
               throw new Error('Choose a meeting to record.');
           }
+          if (!validOptions) throw new Error('Choose a meeting to record.');
           const status = await this.command(message);
           return { type: 'result', requestId: id, ok: true, status };
         } catch (error) {

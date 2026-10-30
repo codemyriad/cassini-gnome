@@ -20,10 +20,30 @@ def validate(document):
     """JSON Schema plus S-6 bounds that JSON Schema cannot express."""
     SCHEMA.validate(document)
     previous = 0
+    ended = False
+    source = None
+    others = True
     for event in document.get('events') or []:
         at = event['atMs']
         if not math.isfinite(at) or at < previous:
             raise ValueError('events must have finite non-decreasing atMs')
+        if ended:
+            raise ValueError('end is terminal; no event may follow it')
+        if event['type'] == 'selection':
+            others = event['others']
+        elif event['type'] == 'othersSource':
+            if event['reason'] == 'restored' and (not others or source is None or
+                    source['source'] != 'system' or source['reason'] not in ('missing', 'lost')):
+                raise ValueError('restored needs an enabled others side and a preceding fallback')
+            source = event
+        elif event['type'] == 'end':
+            ended = True
+            if document['state'] == 'recording':
+                raise ValueError('end must be checkpointed with saved state')
+            for track in document['tracks']:
+                end = track.get('endOffsetMs')
+                if end is not None and (not math.isfinite(end) or at < end):
+                    raise ValueError('end must not precede a finalized known track end')
         previous = at
     for track in document['tracks']:
         source = track.get('sourceTrackId')
@@ -52,6 +72,7 @@ def check_fixtures():
     for case, manifest_name, expected_name in [
         ('fallback', 'session.json', 'expected.json'),
         ('browser-off-on', 'browser-off-on.session.json', 'browser-off-on.expected.json'),
+        ('call-return', 'call-return.session.json', 'call-return.expected.json'),
     ]:
         document = json.loads((FIXTURES / manifest_name).read_text())
         expected = json.loads((FIXTURES / expected_name).read_text())
@@ -70,6 +91,8 @@ def check_fixtures():
             final = state_at(document, duration)
             for key in ('me', 'others', 'source', 'fallback'):
                 assert final[key] == expected[key]
+        if 'end' in expected:
+            assert document['events'][-1] == dict(type='end', **expected['end'])
         if 'trackRoles' in expected:
             roles = {track['id']: 'me' if track['kind'] in ('microphone', 'local') else 'others' for track in document['tracks']}
             assert roles == expected['trackRoles']
@@ -85,13 +108,12 @@ def check_fixtures():
                 assert track['endOffsetMs'] == track['startOffsetMs'] + track['frames'] / track['sampleRate'] * 1000
         print('PASS S-6 schema, reader expectations and sparse WAV timeline:', case)
 
-    # Reserved reader input stays separate from make.py: current writers must
-    # never emit restored or automatically switch a fallback back to browser.
+    # Historical reader input remains valid; D33 also permits these writer transitions.
     vector = json.loads((FIXTURES / 'restored.reader.json').read_text())
     validate(vector['session'])
     for state in vector['states']:
         assert state_at(vector['session'], state['atMs']) == state
-    print('PASS S-6 reserved restored reason: reader only')
+    print('PASS S-6 historical restored reader input and D33 writer transition')
 
 
 if __name__ == '__main__':

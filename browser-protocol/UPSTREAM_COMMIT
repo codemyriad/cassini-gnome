@@ -1,26 +1,26 @@
-tree 20d8ffbf4df323ec17f375b4be465ea13b5b0108
-parent 2bcd10d882b6db6248b33e47359e1891bd32e6f1
-parent e3ecf02c16cf527b0a4c19e6b960f2c212e8639c
-author Silvio Tomatis <silviot@gmail.com> 1793303066 +0100
-committer GitHub <noreply@github.com> 1793303066 +0100
+tree 1318fc5e9e745a04866ce3069191d902775ed41a
+parent 6440a5060d372cff9f1dc49774c6c886afa0e038
+parent af0fbac685803bf73d9dcb37261ef81d8a932777
+author Silvio Tomatis <silviot@gmail.com> 1793351912 +0100
+committer GitHub <noreply@github.com> 1793351912 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq46IaCRC1aQ7uu5UhlAAAA7MQAKS1saTAmynPJQOMNbp8mFIx
- MSojeqtrKvgCvdHTnRoOskbOkD/Wlmxde0ODMgWE9X645WFDBofRHBhRfX1yevcV
- cewbdKTKLiRwZiy0r1Qwrc79bg1+cclxCfkyskuj/k41RaHYTUV703B6H0NDUbH5
- nzrNRK1MB9pNDtcRCJwxuo4Zuna96z4w7CqpuRKUwzuIE5ZKvBdhFA36I5piuBkk
- utaXgKfSVJdE81gl7QTbv60L7xem1BNqEycTIvPm1DMwiaw/7k3v/swbXBwZdzFN
- CN4T6ZVZleXRKCpTx4Ynaq3etZRheTpkgnqEpu9/BunOoM/qDfvllwSRdDmG/aHH
- pXUx3pzhE2yYv88frbqsf+eaU5P+YGpc5uxxPgL0yzH46Wk4gIKC/25wDDsRM5Ro
- 3xcsTbp01K0dd5ZZaGUve1K13EYcnLpJezFWo7CNRSja8m+kT8qt4KIopqt8uReU
- yQVzEvq+XWHz5nyjlXBL+ePTVPzJLRlK4jurkLn4CSQ3yDa+5AwS6G5YFk/wCcX7
- pFQEG//EfENGjVLqZu9DibdlO6irN+HFpRZKcxmsMa1EwghJ/prJVc54egiDotD5
- opxGcbQHWHrp18/UW8cwZNy5mWusDnuwJaJiY0xWZg6fWSKP2IsB84zEZfmLrnxI
- 6XhBkxLu868cwUKGDRgd
- =aH5U
+ wsFcBAABCAAQBQJq5GDoCRC1aQ7uu5UhlAAAXeUQAIYaZLTZvq17kJqNgZKOfvpp
+ z3KEfRvhMMxU9F920sV7t7bkTZuj4vsG6NYdsieMtaHgka3bvN4SHeyny6t2Zn9w
+ 86GX3G9clOuzkxbOrmLejNLzvK9rFH7+v0mXXk5EqDrDnyEPiNqOFO3rQjWPdTg2
+ 6UDHsY6xnvntNuXaawRrJFTujNpmgxNQkCVXRnYAcfv9ARYRGVsA0b/e2wKMfxL5
+ IKbV/qk5DYlTEpXScdx7nQPpIHTO4gSizqay/WRhVne9aA+pNOgd9Y55v8yIfaZY
+ B8XWMoLNEyq4KJBrFIxDus1pFAaaTNLTs4OoO9XE31OY1+/pKyWtWGfirxqKm9wx
+ 1r/HLEt/0Xg42dkLlSFV/FB1En24MhjKSraO072i16wylSs3R2G3Y/M6Heye9Pni
+ ybZlio4P+8m+cg2qKQw4vL93Qg6em67uqMH9quHbcu5ouNrUP145GrIxvBWhI9xp
+ e6bEztswzewwDO30p3bO3Hzb4W01jth4YqAgNi6la+a2OVyF5JIxLeTw8X+QoS3/
+ bFUhJ87lShkj2utF4Gaxlkn1rHZOVyXb6+iEV1f6Oa3bUbvMUAZU/nBlZHwv1txb
+ dI9RnWMviYlRTLxFvrwfFr9IFFjXMtIvNI6VI9DRMmhMhtbr2H7Fj5krwTiSuG3p
+ RJHO8HKVq4QJUMGfU8+3
+ =tVN1
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #21 from codemyriad/fix/call-evidence-scope
+Merge pull request #22 from codemyriad/feat/smarter-call-end
 
-Scope call evidence to proven peers and sustained RTP progress
+D33: preserve browser calls across navigation and record terminal ends

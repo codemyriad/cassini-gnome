@@ -12,6 +12,8 @@ import pathlib
 import signal
 import struct
 import sys
+import time
+import math
 import unicodedata
 import uuid
 import wave
@@ -20,6 +22,7 @@ root = pathlib.Path(sys.argv[1])
 manifest = None
 directory = None
 audio = {}
+started_at = None
 
 def reply(value):
     payload = json.dumps(value).encode()
@@ -39,7 +42,7 @@ def checkpoint():
     temporary.write_text(json.dumps(manifest))
     temporary.replace(directory / 'session.json')
 
-def finish(problem=None):
+def finish(problem=None, reason=None):
     manifest['state'] = 'interrupted' if problem else 'completed'
     if problem:
         manifest['problem'] = problem
@@ -47,6 +50,11 @@ def finish(problem=None):
         track['ended'] = True
         if track.get('startOffsetMs') is not None:
             track['endOffsetMs'] = track['startOffsetMs'] + len(audio[track['id']]) / (track['sampleRate'] * track['channels'] * 2) * 1000
+    events = manifest.setdefault('events', [])
+    if not any(event.get('type') == 'end' for event in events):
+        at = max([0, (time.monotonic() - started_at) * 1000] +
+                 [t.get('endOffsetMs', 0) for t in manifest['tracks']] + [e['atMs'] for e in events])
+        events.append(dict(type='end', atMs=math.ceil(at), reason=reason or ('error' if problem else 'user')))
     checkpoint()
 
 def terminate(_signum, _frame):
@@ -65,6 +73,7 @@ try:
         request = json.loads(sys.stdin.buffer.read(size))
         kind = request['type']
         if kind == 'start':
+            started_at = time.monotonic()
             id = str(uuid.uuid4())
             directory = root / ('Recording-' + id)
             directory.mkdir()
@@ -89,7 +98,7 @@ try:
             checkpoint()
             reply(dict(type='ack'))
         elif kind == 'stop':
-            finish(request.get('problem'))
+            finish(request.get('problem'), request.get('reason'))
             reply(dict(type='stopped', path=str(directory), **({'problem': request['problem']} if request.get('problem') else {})))
         else:
             raise ValueError('Unsupported test request')

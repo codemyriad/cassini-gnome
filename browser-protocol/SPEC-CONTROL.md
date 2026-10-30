@@ -207,7 +207,7 @@ installed (unpacked, self-hosted or from a store):
 
 This additive capability preserves all v1 messages and legacy vectors. Without
 `independent: true`, the popup/app start retains the v1 single-slot refusal.
-The extension's hello now advertises `capabilities: ["independent-sessions-v1", "call-evidence-v1"]`.
+The extension's hello now advertises `capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1"]`.
 Only apps that see that capability may request concurrent capture.
 
 An app may send `start` with `independent: true` for each active-call tab. Each
@@ -259,3 +259,66 @@ of a receiver is the same source and must not create a second recording track;
 known clone roots are deduplicated. Source IDs still describe capture sources,
 not participant identities. Whole-tab capture still requires the browser action
 invocation grant and keeps its single offscreen document.
+
+## Call lifecycle capability (D33; extension 0.2.2)
+
+Hello also advertises `page-state-v1`. Version remains1; independent transport
+and `call-evidence-v1` auto-start rules are unchanged. Both new and legacy tab
+statuses may add `pageState`: `present`, `closed`, or `navigating`. It appears in
+per-tab `sessions` entries, the tab-scoped command result/top-level status and
+meeting entries. It is optional for old peers. An absent field is unknown,
+not evidence of a closed tab. The existing `sessions` replacement-list semantics
+are unchanged; there is no new inventory of stopped sessions.
+
+Only the browser's `tabs.onRemoved` establishes `closed`. Document loading and
+trusted top-frame relay pagehide establish `navigating`; a fresh top-frame relay
+or pageshow establishes `present`. Same-document URL changes do not invalidate
+healthy audio. Obsolete document messages cannot revive old counts or override
+closed, and a subframe cannot assert top-level lifecycle. A missing control peer
+or native port is unknown loss, never an inferred closed tab. Title/URL still
+come from the tabs API, never page-supplied lifecycle data.
+
+An app that implements this policy opts in for an independent start with
+`keepOnNavigation:true`. The extension retains that recording's native connection,
+capture ID, origin and folder when frames unload, and starts returning frames
+with the original token/origin. An opted-in closed tab also remains owned until
+the app's Stop. Without this flag, existing immediate loss/`failureReason:lost`
+behavior is preserved for older apps; the popup's legacy start is unchanged.
+The flag requires `independent:true` and action=start. It does not recover a
+terminated extension worker or dead native connection; their existing interrupted
+recovery status remains truthful. An app never switches to an absent PCM transport.
+
+An app Stop may carry `reason`: user/callEnded/tabClosed/pageGone/disk/error/appQuit.
+It is validated before cancellation or any recording side effect. On an opted-in
+session it is forwarded in the native stop packet; absent means user. Repeated
+Stops share one finalization and never emit a second end event. A transient lost
+path that keeps a fallback is not a terminal Stop and must not write end.
+
+The app owns these monotonic per-session timers (seconds):
+
+- `CALL_END_GRACE = 2`: present page with zero sources, outside a pending reload,
+  stops as callEnded. Recovery before2s cancels that pending end.
+- Browser-confirmed closed tab stops as tabClosed after2s. It never starts a
+  computer-sound fallback. Closed is terminal evidence despite late messages.
+- Navigating/absent page starts computer-sound fallback after2s in the same folder.
+  `BROWSER_RETURN_GRACE = 120`, measured from first loss, bounds its lifetime.
+  Present with zero sources during that pending return does not become callEnded.
+  Once the same tab has returned with audio, a later hang-up uses the normal2s
+  callEnded grace even if restoring the selected browser source failed; keeping
+  the working system source is not itself evidence of a new navigation.
+- Check a stored120s deadline **before** accepting a returned page, including a
+  return after expiry before the next policy tick. Expiry stops as pageGone.
+- Same browser instance and tab returning with positive sourceCount and a live
+  original PCM transport before expiry can restore the browser path. Do not use
+  a different tab, title or URL as identity. Respect the current per-session mic
+  and The others choices; The others off stays off. Keep the computer source if
+  a staged restoration fails; do not checkpoint a restored event without its track.
+- Brief trouble that leaves the page and sources present changes nothing.
+
+Timers and source changes are independent for concurrent recordings. These rules
+never split the folder or broaden a recording to the microphone. Track/source
+identity, rollback, 64-track limits and atomic event/track checkpoints remain in
+force. `conformance/control/call-lifecycle-vectors.json` supplies literal timed
+expectations for both apps, checked by an independent fixture oracle. It is not
+production policy code. Each app must additionally test its actual writer and
+fallback/restore device failures.

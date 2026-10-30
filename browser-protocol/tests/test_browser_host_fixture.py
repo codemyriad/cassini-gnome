@@ -37,6 +37,9 @@ class FixtureLifetimeTests(unittest.TestCase):
                     self.assertEqual(manifest["state"], "interrupted")
                     track, = manifest["tracks"]
                     self.assertTrue(track["ended"])
+                    self.assertEqual(manifest['events'][-1]['type'], 'end')
+                    self.assertEqual(manifest['events'][-1]['reason'], 'error')
+                    self.assertGreaterEqual(manifest['events'][-1]['atMs'], track['endOffsetMs'])
                     self.assertEqual(track["frames"], 96000)
                     self.assertEqual((directory / track["file"]).read_bytes()[44:], data)
                 finally:
