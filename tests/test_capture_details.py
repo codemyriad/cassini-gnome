@@ -256,3 +256,29 @@ def test_d33_terminal_session_fact_wins_over_an_older_app_owned_stop(meetings, r
     )
     report = read_details(meeting)
     assert report.ended.startswith(expected + " · ")
+
+
+def test_end_only_history_keeps_unknown_source_timeline_and_accepts_over_24_hours(meetings):
+    meeting = meetings["no-events"]
+    path = meeting.directory / "session.json"
+    session = json.loads(path.read_text())
+    session["events"] = [dict(type="end", atMs=86400001, reason="user")]
+    write_json(path, session)
+    report = read_details(meeting)
+    assert report.ended == "Stopped by you · 24:00:00"
+    assert any("Source-change events were not recorded" in note for note in report.notes)
+
+
+def test_end_reader_obeys_order_and_first_terminal_event(meetings):
+    from cassini_viewer.capture_details import _end
+
+    meeting = replace(meetings["no-events"], metadata={})
+    malformed = dict(
+        events=[
+            dict(type="selection", atMs=200, me=True, others=True, reason="start"),
+            dict(type="end", atMs=100, reason="user"),
+        ]
+    )
+    assert _end(meeting, malformed) == UNKNOWN
+    duplicate = dict(events=[dict(type="end", atMs=1000, reason="user"), dict(type="end", atMs=2000, reason="error")])
+    assert _end(meeting, duplicate) == "Stopped by you · 00:00:01"

@@ -154,6 +154,7 @@ class BrowserConnection:
         self.missing_since = {}
         self.states = {}
         self.page_states = {}
+        self.status_pages = {}
         self.capabilities = set()
         self.closed = False
 
@@ -434,8 +435,15 @@ class BrowserService:
                     # audio socket. Preserve that association across an early
                     # control disconnect, including the original call address.
                     self._bind_capture(browser, tab, capture_id)
+        for tab, state in tuple(states.items()):
+            if tab not in received_pages and "pageState" in state:
+                states[tab] = {key: value for key, value in state.items() if key != "pageState"}
+        browser.status_pages = received_pages
         browser.states = states
         browser.page_states.update(received_pages)
+        for tab in tuple(browser.page_states):
+            if tab not in received_pages and tab not in browser.meetings and browser.page_states[tab] != "closed":
+                browser.page_states.pop(tab, None)
         for tab, old in previous.items():
             if old.get("recording") and not states.get(tab, {}).get("recording"):
                 close = browser.notifications.pop(tab, None)
@@ -476,6 +484,13 @@ class BrowserService:
                     meetings[value["tabId"]]["url"] = value["url"][:2048]
                 self._expire_stopped(time.monotonic())
                 previous, browser.meetings = browser.meetings, meetings
+                for tab in previous.keys() - meetings.keys():
+                    if tab not in browser.status_pages and browser.page_states.get(tab) != "closed":
+                        browser.page_states.pop(tab, None)
+                        if tab in browser.states:
+                            browser.states[tab] = {
+                                key: value for key, value in browser.states[tab].items() if key != "pageState"
+                            }
                 self._restore_stopped(browser, previous)
                 for tab, state in browser.states.items():
                     if state.get("recording") and isinstance(state.get("captureId"), str):
@@ -612,10 +627,8 @@ class BrowserService:
                 stoppedPath=str(capture.directory) if capture is not None else (result.get("status") or {}).get("path"),
             )
         try:
-            if capture is not None and capture.browser_lost and action == "stop" and not preserve_capture:
+            if capture is not None and action == "stop" and not preserve_capture:
                 capture.stop(reason=reason)
-                if "page-state-v1" not in browser.capabilities:
-                    return dict(self.snapshot(), stoppedPath=str(capture.directory))
             packet = dict(type="command", requestId=request_id, action=action, tabId=tab, mode="tracks")
             if independent:
                 packet.update(independent=True, captureLocal=False, microphone=microphone)
@@ -625,6 +638,8 @@ class BrowserService:
                     else:
                         packet["reason"] = reason
             browser.send(packet)
+            if capture is not None and capture.finished and action == "stop" and not preserve_capture:
+                return dict(self.snapshot(), stoppedPath=str(capture.directory))
             if not pending["event"].wait(self.command_timeout):
                 raise TimeoutError("The browser did not finish the recording command")
             result = pending["result"]
@@ -637,9 +652,15 @@ class BrowserService:
                 raise error(str((result or {}).get("error", "The browser disconnected"))[:500])
             snapshot = self.snapshot()
             if action == "stop":
-                snapshot["stoppedPath"] = (result.get("status") or {}).get("path")
+                snapshot["stoppedPath"] = (
+                    str(capture.directory)
+                    if capture is not None and capture.directory is not None
+                    else (result.get("status") or {}).get("path")
+                )
             return snapshot
         except (OSError, ValueError, TimeoutError) as error:
+            if capture is not None and capture.finished and action == "stop" and not preserve_capture:
+                return dict(self.snapshot(), stoppedPath=str(capture.directory))
             with self.lock:
                 browser.error = str(error)
             raise
@@ -778,6 +799,13 @@ class BrowserService:
             self._stopping_all.set()
             with self.lock:
                 self._stop_generation += 1
+                if quitting_pid is None:
+                    # The selected call may have finished locally between the
+                    # user's click and this RPC. Stop also cancels its retry.
+                    for browser in self.browsers.values():
+                        for tab, meeting in browser.meetings.items():
+                            if meeting.get("sourceCount", 0) > 0 or browser.states.get(tab, {}).get("recording"):
+                                self._remember_stop(browser, tab, True)
                 if quitting_pid is not None:
                     self.paused_pids[quitting_pid] = max(self.paused_pids.get(quitting_pid, -1), quitting_generation)
                     for key, pid in self.application_pids.items():
@@ -891,18 +919,27 @@ class BrowserService:
                             count = 0  # Returning pre-join slots are not received audio.
                     if page == "closed":
                         capture.tab_closed = True
-                    if reconnect is not None and lifecycle.missing is None and lifecycle.ended is None:
-                        lifecycle.missing = reconnect.since
-                    if (
-                        reconnect is not None
-                        and now - reconnect.since < CONTROL_RECONNECT_GRACE
-                        and page not in ("closed", "navigating")
-                        and not capture.tab_closed
-                        and not capture.browser_lost
-                        and capture.browser_ready_since(reconnect.since)
-                        and not (peer is not None and page == "present" and count > 0)
-                    ):
-                        continue  # Valid PCM still arrives while its control worker rediscovers this tab.
+                    if reconnect is not None:
+                        known_page = peer is not None and peer[2] is not None
+                        fresh = capture.browser_ready_since(reconnect.since)
+                        if known_page and page == "present":
+                            self._control_reconnects.pop(key, None)
+                            if lifecycle.missing == reconnect.since:
+                                lifecycle.missing = None
+                        elif page in ("closed", "navigating"):
+                            self._control_reconnects.pop(key, None)
+                            if not capture.browser_lost and fresh and lifecycle.missing == reconnect.since:
+                                lifecycle.missing = None
+                        elif (
+                            not known_page
+                            and now - reconnect.since < CONTROL_RECONNECT_GRACE
+                            and not capture.tab_closed
+                            and not capture.browser_lost
+                            and fresh
+                        ):
+                            continue  # Rediscovery is not evidence that the page navigated.
+                        elif lifecycle.missing is None and lifecycle.ended is None:
+                            lifecycle.missing = reconnect.since
                     action = lifecycle.decide(
                         now,
                         page,

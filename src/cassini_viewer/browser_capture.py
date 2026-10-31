@@ -340,7 +340,7 @@ class BrowserCapture:
     def handle(self, message):
         if message.get("type") == "stop":
             reason = stop_reason(message)
-            if not self.stop_requested.is_set() and (message.get("failureReason") == "lost" or self.browser_lost):
+            if not self.stop_requested.is_set() and message.get("failureReason") == "lost":
                 self.fallback()
                 return dict(type="stopped", path=str(self.directory))
             return self.stop(message.get("problem"), reason=reason)

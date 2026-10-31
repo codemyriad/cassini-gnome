@@ -288,13 +288,10 @@ def timeline(meeting, session):
 def _end(meeting, session):
     if meeting.lifecycle in ("recording", "saving"):
         return text("details.end.recording" if meeting.lifecycle == "recording" else "details.end.saving")
-    events = session.get("events")
-    if isinstance(events, list):
-        for event in reversed(events[:1000]):
-            if isinstance(event, dict) and event.get("type") == "end" and number(event.get("atMs")):
-                reason = ENDS.get(event.get("reason")) if isinstance(event.get("reason"), str) else None
-                if reason:
-                    return text("details.end.at", reason=reason, time=fmt.position(int(event["atMs"])))
+    events = read_events(session.get("events"))
+    if events and events[-1]["type"] == "end":
+        event = events[-1]
+        return text("details.end.at", reason=ENDS[event["reason"]], time=fmt.position(int(event["atMs"])))
     details = meeting.metadata.get("recordingDetails") or {}
     end = details.get("end") if isinstance(details, dict) else None
     if isinstance(end, dict) and isinstance(end.get("reason"), str) and end["reason"] in ENDS:
@@ -427,7 +424,7 @@ def read_details(meeting):
         language = _language(fd, notes)
         raw_tracks = session.get("tracks", [])
         raw_tracks = [t for t in raw_tracks[:64] if isinstance(t, dict)] if isinstance(raw_tracks, list) else []
-        if not read_events(session.get("events")):
+        if not any(event["type"] in ("othersSource", "selection") for event in read_events(session.get("events"))):
             notes.append(text("details.timelineUnknown"))
         health = []
         for title, field in (
