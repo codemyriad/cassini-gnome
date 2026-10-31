@@ -60,7 +60,7 @@ def test_literal_wire_interleaving_uses_production_broker(case, instance, status
             now[0] = step["atMs"] / 1000
             packet = step["packet"]
             if packet and packet["type"] == "status" and status_style == "tab-scoped":
-                # Additional valid delta form; "shared" replays exact bytes.
+                # Additional valid delta form; "shared" replays the unchanged packets.
                 packet = {key: value for key, value in packet.items() if key != "sessions"}
             if (
                 packet

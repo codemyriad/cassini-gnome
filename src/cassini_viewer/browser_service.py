@@ -397,8 +397,8 @@ class BrowserService:
             tab = value.get("tabId")
             if type(tab) is int and value.get("pageState") in ("present", "navigating", "closed"):
                 received_pages[tab] = value["pageState"]
-            if type(tab) is int:
-                # A tab-scoped status is a delta, not a full session inventory.
+            if type(tab) is int and "independent-sessions-v1" in browser.capabilities:
+                # An independent tab status is a delta, not a full inventory.
                 states = dict(previous)
                 if value["recording"]:
                     states[tab] = dict(browser.status)

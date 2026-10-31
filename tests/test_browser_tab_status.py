@@ -76,3 +76,13 @@ def test_full_inventory_can_clear_omitted_stopping_without_losing_identity(owned
     assert browser.states[3]["captureId"] == "owned"
     assert browser.states[3]["path"] == str(capture.directory)
     assert "stopping" not in browser.states[3]
+
+
+@pytest.mark.parametrize("independent", [False, True])
+def test_only_independent_status_preserves_another_tabs_state(owned, independent):
+    broker, browser, _capture = owned
+    if independent:
+        browser.capabilities.add("independent-sessions-v1")
+    broker._status(browser, dict(recording=True, tabId=7, captureId="another", stopping=False))
+    assert set(browser.states) == ({3, 7} if independent else {7})
+    assert browser.states[7]["captureId"] == "another"
