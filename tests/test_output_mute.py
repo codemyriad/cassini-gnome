@@ -166,12 +166,3 @@ def test_failed_observation_does_not_end_capture_and_next_refresh_can_recover(tm
     finally:
         observer.close(30)
         session.finish()
-
-
-def test_packaged_monitor_observer_has_its_read_only_query_tool():
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1]
-    assert "pulseaudio-utils," in (root / "debian/control").read_text()
-    assert "Requires:       pulseaudio-utils" in (root / "build-aux/rpm/cassini-viewer.spec").read_text()
-    assert "  libpulse " in (root / "build-aux/arch/PKGBUILD").read_text()

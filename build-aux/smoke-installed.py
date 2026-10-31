@@ -50,6 +50,15 @@ if missing:
     sys.exit("smoke test failed: missing GStreamer elements: " + ", ".join(missing))
 print("smoke test passed: " + ", ".join(runtime.all_elements()))
 
+# D18.2 needs a read-only Pulse metadata query in every native/Flatpak package.
+# --version proves the installed tool runs without contacting any audio server.
+try:
+    subprocess.run(["pactl", "--version"], check=True, capture_output=True, text=True, timeout=3)
+except (OSError, subprocess.SubprocessError) as error:
+    sys.exit(f"muted-output observation smoke test failed: pactl is unavailable: {error}")
+print("muted-output observation query tool available")
+
+
 # ModelStore uses ctypes, so ELF dependency scanners cannot discover libzstd.
 # Exercise the installed app's loader in the same fresh/offline package smoke
 # used for both recognition engines, including the Flatpak runtime.
