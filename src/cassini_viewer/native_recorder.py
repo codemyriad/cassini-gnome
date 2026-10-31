@@ -297,7 +297,8 @@ class NativeRecorder(GObject.Object):
                         host_ns = buffer.pts + (original_frames - frames) * NS // rate
                         timeline = self._timelines.setdefault(stored, NativeTimeline(rate))
                         offset, gap = timeline.map(host_ns, frames, offset)
-                        self.session.append_native(stored, data, offset, gap_frames=gap)
+                        absolute = self.pipeline.get_base_time() + host_ns if self.pipeline is not None else None
+                        self.session.append_native(stored, data, offset, gap_frames=gap, host_ns=absolute)
         except Exception as error:
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
