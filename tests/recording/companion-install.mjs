@@ -156,18 +156,22 @@ try {
  await context.close(); context=null;
  // A newer synthetic app bundle is prepared on the next real app launch;
  // the installed folder is reused and Chromium reads it on its next startup.
- const updated={...JSON.parse(await readFile(path.join(resource,'manifest.json'))),version:'0.2.3'};
+ const parts=installed.version.split('.').map(Number);
+ assert.ok(parts.at(-1)<65535,'fixture has room for a strictly newer version');
+ parts[parts.length-1]++;
+ const updatedVersion=parts.join('.');
+ const updated={...JSON.parse(await readFile(path.join(resource,'manifest.json'))),version:updatedVersion};
  await writeFile(path.join(resource,'manifest.json'),JSON.stringify(updated));
  launchApp('app-updated');
  await poll(async()=>{
-  try {return JSON.parse(await readFile(path.join(state.folder,'manifest.json'))).version==='0.2.3';} catch {return false;}
+  try {return JSON.parse(await readFile(path.join(state.folder,'manifest.json'))).version===updatedVersion;} catch {return false;}
  },'new app version updates the stable folder');
  const page2=await launchBrowser();
  await page2.goto('chrome://extensions/');
  const item=page2.locator('extensions-manager').locator('extensions-item#'+id);
  await item.waitFor();
  const version=await item.evaluate(item=>item.data.version);
- assert.equal(version,'0.2.3');
+ assert.equal(version,updatedVersion);
  await poll(async()=>(await call()).connected,'updated companion handshake');
  evidence.stages.push({stage:'updated',id,version,path:state.folder,connected:true});
  assert.deepEqual(evidence.storeRequests,[]);

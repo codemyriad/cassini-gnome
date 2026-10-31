@@ -418,9 +418,13 @@ class BrowserService:
                     and owner is not None
                     and not owner.finished
                 ):
-                    states.setdefault(
+                    state = states.setdefault(
                         tab, dict(recording=True, tabId=tab, captureId=capture_id, path=str(owner.directory))
                     )
+                    if state.get("recording") and not state.get("captureId"):
+                        # A tab-scoped compatibility status can omit captureId.
+                        # Preserve the independently owned audio association.
+                        state.update(captureId=capture_id, path=str(owner.directory))
                     browser.attempted.add(tab)
             for tab, state in states.items():
                 capture_id = state.get("captureId")

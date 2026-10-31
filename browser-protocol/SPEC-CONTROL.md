@@ -260,7 +260,7 @@ known clone roots are deduplicated. Source IDs still describe capture sources,
 not participant identities. Whole-tab capture still requires the browser action
 invocation grant and keeps its single offscreen document.
 
-## Call lifecycle capability (D33; extension 0.2.2)
+## Call lifecycle capability (D33; extension 0.2.3)
 
 Hello also advertises `page-state-v1`. Version remains1; independent transport
 and `call-evidence-v1` auto-start rules are unchanged. Both new and legacy tab
@@ -277,6 +277,49 @@ healthy audio. Obsolete document messages cannot revive old counts or override
 closed, and a subframe cannot assert top-level lifecycle. A missing control peer
 or native port is unknown loss, never an inferred closed tab. Title/URL still
 come from the tabs API, never page-supplied lifecycle data.
+
+Extension 0.2.3 delivers the lifecycle publication fix to local installs of
+0.2.2. D39 installers replace an installed companion only with a strictly newer
+version; changed extension bytes must not retain the version of an earlier
+published bundle.
+
+For an active recording, after the initial `hello`, `meetings`, `status`
+snapshot, publish each lifecycle transition immediately on the connected
+control port, before waiting for an asynchronous meeting inventory. Until that
+initial snapshot is sent, transitions are represented by its current state,
+not by an early standalone `status` that would break connection ordering.
+A rapid `navigating` → `present` transition must not be coalesced away by a
+pending tabs lookup. The publisher first awaits **all** metadata lookups in the
+batch, then synchronously collects source count, heard evidence and page state
+for **every** row from the current documents, with no intervening await. Reading
+A's evidence when A's lookup resolves is insufficient: A can reload while B's
+lookup is pending. An unloaded document's count must never publish after its
+navigation/return statuses. Missing tabs and invalid metadata remain omitted.
+A disconnected control port still uses the ordinary replacement snapshot on
+reconnect; historical transitions are not replayed as new events.
+
+Before evaluating lifecycle policy, a `status` reporting `navigating` or `closed`
+invalidates the cached source count and heard evidence for **that tab** (effective
+`sourceCount: 0`, `heard: false`). This applies both to per-tab `sessions` entries
+and to a tab-scoped top-level status. A later `status(present)` cannot revive the
+departed document's count. Only a subsequent `meetings` snapshot supplies fresh
+source evidence; other tabs' counts remain intact. In particular, the wire order
+`meetings(present, 3)` → `status(navigating)` → `status(present)` →
+`meetings(present, 0)` keeps the navigation return deadline and must not start the
+short call-ended timer. `conformance/control/call-lifecycle-wire-vectors.json`
+contains literal packet/tick interleavings, effective cached evidence and actions
+for both apps to run, alongside the existing normalized lifecycle vectors.
+
+The corpus also records the faulty-publisher trace `status(navigating)` →
+`status(present)` → `meetings(present, 3)` → `meetings(present, 0)`. Without a wire
+freshness marker, a reader cannot distinguish that stale positive snapshot from
+real returned audio followed by hang-up: the positive count clears the return
+deadline and zero sources then start the two-second call-ended timer. Its literal
+expected actions document why the publisher must avoid this trace when no new
+sources appeared. Readers must not mask it by ignoring valid positive snapshots.
+The two-tab blocked-lookup extension regression checks the actual publisher:
+after navigation/return, both its pending inventory and dirty refresh report A's
+current zero count even while B's metadata lookup had held the batch open.
 
 An app that implements this policy opts in for an independent start with
 `keepOnNavigation:true`. The extension retains that recording's native connection,

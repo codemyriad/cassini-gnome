@@ -90,6 +90,7 @@ def worker(application, private, report):
     assert Path(prepared["folder"]) == private / "data/cassini/browser-companion"
     assert not Path(prepared["folder"]).is_relative_to(prepared["sandboxData"])
     manifest = Path(prepared["folder"]) / "manifest.json"
+    original_version = json.loads(manifest.read_text())["version"]
     first = manifest.stat()
     again = inside("import json;from cassini_viewer.companion_bundle import prepare;print(json.dumps(str(prepare())))")
     assert again == prepared["folder"]
@@ -103,10 +104,10 @@ def worker(application, private, report):
         "from cassini_viewer.companion_bundle import prepare,bundle_directory,_run;"
         "temporary=tempfile.TemporaryDirectory();p=Path(temporary.name)/'extension';"
         "shutil.copytree(bundle_directory(),p);m=json.loads((p/'manifest.json').read_text());"
-        "m['version']='0.2.3';(p/'manifest.json').write_text(json.dumps(m));"
+        "v=m['version'].split('.');v[-1]=str(int(v[-1])+1);m['version']='.'.join(v);(p/'manifest.json').write_text(json.dumps(m));"
         "target=prepare(p);print(json.dumps(json.loads(_run('inspect',target))['version']))"
     )
-    assert prepared["upgradedVersion"] == "0.2.3"
+    assert tuple(map(int, prepared["upgradedVersion"].split("."))) > tuple(map(int, original_version.split(".")))
 
     command = private / "bin/google-chrome"
     command.parent.mkdir()

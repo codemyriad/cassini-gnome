@@ -54,3 +54,27 @@ test('app control: default timers preserve their global receiver', async () => {
     context.scheduled[0].fn();assert.equal(ports.length,2);
   } finally {control.close();}
 });
+
+for (const phase of ['discovery', 'inventory']) test('app control: lifecycle status waits for the initial snapshot during reconnect ' + phase, async () => {
+  const app = await setup(); let release;
+  try {
+    const started = await app.command({ type:'command', requestId:'record', action:'start', tabId:2, mode:'tracks', independent:true, keepOnNavigation:true });
+    assert.equal(started.ok,true); await app.api.appControl.publishing;
+    const gate = new Promise(resolve => { release=resolve; }); let entered=false;
+    const key = phase === 'discovery' ? 'query' : 'get', lookup = app.chrome.tabs[key];
+    app.chrome.tabs[key] = async (...args) => { entered=true; await gate; return lookup(...args); };
+    app.ports.at(-1).disconnect();
+    app.chrome.alarms.onAlarm.emit({name:'cassini-app-control'});
+    await until(()=>entered);
+    const port = app.ports.at(-1);
+    app.chrome.tabs.onUpdated.emit(2,{status:'loading'});
+    assert.deepEqual(port.sent.map(packet=>packet.type),['hello'],'reconnect must not send status before initial meetings');
+    release(); await until(()=>port.sent.some(packet=>packet.type==='status'));
+    await app.api.appControl.publishing;
+    assert.deepEqual(port.sent.slice(0,3).map(packet=>packet.type),['hello','meetings','status']);
+    const before=port.sent.length;
+    app.frame(2,0);
+    assert.equal(port.sent[before].type,'status','initialized peers still receive the transition immediately');
+    assert.equal(port.sent[before].sessions[0].pageState,'present');
+  } finally {release?.(); app.close();}
+});

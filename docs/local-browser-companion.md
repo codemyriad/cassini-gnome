@@ -54,8 +54,8 @@ The real-browser gate activates that production button, verifies the resulting
 clipboard and actual new blank tab, then uses native address-bar keys, Developer
 mode, Load unpacked and the native picker’s Open mnemonic. It never installs via
 an extension-loading flag, a CDP install API, a profile edit or a test-only
-address-copy path. A private synthetic bundle version 0.2.3 checks stable-folder
-updates after app/browser restart; the shipping extension remains 0.2.2.
+address-copy path. A strictly newer private synthetic bundle checks stable-folder
+updates after app/browser restart; the shipping extension is 0.2.3.
 
 ## Validation
 
