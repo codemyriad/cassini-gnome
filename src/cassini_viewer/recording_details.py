@@ -86,12 +86,10 @@ def edit_recording(directory, *, title=None, notes=None):
         changes.update(title=value or None, titleSource="user" if value else "meeting-window")
     if notes is not None:
         changes["notes"] = notes
-    with transaction(directory):
-        from .library_location import owned_directory
+    from .library_location import owned_directory
 
-        directory = owned_directory(directory)
-        # update_metadata rereads immediately under the same lock, retaining
-        # transcript progress, unknown fields and independent edits.
+    directory = owned_directory(directory)
+    with transaction(directory):
         return update_metadata(directory, **changes)
 
 
@@ -128,7 +126,16 @@ def recording_observation(meeting, *, freshness_seconds=1):
     finally:
         os.close(descriptor)
     minutes, reserve = space_left(meeting.directory, rate or 48000 * 4)
-    return dict(levels=levels, voices=voices, minutes=minutes, reserve=reserve, recent_sound=recent_sound)
+    from .output_mute import currently_muted
+
+    return dict(
+        levels=levels,
+        voices=voices,
+        minutes=minutes,
+        reserve=reserve,
+        recent_sound=recent_sound,
+        output_muted=currently_muted(meeting.metadata),
+    )
 
 
 def live_meeting(directory, phase="recording"):

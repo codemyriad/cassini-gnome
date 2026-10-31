@@ -22,7 +22,7 @@ jobs:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
       options: --privileged
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Prepare the pinned host Trash portal in the SDK
         run: python3 tests/flatpak/prepare_trash_portal.py --output "$PWD/_ci-trash-portal"
       - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
@@ -61,7 +61,7 @@ jobs:
         env:
           CASSINI_QA_RENAME: '1'
         run: python3 tests/flatpak/rename.py "$RUNNER_TEMP/talk-rebase-repo" "$RUNNER_TEMP/cassini-viewer-0.3.0.flatpak" "$PWD/flatpak-rename.json"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: flatpak-bridge-evidence

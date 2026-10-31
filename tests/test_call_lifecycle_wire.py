@@ -19,8 +19,10 @@ corpus = json.loads(
 )
 
 
+@pytest.mark.parametrize("status_style", ["shared", "tab-scoped"])
+@pytest.mark.parametrize("instance", [None, "fixture:99"], ids=["without-instance", "with-instance"])
 @pytest.mark.parametrize("case", corpus["cases"], ids=lambda case: case["name"])
-def test_literal_wire_interleaving_uses_production_broker(case, tmp_path, monkeypatch):
+def test_literal_wire_interleaving_uses_production_broker(case, instance, status_style, tmp_path, monkeypatch):
     now = [0.0]
     monkeypatch.setattr(time, "monotonic", lambda: now[0])
     broker = BrowserService(tmp_path / "settings.json", notifier=lambda *_: None)
@@ -36,13 +38,15 @@ def test_literal_wire_interleaving_uses_production_broker(case, tmp_path, monkey
     capture.handle(dict(type="audio", id="initial", sequence=0, offsetMs=0, pcm="AQACAA=="))
     broker.captures["reload-capture"] = capture
     browser = BrowserConnection(None)
-    browser.browser_instance = "fixture:99"
+    browser.browser_instance = instance
     browser.capabilities = set(corpus["hello"]["capabilities"])
     browser.status_seen = True
     browser.states = {2: dict(recording=True, tabId=2, captureId="reload-capture", path=str(capture.directory))}
     broker.browsers[browser.id] = browser
-    broker.call_captures[("fixture:99", 2)] = ("reload-capture", "https://meet.example/call")
+    if instance is not None:
+        broker.call_captures[(instance, 2)] = ("reload-capture", "https://meet.example/call")
     actions = []
+    folder, microphone = capture.directory, capture.microphone
     execute = broker._capture_lifecycle
 
     def record(*args):
@@ -55,6 +59,9 @@ def test_literal_wire_interleaving_uses_production_broker(case, tmp_path, monkey
         for index, step in enumerate(case["steps"]):
             now[0] = step["atMs"] / 1000
             packet = step["packet"]
+            if packet and packet["type"] == "status" and status_style == "tab-scoped":
+                # Additional valid delta form; "shared" replays the unchanged packets.
+                packet = {key: value for key, value in packet.items() if key != "sessions"}
             if (
                 packet
                 and packet["type"] == "meetings"
@@ -70,6 +77,9 @@ def test_literal_wire_interleaving_uses_production_broker(case, tmp_path, monkey
             else:
                 broker.update(browser, packet)
             assert actions == step["expect"], step
+            assert capture.directory == folder and capture.microphone is microphone
+            if not capture.finished:
+                assert browser.states[2]["captureId"] == "reload-capture", step
             meeting = browser.meetings.get(2, {})
             assert (
                 dict(
@@ -84,5 +94,11 @@ def test_literal_wire_interleaving_uses_production_broker(case, tmp_path, monkey
                 actual = getattr(state, attribute)
                 expected = step["expectTimers"][field]
                 assert actual is None if expected is None else actual * 1000 == pytest.approx(expected), step
+        stops = [step for step in case["steps"] if any(a.startswith("stop:") for a in step["expect"])]
+        ends = [event for event in capture.host.session.manifest["events"] if event["type"] == "end"]
+        assert len(ends) == len(stops)
+        if stops:
+            assert ends[0]["reason"] == stops[0]["expect"][0].partition(":")[2]
+        assert len(list((tmp_path / "Library").iterdir())) == 1
     finally:
         capture.stop()

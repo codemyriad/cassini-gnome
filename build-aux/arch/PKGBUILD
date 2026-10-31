@@ -31,6 +31,7 @@ depends=(
   gstreamer
   gst-plugins-base
   gst-plugins-good
+  libpulse # pactl: read the mute state of the captured monitor
   # Writing meetings down offline. ONNX Runtime is not a dependency: the
   # package carries the pinned upstream wheel, see source=.
   python-numpy

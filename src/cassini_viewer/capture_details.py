@@ -437,6 +437,10 @@ def read_details(meeting):
         if problem or meeting.capture_source != "gnome":
             health.append((text("details.health.problem"), problem or UNKNOWN))
         health.append((text("details.health.offset"), _offset(fd, meeting)))
+        from .output_mute import intervals
+
+        if intervals(meeting.metadata):
+            health.append((text("recordFirst.sound.title"), text("details.health.outputMuted")))
         health = tuple(health)
     finally:
         os.close(fd)

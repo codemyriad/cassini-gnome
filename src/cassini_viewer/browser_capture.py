@@ -46,6 +46,8 @@ class BrowserCapture:
         self._publication_cancel = threading.Event()
         self._publication_future = None
         self.publication = None
+        self._mute_observer = None
+        self.output_muted = False
 
     @property
     def directory(self):
@@ -68,6 +70,7 @@ class BrowserCapture:
                     }
                 ),
                 line=self.line,
+                outputMuted=self.output_muted,
                 minutesLeft=self.minutes_left,
                 tracks=sum(
                     t["kind"] in ("remote", "tab", "media") and not t.get("ended")
@@ -118,6 +121,13 @@ class BrowserCapture:
                 self._start_native("microphone", mic)
             if system is not None:
                 self._start_native("system", system)
+            if self.tap_factory is None:
+                from .output_mute import OutputMuteObserver
+
+                self._mute_observer = OutputMuteObserver(
+                    self.directory, self._output_sample, self._output_changed, validate=self._output_validate
+                )
+                self._mute_observer.start()
         except Exception as error:
             self.starting = False
             self.ready.set()
@@ -130,6 +140,37 @@ class BrowserCapture:
         if self.stop_requested.is_set():
             self.stop()
         return result
+
+    def _output_sample(self):
+        from .output_mute import OutputSample, monitor_device
+
+        with self.lock:
+            identifier, tap = self.native_taps.get("system", (None, None))
+            session = self.host.session
+            at_ms = self.elapsed_ms()
+        monitor = monitor_device(tap.pipeline if tap else None)
+        return OutputSample(identifier, monitor, at_ms, (session, tap))
+
+    def _output_validate(self, sample):
+        with self.lock:
+            session, tap = sample.token
+            identifier, current = self.native_taps.get("system", (None, None))
+            if (
+                session is self.host.session
+                and tap is current
+                and sample.track == identifier
+                and not self.stopping
+                and not self.finished
+            ):
+                return self.elapsed_ms()
+        return None
+
+    def _output_changed(self, muted):
+        with self.lock:
+            changed = self.output_muted != muted
+            self.output_muted = muted
+        if changed:
+            self.changed(self, "output-mute")
 
     def _add_native(self, kind, at=None, *, identifier=None):
         from .strings import text
@@ -336,11 +377,15 @@ class BrowserCapture:
                         self.native_taps[kind] = identifier, tap
                     self.microphone = self.native_taps.get("microphone", (None, None))[1]
                     committed = True
+                if "system" in removed and self._mute_observer:
+                    self._mute_observer.retire(removed["system"][0], at)
                 for _identifier, tap in removed.values():
                     try:
                         tap.stop()
                     except Exception:
                         logging.getLogger(__name__).exception("Could not finish a deselected source")
+                if self._mute_observer:
+                    self._mute_observer.refresh()
                 self.changed(self, "sources")
                 return self.snapshot()
             finally:
@@ -393,6 +438,9 @@ class BrowserCapture:
         publishing = False
         try:
             with self.transition:
+                if self._mute_observer:
+                    self._mute_observer.close(self.elapsed_ms())
+                    self._mute_observer = None
                 for _identifier, tap in tuple(self.native_taps.values()):
                     try:
                         tap.stop()

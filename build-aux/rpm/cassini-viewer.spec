@@ -103,6 +103,7 @@ BuildRequires:  gstreamer1-plugins-base
 BuildRequires:  gstreamer1-plugins-good
 %endif
 
+Requires:       pulseaudio-utils
 Requires:       python3 >= 3.11
 # The private ONNX Runtime is built for this Python's ABI.
 Requires:       python(abi) = %{python3_version}

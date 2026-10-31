@@ -8,7 +8,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
@@ -32,15 +31,31 @@ from cassini_viewer.recording_details import SilenceClock  # noqa: E402
 
 
 def until(predicate):
-    deadline = time.monotonic() + 10
-    context = GLib.MainContext.default()
-    while time.monotonic() < deadline:
-        while context.pending():
-            context.iteration(False)
-        if predicate():
-            return
-        time.sleep(0.01)
-    raise AssertionError("Recording page condition timed out")
+    loop = GLib.MainLoop()
+    failures = []
+
+    def check():
+        try:
+            done = predicate()
+        except BaseException as error:
+            failures.append(error)
+            done = True
+        if done:
+            loop.quit()
+        return not done
+
+    def expired():
+        failures.append(AssertionError("Recording page state did not arrive before the deadline"))
+        loop.quit()
+        return False
+
+    tick, limit = GLib.timeout_add(10, check), GLib.timeout_add_seconds(10, expired)
+    loop.run()
+    for source in (tick, limit):
+        if GLib.MainContext.default().find_source_by_id(source):
+            GLib.source_remove(source)
+    if failures:
+        raise failures[0]
 
 
 services = DesktopServices()
@@ -170,6 +185,40 @@ with tempfile.TemporaryDirectory() as tmp:
     app.comfort.states[live.key].update(line="errors.diskLow.line", minutes=29)
     page.update_status()
     assert page.lines.get_visible()
+    # A muted system fallback shows the exact catalog warning on the page
+    # and the live pill. Browser-only capture never inherits the sink's mute.
+    from cassini_viewer.session_events import source_state
+    from cassini_viewer.strings import text
+
+    original_sources = app.comfort.sources
+    app.comfort.sources = lambda _meeting: source_state(
+        [
+            dict(type="selection", atMs=0, me=True, others=True, reason="start"),
+            dict(type="othersSource", atMs=0, source="system", reason="lost"),
+        ]
+    )
+    app.comfort.states[live.key].update(output_muted=True, line=None)
+    page.update_status()
+    window._update_live()
+
+    def texts(widget):
+        result = [widget.get_label()] if hasattr(widget, "get_label") else []
+        child = widget.get_first_child()
+        while child:
+            result.extend(texts(child))
+            child = child.get_next_sibling()
+        return result
+
+    assert text("recording.systemMuted") in texts(page.lines), "Muted output warning missing on Recording page"
+    assert any(c["muted"].get_visible() for c in window._capture_headers), "Muted output warning missing on live pill"
+    unchanged = page.lines.get_first_child()
+    page.update_status()
+    assert page.lines.get_first_child() is unchanged, "Unchanged warning rebuilt its widgets"
+    app.comfort.sources = original_sources
+    page.update_status()
+    window._update_live()
+    assert text("recording.systemMuted") not in texts(page.lines), "Browser capture inherited system mute"
+    assert not any(c["muted"].get_visible() for c in window._capture_headers)
     # Closing/switching flushes a pending keystroke edit before debounce.
     page.title_entry.set_text("Renamed just before closing")
     window.back_to_library()

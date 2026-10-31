@@ -55,6 +55,8 @@ class NativeRecorder(GObject.Object):
         self._publication_cancel = threading.Event()
         self._publication_future = None
         self.publication = None
+        self._mute_observer = None
+        self.output_muted = False
 
     @property
     def activity(self):
@@ -82,6 +84,8 @@ class NativeRecorder(GObject.Object):
         self._publication_cancel.clear()
         self._publication_future = None
         self.publication = None
+        self._mute_observer = None
+        self.output_muted = False
         future = self._executor.submit(self._prepare, Path(parent) if parent is not None else None)
         future.add_done_callback(lambda f: GLib.idle_add(self._prepared, f, test))
 
@@ -132,6 +136,16 @@ class NativeRecorder(GObject.Object):
             self._start_us = GLib.get_monotonic_time()
             if self.minutes_left < 10:
                 self.line = "errors.diskLow.line"
+            if not test:
+                from .output_mute import OutputMuteObserver
+
+                self._mute_observer = OutputMuteObserver(
+                    self.session.directory,
+                    self._output_sample,
+                    lambda muted, owner=self.session: self._output_changed(owner, muted),
+                    validate=self._output_validate,
+                )
+                self._mute_observer.start()
             self._disk_timer = GLib.timeout_add_seconds(1, self._check_disk)
             self.emit("started", str(self.session.directory))
             self.emit("changed")
@@ -154,7 +168,7 @@ class NativeRecorder(GObject.Object):
         source = (
             f"audiotestsrc is-live=true freq={440 if kind == 'microphone' else 880}"
             if self._test_sources
-            else f'pulsesrc device={device} client-name="Cassini Recording" provide-clock=false'
+            else f'pulsesrc name=capture-source device={device} client-name="Cassini Recording" provide-clock=false'
         )
         # A staged live sink must not start a new pipeline-wide preroll: that
         # would pause the confirmed sources while the replacement is tested.
@@ -166,6 +180,38 @@ class NativeRecorder(GObject.Object):
         )
         branch.get_by_name(kind).connect("new-sample", self._sample, kind)
         return branch
+
+    def _output_sample(self):
+        from .output_mute import OutputSample, monitor_device
+
+        with self._lock:
+            track = self._track_ids.get("system")
+            branch, session = self._branches.get("system"), self.session
+            at_ms = max(0, (GLib.get_monotonic_time() - self._start_us) // 1000)
+        monitor = monitor_device(branch)
+        return OutputSample(track, monitor, at_ms, (session, branch))
+
+    def _output_validate(self, sample):
+        with self._lock:
+            session, branch = sample.token
+            if (
+                session is self.session
+                and branch is self._branches.get("system")
+                and sample.track == self._track_ids.get("system")
+                and self.pipeline is not None
+                and not self.stopping
+                and not self._finishing
+            ):
+                return max(0, (GLib.get_monotonic_time() - self._start_us) // 1000)
+        return None
+
+    def _output_changed(self, owner, muted):
+        with self._lock:
+            changed = self.session is owner and self.output_muted != muted
+            if changed:
+                self.output_muted = muted
+        if changed:
+            GLib.idle_add(self.emit, "changed")
 
     def select(self, me, others):
         if type(me) is not bool or type(others) is not bool or not (me or others):
@@ -219,6 +265,7 @@ class NativeRecorder(GObject.Object):
                 elif "system" in added:
                     events.append(dict(atMs=at, type="othersSource", source="system", reason="user"))
                 identifiers = dict(self._track_ids)
+                retired_system = identifiers.get("system") if "system" in removed else None
                 with self.session.change(events):
                     for kind in removed:
                         self.session.end_track(identifiers.pop(kind))
@@ -237,6 +284,8 @@ class NativeRecorder(GObject.Object):
                     self._branches[kind] = attempt["branch"]
                     self._pending_sources.pop(kind)
                 committed = True
+            if retired_system is not None and self._mute_observer:
+                self._mute_observer.retire(retired_system, at)
             for kind in removed:
                 self.levels[0 if kind == "microphone" else 1] = 0
             for branch in retired:
@@ -258,6 +307,8 @@ class NativeRecorder(GObject.Object):
 
     def _sources_changed(self, future):
         self._changing_sources = False
+        if self._mute_observer:
+            self._mute_observer.refresh()
         # Keep the old source; the caller displays the catalog failure.
         with contextlib.suppress(Exception):
             future.result()
@@ -401,6 +452,9 @@ class NativeRecorder(GObject.Object):
         def finish():
             from .library_publication import root_for, submit_stopped
 
+            if self._mute_observer:
+                self._mute_observer.close(at_ms)
+                self._mute_observer = None
             if pipeline is not None:
                 pipeline.set_state(Gst.State.NULL)
             try:

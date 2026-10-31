@@ -21,7 +21,7 @@ _LOCAL = threading.local()
 @contextmanager
 def transaction(directory, *, repair=True):
     from .library_location import owned_directory
-    from .meeting_store import LOCK, atomic_json, published_metadata
+    from .meeting_store import LOCK, atomic_json, metadata_transaction, published_metadata
 
     original = Path(directory)
 
@@ -34,7 +34,11 @@ def transaction(directory, *, repair=True):
         directory = routed()
         root = root_for(directory)
         active = getattr(_LOCAL, "root", None)
-        if root is None or root == active:
+        if root is None:
+            with metadata_transaction(directory):
+                yield
+            return
+        if root == active:
             with LOCK:
                 yield
             return

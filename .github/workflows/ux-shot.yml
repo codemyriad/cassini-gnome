@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install GTK and pinned screenshot fonts
         run: |
           sudo apt-get update
@@ -41,7 +41,7 @@ jobs:
           meson install -C _build-shot
           echo "BOARD_APP=$PWD/_install-shot/bin/cassini-viewer" >> "$GITHUB_ENV"
           echo "CASSINI_BOARD_BUILD=$PWD/_build-shot" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         if: inputs.product != ''
         with:
           name: ${{ inputs.product }}
@@ -135,7 +135,7 @@ jobs:
           PY
           dpkg-query -W fonts-cantarell fonts-inter > ux-artifacts/fonts.txt
           for font in Cantarell Inter; do fc-match -f '%{file}\n' "$font"; done | sort -u | xargs sha256sum > ux-artifacts/font-sha256.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ux-boards

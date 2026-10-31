@@ -25,7 +25,7 @@ jobs:
     container: ubuntu:26.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install build tools (minimal source-validation environment)
         run: |
           apt-get update
@@ -40,7 +40,7 @@ jobs:
           mkdir -p products/core/build/src
           cp _build-core/src/cassini-viewer.gresource products/core/build/src/
           python3 build-aux/ci/product.py pack products/core core.tar --commit "$GITHUB_SHA" --profile core
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ci-core
           path: core.tar
@@ -75,7 +75,7 @@ jobs:
           mkdir -p products/boards/build/src
           cp _build-boards/src/cassini-viewer.gresource products/boards/build/src/
           python3 build-aux/ci/product.py pack products/boards boards.tar --commit "$GITHUB_SHA" --profile boards
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: inputs.boards
         with:
           name: ci-boards
@@ -88,7 +88,7 @@ jobs:
           meson setup _build-offline --prefix=/usr --libdir=lib/x86_64-linux-gnu -Dwhistle=enabled -Dwhistle_cache="$PWD/.whistle-cache" -Dsherpa=enabled -Dsherpa_cache="$PWD/.sherpa-cache"
           DESTDIR=$PWD/products/offline/install meson install -C _build-offline
           python3 build-aux/ci/product.py pack products/offline offline.tar --commit "$GITHUB_SHA" --profile offline
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: inputs.offline
         with:
           name: ci-offline

@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version-file: tests/recording/.node-version
@@ -26,7 +26,7 @@ jobs:
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good xvfb xauth xdotool dbus-x11 \
             gir1.2-gtk-4.0 gir1.2-adw-1 imagemagick pulseaudio-utils meson ninja-build gettext \
             libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream at-spi2-core gir1.2-atspi-2.0 pipewire pipewire-pulse wireplumber
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         if: inputs.product != ''
         with:
           name: ${{ inputs.product }}
@@ -71,9 +71,11 @@ jobs:
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/browser-microphone.py
       - name: Quit keeps audio when the microphone never delivers a frame
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/no-frames.py --build "$CASSINI_RECORDING_BUILD"
+      - name: Muted output is observed on the actual capture device
+        run: tests/recording/run.sh /usr/bin/python3 tests/recording/output-muted.py
       - name: Source changes release devices and retain exact recording spans
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/sources.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: recording-evidence
