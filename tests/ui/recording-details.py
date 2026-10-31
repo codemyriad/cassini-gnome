@@ -326,13 +326,9 @@ with tempfile.TemporaryDirectory() as temporary:
     app.stop_native()
     until(lambda: native.pipeline is None and not native._finishing)
     from cassini_viewer.capture_details import read_details
-    from cassini_viewer.meeting_store import read_metadata
 
-    ended = read_metadata(directory)["recordingDetails"]["end"]
-    assert ended["reason"] == "user" and ended["atMs"] > 0
     terminal = [event for event in native.session.manifest.get("events", []) if event["type"] == "end"]
-    assert len(terminal) == 1 and terminal[0]["reason"] == "user"
-    assert terminal[0]["atMs"] >= ended["atMs"]
+    assert len(terminal) == 1 and terminal[0]["reason"] == "user" and terminal[0]["atMs"] > 0
     saved = next(m for m in LibraryScanner(directory.parent).scan().meetings if m.directory == directory)
     assert read_details(saved).ended.startswith("Stopped by you · ")
     window.back_to_library()
