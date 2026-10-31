@@ -23,6 +23,8 @@ class LibraryRecovery:
         self.attempted = set()
         self.timer = 0
         self.future = None
+        self.retry_revision = self.started_revision = 0
+        self._requested = {}
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-library-recover")
         self.start()
 
@@ -49,10 +51,36 @@ class LibraryRecovery:
         self.timer = 0
         if self.cancelled.is_set() or self.future is not None:
             return False
+        self.started_revision = self.retry_revision
         self.app.hold()
         self.future = self.executor.submit(self._sweep)
         self.future.add_done_callback(lambda future: GLib.idle_add(self._complete, future))
         return False
+
+    def retry(self, directory):
+        """GTK action: retry this retained session, including during an active sweep."""
+        from pathlib import Path
+
+        from .library_publication import root_for
+        from .library_v2 import journal
+
+        if self.cancelled.is_set():
+            return False
+        directory = library_location.owned_directory(Path(directory).absolute())
+        identity = journal.identity_of(directory)
+        if identity is None or identity[0] != "Recording" or root_for(directory) not in {Path(root).resolve() for root in library_location.roots()}:
+            raise ValueError("Publication retry is outside the configured Library")
+        with self.lock:
+            self.attempted.discard(directory)
+            self.failures.pop(directory, None)
+            self.retry_revision += 1
+            self._requested[directory] = self.retry_revision
+        if self.timer:
+            GLib.source_remove(self.timer)
+            self.timer = 0
+        if self.future is None:
+            self.start()
+        return True
 
     def _sweep(self):
         skipped = []
@@ -71,7 +99,8 @@ class LibraryRecovery:
                     if result.error:
                         LOG.warning("Library publication kept the original audio: %s", result.error)
                     with self.lock:
-                        self.attempted.add(result.directory)
+                        if self._requested.get(result.directory, 0) <= self.started_revision:
+                            self.attempted.add(result.directory)
                         if result.error:
                             self.failures[result.directory] = result.error
                         else:
@@ -95,8 +124,11 @@ class LibraryRecovery:
         self.app.release()
         if trash := getattr(self.app, "meeting_trash", None):
             trash.executor.submit(trash.cleanup.retry)
-        if not self.cancelled.is_set() and needs_retry:
-            self.timer = GLib.timeout_add_seconds(5, self.start)
+        if not self.cancelled.is_set():
+            if self.retry_revision != self.started_revision:
+                self.timer = GLib.idle_add(self.start)
+            elif needs_retry:
+                self.timer = GLib.timeout_add_seconds(5, self.start)
         return False
 
     def close(self):

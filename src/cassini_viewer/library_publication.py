@@ -85,7 +85,7 @@ class RecoveryResult:
 def recover_completed(
     root, *, cancel=None, started=lambda _path: None, finished=lambda _path: None, skipped=lambda: None, excluded=()
 ):
-    """Replay first, then publish idle completed sessions one at a time (§11).
+    """Replay first, then publish idle stopped sessions one at a time (§11).
 
     A failed candidate is reported once and its WAVs are kept. Published-but-
     missing files, live captures and legacy root folders are never synthesized
@@ -119,7 +119,14 @@ def recover_completed(
         try:
             try:
                 session = finalize.read_session(directory)
-                if session.get("id") != identifier or session.get("state") != "completed":
+                from .session_events import read_events
+
+                events = read_events(session.get("events"))
+                explicitly_stopped = bool(events and events[-1]["type"] == "end")
+                stopped = session.get("state") == "completed" or (
+                    session.get("state") == "interrupted" and explicitly_stopped
+                )
+                if session.get("id") != identifier or not stopped:
                     continue
                 with meeting_store.LOCK:
                     metadata = meeting_store.read_metadata(directory)

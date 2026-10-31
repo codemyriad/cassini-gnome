@@ -203,3 +203,95 @@ def test_file_only_write_down_recreates_only_optional_working_cache(tmp_path, mo
         assert not (directory / "session.json").exists() and not list(directory.glob("*.wav"))
     finally:
         queue.close()
+
+
+def wait_recovery(condition, description):
+    from gi.repository import GLib
+
+    loop = GLib.MainLoop()
+    failures = []
+
+    def observe():
+        try:
+            done = condition()
+        except BaseException as error:
+            failures.append(error)
+            done = True
+        if done:
+            loop.quit()
+        return not done
+
+    def expired():
+        failures.append(AssertionError(f"Timed out waiting for {description}"))
+        loop.quit()
+        return False
+
+    tick, limit = GLib.timeout_add(10, observe), GLib.timeout_add_seconds(5, expired)
+    loop.run()
+    for source in (tick, limit):
+        if GLib.MainContext.default().find_source_by_id(source):
+            GLib.source_remove(source)
+    if failures:
+        raise failures[0]
+
+
+def test_publication_retry_recovers_retained_audio_without_an_app_restart(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "private-config"))
+    sid, directory = simple_session(tmp_path, 0.1)
+    original = finalize.finalize
+    attempts = []
+
+    def fail_once(*args, **kwargs):
+        attempts.append(True)
+        if len(attempts) == 1:
+            raise OSError("Synthetic disk became unavailable")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(finalize, "finalize", fail_once)
+    app = App()
+    recovery = LibraryRecovery(app)
+    try:
+        wait_recovery(lambda: recovery.future is None and bool(recovery.failures), "first publication failure")
+        assert app.holds == 0 and directory.exists()
+        assert recovery.retry(directory)
+        wait_recovery(lambda: recovery.future is None and app.holds == 0, "publication retry completion")
+        assert not recovery.failures and len(attempts) == 2
+        (meeting,) = LibraryScanner(tmp_path).scan().meetings
+        assert meeting.id == sid and meeting.published_file
+    finally:
+        recovery.close()
+
+
+def test_retry_requested_during_a_sweep_is_not_lost_when_the_older_attempt_fails(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "private-config"))
+    _sid, directory = simple_session(tmp_path, 0.1)
+    entered, release = threading.Event(), threading.Event()
+    original = finalize.finalize
+    attempts = []
+
+    def fail_once(*args, **kwargs):
+        attempts.append(True)
+        if len(attempts) == 1:
+            entered.set()
+            assert release.wait(5), "Test did not release the first publication attempt"
+            raise OSError("Synthetic delayed publication failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(finalize, "finalize", fail_once)
+    app = App()
+    recovery = LibraryRecovery(app)
+    try:
+        wait_recovery(entered.is_set, "first publication attempt enters encoder")
+        assert recovery.retry(directory)
+        release.set()
+        wait_recovery(
+            lambda: len(attempts) == 2 and recovery.future is None and not recovery.timer,
+            "the newer retry revision runs after the older sweep",
+        )
+        assert not recovery.failures and app.holds == 0
+        assert LibraryScanner(tmp_path).scan().meetings[0].published_file
+    finally:
+        release.set()
+        recovery.close()

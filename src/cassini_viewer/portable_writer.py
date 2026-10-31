@@ -137,6 +137,15 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
     if policy is not None:
         manifest["audioEncode"] = deepcopy(policy)
     extension = deepcopy(meeting.extensions)
+    # A share is a new, resolved transcript, not the Library's original-ID
+    # document. Do not export our understood UUID ownership/Undo history
+    # without the original words it describes. Foreign/future x stays opaque.
+    ours = extension.get("codemyriad.io")
+    if isinstance(ours, dict) and ours.get("schema") == 1:
+        from .library_v2.xschema import valid
+
+        if valid(ours):
+            extension.pop("codemyriad.io")
     domain = extension.get("gocassini.com")
     domain = domain if isinstance(domain, dict) else {}
     if meeting.origin == "own" and any(t.start_offset_ms is None for t in meeting.tracks):

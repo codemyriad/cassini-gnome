@@ -406,3 +406,45 @@ def test_unrelated_edit_never_relabels_a_stored_unnamed_voice(published):
     commit(directory, notes=[dict(atMs=0, text="A note")])
     assert portable.read_meeting(str(path)).speakers[0].label == "Parlante 19"
     assert audio_digest(path) == digest
+
+
+def test_share_has_resolved_words_without_library_ownership_or_unusable_undo_history(published, tmp_path):
+    from cassini_viewer.exporting import export_meeting
+
+    root, _sid, directory, original = published
+    body = dict(
+        format=portable.WORDS_FORMAT,
+        items=[
+            dict(speaker="a", startMs=0, endMs=20, text="first"),
+            dict(speaker="b", startMs=20, endMs=40, text="second"),
+        ],
+    )
+    speakers = [
+        dict(id=i, name=n, provenance="user", colourIndex=j) for j, (i, n) in enumerate([("a", "Alice"), ("b", "Bob")])
+    ]
+    with transaction(directory):
+        commit_metadata(
+            directory,
+            meeting_store.read_metadata(directory),
+            dict(
+                speakers=speakers,
+                speakerMerges=[{"from": "a", "into": "b"}],
+                notes=[dict(atMs=0, text="Keep this note")],
+                transcript=dict(status="done", reference=None),
+            ),
+            words=body,
+        )
+    (meeting,) = LibraryScanner(root).scan().meetings
+    before = original.read_bytes()
+    output = tmp_path / "shared"
+    export_meeting(meeting, output, "cassini")
+    (share,) = output.glob("*.opus")
+    embedded = portable.read_meeting(str(share))
+    assert "codemyriad.io" not in embedded.manifest.get("x", {})
+    assert embedded.manifest["x"]["gocassini.com"]["notes"] == [dict(atMs=0, text="Keep this note")]
+    assert {w.speaker for w in portable.load_words(embedded, embedded.default_transcript_id)} == {"b"}
+    assert original.read_bytes() == before
+    assert audio_digest(share) == audio_digest(original)
+    commit(directory, speakerMerges=[])
+    (restored,) = LibraryScanner(root).scan().meetings
+    assert {w.speaker for w in restored.words} == {"a", "b"}

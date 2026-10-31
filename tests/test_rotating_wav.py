@@ -132,6 +132,52 @@ def test_live_observation_uses_the_active_span_and_does_not_count_rotations_as_v
     session.finish()
 
 
+def _produce_rotation_boundary(child, phase):
+    session = RecordingSession(None, source="gnome", writer_factory=lambda p, r, c: WAVWriter(p, r, c, max_bytes=1600))
+    session.add_track("mic", "Me", "microphone", 8000, 1)
+    session.append_native("mic", b"\x10\0" * 800, 0)
+    session.checkpoint()
+    child.send(str(session.directory))
+
+    def barrier():
+        child.send(phase)
+        child.recv()  # The parent kills this process after the explicit event.
+
+    if phase == "oldClosed":
+        close = session.writers["mic"].current.close
+
+        def closed():
+            close()
+            barrier()
+
+        session.writers["mic"].current.close = closed
+    elif phase == "referencePublished":
+        checkpoint = session.checkpoint
+
+        def checkpointed():
+            checkpoint()
+            if session.manifest["tracks"][0].get("spans"):
+                barrier()
+
+        session.checkpoint = checkpointed
+    else:
+        create = session.writer_factory
+
+        def factory(path, rate, channels):
+            writer = create(path, rate, channels)
+            append = writer.append
+
+            def appended(data):
+                append(data)
+                barrier()
+
+            writer.append = appended
+            return writer
+
+        session.writer_factory = factory
+    session.append_native("mic", b"\x20\0" * 800, 100)
+
+
 @pytest.mark.parametrize("phase", ["oldClosed", "referencePublished", "newPCM"])
 def test_sigkill_at_rotation_boundaries_keeps_the_original_and_referenced_pcm(tmp_path, monkeypatch, phase):
     import multiprocessing
@@ -141,57 +187,10 @@ def test_sigkill_at_rotation_boundaries_keeps_the_original_and_referenced_pcm(tm
     root = tmp_path / "Library"
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(root))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "private-config"))
-    context = multiprocessing.get_context("fork")
+    context = multiprocessing.get_context("spawn")
     parent, child = context.Pipe()
 
-    def produce():
-        session = RecordingSession(
-            None, source="gnome", writer_factory=lambda p, r, c: WAVWriter(p, r, c, max_bytes=1600)
-        )
-        session.add_track("mic", "Me", "microphone", 8000, 1)
-        session.append_native("mic", b"\x10\0" * 800, 0)
-        session.checkpoint()
-        child.send(str(session.directory))
-
-        def barrier():
-            child.send(phase)
-            child.recv()  # The parent kills this process after the explicit event.
-
-        if phase == "oldClosed":
-            close = session.writers["mic"].current.close
-
-            def closed():
-                close()
-                barrier()
-
-            session.writers["mic"].current.close = closed
-        elif phase == "referencePublished":
-            checkpoint = session.checkpoint
-
-            def checkpointed():
-                checkpoint()
-                if session.manifest["tracks"][0].get("spans"):
-                    barrier()
-
-            session.checkpoint = checkpointed
-        else:
-            create = session.writer_factory
-
-            def factory(path, rate, channels):
-                writer = create(path, rate, channels)
-                append = writer.append
-
-                def appended(data):
-                    append(data)
-                    barrier()
-
-                writer.append = appended
-                return writer
-
-            session.writer_factory = factory
-        session.append_native("mic", b"\x20\0" * 800, 100)
-
-    process = context.Process(target=produce)
+    process = context.Process(target=_produce_rotation_boundary, args=(child, phase))
     process.start()
     child.close()
     try:

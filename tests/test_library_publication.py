@@ -143,3 +143,39 @@ def test_encoder_timeout_is_reported_once_instead_of_retrying_future_result_fore
     (result,) = recover_completed(tmp_path)
     assert result.directory == directory and isinstance(result.error, TimeoutError)
     assert not list(tmp_path.glob("*.opus"))
+
+
+@pytest.mark.parametrize("reason", ["user", "appQuit", "disk", "error"])
+def test_startup_retries_an_explicitly_stopped_partial_like_the_original_stop(tmp_path, monkeypatch, reason):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    root = tmp_path / "Library"
+    root.mkdir()
+    sid, directory = simple_session(root, 0.1)
+    path = directory / "session.json"
+    session = json.loads(path.read_text())
+    session.update(
+        state="interrupted",
+        problem="Synthetic input gap",
+        problemKind="gap",
+        events=[dict(type="end", atMs=100, reason=reason)],
+    )
+    path.write_text(json.dumps(session))
+    pcm = {p.name: p.read_bytes() for p in directory.glob("*.wav")}
+    (result,) = recover_completed(root)
+    assert result.error is None and result.published and (root / result.published.name).is_file()
+    assert {p.name: p.read_bytes() for p in directory.glob("*.wav")} == pcm
+    assert list(recover_completed(root)) == []
+
+
+def test_interrupted_without_a_valid_stop_event_remains_manual_recovery(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    root = tmp_path / "Library"
+    root.mkdir()
+    _sid, directory = simple_session(root, 0.1)
+    path = directory / "session.json"
+    session = json.loads(path.read_text())
+    for events in [[], [dict(type="end", atMs=-1, reason="user")], [dict(type="end", atMs=100, reason="future")]]:
+        session.update(state="interrupted", events=events)
+        path.write_text(json.dumps(session))
+        assert list(recover_completed(root)) == []
+        assert not list(root.glob("*.opus"))
