@@ -2,8 +2,10 @@
 """Atomic app-owned metadata; capture audio and session.json remain read-only."""
 
 import contextlib
+import fcntl
 import json
 import os
+import stat
 import tempfile
 import threading
 from pathlib import Path
@@ -14,6 +16,51 @@ from .library_schema import valid
 from .recording_session import strict_json
 
 LOCK = threading.RLock()
+_TRANSACTIONS = threading.local()
+
+
+@contextlib.contextmanager
+def metadata_transaction(directory):
+    """Serialize an entire metadata edit across GTK/broker processes.
+
+    The lock lives beside meeting.json, whose inode changes on every edit.
+    Nested edits on one thread reuse the same flock, including path aliases.
+    Readers still read atomic snapshots without acquiring a write lock.
+    """
+    with LOCK:
+        directory = Path(directory)
+        if not directory.exists():
+            from .library_location import owned_directory
+
+            directory = owned_directory(directory)
+        parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            info = os.fstat(parent)
+            key = info.st_dev, info.st_ino
+            held = getattr(_TRANSACTIONS, "held", None)
+            if held is None:
+                held = _TRANSACTIONS.held = {}
+            if key in held:
+                yield
+                return
+            descriptor = os.open(
+                ".meeting.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=parent
+            )
+            try:
+                info = os.fstat(descriptor)
+                if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+                    raise ValueError("Unsafe meeting metadata lock")
+                fcntl.flock(descriptor, fcntl.LOCK_EX)
+                held[key] = descriptor
+                try:
+                    yield
+                finally:
+                    held.pop(key)
+                    fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
+        finally:
+            os.close(parent)
 
 
 def atomic_json(path, value, *, before_commit=None):
@@ -87,7 +134,7 @@ def read_metadata(directory):
 
 def update_metadata(directory, *, before_commit=None, **changes):
     directory = Path(directory)
-    with LOCK:
+    with metadata_transaction(directory):
         if not directory.exists():
             from .library_location import owned_directory
 

@@ -135,8 +135,16 @@ class RecordingComfort:
         )
         native = self._native_for(meeting)
         if native:
+            state["output_muted"] = getattr(native, "output_muted", False)
             state.update(levels=list(native.levels), line=native.line, minutes=native.minutes_left)
-        if not self.sources(meeting).me:
+        sources = self.sources(meeting)
+        state["output_muted"] = bool(
+            state.get("output_muted")
+            and sources.others
+            and sources.source == "system"
+            and meeting.lifecycle == "recording"
+        )
+        if not sources.me:
             state["silent"] = False
         return state
 
@@ -285,7 +293,12 @@ class RecordingComfort:
             LOG.warning("Could not observe live recording: %s", error)
             return False
         state = self.states[meeting.key]
-        state.update(levels=value["levels"], voices=value["voices"], minutes=value["minutes"])
+        state.update(
+            levels=value["levels"],
+            voices=value["voices"],
+            minutes=value["minutes"],
+            output_muted=value.get("output_muted", False),
+        )
         if value["recent_sound"]:
             now = GLib.get_monotonic_time() / 1e6
             state["silent"] = self.clocks.setdefault(meeting.key, SilenceClock(now)).update(1, now)

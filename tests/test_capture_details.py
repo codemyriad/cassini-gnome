@@ -282,3 +282,16 @@ def test_end_reader_obeys_order_and_first_terminal_event(meetings):
     assert _end(meeting, malformed) == UNKNOWN
     duplicate = dict(events=[dict(type="end", atMs=1000, reason="user"), dict(type="end", atMs=2000, reason="error")])
     assert _end(meeting, duplicate) == "Stopped by you · 00:00:01"
+
+
+def test_only_observed_output_mute_facts_appear_in_details(meetings):
+    from cassini_viewer.strings import text
+
+    meeting = meetings["fallback"]
+    metadata = dict(
+        meeting.metadata,
+        recordingDetails=dict(audioHealth=dict(outputMuted=[dict(trackId="system", startMs=1870000, endMs=1900000)])),
+    )
+    report = read_details(replace(meeting, metadata=metadata))
+    assert text("details.health.outputMuted") in report.plain_text()
+    assert text("details.health.outputMuted") not in read_details(meeting).plain_text()

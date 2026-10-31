@@ -161,7 +161,12 @@ with tempfile.TemporaryDirectory() as temporary:
     until(window.is_active)
     chosen = next(m for m in window.snapshot.meetings if m.title == "Budget review")
     folder = chosen.directory
-    before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.iterdir() if p.name != "meeting.json"}
+    # The stable transaction lock is app metadata; hash every other capture file.
+    before = {
+        p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in folder.iterdir()
+        if p.name not in ("meeting.json", ".meeting.lock")
+    }
     for surface, name in (("row", "Row renamed"), ("meeting", "Meeting renamed")):
         chosen = next(m for m in window.snapshot.meetings if m.directory == folder)
         if surface == "row":
@@ -282,7 +287,9 @@ with tempfile.TemporaryDirectory() as temporary:
     assert read_metadata(folder)["title"] is None
     assert read_metadata(folder)["titleSource"] == "meeting-window"
     assert before == {
-        p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.iterdir() if p.name != "meeting.json"
+        p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in folder.iterdir()
+        if p.name not in ("meeting.json", ".meeting.lock")
     }
     live = next(m for m in window.snapshot.meetings if m.lifecycle == "recording")
     row = next(w for w in widgets(window.rows) if getattr(w, "meeting", None) == live)

@@ -30,7 +30,7 @@ def bytes_except_metadata(meeting):
     return {
         p.name: hashlib.sha256(p.read_bytes()).hexdigest()
         for p in meeting.directory.iterdir()
-        if p.name != "meeting.json"
+        if p.name not in ("meeting.json", ".meeting.lock")
     }
 
 
