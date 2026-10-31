@@ -4,7 +4,9 @@
 https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Background.html
 """
 
+import contextlib
 import logging
+import threading
 from uuid import uuid4
 
 from gi.repository import Gio, GLib
@@ -18,7 +20,9 @@ INTERFACE = "org.freedesktop.portal.Background"
 
 
 class BackgroundRecording:
-    def __init__(self):
+    def __init__(self, application_id=None, *, native=False):
+        self.application_id = application_id
+        self.native = native
         self.bus = None
         self.callback = None
         self.path = None
@@ -26,22 +30,86 @@ class BackgroundRecording:
         self.closed = False
         self.status_supported = True
         self.last_status = None
+        self.status_confirmed = False
         self.generation = 0
+        self.granted = False
+        self.cancellable = None
 
     def request(self, callback):
+        if self.granted and not self.closed:
+            callback(True)
+            return
         if self.closed or self.callback is not None:
             callback(False)
             return
         self.callback = callback
         self.generation += 1
         generation = self.generation
-        Gio.bus_get(Gio.BusType.SESSION, None, lambda source, result: self._connected(source, result, generation))
+        self.cancellable = Gio.Cancellable()
+        cancellable = self.cancellable
+        self.timer = GLib.timeout_add_seconds(120, self._expired)
 
-    def _connected(self, _source, result, generation):
+        def connect():
+            bus, error = self._open(cancellable)
+            GLib.idle_add(self._connected, bus, error, generation)
+
+        threading.Thread(target=connect, name="cassini-background-portal", daemon=True).start()
+
+    def _open(self, cancellable):
+        """(bus, error) for a private session connection, registered when native.
+
+        A private connection lets native apps register before *any* portal
+        method, independently of GTK's Settings/FileChooser connection.
+        Address discovery and registration are bounded worker IO.
+        """
+        bus = self.bus
         try:
-            self.bus = Gio.bus_get_finish(result)
+            if bus is None:
+                address = Gio.dbus_address_get_for_bus_sync(Gio.BusType.SESSION, cancellable)
+                bus = Gio.DBusConnection.new_for_address_sync(
+                    address,
+                    Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
+                    None,
+                    cancellable,
+                )
+                if self.native and self.application_id:
+                    self._register(bus, cancellable)
+        except GLib.Error as failure:
+            return bus, failure
+        return bus, None
+
+    def _register(self, bus, cancellable):
+        # The host Registry exists since xdg-desktop-portal 1.20. An older or
+        # rejecting portal still answers RequestBackground for the unique name.
+        try:
+            bus.call_sync(
+                SERVICE,
+                ROOT,
+                "org.freedesktop.host.portal.Registry",
+                "Register",
+                GLib.Variant("(sa{sv})", (self.application_id, {})),
+                None,
+                Gio.DBusCallFlags.NONE,
+                5000,
+                cancellable,
+            )
+        except GLib.Error as error:
+            if cancellable is not None and cancellable.is_cancelled():
+                raise
+            LOG.info("Host app registration unavailable: %s", error)
+
+    def _connected(self, bus, error, generation):
+        try:
             if self.closed or self.callback is None or generation != self.generation:
+                if bus is not None and bus is not self.bus:
+                    bus.close(None, None, None)
                 return
+            if error:
+                if bus is not None:
+                    bus.close(None, None, None)
+                self._failed(error)
+                return False
+            self.bus = bus
             token = "cassini_" + uuid4().hex
             sender = self.bus.get_unique_name()[1:].replace(".", "_")
             self.path = f"{ROOT}/request/{sender}/{token}"
@@ -55,7 +123,6 @@ class BackgroundRecording:
                 Gio.DBusSignalFlags.NONE,
                 self._response,
             )
-            self.timer = GLib.timeout_add_seconds(120, self._expired)
             options = {
                 "handle_token": GLib.Variant("s", token),
                 "autostart": GLib.Variant("b", False),
@@ -80,6 +147,7 @@ class BackgroundRecording:
             )
         except GLib.Error as error:
             self._failed(error)
+        return False
 
     def _called(self, bus, result, generation):
         try:
@@ -105,10 +173,13 @@ class BackgroundRecording:
 
     def _failed(self, error):
         LOG.info("Background recording permission unavailable: %s", error)
+        if self.cancellable:
+            self.cancellable.cancel()
         self._cancel_request()
         self._complete(False)
 
     def _complete(self, allowed):
+        self.granted = bool(allowed) and not self.closed
         callback, self.callback = self.callback, None
         if self.subscription:
             self.bus.signal_unsubscribe(self.subscription)
@@ -120,19 +191,29 @@ class BackgroundRecording:
         if callback:
             callback(bool(allowed) and not self.closed)
 
-    def status(self, message):
+    def status(self, message, callback=None):
         # SetStatus is Background v2. Version 1 still supports permission and
         # the persistent notification; do not repeatedly call a missing method.
         message = " ".join(message.split())[:96]
         if self.closed or self.bus is None or not self.status_supported or message == self.last_status:
+            if callback:
+                callback(not self.closed and self.status_confirmed and self.status_supported)
             return
         self.last_status = message
+        self.status_confirmed = False
 
         def done(bus, result):
+            success = True
             try:
                 bus.call_finish(result)
-            except GLib.Error:
+            except GLib.Error as error:
+                LOG.info("Background status unavailable: %s", error)
                 self.status_supported = False
+                success = False
+            if callback:
+                callback(success and not self.closed)
+            if message == self.last_status:
+                self.status_confirmed = success and not self.closed
 
         self.bus.call(
             SERVICE,
@@ -167,5 +248,18 @@ class BackgroundRecording:
             return
         self.status("")
         self.closed = True
+        if self.cancellable:
+            self.cancellable.cancel()
         self._cancel_request()
         self._complete(False)
+        if self.bus:
+            # GDBus closes before writing queued messages; flush first so the
+            # cleared status and the pending request's Close reach the portal.
+            bus, self.bus = self.bus, None
+
+            def flushed(connection, result):
+                with contextlib.suppress(GLib.Error):
+                    connection.flush_finish(result)
+                connection.close(None, None, None)
+
+            bus.flush(None, flushed)

@@ -167,7 +167,7 @@ def remember_capture_paths(app):
     return paths
 
 
-def confirm_capture_close(app, window, *, quitting=False):
+def confirm_capture_close(app, window, *, quitting=False, force_stop=False):
     from gi.repository import Adw, GLib
 
     if getattr(app, "_capture_close_allowed", False):
@@ -184,7 +184,13 @@ def confirm_capture_close(app, window, *, quitting=False):
         return False
     # The guard covers the dialog AND all asynchronous finalization, including
     # the interval after pipelines disappear but before metadata is saved.
-    if getattr(app, "_capture_confirmation", None):
+    pending = getattr(app, "_capture_confirmation", None)
+    if pending:
+        # An unanswered close dialog cannot hold back an explicit Stop and
+        # Quit: answer it with stop, now for every window.
+        resolve = getattr(pending, "cassini_stop_and_quit", None)
+        if force_stop and resolve is not None:
+            resolve()
         return True
     native, browser = capture_targets(app)
     watch = getattr(app, "browser_watch", None)
@@ -394,9 +400,16 @@ def confirm_capture_close(app, window, *, quitting=False):
             future.add_done_callback(stopped)
         ready()
 
-    if idle_quit:
+    def stop_and_quit():
+        nonlocal quitting
+        quitting = True
+        response(dialog, "stop")
+        dialog.force_close()
+
+    if idle_quit or force_stop or quitting and not any(w.get_visible() for w in app.get_windows()):
         response(dialog, "stop")
     else:
+        dialog.cassini_stop_and_quit = stop_and_quit
         dialog.connect("response", response)
         dialog.present(window)
     return True

@@ -310,6 +310,7 @@ def test_flatpak_permissions_include_only_the_bridge_and_matching_legacy_identit
             "--filesystem=xdg-music/Cassini:create",
             "--talk-name=org.freedesktop.Flatpak",
             "--talk-name=com.gocassini.Viewer" + (".Devel" if application.endswith(".Devel") else ""),
+            "--talk-name=org.kde.StatusNotifierWatcher",
         ]
 
 

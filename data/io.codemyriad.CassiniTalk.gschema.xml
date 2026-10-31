@@ -21,6 +21,10 @@
       <default>false</default>
       <summary>Browser companion has connected before</summary>
     </key>
+    <key name="background-notification-shown" type="b">
+      <default>false</default>
+      <summary>Windowless automatic recording notification shown</summary>
+    </key>
     <key name="skip-record-first" type="b">
       <default>false</default>
       <summary>Skip recording introduction</summary>

@@ -1,0 +1,51 @@
+name: GNOME Background Apps
+on:
+  workflow_call:
+    inputs:
+      package_run:
+        type: string
+        default: ""
+  workflow_dispatch:
+    inputs:
+      package_run:
+        description: CI run with the matching deb-0 and Flatpak artifacts
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  desktop:
+    name: GNOME 50 / installed deb and Flatpak
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: deb-0
+          path: _desktop-packages/deb
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.package_run || github.run_id }}
+      - uses: actions/download-artifact@v5
+        with:
+          name: cassini-talk-devel-x86_64.flatpak
+          path: _desktop-packages/flatpak
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.package_run || github.run_id }}
+      - uses: actions/cache@v4
+        with:
+          path: .desktop-flatpak-cache
+          key: desktop-gnome50-v1
+      - name: Background Apps, app-grid reopen, and stop-and-keep on quit
+        run: |
+          CASSINI_DESKTOP_FLATPAK_CACHE="$PWD/.desktop-flatpak-cache" \
+            tests/desktop/run.sh _desktop-packages/deb/cassini-talk_*.deb _desktop-packages/flatpak/*.flatpak desktop-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: background-apps-desktop
+          path: |
+            desktop-evidence/*/*.json
+            desktop-evidence/*/*.log
+            desktop-evidence/*/*.png
+          retention-days: 7
