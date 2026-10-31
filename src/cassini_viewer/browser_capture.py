@@ -85,7 +85,8 @@ class BrowserCapture:
             or type(microphone) is not bool
         ):
             raise ProtocolError("state", "Invalid independent capture metadata")
-        created = datetime.fromtimestamp(origin / 1000, UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        instant = datetime.fromtimestamp(origin / 1000, UTC)
+        created = instant.isoformat(timespec="milliseconds").replace("+00:00", "Z")
         try:
             with self.lock:
                 if self.finished or self.stop_requested.is_set():
@@ -93,7 +94,7 @@ class BrowserCapture:
                 self.capture_id, self.origin_ms = identifier, origin
                 self.audio_connected = others_source == "browser"
                 self.starting = True
-                result = self.host.handle(message)
+                result = self.host.handle(message, started_at=instant)
                 self.host.session.manifest["createdAt"] = created
                 self.me = microphone
                 self.browser_lost = others_source == "system"

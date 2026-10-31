@@ -218,14 +218,38 @@ class WAVWriter:
             self.file.close()
 
 
+def recording_utc_offset(instant):
+    """Record the site's offset at capture start, not the Library's later zone."""
+    try:
+        offset = instant.astimezone().utcoffset()
+    except (OSError, OverflowError, ValueError):
+        return None
+    if offset is None or offset.total_seconds() % 60:
+        return None
+    minutes = int(offset.total_seconds() / 60)
+    return minutes if -720 <= minutes <= 840 else None
+
+
 class RecordingSession:
     def __init__(
-        self, parent, title="Browser recording", source="chromium", *, clock=time.monotonic, writer_factory=WAVWriter
+        self,
+        parent,
+        title="Browser recording",
+        source="chromium",
+        *,
+        clock=time.monotonic,
+        writer_factory=WAVWriter,
+        started_at=None,
     ):
         from contextlib import nullcontext
 
         from .library_location import capture_lease, primary, routing
 
+        instant = datetime.now(UTC) if started_at is None else started_at
+        if not isinstance(instant, datetime) or instant.tzinfo is None or instant.utcoffset() is None:
+            raise ProtocolError("state", "Recording start must be an absolute time")
+        instant = instant.astimezone(UTC)
+        offset = recording_utc_offset(instant)
         self._lease_fd = None
         default_parent = parent is None
         with routing() if parent is None else nullcontext():
@@ -238,12 +262,14 @@ class RecordingSession:
             self.manifest = {
                 "version": 1,
                 "id": identifier,
-                "createdAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "createdAt": instant.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "title": optional_string(title, "Browser recording", "state")[:500],
                 "source": source,
                 "state": "recording",
                 "tracks": [],
             }
+            if offset is not None:
+                self.manifest["startedAtUtcOffsetMinutes"] = offset
             self.writers = {}
             self.finished = False
             self._native_io_error = None
@@ -470,7 +496,7 @@ class BrowserHost:
         self.stopped = False
         self.audio_sink = None
 
-    def handle(self, message):
+    def handle(self, message, *, started_at=None):
         kind = message.get("type")
         if kind not in ("start", "track", "audio", "stop"):
             raise ProtocolError("version", "Unknown browser message type")
@@ -482,7 +508,7 @@ class BrowserHost:
             if type(version) is not int or version != 1:
                 raise ProtocolError("version", "Unsupported browser recording protocol version")
             title = optional_string(message.get("title"), "Browser recording", "state")
-            self.session = RecordingSession(self.directory, title)
+            self.session = RecordingSession(self.directory, title, started_at=started_at)
             return {"type": "started", "path": str(self.session.directory)}
         if self.session is None or self.stopped:
             raise ProtocolError("state", "No active recording")
