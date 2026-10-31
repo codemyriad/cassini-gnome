@@ -17,10 +17,10 @@ def real_fft():
         pytest.skip("Install GStreamer base for the required recording/GUI gate")
 
 
-def feed(source, identifier, *, offset=0, now=100, frames=4800, level=0.3, kind="remote"):
+def feed(source, identifier, *, offset=0, now=100, frames=4800, level=0.3, kind="remote", amplitude=500):
     source.feed(
         identifier,
-        tone(frames, amplitude=500),
+        tone(frames, amplitude=amplitude),
         offset,
         rate=48000,
         channels=1,
@@ -74,6 +74,9 @@ def test_two_observers_drain_independently_and_only_last_close_drops_history():
     feed(source, "one", offset=100, now=200)
     assert source.drain(b, 200)["others"]
     source.unsubscribe(b)
+    assert not source.active
+    # History is destroyed on the producer, never by the window's close path.
+    feed(source, "one", offset=200, now=300)
     assert not source.tracks
 
 
@@ -85,9 +88,11 @@ def test_each_lane_chooses_only_three_tracks_once_per_second_and_retires():
     for n in range(5):
         feed(source, str(n), level=n / 10)
     assert len(source.selected) == 3
-    feed(source, "4", offset=100, now=1100, level=0.9)
+    for step in range(2, 12):
+        for n in range(5):
+            feed(source, str(n), offset=(step - 1) * 100, now=step * 100, level=n / 10)
     assert source.selected == {"2", "3", "4"}
-    assert source.tracks["0"].analysis.total == 4800
+    assert source.tracks["0"].analysis.total == 11 * 4800
     source.retire("3")
     assert "3" not in source.selected and "3" not in source.tracks
     before = source.calls
@@ -199,7 +204,22 @@ def test_browser_selection_uses_recent_100_ms_ac_and_ignores_dc():
             now_ms=100,
             level=None,
         )
-    source.feed("dc", dc, 100, rate=48000, channels=1, kind="remote", start_ms=0, now_ms=1100, level=None)
+    for step in range(2, 12):
+        source.feed(
+            "dc", dc, (step - 1) * 100, rate=48000, channels=1, kind="remote", start_ms=0, now_ms=step * 100, level=None
+        )
+        for identifier, amplitude in (("a", 100), ("b", 200), ("c", 300)):
+            source.feed(
+                identifier,
+                tone(4800, amplitude=amplitude),
+                (step - 1) * 100,
+                rate=48000,
+                channels=1,
+                kind="remote",
+                start_ms=0,
+                now_ms=step * 100,
+                level=None,
+            )
     assert source.selected == {"a", "b", "c"}
     assert source.tracks["dc"].level == 0
 
@@ -212,3 +232,29 @@ def test_real_silent_pcm_is_selected_before_never_arriving_slots():
     source.feed("z-real", bytes(9600), 0, rate=48000, channels=1, kind="remote", start_ms=0, now_ms=100, level=None)
     assert "z-real" in source.selected
     assert source.analysed > 0
+
+
+def test_three_stale_loud_tracks_release_slots_to_the_quiet_fourth_and_can_return():
+    source = SpectroSource()
+    sub = source.subscribe()
+    amplitudes = {"a": 3000, "b": 2000, "c": 1000, "quiet": 100}
+    for name in amplitudes:
+        source.declare(name, kind="remote")
+    for step in range(1, 12):
+        for name, amplitude in amplitudes.items():
+            feed(source, name, offset=(step - 1) * 100, now=step * 100, level=None, amplitude=amplitude)
+    assert source.selected == {"a", "b", "c"}
+    source.drain(sub, 1100)
+    continuing = []
+    for step in range(12, 31):
+        feed(source, "quiet", offset=(step - 1) * 100, now=step * 100, level=None, amplitude=100)
+        continuing.extend(source.drain(sub, step * 100)["others"])
+    assert source.selected == {"quiet"}
+    assert continuing and continuing[-1][0] >= 145
+    for step in range(31, 43):
+        for name, amplitude in amplitudes.items():
+            feed(source, name, offset=(step - 1) * 100, now=step * 100, level=None, amplitude=amplitude)
+    assert source.selected == {"a", "b", "c"}
+    recovered = source.drain(sub, 4200)["others"]
+    assert recovered and recovered[-1][0] > continuing[-1][0]
+    source.unsubscribe(sub)

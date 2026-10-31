@@ -8,6 +8,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from fractions import Fraction
+from queue import Empty, SimpleQueue
 
 from .spectro_analysis import Quantizer, Track
 
@@ -17,6 +18,7 @@ LOG = logging.getLogger(__name__)
 @dataclass(eq=False)
 class Subscription:
     lanes: dict = field(default_factory=lambda: {side: deque(maxlen=64) for side in ("me", "others")})
+    cancelled: threading.Event = field(default_factory=threading.Event)
 
 
 @dataclass
@@ -40,7 +42,12 @@ class SpectroSource:
 
     def __init__(self):
         self.lock = threading.RLock()
-        self.subscribers, self.tracks, self.retired = set(), {}, set()
+        self.queue_lock = threading.Lock()
+        self._subscriptions = ()
+        self._registrations = SimpleQueue()
+        self._epoch = 0
+        self._analysis_epoch = None
+        self.tracks, self.retired = {}, set()
         self.known = {}
         self.now_ms = 0
         self.problem = None
@@ -52,8 +59,52 @@ class SpectroSource:
         self.calls = self.analysed = self.analysis_ns = self.analysis_cpu_ns = self.late = self.overflow = 0
 
     @property
+    def subscribers(self):
+        # Immutable registry snapshot: cancellation never waits for publication.
+        return frozenset(s for s in self._subscriptions if not s.cancelled.is_set())
+
+    @property
     def active(self):
-        return bool(self.subscribers) and self.problem is None and not self.finished
+        return any(not s.cancelled.is_set() for s in self._subscriptions) and self.problem is None and not self.finished
+
+    def _subscriptions_locked(self):
+        current = tuple(s for s in self._subscriptions if not s.cancelled.is_set())
+        for old in self._subscriptions:
+            if old.cancelled.is_set():
+                for queue in old.lanes.values():
+                    queue.clear()
+        for _ in range(64):
+            try:
+                subscription = self._registrations.get_nowait()
+            except Empty:
+                break
+            if subscription.cancelled.is_set():
+                continue
+            if not current:
+                self._epoch += 1
+            current += (subscription,)
+        self._subscriptions = current
+
+    def _update_subscriptions(self):
+        if self.queue_lock.acquire(blocking=False):
+            try:
+                self._subscriptions_locked()
+            finally:
+                self.queue_lock.release()
+
+    def _reset_analysis(self, now_ms, *, watching):
+        # Producer only, under the DSP lock. Never destroy FFT/history on GTK.
+        self.tracks = (
+            {key: SourceTrack(None, side, 0, now_ms, chunk_ms=chunk) for key, (side, chunk) in self.known.items()}
+            if watching
+            else {}
+        )
+        self.selected.clear()
+        self.pending = {side: {} for side in self.pending}
+        self.quantizers = {side: Quantizer() for side in self.pending}
+        self.released = {side: -1 for side in self.pending}
+        self.next_selection_ms = now_ms
+        self._analysis_epoch = self._epoch
 
     def observe(self, *args, **kwargs):
         try:
@@ -78,30 +129,16 @@ class SpectroSource:
                     self.selected.add(identifier)
 
     def subscribe(self, now_ms=0):
-        with self.lock:
-            if not self.subscribers:
-                self.tracks = {
-                    key: SourceTrack(None, side, 0, now_ms, chunk_ms=chunk) for key, (side, chunk) in self.known.items()
-                }
-                self.next_selection_ms = now_ms
-            subscription = Subscription()
-            self.subscribers.add(subscription)
-            return subscription
+        subscription = Subscription()
+        self._registrations.put(subscription)
+        self._update_subscriptions()
+        return subscription
 
     def unsubscribe(self, subscription):
-        with self.lock:
-            self.subscribers.discard(subscription)
-            for queue in subscription.lanes.values():
-                queue.clear()
-            if not self.subscribers:
-                # A return starts with empty history, rather than analysing
-                # invisible audio or replaying it into a newly mapped strip.
-                self.tracks.clear()
-                self.selected.clear()
-                self.pending = {side: {} for side in self.pending}
-                self.quantizers = {side: Quantizer() for side in self.pending}
-                self.released = {side: -1 for side in self.pending}
-                self.next_selection_ms = 0
+        # This flag is independent of both locks and immediately disables work.
+        # A producer or subsequent reader prunes it; no GTK wait or DSP cleanup.
+        subscription.cancelled.set()
+        self._update_subscriptions()
 
     def retire(self, identifier):
         with self.lock:
@@ -110,13 +147,19 @@ class SpectroSource:
             self.tracks.pop(identifier, None)
             self.selected.discard(identifier)
 
+    @staticmethod
+    def _fresh(track, now_ms):
+        return now_ms - track.arrival_ms <= min(1800, max(100, track.chunk_ms * 2.5))
+
     def _choose(self, now_ms, current_id, current_data):
-        if now_ms < self.next_selection_ms:
+        fresh = {key: track for key, track in self.tracks.items() if self._fresh(track, now_ms)}
+        capacity = sum(min(3, sum(t.side == side for t in fresh.values())) for side in self.pending)
+        if now_ms < self.next_selection_ms and self.selected <= fresh.keys() and len(self.selected) == capacity:
             return
         self.next_selection_ms = now_ms + 1000
         from .recording_details import pcm_ac_level
 
-        for key, track in self.tracks.items():
+        for key, track in fresh.items():
             analysis = track.analysis
             if track.automatic_level and analysis is not None:
                 width = analysis.rate // 10 * analysis.channels * 2
@@ -129,7 +172,7 @@ class SpectroSource:
                 track.level = pcm_ac_level(tail, analysis.channels) if tail else 0
         self.selected = set()
         for side in self.pending:
-            candidates = [(key, value) for key, value in self.tracks.items() if value.side == side]
+            candidates = [(key, value) for key, value in fresh.items() if value.side == side]
             # Real digitally silent PCM beats a never-arriving placeholder, so
             # silence has a trough rather than being shown as missing audio.
             candidates.sort(
@@ -143,8 +186,15 @@ class SpectroSource:
 
     def feed(self, identifier, data, offset_ms, *, rate, channels, kind, start_ms, now_ms, level, gap_frames=0):
         with self.lock:
-            if not self.active or identifier in self.retired:
+            self._update_subscriptions()
+            if not self.active:
+                if self.tracks or any(self.pending.values()):
+                    self._reset_analysis(now_ms, watching=False)
                 return
+            if identifier in self.retired:
+                return
+            if self._analysis_epoch != self._epoch:
+                self._reset_analysis(now_ms, watching=True)
             started, cpu_started = time.perf_counter_ns(), time.thread_time_ns()
             self.calls += 1
             self.now_ms = now_ms
@@ -206,15 +256,14 @@ class SpectroSource:
                 self.selected.clear()
 
     def _collect(self, now_ms, *, force=False):
+        completed = {side: [] for side in self.pending}
         for side, pending in self.pending.items():
             if not pending:
                 continue
             active = [
                 track.progress
                 for key, track in self.tracks.items()
-                if key in self.selected
-                and track.side == side
-                and now_ms - track.arrival_ms <= min(1800, max(100, track.chunk_ms * 2.5))
+                if key in self.selected and track.side == side and self._fresh(track, now_ms)
             ]
             # A live source's progress seals earlier slots. A missing source
             # contributes nothing; it never freezes another participant's lane.
@@ -224,18 +273,36 @@ class SpectroSource:
                 powers = rows[0] if len(rows) == 1 else [math.fsum(row[band] for row in rows) for band in range(32)]
                 bands = self.quantizers[side].column(slot, powers)
                 self.released[side] = slot
-                column = (slot, 0, bands)
-                for subscription in self.subscribers:
-                    if len(subscription.lanes[side]) == 64:
-                        self.overflow += 1
-                    subscription.lanes[side].append(column)
+                completed[side].append((slot, 0, bands))
+        if any(completed.values()):
+            self._publish(completed, self._analysis_epoch)
+
+    def _publish(self, completed, epoch):
+        # Only finished immutable columns and bounded queue operations belong
+        # under this lock. Conversion, FFT, quantization and loader I/O do not.
+        with self.queue_lock:
+            self._subscriptions_locked()
+            if epoch != self._epoch:
+                return  # A remap owns a fresh history, never this in-flight one.
+            for subscription in self._subscriptions:
+                if subscription.cancelled.is_set():
+                    continue
+                for side, columns in completed.items():
+                    queue = subscription.lanes[side]
+                    self.overflow += max(0, len(queue) + len(columns) - queue.maxlen)
+                    queue.extend(columns)
 
     def drain(self, subscription, now_ms):
-        with self.lock:
-            if subscription not in self.subscribers:
-                return {side: [] for side in self.pending}
+        if subscription.cancelled.is_set() or not self.queue_lock.acquire(blocking=False):
+            return {side: [] for side in ("me", "others")}
+        try:
+            self._subscriptions_locked()
+            if subscription not in self._subscriptions or subscription.cancelled.is_set():
+                return {side: [] for side in ("me", "others")}
             result = {}
             for side, queue in subscription.lanes.items():
                 result[side] = list(queue)
                 queue.clear()
             return result
+        finally:
+            self.queue_lock.release()

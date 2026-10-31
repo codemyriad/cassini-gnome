@@ -23,8 +23,9 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
+gi.require_version("Gsk", "4.0")
 from desktop_services import DesktopServices  # noqa: E402
-from gi.repository import Adw, Gio, GLib, Graphene, Gst, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, GLib, Graphene, Gsk, Gst, Gtk  # noqa: E402
 from readiness import wait_until  # noqa: E402
 from spectro_memory import render_state_bytes, source_digest  # noqa: E402
 from spectro_wm import WindowManager  # noqa: E402
@@ -166,8 +167,27 @@ def stop_picture(window, recorder):
             "stopping unsubscribed and froze every strip",
         )
         before = [s.texture_updates for s in strips]
-        painted_at = GLib.get_monotonic_time()
-        until(lambda: GLib.get_monotonic_time() - painted_at >= 230000, "stopping opacity transition completed")
+        paintables = [Gtk.WidgetPaintable.new(strip) for strip in strips]
+        fades = {}
+
+        def faded():
+            complete = True
+            for index, (strip, paintable) in enumerate(zip(strips, paintables, strict=True)):
+                snapshot = Gtk.Snapshot.new()
+                paintable.snapshot(snapshot, strip.get_width(), strip.get_height())
+                node = snapshot.to_node()
+                opacity = (
+                    node.get_opacity() if node and node.get_node_type() == Gsk.RenderNodeType.OPACITY_NODE else None
+                )
+                fades[index] = opacity
+                complete &= opacity is not None and math.isclose(opacity, 0.45, abs_tol=0.001)
+                if opacity is None:
+                    strip.queue_draw()
+            return complete
+
+        wait_until(
+            faded, "all frozen strips rendered their final stopping opacity", timeout=5, diagnostics=lambda: fades
+        )
         assert [s.texture_updates for s in strips] == before
         shot(window, "spectrogram-stopping")
     finally:
