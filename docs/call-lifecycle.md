@@ -88,3 +88,16 @@ unresponsive recording or failed native save remains an error. No audio sample,
 tone, bleed or source-lifecycle thresholds are changed.
 
 Shared wire vectors also exercise immediate page-state statuses around delayed inventories. Navigation invalidates the departing document’s source count; only fresh inventory evidence clears the return deadline. The companion waits for the entire metadata batch before reading all rows’ current source evidence.
+
+Attempt suppression belongs to the logical call as well as its current transport.
+Heard loss, address changes, expired remembered stops and finished capture owners
+clear both together. A stale worker cannot clear its replacement's attempt.
+Manual Record rejects a Start still pending on an overlapping transport.
+
+A timed-out batch returns on its request deadline while cleanup gets a fresh,
+bounded command wait. The broker retains a bounded correlation history so late
+results update their own tab; an obsolete Stop cannot hide a newer Start. Audio
+announced after cancellation is saved and retired, even if its capture identity
+arrives after Stop was dispatched. A returning worker that reports a stopped
+call receives Stop. Stop-all deduplicates logical calls, and Quit joins an
+existing Stop instead of dispatching a competing command.
