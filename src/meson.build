@@ -170,6 +170,7 @@ viewer_sources = files(
   'cassini_viewer/native_tap.py',
   'cassini_viewer/native_timing.py',
   'cassini_viewer/capture_clock.py',
+  'cassini_viewer/rotating_wav.py',
   'cassini_viewer/mapped_audio.py',
   'cassini_viewer/browser_control_host.py',
   'cassini_viewer/browser_service.py',

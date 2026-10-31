@@ -295,7 +295,13 @@ class RecordingSession:
     def checkpoint(self):
         if self._changing:
             return
+        for writer in self.writers.values():
+            snapshot = getattr(writer, "snapshot", None)
+            if snapshot:
+                snapshot()
         for track in self.manifest["tracks"]:
+            if track.get("spans"):
+                continue
             if (clock := self._native_clocks.get(track["id"])) and (anchors := clock.values()):
                 track["clockAnchors"] = anchors
         path = self.directory / "session.json"
@@ -376,7 +382,12 @@ class RecordingSession:
         if filename is not None and filename not in ("track-microphone.wav", "track-system.wav"):
             raise ProtocolError("source", "Invalid native track filename")
         filename = filename or f"track-{uuid4()}.wav"
-        self.writers[identifier] = self.writer_factory(self.directory / filename, rate, channels)
+        writer = self.writer_factory(self.directory / filename, rate, channels)
+        if self.library_root is not None and isinstance(writer, WAVWriter):
+            from .rotating_wav import RotatingWAV
+
+            writer = RotatingWAV(self, identifier, writer)
+        self.writers[identifier] = writer
         self.manifest["tracks"].append(
             {
                 "id": identifier,
@@ -437,15 +448,17 @@ class RecordingSession:
                     if written:
                         track["gapFrames"] = track.get("gapFrames", 0) + written
                     track["frames"] = writer.frames
-            self.append(identifier, data, offset)
             if self.library_root is not None and host_ns is not None:
                 from .capture_clock import ClockAnchors
 
                 clock = self._native_clocks.get(identifier)
                 if clock is None:
                     clock = self._native_clocks[identifier] = ClockAnchors(writer.rate, self._native_clock_origin_ns)
-                index = writer.frames - len(data) // (writer.channels * 2)
+                index = writer.frames
                 clock.add(index, host_ns)
+                if hasattr(writer, "observe_clock"):
+                    writer.observe_clock(host_ns)
+            self.append(identifier, data, offset)
         except Exception as error:
             self._native_io_error = str(error)
             track["frames"] = writer.frames
@@ -740,7 +753,18 @@ def _load_session(path, fd, regular, track_source):
     tracks = manifest["tracks"]
     if len(tracks) > 64:
         raise ValueError("Invalid recording tracks")
+    physical_tracks = []
     for track in tracks:
+        if not isinstance(track, dict):
+            raise ValueError("Invalid recording track")
+        spans = track.get("spans")
+        if spans is None:
+            physical_tracks.append(track)
+        elif not isinstance(spans, list) or not spans or len(spans) > 4096:
+            raise ValueError("Invalid recording spans")
+        else:
+            physical_tracks.extend(spans)
+    for track in physical_tracks:
         if not isinstance(track, dict) or not isinstance(track.get("file"), str):
             raise ValueError("Invalid recording track")
         if "codec" in track:
@@ -763,4 +787,7 @@ def _load_session(path, fd, regular, track_source):
             type(offset) not in (int, float) or not 0 <= offset <= 86400000 or not math.isfinite(offset)
         ):
             raise ValueError("Invalid recording track offset")
+    for track in tracks:
+        if isinstance(track.get("spans"), list):
+            track["frames"] = sum(span["frames"] for span in track["spans"])
     return manifest

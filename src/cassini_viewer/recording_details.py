@@ -97,17 +97,16 @@ def edit_recording(directory, *, title=None, notes=None):
 
 def recording_observation(meeting, *, freshness_seconds=1):
     """Read <=one second per track; meters use the latest 100 ms. Never rewrite capture files or infer liveness."""
-    levels, voices, rate = [0.0, 0.0], 0, 0
+    levels, rate = [0.0, 0.0], 0
+    voices = sum(t.kind == "remote" and t.ended is not True for t in meeting.tracks)
     recent_sound = False
     descriptor = os.open(meeting.directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        for track in meeting.tracks:
+        for track in (span for logical in meeting.tracks for span in (logical.spans or (logical,))):
             # Live meters read growing WAVs only; compacted spans are never live.
             if track.ended is True or track.codec != "pcm":
                 continue
             index = 0 if track.kind in ("microphone", "local") else 1
-            if track.kind == "remote":
-                voices += 1
             rate += track.sample_rate * track.channels * 2
             with regular(descriptor, track.path.name) as (stream, info):
                 if freshness_seconds is not None and time.time() - info.st_mtime > freshness_seconds:

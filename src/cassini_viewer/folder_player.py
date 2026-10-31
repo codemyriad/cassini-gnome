@@ -28,8 +28,11 @@ class PCMSource:
         from .mapped_audio import required
 
         self.track = track
-        self.mapped = bool(getattr(track, "clock_anchors", ())) and required(
-            dict(sampleRate=track.sample_rate, clockAnchors=track.clock_anchors)
+        self.children = [PCMSource(span) for span in getattr(track, "spans", ())]
+        self.mapped = (
+            bool(self.children)
+            or bool(getattr(track, "clock_anchors", ()))
+            and required(dict(sampleRate=track.sample_rate, clockAnchors=track.clock_anchors))
         )
         self.mapping = None
         self._mapped_cache = None
@@ -41,7 +44,10 @@ class PCMSource:
         self.offset_ns = round(track.start_offset_ms * Gst.MSECOND)
         self.leading_frames = (self.offset_ns * self.rate + Gst.SECOND - 1) // Gst.SECOND
         self.end_frame = self.leading_frames + self.frames
-        if self.mapped:
+        if self.children:
+            self.rate = 48000
+            self.end_frame = max(round(child.end_frame * 48000 / child.rate) for child in self.children)
+        elif self.mapped:
             from .capture_clock import mapped_end_sample
 
             end = mapped_end_sample(
@@ -73,7 +79,7 @@ class PCMSource:
 
     def _open(self):
         # appsrc calls need-data on its streaming thread, including this initial IO.
-        if self.fd is not None or self.decoder is not None:
+        if self.children or self.fd is not None or self.decoder is not None:
             return
         if self.codec == "opus":
             decoder = OpusDecoder(self.path)
@@ -159,13 +165,27 @@ class PCMSource:
         self._mapped_cache = first, values
         return values
 
-    def _mapped_data(self, cursor, count):
+    def _mapped_data(self, cursor, count, *, output_rate=None):
         """Use the publisher's clock map, preserving channels and never touching the WAV."""
         import numpy as np
 
         from .library_v2.mixdown import Mapping, Span
         from .track_source import SpanInfo
 
+        output_rate = output_rate or self.rate
+        if self.children:
+            output = np.zeros((count, self.channels), dtype=np.float64)
+            for child in self.children:
+                first = child.track.start_offset_ms * 48
+                end = child.end_frame * 48000 / child.rate
+                if cursor + count > first and cursor < end:
+                    child._open()
+                    output += np.frombuffer(child._mapped_data(cursor, count, output_rate=48000), dtype="<f4").reshape(
+                        -1, self.channels
+                    )
+                else:
+                    child._release_input()
+            return output.astype("<f4").tobytes()
         if self.mapping is None:
             track = self.track
             info = SpanInfo(
@@ -175,7 +195,7 @@ class PCMSource:
                 Span(getattr(track, "id", "source"), self.path, info, track.start_offset_ms, track.clock_anchors)
             )
         output = np.zeros((count, self.channels), dtype=np.float64)
-        source = self.mapping.source(np.arange(cursor, cursor + count, dtype=np.float64) * 48000 / self.rate)
+        source = self.mapping.source(np.arange(cursor, cursor + count, dtype=np.float64) * 48000 / output_rate)
         source *= self.rate / 48000
         inside = (source >= 0) & (source <= self.frames - 1)
         if inside.any():
@@ -190,9 +210,14 @@ class PCMSource:
         return output.astype("<f4").tobytes()
 
     def close(self):
-        self._mapped_cache = self.mapping = None
+        for child in self.children:
+            child.close()
         for handler in self.handlers:
             self.src.disconnect(handler)
+        self._release_input()
+
+    def _release_input(self):
+        self._mapped_cache = self.mapping = None
         if self.fd is not None:
             os.close(self.fd)
             self.fd = None

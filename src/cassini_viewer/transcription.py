@@ -120,6 +120,20 @@ def prepare_tracks(meeting):
                 ),
             )
         )
+        if track.spans:
+            tracks[-1]["spans"] = [
+                dict(
+                    file=span.path.relative_to(meeting.directory).as_posix(),
+                    frames=span.frames,
+                    sampleRate=span.sample_rate,
+                    channels=span.channels,
+                    startOffsetMs=span.start_offset_ms,
+                    **({"clockAnchors": [list(point) for point in span.clock_anchors]} if span.clock_anchors else {}),
+                    **({"codec": "opus", "decodedRate": 48000} if span.codec == "opus" else {}),
+                )
+                for span in track.spans
+            ]
+            tracks[-1]["sessionDirectory"] = str(meeting.directory)
         speakers.setdefault(speaker, dict(id=speaker, name=name, provenance=provenance, colourIndex=index))
     return tracks, speakers
 

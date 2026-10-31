@@ -117,6 +117,7 @@ class CaptureTrack:
     codec: str = "pcm"
     decoded_frames: int | None = None
     clock_anchors: tuple[tuple[int, int], ...] = ()
+    spans: tuple["CaptureTrack", ...] = ()
 
     @property
     def pcm_rate(self):
@@ -129,6 +130,8 @@ class CaptureTrack:
     @property
     def display_end_ms(self):
         # Keep source offsets untouched; only display positions are integer ms.
+        if self.spans:
+            return max((span.display_end_ms for span in self.spans), default=0)
         if self.clock_anchors:
             from .capture_clock import mapped_end_sample
 
@@ -548,74 +551,106 @@ class LibraryScanner:
         ]
         used = set(identifiers)
         files = set()
-        for value in values:
-            try:
-                if not isinstance(value, dict):
-                    raise ValueError("invalid-track")
-                span = track_source.describe(
-                    value,
-                    lambda parts, kind, loader: self._load_span(fd, directory, parts, kind, loader),
-                    recovered=salvaged,
-                )
-                name, frames, rate, channels = span.relative, span.frames, span.sample_rate, span.channels
-                offset = value.get("startOffsetMs")
-                if type(offset) not in (int, float) or not 0 <= offset <= 86400000 or not math.isfinite(offset):
-                    offset = None
-                    diagnostics.append(Diagnostic(directory / name, "start-offset-unknown-display-zero"))
-                if name in files:
-                    raise ValueError("duplicate-track-file")
-                files.add(name)
-                identity = value.get("id")
-                if (
-                    not isinstance(identity, str)
-                    or not identity
-                    or len(identity.encode()) > 200
-                    or identifiers.count(identity) != 1
-                ):
-                    nonce = 0
-                    identity = "recovered-" + str(uuid5(NAMESPACE_URL, name))
-                    while identity in used:
-                        nonce += 1
-                        identity = "recovered-" + str(uuid5(NAMESPACE_URL, name + str(nonce)))
-                    diagnostics.append(Diagnostic(directory / name, "track-identity-recovered"))
-                used.add(identity)
-                kind = value.get("kind")
-                if not isinstance(kind, str) or kind not in KINDS:
-                    kind = {"track-microphone.wav": "microphone", "track-system.wav": "system"}.get(name, "unknown")
-                source_identity = value.get("sourceTrackId")
-                if source_identity is not None and (
-                    not isinstance(source_identity, str) or not source_identity or len(source_identity.encode()) > 200
-                ):
-                    source_identity = None
-                    diagnostics.append(Diagnostic(directory / name, "source-track-identity-invalid"))
-                if kind in ("microphone", "local", "system"):
-                    source_identity = None
-                tracks.append(
-                    CaptureTrack(
-                        directory / name,
-                        frames,
-                        rate,
-                        offset,
-                        value.get("ended"),
-                        channels,
-                        identity,
-                        kind,
-                        source_identity,
-                        span.codec,
-                        span.decoded_frames if span.codec == "opus" else None,
-                        tuple(
-                            tuple(point)
-                            for point in value.get("clockAnchors", ())
-                            if isinstance(point, list)
-                            and len(point) == 2
-                            and all(type(part) is int and 0 <= part <= 2**63 for part in point)
-                        )
-                        if isinstance(value.get("clockAnchors", ()), (list, tuple))
-                        else (),
-                    )
-                )
-            except (OSError, ValueError, TypeError):
+        for logical in values:
+            start = len(tracks)
+            physical = logical.get("spans") if isinstance(logical, dict) else None
+            if physical is None:
+                physical = [logical]
+            elif not isinstance(physical, list) or not physical or len(physical) > 4096:
                 diagnostics.append(Diagnostic(directory, "capture-track-unreadable"))
+                continue
+            for row in physical:
+                value = dict(logical, **row) if isinstance(logical, dict) and isinstance(row, dict) else row
+                if isinstance(value, dict) and isinstance(logical, dict) and logical.get("ended") is True:
+                    value["ended"] = True
+                try:
+                    if not isinstance(value, dict):
+                        raise ValueError("invalid-track")
+                    span = track_source.describe(
+                        value,
+                        lambda parts, kind, loader: self._load_span(fd, directory, parts, kind, loader),
+                        recovered=salvaged,
+                    )
+                    name, frames, rate, channels = span.relative, span.frames, span.sample_rate, span.channels
+                    offset = value.get("startOffsetMs")
+                    if type(offset) not in (int, float) or not 0 <= offset <= 86400000 or not math.isfinite(offset):
+                        offset = None
+                        diagnostics.append(Diagnostic(directory / name, "start-offset-unknown-display-zero"))
+                    if name in files:
+                        raise ValueError("duplicate-track-file")
+                    files.add(name)
+                    identity = value.get("id")
+                    if (
+                        not isinstance(identity, str)
+                        or not identity
+                        or len(identity.encode()) > 200
+                        or identifiers.count(identity) != 1
+                    ):
+                        nonce = 0
+                        identity = "recovered-" + str(uuid5(NAMESPACE_URL, name))
+                        while identity in used:
+                            nonce += 1
+                            identity = "recovered-" + str(uuid5(NAMESPACE_URL, name + str(nonce)))
+                        diagnostics.append(Diagnostic(directory / name, "track-identity-recovered"))
+                    used.add(identity)
+                    kind = value.get("kind")
+                    if not isinstance(kind, str) or kind not in KINDS:
+                        kind = {"track-microphone.wav": "microphone", "track-system.wav": "system"}.get(name, "unknown")
+                    source_identity = value.get("sourceTrackId")
+                    if source_identity is not None and (
+                        not isinstance(source_identity, str)
+                        or not source_identity
+                        or len(source_identity.encode()) > 200
+                    ):
+                        source_identity = None
+                        diagnostics.append(Diagnostic(directory / name, "source-track-identity-invalid"))
+                    if kind in ("microphone", "local", "system"):
+                        source_identity = None
+                    tracks.append(
+                        CaptureTrack(
+                            directory / name,
+                            frames,
+                            rate,
+                            offset,
+                            value.get("ended"),
+                            channels,
+                            identity,
+                            kind,
+                            source_identity,
+                            span.codec,
+                            span.decoded_frames if span.codec == "opus" else None,
+                            tuple(
+                                tuple(point)
+                                for point in value.get("clockAnchors", ())
+                                if isinstance(point, list)
+                                and len(point) == 2
+                                and all(type(part) is int and 0 <= part <= 2**63 for part in point)
+                            )
+                            if isinstance(value.get("clockAnchors", ()), (list, tuple))
+                            else (),
+                        )
+                    )
+                except (OSError, ValueError, TypeError):
+                    diagnostics.append(Diagnostic(directory, "capture-track-unreadable"))
+            if len(tracks) - start > 1:
+                from dataclasses import replace
+
+                spans = tuple(tracks[start:])
+                offset = min((span.start_offset_ms for span in spans if span.start_offset_ms is not None), default=0)
+                if any(span.start_offset_ms is None for span in spans):
+                    offset = None
+                tracks[start:] = [
+                    replace(
+                        spans[0],
+                        frames=sum(span.frames for span in spans),
+                        start_offset_ms=offset,
+                        codec="pcm",
+                        decoded_frames=None,
+                        clock_anchors=(),
+                        ended=logical.get("ended"),
+                        spans=spans,
+                    )
+                ]
         return capture, tuple(tracks), salvaged
 
     def _read(self, fd, directory, identifier, active, names):
