@@ -15,7 +15,7 @@ def validate(prefix, app_id, version, *, run=subprocess.run):
     extension_version = json.loads(extension.read_text()).get("version")
     if extension_version != "0.2.2":
         raise ValueError("Installed browser companion version must be 0.2.2")
-    launcher = (prefix / "bin/cassini-viewer").read_text()
+    launcher = (prefix / "bin/cassini-talk").read_text()
     match = re.search(r'^VERSION = "([^"]+)"$', launcher, re.MULTILINE)
     if match is None or match[1] != version:
         raise ValueError("Installed launcher version does not match the source")
@@ -41,7 +41,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("version")
     parser.add_argument("--prefix", type=Path, default=Path("/usr"))
-    parser.add_argument("--app-id", default="com.gocassini.Viewer")
+    parser.add_argument("--app-id", default="io.codemyriad.CassiniTalk")
     args = parser.parse_args()
     print(json.dumps(validate(args.prefix, args.app_id, args.version), indent=2))
 

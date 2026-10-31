@@ -7992,6 +7992,20 @@
    "milestone": "D41.3",
    "status": "harmony",
    "note": "Coordinator (D41.3). D41.3. GNOME only: neither Background Apps nor an SNI host is available. Starting Cassini from the app grid or search brings the window back."
+  },
+  {
+   "id": "app.name",
+   "en": "Cassini talk",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios"
+   ],
+   "role": "product-name",
+   "boards": [],
+   "milestone": "D45",
+   "status": "harmony",
+   "note": "Coordinator (D45). The product name, used on product-name surfaces only (launcher, window title on the Library, About, app menu, store listings). Never translated. In running sentences the short form 'Cassini' stays."
   }
  ]
 }

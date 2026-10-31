@@ -135,7 +135,7 @@ the real relay with shell metacharacters in host paths and verify browser proces
 identity survives two relay launches.
 
 For an actual loaded-browser proof against a private installed bundle, use
-`env -u CASSINI_LIBRARY_DIR CASSINI_TEST_FLATPAK_ID=com.gocassini.Viewer.Devel tests/recording/run.sh node
+`env -u CASSINI_LIBRARY_DIR CASSINI_TEST_FLATPAK_ID=io.codemyriad.CassiniTalk.Devel tests/recording/run.sh node
 tests/recording/flatpak-companion.mjs` (set `FLATPAK_USER_DIR` for a private test
 installation). It loads the installed pinned extension, records two calls with
 their microphones off and both tabs/sink muted, checks original tone/bleed

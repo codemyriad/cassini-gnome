@@ -72,7 +72,9 @@ with tempfile.TemporaryDirectory() as tmp:
     os.environ["CASSINI_SCREENSHOT_NOW"] = "1793107080000"
     schema_dir = Path(tmp) / "schemas"
     schema_dir.mkdir()
-    shutil.copyfile(ROOT / "data/com.gocassini.Viewer.gschema.xml", schema_dir / "com.gocassini.Viewer.gschema.xml")
+    shutil.copyfile(
+        ROOT / "data/io.codemyriad.CassiniTalk.gschema.xml", schema_dir / "io.codemyriad.CassiniTalk.gschema.xml"
+    )
     subprocess.run(["glib-compile-schemas", str(schema_dir)], check=True)
     os.environ["GSETTINGS_SCHEMA_DIR"] = str(schema_dir)
     app = CassiniApplication("com.gocassini.LibraryTest", "test", "development")
@@ -80,6 +82,7 @@ with tempfile.TemporaryDirectory() as tmp:
     app.activate()
     window = next(w for w in app.get_windows() if isinstance(w, LibraryWindow))
     until(lambda: not window._pending)
+    assert window.get_title() == text("app.name") == "Cassini talk"
     assert len(window.snapshot.meetings) == 9
     assert window.selected.title == "Budget review"
     assert window.selected.words and window.read_button.get_sensitive()
@@ -282,6 +285,12 @@ with tempfile.TemporaryDirectory() as tmp:
         assert not empty.privacy_footer.get_visible()
     empty._updated(empty.snapshot)
     assert empty.privacy_footer.get_visible()
+    app.on_about()
+    until(lambda: isinstance(empty.get_visible_dialog(), Adw.AboutDialog))
+    about = empty.get_visible_dialog()
+    assert about.get_application_name() == "Cassini talk"
+    about.close()
+    until(lambda: empty.get_visible_dialog() is None)
     app.activate_action("record", None)
     assert app.record_first is not None and app.recorder is None, "Opening Record must not start devices"
     app.record_first.close()

@@ -1,9 +1,9 @@
 {
-    "id": "com.gocassini.Viewer",
+    "id": "io.codemyriad.CassiniTalk.Devel",
     "runtime": "org.gnome.Platform",
     "runtime-version": "50",
     "sdk": "org.gnome.Sdk",
-    "command": "cassini-viewer",
+    "command": "cassini-talk",
     "finish-args": [
         "--share=ipc",
         "--share=network",
@@ -12,7 +12,8 @@
         "--device=dri",
         "--socket=pulseaudio",
         "--filesystem=xdg-music/Cassini:create",
-        "--talk-name=org.freedesktop.Flatpak"
+        "--talk-name=org.freedesktop.Flatpak",
+        "--talk-name=com.gocassini.Viewer.Devel"
     ],
     "cleanup": [
         "/include",
@@ -48,10 +49,10 @@
             ]
         },
         {
-            "name": "cassini-viewer",
+            "name": "cassini-talk",
             "buildsystem": "meson",
             "config-opts": [
-                "-Dprofile=default"
+                "-Dprofile=development"
             ],
             "run-tests": true,
             "build-options": {
@@ -93,7 +94,9 @@
                         "tests/recording/node_modules",
                         "tests/recording/artifacts",
                         ".whistle-cache",
-                        ".sherpa-cache"
+                        ".sherpa-cache",
+                        "debian/cassini-talk",
+                        "debian/tmp"
                     ]
                 },
                 {

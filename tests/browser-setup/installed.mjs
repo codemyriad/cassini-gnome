@@ -42,10 +42,10 @@ async function poll(check, label, milliseconds = 20000) {
  throw new Error(label + (last ? ': ' + last.message : ''));
 }
 try {
- assert.equal((await execute('dpkg', ['--verify', 'cassini-viewer'])).stdout.trim(), '', 'installed package was modified');
- report.package = (await execute('dpkg-query', ['-W', '-f=${Version}', 'cassini-viewer'])).stdout;
+ assert.equal((await execute('dpkg', ['--verify', 'cassini-talk'])).stdout.trim(), '', 'installed package was modified');
+ report.package = (await execute('dpkg-query', ['-W', '-f=${Version}', 'cassini-talk'])).stdout;
  await assert.rejects(stat(profile), {code: 'ENOENT'});
- app = spawn('/usr/bin/cassini-viewer', [], {env, stdio: ['ignore', log, log]});
+ app = spawn('/usr/bin/cassini-talk', [], {env, stdio: ['ignore', log, log]});
  app.on('error', error => {appError = error;});
  await poll(async () => (await Promise.all(files.map(file => stat(file)))).length === 2, 'automatic host registration');
  const manifests = await Promise.all(files.map(async file => JSON.parse(await readFile(file, 'utf8'))));
@@ -77,7 +77,7 @@ try {
  report.hosts = names;
  report.manifestsUnchanged = true;
  await context.close(); context = null;
- await execute('gapplication', ['action', 'com.gocassini.Viewer', 'quit'], {env, timeout: 4000});
+ await execute('gapplication', ['action', 'io.codemyriad.CassiniTalk', 'quit'], {env, timeout: 4000});
  const deadline = Date.now() + 5000;
  while (app.exitCode === null && app.signalCode === null && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
  assert.equal(app.exitCode, 0, 'application did not quit promptly');

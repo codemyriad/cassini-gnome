@@ -107,7 +107,9 @@ try:
         import shutil
         import subprocess
 
-        shutil.copyfile(root / "data/com.gocassini.Viewer.gschema.xml", schemas / "com.gocassini.Viewer.gschema.xml")
+        shutil.copyfile(
+            root / "data/io.codemyriad.CassiniTalk.gschema.xml", schemas / "io.codemyriad.CassiniTalk.gschema.xml"
+        )
         subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
         os.environ["GSETTINGS_SCHEMA_DIR"] = str(schemas)
         os.environ["CASSINI_LIBRARY_DIR"] = str(library)

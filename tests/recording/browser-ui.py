@@ -20,7 +20,7 @@ root = Path(__file__).resolve().parents[2]
 build = Path(args.build).resolve()
 schemas = Path(os.environ["XDG_RUNTIME_DIR"]) / "browser-test-schemas"
 schemas.mkdir()
-shutil.copyfile(root / "data/com.gocassini.Viewer.gschema.xml", schemas / "com.gocassini.Viewer.gschema.xml")
+shutil.copyfile(root / "data/io.codemyriad.CassiniTalk.gschema.xml", schemas / "io.codemyriad.CassiniTalk.gschema.xml")
 subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
 os.environ["GSETTINGS_SCHEMA_DIR"] = str(schemas)
 import gi  # noqa: E402
@@ -39,7 +39,7 @@ from cassini_viewer.library_window import LibraryWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
 
 services = DesktopServices()
-app = CassiniApplication("com.gocassini.Viewer.BrowserTest", "test", "development")
+app = CassiniApplication("io.codemyriad.CassiniTalk.BrowserTest", "test", "development")
 # The RPC test server stays available while checking normal windowless auto-record.
 app.hold()
 # Production deliberately avoids shortcut registration in isolated-audio runs.
@@ -125,8 +125,20 @@ def dispatch(packet, result, ready):
             browserStopsPending=bool(app._browser_stops),
             shortcutBound=bool(app.global_shortcut and app.global_shortcut.bound),
             settingsReady=bool(
-                app.settings_dialog and not app.settings_dialog.closed and app.settings_dialog._future is None
+                app.settings_dialog
+                and not app.settings_dialog.closed
+                and app.settings_dialog._future is None
+                # A cached status can finish before Watch's newer snapshot.
+                # Do not toggle an already-false row while the broker is true.
+                and app.settings_dialog.automatic.get_active() == app._browser_snapshot.get("autoRecord", False)
             ),
+            settingsAuto=app.settings_dialog.automatic.get_active() if app.settings_dialog else None,
+            settingsSnapshotAuto=app.settings_dialog._snapshot.get("autoRecord") if app.settings_dialog else None,
+            settingsSnapshotRevision=app.settings_dialog._snapshot.get("autoRecordRevision")
+            if app.settings_dialog
+            else None,
+            autoRecordRevision=app._auto_recording_revision,
+            automaticChangePending=app._auto_recording_pending,
             sourceChangePending=bool(app._source_changes),
             notifications=services.notifications,
             library=[

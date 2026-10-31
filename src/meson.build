@@ -41,17 +41,24 @@ conf.set('bindir', get_option('prefix') / get_option('bindir'))
 
 launcher = configure_file(
   input: 'cassini-viewer.in',
-  output: 'cassini-viewer',
+  output: 'cassini-talk',
   configuration: conf,
   install: true,
   install_dir: get_option('bindir'),
   install_mode: 'r-xr-xr-x',
 )
 
+# Keep the old command as identical regular bytes: build products and the
+# installed identity verifier intentionally reject symbolic links.
+install_data(launcher, rename: 'cassini-viewer', install_dir: get_option('bindir'),
+  install_mode: 'r-xr-xr-x')
+
 viewer_sources = files(
   'cassini_viewer/__init__.py',
   'cassini_viewer/colors.py',
   'cassini_viewer/main.py',
+  'cassini_viewer/identity.py',
+  'cassini_viewer/legacy_instance.py',
   'cassini_viewer/main_loop_watchdog.py',
   'cassini_viewer/installed_build.py',
   'cassini_viewer/build_refresh.py',

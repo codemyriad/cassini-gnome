@@ -21,8 +21,8 @@ build = Path(args.build).resolve()
 schema_dir = build / "recording-test-schemas"
 schema_dir.mkdir(exist_ok=True)
 shutil.copyfile(
-    Path(__file__).resolve().parents[2] / "data/com.gocassini.Viewer.gschema.xml",
-    schema_dir / "com.gocassini.Viewer.gschema.xml",
+    Path(__file__).resolve().parents[2] / "data/io.codemyriad.CassiniTalk.gschema.xml",
+    schema_dir / "io.codemyriad.CassiniTalk.gschema.xml",
 )
 subprocess.run(["glib-compile-schemas", str(schema_dir)], check=True)
 os.environ["GSETTINGS_SCHEMA_DIR"] = str(schema_dir)

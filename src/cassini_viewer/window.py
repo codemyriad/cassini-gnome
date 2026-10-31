@@ -27,9 +27,10 @@ from . import portable, summary, transcript
 from .colors import SpeakerPalette, hex_color
 from .player import Player
 from .portable import State
+from .strings import text
 from .transcript import format_time
 
-RESOURCE = "/com/gocassini/Viewer"
+RESOURCE = "/io/codemyriad/CassiniTalk"
 SKIP_MS = 15_000
 NUDGE_MS = 5_000
 
@@ -187,8 +188,21 @@ class CassiniWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         app = self.get_application()
-        self.settings = Gio.Settings.new(app.settings_schema)
+        self.settings = app.recording_settings
         self.empty_page.set_icon_name(app.get_application_id())
+        self.empty_page.set_title(text("app.name"))
+        self.window_title.set_title(text("app.name"))
+        from .identity import product_menu
+
+        def name_menus(widget):
+            if isinstance(widget, Gtk.MenuButton) and widget.get_menu_model() is not None:
+                widget.set_menu_model(product_menu(widget.get_menu_model()))
+            child = widget.get_first_child()
+            while child is not None:
+                name_menus(child)
+                child = child.get_next_sibling()
+
+        name_menus(self)
         self.style_manager = Adw.StyleManager.get_default()
 
         self.player = Player()
@@ -388,7 +402,7 @@ class CassiniWindow(Adw.ApplicationWindow):
             return
         self.file = None
         self.main_stack.set_visible_child_name("empty")
-        self.set_title(_("Cassini"))
+        self.set_title(text("app.name"))
         self.toast(_("“{name}” is not an Opus audio file").format(name=file.get_basename()))
         self._update_actions()
 

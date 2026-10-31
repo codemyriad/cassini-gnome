@@ -372,7 +372,7 @@ def test_missing_removed_folder_is_not_a_failed_library_move(roots):
 def test_flatpak_default_uses_only_host_backed_storage(tmp_path, monkeypatch, mounted_music):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.delenv("CASSINI_LIBRARY_DIR", raising=False)
-    monkeypatch.setenv("FLATPAK_ID", "com.gocassini.Viewer.Devel")
+    monkeypatch.setenv("FLATPAK_ID", "io.codemyriad.CassiniTalk.Devel")
     data = tmp_path / "private-app-data"
     monkeypatch.setenv("XDG_DATA_HOME", str(data))
     music = tmp_path / "Musica" / "Cassini"
@@ -389,7 +389,7 @@ def test_flatpak_default_uses_only_host_backed_storage(tmp_path, monkeypatch, mo
 
 def test_flatpak_rejects_unmounted_private_data_instead_of_using_tmpfs(tmp_path, monkeypatch):
     monkeypatch.delenv("CASSINI_LIBRARY_DIR", raising=False)
-    monkeypatch.setenv("FLATPAK_ID", "com.gocassini.Viewer.Devel")
+    monkeypatch.setenv("FLATPAK_ID", "io.codemyriad.CassiniTalk.Devel")
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "unmounted-data"))
     monkeypatch.setattr(location, "_sandbox_mounts", lambda: ())
     with pytest.raises(OSError, match="persistent storage"):
@@ -408,7 +408,7 @@ def test_flatpak_mount_checks_follow_symlinks_and_exact_path_boundaries(tmp_path
 
 def test_flatpak_fallback_selection_survives_music_becoming_available(tmp_path, monkeypatch):
     monkeypatch.delenv("CASSINI_LIBRARY_DIR", raising=False)
-    monkeypatch.setenv("FLATPAK_ID", "com.gocassini.Viewer.Devel")
+    monkeypatch.setenv("FLATPAK_ID", "io.codemyriad.CassiniTalk.Devel")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     data = tmp_path / "app-data"
     monkeypatch.setenv("XDG_DATA_HOME", str(data))

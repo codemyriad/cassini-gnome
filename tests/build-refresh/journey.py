@@ -229,7 +229,7 @@ try:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    settings = Gio.Settings.new("com.gocassini.Viewer")
+    settings = Gio.Settings.new("io.codemyriad.CassiniTalk")
     assert settings.set_boolean("skip-record-first", True)
     Gio.Settings.sync()
     process = subprocess.Popen([str(APP)], stdout=log, stderr=log)
@@ -278,10 +278,12 @@ try:
     paths = [native / (name + ".json") for name in ("io.codemyriad.cassini", "io.codemyriad.cassini.control")]
     until(lambda: all(p.exists() for p in paths), "real background registration")
     old = json.loads(paths[1].read_text())
-    relay = Path.home() / ".local/share/cassini/native-hosts/com.gocassini.Viewer.Devel/cassini-browser-control-host"
+    relay = (
+        Path.home() / ".local/share/cassini/native-hosts/io.codemyriad.CassiniTalk.Devel/cassini-browser-control-host"
+    )
     relay.parent.mkdir(parents=True)
     relay.write_text(
-        "#!/bin/sh\nexec /usr/bin/flatpak run --arch=x86_64 --branch=master --command=cassini-browser-control-host com.gocassini.Viewer.Devel\n"
+        "#!/bin/sh\nexec /usr/bin/flatpak run --arch=x86_64 --branch=master --command=cassini-browser-control-host io.codemyriad.CassiniTalk.Devel\n"
     )
     relay.chmod(0o700)
     paths[1].write_text(json.dumps(dict(old, path=str(relay))))

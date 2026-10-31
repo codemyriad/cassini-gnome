@@ -36,6 +36,7 @@ from gi.repository import GdkX11, Gio, GLib, Gtk  # noqa: E402
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
 from cassini_viewer.main import CassiniApplication  # noqa: E402
 from cassini_viewer.meeting_store import read_metadata  # noqa: E402
+from cassini_viewer.strings import text  # noqa: E402
 
 
 def until(check):
@@ -131,7 +132,9 @@ with tempfile.TemporaryDirectory() as temporary:
     subprocess.run([sys.executable, str(ROOT / "ux/library-vectors/make.py"), str(root / "fixtures")], check=True)
     schemas = root / "schemas"
     schemas.mkdir()
-    shutil.copyfile(ROOT / "data/com.gocassini.Viewer.gschema.xml", schemas / "com.gocassini.Viewer.gschema.xml")
+    shutil.copyfile(
+        ROOT / "data/io.codemyriad.CassiniTalk.gschema.xml", schemas / "io.codemyriad.CassiniTalk.gschema.xml"
+    )
     subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
     os.environ.update(
         GSETTINGS_SCHEMA_DIR=str(schemas),
@@ -227,7 +230,7 @@ with tempfile.TemporaryDirectory() as temporary:
         if surface == "meeting":
             assert window.meeting_page.headline.get_title() == name and window.get_title() == name
             window.back_to_library()
-            assert window.get_title() == "Library"
+            assert window.get_title() == text("app.name")
     chosen = next(m for m in window.snapshot.meetings if m.directory == folder)
     row = next(w for w in widgets(window.rows) if getattr(w, "meeting", None) == chosen)
     window.rows.select_row(row)

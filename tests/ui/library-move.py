@@ -101,7 +101,9 @@ with tempfile.TemporaryDirectory() as temporary:
     LibraryWindow._connect_player = private_connect
     schemas = tmp / "schemas"
     schemas.mkdir()
-    shutil.copyfile(ROOT / "data/com.gocassini.Viewer.gschema.xml", schemas / "com.gocassini.Viewer.gschema.xml")
+    shutil.copyfile(
+        ROOT / "data/io.codemyriad.CassiniTalk.gschema.xml", schemas / "io.codemyriad.CassiniTalk.gschema.xml"
+    )
     import subprocess
 
     subprocess.run(["glib-compile-schemas", str(schemas)], check=True)

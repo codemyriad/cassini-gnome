@@ -1,6 +1,7 @@
 # List of source files containing translatable strings.
-data/com.gocassini.Viewer.desktop.in
-data/com.gocassini.Viewer.metainfo.xml.in
+data/io.codemyriad.CassiniTalk.desktop.in
+data/io.codemyriad.CassiniTalk.metainfo.xml.in
+data/io.codemyriad.CassiniTalk.gschema.xml
 data/com.gocassini.Viewer.gschema.xml
 src/ui/window.ui
 src/shortcuts-dialog.ui

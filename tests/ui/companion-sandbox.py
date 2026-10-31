@@ -48,12 +48,14 @@ with tempfile.TemporaryDirectory() as temporary:
     tmp = Path(temporary)
     schemas = tmp / "schemas"
     schemas.mkdir()
-    shutil.copyfile(ROOT / "data/com.gocassini.Viewer.gschema.xml", schemas / "com.gocassini.Viewer.gschema.xml")
+    shutil.copyfile(
+        ROOT / "data/io.codemyriad.CassiniTalk.gschema.xml", schemas / "io.codemyriad.CassiniTalk.gschema.xml"
+    )
     subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
     fixtures = tmp / "fixtures"
     subprocess.run([sys.executable, str(ROOT / "ux/library-vectors/make.py"), str(fixtures)], check=True)
     os.environ.update(
-        FLATPAK_ID="com.gocassini.Viewer",
+        FLATPAK_ID="io.codemyriad.CassiniTalk",
         GSETTINGS_SCHEMA_DIR=str(schemas),
         CASSINI_LIBRARY_DIR=str(fixtures / "empty/root"),
     )
@@ -153,7 +155,9 @@ with tempfile.TemporaryDirectory() as temporary:
         try:
             with (
                 patch.object(
-                    bridge, "deployment", return_value=bridge.Deployment("com.gocassini.Viewer", "x86_64", "master")
+                    bridge,
+                    "deployment",
+                    return_value=bridge.Deployment("io.codemyriad.CassiniTalk", "x86_64", "master"),
                 ),
                 patch.object(bridge, "host_info", side_effect=host_info),
                 # The new bounded desktop inventory runs against this private

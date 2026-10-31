@@ -46,6 +46,11 @@ if __name__ == "__main__":
 
     runtime.check()
 
+    from cassini_viewer.legacy_instance import forward
+
+    if forward(APPLICATION_ID, sys.argv):
+        sys.exit(0)
+
     from gi.repository import Gio
 
     resource = Gio.Resource.load(os.path.join(pkgdatadir, "cassini-viewer.gresource"))

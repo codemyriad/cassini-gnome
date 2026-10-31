@@ -9,7 +9,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-APPLICATIONS = {"com.gocassini.Viewer", "com.gocassini.Viewer.Devel"}
+APPLICATIONS = {"io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"}
 COMMANDS = (
     "google-chrome",
     "google-chrome-stable",

@@ -23,13 +23,13 @@ def check(root, tag=None):
         raise ValueError("Browser companion version must be 0.2.2")
     versions = {
         "meson": value(root, "meson.build", r"^\s*version:\s*'([^']+)'"),
-        "debian": value(root, "debian/changelog", r"\Acassini-viewer \(([^)]+)\)").split("-")[0],
+        "debian": value(root, "debian/changelog", r"\Acassini-talk \(([^)]+)\)").split("+")[0].split("-")[0],
         "rpm": value(root, "build-aux/rpm/cassini-viewer.spec", r"^Version:\s*(\S+)"),
         "arch": value(root, "build-aux/arch/PKGBUILD", r"^pkgver=(\S+)"),
         "news": value(root, "NEWS", r"^Version (\d+\.\d+\.\d+)$"),
-        "man": value(root, "data/cassini-viewer.1", r'\A\.TH [^\n]*"cassini-viewer ([^"]+)"'),
+        "man": value(root, "data/cassini-talk.1", r'\A\.TH [^\n]*"cassini-talk ([^"]+)"'),
     }
-    release = ET.parse(root / "data/com.gocassini.Viewer.metainfo.xml.in").find("releases/release")
+    release = ET.parse(root / "data/io.codemyriad.CassiniTalk.metainfo.xml.in").find("releases/release")
     if release is None:
         raise ValueError("Metainfo has no release entry")
     versions["metainfo"] = release.get("version")

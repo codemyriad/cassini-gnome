@@ -16,14 +16,21 @@ from pathlib import Path
 from .companion import MANIFEST_LIMIT, SetupError
 
 LOG = logging.getLogger(__name__)
-APPLICATIONS = {"com.gocassini.Viewer", "com.gocassini.Viewer.Devel"}
+# Recognise old relays for D42 health checks after the Flatpak ID changes.
+# Only flatpak_bridge.APPLICATIONS may be used for a new deployment.
+APPLICATIONS = {
+    "io.codemyriad.CassiniTalk",
+    "io.codemyriad.CassiniTalk.Devel",
+    "com.gocassini.Viewer",
+    "com.gocassini.Viewer.Devel",
+}
 
 
 def protected_build():
     from .companion import in_flatpak
 
     if in_flatpak():
-        return os.environ.get("FLATPAK_ID") != "com.gocassini.Viewer"
+        return os.environ.get("FLATPAK_ID") != "io.codemyriad.CassiniTalk"
     try:
         value = json.loads(Path(__file__).with_name("paths.json").read_text())
     except (OSError, ValueError):

@@ -26,6 +26,8 @@ jobs:
         base: ["ubuntu:26.04", "debian:testing"]
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - run: echo "CASSINI_PARAKEET_TEST_CACHE=$RUNNER_TEMP/parakeet-models" >> "$GITHUB_ENV"
       # The pinned writing-down artifacts (whistle/pins.json), downloaded once
       # per pin set; the package builds read them and never download.
@@ -47,9 +49,29 @@ jobs:
       # network, smoke-tests it and writes the D11 goldens down with it.
       # Retried once because distribution mirrors occasionally time out.
       - run: build-aux/deb/build.sh "${{ matrix.base }}" || build-aux/deb/build.sh "${{ matrix.base }}"
+      # Preserve built packages even if a subsequent installed-app journey
+      # fails; release selection still requires every gate on main to pass.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ strategy.job-index }}
+          path: dist/*.deb
+      - name: Upgrade the published Cassini Viewer 0.3.0 to Cassini talk
+        if: matrix.base == 'ubuntu:26.04'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tests/upgrade/run.sh dist/cassini-talk_*.deb dist/cassini-viewer_*_all.deb "$RUNNER_TEMP/product-upgrade"
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.base == 'ubuntu:26.04'
+        with:
+          name: cassini-talk-upgrade
+          path: |
+            ${{ runner.temp }}/product-upgrade/*.json
+            ${{ runner.temp }}/product-upgrade/*.log
+            ${{ runner.temp }}/product-upgrade/source-install/live-handoff/*.json
+            ${{ runner.temp }}/product-upgrade/source-install/live-handoff/*.log
       - name: Installed package restarts after upgrades and preserves active audio
         if: matrix.base == 'ubuntu:26.04'
-        run: tests/build-refresh/run.sh dist/*.deb "$RUNNER_TEMP/build-refresh"
+        run: tests/build-refresh/run.sh dist/cassini-talk_*.deb "$RUNNER_TEMP/build-refresh"
       - uses: actions/upload-artifact@v4
         if: always() && matrix.base == 'ubuntu:26.04'
         with:
@@ -76,15 +98,9 @@ jobs:
           tests/recording/node_modules/.bin/playwright install chromium
       - name: Installed package connects a fresh real extension without Connect
         if: matrix.base == 'ubuntu:26.04'
-        run: tests/browser-setup/run.sh dist/*.deb "$RUNNER_TEMP/browser-startup"
+        run: tests/browser-setup/run.sh dist/cassini-talk_*.deb "$RUNNER_TEMP/browser-startup"
       - uses: actions/upload-artifact@v4
         if: always() && matrix.base == 'ubuntu:26.04'
         with:
           name: browser-startup-installed
           path: ${{ runner.temp }}/browser-startup/
-      # Each base names its file (~ubuntu26.04, ~debian-testing), so the
-      # release carries both.
-      - uses: actions/upload-artifact@v4
-        with:
-          name: deb-${{ strategy.job-index }}
-          path: dist/*.deb

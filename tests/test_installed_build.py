@@ -31,7 +31,7 @@ def payload(root, text="old", *, version="0.3.0"):
     launcher.parent.mkdir(parents=True, exist_ok=True)
     launcher.write_text("#!/usr/bin/python3\n")
     launcher.chmod(0o755)
-    value = identity.generate(source, build, [module, launcher], version, "default", "com.gocassini.Viewer")
+    value = identity.generate(source, build, [module, launcher], version, "default", "io.codemyriad.CassiniTalk")
     installed = root / "install"
     (installed / "cassini_viewer").mkdir(parents=True, exist_ok=True)
     (installed / "cassini_viewer/example.py").write_text(text)
@@ -86,9 +86,9 @@ def test_engine_only_patch_changes_the_build_identity(tmp_path):
     pins = source / "whistle/pins.json"
     pins.parent.mkdir()
     pins.write_text('{"engine": "old"}')
-    first = identity.generate(source, build, [launcher, pins], "0.3.0", "default", "com.gocassini.Viewer")
+    first = identity.generate(source, build, [launcher, pins], "0.3.0", "default", "io.codemyriad.CassiniTalk")
     pins.write_text('{"engine": "new"}')
-    second = identity.generate(source, build, [launcher, pins], "0.3.0", "default", "com.gocassini.Viewer")
+    second = identity.generate(source, build, [launcher, pins], "0.3.0", "default", "io.codemyriad.CassiniTalk")
     assert first["buildId"] != second["buildId"]
     assert first["files"]["whistle/pins.json"] != second["files"]["whistle/pins.json"]
 
@@ -261,13 +261,15 @@ def test_flatpak_checks_current_host_deployment_instead_of_running_app_mount(tmp
     location = tmp_path / "deployment"
     root = location / "files/share/cassini-viewer"
     shutil.copytree(new_root, root)
-    launcher = location / "files/bin/cassini-viewer"
+    launcher = location / "files/bin/cassini-talk"
     launcher.parent.mkdir(parents=True)
     shutil.copyfile(new_launcher, launcher)
     fake = tmp_path / "flatpak"
     fake.write_text(f"#!/bin/sh\nprintf '%s\\n' '{location}'\n")
     fake.chmod(0o700)
-    monkeypatch.setattr(bridge, "deployment", lambda: bridge.Deployment("com.gocassini.Viewer", "x86_64", "stable"))
+    monkeypatch.setattr(
+        bridge, "deployment", lambda: bridge.Deployment("io.codemyriad.CassiniTalk", "x86_64", "stable")
+    )
     monkeypatch.setattr(bridge, "host_info", lambda: (None, None, str(fake), None))
     monkeypatch.setattr(bridge, "host_command", lambda command, **_: command)
     assert running.changed()

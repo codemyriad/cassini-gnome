@@ -55,7 +55,7 @@ class CassiniApplication(Adw.Application):
         self._resume_automatic = False
         self._resume_writing = False
         self._resume_record = False
-        self.settings_schema = "com.gocassini.Viewer"
+        self.settings_schema = "io.codemyriad.CassiniTalk"
         self._recording_settings = None
         self._watchdog = None
         self.transcriber = None
@@ -481,7 +481,9 @@ class CassiniApplication(Adw.Application):
     @property
     def recording_settings(self):
         if self._recording_settings is None:
-            self._recording_settings = Gio.Settings.new(self.settings_schema)
+            from .identity import settings
+
+            self._recording_settings = settings()
         return self._recording_settings
 
     @property
@@ -1215,8 +1217,10 @@ class CassiniApplication(Adw.Application):
         self.settings_dialog.present(self.get_active_window())
 
     def on_about(self, *_args):
+        from .strings import text
+
         about = Adw.AboutDialog(
-            application_name=_("Cassini"),
+            application_name=text("app.name"),
             application_icon=self.get_application_id(),
             developer_name="Codemyriad",
             version=self.version,
@@ -1255,7 +1259,10 @@ class CassiniApplication(Adw.Application):
 def main(application_id, version, profile, *, installed_build=None):
     """The application's entry point."""
     # Otherwise --help says "Usage: python3".
-    GLib.set_prgname("cassini-viewer")
+    GLib.set_prgname("cassini-talk")
+    from .strings import text
+
+    GLib.set_application_name(text("app.name"))
     app = CassiniApplication(application_id, version, profile, installed_build=installed_build)
     app._resume_background = "--cassini-resume-background" in sys.argv
     app._resume_automatic = "--cassini-resume-automatic" in sys.argv

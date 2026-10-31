@@ -22,7 +22,7 @@ make run                    # build, install into _install/ and run
 `build-aux/`, which you can also call directly.
 
 The `development` profile uses the application ID
-`com.gocassini.Viewer.Devel`, so it can run next to an installed release.
+`io.codemyriad.CassiniTalk.Devel`, so it can run next to an installed release.
 
 Layout:
 
@@ -68,7 +68,7 @@ msginit -i po/cassini-viewer.pot -o po/<code>.po -l <code>
 ## Releases
 
 1. Update the version in `meson.build`, and the same version in:
-   - a `<release>` in `data/com.gocassini.Viewer.metainfo.xml.in`
+   - a `<release>` in `data/io.codemyriad.CassiniTalk.metainfo.xml.in`
    - an entry in `debian/changelog`
    - `Version:` and a `%changelog` entry in `build-aux/rpm/cassini-viewer.spec`
    - `pkgver` in `build-aux/arch/PKGBUILD`
@@ -220,7 +220,7 @@ or the `org.flatpak.Builder` app. The script adds the Flathub remote to your
 user installation if needed; the first build downloads the GNOME 50 SDK, and
 later builds update it. You can also build it with GNOME Builder. CI runs build
 the development app (`cassini-viewer-devel.flatpak`, ID
-`com.gocassini.Viewer.Devel`), which installs next to a release.
+`io.codemyriad.CassiniTalk.Devel`), which installs next to a release.
 
 `make check-distros` builds and tests Cassini on Debian testing, Ubuntu 26.04,
 Fedora, openSUSE Tumbleweed, Arch Linux and Alpine edge, each in a fresh

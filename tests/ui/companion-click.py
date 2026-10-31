@@ -156,7 +156,9 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
         RUN([sys.executable, str(ROOT / "ux/library-vectors/make.py"), str(tmp / "fixtures")], check=True)
         schemas = tmp / "schemas"
         schemas.mkdir()
-        shutil.copyfile(ROOT / "data/com.gocassini.Viewer.gschema.xml", schemas / "com.gocassini.Viewer.gschema.xml")
+        shutil.copyfile(
+            ROOT / "data/io.codemyriad.CassiniTalk.gschema.xml", schemas / "io.codemyriad.CassiniTalk.gschema.xml"
+        )
         RUN(["glib-compile-schemas", str(schemas)], check=True)
         tools = tmp / "bin"
         tools.mkdir()
