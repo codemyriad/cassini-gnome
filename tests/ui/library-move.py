@@ -6,7 +6,6 @@ import os
 import shutil
 import sys
 import tempfile
-import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -24,6 +23,7 @@ from gi.repository import Gio, GLib, Gst, Gtk  # noqa: E402
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
 from cassini_viewer import library_location as location  # noqa: E402
 from cassini_viewer.folder_player import FolderPlayer  # noqa: E402
+from cassini_viewer.library_publication import root_for  # noqa: E402
 from cassini_viewer.library_window import LibraryWindow  # noqa: E402
 from cassini_viewer.main import CassiniApplication  # noqa: E402
 from cassini_viewer.meeting_store import atomic_json, update_metadata  # noqa: E402
@@ -32,17 +32,34 @@ from cassini_viewer.recording_session import RecordingSession  # noqa: E402
 
 
 def until(check):
-    deadline = time.monotonic() + 15
-    context = GLib.MainContext.default()
-    while time.monotonic() < deadline:
-        for _ in range(64):
-            if not context.pending():
-                break
-            context.iteration(False)
-        if check():
-            return
-        time.sleep(0.01)
-    assert check(), "Library move GUI condition timed out"
+    loop = GLib.MainLoop()
+    failure = []
+
+    def observe():
+        try:
+            done = check()
+        except BaseException as error:
+            failure.append(error)
+            loop.quit()
+            return False
+        if done:
+            loop.quit()
+            return False
+        return True
+
+    def expired():
+        failure.append(AssertionError("Library move GUI condition timed out"))
+        loop.quit()
+        return False
+
+    tick = GLib.timeout_add(10, observe)
+    limit = GLib.timeout_add_seconds(15, expired)
+    loop.run()
+    for source in (tick, limit):
+        if GLib.MainContext.default().find_source_by_id(source):
+            GLib.source_remove(source)
+    if failure:
+        raise failure[0]
 
 
 def descendants(widget):
@@ -161,10 +178,15 @@ with tempfile.TemporaryDirectory() as temporary:
     app.stop_native()
     until(lambda: not app.recorder.stopping and app.recorder.pipeline is None)
     until(lambda: not live.exists())
-    assert (new / live.name).is_dir() and app.recording_error is None
+    live_target = new / ".cassini/sessions" / live.name
+    assert live_target.is_dir() and app.recording_error is None
+    until(lambda: any(m.directory == live_target and m.published_file is not None for m in window.snapshot.meetings))
+    moved_live = next(m for m in window.snapshot.meetings if m.directory == live_target)
+    assert moved_live.published_file.parent == new and moved_live.published_file.is_file()
+    assert not moved_live.published_missing
     update_metadata(writing, transcript=dict(status="none", reference=None))
     until(lambda: not location.load()["pending"])
-    until(lambda: all(m.directory.parent == new for m in window.snapshot.meetings))
+    until(lambda: all(m.directory.parent == new or root_for(m.directory) == new for m in window.snapshot.meetings))
     window.toggle_search()
     window.search_page.entry.set_text("relocation needle")
     until(lambda: not window.search_page.pending and len(window.search_page.hits) == 1)
@@ -174,7 +196,7 @@ with tempfile.TemporaryDirectory() as temporary:
     window.back_to_library()
     app.start_native(test=True)
     until(lambda: app.recorder.pipeline is not None)
-    assert app.recorder.session.directory.parent == new
+    assert app.recorder.session.directory.parent == new / ".cassini/sessions"
     app.stop_native()
     until(lambda: not app.recorder.stopping and app.recorder.pipeline is None)
     window.close()

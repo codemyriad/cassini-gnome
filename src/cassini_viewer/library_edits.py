@@ -20,38 +20,49 @@ _LOCAL = threading.local()
 
 @contextmanager
 def transaction(directory, *, repair=True):
+    from .library_location import owned_directory
     from .meeting_store import LOCK, atomic_json, published_metadata
 
-    directory = Path(directory)
-    if not directory.exists():
-        from .library_location import owned_directory
+    original = Path(directory)
 
+    def routed():
         with suppress(ValueError):
-            directory = owned_directory(directory)
-    root = root_for(directory)
-    active = getattr(_LOCAL, "root", None)
-    if root is None or root == active:
-        with LOCK:
-            yield
-        return
-    if active is not None:
-        raise RuntimeError("A metadata transaction cannot edit two Libraries")
-    layout = journal.Layout(root)
-    identity = journal.identity_of(directory)
-    with journal.LibraryLock(layout):
-        report = journal.replay(layout, identity=identity)
-        if report.blocks(*identity):
-            raise publish.PendingCommit("An earlier change to this meeting has not finished")
-        _LOCAL.root = root
-        try:
+            return owned_directory(original)
+        return original
+
+    while True:
+        directory = routed()
+        root = root_for(directory)
+        active = getattr(_LOCAL, "root", None)
+        if root is None or root == active:
             with LOCK:
-                if repair and directory.is_dir() and not (directory / "meeting.json").exists():
-                    metadata = published_metadata(directory)
-                    if metadata is not None:
-                        atomic_json(directory / "meeting.json", metadata)
                 yield
-        finally:
-            _LOCAL.root = None
+            return
+        if active is not None:
+            raise RuntimeError("A metadata transaction cannot edit two Libraries")
+        layout = journal.Layout(root)
+        with journal.LibraryLock(layout):
+            # A queued editor may have waited behind a paired Library move.
+            # Resolve again after acquiring the lock; never write the new root
+            # while holding only the old Library's lock.
+            directory = routed()
+            if root_for(directory) != root:
+                continue
+            identity = journal.identity_of(directory)
+            report = journal.replay(layout, identity=identity)
+            if report.blocks(*identity):
+                raise publish.PendingCommit("An earlier change to this meeting has not finished")
+            _LOCAL.root = root
+            try:
+                with LOCK:
+                    if repair and directory.is_dir() and not (directory / "meeting.json").exists():
+                        metadata = published_metadata(directory)
+                        if metadata is not None:
+                            atomic_json(directory / "meeting.json", metadata)
+                    yield
+            finally:
+                _LOCAL.root = None
+            return
 
 
 def commit_metadata(directory, current, changes, *, before_commit=None, words=None):

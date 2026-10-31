@@ -986,6 +986,7 @@ class LibraryCollectionScanner:
         value = load()
         current_roots = roots(value)
         pending = {Path(e["source"]).resolve() for e in value["pending"]}
+        pairs = [entry for entry in value["pending"] if entry.get("pair")]
         meetings, diagnostics, directories, seen = [], [], [], set()
         unavailable = False
         for root in current_roots:
@@ -999,6 +1000,20 @@ class LibraryCollectionScanner:
             unavailable |= snapshot.unavailable and root == current_roots[0]
             diagnostics.extend(snapshot.diagnostics)
             for meeting in snapshot.meetings:
+                directory = meeting.directory.resolve()
+                skip = False
+                for entry in pairs:
+                    phase = entry["pair"]["phase"]
+                    if directory == Path(entry["source"]).resolve() and phase in ("published", "retired"):
+                        skip = True
+                    if directory == Path(entry["target"]).resolve() and phase == "staged":
+                        from .library_publication import root_for
+
+                        stage = root_for(directory) / (".cassini-moving-" + entry["pair"]["op"])
+                        if not (stage / "audio.opus").exists():
+                            skip = True  # Our partial destination is not yet authoritative.
+                if skip:
+                    continue
                 if root != current_roots[0] and meeting.directory.resolve() not in pending:
                     continue
                 if meeting.key in seen:

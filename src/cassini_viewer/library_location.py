@@ -111,6 +111,8 @@ def load():
                 if event["state"] == "done":
                     pending.pop(source, None)
                     value["aliases"][source] = event["target"]
+                elif event["state"] == "waiting" and source in pending:
+                    pending[source].update({k: v for k, v in event.items() if k != "generation"})
                 elif source in pending:
                     pending[source].update(state="failed", error=event["error"])
     except FileNotFoundError:
@@ -164,6 +166,28 @@ def _append_progress(value, entry, done):
         stream.write(raw)
         stream.flush()
         os.fsync(stream.fileno())
+
+
+def _pair_checkpoint(entry, record):
+    """The paired mover already holds routing before its Library locks."""
+    value = load()
+    current = next(
+        (e for e in value["pending"] if (e["source"], e["target"]) == (entry["source"], entry["target"])), None
+    )
+    if current is None:
+        from .library_move import MoveBusy
+
+        raise MoveBusy("Library routing changed before the move committed")
+    event = dict(current, pair=dict(record), state="waiting", generation=value["generation"])
+    raw = (json.dumps(event, ensure_ascii=False) + "\n").encode()
+    if len(raw) > 1024 * 1024:
+        raise ValueError("Library move checkpoint exceeds limit")
+    fd = os.open(config_path().with_suffix(".journal"), os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW)
+    with os.fdopen(fd, "ab") as stream:
+        stream.write(raw)
+        stream.flush()
+        os.fsync(stream.fileno())
+    entry["pair"] = dict(record)
 
 
 @contextlib.contextmanager
@@ -255,6 +279,9 @@ def owned_directory(path):
     from .library_publication import root_for
 
     managed_root = root_for(original)
+    for entry in value["pending"]:
+        if entry["source"] == str(canonical) and entry.get("pair", {}).get("phase") in ("published", "retired"):
+            return Path(entry["target"]).resolve()
     if canonical.parent in allowed or managed_root in allowed or canonical in pending and original.exists():
         return canonical
     for entry in value["pending"]:
@@ -311,14 +338,22 @@ def request(destination):
     destination = Path(destination).resolve()
     with routing():
         value = load()
+        if any(entry.get("pair") for entry in value["pending"]):
+            raise ValueError("Finish the current Library move before choosing another destination")
         sources = {Path(e["source"]).resolve() for e in value["pending"]}
         for root in (Path(value["primary"]).resolve(),):
             if root.exists():
-                if any(p.suffix == ".opus" and not p.is_symlink() and p.is_file() for p in root.iterdir()):
-                    # Never claim a folder-only D15 move transferred its root
-                    # files. The paired S-12 move is pending R59; keep routing
-                    # intact until its transaction is implemented.
-                    raise ValueError("Published Library files need a paired move")
+                from . import portable
+                from .library_v2 import journal, xschema
+
+                for file in root.iterdir():
+                    if file.suffix != ".opus" or file.is_symlink() or not file.is_file():
+                        continue
+                    embedded = portable.read_meeting(str(file))
+                    ours = (embedded.manifest or {}).get("x", {}).get(xschema.DOMAIN)
+                    if not isinstance(ours, dict) or not xschema.valid(ours):
+                        raise ValueError("Unowned Library files need the shared adoption API before moving")
+                    sources.add(journal.Layout(root).session(ours["origin"], ours["sessionId"]))
                 sources.update(p for p in root.iterdir() if meeting_id(p) and not p.is_symlink() and p.is_dir())
                 sessions = root / ".cassini/sessions"
                 if not (root / ".cassini").is_symlink() and not sessions.is_symlink() and sessions.is_dir():
@@ -342,6 +377,23 @@ def request(destination):
 
 
 def process(*, busy=(), activity=None, retry=False, cancelled=None, changed=lambda: None, started=lambda: None):
+    """Only one mover owns the routing journal; producers never take this lease."""
+    path = config_path().with_suffix(".move.lock")
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    try:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return load()
+        return _process(
+            busy=busy, activity=activity, retry=retry, cancelled=cancelled, changed=changed, started=started
+        )
+    finally:
+        os.close(descriptor)
+
+
+def _process(*, busy=(), activity=None, retry=False, cancelled=None, changed=lambda: None, started=lambda: None):
     """Finish idle folders, checkpointing each. Never automatically retry failures."""
     from concurrent.futures import CancelledError
 
@@ -383,16 +435,26 @@ def process(*, busy=(), activity=None, retry=False, cancelled=None, changed=lamb
                 return True  # Opaque/unreadable folders can still be renamed intact.
 
         try:
-            if not source.exists() and target.is_dir() and not target.is_symlink():
+            from .library_publication import root_for
+
+            if entry.get("pair") or root_for(source) is not None and read_metadata(source).get("published") is True:
+                from .library_move_pair import move_pair
+
+                started()
+                move_pair(
+                    source,
+                    target,
+                    record=entry.get("pair"),
+                    checkpoint=lambda record, entry=entry: _pair_checkpoint(entry, record),
+                    ready=ready,
+                    cancelled=cancelled,
+                )
+            elif not source.exists() and target.is_dir() and not target.is_symlink():
                 pass  # Recover an already-published complete folder.
             else:
                 with LOCK:
                     if not ready():
                         continue
-                    from .library_publication import root_for
-
-                    if root_for(source) is not None and read_metadata(source).get("published") is True:
-                        raise ValueError("Published Library files need a paired move")
                 started()
                 move_folder(source, target.parent, cancelled=cancelled, ready=ready)
             value["aliases"][str(source)] = str(target)
@@ -415,5 +477,6 @@ def process(*, busy=(), activity=None, retry=False, cancelled=None, changed=lamb
         changed()
     if progressed:
         with routing():
+            value = load()  # A producer/request may have published newer routing while copying.
             save(value)
     return value

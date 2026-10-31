@@ -159,6 +159,7 @@ viewer_sources = files(
   'cassini_viewer/global_shortcut.py',
   'cassini_viewer/settings_dialog.py',
   'cassini_viewer/library_move.py',
+  'cassini_viewer/library_move_pair.py',
   'cassini_viewer/library_location.py',
   'cassini_viewer/library_relocator.py',
   'cassini_viewer/record_first.py',

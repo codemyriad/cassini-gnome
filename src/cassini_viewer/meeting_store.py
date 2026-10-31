@@ -46,6 +46,11 @@ def atomic_json(path, value, *, before_commit=None):
 
 def read_metadata(directory):
     directory = Path(directory)
+    if not directory.exists():
+        from .library_location import owned_directory
+
+        with contextlib.suppress(ValueError):
+            directory = owned_directory(directory)
     identifier = meeting_id(Path(directory))
     if identifier is None:
         raise ValueError("Meeting is outside the Library")
