@@ -125,7 +125,20 @@ def test_expired_stop_does_not_keep_a_real_instances_next_join_suppressed(servic
         if expiry == "absent":
             old.close()
             wait_for(lambda: not broker.browsers)
+        previous_connections = set(broker.browsers)
         replacement = peer(path, ())
+
+        def connected():
+            with broker.lock:
+                return any(
+                    key not in previous_connections and browser.hello_seen and browser.status_seen
+                    for key, browser in broker.browsers.items()
+                )
+
+        # An empty inventory alone is not a readiness condition: its predicate
+        # is already true before the broker accepts the replacement socket.
+        # Record connected_at on the real clock before advancing the deadline.
+        wait_for(connected)
         actual = time.monotonic
         age = STOPPED_CALL_GRACE + 1 if expiry == "absent" else STOPPED_CALL_REPORT_WINDOW + 1
         monkeypatch.setattr(time, "monotonic", lambda: actual() + age)
