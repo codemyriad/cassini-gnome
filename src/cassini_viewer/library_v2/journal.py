@@ -171,9 +171,12 @@ class Pending:
     damaged: list = field(default_factory=list)  # file names that are not valid entries; kept
 
 
-def pending(layout):
+def pending(layout, *, cleanup=True):
     """Committed entries, oldest first. A leftover `.json.partial` was never committed, so no copy
-    was touched after it: it is removed. Unreadable entries are kept and reported."""
+    was touched after it. Locked recovery removes it with cleanup=True. Unlocked
+    readers must use cleanup=False: a partial may belong to a live writer.
+    Unreadable entries are kept and reported.
+    """
     result = Pending()
     try:
         names = sorted(os.listdir(layout.journal))
@@ -182,7 +185,8 @@ def pending(layout):
     for name in names:
         path = layout.journal / name
         if name.endswith(".json.partial"):
-            path.unlink(missing_ok=True)
+            if cleanup:
+                path.unlink(missing_ok=True)
             continue
         if not name.endswith(".json"):
             continue

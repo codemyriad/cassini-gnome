@@ -79,7 +79,7 @@ class TrashCleanup:
                     if any(
                         entry["kind"] == "delete"
                         and (entry["identity"]["origin"], entry["identity"]["sessionId"]) == identity
-                        for entry in journal.pending(journal.Layout(root)).entries
+                        for entry in journal.pending(journal.Layout(root), cleanup=False).entries
                     ):
                         continue  # A file-only partial Trash is still an accepted delete, not a restore.
                 if current.exists():

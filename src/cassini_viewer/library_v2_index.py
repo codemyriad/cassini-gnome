@@ -84,7 +84,7 @@ class PublishedIndex:
         root = self.scanner.root.resolve()
         hidden, sessions, safe_sessions = self._sessions(root, activity)
         layout = journal.Layout(root)
-        pending = journal.pending(layout)
+        pending = journal.pending(layout, cleanup=False)
         deleted = {
             (entry["identity"]["origin"], entry["identity"]["sessionId"])
             for entry in pending.entries
