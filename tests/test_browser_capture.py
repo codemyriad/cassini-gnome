@@ -34,7 +34,14 @@ class Tap:
 @pytest.fixture
 def server(tmp_path):
     Tap.instances = []
-    service = BrowserService(tmp_path / "config.json", capture_parent=tmp_path / "library", tap_factory=Tap)
+    # This fixture owns synthetic PCM, not a desktop main loop. Automatic-start
+    # tests must not start notify_recording's persistent GLib loop on a worker.
+    service = BrowserService(
+        tmp_path / "config.json",
+        capture_parent=tmp_path / "library",
+        tap_factory=Tap,
+        notifier=lambda _title, _stop: None,
+    )
     path = tmp_path / "broker/browser.sock"
     ready = threading.Event()
     worker = threading.Thread(target=service.serve, args=(path, ready), daemon=True)
@@ -386,7 +393,7 @@ def bind_capture(peer, capture, tab=3):
     send_packet(peer.stream, dict(type="status", recording=True, sessions=list(peer.sessions.values())))
     wait_for(
         lambda: any(
-            s["id"].endswith(":" + str(tab)) and s.get("captureId") == capture.capture_id
+            s.get("tabId") == tab and s.get("captureId") == capture.capture_id
             for s in request(path=peer.path)["statuses"]
         )
     )

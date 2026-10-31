@@ -343,6 +343,8 @@ class BrowserCapture:
             if not self.stop_requested.is_set() and message.get("failureReason") == "lost":
                 self.fallback()
                 return dict(type="stopped", path=str(self.directory))
+            if reason == "user":
+                self.user_stopped = True
             return self.stop(message.get("problem"), reason=reason)
         with self.lock:
             if self.finished or self.stopping:

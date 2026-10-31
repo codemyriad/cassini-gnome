@@ -58,4 +58,46 @@ and app with private Pulse, Xvfb and D-Bus: hang-up, tab closure, reload and res
 browser tone, independent microphone/other call, worker reconnect and real 120 s
 expiry. Existing sample-count, tone and bleed thresholds are unchanged.
 
+D43.1(a) separates a call's public identity from its transport. With a browser
+instance, its opaque `call/…` ID is derived from that instance, tab and URL, so a
+worker reconnect keeps the same ID and a different address is a different call.
+Transport UUIDs stay immutable. Commands and queued automatic/fallback work resolve
+the logical call to the newest matching connection at dispatch; partial inventory
+gets the bounded reconnect window. An accepted Start whose reply was lost waits
+for replacement status instead of sending Start again. An unresolved Start is
+only retried after that window, and Stop still prevents automatic restarts.
+Overlapping transports publish one call; stale navigation or disconnect cannot
+clear the replacement's remembered Stop. Disconnected aliases and lineage are
+bounded, and browsers without an instance keep their existing transport IDs.
+
+D43.1(c) gives Record-all and Stop-all one 25-second broker budget, inside the
+application socket's 30-second timeout. Independent calls run concurrently on a
+bounded batch executor; a slow tab cannot serialize every other acknowledgement.
+The same deadline covers command waits, reconnect recovery and fallback startup.
+Each unfinished Start is reported as a failure; queued Starts are cancelled and
+fallbacks that finish too late are stopped and kept. Already accepted successful
+recordings keep running. Start and Stop share the transport write lock so Stop
+cannot overtake a prepared Start and leave it recording afterwards.
+
+Stop schedules native saves before browser acknowledgement work and remembers
+all owned calls immediately. If saving outlasts the request, it continues in the
+broker and the start barrier stays set until every background Stop finishes.
+Overlapping Stop batches each retain their own barrier token. A missing browser
+acknowledgement is ignored only after its recording has actually stopped; a live
+unresponsive recording or failed native save remains an error. No audio sample,
+tone, bleed or source-lifecycle thresholds are changed.
+
 Shared wire vectors also exercise immediate page-state statuses around delayed inventories. Navigation invalidates the departing document’s source count; only fresh inventory evidence clears the return deadline. The companion waits for the entire metadata batch before reading all rows’ current source evidence.
+
+Attempt suppression belongs to the logical call as well as its current transport.
+Heard loss, address changes, expired remembered stops and finished capture owners
+clear both together. A stale worker cannot clear its replacement's attempt.
+Manual Record rejects a Start still pending on an overlapping transport.
+
+A timed-out batch returns on its request deadline while cleanup gets a fresh,
+bounded command wait. The broker retains a bounded correlation history so late
+results update their own tab; an obsolete Stop cannot hide a newer Start. Audio
+announced after cancellation is saved and retired, even if its capture identity
+arrives after Stop was dispatched. A returning worker that reports a stopped
+call receives Stop. Stop-all deduplicates logical calls, and Quit joins an
+existing Stop instead of dispatching a competing command.

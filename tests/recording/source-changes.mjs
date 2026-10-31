@@ -144,7 +144,7 @@ export async function run({context, call, join, record, recording, samples, powe
   await poll(async () => {
    const current = await call();
    const active = current.statuses.filter(s => s.recording);
-   return current.connected > 0 && active.length === 2 && active.every(s => !oldIds.has(s.id) && [directory, otherDirectory].includes(s.path));
+   return current.connected > 0 && active.length === 2 && active.every(s => oldIds.has(s.id) && [directory, otherDirectory].includes(s.path));
   }, 'worker reconnect retains exactly the same two capture folders');
   const afterRestart = await samples(directory);
   assert.equal(afterRestart.manifest.events.filter(e => e.type === 'othersSource').at(-1).source, 'system');
