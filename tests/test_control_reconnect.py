@@ -5,6 +5,7 @@ import time
 from dataclasses import replace
 from uuid import uuid4
 
+import pytest
 from test_browser_capture import bind_capture, remote, server, start  # noqa: F401
 from test_browser_service import meeting, wait_for
 from test_browser_sessions import Extension
@@ -75,7 +76,9 @@ def age(service, seconds, capture_id="retained"):
     # Advance a stored deadline, not the process/socket clock. Other tests
     # below also cross the real two-second policy threshold with real RPC.
     since = time.monotonic() - seconds
-    service._capture_lifecycles[capture_id].missing = since
+    lifecycle = service._capture_lifecycles[capture_id]
+    if lifecycle.missing is not None:
+        lifecycle.missing = since
     if capture_id in getattr(service, "_control_reconnects", {}):
         reconnect = service._control_reconnects[capture_id]
         service._control_reconnects[capture_id] = replace(reconnect, since=since)
@@ -295,4 +298,135 @@ def test_first_control_status_keeps_the_grace_even_without_a_second_status_after
         if capture is not None:
             capture.stop()
         extension.close()
+        client.close()
+
+
+def test_hangup_during_control_reconnect_stops_after_two_seconds_without_system(server):  # noqa: F811
+    service, path, _ = server
+    extension, client, capture = live(service, path)
+    try:
+        lose(service, extension)
+        packet(client, 1)
+        service.policy()
+        assert service._capture_lifecycles[capture.capture_id].missing is None
+        extension = peer(path, ())
+        inventory(extension, (3,), page="present", count=0)
+        lifecycle = service._capture_lifecycles[capture.capture_id]
+        wait_for(lambda: lifecycle.ended is not None)
+        assert not capture.browser_lost and lifecycle.missing is None
+        lifecycle.ended = time.monotonic() - CALL_END_GRACE - 0.01
+        service.policy()
+        wait_for(lambda: capture.finished)
+        assert capture.host.session.manifest["events"][-1]["reason"] == "callEnded"
+        assert not any(track["kind"] == "system" for track in capture.host.session.manifest["tracks"])
+    finally:
+        capture.stop()
+        extension.close()
+        client.close()
+
+
+def test_navigation_after_healthy_control_gap_gets_its_own_two_second_grace(server):  # noqa: F811
+    service, path, _ = server
+    extension, client, capture = live(service, path)
+    try:
+        lose(service, extension)
+        since = time.monotonic() - CALL_END_GRACE - 0.1
+        reconnect = service._control_reconnects[capture.capture_id]
+        service._control_reconnects[capture.capture_id] = replace(reconnect, since=since)
+        packet(client, 1)
+        service.policy()
+        assert not capture.browser_lost
+        extension = peer(path, ())
+        inventory(extension, (3,), page="navigating", count=0)
+        lifecycle = service._capture_lifecycles[capture.capture_id]
+        assert lifecycle.missing is not None and lifecycle.missing > since
+        assert not capture.browser_lost
+        lifecycle.missing -= CALL_END_GRACE + 0.1
+        service.policy()
+        wait_for(lambda: capture.browser_lost)
+    finally:
+        capture.stop()
+        extension.close()
+        client.close()
+
+
+def test_absent_fallback_tab_does_not_reuse_a_stale_present_page_as_hangup(server):  # noqa: F811
+    service, path, _ = server
+    service.command_timeout = 0.3
+    extension, client, capture = live(service, path)
+    try:
+        capture.fallback()
+        inventory(extension, (3,))
+        service.policy()
+        assert service._capture_lifecycles[capture.capture_id].missing is None
+        inventory(extension, ())
+        send_packet(extension.stream, dict(type="status", recording=False, sessions=[]))
+        wait_for(lambda: not request(path=path)["meetings"])
+        service.policy()
+        lifecycle = service._capture_lifecycles[capture.capture_id]
+        assert lifecycle.missing is not None and lifecycle.ended is None
+        lifecycle.missing = time.monotonic() - CALL_END_GRACE - 0.1
+        service.policy()
+        assert not capture.finished
+        lifecycle.missing = time.monotonic() - 120.1
+        service.policy()
+        wait_for(lambda: capture.finished)
+        assert capture.host.session.manifest["events"][-1]["reason"] == "pageGone"
+    finally:
+        capture.stop()
+        extension.close()
+        client.close()
+
+
+@pytest.mark.parametrize("retained_audio", [False, True])
+def test_fallback_stop_saves_its_local_path_without_waiting_for_browser_ack(server, retained_audio):  # noqa: F811
+    from concurrent.futures import ThreadPoolExecutor
+
+    service, path, _ = server
+    service.command_timeout = 0.3
+    client = None
+    if retained_audio:
+        extension, client, capture = live(service, path)
+        capture.fallback()
+    else:
+        extension = peer(path)
+        identifier = request(path=path)["meetings"][0]["id"]
+        result = service.start_fallback(identifier, meeting(), False)
+        capture = service.captures[result["captureId"]]
+    try:
+        identifier = next(s["id"] for s in request(path=path)["statuses"] if s.get("captureId") == capture.capture_id)
+        with ThreadPoolExecutor(1) as pool:
+            stopped = pool.submit(request, "stop", path=path, id=identifier)
+            result = stopped.result(0.2)
+        assert capture.finished and result["stoppedPath"] == str(capture.directory)
+        assert all(tap.stopped for _identifier, tap in capture.native_taps.values())
+        assert capture.host.session.manifest["events"][-1]["reason"] == "user"
+    finally:
+        capture.stop()
+        extension.close()
+        if client is not None:
+            client.close()
+
+
+def test_ordinary_extension_stop_during_reload_fallback_finalizes_all_audio(server):  # noqa: F811
+    from test_browser_capture import remote, start
+
+    from cassini_viewer.browser_audio_proxy import BrowserAudioProxy
+
+    service, path, _ = server
+    client = BrowserAudioProxy(path=path)
+    try:
+        start(client, "extension-stop-fallback")
+        remote(client, "voice")
+        capture = service.captures["extension-stop-fallback"]
+        capture.lifecycle_capable = True
+        capture.fallback()
+        taps = [tap for _identifier, tap in capture.native_taps.values()]
+        result = client.handle(dict(type="stop", reason="user"))
+        assert result["type"] == "stopped" and capture.finished
+        assert all(tap.stopped for tap in taps)
+        assert all(track["ended"] for track in capture.host.session.manifest["tracks"])
+        assert capture.host.session.manifest["events"][-1]["reason"] == "user"
+    finally:
+        service.captures["extension-stop-fallback"].stop()
         client.close()
