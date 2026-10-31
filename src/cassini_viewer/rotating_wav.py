@@ -14,6 +14,7 @@ class RotatingWAV:
         self.rows = []
         self.span_clock = ClockAnchors(self.rate, session._native_clock_origin_ns)
         self.last_observation = None
+        self.gap_frames = 0
 
     @property
     def frames(self):
@@ -44,6 +45,8 @@ class RotatingWAV:
             return
         row = self.rows[-1]
         row["frames"] = self.current.frames
+        if self.gap_frames:
+            row.update(gapFrames=self.gap_frames, gapMaterialized=True)
         row["ended"] = bool(self.session.finished or self.track.get("ended"))
         anchors = self.span_clock.values()
         if anchors:
@@ -60,6 +63,8 @@ class RotatingWAV:
             )
         self.rows[-1]["frames"] = self.current.frames
         self.rows[-1]["ended"] = True
+        if self.gap_frames:
+            self.rows[-1].update(gapFrames=self.gap_frames, gapMaterialized=True)
         anchors = self.span_clock.values()
         if anchors:
             self.rows[-1]["clockAnchors"] = anchors
@@ -70,6 +75,7 @@ class RotatingWAV:
         )
         path = self.session.directory / f"track-{uuid4()}.wav"
         self.current = self.session.writer_factory(path, self.rate, self.channels)
+        self.gap_frames = 0
         self.span_clock = ClockAnchors(self.rate, self.session._native_clock_origin_ns)
         if self.last_observation and self.last_observation[0] == self.base:
             self.span_clock.add(0, self.last_observation[1])
@@ -96,6 +102,20 @@ class RotatingWAV:
         while frames:
             count = min(limit, frames)
             self.append(bytes(count * width))
+            frames -= count
+
+    def silence_gap(self, frames):
+        width = self.channels * 2
+        limit = min(32768, self.max_bytes // width)
+        if not limit:
+            raise OSError("The WAV span limit cannot hold one complete frame")
+        while frames:
+            count = min(limit, frames)
+            before = self.frames
+            try:
+                self.append(bytes(count * width))
+            finally:
+                self.gap_frames += self.frames - before
             frames -= count
 
     def sync(self):

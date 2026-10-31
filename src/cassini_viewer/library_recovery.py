@@ -68,7 +68,11 @@ class LibraryRecovery:
             return False
         directory = library_location.owned_directory(Path(directory).absolute())
         identity = journal.identity_of(directory)
-        if identity is None or identity[0] != "Recording" or root_for(directory) not in {Path(root).resolve() for root in library_location.roots()}:
+        if (
+            identity is None
+            or identity[0] != "Recording"
+            or root_for(directory) not in {Path(root).resolve() for root in library_location.roots()}
+        ):
             raise ValueError("Publication retry is outside the configured Library")
         with self.lock:
             self.attempted.discard(directory)

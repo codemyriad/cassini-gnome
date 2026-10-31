@@ -82,6 +82,9 @@ def test_materialized_gap_crosses_rotation_without_loss_or_double_insertion(tmp_
     session.append_native("mic", last, 1100, gap_frames=8000, host_ns=2_100_000_000)
     session.finish()
     assert stored_pcm(session) == first + bytes(16000) + last
+    spans = session.manifest["tracks"][0]["spans"]
+    assert sum(span.get("gapFrames", 0) for span in spans) == 8000
+    assert all(span.get("gapMaterialized") is True for span in spans if span.get("gapFrames"))
     (meeting,) = LibraryScanner(root).scan().meetings
     assert len(meeting.tracks) == 1 and meeting.duration_ms == 1200
     (job,), _speakers = prepare_tracks(meeting)

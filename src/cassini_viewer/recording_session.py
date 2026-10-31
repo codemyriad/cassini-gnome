@@ -442,7 +442,8 @@ class RecordingSession:
             if gap_frames:
                 before = writer.frames
                 try:
-                    writer.silence(gap_frames)
+                    silence = getattr(writer, "silence_gap", writer.silence)
+                    silence(gap_frames)
                 finally:
                     written = writer.frames - before
                     if written:
