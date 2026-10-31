@@ -321,7 +321,7 @@ def worker(application, private, report):
                     "import json;from cassini_viewer.library_v2 import journal,publish;"
                     "from cassini_viewer.library_location import primary;"
                     "root=primary();found=publish.find_file(journal.Layout(root),'Recording'," + repr(identifier) + ");"
-                    "print(json.dumps(str(root/found[0]) if found else None))"
+                    "print(json.dumps(str(root/found) if found else None))"
                 ),
                 "each stopped browser recording publishes its Cassini file",
             )
