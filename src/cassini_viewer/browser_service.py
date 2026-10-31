@@ -882,6 +882,7 @@ class BrowserService:
         def start_one(identifier, meeting):
             if group.is_set() or self._stopping_all.is_set() or time.monotonic() >= deadline:
                 raise ValueError("Recording start was cancelled")
+            cleanup_sent = False
             try:
                 return self.command(
                     identifier, "start", microphone=microphone, user=True, deadline=deadline, cancelled=group
@@ -890,8 +891,15 @@ class BrowserService:
                 if group.is_set() or self._stopping_all.is_set() or time.monotonic() >= deadline:
                     raise ValueError("Recording start was cancelled") from None
                 return self.start_fallback(identifier, meeting, microphone, cancelled=group, deadline=deadline)
+            except TimeoutError:
+                # No acknowledgement means Start may still be finishing in the
+                # browser. Retire that attempt before its caller can retry it.
+                cleanup_sent = True
+                with contextlib.suppress(OSError, ValueError, TimeoutError):
+                    self.command(identifier, "stop", user=True, deadline=deadline)
+                raise
             finally:
-                if group.is_set() and time.monotonic() >= deadline:
+                if not cleanup_sent and group.is_set() and time.monotonic() >= deadline:
                     # The request can return while a late accepted Start is
                     # being retired. Never leave that unacknowledged capture on.
                     with contextlib.suppress(OSError, ValueError, TimeoutError):

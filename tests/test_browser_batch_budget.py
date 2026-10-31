@@ -211,3 +211,23 @@ def test_default_batch_finishes_inside_the_real_thirty_second_request_timeout(se
             assert {s["tabId"] for s in result["statuses"] if s["recording"]} == {5}
     finally:
         peer.close()
+
+
+def test_a_start_acknowledged_only_after_its_timeout_is_stopped_and_reported_failed(service):  # noqa: F811
+    server, path = service
+    server.batch_timeout = 0.6
+    peer = Extension(path, (3,))
+    try:
+        with ThreadPoolExecutor(1) as pool:
+            pending = pool.submit(request, "start-all", path=path)
+            start = peer.receive()
+            stop = peer.receive()
+            assert (start["action"], stop["action"]) == ("start", "stop")
+            peer.answer(start)
+            peer.answer(stop)
+            result = pending.result(1)
+            assert len(result["failures"]) == 1
+            assert not any(s["recording"] for s in result["statuses"])
+            assert not any(b.pending for b in server.browsers.values())
+    finally:
+        peer.close()
