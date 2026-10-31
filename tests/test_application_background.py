@@ -8,7 +8,7 @@ from test_voice_application import application_class  # noqa: F401
 
 
 def closing_app(monkeypatch, *, held=True, quitting=False):
-    from cassini_viewer import main
+    from cassini_talk import main
 
     idle = []
     monkeypatch.setattr(main.GLib, "idle_add", lambda function, *args: idle.append((function, args)) or 1)

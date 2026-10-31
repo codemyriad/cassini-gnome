@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer.browser_service import BrowserConnection, BrowserService
+from cassini_talk.browser_service import BrowserConnection, BrowserService
 
 SHARED_AUTO_START_CASES = json.loads(
     (Path(__file__).parents[1] / "browser-protocol/conformance/control/auto-start-vectors.json").read_text()
@@ -106,7 +106,7 @@ def test_each_independent_meeting_needs_its_own_evidence(policy):
 
 
 def test_rejected_auto_start_cannot_fall_back_after_evidence_disappears(policy, monkeypatch):
-    from cassini_viewer.browser_service import StartRejected
+    from cassini_talk.browser_service import StartRejected
 
     service, browser, tasks = policy
     fallbacks = []
@@ -126,7 +126,7 @@ def test_rejected_auto_start_cannot_fall_back_after_evidence_disappears(policy, 
 
 
 def test_auto_fallback_reservation_rechecks_capable_evidence(policy, monkeypatch):
-    from cassini_viewer import browser_capture
+    from cassini_talk import browser_capture
 
     service, browser, _tasks = policy
     service.update(browser, dict(type="meetings", meetings=[meeting(heard=False)]))

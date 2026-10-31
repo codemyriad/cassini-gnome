@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer.browser_host import main
-from cassini_viewer.recording_session import ProtocolError, RecordingSession, WAVWriter, read_message, write_message
+from cassini_talk.browser_host import main
+from cassini_talk.recording_session import ProtocolError, RecordingSession, WAVWriter, read_message, write_message
 
 ROOT = Path(__file__).resolve().parents[1]
 START = {"type": "start"}
@@ -58,21 +58,21 @@ def test_pinned_contract_integrity():
     )
 
 
-def test_viewer_failure_preserves_completed_session(tmp_path, caplog):
+def test_app_failure_preserves_completed_session(tmp_path, caplog):
     calls = []
 
     def launch(args, **kwargs):
         calls.append(args)
-        raise FileNotFoundError("test viewer missing")
+        raise FileNotFoundError("test app missing")
 
     code, replies = invoke(
-        tmp_path, [START, TRACK, AUDIO, {"type": "stop"}], viewer_path="/isolated/bin/cassini-viewer", launcher=launch
+        tmp_path, [START, TRACK, AUDIO, {"type": "stop"}], app_path="/isolated/bin/cassini-talk", launcher=launch
     )
     assert code == 0 and replies[-1]["type"] == "stopped"
     manifest = json.loads((Path(replies[-1]["path"]) / "session.json").read_text())
     assert manifest["state"] == "completed"
-    assert calls == [["/isolated/bin/cassini-viewer", str(Path(replies[-1]["path"]) / "session.json")]]
-    assert "viewer could not start" in caplog.text
+    assert calls == [["/isolated/bin/cassini-talk", str(Path(replies[-1]["path"]) / "session.json")]]
+    assert "app could not start" in caplog.text
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", manifest["createdAt"])
 
 
@@ -162,10 +162,10 @@ def test_huge_json_integer_offset_has_chunk_error(tmp_path):
     assert code == 1 and replies[-1]["code"] == "chunk"
 
 
-def test_installed_host_supplies_viewer_environment(tmp_path):
+def test_installed_host_supplies_player_environment(tmp_path):
     share = tmp_path / "local/share"
-    data = share / "cassini-viewer"
-    package = data / "cassini_viewer"
+    data = share / "cassini-talk"
+    package = data / "cassini_talk"
     package.mkdir(parents=True)
     (package / "__init__.py").touch()
     (package / "browser_host.py").write_text(
@@ -189,4 +189,4 @@ def test_installed_host_supplies_viewer_environment(tmp_path):
     values = json.loads(result.stdout)
     assert values["schemas"] == str(schemas)
     assert values["data"].split(":")[0] == str(share)
-    assert values["viewer_path"] == str(bindir / "cassini-viewer")
+    assert values["app_path"] == str(bindir / "cassini-talk")

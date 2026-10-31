@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
-glib-compile-resources --sourcedir=src --target=/out/pipeline-ui.gresource src/cassini-viewer.gresource.xml
+glib-compile-resources --sourcedir=src --target=/out/pipeline-ui.gresource src/cassini-talk.gresource.xml
 export HOME=/tmp XDG_RUNTIME_DIR=/tmp/cassini-ui-run XDG_CONFIG_HOME=/tmp/config XDG_DATA_HOME=/tmp/data XDG_CACHE_HOME=/tmp/cache
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"

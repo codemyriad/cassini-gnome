@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Desktop merge selection supplements, leaving all Android vectors unchanged."""
 
-from cassini_viewer.voices_logic import select_windows
-from cassini_viewer.worker_voices import group_words
+from cassini_talk.voices_logic import select_windows
+from cassini_talk.worker_voices import group_words
 
 
 def test_merged_native_voices_keep_both_original_voices_speech():
@@ -33,8 +33,8 @@ def test_historical_group_preserves_embedded_ids_without_stealing_microphone_wor
 def test_historical_reader_supports_embedded_received_transcripts_without_a_sidecar(tmp_path):
     from test_library import fingerprint, received
 
-    from cassini_viewer.library import LibraryScanner
-    from cassini_viewer.worker_voices import historical_words
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.worker_voices import historical_words
 
     directory = received(tmp_path)
     before = fingerprint(directory)
@@ -47,7 +47,7 @@ def test_historical_reader_supports_embedded_received_transcripts_without_a_side
 
 
 def test_one_merged_speaker_budget_alternates_groups_and_recording_thirds():
-    from cassini_viewer.worker_voices import combined_windows
+    from cassini_talk.worker_voices import combined_windows
 
     plans = [("group-a", start * 16000, (start + 10) * 16000) for start in (0, 10, 20, 30, 40, 50)]
     plans += [("group-b", start * 16000, (start + 10) * 16000) for start in (60, 70, 80)]
@@ -63,6 +63,6 @@ def test_two_short_merged_group_runs_can_together_make_a_print():
         words = [dict(speaker="merged", startMs=0, endMs=3000)]
         windows = select_windows([], words, 16000, 48000, min_seconds=0, max_seconds=None)
         selected += [(group, s, e) for s, e in windows["merged"]]
-    from cassini_viewer.worker_voices import combined_windows
+    from cassini_talk.worker_voices import combined_windows
 
     assert sum(e - s for _, s, e in combined_windows(selected, 48000)) == 5200 * 16

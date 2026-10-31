@@ -67,17 +67,17 @@ from gi.repository import Adw, Gio, GLib  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tests"))
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from desktop_services import DesktopServices  # noqa: E402
 
-from cassini_viewer import browser_service, companion, companion_bundle  # noqa: E402
-from cassini_viewer.browser_watch import BrowserWatch  # noqa: E402
-from cassini_viewer.capture_activity import BrowserActivity, read_browser_activity  # noqa: E402
-from cassini_viewer.companion_setup import CompanionSetup  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.meeting_text import reading_turns  # noqa: E402
-from cassini_viewer.portable import Word  # noqa: E402
-from cassini_viewer.settings_dialog import SettingsDialog  # noqa: E402
+from cassini_talk import browser_service, companion, companion_bundle  # noqa: E402
+from cassini_talk.browser_watch import BrowserWatch  # noqa: E402
+from cassini_talk.capture_activity import BrowserActivity, read_browser_activity  # noqa: E402
+from cassini_talk.companion_setup import CompanionSetup  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.meeting_text import reading_turns  # noqa: E402
+from cassini_talk.portable import Word  # noqa: E402
+from cassini_talk.settings_dialog import SettingsDialog  # noqa: E402
 
 MAIN = threading.get_ident()
 SLEEP = time.sleep
@@ -112,14 +112,14 @@ def file_io_guard(call):
             frame = sys._getframe(1)
             while frame:
                 module = frame.f_globals.get("__name__", "")
-                if module.startswith("cassini_viewer."):
+                if module.startswith("cassini_talk."):
                     assert module not in {
-                        "cassini_viewer.companion",
-                        "cassini_viewer.companion_setup",
-                        "cassini_viewer.browser_watch",
-                        "cassini_viewer.capture_activity",
-                        "cassini_viewer.browser_connection",
-                        "cassini_viewer.settings_dialog",
+                        "cassini_talk.companion",
+                        "cassini_talk.companion_setup",
+                        "cassini_talk.browser_watch",
+                        "cassini_talk.capture_activity",
+                        "cassini_talk.browser_connection",
+                        "cassini_talk.settings_dialog",
                     }, f"GTK-thread file I/O in {module}: {call}"
                     break
                 frame = frame.f_back
@@ -196,7 +196,7 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
         ):
             guards.enter_context(patch.object(owner, name, worker_only(getattr(owner, name))))
         guards.enter_context(
-            patch("cassini_viewer.capture_activity.read_browser_activity", worker_only(read_browser_activity))
+            patch("cassini_talk.capture_activity.read_browser_activity", worker_only(read_browser_activity))
         )
         for name in ("Popen", "run"):
             guards.enter_context(patch.object(subprocess, name, worker_only(getattr(subprocess, name))))

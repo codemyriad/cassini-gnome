@@ -27,9 +27,6 @@ Rules-Requires-Root: no
 
 Package: cassini-talk
 Architecture: amd64
-Provides: cassini-viewer (= ${binary:Version})
-Replaces: cassini-viewer (<< ${binary:Version})
-Breaks: cassini-viewer (<< ${binary:Version})
 Depends: ${misc:Depends},
          ${shlibs:Depends},
          ${cassini:Python},
@@ -64,11 +61,3 @@ Description: play and record meetings, and read along with their transcripts
  Needle engine (Apache-2.0), the Silero voice activity detector (MIT) and,
  for the recognition process only, ONNX Runtime (MIT), and runs them with
  NumPy on the CPU. Nothing is downloaded and no telemetry is sent.
-
-Package: cassini-viewer
-Architecture: all
-Section: oldlibs
-Depends: ${misc:Depends}, cassini-talk (= ${binary:Version})
-Description: transitional package for Cassini talk
- This package upgrades existing Cassini installations to Cassini talk.
- It can safely be removed after upgrading.

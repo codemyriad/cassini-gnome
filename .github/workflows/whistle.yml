@@ -33,7 +33,7 @@ jobs:
         if: inputs.product == ''
         with:
           path: .sherpa-cache
-          key: sherpa-${{ hashFiles('src/cassini_viewer/sherpa-pins.json') }}
+          key: sherpa-${{ hashFiles('src/cassini_talk/sherpa-pins.json') }}
       - uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/parakeet-models
@@ -41,7 +41,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/nemotron-models
-          key: nemotron-${{ hashFiles('src/cassini_viewer/models.json') }}
+          key: nemotron-${{ hashFiles('src/cassini_talk/models.json') }}
       - uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/voice-models
@@ -78,13 +78,13 @@ jobs:
           python3 build-aux/ci/product.py unpack _ci-offline _ci-download/offline.tar --commit "$GITHUB_SHA" --profile offline
           echo "OFFLINE_STAGE=$PWD/_ci-offline/install" >> "$GITHUB_ENV"
       - name: Native constructor guard, both goldens and real GTK queue without network
-        run: tests/whistle/run.sh "$OFFLINE_STAGE/usr/share/cassini-viewer/whistle" "$PWD/whistle-artifacts" "$OFFLINE_STAGE"
+        run: tests/whistle/run.sh "$OFFLINE_STAGE/usr/share/cassini-talk/whistle" "$PWD/whistle-artifacts" "$OFFLINE_STAGE"
       - name: Both Parakeet goldens and ABI through isolated per-job workers
-        run: tests/parakeet/run.sh "$OFFLINE_STAGE/usr/share/cassini-viewer/whistle" "$RUNNER_TEMP/parakeet-models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9" "$OFFLINE_STAGE/usr/lib/x86_64-linux-gnu/cassini-viewer/sherpa" "$PWD/parakeet-artifacts"
+        run: tests/parakeet/run.sh "$OFFLINE_STAGE/usr/share/cassini-talk/whistle" "$RUNNER_TEMP/parakeet-models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9" "$OFFLINE_STAGE/usr/lib/x86_64-linux-gnu/cassini-talk/sherpa" "$PWD/parakeet-artifacts"
       - name: D24 installed worker, S-11 golden and production queue reuse
-        run: tests/diarization/run.sh "$OFFLINE_STAGE/usr/share/cassini-viewer/whistle" "$RUNNER_TEMP/nemotron-models" "$RUNNER_TEMP/diarization-input.wav" "$PWD/diarization-artifacts" "$OFFLINE_STAGE" "$RUNNER_TEMP/parakeet-models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"
+        run: tests/diarization/run.sh "$OFFLINE_STAGE/usr/share/cassini-talk/whistle" "$RUNNER_TEMP/nemotron-models" "$RUNNER_TEMP/diarization-input.wav" "$PWD/diarization-artifacts" "$OFFLINE_STAGE" "$RUNNER_TEMP/parakeet-models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"
       - name: D25 installed extractor, S-9 vectors and model comparisons without network
-        run: tests/voices/run.sh "$OFFLINE_STAGE/usr/share/cassini-viewer/whistle" "$RUNNER_TEMP/voice-models" "$RUNNER_TEMP/diarization-input.wav" "$PWD/voice-artifacts" "$OFFLINE_STAGE" "$RUNNER_TEMP/nemotron-models" "$RUNNER_TEMP/parakeet-models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"
+        run: tests/voices/run.sh "$OFFLINE_STAGE/usr/share/cassini-talk/whistle" "$RUNNER_TEMP/voice-models" "$RUNNER_TEMP/diarization-input.wav" "$PWD/voice-artifacts" "$OFFLINE_STAGE" "$RUNNER_TEMP/nemotron-models" "$RUNNER_TEMP/parakeet-models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"
       - uses: actions/upload-artifact@v7
         if: always()
         with:

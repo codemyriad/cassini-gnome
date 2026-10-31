@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer.library_v2 import names
-from cassini_viewer.strings import text
+from cassini_talk.library_v2 import names
+from cassini_talk.strings import text
 
 ROOT = Path(__file__).parents[1]
 HERE = Path(__file__).parent / "ux"

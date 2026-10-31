@@ -70,9 +70,9 @@ gi.require_version("GdkX11", "4.0")
 from details_fixture import build_library, build_many_spans, write_json  # noqa: E402
 from gi.repository import Adw, Gdk, GdkX11, Gio, GLib, Gtk  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer.library import LibraryScanner  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk.library import LibraryScanner  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
 
 
 def until(predicate):
@@ -256,7 +256,7 @@ with tempfile.TemporaryDirectory() as temporary:
     shutil.copytree(paths["microphone"], outside)
     outside_metadata = json.loads((outside / "meeting.json").read_text())
     outside_metadata["title"] = "Opened outside this Library"
-    from cassini_viewer.nemotron_model import MODEL_ID, REVISION
+    from cassini_talk.nemotron_model import MODEL_ID, REVISION
 
     outside_metadata["recordingDetails"]["writingDown"].update(
         wallDurationMs=15680,
@@ -325,7 +325,7 @@ with tempfile.TemporaryDirectory() as temporary:
     end_details()
     app.stop_native()
     until(lambda: native.pipeline is None and not native._finishing)
-    from cassini_viewer.capture_details import read_details
+    from cassini_talk.capture_details import read_details
 
     terminal = [event for event in native.session.manifest.get("events", []) if event["type"] == "end"]
     assert len(terminal) == 1 and terminal[0]["reason"] == "user" and terminal[0]["atMs"] > 0
@@ -335,7 +335,7 @@ with tempfile.TemporaryDirectory() as temporary:
 
     # Closing during a slow read must not retain a timer, touch closed widgets,
     # block GTK or take an application hold.
-    from cassini_viewer import capture_details_dialog
+    from cassini_talk import capture_details_dialog
 
     entered, release = threading.Event(), threading.Event()
     original = capture_details_dialog.read_details

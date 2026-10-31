@@ -42,7 +42,7 @@ def worker(application, private, output, portal_prefix=None):
         "-I",
         "-c",
     ]
-    prefix = "import sys;sys.path.insert(0,'/app/share/cassini-viewer');"
+    prefix = "import sys;sys.path.insert(0,'/app/share/cassini-talk');"
 
     def inside(code):
         result = subprocess.run(base + [prefix + code], capture_output=True, text=True, timeout=30)
@@ -61,12 +61,12 @@ def worker(application, private, output, portal_prefix=None):
                 timeout=20,
             )
             created = inside(
-                "import json;from cassini_viewer.recording_session import RecordingSession;"
+                "import json;from cassini_talk.recording_session import RecordingSession;"
                 "s=RecordingSession(None,title='Private native Trash check',source='gnome');"
                 "s.add_track('mic','Me','microphone',48000,1);"
                 "s.append('mic',b'\\x01\\x00'*9600,0);s.finish();"
-                "from cassini_viewer.library_publication import publish_stopped;"
-                "from cassini_viewer.library_location import primary;"
+                "from cassini_talk.library_publication import publish_stopped;"
+                "from cassini_talk.library_location import primary;"
                 "result=publish_stopped(s);"
                 "print(json.dumps(dict(path=str(s.directory),file=str(primary()/result.name))))"
             )
@@ -79,9 +79,9 @@ def worker(application, private, output, portal_prefix=None):
             before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.iterdir()}
             result = inside(
                 "import json,gi;from pathlib import Path;gi.require_version('Adw','1');"
-                "from cassini_viewer.meeting_trash import trash_owned;"
-                "from cassini_viewer.trash_cleanup import TrashCleanup;"
-                "from cassini_viewer.voice_store import VoiceStore;"
+                "from cassini_talk.meeting_trash import trash_owned;"
+                "from cassini_talk.trash_cleanup import TrashCleanup;"
+                "from cassini_talk.voice_store import VoiceStore;"
                 f"p=Path({str(folder)!r});trash_owned(p,cleanup=TrashCleanup(VoiceStore()));"
                 "print(json.dumps(dict(removed=not p.exists())))"
             )
@@ -93,7 +93,7 @@ def worker(application, private, output, portal_prefix=None):
             assert len(audio_copies) == 1
             assert hashlib.sha256(audio_copies[0].read_bytes()).hexdigest() == audio_hash
             restarted = inside(
-                "import json;from cassini_viewer.library import LibraryCollectionScanner;"
+                "import json;from cassini_talk.library import LibraryCollectionScanner;"
                 "print(json.dumps(dict(meetings=len(LibraryCollectionScanner().scan().meetings))))"
             )
             assert restarted["meetings"] == 0

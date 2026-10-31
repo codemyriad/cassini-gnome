@@ -142,7 +142,7 @@ def build_onnxruntime(out, cache, abi, *, offline=False):
 
 def onnxruntime_verify(path):
     sys.path.insert(0, str(HERE.parent / "src"))
-    from cassini_viewer.whistle_worker import verify_onnxruntime
+    from cassini_talk.whistle_worker import verify_onnxruntime
 
     return verify_onnxruntime(path)
 

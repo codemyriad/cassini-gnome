@@ -6,8 +6,8 @@ from types import SimpleNamespace
 import pytest
 
 pytest.importorskip("gi.repository.Gio")
-from cassini_viewer import windowless
-from cassini_viewer.windowless import WindowlessBackground
+from cassini_talk import windowless
+from cassini_talk.windowless import WindowlessBackground
 
 
 class Portal:

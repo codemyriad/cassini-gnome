@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer.library import LibraryScanner
+from cassini_talk.library import LibraryScanner
 
 ROOT = Path(__file__).resolve().parents[1]
 VECTORS = ROOT / "ux/library-vectors"

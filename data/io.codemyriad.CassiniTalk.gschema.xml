@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
-<schemalist gettext-domain="cassini-viewer">
+<schemalist gettext-domain="cassini-talk">
   <schema id="io.codemyriad.CassiniTalk" path="/io/codemyriad/CassiniTalk/">
     <key name="speech-model" type="s">
       <default>'whistle'</default>
@@ -61,10 +61,6 @@
       <default>true</default>
       <summary>Follow along</summary>
       <description>Keep the word being spoken in view while playing.</description>
-    </key>
-    <key name="legacy-settings-migrated" type="b">
-      <default>false</default>
-      <summary>Preferences migrated from the previous application identity</summary>
     </key>
   </schema>
 </schemalist>

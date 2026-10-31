@@ -289,8 +289,8 @@ def browser_only(appid, microphone):
     """
     import sys
 
-    sys.path.insert(0, "/usr/share/cassini-viewer")
-    from cassini_viewer.browser_audio_proxy import BrowserAudioProxy
+    sys.path.insert(0, "/usr/share/cassini-talk")
+    from cassini_talk.browser_audio_proxy import BrowserAudioProxy
 
     runtime = Path(os.environ["XDG_RUNTIME_DIR"])
     socket = (runtime / "app" / appid if appid.endswith(".Devel") else runtime) / "cassini" / "browser-v2.sock"

@@ -17,10 +17,10 @@ parser.add_argument("output", type=Path)
 parser.add_argument("--modules", type=Path, required=True)
 args = parser.parse_args()
 sys.path.insert(0, str(args.modules))
-from cassini_viewer.whistle_client import WhistleClient  # noqa: E402
-from cassini_viewer.whistle_worker import PRIVACY  # noqa: E402
+from cassini_talk.whistle_client import WhistleClient  # noqa: E402
+from cassini_talk.whistle_worker import PRIVACY  # noqa: E402
 
-assert Path(sys.modules["cassini_viewer.whistle_client"].__file__).is_relative_to(args.modules)
+assert Path(sys.modules["cassini_talk.whistle_client"].__file__).is_relative_to(args.modules)
 
 assert os.environ.get("CASSINI_WHISTLE_NETWORK_NONE") == "1", "Use the networkless container harness"
 assert set(os.listdir("/sys/class/net")) == {"lo"}, "Container must have only loopback"

@@ -25,7 +25,7 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
 from readiness import wait_until  # noqa: E402
 
-from cassini_viewer.native_recorder import NativeRecorder  # noqa: E402
+from cassini_talk.native_recorder import NativeRecorder  # noqa: E402
 
 Gst.init(None)
 artifacts = Path(os.environ["CASSINI_TEST_ARTIFACTS"])
@@ -82,8 +82,8 @@ try:
         assert producer.get_state(5 * Gst.SECOND).state == Gst.State.PLAYING
     # The old system source must keep recording if a newly requested mic
     # fails in the real Pulse/GStreamer startup path. No device is mocked.
-    from cassini_viewer.browser_capture import BrowserCapture
-    from cassini_viewer.native_tap import NativeTap
+    from cassini_talk.browser_capture import BrowserCapture
+    from cassini_talk.native_tap import NativeTap
 
     changes = []
     capture = BrowserCapture(lambda _capture, event: changes.append(event), parent=artifacts)

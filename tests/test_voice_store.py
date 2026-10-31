@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer import voice_store
-from cassini_viewer.voice_store import VoiceStore
-from cassini_viewer.voices_logic import REVISION, UnsupportedVersion
+from cassini_talk import voice_store
+from cassini_talk.voice_store import VoiceStore
+from cassini_talk.voices_logic import REVISION, UnsupportedVersion
 
 UUID = "12345678-1234-4234-8234-123456789abc"
 RECORDING, RECEIVED = "Recording-" + UUID, "Received-" + UUID
@@ -363,7 +363,7 @@ def test_failed_pruning_preserves_automatic_print_link_and_sample(store, monkeyp
 
 @pytest.mark.parametrize("affected", [("a", "b"), ("b", "a")])
 def test_replacing_same_person_prints_unenrols_all_before_enrolling_any(store, affected):
-    from cassini_viewer.voices_logic import normalised
+    from cassini_talk.voices_logic import normalised
 
     store.refresh()
     store.commit_job(
@@ -381,7 +381,7 @@ def test_replacing_same_person_prints_unenrols_all_before_enrolling_any(store, a
 
 @pytest.mark.parametrize("affected", [("a", "b"), ("b", "a")])
 def test_same_person_merge_and_undo_keep_both_confirmed_enrolments(store, affected):
-    from cassini_viewer.voices_logic import normalised
+    from cassini_talk.voices_logic import normalised
 
     store.refresh()
     original = {"a": dict(embedding=embedding(), seconds=8), "b": dict(embedding=embedding(1), seconds=8)}
@@ -422,7 +422,7 @@ def test_count_is_current_auto_or_confirmed_library_meetings_not_enrolments(stor
 
 
 def test_sample_uses_only_auto_and_confirmed_voice_links():
-    from cassini_viewer.voice_store import sample_window
+    from cassini_talk.voice_store import sample_window
 
     cache = dict(
         speakers={
@@ -450,7 +450,7 @@ def test_recompute_keeps_automatic_link_and_rejections_without_rematching(store)
 
 
 def test_protected_names_only_get_suggestions_and_do_not_take_automatic_match_slots(store):
-    from cassini_viewer.voice_store import sample_window
+    from cassini_talk.voice_store import sample_window
 
     alice = enrol(store)
     protected = dict(embedding=embedding(), seconds=8, windows=[dict(startMs=0, endMs=8000)])

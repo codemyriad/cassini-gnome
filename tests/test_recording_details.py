@@ -6,10 +6,10 @@ import struct
 
 import pytest
 
-from cassini_viewer.library import LibraryScanner
-from cassini_viewer.meeting_store import update_metadata
-from cassini_viewer.recording_details import SilenceClock, edit_recording, recording_observation
-from cassini_viewer.recording_session import RecordingSession
+from cassini_talk.library import LibraryScanner
+from cassini_talk.meeting_store import update_metadata
+from cassini_talk.recording_details import SilenceClock, edit_recording, recording_observation
+from cassini_talk.recording_session import RecordingSession
 
 
 @pytest.fixture(autouse=True)
@@ -28,7 +28,7 @@ def test_silence_requires_twenty_seconds_and_sound_resets_clock():
 
 @pytest.mark.parametrize("offset", [-2060, 4000])
 def test_dc_offset_is_silent_but_offset_speech_is_sound_and_wavs_are_untouched(tmp_path, offset):
-    from cassini_viewer.recording_details import pcm_ac_level
+    from cassini_talk.recording_details import pcm_ac_level
 
     session = RecordingSession(tmp_path)
     session.add_track("mic", "Mic", "microphone", 48000, 1)
@@ -48,7 +48,7 @@ def test_dc_offset_is_silent_but_offset_speech_is_sound_and_wavs_are_untouched(t
 
 
 def test_ac_meter_uses_whole_hundred_ms_windows_across_buffer_boundaries():
-    from cassini_viewer.recording_details import ACMeter, pcm_ac_level
+    from cassini_talk.recording_details import ACMeter, pcm_ac_level
 
     pcm = b"".join(struct.pack("<h", -2060 + (455 if i % 2 else -455)) for i in range(4800))
     meter = ACMeter()
@@ -82,7 +82,7 @@ def test_live_edits_preserve_other_app_owned_fields_and_capture_bytes(tmp_path):
 
 
 def test_existing_notes_survive_title_and_progress_edits_and_still_export(tmp_path):
-    from cassini_viewer.export_model import markdown, model_projection
+    from cassini_talk.export_model import markdown, model_projection
 
     session = RecordingSession(tmp_path, source="gnome")
     session.add_track("mic", "Mic", "microphone", 16000, 1)
@@ -137,8 +137,8 @@ def test_brief_microphone_sound_between_polls_resets_silence_even_when_meter_is_
 
 
 def test_targeted_browser_stop_does_not_stop_another_meeting(tmp_path, monkeypatch):
-    from cassini_viewer import browser_service
-    from cassini_viewer.capture_guard import stop_browser_captures
+    from cassini_talk import browser_service
+    from cassini_talk.capture_guard import stop_browser_captures
 
     paths = [str(tmp_path / "one"), str(tmp_path / "two")]
     calls = []
@@ -159,8 +159,8 @@ def test_targeted_browser_stop_does_not_stop_another_meeting(tmp_path, monkeypat
 
 
 def test_long_live_title_is_bounded_without_dropping_batched_notes(tmp_path, monkeypatch):
-    from cassini_viewer.meeting_store import read_metadata
-    from cassini_viewer.recording_details import edit_recording
+    from cassini_talk.meeting_store import read_metadata
+    from cassini_talk.recording_details import edit_recording
 
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
     session = RecordingSession(tmp_path)

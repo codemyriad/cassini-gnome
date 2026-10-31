@@ -5,7 +5,7 @@
     "format-vectors.json": "tests/ux/format-vectors.json",
     "states-vectors.json": "tests/ux/states-vectors.json",
     "LIBRARY-RULES.md": "tests/ux/LIBRARY-RULES.md",
-    "meeting.schema.json": "src/cassini_viewer/meeting.schema.json",
+    "meeting.schema.json": "src/cassini_talk/meeting.schema.json",
     "library-vectors/verify.py": "ux/library-vectors/verify.py",
     "library-vectors/README.md": "ux/library-vectors/README.md",
     "library-vectors/cases.json": "ux/library-vectors/cases.json",
@@ -34,7 +34,7 @@
     "library-vectors/assets/plain-title.opus": "ux/library-vectors/assets/plain-title.opus",
     "library-vectors/assets/plain-untitled.opus": "ux/library-vectors/assets/plain-untitled.opus",
     "library-vectors/assets/build.py": "ux/library-vectors/assets/build.py",
-    "strings.json": "src/cassini_viewer/strings.json",
+    "strings.json": "src/cassini_talk/strings.json",
     "LIBRARY.md": "tests/ux/LIBRARY.md",
     "session-events/session.json": "tests/ux/session-events/session.json",
     "session-events/expected.json": "tests/ux/session-events/expected.json",
@@ -64,7 +64,7 @@
     "dc/dc-quiet-jfk-v1-control.wav": "tests/dc/dc-quiet-jfk-v1-control.wav",
     "library-v2/name-vectors.json": "tests/ux/library-v2/name-vectors.json",
     "library-v2/name-vectors-malformed.json": "tests/ux/library-v2/name-vectors-malformed.json",
-    "library-v2/x-schema.json": "src/cassini_viewer/library_v2/x-schema.json"
+    "library-v2/x-schema.json": "src/cassini_talk/library_v2/x-schema.json"
   },
   "sha256": {
     "format-vectors.json": "8d9449e30b28b117c85f5396de6b0123b1f79cc9b53f6504157b1a0dfffcc791",

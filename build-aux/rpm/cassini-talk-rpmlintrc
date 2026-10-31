@@ -1,12 +1,12 @@
-# rpmlint filters for cassini-viewer (build-aux/rpm/build.sh passes this file;
+# rpmlint filters for cassini-talk (build-aux/rpm/build.sh passes this file;
 # the openSUSE Build Service picks up *-rpmlintrc next to the spec).
 # The offline writing-down bundle: the app loads these libraries only in its
 # recognition child, from this directory, after checking every file against
 # the sha256 in manifest.json, so they cannot move to %{_libdir} or be
 # stripped. libneedle3.so is the pinned upstream engine binary.
-addFilter(r"arch-dependent-file-in-usr-share .*/cassini-viewer/whistle/")
-addFilter(r"devel-file-in-non-devel-package .*/cassini-viewer/whistle/cpu_limit.c")
-# The private ONNX Runtime (%{_libdir}/cassini-viewer/python) is the pinned
+addFilter(r"arch-dependent-file-in-usr-share .*/cassini-talk/whistle/")
+addFilter(r"devel-file-in-non-devel-package .*/cassini-talk/whistle/cpu_limit.c")
+# The private ONNX Runtime (%{_libdir}/cassini-talk/python) is the pinned
 # upstream wheel; its METADATA lists packages that only ORT's model tools
 # (not installed) and its optional APIs use. The app's CPU sessions need none
 # of them, so the package deliberately does not require them.
@@ -14,4 +14,4 @@ addFilter(r"python-missing-require (flatbuffers|packaging|protobuf|sympy)")
 # D16 requires this exact C API binary. It has an upstream RUNPATH (including
 # an empty tail); the worker hash-checks and loads native ORT by absolute path
 # first. Keep the approved bytes, and scope this exception to that file.
-addFilter(r"binary-or-shlib-defines-rpath .*/cassini-viewer/sherpa/libsherpa-onnx-c-api\.so ")
+addFilter(r"binary-or-shlib-defines-rpath .*/cassini-talk/sherpa/libsherpa-onnx-c-api\.so ")

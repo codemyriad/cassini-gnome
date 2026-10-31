@@ -4,7 +4,7 @@
 import pytest
 
 np = pytest.importorskip("numpy")
-from cassini_viewer.speech_pipeline import SpeechDetector  # noqa: E402
+from cassini_talk.speech_pipeline import SpeechDetector  # noqa: E402
 
 
 class Session:

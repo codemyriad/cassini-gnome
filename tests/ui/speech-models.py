@@ -25,13 +25,13 @@ gi.require_version("Gsk", "4.0")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 from test_model_download import remote  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer import parakeet_model  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.model_download import ModelStore  # noqa: E402
-from cassini_viewer.parakeet_model import MODEL_ID, REVISION  # noqa: E402
-from cassini_viewer.settings_dialog import SettingsDialog  # noqa: E402
-from cassini_viewer.speech_models import SpeechModels  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk import parakeet_model  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.model_download import ModelStore  # noqa: E402
+from cassini_talk.parakeet_model import MODEL_ID, REVISION  # noqa: E402
+from cassini_talk.settings_dialog import SettingsDialog  # noqa: E402
+from cassini_talk.speech_models import SpeechModels  # noqa: E402
 
 
 def until(check):
@@ -147,7 +147,7 @@ try:
             app.begin_exit()
             window.close()
             app.do_shutdown()
-            assert "onnxruntime" not in sys.modules and "cassini_viewer.parakeet" not in sys.modules
+            assert "onnxruntime" not in sys.modules and "cassini_talk.parakeet" not in sys.modules
             print("PASS speech models: Download/retry/selection/Remove, persisted fallback, no engine in GTK")
 finally:
     fixture.close()

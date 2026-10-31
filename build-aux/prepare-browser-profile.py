@@ -19,9 +19,7 @@ def prepare(root, profile, recordings):
     hosts = profile / "NativeMessagingHosts"
     hosts.mkdir(parents=True, exist_ok=True)
     sys.path.insert(0, str(root / "src"))
-    from cassini_viewer.companion import cleanup_legacy_directory
 
-    cleanup_legacy_directory(hosts)
     scripts = profile.parent / "hosts"
     scripts.mkdir(mode=0o700, parents=True, exist_ok=True)
     scripts.chmod(0o700)
@@ -33,7 +31,7 @@ def prepare(root, profile, recordings):
         script.write_text(
             "#!/usr/bin/python3\nimport sys\n"
             f"sys.path.insert(0, {str(root / 'src')!r})\n"
-            f"from cassini_viewer.{module} import main\n"
+            f"from cassini_talk.{module} import main\n"
             f"sys.exit(main({arguments}))\n"
         )
         script.chmod(0o700)

@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from cassini_viewer.recording_session import RecordingSession, load_session
+from cassini_talk.recording_session import RecordingSession, load_session
 
 
 @pytest.fixture

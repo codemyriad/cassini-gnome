@@ -40,27 +40,23 @@ jobs:
         env:
           CASSINI_PARAKEET_TEST_CACHE: ${{ runner.temp }}/parakeet-models
         run: build-aux/flatpak/smoke.sh cassini-talk-devel.flatpak io.codemyriad.CassiniTalk.Devel
-      - name: Build the release identity for the installed ID-migration test
+      # Keep stable-profile build/install coverage; D51 removes only old-ID
+      # rebase/migration work, not validation of the release package itself.
+      - name: Build and freshly install the stable Cassini talk profile
         run: |
           flatpak-builder --user --install-deps-from=flathub --force-clean --disable-rofiles-fuse \
-            --repo="$RUNNER_TEMP/talk-rebase-repo" "$RUNNER_TEMP/talk-rebase-build" \
+            --repo="$RUNNER_TEMP/talk-stable-repo" "$RUNNER_TEMP/talk-stable-build" \
             build-aux/flatpak/io.codemyriad.CassiniTalk.json
-      - name: Fetch the immutable released 0.3.0 Flatpak
-        uses: actions/github-script@v8
+          flatpak build-bundle \
+            --repo-url=https://cassini.talk/download/linux/flatpak/ \
+            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+            "$RUNNER_TEMP/talk-stable-repo" cassini-talk.flatpak io.codemyriad.CassiniTalk
+          build-aux/flatpak/smoke.sh cassini-talk.flatpak io.codemyriad.CassiniTalk
+      - uses: actions/upload-artifact@v7
         with:
-          script: |
-            const fs = require('fs');
-            const release = await github.rest.repos.getReleaseByTag({...context.repo, tag: 'v0.3.0'});
-            const asset = release.data.assets.find(a => a.name === 'cassini-viewer.flatpak');
-            if (!asset) throw new Error('Released 0.3.0 Flatpak is missing');
-            const data = await github.rest.repos.getReleaseAsset({
-              ...context.repo, asset_id: asset.id, headers: {accept: 'application/octet-stream'}
-            });
-            fs.writeFileSync(`${process.env.RUNNER_TEMP}/cassini-viewer-0.3.0.flatpak`, Buffer.from(data.data));
-      - name: Rebase the actual old Flatpak and preserve its private data
-        env:
-          CASSINI_QA_RENAME: '1'
-        run: python3 tests/flatpak/rename.py "$RUNNER_TEMP/talk-rebase-repo" "$RUNNER_TEMP/cassini-viewer-0.3.0.flatpak" "$PWD/flatpak-rename.json"
+          name: flatpak-stable
+          path: cassini-talk.flatpak
+          if-no-files-found: error
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -72,5 +68,4 @@ jobs:
             flatpak-sandbox.log
             flatpak-trash.json
             flatpak-trash-portal.log
-            flatpak-rename.json
           retention-days: 7

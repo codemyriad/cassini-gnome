@@ -12,12 +12,12 @@ from pathlib import Path
 
 def patch_tree(root, marker):
     root = Path(root)
-    module = root / "cassini_viewer/main.py"
+    module = root / "cassini_talk/main.py"
     with module.open("a") as stream:
         stream.write(f'\nprint("CASSINI_TEST_IMAGE={marker}", file=sys.stderr, flush=True)\n')
     path = root / "build-info.json"
     value = json.loads(path.read_text())
-    value["files"]["cassini_viewer/main.py"] = hashlib.sha256(module.read_bytes()).hexdigest()
+    value["files"]["cassini_talk/main.py"] = hashlib.sha256(module.read_bytes()).hexdigest()
     del value["buildId"]
     value["buildId"] = hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     path.write_text(json.dumps(value, sort_keys=True, indent=2) + "\n")
@@ -27,7 +27,7 @@ def patch_tree(root, marker):
 def package(original, output, marker):
     temporary = output.parent / ("tree-" + marker)
     subprocess.run(["dpkg-deb", "--raw-extract", str(original), str(temporary)], check=True)
-    value = patch_tree(temporary / "usr/share/cassini-viewer", marker)
+    value = patch_tree(temporary / "usr/share/cassini-talk", marker)
     sums = temporary / "DEBIAN/md5sums"
     if sums.exists():
         lines = []

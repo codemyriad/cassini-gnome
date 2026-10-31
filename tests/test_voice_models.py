@@ -7,10 +7,10 @@ import pytest
 import test_model_download
 from test_transcription import until
 
-from cassini_viewer import campplus_model, diarization_models
-from cassini_viewer.model_download import ModelStore
-from cassini_viewer.sherpa_runtime import PINS
-from cassini_viewer.voice_models import VoiceModels
+from cassini_talk import campplus_model, diarization_models
+from cassini_talk.model_download import ModelStore
+from cassini_talk.sherpa_runtime import PINS
+from cassini_talk.voice_models import VoiceModels
 
 
 class Probe:
@@ -112,7 +112,7 @@ def test_licence_drift_never_fetches_weights(fixture):
 
 
 def test_campplus_constructor_rejects_missing_privacy_flags_before_native_loading(monkeypatch):
-    from cassini_viewer.campplus import SpeakerExtractor
+    from cassini_talk.campplus import SpeakerExtractor
 
     monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
     with pytest.raises(RuntimeError, match="privacy flags"):

@@ -23,11 +23,11 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer.browser_connection import BrowserConnection  # noqa: E402
-from cassini_viewer.library_window import LibraryWindow  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.settings_dialog import SettingsDialog  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk.browser_connection import BrowserConnection  # noqa: E402
+from cassini_talk.library_window import LibraryWindow  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.settings_dialog import SettingsDialog  # noqa: E402
 
 
 def until(check):
@@ -73,11 +73,11 @@ with tempfile.TemporaryDirectory() as temporary:
 
     with (
         patch(
-            "cassini_viewer.browser_service.ensure_service",
+            "cassini_talk.browser_service.ensure_service",
             side_effect=AssertionError("Sandbox tried unusable browser bridge"),
         ),
         patch.object(LibraryWindow, "_activity_tick", activity_tick),
-        patch("cassini_viewer.companion_bundle.store_listing_public", return_value=True),
+        patch("cassini_talk.companion_bundle.store_listing_public", return_value=True),
     ):
         app = CassiniApplication("com.gocassini.CompanionSandboxTest", "test", "development")
         app.register(None)
@@ -134,7 +134,7 @@ with tempfile.TemporaryDirectory() as temporary:
         assert not window.meeting_page._companion.get_visible()
         # An external host probe can be slow and fail transiently. It runs
         # off GTK; controls stay hidden until a later successful retry.
-        from cassini_viewer import flatpak_bridge as bridge
+        from cassini_talk import flatpak_bridge as bridge
 
         entered, release = threading.Event(), threading.Event()
         threads, beats = [], []

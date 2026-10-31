@@ -3,7 +3,7 @@
 import sys
 import types
 
-from cassini_viewer import runtime
+from cassini_talk import runtime
 
 
 def test_too_old():

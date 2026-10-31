@@ -6,7 +6,7 @@ from types import SimpleNamespace as S
 
 from test_transcription import until
 
-from cassini_viewer.voice_backfill import VoiceBackfill
+from cassini_talk.voice_backfill import VoiceBackfill
 
 
 def test_bounded_idle_scan_waits_for_both_models_and_never_runs_two_jobs():

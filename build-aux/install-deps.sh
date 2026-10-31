@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install the packages needed to build and/or run Cassini Viewer, using the
+# Install the packages needed to build and/or run Cassini talk, using the
 # distribution's own package manager (apt, dnf, zypper, pacman or apk).
 #   build-aux/install-deps.sh [--all|--build|--runtime] [--yes] [--dry-run]
 #     --all       build and runtime dependencies (default)

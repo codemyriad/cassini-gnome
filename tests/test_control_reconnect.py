@@ -10,9 +10,9 @@ from test_browser_capture import bind_capture, remote, server, start  # noqa: F4
 from test_browser_service import meeting, wait_for
 from test_browser_sessions import Extension
 
-from cassini_viewer.browser_audio_proxy import BrowserAudioProxy
-from cassini_viewer.browser_service import connect, request, send_packet
-from cassini_viewer.call_lifecycle import CALL_END_GRACE, CONTROL_RECONNECT_GRACE
+from cassini_talk.browser_audio_proxy import BrowserAudioProxy
+from cassini_talk.browser_service import connect, request, send_packet
+from cassini_talk.call_lifecycle import CALL_END_GRACE, CONTROL_RECONNECT_GRACE
 
 INSTANCE = "4242:99"
 CAPABILITIES = ["independent-sessions-v1", "call-evidence-v1", "page-state-v1"]
@@ -410,7 +410,7 @@ def test_fallback_stop_saves_its_local_path_without_waiting_for_browser_ack(serv
 def test_ordinary_extension_stop_during_reload_fallback_finalizes_all_audio(server):  # noqa: F811
     from test_browser_capture import remote, start
 
-    from cassini_viewer.browser_audio_proxy import BrowserAudioProxy
+    from cassini_talk.browser_audio_proxy import BrowserAudioProxy
 
     service, path, _ = server
     client = BrowserAudioProxy(path=path)

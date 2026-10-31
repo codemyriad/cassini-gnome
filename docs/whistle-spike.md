@@ -23,7 +23,7 @@ The bundle is about 20 MB, including 17 MB weights, and is glibc x86_64 only.
 CASSINI_WHISTLE_CACHE=/tmp/whistle-cache build-aux/whistle-cache.sh
 meson setup _build --prefix=/usr -Dwhistle=enabled -Dwhistle_cache=/tmp/whistle-cache
 DESTDIR="$PWD/_stage" meson install -C _build
-tests/whistle/run.sh "$PWD/_stage/usr/share/cassini-viewer/whistle" /tmp/whistle-results
+tests/whistle/run.sh "$PWD/_stage/usr/share/cassini-talk/whistle" /tmp/whistle-results
 ```
 
 (The spike's separate `whistle/meson.build` project is now the main
@@ -62,8 +62,8 @@ notes follow.
 
 No existing packaging manifest is changed by this spike. The separate
 `whistle/meson.build` verifies and installs the bundle under
-`share/cassini-viewer/whistle` and the two Python modules under the existing
-`share/cassini-viewer/cassini_viewer` module directory.
+`share/cassini-talk/whistle` and the two Python modules under the existing
+`share/cassini-talk/cassini_talk` module directory.
 
 For a later packaging PR: supply the three immutable build artifacts and their
 hashes from `pins.json` through each packaging system's build sources/cache;

@@ -16,13 +16,13 @@ try:
 except ValueError:
     pytest.skip("WAV publication needs GStreamer", allow_module_level=True)
 
-from cassini_viewer.export_audio import track_pcm
-from cassini_viewer.library import LibraryScanner
-from cassini_viewer.library_v2 import finalize
-from cassini_viewer.recording_details import recording_observation
-from cassini_viewer.recording_session import RecordingSession, WAVWriter, load_session
-from cassini_viewer.speech_pipeline import audio_chunks
-from cassini_viewer.transcription import prepare_tracks
+from cassini_talk.export_audio import track_pcm
+from cassini_talk.library import LibraryScanner
+from cassini_talk.library_v2 import finalize
+from cassini_talk.recording_details import recording_observation
+from cassini_talk.recording_session import RecordingSession, WAVWriter, load_session
+from cassini_talk.speech_pipeline import audio_chunks
+from cassini_talk.transcription import prepare_tracks
 
 
 def capture(tmp_path, monkeypatch, limit=3200):

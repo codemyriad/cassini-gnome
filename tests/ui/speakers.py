@@ -22,11 +22,11 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer import speaker_edits  # noqa: E402
-from cassini_viewer.folder_player import FolderPlayer  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.meeting_store import read_metadata  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk import speaker_edits  # noqa: E402
+from cassini_talk.folder_player import FolderPlayer  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.meeting_store import read_metadata  # noqa: E402
 
 
 def until(check):
@@ -158,9 +158,9 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: dialog.closed)
     assert (meeting.directory / "meeting.json").read_bytes() == before
     # A normal many-person meeting must keep its last speaker/action reachable.
-    from cassini_viewer.library import LibrarySpeaker
-    from cassini_viewer.meeting_text import reading_turns
-    from cassini_viewer.portable import Word
+    from cassini_talk.library import LibrarySpeaker
+    from cassini_talk.meeting_text import reading_turns
+    from cassini_talk.portable import Word
 
     window.monitor.close()
     height = window.get_height()

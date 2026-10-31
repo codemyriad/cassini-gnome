@@ -22,13 +22,13 @@ GOLDEN = ROOT / "tests/ux/voices/golden.json"
 
 def child(modules, model_path, runtime):
     sys.path.insert(0, modules)
-    from cassini_viewer.parakeet_worker import block_network
+    from cassini_talk.parakeet_worker import block_network
 
     sys.addaudithook(block_network)
-    from cassini_viewer.campplus import SpeakerExtractor
-    from cassini_viewer.diarization import voice_ordinals
-    from cassini_viewer.voices_logic import select_windows
-    from cassini_viewer.whistle_worker import emit
+    from cassini_talk.campplus import SpeakerExtractor
+    from cassini_talk.diarization import voice_ordinals
+    from cassini_talk.voices_logic import select_windows
+    from cassini_talk.whistle_worker import emit
 
     model = SpeakerExtractor(model_path, runtime)
     try:
@@ -62,10 +62,10 @@ def child(modules, model_path, runtime):
             assert value is not None
             output.append(dict(value, id=print["id"], windows=parts))
         model.close()
-        from cassini_viewer.meeting_store import atomic_json, update_metadata
-        from cassini_viewer.nemotron_model import MODEL_TAG as TURNS_MODEL
-        from cassini_viewer.worker_diarization import FORMAT, PARAMS
-        from cassini_viewer.worker_voices import run
+        from cassini_talk.meeting_store import atomic_json, update_metadata
+        from cassini_talk.nemotron_model import MODEL_TAG as TURNS_MODEL
+        from cassini_talk.worker_diarization import FORMAT, PARAMS
+        from cassini_talk.worker_voices import run
 
         cache = Path(os.environ.get("XDG_CACHE_HOME", "/out/cache"))
         cache.mkdir(parents=True, exist_ok=True)
@@ -124,9 +124,9 @@ def parent():
     parser.add_argument("--modules", type=Path, required=True)
     args = parser.parse_args()
     sys.path.insert(0, str(args.modules))
-    from cassini_viewer.parakeet_client import ParakeetClient
-    from cassini_viewer.voice_models import VoiceProbe
-    from cassini_viewer.voices_logic import REVISION, cosine, match
+    from cassini_talk.parakeet_client import ParakeetClient
+    from cassini_talk.voice_models import VoiceProbe
+    from cassini_talk.voices_logic import REVISION, cosine, match
 
     assert os.environ.get("CASSINI_WHISTLE_NETWORK_NONE") == "1"
     assert {name for _, name in socket.if_nameindex()} == {"lo"}
@@ -201,7 +201,7 @@ def parent():
         )
         reports.append(report)
     assert all(h == hashes[0] for h in hashes) and len({r["workerPid"] for r in reports}) == 3
-    assert "numpy" not in sys.modules and "cassini_viewer.campplus" not in sys.modules
+    assert "numpy" not in sys.modules and "cassini_talk.campplus" not in sys.modules
     assert "libsherpa-onnx-c-api" not in Path("/proc/self/maps").read_text()
     print(
         "PASS S-9: production C API, 3 fresh offline workers, six exact inputs, 15 cosines, AUTO/SUGGESTED, no engine in parent"

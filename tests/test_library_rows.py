@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer.library import Meeting
+from cassini_talk.library import Meeting
 
 BASE = Meeting(
     id="00000000-0000-4000-8000-000000000001",

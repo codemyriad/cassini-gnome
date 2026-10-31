@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer import whistle_client, whistle_worker
+from cassini_talk import whistle_client, whistle_worker
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -32,7 +32,7 @@ __attribute__((constructor)) static void construct(void) {
 }""")
     subprocess.run([compiler, "-shared", "-fPIC", str(source), "-o", str(library)], check=True)
     script = """import ctypes,sys
-from cassini_viewer.whistle_worker import guarded_load
+from cassini_talk.whistle_worker import guarded_load
 try:
     guarded_load(lambda: ctypes.CDLL(sys.argv[1]))
 except RuntimeError:

@@ -16,7 +16,7 @@ import numpy as np
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
 
-from cassini_viewer.speech_pipeline import audio_chunks, audio_segments  # noqa: E402
+from cassini_talk.speech_pipeline import audio_chunks, audio_segments  # noqa: E402
 
 assert os.environ.get("CASSINI_WHISTLE_NETWORK_NONE") == "1"
 Gst.init(None)
@@ -71,9 +71,9 @@ report = dict(
 (output / "stream-linux.json").write_text(json.dumps(report, indent=2) + "\n")
 # Re-exporting a long received recording must preserve its compressed packets,
 # stereo shape and bounded memory, without another decoder or a /tmp WAV.
-from cassini_viewer import portable  # noqa: E402
-from cassini_viewer.exporting import export_meeting  # noqa: E402
-from cassini_viewer.open_meeting import load_open_meeting  # noqa: E402
+from cassini_talk import portable  # noqa: E402
+from cassini_talk.exporting import export_meeting  # noqa: E402
+from cassini_talk.open_meeting import load_open_meeting  # noqa: E402
 
 export_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 export_start = time.monotonic()

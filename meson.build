@@ -10,30 +10,28 @@ i18n = import('i18n')
 gnome = import('gnome')
 python = import('python')
 
-application_name = run_command(find_program('python3'), files('build-aux/product-name.py'), files('src/cassini_viewer/strings.json'), check: true).stdout().strip()
+application_name = run_command(find_program('python3'), files('build-aux/product-name.py'), files('src/cassini_talk/strings.json'), check: true).stdout().strip()
 
 base_id = 'io.codemyriad.CassiniTalk'
-legacy_application_id = 'com.gocassini.Viewer'
 if get_option('profile') == 'development'
   application_id = base_id + '.Devel'
-  legacy_application_id += '.Devel'
 else
   application_id = base_id
 endif
 
-pkgdatadir = get_option('prefix') / get_option('datadir') / 'cassini-viewer'
-moduledir = pkgdatadir / 'cassini_viewer'
+pkgdatadir = get_option('prefix') / get_option('datadir') / 'cassini-talk'
+moduledir = pkgdatadir / 'cassini_talk'
 # The pinned ONNX Runtime wheel, unpacked (-Dwhistle=enabled): native code,
 # private to the app, and loaded only by the recognition child.
 if get_option('whistle').enabled()
-  onnxruntime_dir = get_option('prefix') / get_option('libdir') / 'cassini-viewer' / 'python'
+  onnxruntime_dir = get_option('prefix') / get_option('libdir') / 'cassini-talk' / 'python'
 else
   onnxruntime_dir = ''
 endif
 
 sherpa_dir = ''
 if get_option('sherpa').enabled()
-  sherpa_dir = get_option('prefix') / get_option('libdir') / 'cassini-viewer' / 'sherpa'
+  sherpa_dir = get_option('prefix') / get_option('libdir') / 'cassini-talk' / 'sherpa'
 endif
 
 # Runtime requirements, checked by gi.require_version() at startup:

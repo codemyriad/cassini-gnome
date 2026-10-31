@@ -8,12 +8,12 @@ import threading
 import pytest
 from test_transcription import until
 
-from cassini_viewer.library import LibraryScanner
-from cassini_viewer.meeting_store import read_metadata, update_metadata
-from cassini_viewer.nemotron_model import MODEL_TAG
-from cassini_viewer.recording_session import RecordingSession
-from cassini_viewer.transcription import TranscriptionQueue
-from cassini_viewer.worker_diarization import FORMAT, PARAMS
+from cassini_talk.library import LibraryScanner
+from cassini_talk.meeting_store import read_metadata, update_metadata
+from cassini_talk.nemotron_model import MODEL_TAG
+from cassini_talk.recording_session import RecordingSession
+from cassini_talk.transcription import TranscriptionQueue
+from cassini_talk.worker_diarization import FORMAT, PARAMS
 
 
 class Models:
@@ -245,7 +245,7 @@ def test_close_after_worker_return_does_not_flush_buffered_words(system_capture,
 
 
 def test_cancelled_attribution_remains_running_and_restart_redoes_missing_turns(system_capture, tmp_path, monkeypatch):
-    from cassini_viewer import diarization, transcript_publish
+    from cassini_talk import diarization, transcript_publish
 
     session = system_capture
     update_metadata(session.directory, speakers=[dict(id="others~1", name="Alice", provenance="user", colourIndex=0)])

@@ -136,7 +136,7 @@ class InstalledBuild:
         location = result.stdout.decode().strip()
         if len(result.stdout) > 4096 or not location.startswith("/") or any(c in location for c in "\r\n\\\0"):
             raise OSError("Invalid installed application location")
-        root = Path(location) / "files/share/cassini-viewer"
+        root = Path(location) / "files/share/cassini-talk"
         identity = root / "build-info.json"
         result = subprocess.run(
             host_command(["head", "-c", str(LIMIT + 1), "--", str(identity)], watch=True),

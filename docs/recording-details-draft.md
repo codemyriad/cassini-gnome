@@ -47,7 +47,7 @@ No recognition, audio, VAD, diarization or voiceprint input changes.
 ## Optional app-owned metadata (D28 Part A draft)
 
 The on-disk version stays integer `1`. The optional top-level `recordingDetails`
-object is defined in `src/cassini_viewer/meeting.schema.json`; all other root and
+object is defined in `src/cassini_talk/meeting.schema.json`; all other root and
 nested unknown members remain preserved. This is bookkeeping in `meeting.json`,
 not an extension of `session.json` or the browser protocol.
 

@@ -5,11 +5,11 @@ from datetime import UTC, datetime
 import pytest
 from test_library import capture, received, write_metadata
 
-from cassini_viewer import portable, ux_formats
-from cassini_viewer.library import scan_library
+from cassini_talk import portable, ux_formats
+from cassini_talk.library import scan_library
 
 
-def test_legacy_viewer_only_opens_the_default_embedded_body(tmp_path):
+def test_legacy_player_only_opens_the_default_embedded_body(tmp_path):
     directory = received(tmp_path, "016-two-transcripts.opus")
     metadata = json.loads((directory / "meeting.json").read_text())
     original = directory / "original.opus"
@@ -22,7 +22,7 @@ def test_legacy_viewer_only_opens_the_default_embedded_body(tmp_path):
     assert meeting.words and meeting.legacy_transcript_file is None
 
 
-def test_folder_and_received_sidecars_are_not_sent_to_sidecar_unaware_viewer(tmp_path):
+def test_folder_and_received_sidecars_are_not_sent_to_sidecar_unaware_player(tmp_path):
     session = capture(tmp_path)
     directory = received(tmp_path, "002-plain-audio.opus")
     for folder in (session.directory, directory):

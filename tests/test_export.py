@@ -14,14 +14,14 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer import portable
-from cassini_viewer.export_audio import limited_pcm
-from cassini_viewer.export_model import encode_choice, file_stem, markdown
-from cassini_viewer.exporting import export_meeting
-from cassini_viewer.library import LibraryScanner
-from cassini_viewer.open_meeting import load_open_meeting
-from cassini_viewer.received import import_received
-from cassini_viewer.recording_session import RecordingSession
+from cassini_talk import portable
+from cassini_talk.export_audio import limited_pcm
+from cassini_talk.export_model import encode_choice, file_stem, markdown
+from cassini_talk.exporting import export_meeting
+from cassini_talk.library import LibraryScanner
+from cassini_talk.open_meeting import load_open_meeting
+from cassini_talk.received import import_received
+from cassini_talk.recording_session import RecordingSession
 
 HERE = Path(__file__).parent / "export"
 ASSETS = Path(__file__).parents[1] / "ux/library-vectors/assets"
@@ -268,7 +268,7 @@ def test_header_page_shared_with_audio_is_rewritten_without_changing_packets(tmp
 
 
 def test_null_words_import_as_none_and_remain_writable(tmp_path, monkeypatch):
-    from cassini_viewer import portable_writer
+    from cassini_talk import portable_writer
 
     original = portable_writer.chunk_set
 
@@ -284,8 +284,8 @@ def test_null_words_import_as_none_and_remain_writable(tmp_path, monkeypatch):
 
 
 def test_empty_default_does_not_claim_all_transcripts_are_empty(tmp_path, monkeypatch):
-    from cassini_viewer import exporting
-    from cassini_viewer.portable_writer import MANIFEST_MIME, WORDS_MIME, chunk_set
+    from cassini_talk import exporting
+    from cassini_talk.portable_writer import MANIFEST_MIME, WORDS_MIME, chunk_set
 
     original = exporting.descriptors
 
@@ -333,7 +333,7 @@ def test_received_import_normalizes_copy_names_and_paths_without_changing_bytes(
 
 
 def test_received_import_rejects_oversized_notes_before_publication(tmp_path, monkeypatch):
-    from cassini_viewer import received
+    from cassini_talk import received
 
     source = ASSETS / "plain-title.opus"
     original = received.load_open_meeting
@@ -346,7 +346,7 @@ def test_received_import_rejects_oversized_notes_before_publication(tmp_path, mo
 
 
 def test_received_import_cleans_published_folder_if_first_scan_fails(tmp_path, monkeypatch):
-    from cassini_viewer import received
+    from cassini_talk import received
 
     def fail(directory):
         raise ValueError("Synthetic scan failure")
@@ -396,7 +396,7 @@ def test_recovered_session_exports_without_inventing_date_or_alignment(tmp_path)
 def test_export_stamp_is_current_and_known_meeting_start_is_only_recorded_at_local(tmp_path):
     from datetime import UTC, datetime
 
-    from cassini_viewer.portable_writer import descriptors
+    from cassini_talk.portable_writer import descriptors
 
     meeting = replace(load_open_meeting(ASSETS / "plain-title.opus"), started_at_ms=1730611800000, origin="own")
     with meeting.audio_file.open("rb") as audio:
@@ -412,7 +412,7 @@ def test_export_stamp_is_current_and_known_meeting_start_is_only_recorded_at_loc
 
 
 def test_reexport_keeps_explicit_recording_label_and_never_promotes_import_date(tmp_path):
-    from cassini_viewer.portable_writer import descriptors, rewrite_tags
+    from cassini_talk.portable_writer import descriptors, rewrite_tags
 
     model = replace(load_open_meeting(ASSETS / "plain-title.opus"), started_at_ms=1730611800000)
     with model.audio_file.open("rb") as audio:

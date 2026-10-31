@@ -9,9 +9,9 @@ from zoneinfo import ZoneInfo
 import pytest
 import test_library_vectors
 
-from cassini_viewer.library import LibraryScanner, LibrarySnapshot
-from cassini_viewer.portable import Word
-from cassini_viewer.search_index import SearchIndex, date_range, marked_markup
+from cassini_talk.library import LibraryScanner, LibrarySnapshot
+from cassini_talk.portable import Word
+from cassini_talk.search_index import SearchIndex, date_range, marked_markup
 
 NOW = 1793107080000
 shared_library = test_library_vectors.shared_library
@@ -151,8 +151,8 @@ def test_close_interrupts_large_fts_query(index):
 
 
 def test_received_named_speaker_without_sidecar_provenance_is_in_menu(index):
-    from cassini_viewer import ux_formats as fmt
-    from cassini_viewer.library import LibrarySpeaker
+    from cassini_talk import ux_formats as fmt
+    from cassini_talk.library import LibrarySpeaker
 
     meeting = next(iter(index.current.values()))
     meeting = replace(
@@ -169,7 +169,7 @@ def test_received_named_speaker_without_sidecar_provenance_is_in_menu(index):
 
 
 def test_long_turn_excerpt_keeps_hit_and_markup_bounded():
-    from cassini_viewer.search_index import excerpt_markup
+    from cassini_talk.search_index import excerpt_markup
 
     marked = "<unsafe> " * 10000 + "\x01budget & costs\x02" + " tail" * 10000
     excerpt = excerpt_markup(marked)
@@ -304,9 +304,9 @@ def test_d38_rejoined_interrupted_turn_never_pairs_quotes_across_speakers(index,
     # overlapping interjection, and the preview and reader used to pair A's
     # two quotes across B into “yes then no”. Every surface pairs per
     # consecutive speaker run, so both unmatched quotes drop everywhere.
-    from cassini_viewer import export_model
-    from cassini_viewer.meeting_text import item_markup, reading_turns
-    from cassini_viewer.transcript import build_turns, visible_turns
+    from cassini_talk import export_model
+    from cassini_talk.meeting_text import item_markup, reading_turns
+    from cassini_talk.transcript import build_turns, visible_turns
 
     words = (
         Word("a", 0, 1000, 'He said "yes'),

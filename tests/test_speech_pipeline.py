@@ -5,14 +5,14 @@ from pathlib import Path
 import pytest
 
 np = pytest.importorskip("numpy")
-from cassini_viewer.speech_pipeline import SpeechGate, resampled_chunks  # noqa: E402
+from cassini_talk.speech_pipeline import SpeechGate, resampled_chunks  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent / "whistle/pipeline"
 
 
 def test_shared_fir_golden_and_random_access_edges_are_exact():
     assert (ROOT / "fir-48k-16k.json").read_bytes() == (
-        ROOT.parents[2] / "src/cassini_viewer/fir-48k-16k.json"
+        ROOT.parents[2] / "src/cassini_talk/fir-48k-16k.json"
     ).read_bytes()
     path = ROOT / "pipeline-input-48k.wav"
     expected = np.fromfile(ROOT / "pipeline-resampled-16k.f32", dtype="<f4")
@@ -78,7 +78,7 @@ def test_gate_caps_long_speech_with_live_exact_frame_boundary():
 
 
 def test_automatic_language_and_unknown_offset_zero_with_diagnostic(tmp_path, monkeypatch):
-    from cassini_viewer import speech_pipeline as pipeline
+    from cassini_talk import speech_pipeline as pipeline
 
     path = tmp_path / "mono.wav"
     with wave.open(str(path), "wb") as stream:
@@ -119,7 +119,7 @@ def test_streamed_fir_matches_immutable_reference_and_arbitrary_input_boundaries
     import wave
     from pathlib import Path
 
-    from cassini_viewer.speech_pipeline import TAPS, resampled_stream
+    from cassini_talk.speech_pipeline import TAPS, resampled_stream
 
     root = Path(__file__).parent / "whistle/pipeline"
     with wave.open(str(root / "pipeline-input-48k.wav")) as audio:
@@ -152,7 +152,7 @@ def test_streamed_fir_matches_immutable_reference_and_arbitrary_input_boundaries
 
 
 def test_received_second_pass_reports_progress_while_skipping_a_long_quiet_span(monkeypatch):
-    from cassini_viewer import speech_pipeline as pipeline
+    from cassini_talk import speech_pipeline as pipeline
 
     def chunks(_track):
         for _ in range(10):

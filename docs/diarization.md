@@ -2,7 +2,7 @@
 
 Tell speakers apart uses `nemotron-3-diarization-int8`, downloaded only on an
 explicit request in Settings → Transcription → Speakers. The registry is
-`src/cassini_viewer/models.json`. Both the manifest and the compressed and raw
+`src/cassini_talk/models.json`. Both the manifest and the compressed and raw
 files must match its pins. The model's licence is **OpenMDW-1.1**; the actual dist
 notice is retained with the revision. The weights are not included in a package.
 

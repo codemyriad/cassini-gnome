@@ -27,15 +27,15 @@ from library_v2_support import (  # noqa: E402
     write_wav_blocks,
 )
 
-from cassini_viewer import portable  # noqa: E402
-from cassini_viewer.export_audio import limited_pcm  # noqa: E402
-from cassini_viewer.library_v2 import finalize, mixdown, ogg  # noqa: E402
+from cassini_talk import portable  # noqa: E402
+from cassini_talk.export_audio import limited_pcm  # noqa: E402
+from cassini_talk.library_v2 import finalize, mixdown, ogg  # noqa: E402
 
 FRAME = mixdown.FRAME
 
 
 def span(start_ms=0.0, anchors=(), rate=RATE, frames=RATE):
-    from cassini_viewer.track_source import SpanInfo
+    from cassini_talk.track_source import SpanInfo
 
     info = SpanInfo("pcm", ("track-x.wav",), frames, rate, 1, frames, rate)
     return mixdown.Span("x", Path("/nonexistent"), info, start_ms, tuple(anchors))
@@ -189,7 +189,7 @@ LONG_CHILD = textwrap.dedent(
     """
     import os, sys
     sys.path[:0] = [sys.argv[1], sys.argv[2]]
-    from cassini_viewer.library_v2 import finalize
+    from cassini_talk.library_v2 import finalize
     result = finalize.finalize(sys.argv[3], sys.argv[4], zone="UTC")
     print(result.name)
     """

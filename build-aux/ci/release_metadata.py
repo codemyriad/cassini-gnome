@@ -24,7 +24,7 @@ def check(root, tag=None):
     versions = {
         "meson": value(root, "meson.build", r"^\s*version:\s*'([^']+)'"),
         "debian": value(root, "debian/changelog", r"\Acassini-talk \(([^)]+)\)").split("+")[0].split("-")[0],
-        "rpm": value(root, "build-aux/rpm/cassini-viewer.spec", r"^Version:\s*(\S+)"),
+        "rpm": value(root, "build-aux/rpm/cassini-talk.spec", r"^Version:\s*(\S+)"),
         "arch": value(root, "build-aux/arch/PKGBUILD", r"^pkgver=(\S+)"),
         "news": value(root, "NEWS", r"^Version (\d+\.\d+\.\d+)$"),
         "man": value(root, "data/cassini-talk.1", r'\A\.TH [^\n]*"cassini-talk ([^"]+)"'),

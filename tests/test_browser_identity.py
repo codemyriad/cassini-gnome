@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from test_browser_service import service, wait_for  # noqa: F401
 from test_control_reconnect import inventory, peer
 
-from cassini_viewer.browser_service import request
+from cassini_talk.browser_service import request
 
 
 def test_public_id_and_a_selected_action_follow_the_reconnected_call(service):  # noqa: F811
@@ -76,7 +76,7 @@ def test_navigation_gets_a_new_id_and_an_old_selection_cannot_start_the_new_call
     import pytest
     from test_browser_service import meeting
 
-    from cassini_viewer.browser_service import send_packet
+    from cassini_talk.browser_service import send_packet
 
     server, path = service
     extension = peer(path)
@@ -98,7 +98,7 @@ def test_navigation_gets_a_new_id_and_an_old_selection_cannot_start_the_new_call
 def test_retiring_stale_owner_does_not_erase_the_replacements_stopped_call(service):  # noqa: F811
     from test_browser_service import meeting
 
-    from cassini_viewer.browser_service import send_packet
+    from cassini_talk.browser_service import send_packet
 
     server, path = service
     old = peer(path)
@@ -117,7 +117,7 @@ def test_retiring_stale_owner_does_not_erase_the_replacements_stopped_call(servi
 
 
 def test_pending_start_recovers_its_replacement_status_without_sending_start_twice(service):  # noqa: F811
-    from cassini_viewer.browser_service import send_packet
+    from cassini_talk.browser_service import send_packet
 
     server, path = service
     old = peer(path)

@@ -3,8 +3,8 @@ import time
 
 from test_library import ROOT, capture, fingerprint
 
-from cassini_viewer.open_meeting import load_open_meeting
-from cassini_viewer.transcription import TranscriptionQueue
+from cassini_talk.open_meeting import load_open_meeting
+from cassini_talk.transcription import TranscriptionQueue
 
 
 def test_external_folder_is_read_only_and_queue_enforces_library_boundary(tmp_path, monkeypatch):
@@ -30,7 +30,7 @@ def test_external_folder_is_read_only_and_queue_enforces_library_boundary(tmp_pa
 
 
 def test_library_session_open_is_editable_and_does_not_scan_siblings(tmp_path, monkeypatch):
-    from cassini_viewer.library import LibraryScanner
+    from cassini_talk.library import LibraryScanner
 
     session, neighbor = capture(tmp_path), capture(tmp_path)
     seen = []

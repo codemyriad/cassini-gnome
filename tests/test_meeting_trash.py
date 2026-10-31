@@ -18,9 +18,9 @@ except ValueError:
     pytest.skip("GIO/Adwaita available in distro jobs", allow_module_level=True)
 from gi.repository import GLib  # noqa: E402
 
-from cassini_viewer.meeting_trash import trash_owned  # noqa: E402
-from cassini_viewer.trash_cleanup import TrashCleanup  # noqa: E402
-from cassini_viewer.voice_store import VoiceStore  # noqa: E402
+from cassini_talk.meeting_trash import trash_owned  # noqa: E402
+from cassini_talk.trash_cleanup import TrashCleanup  # noqa: E402
+from cassini_talk.voice_store import VoiceStore  # noqa: E402
 
 
 @pytest.fixture
@@ -70,7 +70,7 @@ def test_failed_native_trash_keeps_audio_and_prints(roots):
 
 
 def test_busy_capture_cannot_be_trashed(roots):
-    from cassini_viewer.recording_session import RecordingSession
+    from cassini_talk.recording_session import RecordingSession
 
     library, store = roots
     session = RecordingSession(None, source="gnome")
@@ -131,7 +131,7 @@ def test_cancellation_exclusion_spans_trash_and_private_cleanup(roots, tmp_path)
 
 
 def test_hidden_save_after_trash_is_a_removed_path_not_an_error(roots, tmp_path):
-    from cassini_viewer.capture_guard import queue_saved_for_later
+    from cassini_talk.capture_guard import queue_saved_for_later
 
     library, store = roots
     session = capture(library)
@@ -149,7 +149,7 @@ def test_trash_drains_closed_speaker_and_export_writers_off_the_caller(tmp_path,
     import threading
     from concurrent.futures import Future, ThreadPoolExecutor
 
-    from cassini_viewer import meeting_trash as module
+    from cassini_talk import meeting_trash as module
 
     class Writer(Future):
         def __init__(self):
@@ -234,7 +234,7 @@ def test_unavailable_library_root_does_not_discard_private_prints(roots):
 def test_flush_reports_failure_to_restart_and_never_calls_success_on_failure(tmp_path, failure):
     from concurrent.futures import Future
 
-    from cassini_viewer.meeting_trash import MeetingTrash
+    from cassini_talk.meeting_trash import MeetingTrash
 
     held, called = [True], []
     meeting = SimpleNamespace(directory=tmp_path / "Recording-test", key="test")

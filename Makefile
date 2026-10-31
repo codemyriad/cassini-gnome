@@ -19,7 +19,7 @@ help:
 	@echo "  make test-recording  end-to-end recording tests (docker, xvfb; see tests/recording)"
 	@echo "  make lint            browser-protocol integrity, ruff check and format check"
 	@echo "  make run [FILE=x]    install into $(PREFIX) and run from there"
-	@echo "  make pot             regenerate po/cassini-viewer.pot"
+	@echo "  make pot             regenerate po/cassini-talk.pot"
 	@echo "Packages (written to dist/; amd64/x86_64, with the offline writing-down engine):"
 	@echo "  make whistle-cache   download the pinned engine files into .whistle-cache"
 	@echo "  make deb             .deb in an Ubuntu 26.04 container"
@@ -64,10 +64,10 @@ uninstall:
 run: install
 	GSETTINGS_SCHEMA_DIR="$(PREFIX)/share/glib-2.0/schemas" \
 	XDG_DATA_DIRS="$(PREFIX)/share:$${XDG_DATA_DIRS:-/usr/local/share:/usr/share}" \
-		"$(PREFIX)/bin/cassini-viewer" $(FILE)
+		"$(PREFIX)/bin/cassini-talk" $(FILE)
 
 pot: $(BUILDDIR)/build.ninja
-	meson compile -C $(BUILDDIR) cassini-viewer-pot
+	meson compile -C $(BUILDDIR) cassini-talk-pot
 
 # The package builds read the pinned writing-down artifacts from here and
 # never download them themselves; the script only re-checks a full cache.

@@ -10,9 +10,9 @@ from test_voice_queue import Models, meeting
 from test_voice_store import embedding
 from test_whistle_spike import child_client
 
-from cassini_viewer.meeting_store import read_metadata
-from cassini_viewer.transcription import TranscriptionQueue
-from cassini_viewer.voice_store import VoiceStore
+from cassini_talk.meeting_store import read_metadata
+from cassini_talk.transcription import TranscriptionQueue
+from cassini_talk.voice_store import VoiceStore
 
 
 def test_cancel_queued_and_running_transcription_keeps_other_meeting(tmp_path, monkeypatch):
@@ -82,7 +82,7 @@ time.sleep(30)
 
 
 def test_cancel_running_voice_job_keeps_next_meeting_and_no_private_print(tmp_path, monkeypatch):
-    from cassini_viewer import voice_models
+    from cassini_talk import voice_models
 
     directories = [meeting(tmp_path) for _ in range(2)]
     entered, release = threading.Event(), threading.Event()

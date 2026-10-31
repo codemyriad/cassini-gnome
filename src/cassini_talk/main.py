@@ -170,7 +170,6 @@ class CassiniApplication(Adw.Application):
 
         self.comfort = RecordingComfort(self, automatic=os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1")
         if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
-            self._start_legacy_host_cleanup()
             from .browser_connection import BrowserConnection
 
             self.browser_connection = BrowserConnection(
@@ -243,7 +242,7 @@ class CassiniApplication(Adw.Application):
             self.set_accels_for_action(f"app.{name}", accels)
 
     def watch_player(self, player):
-        """Only one viewer plays at a time; recording devices are independent."""
+        """Only one app plays at a time; recording devices are independent."""
         if getattr(player, "_cassini_watched", False):
             return
         player._cassini_watched = True
@@ -413,11 +412,6 @@ class CassiniApplication(Adw.Application):
         from .companion import in_flatpak
 
         return in_flatpak()
-
-    def _start_legacy_host_cleanup(self):
-        from .companion import start_legacy_cleanup
-
-        start_legacy_cleanup()
 
     @property
     def browser_companion_available(self):

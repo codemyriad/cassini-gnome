@@ -24,9 +24,9 @@ from gi.repository import GLib, Gst  # noqa: E402
 
 Gst.init(None)
 
-from cassini_viewer import portable, track_source  # noqa: E402
-from cassini_viewer.library import LibraryScanner  # noqa: E402
-from cassini_viewer.recording_session import RecordingSession, load_session  # noqa: E402
+from cassini_talk import portable, track_source  # noqa: E402
+from cassini_talk.library import LibraryScanner  # noqa: E402
+from cassini_talk.recording_session import RecordingSession, load_session  # noqa: E402
 
 OPUS_FRAME_MS = 20
 
@@ -319,7 +319,7 @@ def until(predicate, timeout=10):
 
 
 def play(meeting, seek=None):
-    from cassini_viewer.folder_player import FolderPlayer
+    from cassini_talk.folder_player import FolderPlayer
 
     sink = Gst.ElementFactory.make("appsink", None)
     sink.set_property("caps", Gst.Caps.from_string("audio/x-raw,format=S16LE,layout=interleaved,rate=48000,channels=1"))
@@ -393,9 +393,9 @@ def test_mixed_session_plays(tmp_path):
 
 def test_transcription_input_is_equivalent(tmp_path):
     np = pytest.importorskip("numpy")
-    from cassini_viewer.diarization_audio import rejoin
-    from cassini_viewer.speech_pipeline import audio_chunks, audio_segments
-    from cassini_viewer.transcription import prepare_tracks
+    from cassini_talk.diarization_audio import rejoin
+    from cassini_talk.speech_pipeline import audio_chunks, audio_segments
+    from cassini_talk.transcription import prepare_tracks
 
     wav, opus = twin(tmp_path)
     before, before_speakers = prepare_tracks(wav)
@@ -424,7 +424,7 @@ def test_transcription_input_is_equivalent(tmp_path):
 
 
 def export_and_decode(meeting, destination):
-    from cassini_viewer.exporting import export_meeting
+    from cassini_talk.exporting import export_meeting
 
     exported = export_meeting(meeting, destination)
     value = portable.read_meeting(str(exported))
@@ -533,7 +533,7 @@ def test_salvage_values_rules():
 
 
 def test_recovery_pairs_surviving_source_file_records_like_the_scanner(tmp_path):
-    from cassini_viewer.recording_session import recover_session
+    from cassini_talk.recording_session import recover_session
 
     directory = capture(tmp_path)
     compact(directory, "mic", keep_wav=True)
@@ -551,7 +551,7 @@ def test_recovery_pairs_surviving_source_file_records_like_the_scanner(tmp_path)
 
 
 def test_a_symlinked_session_folder_is_never_followed(tmp_path):
-    from cassini_viewer.recording_session import recover_session
+    from cassini_talk.recording_session import recover_session
 
     directory = capture(tmp_path / "real")
     compact(directory, "mic")
@@ -574,7 +574,7 @@ def test_a_symlinked_session_folder_is_never_followed(tmp_path):
 
 @pytest.mark.parametrize("layout", ["wav-only", "mixed"])
 def test_recovery_never_reads_audio_behind_a_session_symlink(tmp_path, layout):
-    from cassini_viewer.recording_session import recover_session
+    from cassini_talk.recording_session import recover_session
 
     directory = capture(tmp_path / "outside")
     if layout == "mixed":

@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from cassini_viewer.recording_session import BrowserHost, ProtocolError, RecordingSession, WAVWriter
-from cassini_viewer.session_events import END_REASONS, append_events, read_events, source_state
+from cassini_talk.recording_session import BrowserHost, ProtocolError, RecordingSession, WAVWriter
+from cassini_talk.session_events import END_REASONS, append_events, read_events, source_state
 
 
 @pytest.mark.parametrize("reason", sorted(END_REASONS))

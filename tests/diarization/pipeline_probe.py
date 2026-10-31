@@ -21,10 +21,10 @@ parser.add_argument("--modules", type=Path, required=True)
 parser.add_argument("--parakeet-model", type=Path)
 args = parser.parse_args()
 sys.path.insert(0, str(args.modules))
-from cassini_viewer.diarization import apply_group  # noqa: E402
-from cassini_viewer.diarization_models import DiarizationProbe  # noqa: E402
-from cassini_viewer.sherpa_runtime import runtime_path  # noqa: E402
-from cassini_viewer.whistle_client import WhistleClient  # noqa: E402
+from cassini_talk.diarization import apply_group  # noqa: E402
+from cassini_talk.diarization_models import DiarizationProbe  # noqa: E402
+from cassini_talk.sherpa_runtime import runtime_path  # noqa: E402
+from cassini_talk.whistle_client import WhistleClient  # noqa: E402
 
 assert os.environ.get("CASSINI_WHISTLE_NETWORK_NONE") == "1"
 assert {name for _, name in socket.if_nameindex()} == {"lo"}
@@ -69,7 +69,7 @@ options = dict(
 for reused in (False, True):
     events = []
     if args.parakeet_model:
-        from cassini_viewer.parakeet_client import ParakeetClient
+        from cassini_talk.parakeet_client import ParakeetClient
 
         client = ParakeetClient(args.bundle, args.parakeet_model, runtime_path(), timeout=120)
     else:
@@ -87,7 +87,7 @@ for reused in (False, True):
     chosen = apply_group("others", golden["expected"]["words"], turns)
     # Native labels are arbitrary. Use the same first-turn ordinal rule as
     # the assignment function, independently of the C API speaker count.
-    from cassini_viewer.diarization import voice_ordinals
+    from cassini_talk.diarization import voice_ordinals
 
     voice_ids = {s: f"others~{n}" for s, n in voice_ordinals(turns).items()}
     actual = dict(

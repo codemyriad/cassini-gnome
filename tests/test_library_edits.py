@@ -16,10 +16,10 @@ except ValueError:
 
 from library_v2_support import simple_session
 
-from cassini_viewer import meeting_store, portable
-from cassini_viewer.library import LibraryScanner
-from cassini_viewer.library_edits import commit_metadata, transaction
-from cassini_viewer.library_v2 import finalize, journal, publish, xschema
+from cassini_talk import meeting_store, portable
+from cassini_talk.library import LibraryScanner
+from cassini_talk.library_edits import commit_metadata, transaction
+from cassini_talk.library_v2 import finalize, journal, publish, xschema
 
 
 @pytest.fixture
@@ -164,8 +164,8 @@ def test_transaction_is_required_and_identity_members_cannot_be_changed(publishe
 
 
 def test_edit_preserves_foreign_x_alternate_body_unknown_tags_and_vendor(published):
-    from cassini_viewer.library_v2 import edit
-    from cassini_viewer.portable_writer import MANIFEST_MIME, WORDS_MIME, chunk_set
+    from cassini_talk.library_v2 import edit
+    from cassini_talk.portable_writer import MANIFEST_MIME, WORDS_MIME, chunk_set
 
     root, sid, directory, original = published
     manifest = portable.read_meeting(str(original)).manifest
@@ -228,7 +228,7 @@ def test_file_truth_and_recovery_after_transcript_replacement_before_metadata(pu
 
 
 def test_existing_transcription_queue_commits_words_after_concurrent_title_edit(published, monkeypatch):
-    from cassini_viewer.transcription import TranscriptionQueue
+    from cassini_talk.transcription import TranscriptionQueue
 
     root, sid, directory, original = published
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(root))
@@ -295,7 +295,7 @@ def test_file_only_metadata_edit_does_not_create_a_working_folder(published, mon
     monkeypatch.setenv("XDG_CONFIG_HOME", str(root / "private-config"))
     shutil.rmtree(directory)
     digest = audio_digest(original)
-    from cassini_viewer.meeting_rename import rename_meeting
+    from cassini_talk.meeting_rename import rename_meeting
 
     updated = rename_meeting(directory, "Standalone file title")
     (meeting,) = LibraryScanner(root).scan().meetings
@@ -308,7 +308,7 @@ def test_file_only_metadata_edit_does_not_create_a_working_folder(published, mon
 def test_export_reuses_published_audio_without_tracks_and_preserves_recording_date(published, monkeypatch):
     import shutil
 
-    from cassini_viewer.exporting import export_meeting
+    from cassini_talk.exporting import export_meeting
 
     root, sid, directory, original = published
     source = portable.read_meeting(str(original))
@@ -319,7 +319,7 @@ def test_export_reuses_published_audio_without_tracks_and_preserves_recording_da
     def no_encoder(*_args, **_kwargs):
         raise AssertionError("Published audio was re-encoded instead of reused")
 
-    monkeypatch.setattr("cassini_viewer.exporting.encode_pcm", no_encoder)
+    monkeypatch.setattr("cassini_talk.exporting.encode_pcm", no_encoder)
     exported = export_meeting(meeting, root / "Documents", tz="Asia/Tokyo")
     result = portable.read_meeting(str(exported))
     assert result.is_readable and audio_digest(exported) == source_digest
@@ -368,7 +368,7 @@ def test_published_quotes_and_merged_labels_are_file_content_and_undo_restores_n
 def test_root_file_uses_its_stored_label_even_if_it_looks_like_an_unnamed_rank(published):
     from types import SimpleNamespace
 
-    from cassini_viewer.library import _speakers
+    from cassini_talk.library import _speakers
 
     words = [portable.Word("a", 0, 10, "hello")]
     embedded = SimpleNamespace(speakers=[portable.Speaker("a", "Speaker 19")])
@@ -377,8 +377,8 @@ def test_root_file_uses_its_stored_label_even_if_it_looks_like_an_unnamed_rank(p
 
 
 def test_unrelated_edit_never_relabels_a_stored_unnamed_voice(published):
-    from cassini_viewer.library_v2 import edit
-    from cassini_viewer.portable_writer import MANIFEST_MIME, chunk_set
+    from cassini_talk.library_v2 import edit
+    from cassini_talk.portable_writer import MANIFEST_MIME, chunk_set
 
     _root, _sid, directory, path = published
     body = dict(format=portable.WORDS_FORMAT, items=[dict(speaker="a", startMs=0, endMs=20, text="hello")])
@@ -409,7 +409,7 @@ def test_unrelated_edit_never_relabels_a_stored_unnamed_voice(published):
 
 
 def test_share_has_resolved_words_without_library_ownership_or_unusable_undo_history(published, tmp_path):
-    from cassini_viewer.exporting import export_meeting
+    from cassini_talk.exporting import export_meeting
 
     root, _sid, directory, original = published
     body = dict(
@@ -451,8 +451,8 @@ def test_share_has_resolved_words_without_library_ownership_or_unusable_undo_his
 
 
 def _replace_stored_labels(path, labels):
-    from cassini_viewer.library_v2 import edit
-    from cassini_viewer.portable_writer import MANIFEST_MIME, chunk_set
+    from cassini_talk.library_v2 import edit
+    from cassini_talk.portable_writer import MANIFEST_MIME, chunk_set
 
     manifest = portable.read_meeting(str(path)).manifest
     for entry in manifest["speakers"]:
@@ -469,7 +469,7 @@ def _replace_stored_labels(path, labels):
 
 @pytest.mark.parametrize("edit_kind", ["name", "clear", "colour", "merge-other"])
 def test_edit_preserves_other_speakers_stored_unnamed_labels_across_locales(published, monkeypatch, edit_kind):
-    from cassini_viewer import library
+    from cassini_talk import library
 
     root, _sid, directory, path = published
     speakers = [dict(id=s, name=None, provenance="unnamed", colourIndex=i) for i, s in enumerate("abc")]
@@ -523,10 +523,10 @@ def test_edit_preserves_other_speakers_stored_unnamed_labels_across_locales(publ
 
 
 def test_produced_labels_use_writer_language_and_readers_keep_stored_words_and_labels(published, monkeypatch):
-    from cassini_viewer import library
-    from cassini_viewer.export_model import markdown, model_projection
-    from cassini_viewer.meeting_text import reading_turns
-    from cassini_viewer.transcript import build_turns
+    from cassini_talk import library
+    from cassini_talk.export_model import markdown, model_projection
+    from cassini_talk.meeting_text import reading_turns
+    from cassini_talk.transcript import build_turns
 
     root, _sid, directory, path = published
     source = [
@@ -572,7 +572,7 @@ def test_produced_labels_use_writer_language_and_readers_keep_stored_words_and_l
 
 
 def test_unnamed_merge_and_chained_undo_restore_writer_labels_across_languages(published, monkeypatch):
-    from cassini_viewer import library
+    from cassini_talk import library
 
     root, _sid, directory, path = published
     real_text = library.text
@@ -620,8 +620,8 @@ def test_unnamed_merge_and_chained_undo_restore_writer_labels_across_languages(p
 
 @pytest.mark.parametrize("operation", ["open", "share"])
 def test_external_open_keeps_stored_numbered_label_and_share_keeps_stored_quotes(published, tmp_path, operation):
-    from cassini_viewer import open_meeting, portable_writer
-    from cassini_viewer.library_v2 import edit
+    from cassini_talk import open_meeting, portable_writer
+    from cassini_talk.library_v2 import edit
 
     _root, _sid, _directory, path = published
     original = portable.read_meeting(str(path))

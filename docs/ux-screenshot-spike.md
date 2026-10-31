@@ -9,7 +9,7 @@ Build and run in a separate worktree:
 ```sh
 meson setup _build-shot --prefix="$PWD/_install-shot" -Dprofile=development
 meson install -C _build-shot
-build-aux/ux-screenshot.sh _install-shot/bin/cassini-viewer ux-artifacts/current-main.png
+build-aux/ux-screenshot.sh _install-shot/bin/cassini-talk ux-artifacts/current-main.png
 ```
 
 The wrapper gives the app a private HOME, XDG directories, D-Bus and Xvfb display;

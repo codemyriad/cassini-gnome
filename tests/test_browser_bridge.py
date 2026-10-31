@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer.recording_session import MAX_MESSAGE, BrowserHost, load_session, read_message, write_message
+from cassini_talk.recording_session import MAX_MESSAGE, BrowserHost, load_session, read_message, write_message
 
 
 def track(host, identifier="source", **changes):

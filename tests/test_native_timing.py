@@ -9,9 +9,9 @@ from uuid import UUID
 
 import pytest
 
-from cassini_viewer import recording_session
-from cassini_viewer.native_timing import NativeTimeline
-from cassini_viewer.recording_session import ProtocolError, RecordingSession, WAVWriter
+from cassini_talk import recording_session
+from cassini_talk.native_timing import NativeTimeline
+from cassini_talk.recording_session import ProtocolError, RecordingSession, WAVWriter
 
 FIXTURE = Path(__file__).parents[1] / "browser-protocol/conformance/native-session-gap"
 
@@ -24,7 +24,7 @@ def recorder_class():
         pytest.skip("GStreamer typelib is unavailable")
     from gi.repository import Gst
 
-    from cassini_viewer.native_recorder import NativeRecorder
+    from cassini_talk.native_recorder import NativeRecorder
 
     Gst.init(None)
     return NativeRecorder, Gst
@@ -66,7 +66,7 @@ def test_native_meter_ignores_dc_and_original_pcm_is_saved(tmp_path, offset):
 
 def test_browser_native_tap_measures_ac_without_replacing_pcm():
     _NativeRecorder, Gst = recorder_class()
-    from cassini_viewer.native_tap import NativeTap
+    from cassini_talk.native_tap import NativeTap
 
     received = []
     tap = NativeTap("microphone", 0, lambda data, *_args, **_kw: received.append(data), pytest.fail)

@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Real setup dialog, per-user writes, pending/failure/retry and handshake gating."""
 
-import json
 import os
 import re
 import shutil
@@ -44,11 +43,11 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer import companion, companion_bundle  # noqa: E402
-from cassini_viewer.browser_service import BrowserService, connect, request, send_packet  # noqa: E402
-from cassini_viewer.companion_setup import CompanionSetup  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk import companion, companion_bundle  # noqa: E402
+from cassini_talk.browser_service import BrowserService, connect, request, send_packet  # noqa: E402
+from cassini_talk.companion_setup import CompanionSetup  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
 
 
 def until(check):
@@ -105,9 +104,6 @@ with tempfile.TemporaryDirectory() as temporary:
     thread = threading.Thread(target=service.serve, args=(path, ready), daemon=True)
     thread.start()
     assert ready.wait(2)
-    legacy = Path(os.environ["XDG_CONFIG_HOME"]) / "chromium/NativeMessagingHosts/com.codemyriad.cassini.json"
-    legacy.parent.mkdir(parents=True)
-    legacy.write_text(json.dumps(dict(name="com.codemyriad.cassini", path="/old/cassini-browser-host")))
     original = companion.installed_browsers
     browsers = original(config=tmp / "browser-config", which=lambda command: "/test/" + command)
     companion.installed_browsers = lambda: browsers
@@ -124,7 +120,6 @@ with tempfile.TemporaryDirectory() as temporary:
     os.environ.pop("CASSINI_SCREENSHOT_ISOLATED")
     with patch.dict(os.environ, {"CASSINI_ISOLATED_AUDIO": "1"}):
         app.register(None)
-        until(lambda: not legacy.exists())
     os.environ["CASSINI_SCREENSHOT_ISOLATED"] = "1"
     app.activate()
     window = app.get_active_window()
@@ -136,7 +131,7 @@ with tempfile.TemporaryDirectory() as temporary:
     files = list((tmp / "browser-config").rglob("io.codemyriad.cassini*.json"))
     assert len(files) == 8, "Both hosts must be registered at launch without Connect"
     before = {p: (p.read_bytes(), p.stat().st_mtime_ns, p.stat().st_ino) for p in files}
-    from cassini_viewer.settings_dialog import SettingsDialog
+    from cassini_talk.settings_dialog import SettingsDialog
 
     settings = app.settings_dialog = SettingsDialog(app, service_path=path)
     assert settings.browser.get_title() == "Waiting for the browser companion"

@@ -22,7 +22,6 @@ endif
 
 metainfo_conf = configuration_data()
 metainfo_conf.set('APP_ID', application_id)
-metainfo_conf.set('LEGACY_APP_ID', legacy_application_id)
 metainfo_conf.set('APP_NAME', application_name)
 appstream_file = i18n.merge_file(
         input: configure_file(
@@ -42,7 +41,7 @@ if appstreamcli.found()
     args: ['validate', '--no-net', '--explain', appstream_file])
 endif
 
-install_data('io.codemyriad.CassiniTalk.gschema.xml', 'com.gocassini.Viewer.gschema.xml',
+install_data('io.codemyriad.CassiniTalk.gschema.xml',
   install_dir: get_option('datadir') / 'glib-2.0' / 'schemas',
 )
 
@@ -71,4 +70,4 @@ configure_file(
   install_dir: get_option('datadir') / 'dbus-1' / 'services',
 )
 
-install_man('cassini-talk.1', 'cassini-viewer.1')
+install_man('cassini-talk.1')

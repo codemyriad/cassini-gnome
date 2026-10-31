@@ -17,13 +17,13 @@ except ValueError:
 from library_v2_support import simple_session
 from test_recorder import spin_until
 
-from cassini_viewer import library_publication
-from cassini_viewer.library import LibraryScanner
-from cassini_viewer.library_location import capture_busy
-from cassini_viewer.library_recovery import LibraryRecovery
-from cassini_viewer.library_v2 import finalize
-from cassini_viewer.meeting_store import read_metadata
-from cassini_viewer.transcription import TranscriptionQueue, should_auto_write
+from cassini_talk import library_publication
+from cassini_talk.library import LibraryScanner
+from cassini_talk.library_location import capture_busy
+from cassini_talk.library_recovery import LibraryRecovery
+from cassini_talk.library_v2 import finalize
+from cassini_talk.meeting_store import read_metadata
+from cassini_talk.transcription import TranscriptionQueue, should_auto_write
 
 
 class App:
@@ -150,7 +150,7 @@ def test_publication_transition_enables_automatic_writing_once(tmp_path):
 def test_file_only_write_down_recreates_only_optional_working_cache(tmp_path, monkeypatch):
     import shutil
 
-    from cassini_viewer import portable
+    from cassini_talk import portable
 
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "private-config"))
@@ -311,7 +311,7 @@ def test_retry_requested_during_a_sweep_is_not_lost_when_the_older_attempt_fails
 def test_scans_do_not_restart_sweeps_for_unstopped_or_empty_sessions(tmp_path, state, ended, frames, eligible):
     from types import SimpleNamespace
 
-    from cassini_viewer.library import LibrarySnapshot, Meeting
+    from cassini_talk.library import LibrarySnapshot, Meeting
 
     directory = tmp_path / ".cassini/sessions/Recording-12345678-1234-1234-1234-123456789abc"
     meeting = Meeting(
@@ -337,7 +337,7 @@ def test_scans_do_not_restart_sweeps_for_unstopped_or_empty_sessions(tmp_path, s
 def test_retry_does_not_read_routing_or_resolve_paths_on_gtk(tmp_path, monkeypatch):
     from pathlib import Path
 
-    from cassini_viewer import library_location
+    from cassini_talk import library_location
 
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "private-config"))
@@ -365,7 +365,7 @@ def test_retry_does_not_read_routing_or_resolve_paths_on_gtk(tmp_path, monkeypat
 
 
 def test_retry_resolves_a_moved_dialog_path_on_the_worker(tmp_path, monkeypatch):
-    from cassini_viewer import library_location
+    from cassini_talk import library_location
 
     root = tmp_path / "new"
     root.mkdir()

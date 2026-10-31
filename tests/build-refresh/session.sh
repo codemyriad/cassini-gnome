@@ -15,4 +15,4 @@ printf '#!/bin/sh\nexit 0\n' > /out/bin/google-chrome
 chmod 0700 /out/bin/google-chrome
 export PATH="/out/bin:$PATH"
 exec dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
-    python3 /source/tests/build-refresh/journey.py "${1:-/usr/bin/cassini-viewer}" "${2:-/usr/share/cassini-viewer}"
+    python3 /source/tests/build-refresh/journey.py "${1:-/usr/bin/cassini-talk}" "${2:-/usr/share/cassini-talk}"

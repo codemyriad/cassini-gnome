@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer.recording_session import ProtocolError, RecordingSession
+from cassini_talk.recording_session import ProtocolError, RecordingSession
 
 
 @pytest.mark.parametrize("capture_kind", ["native", "browser"])
@@ -31,12 +31,12 @@ def test_first_checkpoint_has_site_offset_and_later_zone_cannot_change_it(
 import json, os, sys, time
 from datetime import UTC, datetime
 from pathlib import Path
-from cassini_viewer.recording_session import RecordingSession
-from cassini_viewer.library_v2.finalize import start_of
+from cassini_talk.recording_session import RecordingSession
+from cassini_talk.library_v2.finalize import start_of
 time.tzset()
 instant = datetime.fromisoformat(sys.argv[2])
 if sys.argv[3] == "browser":
-    from cassini_viewer.browser_capture import BrowserCapture
+    from cassini_talk.browser_capture import BrowserCapture
     capture = BrowserCapture(lambda *_: None, parent=sys.argv[1])
     capture.start(dict(type="start", captureId="site-offset", timelineOriginMs=int(instant.timestamp()*1000), microphone=False))
     session = capture.host.session
@@ -73,7 +73,7 @@ def test_naive_start_is_rejected_before_creating_any_recording_folder(tmp_path):
 
 
 def test_parent_directory_durability_is_scoped_to_managed_sessions(tmp_path, monkeypatch):
-    from cassini_viewer.library_v2 import fsutil
+    from cassini_talk.library_v2 import fsutil
 
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path / "Library"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "private-config"))

@@ -4,8 +4,8 @@
 import shutil
 from pathlib import Path
 
-from cassini_viewer import portable
-from cassini_viewer.library import LibraryScanner
+from cassini_talk import portable
+from cassini_talk.library import LibraryScanner
 
 ASSETS = Path(__file__).parent / "conformance/opus"
 

@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer import portable
-from cassini_viewer.portable import State
+from cassini_talk import portable
+from cassini_talk.portable import State
 
 HERE = Path(__file__).parent / "conformance"
 INDEX = json.loads((HERE / "index.json").read_text())

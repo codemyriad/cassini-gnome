@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer import library_move
+from cassini_talk import library_move
 
 NAME = "Recording-10000000-0000-4000-8000-000000000001"
 SECOND = "Received-20000000-0000-4000-8000-000000000002"
@@ -167,7 +167,7 @@ def test_cross_device_copy_does_not_hold_the_metadata_lock_or_block_quit(tmp_pat
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
-    from cassini_viewer.meeting_store import LOCK
+    from cassini_talk.meeting_store import LOCK
 
     source = folder(tmp_path / "source")
     target = tmp_path / "target"

@@ -10,9 +10,9 @@ from pathlib import Path
 import pytest
 from test_library import capture, write_metadata
 
-from cassini_viewer.library import LibraryScanner
-from cassini_viewer.meeting_store import read_metadata, update_metadata
-from cassini_viewer.transcription import TranscriptionQueue
+from cassini_talk.library import LibraryScanner
+from cassini_talk.meeting_store import read_metadata, update_metadata
+from cassini_talk.transcription import TranscriptionQueue
 
 
 @pytest.fixture(autouse=True)
@@ -41,7 +41,7 @@ def test_done_empty_transcript_can_be_written_again_through_the_normal_queue(tmp
     from dataclasses import replace
 
     session = capture(tmp_path)
-    from cassini_viewer.transcription import REFERENCE
+    from cassini_talk.transcription import REFERENCE
 
     write_metadata(session.directory, transcript=dict(status="done", reference=REFERENCE))
     (session.directory / "transcript.json").write_text(
@@ -224,7 +224,7 @@ def test_newer_metadata_is_not_overwritten_and_unsafe_metadata_is_not_followed(t
 
 
 def test_broker_poll_lag_never_starts_recognition_before_capture_stop(tmp_path):
-    from cassini_viewer.transcription import should_auto_write
+    from cassini_talk.transcription import should_auto_write
 
     session = capture(tmp_path, completed=False)
     try:
@@ -240,7 +240,7 @@ def test_broker_poll_lag_never_starts_recognition_before_capture_stop(tmp_path):
 
 
 def test_salvaged_untyped_tracks_do_not_invent_capture_source_names(tmp_path):
-    from cassini_viewer.transcription import prepare_tracks
+    from cassini_talk.transcription import prepare_tracks
 
     session = capture(tmp_path)
     (session.directory / "session.json").write_bytes(b"{bad")
@@ -252,8 +252,8 @@ def test_salvaged_untyped_tracks_do_not_invent_capture_source_names(tmp_path):
 
 
 def test_browser_span_identity_uses_utf8_bound_and_never_labels(tmp_path):
-    from cassini_viewer.recording_session import RecordingSession
-    from cassini_viewer.transcription import prepare_tracks
+    from cassini_talk.recording_session import RecordingSession
+    from cassini_talk.transcription import prepare_tracks
 
     session = RecordingSession(tmp_path)
     identities = ["", "é" * 101, "é" * 100, "é" * 100]
@@ -325,7 +325,7 @@ time.sleep(30)
 
 
 def test_prepared_tracks_only_use_validated_identity_and_keep_ambiguous_sources_separate(tmp_path):
-    from cassini_viewer.transcription import prepare_tracks
+    from cassini_talk.transcription import prepare_tracks
 
     session = capture(tmp_path)
     path = session.directory / "session.json"
@@ -352,7 +352,7 @@ def test_prepared_tracks_only_use_validated_identity_and_keep_ambiguous_sources_
 
 
 def test_browser_mixed_sources_do_not_claim_system_sound_or_invent_people():
-    from cassini_viewer.transcription import track_speaker
+    from cassini_talk.transcription import track_speaker
 
     for kind in ("tab", "media", "application", "unknown"):
         assert track_speaker(dict(id="source", kind=kind)) == ("track-source", None, "unnamed")
@@ -360,7 +360,7 @@ def test_browser_mixed_sources_do_not_claim_system_sound_or_invent_people():
 
 
 def test_progress_keeps_speaker_edits_made_after_enqueue_and_between_segments(tmp_path):
-    from cassini_viewer.transcription import update_progress_metadata
+    from cassini_talk.transcription import update_progress_metadata
 
     session = capture(tmp_path)
     update_metadata(
@@ -382,7 +382,7 @@ def _available_platform(monkeypatch, bundle):
     import platform
     import sys
 
-    from cassini_viewer import transcription
+    from cassini_talk import transcription
 
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
@@ -401,7 +401,7 @@ def test_unavailable_reason_is_none_with_bundle_and_runtime_on_glibc_x86_64(monk
 
 
 def test_unavailable_reason_accepts_the_private_onnxruntime_without_a_system_one(monkeypatch, tmp_path):
-    from cassini_viewer import transcription
+    from cassini_talk import transcription
 
     reason, found = _available_platform(monkeypatch, tmp_path / "whistle")
     found.discard("onnxruntime")
@@ -436,8 +436,8 @@ def test_unavailable_reason_defaults_to_the_configured_bundle(monkeypatch, tmp_p
 
 @pytest.mark.parametrize(("status", "resume"), [("failed", False), ("running", True)])
 def test_retry_keeps_partial_words_until_recomputation_catches_up(tmp_path, status, resume):
-    from cassini_viewer.meeting_store import atomic_json
-    from cassini_viewer.transcription import REFERENCE
+    from cassini_talk.meeting_store import atomic_json
+    from cassini_talk.transcription import REFERENCE
 
     session = capture(tmp_path)
     write_metadata(session.directory, transcript=dict(status=status, reference=REFERENCE))

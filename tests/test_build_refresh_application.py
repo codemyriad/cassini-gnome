@@ -73,7 +73,7 @@ def test_watch_idle_transition_checks_update_despite_stale_activity(application_
 def test_explicit_browser_stop_checks_build_even_when_no_update_known(application_class, monkeypatch):  # noqa: F811
     from test_library_monitor import spin_until
 
-    from cassini_viewer import capture_guard
+    from cassini_talk import capture_guard
 
     app, held, finished, _windows = application()
     app._browser_stops = set()
@@ -92,7 +92,7 @@ def test_explicit_browser_stop_checks_build_even_when_no_update_known(applicatio
 
 
 def test_real_restart_banner_uses_broker_busy_state(application_class):  # noqa: F811
-    from cassini_viewer.library_window import LibraryWindow
+    from cassini_talk.library_window import LibraryWindow
 
     app, _held, _finished, _windows = application()
     app.build_refresh, _clock = controller(app, SimpleNamespace(changed=lambda: True, restart=None))
@@ -108,7 +108,7 @@ def test_real_restart_banner_uses_broker_busy_state(application_class):  # noqa:
 
 
 def test_library_activity_tick_releases_stale_capture_guard(application_class):  # noqa: F811
-    from cassini_viewer.library_window import LibraryWindow
+    from cassini_talk.library_window import LibraryWindow
 
     app, _held, _finished, windows = application()
     updates = []

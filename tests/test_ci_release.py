@@ -84,7 +84,7 @@ def candidate(tmp_path):
     files = {
         "meson.build": "project('cassini-talk',\n version: '7.8.9',\n)\n",
         "debian/changelog": "cassini-talk (7.8.9+talk1) UNRELEASED; urgency=medium\n",
-        "build-aux/rpm/cassini-viewer.spec": "Version: 7.8.9\n",
+        "build-aux/rpm/cassini-talk.spec": "Version: 7.8.9\n",
         "build-aux/arch/PKGBUILD": "pkgver=7.8.9\n",
         "NEWS": "Version 7.8.9\n~~~~~~~~~~~~~\nNot released yet.\n",
         "browser-extension/manifest.json": '{"version":"0.2.3"}\n',
@@ -115,7 +115,7 @@ def test_release_metadata_accepts_a_consistent_candidate_without_creating_a_tag(
     [
         "meson.build",
         "debian/changelog",
-        "build-aux/rpm/cassini-viewer.spec",
+        "build-aux/rpm/cassini-talk.spec",
         "build-aux/arch/PKGBUILD",
         "NEWS",
         "data/cassini-talk.1",
@@ -148,7 +148,7 @@ def test_installed_metadata_validation_checks_the_packaged_files_and_both_valida
     launcher = prefix / "bin/cassini-talk"
     metainfo = prefix / "share/metainfo/io.codemyriad.CassiniTalk.metainfo.xml"
     desktop = prefix / "share/applications/io.codemyriad.CassiniTalk.desktop"
-    extension = prefix / "share/cassini-viewer/browser-extension/manifest.json"
+    extension = prefix / "share/cassini-talk/browser-extension/manifest.json"
     for path in (launcher, metainfo, desktop, extension):
         path.parent.mkdir(parents=True, exist_ok=True)
     launcher.write_text('VERSION = "7.8.9"\n')

@@ -25,14 +25,14 @@ process.env.PATH = tools + ':' + process.env.PATH;
 execFileSync('dbus-update-activation-environment', ['PATH', 'HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'FLATPAK_USER_DIR', 'PULSE_SERVER']);
 const base = ['run', '--user', '--no-documents-portal', '--command=python3', application, '-I', '-c'];
 function inside(code) {
- return JSON.parse(execFileSync('flatpak', [...base, "import sys;sys.path.insert(0,'/app/share/cassini-viewer');" + code], {encoding:'utf8', timeout:20000}));
+ return JSON.parse(execFileSync('flatpak', [...base, "import sys;sys.path.insert(0,'/app/share/cassini-talk');" + code], {encoding:'utf8', timeout:20000}));
 }
 function rpc(action='status', values={}) {
- return inside(`import json;from cassini_viewer.browser_service import request,ensure_service;print(json.dumps(request(${JSON.stringify(action)},path=ensure_service(),**json.loads(${JSON.stringify(JSON.stringify(values))}))))`);
+ return inside(`import json;from cassini_talk.browser_service import request,ensure_service;print(json.dumps(request(${JSON.stringify(action)},path=ensure_service(),**json.loads(${JSON.stringify(JSON.stringify(values))}))))`);
 }
 const location = execFileSync('flatpak', ['info','--user','--show-location',application], {encoding:'utf8'}).trim();
-const extension = path.join(location,'files/share/cassini-viewer/browser-extension');
-const installed = inside("import json;from cassini_viewer import companion;assert companion.available();print(json.dumps([str(p) for p in companion.register()]))");
+const extension = path.join(location,'files/share/cassini-talk/browser-extension');
+const installed = inside("import json;from cassini_talk import companion;assert companion.available();print(json.dumps([str(p) for p in companion.register()]))");
 assert.ok(installed.includes(path.join(config,'chromium/NativeMessagingHosts/io.codemyriad.cassini.json')));
 const fixture = await readFile(path.join(root,'tests/recording/fixture.html'));
 const server = createServer((_q,res) => {res.setHeader('Content-Type','text/html');res.end(fixture);});
@@ -112,7 +112,7 @@ finally {
   catch(error) {(evidence.copyErrors??=[]).push(error.message);}
  }
  await context?.close();await remote?.close();server.close();
- try {inside("import shutil,json;from cassini_viewer.browser_service import service_path;shutil.rmtree(service_path().parent,ignore_errors=True);print(json.dumps(True))");}
+ try {inside("import shutil,json;from cassini_talk.browser_service import service_path;shutil.rmtree(service_path().parent,ignore_errors=True);print(json.dumps(True))");}
  catch(error) {evidence.cleanupError=error.message;}
  await writeFile(path.join(artifacts,'flatpak-companion.json'),JSON.stringify(evidence,null,2));
 }

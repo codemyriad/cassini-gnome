@@ -5,9 +5,9 @@ from concurrent.futures import CancelledError
 import pytest
 from test_library import capture
 
-from cassini_viewer import transcript_publish
-from cassini_viewer.meeting_store import update_metadata
-from cassini_viewer.transcription import update_progress_metadata
+from cassini_talk import transcript_publish
+from cassini_talk.meeting_store import update_metadata
+from cassini_talk.transcription import update_progress_metadata
 
 
 def test_long_transcript_has_bounded_cumulative_snapshot_writes_and_stable_order(tmp_path, monkeypatch):
@@ -62,7 +62,7 @@ def test_repeated_eta_and_speakers_do_not_rewrite_metadata(tmp_path):
 
 
 def test_cancel_during_serialization_keeps_the_published_snapshot(tmp_path, monkeypatch):
-    from cassini_viewer import meeting_store
+    from cassini_talk import meeting_store
 
     path = tmp_path / "transcript.json"
     before = b'{"format":"cassini.words.v1","items":[]}\n'
@@ -91,7 +91,7 @@ def test_cancel_during_serialization_keeps_the_published_snapshot(tmp_path, monk
 
 @pytest.mark.parametrize(("identifier", "default_name"), [("me", "Me"), ("others", "The others")])
 def test_progress_and_completion_keep_a_source_speaker_explicitly_unnamed(tmp_path, identifier, default_name):
-    from cassini_viewer.meeting_store import read_metadata
+    from cassini_talk.meeting_store import read_metadata
 
     session = capture(tmp_path)
     cleared = dict(id=identifier, name=None, provenance="unnamed", colourIndex=0)
@@ -106,7 +106,7 @@ def test_progress_and_completion_keep_a_source_speaker_explicitly_unnamed(tmp_pa
 
 
 def test_quotes_are_written_paired_without_changing_raw_items_ids_or_times(tmp_path):
-    from cassini_viewer.transcript import normalize_quote_items
+    from cassini_talk.transcript import normalize_quote_items
 
     source = [
         dict(speaker="a", startMs=0, endMs=10, text='Say "hello', future=1),
@@ -130,9 +130,9 @@ def test_quotes_are_written_paired_without_changing_raw_items_ids_or_times(tmp_p
 def test_cassini_file_text_is_verbatim_and_only_legacy_folders_keep_the_bridge():
     from dataclasses import replace
 
-    from cassini_viewer.meeting_text import item_markup, reading_turns
-    from cassini_viewer.portable import Word
-    from cassini_viewer.transcript import build_turns
+    from cassini_talk.meeting_text import item_markup, reading_turns
+    from cassini_talk.portable import Word
+    from cassini_talk.transcript import build_turns
 
     legacy = [Word("a", 0, 1, '"hello"'), Word("a", 1, 2, 'orphan"')]
     stored = [replace(word, text_is_stored=True) for word in legacy]

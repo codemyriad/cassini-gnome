@@ -43,7 +43,7 @@ package") describes how each format does it. In short: `build-aux/whistle-cache.
 downloads the pinned artifacts once (sha256-checked, with retries); Meson
 with `-Dwhistle=enabled` runs `whistle/fetch.py --offline` (no download,
 fails closed), `whistle/verify.py`, and installs the bundle under
-`share/cassini-viewer/whistle`, never stripped. Main Meson always installs the
+`share/cassini-talk/whistle`, never stripped. Main Meson always installs the
 app's queue, worker and pipeline Python modules. `-Dwhistle` defaults to
 disabled, for source builds, Alpine and other architectures.
 
@@ -80,10 +80,10 @@ the same pre-filled cache, unpacks it without `transformers/`,
 adapter, which import sympy, onnx and packaging) and the separate C API
 library (the extension module links the runtime statically), about 31 MB, and
 `whistle/verify.py --onnxruntime` checks every file against the wheel's
-RECORD. It is installed in `<libdir>/cassini-viewer/python` (for example
-/usr/lib/x86_64-linux-gnu/cassini-viewer/python on Debian, /usr/lib64/... on
+RECORD. It is installed in `<libdir>/cassini-talk/python` (for example
+/usr/lib/x86_64-linux-gnu/cassini-talk/python on Debian, /usr/lib64/... on
 Fedora and openSUSE, /usr/lib/... on Arch, /app/lib/... in the Flatpak), never
-stripped, and Meson writes that path to `cassini_viewer/paths.json`. Only the
+stripped, and Meson writes that path to `cassini_talk/paths.json`. Only the
 recognition child puts it first on `sys.path`, after checking it against
 RECORD again; the GTK process never does. Without a private copy for the
 running Python's ABI (a source run, a build with `-Dwhistle=disabled`), the

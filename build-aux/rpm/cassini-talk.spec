@@ -4,8 +4,6 @@
 Name:           cassini-talk
 Version:        0.3.0
 Release:        2%{?dist}
-Provides:       cassini-viewer = %{version}-%{release}
-Obsoletes:      cassini-viewer < %{version}-%{release}
 Summary:        Record meetings and read along with their transcripts
 License:        GPL-3.0-or-later AND Apache-2.0 AND MIT
 URL:            https://github.com/codemyriad/cassini-gnome
@@ -58,7 +56,7 @@ ExclusiveArch:  x86_64
 %global __brp_strip_lto %{nil}
 # libneedle3.so has the SONAME libneedle.so, and ONNX Runtime ships
 # libonnxruntime_providers_shared.so; both are private to the app.
-%global __provides_exclude_from ^(%{_datadir}/cassini-viewer/whistle|%{_libdir}/cassini-viewer)/.*$
+%global __provides_exclude_from ^(%{_datadir}/cassini-talk/whistle|%{_libdir}/cassini-talk)/.*$
 # The C API's unversioned native ORT dependency is satisfied privately by
 # the hash-checked sibling, preloaded by the worker. Keep libc/libstdc++ and
 # other system dependencies generated normally.
@@ -66,7 +64,7 @@ ExclusiveArch:  x86_64
 # The private dist-info is outside site-packages, so the Python dependency
 # generator skips it anyway; never let it read the METADATA, which lists
 # packages the app does not use (protobuf, flatbuffers, sympy extras).
-%global __requires_exclude_from ^%{_libdir}/cassini-viewer/python/onnxruntime-[^/]*\\.dist-info/.*$
+%global __requires_exclude_from ^%{_libdir}/cassini-talk/python/onnxruntime-[^/]*\\.dist-info/.*$
 
 BuildRequires:  meson >= 1.0
 BuildRequires:  python3 >= 3.11
@@ -189,19 +187,18 @@ cp -p sherpa/NOTICE.md sherpa/LICENSE-sherpa-Apache-2.0.txt sherpa/LICENSE-ONNXR
 # Meson installs the launchers 0555; packaging policy wants 0755.
 chmod 0755 %{buildroot}%{_bindir}/%{name} %{buildroot}%{_bindir}/cassini-browser-host \
   %{buildroot}%{_bindir}/cassini-browser-control-host \
-  %{buildroot}%{_datadir}/cassini-viewer/browser-extension/install-host.py
+  %{buildroot}%{_datadir}/cassini-talk/browser-extension/install-host.py
 # po/LINGUAS may list no languages yet; an empty list is fine.
-%find_lang cassini-viewer || : > cassini-viewer.lang
-mv cassini-viewer.lang %{name}.lang
+%find_lang %{name} || : > %{name}.lang
 # rpm rejects an empty -f list, so the package's data directory goes in it.
-echo "%%dir %{_datadir}/cassini-viewer" >> %{name}.lang
+echo "%%dir %{_datadir}/cassini-talk" >> %{name}.lang
 
 %check
 %meson_test
 # Catches anything that changed the installed bundle, such as stripping.
-python3 whistle/verify.py %{buildroot}%{_datadir}/cassini-viewer/whistle
-python3 whistle/verify.py --onnxruntime %{buildroot}%{_libdir}/cassini-viewer/python
-python3 sherpa/fetch.py --cache .sherpa-cache --verify %{buildroot}%{_libdir}/cassini-viewer/sherpa
+python3 whistle/verify.py %{buildroot}%{_datadir}/cassini-talk/whistle
+python3 whistle/verify.py --onnxruntime %{buildroot}%{_libdir}/cassini-talk/python
+python3 sherpa/fetch.py --cache .sherpa-cache --verify %{buildroot}%{_libdir}/cassini-talk/sherpa
 
 %files -f %{name}.lang
 %license COPYING
@@ -210,26 +207,23 @@ python3 sherpa/fetch.py --cache .sherpa-cache --verify %{buildroot}%{_libdir}/ca
 %license %{_datadir}/licenses/%{name}/sherpa
 %doc README.md NEWS
 %{_bindir}/%{name}
-%{_bindir}/cassini-viewer
 %{_bindir}/cassini-browser-host
 %{_bindir}/cassini-browser-control-host
-%{_datadir}/cassini-viewer/*
-%{_libdir}/cassini-viewer
+%{_datadir}/cassini-talk/*
+%{_libdir}/cassini-talk
 %{_datadir}/applications/io.codemyriad.CassiniTalk.desktop
 %{_datadir}/metainfo/io.codemyriad.CassiniTalk.metainfo.xml
 %{_datadir}/glib-2.0/schemas/io.codemyriad.CassiniTalk.gschema.xml
-%{_datadir}/glib-2.0/schemas/com.gocassini.Viewer.gschema.xml
 %{_datadir}/icons/hicolor/scalable/apps/io.codemyriad.CassiniTalk.svg
 %{_datadir}/icons/hicolor/symbolic/apps/io.codemyriad.CassiniTalk-symbolic.svg
 %dir %{_datadir}/dbus-1
 %dir %{_datadir}/dbus-1/services
 %{_datadir}/dbus-1/services/io.codemyriad.CassiniTalk.service
 %{_mandir}/man1/cassini-talk.1*
-%{_mandir}/man1/cassini-viewer.1*
 
 %changelog
 * Fri Oct 30 2026 Silvio Tomatis <silviot@gmail.com> - 0.3.0-2
-- Rename to Cassini talk; replace cassini-viewer and preserve user settings.
+- Use the clean Cassini talk identity without development-build migration.
 
 * Thu Oct 29 2026 Silvio Tomatis <silviot@gmail.com> - 0.3.0-1
 - Add the meeting Library, independent browser capture and Flatpak companion.

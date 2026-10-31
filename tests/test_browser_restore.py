@@ -6,8 +6,8 @@ import json
 import pytest
 from test_browser_capture import Tap
 
-from cassini_viewer.browser_capture import BrowserCapture
-from cassini_viewer.session_events import source_state
+from cassini_talk.browser_capture import BrowserCapture
+from cassini_talk.session_events import source_state
 
 
 def recording(tmp_path):

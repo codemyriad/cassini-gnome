@@ -31,9 +31,9 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib, Gtk  # noqa: E402
 
 sys.path.insert(0, str(root / "src"))
-Gio.resources_register(Gio.Resource.load(str(Path(args.build) / "src/cassini-viewer.gresource")))
-from cassini_viewer import companion_bundle  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(args.build) / "src/cassini-talk.gresource")))
+from cassini_talk import companion_bundle  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
 
 companion_bundle.bundle_directory = lambda: Path(args.bundle)
 app = CassiniApplication("com.gocassini.CompanionInstallTest", "test", "development")

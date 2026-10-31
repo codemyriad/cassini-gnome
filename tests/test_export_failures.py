@@ -9,21 +9,21 @@ from dataclasses import replace
 import pytest
 from test_export import ASSETS, gst
 
-from cassini_viewer import exporting, portable
-from cassini_viewer.exporting import export_meeting
-from cassini_viewer.library import LibraryScanner
-from cassini_viewer.meeting_store import atomic_json, update_metadata
-from cassini_viewer.open_meeting import load_open_meeting
-from cassini_viewer.received import import_received
-from cassini_viewer.recording_session import RecordingSession
-from cassini_viewer.transcription import REFERENCE
+from cassini_talk import exporting, portable
+from cassini_talk.exporting import export_meeting
+from cassini_talk.library import LibraryScanner
+from cassini_talk.meeting_store import atomic_json, update_metadata
+from cassini_talk.open_meeting import load_open_meeting
+from cassini_talk.received import import_received
+from cassini_talk.recording_session import RecordingSession
+from cassini_talk.transcription import REFERENCE
 
 
 def test_streaming_read_error_while_pull_waits_is_not_successful_eos(tmp_path, monkeypatch):
     gst()
     from gi.repository import GObject
 
-    from cassini_viewer.folder_player import PCMSource
+    from cassini_talk.folder_player import PCMSource
 
     session = RecordingSession(tmp_path)
     session.add_track("mic", "Me", "microphone", 48000, 1)
@@ -103,7 +103,7 @@ def test_silent_received_sidecar_remains_done_after_write_down(tmp_path):
 
 
 def test_empty_embedded_speaker_id_is_damaged_before_import_or_export(tmp_path, monkeypatch):
-    from cassini_viewer import portable_writer
+    from cassini_talk import portable_writer
 
     original = portable_writer.chunk_set
 
@@ -127,10 +127,10 @@ def test_empty_embedded_speaker_id_is_damaged_before_import_or_export(tmp_path, 
 
 
 def test_flatpak_rejects_writable_tmpfs_home_before_creating_an_export(tmp_path, monkeypatch):
-    from cassini_viewer import library_location
+    from cassini_talk import library_location
 
     original = load_open_meeting(ASSETS / "plain-title.opus", tmp_path / "Library")
-    monkeypatch.setattr("cassini_viewer.companion.in_flatpak", lambda: True)
+    monkeypatch.setattr("cassini_talk.companion.in_flatpak", lambda: True)
     monkeypatch.setattr(library_location, "_sandbox_mounts", lambda: (tmp_path / "host-grant",))
     destination = tmp_path / "private-home/Documents"
     with pytest.raises(PermissionError):
@@ -139,12 +139,12 @@ def test_flatpak_rejects_writable_tmpfs_home_before_creating_an_export(tmp_path,
 
 
 def test_flatpak_selected_folder_grant_exports_both_formats_without_a_home_grant(tmp_path, monkeypatch):
-    from cassini_viewer import library_location
+    from cassini_talk import library_location
 
     original = load_open_meeting(ASSETS / "plain-title.opus", tmp_path / "Library")
     destination = tmp_path / "host-grant"
     destination.mkdir()
-    monkeypatch.setattr("cassini_viewer.companion.in_flatpak", lambda: True)
+    monkeypatch.setattr("cassini_talk.companion.in_flatpak", lambda: True)
     monkeypatch.setattr(library_location, "_sandbox_mounts", lambda: (destination,))
     markdown = export_meeting(original, destination, "markdown")
     opus = export_meeting(original, destination)

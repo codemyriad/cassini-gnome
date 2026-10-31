@@ -11,8 +11,7 @@ import sys
 from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(root / "src" if (root / "src/cassini_viewer").is_dir() else root))
-from cassini_viewer.companion import cleanup_legacy_directory  # noqa: E402
+sys.path.insert(0, str(root / "src" if (root / "src/cassini_talk").is_dir() else root))
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("extension_id")
@@ -65,4 +64,3 @@ if control.is_file():
     register("io.codemyriad.cassini.control", control)
 else:
     print("Control host not installed; browser recordings can only be started from the popup")
-cleanup_legacy_directory(config / args.browser / "NativeMessagingHosts")

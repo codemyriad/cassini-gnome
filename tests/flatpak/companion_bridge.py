@@ -44,7 +44,7 @@ def worker(application, private, report):
         "-I",
         "-c",
     ]
-    prefix = "import sys;sys.path.insert(0,'/app/share/cassini-viewer');"
+    prefix = "import sys;sys.path.insert(0,'/app/share/cassini-talk');"
 
     def until(check, description="installed bridge state"):
         from gi.repository import GLib
@@ -104,7 +104,7 @@ def worker(application, private, report):
     # D39 copies the installed reviewed extension into the host data directory,
     # without any filesystem grant for that directory in the sandbox.
     prepared = inside(
-        "import hashlib,json,os;from cassini_viewer.companion_bundle import prepare,bundle_directory,_run;"
+        "import hashlib,json,os;from cassini_talk.companion_bundle import prepare,bundle_directory,_run;"
         "p=prepare();raw=_run('inspect',p);"
         "assert raw==(bundle_directory()/'manifest.json').read_bytes();"
         "assert not (p/'manifest.json').exists();"
@@ -116,7 +116,7 @@ def worker(application, private, report):
     manifest = Path(prepared["folder"]) / "manifest.json"
     original_version = json.loads(manifest.read_text())["version"]
     first = manifest.stat()
-    again = inside("import json;from cassini_viewer.companion_bundle import prepare;print(json.dumps(str(prepare())))")
+    again = inside("import json;from cassini_talk.companion_bundle import prepare;print(json.dumps(str(prepare())))")
     assert again == prepared["folder"]
     assert (manifest.stat().st_ino, manifest.stat().st_mtime_ns) == (first.st_ino, first.st_mtime_ns)
     prepared.update(inode=first.st_ino, mtime=first.st_mtime_ns)
@@ -125,7 +125,7 @@ def worker(application, private, report):
     # host filesystem. No sandbox filesystem grant is needed for publication.
     prepared["upgradedVersion"] = inside(
         "import json,shutil,tempfile;from pathlib import Path;"
-        "from cassini_viewer.companion_bundle import prepare,bundle_directory,_run;"
+        "from cassini_talk.companion_bundle import prepare,bundle_directory,_run;"
         "temporary=tempfile.TemporaryDirectory();p=Path(temporary.name)/'extension';"
         "shutil.copytree(bundle_directory(),p);m=json.loads((p/'manifest.json').read_text());"
         "v=m['version'].split('.');v[-1]=str(int(v[-1])+1);m['version']='.'.join(v);(p/'manifest.json').write_text(json.dumps(m));"
@@ -146,7 +146,7 @@ def worker(application, private, report):
     failing.write_text("#!/bin/sh\nexit 42\n")
     failing.chmod(0o700)
     failure = inside(
-        "import json;from pathlib import Path;from cassini_viewer import companion;\n"
+        "import json;from pathlib import Path;from cassini_talk import companion;\n"
         f"browser=companion.Browser('Chrome',{str(failing)!r},Path({str(private / 'config')!r}))\n"
         "try:\n companion.check_browser_launch(companion.open_new_tab(browser))\n"
         "except OSError as error:\n print(json.dumps(str(error)))\n"
@@ -154,31 +154,10 @@ def worker(application, private, report):
     )
     assert "status 42" in failure
 
-    # D27: exercise cleanup from the installed sandbox, against the host's
-    # private config. Matching origins alone must never delete another app.
-    legacy = private / "config/chromium/NativeMessagingHosts/com.codemyriad.cassini.json"
-    legacy.parent.mkdir(parents=True)
-    owned = json.dumps(dict(name=legacy.stem, path="/old/cassini-browser-host", allowed_origins=[]))
-    legacy.write_text(owned)
-    foreign = legacy.with_name("com.codemyriad.cassini.control.json")
-    foreign_bytes = json.dumps(
-        dict(
-            name=foreign.stem,
-            path="/foreign/other-host",
-            allowed_origins=["chrome-extension://pcafdaahfhjiolfpfnlhmljfgoabbaij/"],
-        )
-    ).encode()
-    foreign.write_bytes(foreign_bytes)
-    assert inside(
-        "import json;from cassini_viewer.companion import start_legacy_cleanup;"
-        "thread=start_legacy_cleanup();thread.join(10);print(json.dumps(not thread.is_alive()))"
-    )
-    assert not legacy.exists() and foreign.read_bytes() == foreign_bytes
-    legacy.write_text(owned)  # Connect must perform the same host-side cleanup.
     # Session-helper inherits this host PATH, not the sandbox's /app/bin PATH.
     # Activation happens only after these private executables are in place.
     info = inside(
-        "import json,os;from cassini_viewer import companion,flatpak_bridge;"
+        "import json,os;from cassini_talk import companion,flatpak_bridge;"
         "flatpak_bridge.deployment();flatpak_bridge.host_info();"
         "assert companion.available();browsers=companion.installed_browsers();"
         "written=companion.register();child=companion.open_add(browsers[0]);assert child.wait(5)==0;"
@@ -186,7 +165,6 @@ def worker(application, private, report):
         "sandboxConfig=os.environ['XDG_CONFIG_HOME'])))"
     )
     assert info["browsers"] == ["Chrome", "Chromium", "Edge", "Brave"]
-    assert not legacy.exists() and foreign.read_bytes() == foreign_bytes
     assert info["sandboxConfig"] != os.environ["XDG_CONFIG_HOME"]
     until(lambda: (private / "add-url.txt").exists())
     assert (private / "add-url.txt").read_text().strip() == (
@@ -194,7 +172,7 @@ def worker(application, private, report):
     )
     (private / "home/release-browser").touch()
     assert not inside(
-        "import json;from cassini_viewer import companion;print(json.dumps(companion.available()))", deny=True
+        "import json;from cassini_talk import companion;print(json.dumps(companion.available()))", deny=True
     ), "An effective permission override must retain the unusable-bridge gate"
     assert len(info["paths"]) == 8
     hosts = {}
@@ -211,7 +189,7 @@ def worker(application, private, report):
 
     def status():
         return inside(
-            "import json;from cassini_viewer.browser_service import request,ensure_service;"
+            "import json;from cassini_talk.browser_service import request,ensure_service;"
             "print(json.dumps(request(path=ensure_service())))"
         )
 
@@ -318,8 +296,8 @@ def worker(application, private, report):
             identifier = directory.name.removeprefix("Recording-")
             published = until(
                 lambda identifier=identifier: inside(
-                    "import json;from cassini_viewer.library_v2 import journal,publish;"
-                    "from cassini_viewer.library_location import primary;"
+                    "import json;from cassini_talk.library_v2 import journal,publish;"
+                    "from cassini_talk.library_location import primary;"
                     "root=primary();found=publish.find_file(journal.Layout(root),'Recording'," + repr(identifier) + ");"
                     "print(json.dumps(str(root/found) if found else None))"
                 ),
@@ -331,7 +309,7 @@ def worker(application, private, report):
 
         assert inside(
             "import json;from gi.repository import Gio,GLib;"
-            "from cassini_viewer.browser_service import service_path;"
+            "from cassini_talk.browser_service import service_path;"
             "path=service_path();loop=GLib.MainLoop();"
             "monitor=Gio.File.new_for_path(str(path)).monitor_file(Gio.FileMonitorFlags.NONE,None);"
             "monitor.connect('changed',lambda *_: loop.quit() if not path.exists() else None);"
@@ -376,7 +354,7 @@ def worker(application, private, report):
                     process.wait(5)
         # Removing only this private broker's directory releases its serve loop.
         inside(
-            "import shutil,json;from cassini_viewer.browser_service import service_path;"
+            "import shutil,json;from cassini_talk.browser_service import service_path;"
             "shutil.rmtree(service_path().parent,ignore_errors=True);print(json.dumps(True))"
         )
         for log in logs:

@@ -15,9 +15,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from cassini_viewer import zstd_stream
-from cassini_viewer.model_download import DownloadInterrupted, InsufficientSpace, IntegrityError, ModelStore
-from cassini_viewer.model_manifest import Manifest
+from cassini_talk import zstd_stream
+from cassini_talk.model_download import DownloadInterrupted, InsufficientSpace, IntegrityError, ModelStore
+from cassini_talk.model_manifest import Manifest
 
 ID, REVISION = "fixture-model", "a" * 64
 NOTICE = b"Fixture model notices. These synthetic test weights are CC0.\n"
@@ -560,7 +560,7 @@ def test_supplied_manifest_pins_win_over_a_self_consistent_forged_receipt(remote
 
 
 def test_200_restart_invalidates_validator_before_truncation_can_fail(remote, tmp_path, monkeypatch):
-    from cassini_viewer import model_download
+    from cassini_talk import model_download
 
     client = store(tmp_path, remote)
     remote.mode = "truncate"

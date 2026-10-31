@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer.library import LibraryScanner
-from cassini_viewer.meeting_rename import rename_meeting, title_value
-from cassini_viewer.meeting_store import read_metadata, update_metadata
-from cassini_viewer.received import import_received
-from cassini_viewer.recording_session import RecordingSession
+from cassini_talk.library import LibraryScanner
+from cassini_talk.meeting_rename import rename_meeting, title_value
+from cassini_talk.meeting_store import read_metadata, update_metadata
+from cassini_talk.received import import_received
+from cassini_talk.recording_session import RecordingSession
 
 
 @pytest.fixture
@@ -147,7 +147,7 @@ def test_outside_and_live_meetings_cannot_be_renamed(meeting, tmp_path):
 def test_blank_rename_without_meeting_json_is_not_offered(meeting):
     # Regression (review 118 #5): with no meeting.json the dialog enabled
     # Rename for a blank name that the save then treats as a no-op.
-    from cassini_viewer.meeting_rename import renames
+    from cassini_talk.meeting_rename import renames
 
     (meeting.directory / "meeting.json").unlink()
     bare = LibraryScanner(meeting.directory.parent).scan().meetings[0]

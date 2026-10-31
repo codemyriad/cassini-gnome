@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from cassini_viewer.output_mute import OutputState, read_output_state
+from cassini_talk.output_mute import OutputState, read_output_state
 
 
 def reply(monkeypatch, sinks):
@@ -59,9 +59,9 @@ def test_missing_tool_and_failed_or_timed_out_server_are_unknown(monkeypatch, er
 
 
 def test_history_records_only_transitions_and_preserves_unrelated_edits(tmp_path):
-    from cassini_viewer.meeting_store import read_metadata, update_metadata
-    from cassini_viewer.output_mute import MuteHistory, currently_muted, intervals
-    from cassini_viewer.recording_session import RecordingSession
+    from cassini_talk.meeting_store import read_metadata, update_metadata
+    from cassini_talk.output_mute import MuteHistory, currently_muted, intervals
+    from cassini_talk.recording_session import RecordingSession
 
     session = RecordingSession(tmp_path)
     history = MuteHistory(session.directory)
@@ -94,7 +94,7 @@ def test_history_records_only_transitions_and_preserves_unrelated_edits(tmp_path
     "rows", [None, {}, [None], [dict(trackId="s", startMs=True)], [dict(trackId="s", startMs=2, endMs=1)]]
 )
 def test_untrusted_facts_are_not_mute_evidence(rows):
-    from cassini_viewer.output_mute import intervals
+    from cassini_talk.output_mute import intervals
 
     assert intervals(dict(recordingDetails=dict(audioHealth=dict(outputMuted=rows)))) == []
 
@@ -102,9 +102,9 @@ def test_untrusted_facts_are_not_mute_evidence(rows):
 def test_worker_waits_for_explicit_refresh_and_stop_without_a_fixed_test_wait(tmp_path):
     import threading
 
-    from cassini_viewer.meeting_store import read_metadata
-    from cassini_viewer.output_mute import OutputMuteObserver, intervals
-    from cassini_viewer.recording_session import RecordingSession
+    from cassini_talk.meeting_store import read_metadata
+    from cassini_talk.output_mute import OutputMuteObserver, intervals
+    from cassini_talk.recording_session import RecordingSession
 
     session = RecordingSession(tmp_path)
     state = dict(track="system", monitor="sink.monitor", muted=True, at=10)
@@ -138,8 +138,8 @@ def test_worker_waits_for_explicit_refresh_and_stop_without_a_fixed_test_wait(tm
 def test_failed_observation_does_not_end_capture_and_next_refresh_can_recover(tmp_path):
     import threading
 
-    from cassini_viewer.output_mute import OutputMuteObserver
-    from cassini_viewer.recording_session import RecordingSession
+    from cassini_talk.output_mute import OutputMuteObserver
+    from cassini_talk.recording_session import RecordingSession
 
     session = RecordingSession(tmp_path)
     failed, applied, retry = threading.Event(), threading.Event(), threading.Event()
@@ -172,8 +172,8 @@ def _metadata_process(directory, role, ready, release, waiting):
     """Spawned broker/GTK analogue; synchronize at the atomic commit/flock."""
     import fcntl
 
-    from cassini_viewer import meeting_store
-    from cassini_viewer.output_mute import MuteHistory
+    from cassini_talk import meeting_store
+    from cassini_talk.output_mute import MuteHistory
 
     if ready is not None:
         original = meeting_store.atomic_json
@@ -209,10 +209,10 @@ def _metadata_process(directory, role, ready, release, waiting):
 def test_metadata_edits_serialize_across_processes_at_commit(tmp_path, first, managed):
     import multiprocessing
 
-    from cassini_viewer.library_publication import capture_parent
-    from cassini_viewer.meeting_store import read_metadata
-    from cassini_viewer.output_mute import intervals
-    from cassini_viewer.recording_session import RecordingSession
+    from cassini_talk.library_publication import capture_parent
+    from cassini_talk.meeting_store import read_metadata
+    from cassini_talk.output_mute import intervals
+    from cassini_talk.recording_session import RecordingSession
 
     session = RecordingSession(capture_parent(tmp_path) if managed else tmp_path)
     ctx = multiprocessing.get_context("spawn")
@@ -247,8 +247,8 @@ def test_metadata_edits_serialize_across_processes_at_commit(tmp_path, first, ma
 
 
 def test_metadata_lock_rejects_symlink(tmp_path):
-    from cassini_viewer.meeting_store import update_metadata
-    from cassini_viewer.recording_session import RecordingSession
+    from cassini_talk.meeting_store import update_metadata
+    from cassini_talk.recording_session import RecordingSession
 
     session = RecordingSession(tmp_path)
     target = tmp_path / "foreign"
@@ -266,9 +266,9 @@ def test_metadata_lock_rejects_symlink(tmp_path):
 def test_retirement_uses_commit_time_even_with_a_delayed_stale_query(tmp_path):
     import threading
 
-    from cassini_viewer.meeting_store import read_metadata
-    from cassini_viewer.output_mute import OutputMuteObserver, intervals
-    from cassini_viewer.recording_session import RecordingSession
+    from cassini_talk.meeting_store import read_metadata
+    from cassini_talk.output_mute import OutputMuteObserver, intervals
+    from cassini_talk.recording_session import RecordingSession
 
     session = RecordingSession(tmp_path)
     applied, querying, release, ended = (threading.Event() for _ in range(4))
@@ -317,9 +317,9 @@ def test_delayed_device_query_does_not_block_pcm_or_error_handling(tmp_path, mon
 
     Gst.init(None)
 
-    from cassini_viewer.browser_capture import BrowserCapture
-    from cassini_viewer.native_recorder import NativeRecorder
-    from cassini_viewer.recording_session import RecordingSession
+    from cassini_talk.browser_capture import BrowserCapture
+    from cassini_talk.native_recorder import NativeRecorder
+    from cassini_talk.recording_session import RecordingSession
 
     entered, release, progressed = threading.Event(), threading.Event(), threading.Event()
     session = RecordingSession(tmp_path)
@@ -375,7 +375,7 @@ def test_delayed_device_query_does_not_block_pcm_or_error_handling(tmp_path, mon
         assert release.wait(5), "Test did not release the delayed Pulse query"
         return "sink.monitor"
 
-    monkeypatch.setattr("cassini_viewer.output_mute.monitor_device", device)
+    monkeypatch.setattr("cassini_talk.output_mute.monitor_device", device)
     with ThreadPoolExecutor(max_workers=2) as executor:
         pending = executor.submit(capture._output_sample)
         try:
@@ -419,15 +419,15 @@ def test_source_change_closes_history_before_slow_device_shutdown(tmp_path, monk
         pytest.skip("Capture lock regressions require the GStreamer typelib")
     from gi.repository import GLib, Gst
 
-    from cassini_viewer.browser_capture import BrowserCapture
-    from cassini_viewer.meeting_store import read_metadata
-    from cassini_viewer.native_recorder import NativeRecorder
-    from cassini_viewer.output_mute import OutputMuteObserver, intervals
-    from cassini_viewer.recording_session import RecordingSession
+    from cassini_talk.browser_capture import BrowserCapture
+    from cassini_talk.meeting_store import read_metadata
+    from cassini_talk.native_recorder import NativeRecorder
+    from cassini_talk.output_mute import OutputMuteObserver, intervals
+    from cassini_talk.recording_session import RecordingSession
 
     Gst.init(None)
     applied, ended, stopping, release = (threading.Event() for _ in range(4))
-    monkeypatch.setattr("cassini_viewer.output_mute.monitor_device", lambda _: "sink.monitor")
+    monkeypatch.setattr("cassini_talk.output_mute.monitor_device", lambda _: "sink.monitor")
     if kind == "native":
         session = RecordingSession(tmp_path)
         for track in ("microphone", "system"):

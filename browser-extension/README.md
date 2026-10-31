@@ -25,7 +25,7 @@ is needed:
 
 ```sh
 build-aux/run-browser-test.sh &
-_install/bin/cassini-viewer
+_install/bin/cassini-talk
 ```
 
 The helper prepares both native hosts and loads the extension into
@@ -41,7 +41,7 @@ Audio counts are not participant identities.
 ## Install on Linux
 
 1. Install Cassini natively. The build installs `cassini-browser-host` and the
-   extension under `share/cassini-viewer/browser-extension`. For development,
+   extension under `share/cassini-talk/browser-extension`. For development,
    the checkout's `browser-extension` directory also works with system Python 3.
 2. In native Chrome/Chromium 116+, open `chrome://extensions`, enable Developer
    mode, choose **Load unpacked**, and select that directory. Copy its ID.
@@ -54,10 +54,10 @@ Audio counts are not participant identities.
    ```
 
    For a local build (`make install`), load
-   `_install/share/cassini-viewer/browser-extension` and register its host with:
+   `_install/share/cassini-talk/browser-extension` and register its host with:
 
    ```sh
-   python3 _install/share/cassini-viewer/browser-extension/install-host.py EXTENSION_ID --browser google-chrome
+   python3 _install/share/cassini-talk/browser-extension/install-host.py EXTENSION_ID --browser google-chrome
    ```
 
    The installed installer uses the configured host path. The checkout's
@@ -69,12 +69,12 @@ Audio counts are not participant identities.
    Join the meeting, invoke the Cassini extension, and choose a recording mode.
    Ctrl+Shift+9 opens the extension controls if that shortcut is available.
 5. **Stop and save** finalizes all sources and opens the session in Cassini.
-   The installed host locates the viewer and its settings under the installation
+   The installed host locates the app and its settings under the installation
    prefix, including local builds outside PATH. You can also open the displayed
    directory's `session.json` in Cassini using the Recording Session file filter.
 
 Source WAVs and `session.json` are saved under `~/Music/Cassini/Recording-…`.
-The GNOME session viewer plays individual sources and shows their start offsets.
+The GNOME session app plays individual sources and shows their start offsets.
 No audio is uploaded. An interrupted tab/browser connection preserves audio
 already received and marks the session as interrupted. The tab capture path
 keeps normal meeting playback audible and continues when the popup closes.
@@ -85,8 +85,6 @@ then remove the extension:
 
 - `io.codemyriad.cassini.json`
 - `io.codemyriad.cassini.control.json`
-- Legacy `com.codemyriad.cassini.json`, if present
-- Legacy `com.codemyriad.cassini.control.json`, if present
 
 ## What is captured
 

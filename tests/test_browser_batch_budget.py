@@ -8,7 +8,7 @@ import pytest
 from test_browser_service import service, wait_for  # noqa: F401
 from test_browser_sessions import Extension
 
-from cassini_viewer.browser_service import request
+from cassini_talk.browser_service import request
 
 
 def test_many_unresponsive_starts_share_one_budget_and_a_fast_tab_still_records(service):  # noqa: F811
@@ -31,7 +31,7 @@ def test_many_unresponsive_starts_share_one_budget_and_a_fast_tab_still_records(
 
 
 def test_one_unresponsive_stop_does_not_prevent_other_tabs_from_stopping(service):  # noqa: F811
-    from cassini_viewer.browser_service import send_packet
+    from cassini_talk.browser_service import send_packet
 
     server, path = service
     server.batch_timeout = 0.45
@@ -77,7 +77,7 @@ def test_more_targets_than_workers_return_a_failure_for_every_unfinished_start(s
 def test_a_native_fallback_crossing_the_deadline_is_saved_and_never_left_recording(service, monkeypatch):  # noqa: F811
     import threading
 
-    from cassini_viewer.browser_capture import BrowserCapture
+    from cassini_talk.browser_capture import BrowserCapture
 
     server, path = service
     server.batch_timeout = 0.15
@@ -111,8 +111,8 @@ def test_native_audio_is_saved_even_when_another_browser_stop_never_answers(tmp_
 
     from test_browser_capture import Tap, bind_capture, remote, start
 
-    from cassini_viewer.browser_audio_proxy import BrowserAudioProxy
-    from cassini_viewer.browser_service import BrowserService, send_packet
+    from cassini_talk.browser_audio_proxy import BrowserAudioProxy
+    from cassini_talk.browser_service import BrowserService, send_packet
 
     path = tmp_path / "broker/browser.sock"
     server = BrowserService(

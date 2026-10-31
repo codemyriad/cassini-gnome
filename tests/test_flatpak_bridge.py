@@ -12,10 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer import companion
-from cassini_viewer import flatpak_bridge as bridge
-from cassini_viewer.browser_control_host import parent_browser_info
-from cassini_viewer.browser_service import service_path
+from cassini_talk import companion
+from cassini_talk import flatpak_bridge as bridge
+from cassini_talk.browser_control_host import parent_browser_info
+from cassini_talk.browser_service import service_path
 
 
 @pytest.fixture
@@ -145,60 +145,6 @@ def test_actual_host_stub_keeps_binary_native_frames_and_selects_its_deployment(
         assert arguments[4] == "--command=" + command
 
 
-def test_legacy_cleanup_reads_checks_and_deletes_only_on_host(host, monkeypatch):
-    from test_host_migration import OLD, write_legacy
-
-    directory = host / "config/chromium/NativeMessagingHosts"
-    owned = write_legacy(directory)
-    foreign = write_legacy(directory, OLD + ".control", "not-cassini")
-    before = foreign.read_bytes()
-    calls = []
-    original = Path.open
-
-    def forbid_local_read(path, *args, **kwargs):
-        assert not path.is_relative_to(host / "config"), "Sandbox read a host manifest directly"
-        return original(path, *args, **kwargs)
-
-    def host_command(command, **kwargs):
-        calls.append((command, kwargs))
-        return command
-
-    with monkeypatch.context() as patch:
-        patch.setattr(bridge, "host_command", host_command)
-        patch.setattr(Path, "open", forbid_local_read)
-        assert bridge.cleanup_legacy() == [owned]
-    assert not owned.exists() and foreign.read_bytes() == before
-    assert any(bridge.READ_LEGACY in args for args, _ in calls)
-    assert any(bridge.DELETE_LEGACY in args for args, _ in calls)
-    assert all(kw.get("watch") is True for _, kw in calls)
-
-
-def test_host_cleanup_compares_original_bytes_before_deleting(host, monkeypatch):
-    from test_host_migration import write_legacy
-
-    path = write_legacy(host / "config/chromium/NativeMessagingHosts")
-    original = subprocess.run
-    replacement = b'{"name":"someone.else","path":"/other/app"}'
-
-    def changed(command, **kwargs):
-        if bridge.DELETE_LEGACY in command:
-            path.write_bytes(replacement)
-        return original(command, **kwargs)
-
-    monkeypatch.setattr(bridge.subprocess, "run", changed)
-    assert bridge.cleanup_legacy() == []
-    assert path.read_bytes() == replacement
-
-
-def test_connect_removes_owned_legacy_files_after_publishing_new_hosts(host):
-    from test_host_migration import write_legacy
-
-    path = write_legacy(host / "config/chromium/NativeMessagingHosts")
-    written = bridge.register()
-    assert len(written) == 8 and not path.exists()
-    assert all(p.name.startswith("io.codemyriad.cassini") for p in written)
-
-
 def test_host_stub_passes_the_actual_browser_pid_and_start_tick_across_reconnects(host):
     path = bridge.register()[1]
     executable = json.loads(path.read_text())["path"]
@@ -295,7 +241,7 @@ def test_only_flatpak_accepts_valid_host_browser_process_hint(monkeypatch):
     assert parent_browser_info() != dict(browserName="Brave", browserInstance="1234:5678")
 
 
-def test_flatpak_permissions_include_only_the_bridge_and_matching_legacy_identity():
+def test_flatpak_permissions_include_only_the_current_bridge():
     root = Path(__file__).parents[1]
     for application in bridge.APPLICATIONS:
         recipe = json.loads((root / "build-aux/flatpak" / (application + ".json")).read_text())
@@ -309,13 +255,12 @@ def test_flatpak_permissions_include_only_the_bridge_and_matching_legacy_identit
             "--socket=pulseaudio",
             "--filesystem=xdg-music/Cassini:create",
             "--talk-name=org.freedesktop.Flatpak",
-            "--talk-name=com.gocassini.Viewer" + (".Devel" if application.endswith(".Devel") else ""),
             "--talk-name=org.kde.StatusNotifierWatcher",
         ]
 
 
 def test_idle_broker_keeps_a_live_application_lease_then_exits(tmp_path):
-    from cassini_viewer.browser_service import BrowserService, connect, read_packet, send_packet
+    from cassini_talk.browser_service import BrowserService, connect, read_packet, send_packet
 
     service = BrowserService(tmp_path / "settings.json")
     path = tmp_path / "broker/socket"

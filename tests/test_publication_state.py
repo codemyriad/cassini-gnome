@@ -5,9 +5,9 @@ import errno
 from dataclasses import replace
 from pathlib import Path
 
-from cassini_viewer.library import Meeting
-from cassini_viewer.publication_state import failure_notice, project
-from cassini_viewer.strings import text
+from cassini_talk.library import Meeting
+from cassini_talk.publication_state import failure_notice, project
+from cassini_talk.strings import text
 
 
 def meeting(**values):
@@ -57,7 +57,7 @@ def test_foreign_or_future_track_metadata_cannot_break_the_library_projection():
 
 
 def test_display_projection_never_queries_a_disconnected_library(monkeypatch):
-    from cassini_viewer.publication_state import session_root_path
+    from cassini_talk.publication_state import session_root_path
 
     def blocked(*_args, **_kwargs):
         raise AssertionError("GTK tried to query a potentially disconnected Library")

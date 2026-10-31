@@ -15,9 +15,9 @@ except ValueError:
 
 from library_v2_support import simple_session
 
-from cassini_viewer import library_location as location
-from cassini_viewer.library import LibraryCollectionScanner
-from cassini_viewer.library_v2 import finalize
+from cassini_talk import library_location as location
+from cassini_talk.library import LibraryCollectionScanner
+from cassini_talk.library_v2 import finalize
 
 
 def setup(tmp_path, monkeypatch):
@@ -64,7 +64,7 @@ def _crash_move(root, config, point, ready):
     import os
     import signal
 
-    from cassini_viewer import library_move_pair
+    from cassini_talk import library_move_pair
 
     os.environ["CASSINI_LIBRARY_DIR"] = str(root)
     os.environ["XDG_CONFIG_HOME"] = str(config)
@@ -128,8 +128,8 @@ def test_sigkill_replays_each_paired_move_boundary_without_duplicate_rows(tmp_pa
 
 @pytest.mark.parametrize("interruption", ["file-published", "published"])
 def test_recovery_keeps_a_newer_destination_edit_and_rename(tmp_path, monkeypatch, interruption):
-    from cassini_viewer import library_move_pair
-    from cassini_viewer.meeting_store import read_metadata, update_metadata
+    from cassini_talk import library_move_pair
+    from cassini_talk.meeting_store import read_metadata, update_metadata
 
     class Interrupted(BaseException):
         pass
@@ -149,7 +149,7 @@ def test_recovery_keeps_a_newer_destination_edit_and_rename(tmp_path, monkeypatc
     if interruption == "published":
         assert location.owned_directory(directory) == target
     update_metadata(target, title="Edited at the destination", titleSource="user")
-    from cassini_viewer.library import LibraryScanner
+    from cassini_talk.library import LibraryScanner
 
     (edited,) = LibraryScanner(new).scan().meetings
     edited_bytes = edited.audio_file.read_bytes()
@@ -165,9 +165,9 @@ def test_editor_queued_on_old_library_lock_follows_the_completed_pair(tmp_path, 
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
-    from cassini_viewer import library_move_pair
-    from cassini_viewer.library_v2 import journal
-    from cassini_viewer.meeting_store import update_metadata
+    from cassini_talk import library_move_pair
+    from cassini_talk.library_v2 import journal
+    from cassini_talk.meeting_store import update_metadata
 
     old, new, sid, directory = setup(tmp_path, monkeypatch)
     finalize.finalize(old, sid)
@@ -210,9 +210,9 @@ def test_copy_is_outside_both_library_locks_and_a_changed_source_retries(tmp_pat
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
-    from cassini_viewer import library_move_pair
-    from cassini_viewer.library_v2 import journal
-    from cassini_viewer.meeting_store import update_metadata
+    from cassini_talk import library_move_pair
+    from cassini_talk.library_v2 import journal
+    from cassini_talk.meeting_store import update_metadata
 
     old, new, sid, directory = setup(tmp_path, monkeypatch)
     finalize.finalize(old, sid)
@@ -250,8 +250,8 @@ def test_copy_is_outside_both_library_locks_and_a_changed_source_retries(tmp_pat
 def test_unpublished_stage_is_discarded_and_originals_survive(tmp_path, monkeypatch, failure):
     import threading
 
-    from cassini_viewer import library_move_pair
-    from cassini_viewer.meeting_store import update_metadata
+    from cassini_talk import library_move_pair
+    from cassini_talk.meeting_store import update_metadata
 
     old, new, sid, directory = setup(tmp_path, monkeypatch)
     result = finalize.finalize(old, sid)
@@ -296,7 +296,7 @@ def test_unpublished_stage_is_discarded_and_originals_survive(tmp_path, monkeypa
 def test_cross_filesystem_copy_verifies_bytes_and_same_filesystem_links_closed_audio(tmp_path, monkeypatch):
     import errno
 
-    from cassini_viewer import library_move_pair
+    from cassini_talk import library_move_pair
 
     old, new, sid, directory = setup(tmp_path, monkeypatch)
     result = finalize.finalize(old, sid)
@@ -318,9 +318,9 @@ def test_old_path_editor_queued_across_published_move_crash_uses_destination(tmp
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
-    from cassini_viewer import library_move_pair
-    from cassini_viewer.library_v2 import journal
-    from cassini_viewer.meeting_store import read_metadata, update_metadata
+    from cassini_talk import library_move_pair
+    from cassini_talk.library_v2 import journal
+    from cassini_talk.meeting_store import read_metadata, update_metadata
 
     class Interrupted(BaseException):
         pass

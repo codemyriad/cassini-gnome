@@ -16,19 +16,19 @@ override_dh_auto_configure:
 # normalises the wrapper wheel's zip), dwz or strip. The same goes for the
 # private ONNX Runtime (the pinned upstream wheel, checked against its
 # RECORD). dh_strip runs last of these, so both are verified again after it.
-ORT_DIR = debian/cassini-talk/usr/lib/$(DEB_HOST_MULTIARCH)/cassini-viewer/python
+ORT_DIR = debian/cassini-talk/usr/lib/$(DEB_HOST_MULTIARCH)/cassini-talk/python
 
 override_dh_strip_nondeterminism:
-	dh_strip_nondeterminism -Xwhistle/ -Xcassini-viewer/python/ -Xcassini-viewer/sherpa/
+	dh_strip_nondeterminism -Xwhistle/ -Xcassini-talk/python/ -Xcassini-talk/sherpa/
 
 override_dh_dwz:
-	dh_dwz -Xwhistle/ -Xcassini-viewer/python/ -Xcassini-viewer/sherpa/
+	dh_dwz -Xwhistle/ -Xcassini-talk/python/ -Xcassini-talk/sherpa/
 
 override_dh_strip:
-	dh_strip -Xwhistle/ -Xcassini-viewer/python/ -Xcassini-viewer/sherpa/
-	python3 whistle/verify.py debian/cassini-talk/usr/share/cassini-viewer/whistle
+	dh_strip -Xwhistle/ -Xcassini-talk/python/ -Xcassini-talk/sherpa/
+	python3 whistle/verify.py debian/cassini-talk/usr/share/cassini-talk/whistle
 	python3 whistle/verify.py --onnxruntime $(ORT_DIR)
-	python3 sherpa/fetch.py --cache .sherpa-cache --verify debian/cassini-talk/usr/lib/$(DEB_HOST_MULTIARCH)/cassini-viewer/sherpa
+	python3 sherpa/fetch.py --cache .sherpa-cache --verify debian/cassini-talk/usr/lib/$(DEB_HOST_MULTIARCH)/cassini-talk/sherpa
 
 # The private ONNX Runtime is built for this python3 (CPython ABI), like any
 # extension module: depend on exactly this Python version.

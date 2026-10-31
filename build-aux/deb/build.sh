@@ -20,41 +20,37 @@ fi
 # carries the x86_64 writing-down engine, so it is amd64 only.
 DEB=cassini-talk_${DEB_VERSION}_amd64.deb
 # Each base gets its own file name in dist/ and in the release:
-# ubuntu:26.04 -> cassini-viewer_0.3.0~ubuntu26.04_amd64.deb,
-# debian:testing -> cassini-viewer_0.3.0~debian-testing_amd64.deb.
-COMPAT=cassini-viewer_${DEB_VERSION}_all.deb
+# ubuntu:26.04 -> cassini-talk_0.3.0~ubuntu26.04_amd64.deb,
+# debian:testing -> cassini-talk_0.3.0~debian-testing_amd64.deb.
 BASE_TAG=$(echo "${BASE##*/}" | sed 's/:\([0-9]\)/\1/; s/[:@]/-/g')
 OUT=cassini-talk_${DEB_VERSION}~${BASE_TAG}_amd64.deb
-COMPAT_OUT=cassini-viewer_${DEB_VERSION}~${BASE_TAG}_all.deb
 TAG=cassini-talk-deb:$(image_slug "$BASE")
 # The pinned writing-down artifacts; the package build itself is offline.
 build-aux/whistle-cache.sh
 build-aux/sherpa-cache.sh
 container_build -q -f build-aux/deb/Dockerfile --build-arg BASE="$BASE" -t "$TAG" debian
 mkdir -p dist
-container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" -e DEB="$DEB" -e OUT="$OUT" -e COMPAT="$COMPAT" -e COMPAT_OUT="$COMPAT_OUT" "$TAG" sh -ec '
+container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" -e DEB="$DEB" -e OUT="$OUT" "$TAG" sh -ec '
   mkdir -p /build/src && cd /build/src
   # Copy the tree without build output, caches and VCS data.
   tar -C /in -cf - --exclude=./.git --exclude=./.venv --exclude="./_build*" --exclude=./_install \
     --exclude=./_flatpak --exclude=./.flatpak-builder --exclude=./repo \
     --exclude=./dist --exclude="./obj-*" --exclude=./debian/.debhelper \
-    --exclude=./debian/cassini-viewer --exclude=./debian/cassini-talk --exclude=./debian/tmp --exclude=./tests/recording/node_modules \
+    --exclude=./debian/cassini-talk --exclude=./debian/tmp --exclude=./tests/recording/node_modules \
     --exclude=./tests/recording/artifacts --exclude=./.pytest_cache --exclude=./.ruff_cache \
     --exclude=__pycache__ . | tar -xf -
   dpkg-buildpackage -us -uc -b
   test -f "../$DEB"
-  test -f "../$COMPAT"
-  lintian --info --fail-on error "../$DEB" "../$COMPAT"
+  lintian --info --fail-on error "../$DEB"
   apt-get update -qq
-  apt-get install -y --no-install-recommends "../$DEB" "../$COMPAT"
+  apt-get install -y --no-install-recommends "../$DEB"
   cassini-talk --help >/dev/null
   python3 -I /in/build-aux/smoke-installed.py
   python3 -I /in/build-aux/ci/validate_installed.py "$1"
   cp "../$DEB" "/out/$OUT"
-  cp "../$COMPAT" "/out/$COMPAT_OUT"
   # Docker writes as root; hand the file back to the owner of dist/.
   # Rootless podman already maps root to the caller, so this is a no-op there.
-  chown "$(stat -c %u:%g /out)" "/out/$OUT" "/out/$COMPAT_OUT" 2>/dev/null || true
+  chown "$(stat -c %u:%g /out)" "/out/$OUT" 2>/dev/null || true
 ' sh "$VERSION"
 
 # The build container has every Build-Depends installed, which can hide a

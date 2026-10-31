@@ -81,7 +81,7 @@ folder hint; an unrepresentable folder hint is omitted. Metadata schema and
 encoded-size validation happen before publication, and a failed first scan
 removes the newly published folder. Failed imports leave the Library visible
 with the failure diagnostic instead of reopening the original in the legacy
-viewer. The isolated Open/drop probe covers both filename variants, deduplication
+app. The isolated Open/drop probe covers both filename variants, deduplication
 and a header-readable stream missing its ending.
 
 The scanner carries a received file's byte size into its immutable Meeting model;

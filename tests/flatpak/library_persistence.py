@@ -12,7 +12,7 @@ from pathlib import Path
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("application")
 parser.add_argument("--output", type=Path, required=True)
-parser.add_argument("--modules", type=Path, default=Path("/app/share/cassini-viewer"))
+parser.add_argument("--modules", type=Path, default=Path("/app/share/cassini-talk"))
 parser.add_argument(
     "--grant-for-local-proof",
     action="store_true",
@@ -31,8 +31,8 @@ assert repository != location
 inside = """import hashlib,json,sys
 from pathlib import Path
 sys.path.insert(0,sys.argv[1])
-from cassini_viewer.library_location import primary
-from cassini_viewer.recording_session import RecordingSession
+from cassini_talk.library_location import primary
+from cassini_talk.recording_session import RecordingSession
 expected=Path(sys.argv[2]);root=primary()
 exports=Path(sys.argv[4])
 assert root == expected,(root,expected)
@@ -49,9 +49,9 @@ manifest=json.loads((folder/"session.json").read_text())
 assert manifest["state"] == "completed"
 assert {t["kind"] for t in manifest["tracks"]} == {"microphone","system"}
 assert all(t["frames"] == 9600 for t in manifest["tracks"])
-from cassini_viewer.exporting import export_meeting
-from cassini_viewer.open_meeting import load_open_meeting
-from cassini_viewer import portable
+from cassini_talk.exporting import export_meeting
+from cassini_talk.open_meeting import load_open_meeting
+from cassini_talk import portable
 if sys.argv[3] == "write":
     meeting=load_open_meeting(folder/"session.json")
     unsafe=Path.home()/"Documents/Cassini-temporary-export"
@@ -107,7 +107,7 @@ for mode in ("localized-music", "unconfigured-music", "disabled-music", "revoked
             command.append("--filesystem=xdg-music/Cassini:create")
         if mode == "revoked-music":
             command.append("--nofilesystem=xdg-music/Cassini")
-        if args.modules != Path("/app/share/cassini-viewer"):
+        if args.modules != Path("/app/share/cassini-talk"):
             command.append(f"--filesystem={args.modules.resolve()}:ro")
         expected = (
             music / "Cassini"
@@ -141,7 +141,7 @@ for mode in ("localized-music", "unconfigured-music", "disabled-music", "revoked
         )
 result = dict(
     installedManifestScope=scoped,
-    installedApplicationModules=args.modules == Path("/app/share/cassini-viewer"),
+    installedApplicationModules=args.modules == Path("/app/share/cassini-talk"),
     developmentGrant=args.grant_for_local_proof,
     cases=results,
 )

@@ -30,9 +30,9 @@ gi.require_version("Gsk", "4.0")
 from desktop_services import DesktopServices  # noqa: E402
 from gi.repository import GdkX11, Gio, GLib, Gtk  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer.background_recording import BackgroundRecording  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk.background_recording import BackgroundRecording  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
 
 
 def until(check):

@@ -23,11 +23,11 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.session_events import SourceState  # noqa: E402
-from cassini_viewer.strings import text  # noqa: E402
-from cassini_viewer.what_is_recorded import explain_fallback  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.session_events import SourceState  # noqa: E402
+from cassini_talk.strings import text  # noqa: E402
+from cassini_talk.what_is_recorded import explain_fallback  # noqa: E402
 
 
 def until(check):

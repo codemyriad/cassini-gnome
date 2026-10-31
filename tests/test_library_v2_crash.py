@@ -21,8 +21,8 @@ gi.require_version("Gst", "1.0")
 
 from library_v2_support import meeting_json, root_files, rows, simple_session  # noqa: E402
 
-from cassini_viewer import portable  # noqa: E402
-from cassini_viewer.library_v2 import edit, finalize, journal  # noqa: E402
+from cassini_talk import portable  # noqa: E402
+from cassini_talk.library_v2 import edit, finalize, journal  # noqa: E402
 
 SRC = str(Path(__file__).parents[1] / "src")
 CHILD = textwrap.dedent(
@@ -30,7 +30,7 @@ CHILD = textwrap.dedent(
     import os, signal, sys
     from pathlib import Path
     sys.path.insert(0, sys.argv[1])
-    from cassini_viewer.library_v2 import edit, finalize, journal, publish
+    from cassini_talk.library_v2 import edit, finalize, journal, publish
     operation, target, root, sid = sys.argv[2:6]
     if os.environ.get("CASSINI_TEST_CASEFOLD"):
         sys.path.insert(0, os.environ["CASSINI_TEST_DIR"])
@@ -65,7 +65,7 @@ RECOVER = textwrap.dedent(
     """
     import sys
     sys.path.insert(0, sys.argv[1])
-    from cassini_viewer.library_v2 import journal
+    from cassini_talk.library_v2 import journal
     report = journal.recover(sys.argv[2])
     assert not report.kept and not report.orphans, report
     """

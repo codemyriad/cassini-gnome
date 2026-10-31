@@ -8,7 +8,7 @@ import wave
 
 import pytest
 
-from cassini_viewer import worker_diarization as worker
+from cassini_talk import worker_diarization as worker
 
 pytest.importorskip("numpy")  # Core/Whistle-light profiles need no PCM worker dependencies.
 
@@ -39,7 +39,7 @@ def native(monkeypatch):
         def close(self):
             calls.append("close")
 
-    monkeypatch.setitem(sys.modules, "cassini_viewer.nemotron", types.SimpleNamespace(Nemotron=Native))
+    monkeypatch.setitem(sys.modules, "cassini_talk.nemotron", types.SimpleNamespace(Nemotron=Native))
     return calls
 
 

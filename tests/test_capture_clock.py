@@ -4,8 +4,8 @@
 import json
 import wave
 
-from cassini_viewer.capture_clock import ClockAnchors
-from cassini_viewer.recording_session import RecordingSession
+from cassini_talk.capture_clock import ClockAnchors
+from cassini_talk.recording_session import RecordingSession
 
 
 def test_first_minute_boundaries_and_latest_stamp_keep_an_hour_bounded():

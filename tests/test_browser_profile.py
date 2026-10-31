@@ -11,11 +11,7 @@ def test_development_profile_registers_both_hosts_for_loaded_extension(tmp_path)
     spec.loader.exec_module(module)
     profile = tmp_path / "profile"
     recordings = tmp_path / "recordings"
-    from test_host_migration import OLD, write_legacy
-
-    old = write_legacy(profile / "NativeMessagingHosts", command=OLD + ".py")
     identifier = module.prepare(root, profile, recordings)
-    assert not old.exists()
     assert identifier == "pcafdaahfhjiolfpfnlhmljfgoabbaij"
     for name, module_name in [
         ("io.codemyriad.cassini", "browser_host"),
@@ -27,6 +23,6 @@ def test_development_profile_registers_both_hosts_for_loaded_extension(tmp_path)
         program = Path(manifest["path"])
         assert program.stat().st_mode & 0o777 == 0o700
         source = program.read_text()
-        assert f"from cassini_viewer.{module_name} import main" in source
+        assert f"from cassini_talk.{module_name} import main" in source
         if module_name == "browser_host":
             assert repr(str(recordings)) in source

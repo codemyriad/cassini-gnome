@@ -14,9 +14,9 @@ except ValueError:
     pytest.skip("Recording observations run in the GTK-enabled Recording and distro jobs", allow_module_level=True)
 from gi.repository import GLib  # noqa: E402
 
-from cassini_viewer.recording_comfort import RecordingComfort  # noqa: E402
-from cassini_viewer.recording_details import live_meeting  # noqa: E402
-from cassini_viewer.recording_session import RecordingSession  # noqa: E402
+from cassini_talk.recording_comfort import RecordingComfort  # noqa: E402
+from cassini_talk.recording_details import live_meeting  # noqa: E402
+from cassini_talk.recording_session import RecordingSession  # noqa: E402
 
 
 def session(root, title, source):

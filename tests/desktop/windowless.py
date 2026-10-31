@@ -250,12 +250,12 @@ def host_status_probe(appid):
     program = r"""
 import json,logging,sys
 from gi.repository import GLib
-sys.path.insert(0,'/usr/share/cassini-viewer')
-from cassini_viewer.background_recording import BackgroundRecording
+sys.path.insert(0,'/usr/share/cassini-talk')
+from cassini_talk.background_recording import BackgroundRecording
 messages=[]
 class Capture(logging.Handler):
  def emit(self,record): messages.append(record.getMessage())
-logger=logging.getLogger('cassini_viewer.background_recording')
+logger=logging.getLogger('cassini_talk.background_recording')
 logger.setLevel(logging.INFO);logger.addHandler(Capture())
 portal=BackgroundRecording(sys.argv[1],native=True)
 loop=GLib.MainLoop();result={}
@@ -303,8 +303,8 @@ def sandbox_diagnostic(appid):
                     labels[value] = str(error)
     report["labels"] = labels
     program = (
-        "import json,sys;from gi.repository import GLib;sys.path.insert(0,'/app/share/cassini-viewer');"
-        "from cassini_viewer.background_recording import BackgroundRecording;"
+        "import json,sys;from gi.repository import GLib;sys.path.insert(0,'/app/share/cassini-talk');"
+        "from cassini_talk.background_recording import BackgroundRecording;"
         "p=BackgroundRecording(sys.argv[1]);l=GLib.MainLoop();r={};"
         "s=lambda ok:(r.__setitem__('status',ok),l.quit());"
         "g=lambda ok:(r.__setitem__('granted',ok),p.status('QA probe',s) if ok else l.quit());"

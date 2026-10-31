@@ -5,8 +5,8 @@ import pytest
 from test_browser_capture import Tap
 from test_call_lifecycle import Inline
 
-from cassini_viewer.browser_capture import BrowserCapture
-from cassini_viewer.browser_service import BrowserConnection, BrowserService
+from cassini_talk.browser_capture import BrowserCapture
+from cassini_talk.browser_service import BrowserConnection, BrowserService
 
 
 @pytest.fixture

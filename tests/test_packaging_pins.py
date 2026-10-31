@@ -10,7 +10,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 PINS = json.loads((ROOT / "whistle/pins.json").read_text())
 ARTIFACTS = PINS["artifacts"]
-SHERPA = json.loads((ROOT / "src/cassini_viewer/sherpa-pins.json").read_text())["sherpa-onnx-go-linux"]
+SHERPA = json.loads((ROOT / "src/cassini_talk/sherpa-pins.json").read_text())["sherpa-onnx-go-linux"]
 SHERPA_FILES = {Path(n).name: pin for n, pin in SHERPA["files"].items() if not n.endswith("cxx-api.so")}
 SHERPA_SUMS_SHA = "fa59734ebf92a17c5edc6793b74c8f8e0a184df640597d62f1208ceb0d66ca78"
 
@@ -23,7 +23,7 @@ FLATPAK = [
 
 @pytest.mark.parametrize(
     "path",
-    [ROOT / "build-aux/rpm/cassini-viewer.spec", ROOT / "build-aux/arch/PKGBUILD", *FLATPAK],
+    [ROOT / "build-aux/rpm/cassini-talk.spec", ROOT / "build-aux/arch/PKGBUILD", *FLATPAK],
     ids=lambda p: p.name,
 )
 def test_every_pinned_url_and_sha256_is_in_the_package_sources(path):
@@ -35,7 +35,7 @@ def test_every_pinned_url_and_sha256_is_in_the_package_sources(path):
 
 
 def test_rpm_sources_are_copied_under_the_names_fetch_expects():
-    spec = (ROOT / "build-aux/rpm/cassini-viewer.spec").read_text()
+    spec = (ROOT / "build-aux/rpm/cassini-talk.spec").read_text()
     sources = dict(re.findall(r"^Source([1-4]):\s*(\S+)$", spec, re.M))
     copies = dict(re.findall(r"^cp -p %\{SOURCE(\d+)\} \.whistle-cache/(\S+)$", spec, re.M))
     assert {name: sources[number] for number, name in copies.items()} == {
@@ -49,13 +49,13 @@ def test_rpm_sources_are_copied_under_the_names_fetch_expects():
 
 
 def test_rpm_requires_its_python_abi_and_not_the_distribution_onnxruntime():
-    spec = (ROOT / "build-aux/rpm/cassini-viewer.spec").read_text()
+    spec = (ROOT / "build-aux/rpm/cassini-talk.spec").read_text()
     assert "Requires:       python(abi) = %{python3_version}" in spec
     assert "Requires:       python3dist(numpy)" in spec
     assert not re.search(r"^(Build)?Requires:.*onnxruntime", spec, re.M)
     assert (
-        "%{_libdir}/cassini-viewer\n" in spec
-        and "verify.py --onnxruntime %{buildroot}%{_libdir}/cassini-viewer/python" in spec
+        "%{_libdir}/cassini-talk\n" in spec
+        and "verify.py --onnxruntime %{buildroot}%{_libdir}/cassini-talk/python" in spec
     )
     assert "%license whistle/LICENSE-ONNXRuntime-MIT.txt" in spec
 
@@ -135,7 +135,7 @@ def test_debian_package_is_amd64_and_keeps_the_bundle_unstripped():
     assert re.search(r"^\s+\$\{cassini:Python\},$", control, re.M) and "-Vcassini:Python=" in rules
     assert "-Dwhistle=enabled" in rules
     for helper in ("dh_strip", "dh_dwz", "dh_strip_nondeterminism"):
-        assert f"\t{helper} -Xwhistle/ -Xcassini-viewer/python/ -Xcassini-viewer/sherpa/\n" in rules
+        assert f"\t{helper} -Xwhistle/ -Xcassini-talk/python/ -Xcassini-talk/sherpa/\n" in rules
     assert "verify.py --onnxruntime $(ORT_DIR)" in rules
 
 
@@ -167,7 +167,7 @@ def test_flatpak_runtime_sources_match_d16_and_exclude_model_weights(path):
 
 
 def test_rpm_runtime_sources_use_the_pinned_fork_without_model_weights():
-    spec = (ROOT / "build-aux/rpm/cassini-viewer.spec").read_text()
+    spec = (ROOT / "build-aux/rpm/cassini-talk.spec").read_text()
     sources = dict(re.findall(r"^Source([6-8]):\s*(\S+)$", spec, re.M))
     assert len(sources) == 3
     assert all(SHERPA["commit"] in url for url in sources.values())
@@ -178,10 +178,40 @@ def test_rpm_runtime_sources_use_the_pinned_fork_without_model_weights():
 
 
 def test_rpm_filters_only_its_exact_private_native_ort_dependency():
-    spec = (ROOT / "build-aux/rpm/cassini-viewer.spec").read_text()
+    spec = (ROOT / "build-aux/rpm/cassini-talk.spec").read_text()
     pattern = re.search(r"^%global __requires_exclude (.+)$", spec, re.M).group(1)
     pattern = pattern.replace("\\\\", "\\")
     for dependency in ("libonnxruntime.so()(64bit)", "libonnxruntime.so(VERS_1.27.1)(64bit)"):
         assert re.fullmatch(pattern, dependency)
     for dependency in ("libonnxruntime.so(VERS_1.31.0)(64bit)", "libstdc++.so.6()(64bit)", "libc.so.6()(64bit)"):
         assert not re.fullmatch(pattern, dependency)
+
+
+def test_rpm_payload_does_not_list_the_same_path_twice_after_macro_expansion():
+    spec = (ROOT / "build-aux/rpm/cassini-talk.spec").read_text()
+    name = next(line.split(":", 1)[1].strip() for line in spec.splitlines() if line.startswith("Name:"))
+    payload = spec.split("%files", 1)[1].split("%changelog", 1)[0]
+    paths = [line.strip().replace("%{name}", name) for line in payload.splitlines() if line.startswith("%{_")]
+    assert len(paths) == len(set(paths)), "RPM aliases must not duplicate canonical payload paths"
+
+
+@pytest.mark.parametrize("translated", [False, True])
+def test_rpm_locale_manifest_works_with_empty_or_current_translations(tmp_path, translated):
+    import subprocess
+
+    spec = (ROOT / "build-aux/rpm/cassini-talk.spec").read_text()
+    name = next(line.split(":", 1)[1].strip() for line in spec.splitlines() if line.startswith("Name:"))
+    start = spec.index("\n%find_lang") + 1
+    fragment = spec[start : spec.index("\n%check", start)]
+    fragment = fragment.replace("%find_lang", "find_lang").replace("%{name}", name)
+    fragment = fragment.replace("%{_datadir}", "/usr/share").replace("%%", "%")
+    stub = (
+        "find_lang() { printf '%s\\n' '/usr/share/locale/fr/LC_MESSAGES/cassini-talk.mo' > \"$1.lang\"; }\n"
+        if translated
+        else "find_lang() { return 1; }\n"
+    )
+    result = subprocess.run(["sh", "-euc", stub + fragment], cwd=tmp_path, capture_output=True, text=True, timeout=5)
+    assert result.returncode == 0, f"RPM locale install failed: {result.stderr}"
+    lines = (tmp_path / (name + ".lang")).read_text().splitlines()
+    assert f"%dir /usr/share/{name}" in lines
+    assert any("/locale/fr/" in line for line in lines) == translated

@@ -82,21 +82,6 @@ printf '%s' "$content" > "$temporary"
 chmod "$2" "$temporary"
 mv -fT -- "$temporary" "$destination"
 """
-READ_LEGACY = """set -eu
-if [ -f "$1" ] && [ ! -L "$1" ] && [ -r "$1" ]; then
-    head -c 65537 -- "$1"
-fi
-"""
-DELETE_LEGACY = """set -eu
-destination=$1
-[ -f "$destination" ] && [ ! -L "$destination" ] || exit 0
-expected=$(base64)
-current=$(head -c 65537 -- "$destination" | base64)
-if [ ! -L "$destination" ] && [ "$expected" = "$current" ]; then
-    rm -f -- "$destination"
-    printf 'removed\\n'
-fi
-"""
 
 
 @dataclass(frozen=True)
@@ -264,10 +249,10 @@ def broker_command(socket_path):
             "--arch=" + target.arch,
             "--branch=" + target.branch,
             "--command=python3",
-            "--env=PYTHONPATH=/app/share/cassini-viewer",
+            "--env=PYTHONPATH=/app/share/cassini-talk",
             target.application,
             "-m",
-            "cassini_viewer.browser_service",
+            "cassini_talk.browser_service",
             "--serve",
             str(socket_path),
             "--idle-timeout",
@@ -317,45 +302,6 @@ def _write(path, content, mode, *, expected=None):
         if getattr(error, "returncode", None) in (77, 78):
             raise SetupError("unwritable" if error.returncode == 77 else "unsafe") from error
         raise OSError("Could not register the browser companion") from error
-
-
-def _cleanup_legacy_directories(directories):
-    from .companion import LEGACY_HOSTS, legacy_owned
-
-    removed = []
-    for directory in directories:
-        for name in LEGACY_HOSTS:
-            path = directory / (name + ".json")
-            try:
-                content = subprocess.run(
-                    host_command(["/bin/sh", "-c", READ_LEGACY, "cassini-cleanup", str(path)], watch=True),
-                    stdin=subprocess.DEVNULL,
-                    capture_output=True,
-                    check=True,
-                    timeout=2,
-                ).stdout
-                if not legacy_owned(path.name, content):
-                    continue
-                result = subprocess.run(
-                    host_command(["/bin/sh", "-c", DELETE_LEGACY, "cassini-cleanup", str(path)], watch=True),
-                    input=content,
-                    capture_output=True,
-                    check=True,
-                    timeout=2,
-                )
-                if result.stdout == b"removed\n":
-                    removed.append(path)
-            except (OSError, subprocess.SubprocessError):
-                return removed  # An unavailable host must not cause repeated timeouts.
-    return removed
-
-
-def cleanup_legacy(browsers=None):
-    from .companion import manifest_directories
-
-    deployment()
-    config, _, _, _ = host_info()
-    return _cleanup_legacy_directories(manifest_directories(config=config, browsers=browsers))
 
 
 def register(browsers=None, *, force=False):
@@ -428,7 +374,6 @@ def register(browsers=None, *, force=False):
                 if error.retryable:
                     raise
                 errors.append(error)
-    _cleanup_legacy_directories([browser.config / "NativeMessagingHosts" for browser in browsers])
     if errors:
         raise errors[0]
     return written

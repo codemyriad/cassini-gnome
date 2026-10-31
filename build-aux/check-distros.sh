@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build, test and smoke-test Cassini Viewer on several distributions, each in
+# Build, test and smoke-test Cassini talk on several distributions, each in
 # a clean container, using build-aux/install-deps.sh to get the packages.
 #   build-aux/check-distros.sh [image ...]
 # Default images: see DEFAULT_IMAGES below. Example, a single distribution:
@@ -28,9 +28,9 @@ step "copy source"
 mkdir -p /build/src
 cp -a /in/. /build/src
 cd /build/src
-rm -rf _build* _install _flatpak dist obj-* .flatpak-builder debian/.debhelper debian/cassini-viewer \
+rm -rf _build* _install _flatpak dist obj-* .flatpak-builder debian/.debhelper debian/cassini-talk \
   .git .venv tests/recording/node_modules tests/recording/artifacts
-rm -rf src/cassini_viewer/__pycache__ tests/__pycache__
+rm -rf src/cassini_talk/__pycache__ tests/__pycache__
 
 step "install-deps"
 sh build-aux/install-deps.sh --all --yes
@@ -48,12 +48,12 @@ meson test -C /build/b --print-errorlogs
 
 step "meson install"
 DESTDIR=/build/dest meson install -C /build/b --quiet
-for f in usr/bin/cassini-viewer usr/bin/cassini-browser-host usr/bin/cassini-browser-control-host \
-         usr/share/cassini-viewer/browser-extension/manifest.json usr/share/cassini-viewer/cassini-viewer.gresource \
+for f in usr/bin/cassini-talk usr/bin/cassini-browser-host usr/bin/cassini-browser-control-host \
+         usr/share/cassini-talk/browser-extension/manifest.json usr/share/cassini-talk/cassini-talk.gresource \
          usr/share/applications/io.codemyriad.CassiniTalk.desktop \
          usr/share/metainfo/io.codemyriad.CassiniTalk.metainfo.xml \
          usr/share/glib-2.0/schemas/io.codemyriad.CassiniTalk.gschema.xml \
-         usr/share/cassini-viewer/cassini_viewer/main.py; do
+         usr/share/cassini-talk/cassini_talk/main.py; do
   [ -e "/build/dest/$f" ] || { echo "not installed: /$f"; exit 1; }
 done
 
@@ -67,17 +67,17 @@ meson install -C /build/b --quiet
 
 step "runtime smoke test"
 cd /
-PYTHONPATH=/build/dest/usr/share/cassini-viewer python3 - <<"EOF"
+PYTHONPATH=/build/dest/usr/share/cassini-talk python3 - <<"EOF"
 import sys
 assert sys.version_info >= (3, 11), "Python %s < 3.11" % sys.version.split()[0]
-from cassini_viewer import colors, portable, runtime, summary, transcript  # GTK-free
+from cassini_talk import colors, portable, runtime, summary, transcript  # GTK-free
 import gi
 for ns, v in [("Gtk", "4.0"), ("Gdk", "4.0"), ("Adw", "1"), ("Gst", "1.0"),
               ("Graphene", "1.0"), ("Pango", "1.0")]:
     gi.require_version(ns, v)
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Graphene, Gst, Gtk, Pango
 Gst.init(None)
-Gio.Resource.load("/build/dest/usr/share/cassini-viewer/cassini-viewer.gresource")
+Gio.Resource.load("/build/dest/usr/share/cassini-talk/cassini-talk.gresource")
 gtk = (Gtk.get_major_version(), Gtk.get_minor_version(), Gtk.get_micro_version())
 adw = (Adw.get_major_version(), Adw.get_minor_version(), Adw.get_micro_version())
 fmt = lambda v: ".".join(map(str, v))

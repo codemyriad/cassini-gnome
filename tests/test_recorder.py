@@ -7,7 +7,7 @@ gi = pytest.importorskip("gi")
 gi.require_version("Gst", "1.0")
 from gi.repository import GLib, Gst  # noqa: E402
 
-from cassini_viewer.recorder import Recorder, capture_pipeline  # noqa: E402
+from cassini_talk.recorder import Recorder, capture_pipeline  # noqa: E402
 
 Gst.init(None)
 
@@ -145,7 +145,7 @@ def test_pipeline_construction_failure_leaves_no_partial_output(tmp_path, monkey
 def test_stop_never_waits_for_source_stream_locks_on_main_context(tmp_path, monkeypatch, kind):
     import threading
 
-    from cassini_viewer.native_recorder import NativeRecorder
+    from cassini_talk.native_recorder import NativeRecorder
 
     recorder = Recorder() if kind == "opus" else NativeRecorder()
     entered, release = threading.Event(), threading.Event()

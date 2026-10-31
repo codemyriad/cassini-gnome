@@ -12,8 +12,8 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from broker_fixture import stop_broker
 
-from cassini_viewer.browser_audio_proxy import BrowserAudioProxy
-from cassini_viewer.browser_service import BrowserService, request
+from cassini_talk.browser_audio_proxy import BrowserAudioProxy
+from cassini_talk.browser_service import BrowserService, request
 
 
 class Tap:
@@ -280,7 +280,7 @@ def test_source_limit_failure_keeps_last_applied_choice_and_tracks(server):
 @pytest.mark.parametrize("failure", ["track-limit-race", "native-write"])
 @pytest.mark.parametrize("change", ["selection", "fallback"])
 def test_rejected_change_restores_browser_pcm_after_stream_selection(server, monkeypatch, failure, change):
-    from cassini_viewer.recording_session import ProtocolError
+    from cassini_talk.recording_session import ProtocolError
 
     service, path, _ = server
     client = BrowserAudioProxy(path=path)
@@ -354,7 +354,7 @@ def test_rejected_change_restores_browser_pcm_after_stream_selection(server, mon
 def test_stop_before_missing_browser_fallback_begins_cannot_create_a_late_folder(server, monkeypatch):
     from test_browser_sessions import Extension
 
-    from cassini_viewer.browser_capture import BrowserCapture
+    from cassini_talk.browser_capture import BrowserCapture
 
     service, path, root = server
     peer = Extension(path, (3,))
@@ -386,7 +386,7 @@ def test_stop_before_missing_browser_fallback_begins_cannot_create_a_late_folder
 def bind_capture(peer, capture, tab=3):
     from test_browser_service import wait_for
 
-    from cassini_viewer.browser_service import send_packet
+    from cassini_talk.browser_service import send_packet
 
     peer.sessions[tab] = dict(recording=True, tabId=tab, captureId=capture.capture_id, path=str(capture.directory))
     send_packet(peer.stream, dict(type="status", recording=True, sessions=list(peer.sessions.values())))
@@ -425,7 +425,7 @@ def test_independent_call_hangup_stops_without_system_fallback(server):
     from test_browser_service import meeting, wait_for
     from test_browser_sessions import Extension
 
-    from cassini_viewer.browser_service import send_packet
+    from cassini_talk.browser_service import send_packet
 
     service, path, _ = server
     peer = Extension(path, (3,))
@@ -589,7 +589,7 @@ def test_lost_page_draining_browser_audio_uses_recovery_grace_not_call_end(serve
     from test_browser_service import meeting, wait_for
     from test_browser_sessions import Extension
 
-    from cassini_viewer.browser_service import send_packet
+    from cassini_talk.browser_service import send_packet
 
     service, path, _ = server
     peer = Extension(path, (3,))
@@ -641,7 +641,7 @@ def test_disconnected_user_stop_keeps_original_url_and_does_not_suppress_new_mee
     from test_browser_service import meeting, wait_for
     from test_browser_sessions import Extension
 
-    from cassini_viewer.browser_service import send_packet
+    from cassini_talk.browser_service import send_packet
 
     service, path, _ = server
     peer = Extension(path, (3,), instance="4242:99")
@@ -669,7 +669,7 @@ def test_disconnected_capture_stops_share_the_bounded_stop_store(server):
 
     from test_browser_service import meeting
 
-    from cassini_viewer.browser_service import STOPPED_CALL_LIMIT, BrowserConnection
+    from cassini_talk.browser_service import STOPPED_CALL_LIMIT, BrowserConnection
 
     service, _, _ = server
     for index in range(STOPPED_CALL_LIMIT + 7):
@@ -694,7 +694,7 @@ def test_first_status_binds_the_call_before_its_audio_socket_opens(server):
     from test_browser_service import meeting, wait_for
     from test_browser_sessions import Extension
 
-    from cassini_viewer.browser_service import send_packet
+    from cassini_talk.browser_service import send_packet
 
     service, path, _ = server
     peer = Extension(path, (3,), instance="4242:99")
@@ -782,7 +782,7 @@ def test_fresh_stop_can_be_reported_late_on_an_old_control_link(server):
     from test_browser_service import meeting, wait_for
     from test_browser_sessions import Extension
 
-    from cassini_viewer.browser_service import STOPPED_CALL_REPORT_WINDOW
+    from cassini_talk.browser_service import STOPPED_CALL_REPORT_WINDOW
 
     service, path, _ = server
     peer = Extension(path, (3,), instance="4242:99")

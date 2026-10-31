@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from test_browser_service import meeting, service, wait_for  # noqa: F401
 
-from cassini_viewer.browser_service import connect, read_packet, request, send_packet
+from cassini_talk.browser_service import connect, read_packet, request, send_packet
 
 
 class Extension:

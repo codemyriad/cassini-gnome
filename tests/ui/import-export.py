@@ -37,14 +37,14 @@ gi.require_version("Gsk", "4.0")
 gi.require_version("Graphene", "1.0")
 from gi.repository import Gdk, Gio, GLib, Graphene, Gst, Gtk  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer import portable  # noqa: E402
-from cassini_viewer.exporting import export_meeting  # noqa: E402
-from cassini_viewer.folder_player import FolderPlayer  # noqa: E402
-from cassini_viewer.library_window import LibraryWindow  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.open_meeting import load_open_meeting  # noqa: E402
-from cassini_viewer.player import Player  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk import portable  # noqa: E402
+from cassini_talk.exporting import export_meeting  # noqa: E402
+from cassini_talk.folder_player import FolderPlayer  # noqa: E402
+from cassini_talk.library_window import LibraryWindow  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.open_meeting import load_open_meeting  # noqa: E402
+from cassini_talk.player import Player  # noqa: E402
 
 
 def until(check):
@@ -139,7 +139,7 @@ with tempfile.TemporaryDirectory() as temporary:
     broken.write_bytes(incoming.read_bytes()[:-10])
     window.open_file(Gio.File.new_for_path(str(broken)))
     until(lambda: not window._opening_files)
-    assert failures and app.get_windows() == [window], "A failed import opened the legacy viewer"
+    assert failures and app.get_windows() == [window], "A failed import opened the legacy app"
     assert not list(Path(os.environ["CASSINI_LIBRARY_DIR"]).glob(".received-*"))
     window.read_button.emit("clicked")
     until(lambda: window.meeting_page is not None and window.player._prerolled)
@@ -163,7 +163,7 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog = window.export_dialog
     assert dialog.cassini.get_active() and not dialog.markdown.get_active()
     assert dialog.names.get_text() == "The file carries the names in this meeting. Voiceprints are never exported."
-    from cassini_viewer.meeting_store import update_metadata
+    from cassini_talk.meeting_store import update_metadata
 
     update_metadata(
         received.directory,
@@ -234,7 +234,7 @@ with tempfile.TemporaryDirectory() as temporary:
         "Choose must not add a second picker"
     )
     shown = []
-    with patch("cassini_viewer.export_dialog.Gtk.FileLauncher") as factory:
+    with patch("cassini_talk.export_dialog.Gtk.FileLauncher") as factory:
         factory.return_value.open_containing_folder.side_effect = lambda *_: shown.append(
             factory.call_args.kwargs["file"].get_path()
         )

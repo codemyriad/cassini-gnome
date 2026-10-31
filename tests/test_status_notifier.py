@@ -8,7 +8,7 @@ import pytest
 pytest.importorskip("gi.repository.Gio")
 from gi.repository import Gio, GLib
 
-from cassini_viewer.status_notifier import (
+from cassini_talk.status_notifier import (
     ITEM,
     ITEM_PATH,
     ITEM_XML,

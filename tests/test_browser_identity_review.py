@@ -10,7 +10,7 @@ from test_browser_capture import server  # noqa: F401
 from test_browser_service import meeting, no_command, service, wait_for  # noqa: F401
 from test_control_reconnect import inventory, live, lose, peer
 
-from cassini_viewer.browser_service import request, send_packet
+from cassini_talk.browser_service import request, send_packet
 
 
 def navigate(extension, url):

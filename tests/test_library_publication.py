@@ -19,12 +19,12 @@ except ValueError:
 
 from library_v2_support import simple_session
 
-from cassini_viewer import meeting_store, portable
-from cassini_viewer.library import LibraryScanner
-from cassini_viewer.library_location import capture_lease
-from cassini_viewer.library_publication import capture_parent, publish_stopped, recover_completed, root_for
-from cassini_viewer.library_v2 import finalize, journal
-from cassini_viewer.recording_session import RecordingSession
+from cassini_talk import meeting_store, portable
+from cassini_talk.library import LibraryScanner
+from cassini_talk.library_location import capture_lease
+from cassini_talk.library_publication import capture_parent, publish_stopped, recover_completed, root_for
+from cassini_talk.library_v2 import finalize, journal
+from cassini_talk.recording_session import RecordingSession
 
 
 def test_stop_publishes_capture_without_changing_saved_pcm(tmp_path):

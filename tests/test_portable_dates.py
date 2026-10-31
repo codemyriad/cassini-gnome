@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer.library import Meeting
-from cassini_viewer.portable_writer import descriptors, recording_date
+from cassini_talk.library import Meeting
+from cassini_talk.portable_writer import descriptors, recording_date
 
 DIGEST = dict(sha256="a" * 64, channels=1, sampleCount=48000, durationMs=1000)
 

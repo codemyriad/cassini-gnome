@@ -17,10 +17,10 @@ gi.require_version("Gst", "1.0")
 
 from library_v2_support import RATE, meeting_json, new_session, root_files, rows, simple_session, track_audio  # noqa: E402
 
-from cassini_viewer import portable  # noqa: E402
-from cassini_viewer.library_v2 import edit, fsutil, journal, mixdown, ogg, publish, xschema  # noqa: E402
-from cassini_viewer.library_v2 import finalize as fin  # noqa: E402
-from cassini_viewer.portable import ogg_crc  # noqa: E402
+from cassini_talk import portable  # noqa: E402
+from cassini_talk.library_v2 import edit, fsutil, journal, mixdown, ogg, publish, xschema  # noqa: E402
+from cassini_talk.library_v2 import finalize as fin  # noqa: E402
+from cassini_talk.portable import ogg_crc  # noqa: E402
 
 ZONE = "Europe/Rome"
 
@@ -590,7 +590,7 @@ def test_another_meeting_can_be_renamed_while_a_mixdown_runs(tmp_path, monkeypat
 
 
 def test_commit_retags_when_meeting_json_changed_during_the_mixdown(tmp_path, monkeypatch):
-    from cassini_viewer import meeting_store
+    from cassini_talk import meeting_store
 
     sid, directory = simple_session(tmp_path, 1.0)
     hook, reached, release = paused_at("mixed", "mixdown")

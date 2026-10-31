@@ -18,11 +18,11 @@ args = parser.parse_args()
 sys.path.insert(0, str(args.modules))
 from golden_check import assess, punctuation_match  # noqa: E402
 
-from cassini_viewer.meeting_store import read_metadata  # noqa: E402
-from cassini_viewer.parakeet_client import ParakeetClient  # noqa: E402
-from cassini_viewer.parakeet_model import MODEL_ID, MODEL_TAG  # noqa: E402
-from cassini_viewer.recording_session import RecordingSession  # noqa: E402
-from cassini_viewer.transcription import TranscriptionQueue  # noqa: E402
+from cassini_talk.meeting_store import read_metadata  # noqa: E402
+from cassini_talk.parakeet_client import ParakeetClient  # noqa: E402
+from cassini_talk.parakeet_model import MODEL_ID, MODEL_TAG  # noqa: E402
+from cassini_talk.recording_session import RecordingSession  # noqa: E402
+from cassini_talk.transcription import TranscriptionQueue  # noqa: E402
 
 assert os.environ.get("CASSINI_WHISTLE_NETWORK_NONE") == "1"
 root = args.output.parent / "queue-library"
@@ -131,7 +131,7 @@ for session, original in zip(sessions, before, strict=True):
         )
     )
 assert len({child.pid for child in children}) == 2 and all(child.poll() == 0 for child in children)
-assert "cassini_viewer.parakeet" not in sys.modules and "onnxruntime" not in sys.modules
+assert "cassini_talk.parakeet" not in sys.modules and "onnxruntime" not in sys.modules
 report = dict(
     meetings=checks,
     goldenAssessments=assessments,

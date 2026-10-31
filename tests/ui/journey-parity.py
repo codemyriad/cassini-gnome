@@ -32,15 +32,15 @@ gi.require_version("Gsk", "4.0")
 from desktop_services import DesktopServices  # noqa: E402
 from gi.repository import GdkX11, Gio, GLib, Gst, Gtk  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer import companion  # noqa: E402
-from cassini_viewer import ux_formats as fmt  # noqa: E402
-from cassini_viewer.browser_connection import BrowserConnection  # noqa: E402
-from cassini_viewer.companion_setup import CompanionSetup  # noqa: E402
-from cassini_viewer.global_shortcut import GlobalShortcut  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.meeting_store import update_metadata  # noqa: E402
-from cassini_viewer.received import import_received  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk import companion  # noqa: E402
+from cassini_talk import ux_formats as fmt  # noqa: E402
+from cassini_talk.browser_connection import BrowserConnection  # noqa: E402
+from cassini_talk.companion_setup import CompanionSetup  # noqa: E402
+from cassini_talk.global_shortcut import GlobalShortcut  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.meeting_store import update_metadata  # noqa: E402
+from cassini_talk.received import import_received  # noqa: E402
 
 
 def until(check):

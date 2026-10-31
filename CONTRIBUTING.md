@@ -28,14 +28,14 @@ Layout:
 
 | Path | What |
 |---|---|
-| `src/cassini_viewer/portable.py` | the format reader and audio digest; no GTK |
-| `src/cassini_viewer/transcript.py` | turns, interjections, search, export; no GTK |
-| `src/cassini_viewer/summary.py` | the summary Markdown subset; no GTK |
-| `src/cassini_viewer/player.py` | GStreamer playback |
-| `src/cassini_viewer/window.py`, `src/ui/` | the window |
+| `src/cassini_talk/portable.py` | the format reader and audio digest; no GTK |
+| `src/cassini_talk/transcript.py` | turns, interjections, search, export; no GTK |
+| `src/cassini_talk/summary.py` | the summary Markdown subset; no GTK |
+| `src/cassini_talk/player.py` | GStreamer playback |
+| `src/cassini_talk/window.py`, `src/ui/` | the window |
 | `data/` | desktop file, AppStream metadata, GSettings schema, icons, man page |
 | `build-aux/` | dependency installer, distribution test matrix, and the Flatpak, Debian, RPM and Arch package builds |
-| `src/cassini_viewer/runtime.py` | the startup check for missing or old libraries; no GTK |
+| `src/cassini_talk/runtime.py` | the startup check for missing or old libraries; no GTK |
 | `debian/` | Debian packaging |
 
 ## Checks
@@ -61,8 +61,8 @@ Strings are marked with gettext. To add a language, add its code to
 `po/LINGUAS` and create `po/<code>.po` from the template:
 
 ```sh
-meson compile -C _build cassini-viewer-pot
-msginit -i po/cassini-viewer.pot -o po/<code>.po -l <code>
+meson compile -C _build cassini-talk-pot
+msginit -i po/cassini-talk.pot -o po/<code>.po -l <code>
 ```
 
 ## Releases
@@ -70,14 +70,14 @@ msginit -i po/cassini-viewer.pot -o po/<code>.po -l <code>
 1. Update the version in `meson.build`, and the same version in:
    - a `<release>` in `data/io.codemyriad.CassiniTalk.metainfo.xml.in`
    - an entry in `debian/changelog`
-   - `Version:` and a `%changelog` entry in `build-aux/rpm/cassini-viewer.spec`
+   - `Version:` and a `%changelog` entry in `build-aux/rpm/cassini-talk.spec`
    - `pkgver` in `build-aux/arch/PKGBUILD`
 
    The deb, RPM and Arch build scripts refuse to build when their version differs
    from `meson.build`.
 2. Tag `vX.Y.Z` and push the tag. The release workflow builds the Ubuntu 26.04
-   and Debian testing .debs (`cassini-viewer_X.Y.Z~ubuntu26.04_amd64.deb`,
-   `cassini-viewer_X.Y.Z~debian-testing_amd64.deb`), the Fedora and openSUSE
+   and Debian testing .debs (`cassini-talk_X.Y.Z~ubuntu26.04_amd64.deb`,
+   `cassini-talk_X.Y.Z~debian-testing_amd64.deb`), the Fedora and openSUSE
    x86_64 RPMs, the Arch package and the Flatpak bundle, and attaches them to
    a GitHub release.
 
@@ -107,7 +107,7 @@ make test
 meson setup _build --prefix="$PWD/_install" -Dprofile=development
 meson install -C _build
 meson test -C _build
-GSETTINGS_SCHEMA_DIR=_install/share/glib-2.0/schemas _install/bin/cassini-viewer recording.opus
+GSETTINGS_SCHEMA_DIR=_install/share/glib-2.0/schemas _install/bin/cassini-talk recording.opus
 ```
 
 To install system-wide, use a separate build directory, so that root does not
@@ -146,20 +146,20 @@ choose), then install it in a fresh container and smoke-test it there with
 
 | Command | Builds |
 |---|---|
-| `make deb` | `cassini-viewer_X.Y.Z~ubuntu26.04_amd64.deb`, in Ubuntu 26.04 (`build-aux/deb/build.sh debian:testing` for `~debian-testing`) |
+| `make deb` | `cassini-talk_X.Y.Z~ubuntu26.04_amd64.deb`, in Ubuntu 26.04 (`build-aux/deb/build.sh debian:testing` for `~debian-testing`) |
 | `make rpm` | `.x86_64.rpm` and `.src.rpm`, in Fedora |
 | `make rpm-opensuse` | `.x86_64.rpm` and `.src.rpm`, in openSUSE Tumbleweed |
 | `make arch` | `.pkg.tar.zst` (x86_64), in Arch Linux |
-| `make flatpak` | `cassini-viewer.flatpak` (`make flatpak-devel` for the development app) |
+| `make flatpak` | `cassini-talk.flatpak` (`make flatpak-devel` for the development app) |
 | `make packages` | all of them |
 
 #### Writing down offline, in every package
 
 Every package writes meetings down offline from its first launch, so each one
 bundles the pinned **Whistle** weights, the **Needle** engine (glibc x86_64)
-and wrapper, and **Silero VAD**, under `share/cassini-viewer/whistle`, and
+and wrapper, and **Silero VAD**, under `share/cassini-talk/whistle`, and
 the pinned **ONNX Runtime** wheel for its Python, unpacked under
-`<libdir>/cassini-viewer/python`, with their licences (Apache-2.0, MIT) and
+`<libdir>/cassini-talk/python`, with their licences (Apache-2.0, MIT) and
 `NOTICE.md`. `whistle/pins.json` pins every URL and sha256;
 `tests/test_packaging_pins.py` checks that the spec, the PKGBUILD and both
 Flatpak manifests use exactly those.
@@ -186,7 +186,7 @@ Flatpak manifests use exactly those.
   computer" with the reason.
 - **Never strip the bundle.** The app checks every file against
   `manifest.json` before it loads anything, so a stripped library would never
-  run: `dh_strip`/`dh_dwz -Xwhistle/ -Xcassini-viewer/python/`, no RPM
+  run: `dh_strip`/`dh_dwz -Xwhistle/ -Xcassini-talk/python/`, no RPM
   debuginfo or brp-strip (and no `libneedle.so` or ONNX Runtime provides),
   `options=(!strip !debug)`, Flatpak `no-debuginfo`. Each build verifies the
   installed bundle and ONNX Runtime again after those steps.
@@ -219,7 +219,7 @@ The Flatpak is built on the host. It needs `flatpak` and either `flatpak-builder
 or the `org.flatpak.Builder` app. The script adds the Flathub remote to your
 user installation if needed; the first build downloads the GNOME 50 SDK, and
 later builds update it. You can also build it with GNOME Builder. CI runs build
-the development app (`cassini-viewer-devel.flatpak`, ID
+the development app (`cassini-talk-devel.flatpak`, ID
 `io.codemyriad.CassiniTalk.Devel`), which installs next to a release.
 
 `make check-distros` builds and tests Cassini on Debian testing, Ubuntu 26.04,
@@ -230,7 +230,7 @@ container, and prints a table of the results. Pass images to
 ### Runtime and GStreamer checks
 
 If Python, PyGObject, GTK, libadwaita or GStreamer is missing or too old,
-Cassini says which one and exits, rather than crashing; run `cassini-viewer`
+Cassini says which one and exits, rather than crashing; run `cassini-talk`
 in a terminal to see the message. If a GStreamer plugin is missing, it starts
 anyway, warns on the terminal, and names the packages to install where the
 plugin is needed: Ogg and Opus for `.opus` files, WAV for browser recording
@@ -240,7 +240,7 @@ for **Record Meeting**.
 ### Browser companion and recording architecture
 
 For the separate development browser, run `build-aux/run-browser-test.sh` and
-`_install/bin/cassini-viewer`. The helper loads the extension and registers both
+`_install/bin/cassini-talk`. The helper loads the extension and registers both
 native hosts automatically. See [browser setup](browser-extension/README.md) for
 normal profiles, capture limits and the whole-tab fallback.
 
@@ -266,7 +266,7 @@ shared with Cassini for Mac. See the
 
 ## The format
 
-The reader in [`src/cassini_viewer/portable.py`](src/cassini_viewer/portable.py)
+The reader in [`src/cassini_talk/portable.py`](src/cassini_talk/portable.py)
 follows the [specification](https://format.gocassini.com/) and has no GTK
 dependency. It reports the specification's trust states (`ok`, `stale-audio`,
 `unverified`, `invalid-cassini-metadata`, …), and it verifies the
