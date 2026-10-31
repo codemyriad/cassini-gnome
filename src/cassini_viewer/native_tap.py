@@ -31,7 +31,7 @@ class NativeTap:
         source = (
             f"audiotestsrc is-live=true freq={660 if self.kind == 'microphone' else 880}"
             if self.test
-            else f'pulsesrc device={device} provide-clock=false client-name="Cassini Recording"'
+            else f'pulsesrc name=capture-source device={device} provide-clock=false client-name="Cassini Recording"'
         )
         self.pipeline = Gst.parse_launch(
             source + " ! queue ! audioconvert ! audioresample ! "

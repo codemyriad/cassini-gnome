@@ -135,3 +135,13 @@ one unavailable-locale skip). The real dialog test passes seven warning-guarded
 open scopes, including many spans, live capture, unchanged reports and preserved
 focus/scroll. Rename menus/keys and the D37 journey test pass alongside it.
 The review PNGs remain 1120×720. Silvio approved the design; the coordinator owns the final merge.
+
+D18.2 adds optional `recordingDetails.audioHealth.outputMuted`, an array of
+`{ "trackId": string, "startMs": integer, "endMs"?: integer }`. Times are
+nonnegative meeting-relative milliseconds; an absent `endMs` means the observed
+mute interval is still open. The writer closes it on observed unmute, source
+retirement/replacement or Stop. Only the mute bit of the output actually being
+monitored creates a fact; silence, another output's mute bit and an unavailable
+query never count as evidence of mute or unmute. Other audio-health fields and
+unknown interval fields survive metadata edits. This is additive metadata under
+the schema's existing `additionalProperties`, with no session/protocol change.

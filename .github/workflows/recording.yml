@@ -71,6 +71,8 @@ jobs:
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/browser-microphone.py
       - name: Quit keeps audio when the microphone never delivers a frame
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/no-frames.py --build "$CASSINI_RECORDING_BUILD"
+      - name: Muted output is observed on the actual capture device
+        run: tests/recording/run.sh /usr/bin/python3 tests/recording/output-muted.py
       - name: Source changes release devices and retain exact recording spans
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/sources.py
       - uses: actions/upload-artifact@v7

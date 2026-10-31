@@ -128,7 +128,16 @@ def recording_observation(meeting, *, freshness_seconds=1):
     finally:
         os.close(descriptor)
     minutes, reserve = space_left(meeting.directory, rate or 48000 * 4)
-    return dict(levels=levels, voices=voices, minutes=minutes, reserve=reserve, recent_sound=recent_sound)
+    from .output_mute import currently_muted
+
+    return dict(
+        levels=levels,
+        voices=voices,
+        minutes=minutes,
+        reserve=reserve,
+        recent_sound=recent_sound,
+        output_muted=currently_muted(meeting.metadata),
+    )
 
 
 def live_meeting(directory, phase="recording"):

@@ -52,6 +52,8 @@ class NativeRecorder(GObject.Object):
         self._retired_branches = set()
         self._timelines = {}
         self._ac_meters = {}
+        self._mute_observer = None
+        self.output_muted = False
 
     @property
     def activity(self):
@@ -76,6 +78,8 @@ class NativeRecorder(GObject.Object):
         self._retired_branches = set()
         self._timelines = {}
         self._ac_meters = {}
+        self._mute_observer = None
+        self.output_muted = False
         future = self._executor.submit(self._prepare, Path(parent) if parent is not None else None)
         future.add_done_callback(lambda f: GLib.idle_add(self._prepared, f, test))
 
@@ -126,6 +130,13 @@ class NativeRecorder(GObject.Object):
             self._start_us = GLib.get_monotonic_time()
             if self.minutes_left < 10:
                 self.line = "errors.diskLow.line"
+            if not test:
+                from .output_mute import OutputMuteObserver
+
+                self._mute_observer = OutputMuteObserver(
+                    self.session.directory, self._output_sample, self._output_changed
+                )
+                self._mute_observer.start()
             self._disk_timer = GLib.timeout_add_seconds(1, self._check_disk)
             self.emit("started", str(self.session.directory))
             self.emit("changed")
@@ -148,7 +159,7 @@ class NativeRecorder(GObject.Object):
         source = (
             f"audiotestsrc is-live=true freq={440 if kind == 'microphone' else 880}"
             if self._test_sources
-            else f'pulsesrc device={device} client-name="Cassini Recording" provide-clock=false'
+            else f'pulsesrc name=capture-source device={device} client-name="Cassini Recording" provide-clock=false'
         )
         # A staged live sink must not start a new pipeline-wide preroll: that
         # would pause the confirmed sources while the replacement is tested.
@@ -160,6 +171,22 @@ class NativeRecorder(GObject.Object):
         )
         branch.get_by_name(kind).connect("new-sample", self._sample, kind)
         return branch
+
+    def _output_sample(self):
+        from .output_mute import monitor_device
+
+        with self._lock:
+            track = self._track_ids.get("system")
+            return (
+                track,
+                monitor_device(self._branches.get("system")),
+                max(0, (GLib.get_monotonic_time() - self._start_us) // 1000),
+            )
+
+    def _output_changed(self, muted):
+        if self.output_muted != muted:
+            self.output_muted = muted
+            GLib.idle_add(self.emit, "changed")
 
     def select(self, me, others):
         if type(me) is not bool or type(others) is not bool or not (me or others):
@@ -252,6 +279,8 @@ class NativeRecorder(GObject.Object):
 
     def _sources_changed(self, future):
         self._changing_sources = False
+        if self._mute_observer:
+            self._mute_observer.refresh()
         # Keep the old source; the caller displays the catalog failure.
         with contextlib.suppress(Exception):
             future.result()
@@ -392,6 +421,9 @@ class NativeRecorder(GObject.Object):
         at_ms = max(0, (GLib.get_monotonic_time() - self._start_us) / 1000)
 
         def finish():
+            if self._mute_observer:
+                self._mute_observer.close(at_ms)
+                self._mute_observer = None
             if pipeline is not None:
                 pipeline.set_state(Gst.State.NULL)
             with self._lock:

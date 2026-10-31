@@ -8006,6 +8006,80 @@
    "milestone": "D45",
    "status": "harmony",
    "note": "Coordinator (D45). The product name, used on product-name surfaces only (launcher, window title on the Library, About, app menu, store listings). Never translated. In running sentences the short form 'Cassini' stays."
+  },
+  {
+   "id": "app.checkForUpdates",
+   "en": "Check for Updates…",
+   "platforms": [
+    "mac"
+   ],
+   "role": "menu-item",
+   "boards": [],
+   "milestone": "D34",
+   "status": "harmony",
+   "note": "Coordinator (D34). Mac app menu item that triggers Sparkle's update check. Single ellipsis U+2026."
+  },
+  {
+   "id": "settings.updates.title",
+   "en": "Updates",
+   "platforms": [
+    "mac"
+   ],
+   "role": "group-title",
+   "boards": [],
+   "milestone": "D34.2",
+   "status": "harmony",
+   "note": "Coordinator (D34.2). Mac Settings: a group placed after Recording and before About/Advanced; holds settings.updates.automatic."
+  },
+  {
+   "id": "settings.updates.automatic",
+   "en": "Automatically check for updates",
+   "platforms": [
+    "mac"
+   ],
+   "role": "switch",
+   "boards": [],
+   "milestone": "D34.2",
+   "status": "harmony",
+   "note": "Coordinator (D34.2). Bound to Sparkle's automaticallyChecksForUpdates. Default on after the first-launch consent."
+  },
+  {
+   "id": "updates.readyWhenIdle",
+   "en": "Update ready. It will install when you’re done.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "D34.2",
+   "status": "harmony",
+   "note": "Coordinator (D34.2). Shown unobtrusively (menu bar menu status line or Library footer, never a modal) while a downloaded update waits for recording/transcription to finish (D34.2 Q2)."
+  },
+  {
+   "id": "recording.systemMuted",
+   "en": "Your speakers are muted, so Cassini is recording silence for this computer’s sound. Unmute them to record it.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D18.1",
+   "status": "harmony",
+   "note": "Coordinator (D18.1). Shown on the Recording page / live pill while the actually monitored output of a system-sound source is muted, at start or after a mute. Microphone and browser-source capture are unaffected. Never inferred from quiet PCM."
+  },
+  {
+   "id": "details.health.outputMuted",
+   "en": "This computer’s sound was muted during part of the recording, so that part may be silent.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "health-warning",
+   "boards": [],
+   "milestone": "D18.1",
+   "status": "harmony",
+   "note": "Coordinator (D18.1). Recording details, only for observed mute facts (recordingDetails.audioHealth.outputMuted), never inferred from quiet audio."
   }
  ]
 }

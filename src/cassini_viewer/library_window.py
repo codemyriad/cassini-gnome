@@ -476,13 +476,18 @@ class LibraryWindow(Adw.ApplicationWindow):
         for bar in levels:
             bars.append(bar)
         live.append(bars)
+        muted = Gtk.Image(
+            icon_name="dialog-warning-symbolic", visible=False, tooltip_text=text("recording.systemMuted")
+        )
+        muted.update_property([Gtk.AccessibleProperty.LABEL], [text("recording.systemMuted")])
+        live.append(muted)
         stop = Gtk.Button(label=text("common.stop"), sensitive=False, css_classes=["static-stop"])
         stop._meeting_key = meeting.key if meeting else None
         stop.connect("clicked", self._stop_live)
         live.append(stop)
         stack.add_named(live, "live")
         stack._controls = dict(
-            stack=stack, timer=timer, levels=levels, stop=stop, meeting=meeting.key if meeting else None
+            stack=stack, timer=timer, levels=levels, stop=stop, muted=muted, meeting=meeting.key if meeting else None
         )
         self._capture_headers.append(stack._controls)
         return stack
@@ -616,6 +621,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             controls["timer"].set_label(fmt.live_badge(ms))
             controls["stop"].set_sensitive((own_native and not local_native.stopping) or browser)
             state = self.get_application().comfort.status(target) if target else {}
+            controls["muted"].set_visible(bool(state.get("output_muted")))
             if self._fixed_now is None or self.recording_page:
                 levels = local_native.levels if own_native else state.get("levels", (0.0, 0.0))
                 for bar, fraction in zip(controls["levels"], levels, strict=True):

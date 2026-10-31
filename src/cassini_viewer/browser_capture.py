@@ -41,6 +41,8 @@ class BrowserCapture:
         self.origin_ms = None
         self.line = None
         self.minutes_left = 0
+        self._mute_observer = None
+        self.output_muted = False
 
     @property
     def directory(self):
@@ -63,6 +65,7 @@ class BrowserCapture:
                     }
                 ),
                 line=self.line,
+                outputMuted=self.output_muted,
                 minutesLeft=self.minutes_left,
                 tracks=sum(
                     t["kind"] in ("remote", "tab", "media") and not t.get("ended")
@@ -112,6 +115,11 @@ class BrowserCapture:
                 self._start_native("microphone", mic)
             if system is not None:
                 self._start_native("system", system)
+            if self.tap_factory is None:
+                from .output_mute import OutputMuteObserver
+
+                self._mute_observer = OutputMuteObserver(self.directory, self._output_sample, self._output_changed)
+                self._mute_observer.start()
         except Exception as error:
             self.starting = False
             self.ready.set()
@@ -124,6 +132,20 @@ class BrowserCapture:
         if self.stop_requested.is_set():
             self.stop()
         return result
+
+    def _output_sample(self):
+        from .output_mute import monitor_device
+
+        with self.lock:
+            identifier, tap = self.native_taps.get("system", (None, None))
+            return identifier, monitor_device(tap.pipeline if tap else None), self.elapsed_ms()
+
+    def _output_changed(self, muted):
+        with self.lock:
+            changed = self.output_muted != muted
+            self.output_muted = muted
+        if changed:
+            self.changed(self, "output-mute")
 
     def _add_native(self, kind, at=None, *, identifier=None):
         from .strings import text
@@ -329,6 +351,8 @@ class BrowserCapture:
                         tap.stop()
                     except Exception:
                         logging.getLogger(__name__).exception("Could not finish a deselected source")
+                if self._mute_observer:
+                    self._mute_observer.refresh()
                 self.changed(self, "sources")
                 return self.snapshot()
             finally:
@@ -376,6 +400,9 @@ class BrowserCapture:
             return dict(type="stopped", path=str(self.directory))
         try:
             with self.transition:
+                if self._mute_observer:
+                    self._mute_observer.close(self.elapsed_ms())
+                    self._mute_observer = None
                 for _identifier, tap in tuple(self.native_taps.values()):
                     try:
                         tap.stop()

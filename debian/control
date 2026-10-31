@@ -41,6 +41,7 @@ Depends: ${misc:Depends},
          gstreamer1.0-plugins-good,
          python3-numpy,
          libzstd1,
+         pulseaudio-utils,
 Recommends: pipewire-pulse | pulseaudio,
 Description: play and record meetings, and read along with their transcripts
  Cassini plays meeting recordings in the Cassini portable meeting format:

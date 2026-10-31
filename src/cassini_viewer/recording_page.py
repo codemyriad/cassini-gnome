@@ -253,14 +253,16 @@ class RecordingPage(Adw.NavigationPage):
         self.others_caption.set_label(
             text("recording.others.browserVoices", n=status["voices"]) if browser else text("recordFirst.sound.title")
         )
-        signature = status["line"], status["minutes"], sources.fallback
+        signature = status["line"], status["minutes"], sources.fallback, status.get("output_muted", False)
         if signature != self._line_signature:
             self._line_signature = signature
             while child := self.lines.get_first_child():
                 self.lines.remove(child)
-            self.lines.set_visible(bool(signature[0] or signature[2]))
+            self.lines.set_visible(bool(signature[0] or signature[2] or signature[3]))
             if signature[0]:
                 self.lines.append(InlineLine(signature[0], n=signature[1]))
+            if signature[3]:
+                self.lines.append(InlineLine("recording.systemMuted"))
             if signature[2]:
                 self.lines.append(
                     InlineLine(
