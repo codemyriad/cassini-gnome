@@ -93,6 +93,8 @@ class LibraryRecovery:
             LOG.exception("Library recovery failed; original audio is kept")
             needs_retry = False
         self.app.release()
+        if trash := getattr(self.app, "meeting_trash", None):
+            trash.executor.submit(trash.cleanup.retry)
         if not self.cancelled.is_set() and needs_retry:
             self.timer = GLib.timeout_add_seconds(5, self.start)
         return False

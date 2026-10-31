@@ -36,7 +36,7 @@ def capture_targets(app):
         if recorder_busy(recorder)
     )
     browser = bool(getattr(app, "_record_start_future", None)) or any(
-        s.get("recording") for s in getattr(app, "_browser_snapshot", {}).get("statuses", [])
+        (s.get("recording") or s.get("stopping")) for s in getattr(app, "_browser_snapshot", {}).get("statuses", [])
     )
     browser = browser or any(
         getattr(w, "_activity_source", None) and w._activity_source.snapshot for w in app.get_windows()

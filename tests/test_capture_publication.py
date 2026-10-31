@@ -153,3 +153,53 @@ def test_quit_cancels_native_publish_queued_behind_another_capture(tmp_path, mon
             recorder.stop()
         spin_until(lambda: not recorder.stopping)
         recorder.close()
+
+
+def test_browser_rpc_stop_acknowledges_pcm_and_returns_saving_paths_for_quit(tmp_path, monkeypatch):
+    from test_browser_capture import start as start_wire
+
+    from cassini_viewer.browser_audio_proxy import BrowserAudioProxy
+    from cassini_viewer.browser_service import BrowserService, request
+    from cassini_viewer.capture_activity import read_browser_activity
+
+    root = tmp_path / "Library"
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(root))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "private-config"))
+    entered, release, ready = threading.Event(), threading.Event(), threading.Event()
+    original = finalize.finalize
+
+    def slow_publish(*args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(finalize, "finalize", slow_publish)
+    service = BrowserService(tmp_path / "broker-config.json", tap_factory=Tap, notifier=lambda *_args: None)
+    socket = tmp_path / "broker/service.sock"
+    worker = threading.Thread(target=service.serve, args=(socket, ready), daemon=True)
+    worker.start()
+    assert ready.wait(2)
+    client = BrowserAudioProxy(path=socket)
+    try:
+        path = start_wire(client, "rpc-published")["path"]
+        remote(client, "remote")
+        stopped = request("stop-all", path=socket)
+        assert entered.wait(3)
+        assert not any(state.get("recording") for state in stopped["statuses"])
+        assert any(state.get("stopping") for state in stopped["statuses"])
+        assert stopped["stoppedPaths"] == [path]
+        capture = next(iter(service.captures.values()))
+        sid = capture.host.session.manifest["id"]
+        assert read_browser_activity(socket) == {sid: "saving"}
+        # An app quitting after capture has stopped still transfers its queued
+        # write-down intent using the Saving path, without waiting for encode.
+        quitting = request("stop-all", path=socket)
+        assert quitting["stoppedPaths"] == [path]
+        release.set()
+        assert capture.stopped.wait(5)
+    finally:
+        release.set()
+        client.close()
+        service.closed.set()
+        worker.join(3)
+        assert not worker.is_alive()

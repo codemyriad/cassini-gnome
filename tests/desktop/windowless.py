@@ -503,7 +503,9 @@ def choose_recording_sources(manifest, label, me, others, appid):
 
 
 def recording(root):
-    for manifest in sorted(root.glob("Recording-*/session.json")):
+    for manifest in sorted(
+        (*root.glob("Recording-*/session.json"), *root.glob(".cassini/sessions/Recording-*/session.json"))
+    ):
         value = json.loads(manifest.read_text())
         # The generated microphone must deliver PCM itself; frames on the
         # system track alone once hid a stalled (non-live) test source.

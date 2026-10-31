@@ -842,7 +842,7 @@ class CassiniApplication(Adw.Application):
             and _recorder.session is not None
             and any(track["frames"] > 0 for track in _recorder.session.manifest["tracks"])
         ):
-            self.write_down(_path)
+            self.write_down(_path, resume=True)
         self._release_native()
         self._native_changed()
 

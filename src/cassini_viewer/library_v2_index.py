@@ -286,6 +286,7 @@ class PublishedIndex:
                 interrupted_at_ms=working.interrupted_at_ms if working else None,
                 audio_file=path,
                 published_file=path,
+                recording_offset_minutes=working.recording_offset_minutes if working else None,
                 audio_size_bytes=audio.size,
                 has_audio=audio.duration is not None,
                 metadata_editable=(

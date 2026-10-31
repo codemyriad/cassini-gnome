@@ -54,7 +54,7 @@ class BrowserCapture:
     def snapshot(self):
         with self.lock:
             return dict(
-                recording=not self.finished,
+                recording=not self.finished and not self.stopping,
                 stopping=self.stopping,
                 starting=self.starting,
                 captureId=self.capture_id,

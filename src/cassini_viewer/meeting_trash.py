@@ -12,8 +12,9 @@ from gi.repository import Adw, Gio, GLib
 
 from . import library_location as location
 from .library import LibraryScanner, meeting_id
+from .library_edits import transaction
+from .library_publication import root_for
 from .meeting_state import MeetingError
-from .meeting_store import LOCK
 from .strings import text
 from .trash_cleanup import TrashCleanup
 
@@ -31,11 +32,24 @@ def trash_owned(directory, *, queue=None, voices=None, trash=None, cleanup=None)
     """Worker only: never permanently delete or operate outside the routed Library."""
     exclusion = queue.cancel_meeting(directory) if queue else contextlib.nullcontext()
     with exclusion:
-        with location.routing(), LOCK:
+        with location.routing(), transaction(directory, repair=False):
             directory = location.owned_directory(directory)
-            if directory.exists():
-                if location.capture_busy(meeting_id(directory)):
-                    raise ValueError("Meeting is still recording or saving")
+            root = root_for(directory)
+            if location.capture_busy(meeting_id(directory)):
+                raise ValueError("Meeting is still recording or saving")
+            if root is not None:
+                from .library_v2 import journal, publish
+
+                if trash is not None:
+                    raise ValueError("Managed Trash uses the shared journal's Trash provider")
+                if cleanup:
+                    cleanup.add(directory)
+                # Shared delete owns intent, file-first Trash, session Trash,
+                # fsync and replay. A partial failure keeps its cleanup intent.
+                publish.delete(
+                    journal.Layout(root), origin=journal.identity_of(directory)[0], session_id=meeting_id(directory)
+                )
+            elif directory.exists():
                 snapshot = LibraryScanner.for_meeting(directory).scan(changed_directories={directory})
                 meeting = next((m for m in snapshot.meetings if m.directory == directory), None)
                 if meeting is None or meeting.lifecycle != "saved":

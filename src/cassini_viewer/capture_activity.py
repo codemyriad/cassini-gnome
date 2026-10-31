@@ -21,7 +21,11 @@ def read_browser_activity(path=None, with_connection=False, with_paths=False):
                 value = read_packet(stream)
         result, paths = {}, {}
         for status in (value or {}).get("statuses", []):
-            if isinstance(status, dict) and status.get("recording") is True and isinstance(status.get("path"), str):
+            if (
+                isinstance(status, dict)
+                and (status.get("recording") is True or status.get("stopping") is True)
+                and isinstance(status.get("path"), str)
+            ):
                 directory = Path(status["path"])
                 identifier = meeting_id(directory) if directory.name.startswith("Recording-") else None
                 if identifier:

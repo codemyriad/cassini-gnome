@@ -303,3 +303,28 @@ def test_file_only_metadata_edit_does_not_create_a_working_folder(published, mon
     assert not directory.exists()
     assert audio_digest(meeting.audio_file) == digest
     assert meeting_store.read_metadata(directory)["title"] == "Standalone file title"
+
+
+def test_export_reuses_published_audio_without_tracks_and_preserves_recording_date(published, monkeypatch):
+    import shutil
+
+    from cassini_viewer.exporting import export_meeting
+
+    root, sid, directory, original = published
+    source = portable.read_meeting(str(original))
+    source_digest = audio_digest(original)
+    shutil.rmtree(directory)
+    (meeting,) = LibraryScanner(root).scan().meetings
+
+    def no_encoder(*_args, **_kwargs):
+        raise AssertionError("Published audio was re-encoded instead of reused")
+
+    monkeypatch.setattr("cassini_viewer.exporting.encode_pcm", no_encoder)
+    exported = export_meeting(meeting, root / "Documents", tz="Asia/Tokyo")
+    result = portable.read_meeting(str(exported))
+    assert result.is_readable and audio_digest(exported) == source_digest
+    assert result.tags["DATE"] == source.tags["DATE"]
+    assert result.recorded_at_local == source.recorded_at_local
+    assert result.tags["CASSINI_CREATED_AT"] == result.manifest["meeting"]["createdAtUtc"]
+    assert result.manifest["audioEncode"] == source.manifest["audioEncode"]
+    assert not directory.exists()

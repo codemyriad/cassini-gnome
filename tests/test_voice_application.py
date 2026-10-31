@@ -204,3 +204,54 @@ def test_removed_meeting_paths_cannot_be_resaved_by_hidden_callbacks(application
 
     window._activity_source.paths["stale"] = gone_path
     assert remember_capture_paths(app) == {kept_path}
+
+
+def test_native_finished_resumes_the_queue_intent_saved_by_a_background_close(application_class, tmp_path, monkeypatch):
+    from test_library import capture
+    from test_transcription import until
+
+    from cassini_viewer import meeting_store
+    from cassini_viewer.transcription import TranscriptionQueue
+
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    session = capture(tmp_path)
+    meeting_store.update_metadata(session.directory, transcript=dict(status="queued", reference=None))
+    finished = []
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, progress):
+            return dict(diagnostics=[])
+
+    queue = TranscriptionQueue(
+        lambda _directory: None, finished.append, root=tmp_path, bundle=tmp_path, client_factory=Client
+    )
+    recorder = SimpleNamespace(session=session, close=lambda: None)
+    app = SimpleNamespace(
+        native_captures={"finished": recorder},
+        _notify_shortcut_saved=lambda _path: None,
+        build_refresh=None,
+        _pending_recording=None,
+        transcription_enabled=True,
+        _quitting=False,
+        _capture_exiting=False,
+        write_down=queue.enqueue,
+        _release_native=lambda: None,
+        _native_changed=lambda: None,
+    )
+    try:
+        # The accepted queue intent exists before the NativeRecorder's finished
+        # callback; treating this as a fresh job loses it and releases its hold.
+        application_class._native_finished(app, recorder, str(session.directory))
+        until(lambda: bool(finished))
+        assert meeting_store.read_metadata(session.directory)["transcript"]["status"] == "done"
+    finally:
+        queue.close()

@@ -43,8 +43,8 @@ if sys.argv[3] == "write":
         session.append(identifier,data*9600,0)
     session.finish()
 else:
-    assert len(list(root.glob("Recording-*"))) == 1
-folder,=root.glob("Recording-*")
+    assert len(list(root.glob(".cassini/sessions/Recording-*"))) == 1
+folder,=root.glob(".cassini/sessions/Recording-*")
 manifest=json.loads((folder/"session.json").read_text())
 assert manifest["state"] == "completed"
 assert {t["kind"] for t in manifest["tracks"]} == {"microphone","system"}

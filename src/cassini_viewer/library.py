@@ -169,6 +169,7 @@ class Meeting(MeetingState):
     audio_file: Path | None = None
     published_file: Path | None = None
     published_missing: bool = False
+    recording_offset_minutes: int | None = None
     audio_size_bytes: int | None = None
     legacy_transcript_file: Path | None = None
     has_audio: bool = False
@@ -689,6 +690,12 @@ class LibraryScanner:
             capture_source=capture.get("source") if origin == "own" else None,
             capture_state=capture.get("state") if origin == "own" else None,
             capture_events=read_events(capture.get("events")) if origin == "own" else (),
+            recording_offset_minutes=(
+                capture["startedAtUtcOffsetMinutes"]
+                if type(capture.get("startedAtUtcOffsetMinutes")) is int
+                and -720 <= capture["startedAtUtcOffsetMinutes"] <= 840
+                else None
+            ),
             audio_file=audio_file,
             audio_size_bytes=audio_size,
             legacy_transcript_file=legacy_transcript_file,

@@ -551,7 +551,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         from .library import meeting_id
 
         for state in app._browser_snapshot.get("statuses", []):
-            if state.get("recording") and isinstance(state.get("path"), str):
+            if (state.get("recording") or state.get("stopping")) and isinstance(state.get("path"), str):
                 activity[meeting_id(Path(state["path"]))] = "saving" if state.get("stopping") else "recording"
         if activity != self._activity:
             self._activity = activity

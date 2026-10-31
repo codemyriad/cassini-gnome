@@ -1489,7 +1489,11 @@ class BrowserService:
                         self._cancelled_groups.pop(token, None)
         try:
             snapshot = self.snapshot()
-            paths = [s["path"] for s in snapshot["statuses"] if s.get("recording") and matches(s.get("path"))]
+            paths = [
+                s["path"]
+                for s in snapshot["statuses"]
+                if (s.get("recording") or s.get("stopping")) and matches(s.get("path"))
+            ]
             with self.lock:
                 commands = {s["id"] for s in snapshot["statuses"] if s.get("recording") and matches(s.get("path"))}
                 if directory is None:

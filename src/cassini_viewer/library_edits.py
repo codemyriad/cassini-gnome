@@ -19,7 +19,7 @@ _LOCAL = threading.local()
 
 
 @contextmanager
-def transaction(directory):
+def transaction(directory, *, repair=True):
     from .meeting_store import LOCK, atomic_json, published_metadata
 
     directory = Path(directory)
@@ -45,7 +45,7 @@ def transaction(directory):
         _LOCAL.root = root
         try:
             with LOCK:
-                if directory.is_dir() and not (directory / "meeting.json").exists():
+                if repair and directory.is_dir() and not (directory / "meeting.json").exists():
                     metadata = published_metadata(directory)
                     if metadata is not None:
                         atomic_json(directory / "meeting.json", metadata)
