@@ -392,6 +392,29 @@ def bind_capture(peer, capture, tab=3):
     )
 
 
+def test_a_call_stopped_while_its_browser_is_away_stays_stopped(server):
+    from test_browser_service import wait_for
+    from test_browser_sessions import Extension
+
+    service, path, _ = server
+    peer = Extension(path, (3,), instance="4242:99")
+    client = BrowserAudioProxy(path=path)
+    start(client, "away")
+    capture = service.captures["away"]
+    bind_capture(peer, capture)
+    peer.close()
+    client.close()
+    wait_for(lambda: capture.browser_lost and not service.browsers)
+    request("stop-all", path=path)
+    wait_for(lambda: capture.finished)
+    # The extension's new worker reports the call that is still open.
+    peer = Extension(path, (3,), instance="4242:99")
+    try:
+        wait_for(lambda: 3 in next(iter(service.browsers.values())).attempted)
+    finally:
+        peer.close()
+
+
 def test_independent_call_hangup_stops_without_system_fallback(server):
     from test_browser_service import meeting, wait_for
     from test_browser_sessions import Extension
@@ -605,4 +628,174 @@ def test_permission_evidence_requires_native_pcm_not_remote_audio(server):
         system.append(b"\1\0" * 4, track["startOffsetMs"] + 100)
         assert capture.snapshot()["permittedSources"] == ["microphone", "system"]
     finally:
+        client.close()
+
+
+def test_disconnected_user_stop_keeps_original_url_and_does_not_suppress_new_meeting(server):
+    from test_browser_service import meeting, wait_for
+    from test_browser_sessions import Extension
+
+    from cassini_viewer.browser_service import send_packet
+
+    service, path, _ = server
+    peer = Extension(path, (3,), instance="4242:99")
+    client = BrowserAudioProxy(path=path)
+    try:
+        start(client, "original-url")
+        capture = service.captures["original-url"]
+        bind_capture(peer, capture)
+        peer.close()
+        wait_for(lambda: not service.browsers)
+        request("stop-all", path=path)
+        assert service.stopped_calls[("4242:99", 3)][0] == meeting()["url"]
+        peer = Extension(path, (), instance="4242:99")
+        send_packet(peer.stream, dict(type="meetings", meetings=[dict(meeting(), url="https://meeting.example/new")]))
+        wait_for(lambda: request(path=path)["meetings"])
+        assert ("4242:99", 3) not in service.stopped_calls
+        assert not next(iter(service.browsers.values())).attempted
+    finally:
+        peer.close()
+        client.close()
+
+
+def test_disconnected_capture_stops_share_the_bounded_stop_store(server):
+    from types import SimpleNamespace
+
+    from test_browser_service import meeting
+
+    from cassini_viewer.browser_service import STOPPED_CALL_LIMIT, BrowserConnection
+
+    service, _, _ = server
+    for index in range(STOPPED_CALL_LIMIT + 7):
+        identifier = str(index)
+        connection = BrowserConnection(None, browser_instance="4242:99")
+        connection.meetings[index] = dict(meeting(index), url="https://meeting.example/" + identifier)
+        capture = SimpleNamespace(capture_id=identifier, finished=False)
+        service.captures[identifier] = capture
+        # Bind through the same status handler, then stop after the link is
+        # absent. This exercises the disconnected insertion path, not its map.
+        service._status(
+            connection, dict(recording=True, sessions=[dict(tabId=index, recording=True, captureId=identifier)])
+        )
+        service._remember_capture_stop(capture)
+        service.captures.pop(identifier)
+    assert len(service.stopped_calls) == STOPPED_CALL_LIMIT
+    assert ("4242:99", 0) not in service.stopped_calls
+    assert ("4242:99", STOPPED_CALL_LIMIT + 6) in service.stopped_calls
+
+
+def test_first_status_binds_the_call_before_its_audio_socket_opens(server):
+    from test_browser_service import meeting, wait_for
+    from test_browser_sessions import Extension
+
+    from cassini_viewer.browser_service import send_packet
+
+    service, path, _ = server
+    peer = Extension(path, (3,), instance="4242:99")
+    client = BrowserAudioProxy(path=path)
+    try:
+        send_packet(
+            peer.stream,
+            dict(type="status", recording=True, sessions=[dict(tabId=3, recording=True, captureId="early")]),
+        )
+        wait_for(lambda: any(s.get("captureId") == "early" for s in request(path=path)["statuses"]))
+        start(client, "early")
+        # There is deliberately no second status after the socket opens.
+        peer.close()
+        wait_for(lambda: not service.browsers)
+        request("stop-all", path=path)
+        assert service.captures["early"].finished
+        assert service.stopped_calls[("4242:99", 3)][0] == meeting()["url"]
+    finally:
+        peer.close()
+        client.close()
+
+
+def test_stop_all_remembers_the_user_stop_when_control_disconnects_after_its_snapshot(server, monkeypatch):
+    from test_browser_service import meeting, wait_for
+    from test_browser_sessions import Extension
+
+    service, path, _ = server
+    peer = Extension(path, (3,), instance="4242:99")
+    client = BrowserAudioProxy(path=path)
+    try:
+        start(client, "snapshot-race")
+        capture = service.captures["snapshot-race"]
+        bind_capture(peer, capture)
+        original = service.command
+
+        def disconnect(identifier, action, **kwargs):
+            peer.close()
+            wait_for(lambda: not service.browsers)
+            return original(identifier, action, **kwargs)
+
+        monkeypatch.setattr(service, "command", disconnect)
+        request("stop-all", path=path)
+        assert capture.finished
+        assert service.stopped_calls[("4242:99", 3)][0] == meeting()["url"]
+    finally:
+        peer.close()
+        client.close()
+
+
+@pytest.mark.parametrize("preserve_capture", [False, True])
+def test_user_stop_joins_pending_automatic_stop_and_finishes_its_capture(server, preserve_capture):
+    from test_browser_service import meeting, wait_for
+    from test_browser_sessions import Extension
+
+    service, path, _ = server
+    peer = Extension(path, (3,), instance="4242:99")
+    client = BrowserAudioProxy(path=path)
+    try:
+        start(client, "pending-stop")
+        capture = service.captures["pending-stop"]
+        bind_capture(peer, capture)
+        identifier = request(path=path)["meetings"][0]["id"]
+        with ThreadPoolExecutor(2) as pool:
+            automatic = pool.submit(service.command, identifier, "stop", preserve_capture=preserve_capture)
+            command = peer.receive()
+            user = pool.submit(request, "stop-all", path=path)
+            wait_for(lambda: capture.finished)
+            assert service.stopped_calls[("4242:99", 3)][0] == meeting()["url"]
+            # The user sees the completed local save even if the page has not
+            # acknowledged the automatic/fallback stop yet.
+            assert not any(s.get("recording") for s in user.result(2)["statuses"])
+            assert not automatic.done()
+            peer.answer(command)
+            assert automatic.result(2)
+            assert not next(iter(service.browsers.values())).pending, "A second wire Stop must not be sent"
+    finally:
+        peer.close()
+        client.close()
+
+
+def test_fresh_stop_can_be_reported_late_on_an_old_control_link(server):
+    from test_browser_service import meeting, wait_for
+    from test_browser_sessions import Extension
+
+    from cassini_viewer.browser_service import STOPPED_CALL_REPORT_WINDOW
+
+    service, path, _ = server
+    peer = Extension(path, (3,), instance="4242:99")
+    client = BrowserAudioProxy(path=path)
+    try:
+        start(client, "late-report")
+        capture = service.captures["late-report"]
+        bind_capture(peer, capture)
+        with service.lock:
+            connection = next(iter(service.browsers.values()))
+            connection.connected_at -= STOPPED_CALL_REPORT_WINDOW + 1
+        # Native fallback is still recording while this tab is briefly absent.
+        capture.fallback()
+        peer.inventory(())
+        wait_for(lambda: not request(path=path)["meetings"])
+        request("stop-all", path=path)
+        peer.inventory((7,))
+        wait_for(lambda: len(request(path=path)["meetings"]) == 1)
+        peer.inventory((3, 7))
+        wait_for(lambda: len(request(path=path)["meetings"]) == 2)
+        assert service.stopped_calls[("4242:99", 3)][0] == meeting()["url"]
+        assert 3 in connection.attempted
+    finally:
+        peer.close()
         client.close()

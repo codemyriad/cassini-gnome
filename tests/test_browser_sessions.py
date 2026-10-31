@@ -10,12 +10,12 @@ from cassini_viewer.browser_service import connect, read_packet, request, send_p
 
 
 class Extension:
-    def __init__(self, path, tabs=(3, 4)):
+    def __init__(self, path, tabs=(3, 4), instance=None):
         self.path = path
         self.connection = connect(path, timeout=2)
         self.stream = self.connection.makefile("rwb")
         self.sessions = {}
-        send_packet(self.stream, dict(role="extension"))
+        send_packet(self.stream, dict(role="extension", browserInstance=instance))
         send_packet(self.stream, dict(type="hello", version=1, capabilities=["independent-sessions-v1"]))
         send_packet(self.stream, dict(type="status", recording=False, sessions=[]))
         self.inventory(tabs)
