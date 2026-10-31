@@ -109,6 +109,15 @@ def prepare_tracks(meeting):
                 sampleRate=track.sample_rate,
                 # S-12 §5: the child dispatches the decoder by codec; WAV jobs are unchanged.
                 **({"codec": "opus"} if track.codec == "opus" else {}),
+                **(
+                    dict(
+                        clockAnchors=[list(point) for point in track.clock_anchors],
+                        channels=track.channels,
+                        sessionDirectory=str(meeting.directory),
+                    )
+                    if track.clock_anchors or track.codec == "opus"
+                    else {}
+                ),
             )
         )
         speakers.setdefault(speaker, dict(id=speaker, name=name, provenance=provenance, colourIndex=index))

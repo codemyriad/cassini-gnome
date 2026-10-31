@@ -116,6 +116,7 @@ class CaptureTrack:
     # source metadata; readers decode pcm_frames at pcm_rate.
     codec: str = "pcm"
     decoded_frames: int | None = None
+    clock_anchors: tuple[tuple[int, int], ...] = ()
 
     @property
     def pcm_rate(self):
@@ -588,6 +589,15 @@ class LibraryScanner:
                         source_identity,
                         span.codec,
                         span.decoded_frames if span.codec == "opus" else None,
+                        tuple(
+                            tuple(point)
+                            for point in value.get("clockAnchors", ())
+                            if isinstance(point, list)
+                            and len(point) == 2
+                            and all(type(part) is int and 0 <= part <= 2**63 for part in point)
+                        )
+                        if isinstance(value.get("clockAnchors", ()), (list, tuple))
+                        else (),
                     )
                 )
             except (OSError, ValueError, TypeError):

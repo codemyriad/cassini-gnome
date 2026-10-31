@@ -88,11 +88,17 @@ def resampled_stream(blocks):
 
 def streamed(track):
     """Received Opus files and compacted capture spans (S-12 §5) decode sequentially."""
-    return track.get("format") == "opus" or track.get("codec") == "opus"
+    from .mapped_audio import required
+
+    return track.get("format") == "opus" or track.get("codec") == "opus" or required(track)
 
 
 def audio_chunks(track):
-    if track.get("codec") == "opus":
+    from .mapped_audio import chunks, required
+
+    if required(track):
+        yield from chunks(track)
+    elif track.get("codec") == "opus":
         from .track_source import mono_blocks
 
         with closing(mono_blocks(track["path"])) as decoded:

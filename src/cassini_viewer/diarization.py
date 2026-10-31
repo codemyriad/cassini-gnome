@@ -184,8 +184,13 @@ def group_tracks(tracks, *, origin="own"):
         group["tracks"].append(track["id"])
         kinds.setdefault(speaker, set()).add(kind)
         if "frames" in track:
-            end = Fraction(str(track.get("startOffsetMs", track.get("offsetMs")) or 0))
-            end += Fraction(track["frames"] * 1000, track["sampleRate"])
+            from .mapped_audio import end_ms, required
+
+            if required(track):
+                end = end_ms(track)
+            else:
+                end = Fraction(str(track.get("startOffsetMs", track.get("offsetMs")) or 0))
+                end += Fraction(track["frames"] * 1000, track["sampleRate"])
             group["durationMs"] = max(group["durationMs"], math.floor(end))
     for speaker, group in groups.items():
         group["eligible"] = (
