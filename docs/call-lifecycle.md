@@ -8,6 +8,15 @@ The broker owns every independent capture and its Library folder. With the
 The original capture ID, native connection and clock survive navigation. Older
 extensions retain their existing transport behavior.
 
+For independent sessions, a top-level status with a tab ID and no `sessions`
+list updates only that tab. Older single-session status keeps its global meaning.
+It retains the known capture ID, path and stopping state when omitted; explicit
+fields take priority, and a replacement capture inherits none of its predecessor's
+state. This also covers the interval before the audio socket opens and connections
+without a browser instance. Every shared wire case runs both as published and
+with tab-scoped status deltas, checking retained folder/microphone ownership and
+the actual saved end reason.
+
 Each capture has its own monotonic timers. A present page with no sources stops
 after 2 seconds (`callEnded`). A browser-confirmed closed tab stops after 2 seconds
 (`tabClosed`) without starting computer-sound capture. Navigation or an absent
