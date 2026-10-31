@@ -276,23 +276,23 @@ try:
             "recording folder opens the pushed Meeting page",
             diagnostics=diagnostics,
         )
-        app = next(w for w in app.get_windows() if isinstance(w, LibraryWindow))
-        painted(app)
-        assert app.meeting_page.play.get_sensitive()
-        assert app.meeting_page.player.duration == 1250  # 250 ms source offset + 1 second PCM
-        app.meeting_page.play.emit("clicked")
+        meeting_window = next(w for w in app.get_windows() if isinstance(w, LibraryWindow))
+        painted(meeting_window)
+        assert meeting_window.meeting_page.play.get_sensitive()
+        assert meeting_window.meeting_page.player.duration == 1250  # 250 ms source offset + 1 second PCM
+        meeting_window.meeting_page.play.emit("clicked")
         wait_until(
-            lambda: app.meeting_page.player.position > 0,
+            lambda: meeting_window.meeting_page.player.position > 0,
             "session playback advances",
             timeout=3,
             diagnostics=diagnostics,
         )
-        assert app.meeting_page.player.position > 0
-        assert app.meeting_page.play.get_tooltip_text() == "Pause"
-        app.meeting_page.play.emit("clicked")
-        assert not app.meeting_page.player.playing
+        assert meeting_window.meeting_page.player.position > 0
+        assert meeting_window.meeting_page.play.get_tooltip_text() == "Pause"
+        meeting_window.meeting_page.play.emit("clicked")
+        assert not meeting_window.meeting_page.player.playing
         subprocess.run(["import", "-window", "root", str(artifacts / "session.png")], check=True)
-        app.close()
+        meeting_window.close()
     for producer in producers:
         producer.set_state(Gst.State.NULL)
     print("PASS native Library RecordFirst, separate Pulse WAVs/levels/Stop, keep-background, quit and pushed playback")
