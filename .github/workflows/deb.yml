@@ -51,7 +51,7 @@ jobs:
       - run: build-aux/deb/build.sh "${{ matrix.base }}" || build-aux/deb/build.sh "${{ matrix.base }}"
       # Preserve built packages even if a subsequent installed-app journey
       # fails; release selection still requires every gate on main to pass.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: deb-${{ strategy.job-index }}
           path: dist/*.deb
@@ -60,7 +60,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash tests/upgrade/run.sh dist/cassini-talk_*.deb dist/cassini-viewer_*_all.deb "$RUNNER_TEMP/product-upgrade"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always() && matrix.base == 'ubuntu:26.04'
         with:
           name: cassini-talk-upgrade
@@ -72,7 +72,7 @@ jobs:
       - name: Installed package restarts after upgrades and preserves active audio
         if: matrix.base == 'ubuntu:26.04'
         run: tests/build-refresh/run.sh dist/cassini-talk_*.deb "$RUNNER_TEMP/build-refresh"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always() && matrix.base == 'ubuntu:26.04'
         with:
           name: installed-build-refresh
@@ -99,7 +99,7 @@ jobs:
       - name: Installed package connects a fresh real extension without Connect
         if: matrix.base == 'ubuntu:26.04'
         run: tests/browser-setup/run.sh dist/cassini-talk_*.deb "$RUNNER_TEMP/browser-startup"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always() && matrix.base == 'ubuntu:26.04'
         with:
           name: browser-startup-installed

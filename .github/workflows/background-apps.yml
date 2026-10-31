@@ -40,7 +40,7 @@ jobs:
         run: |
           CASSINI_DESKTOP_FLATPAK_CACHE="$PWD/.desktop-flatpak-cache" \
             tests/desktop/run.sh _desktop-packages/deb/cassini-talk_*.deb _desktop-packages/flatpak/*.flatpak desktop-evidence
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: background-apps-desktop

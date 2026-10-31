@@ -73,7 +73,7 @@ jobs:
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/no-frames.py --build "$CASSINI_RECORDING_BUILD"
       - name: Source changes release devices and retain exact recording spans
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/sources.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: recording-evidence

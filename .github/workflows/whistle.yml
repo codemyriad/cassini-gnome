@@ -85,25 +85,25 @@ jobs:
         run: tests/diarization/run.sh "$OFFLINE_STAGE/usr/share/cassini-viewer/whistle" "$RUNNER_TEMP/nemotron-models" "$RUNNER_TEMP/diarization-input.wav" "$PWD/diarization-artifacts" "$OFFLINE_STAGE" "$RUNNER_TEMP/parakeet-models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"
       - name: D25 installed extractor, S-9 vectors and model comparisons without network
         run: tests/voices/run.sh "$OFFLINE_STAGE/usr/share/cassini-viewer/whistle" "$RUNNER_TEMP/voice-models" "$RUNNER_TEMP/diarization-input.wav" "$PWD/voice-artifacts" "$OFFLINE_STAGE" "$RUNNER_TEMP/nemotron-models" "$RUNNER_TEMP/parakeet-models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: voices-linux-x86_64
           path: voice-artifacts/
           retention-days: 14
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: diarization-linux-x86_64
           path: diarization-artifacts/
           retention-days: 14
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: parakeet-linux-x86_64
           path: parakeet-artifacts/
           retention-days: 14
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: whistle-linux-x86_64

@@ -135,7 +135,7 @@ jobs:
           PY
           dpkg-query -W fonts-cantarell fonts-inter > ux-artifacts/fonts.txt
           for font in Cantarell Inter; do fc-match -f '%{file}\n' "$font"; done | sort -u | xargs sha256sum > ux-artifacts/font-sha256.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ux-boards

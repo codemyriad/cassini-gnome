@@ -47,7 +47,7 @@ jobs:
       # smoke-tests and writes the D11 goldens down. Retried once because
       # distribution mirrors occasionally time out.
       - run: build-aux/rpm/build.sh "${{ matrix.base }}" || build-aux/rpm/build.sh "${{ matrix.base }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rpm-${{ matrix.name }}
           path: dist/*.rpm
@@ -75,7 +75,7 @@ jobs:
           key: parakeet-ultra-18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
       - run: build-aux/whistle-cache.sh
       - run: build-aux/arch/build.sh || build-aux/arch/build.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: arch
           path: dist/*.pkg.tar.zst

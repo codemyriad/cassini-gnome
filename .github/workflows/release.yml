@@ -36,7 +36,7 @@ jobs:
           pattern: deb-*
           merge-multiple: true
           path: dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-deb
           path: dist/*.deb
@@ -60,7 +60,7 @@ jobs:
           run-id: ${{ needs.main-inputs.outputs.run_id }}
           name: arch
           path: dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-packages
           path: dist/*
