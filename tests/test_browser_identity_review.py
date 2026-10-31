@@ -275,3 +275,25 @@ def test_lifecycle_tab_close_still_notifies_the_extension_after_local_binding_is
         capture.stop()
         extension.close()
         client.close()
+
+
+def test_stale_stop_for_a_previous_address_cannot_erase_the_current_calls_stop(service):  # noqa: F811
+    broker, path = service
+    extension = peer(path)
+    old_id = request(path=path)["meetings"][0]["id"]
+    new_url = "https://other.example/current-call"
+    navigate(extension, new_url)
+    current_id = request(path=path)["meetings"][0]["id"]
+    try:
+        with ThreadPoolExecutor(1) as pool:
+            recording = pool.submit(request, "start", path=path, id=current_id)
+            extension.answer(extension.receive())
+            recording.result(1)
+            stopping = pool.submit(request, "stop", path=path, id=current_id)
+            extension.answer(extension.receive())
+            stopping.result(1)
+        with pytest.raises(ValueError):
+            request("stop", path=path, id=old_id)
+        assert broker.stopped_calls[("4242:99", 3)][0] == new_url
+    finally:
+        extension.close()

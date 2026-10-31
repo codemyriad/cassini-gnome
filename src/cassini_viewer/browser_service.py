@@ -865,9 +865,15 @@ class BrowserService:
             if action == "stop" and not preserve_capture:
                 self._cancel_call(logical)
                 if user and expected is not None:
-                    self._store_stop((expected[0], expected[1]), expected[2])
-            elif action == "start" and user:
-                self._cancel_call(logical)
+                    lineage = self._call_lineage.get((expected[0], expected[1]))
+                    if (
+                        local is not None
+                        or recovering
+                        or logical in self._scheduled_calls
+                        or lineage is None
+                        or lineage[0] == expected[2]
+                    ):
+                        self._store_stop((expected[0], expected[1]), expected[2])
         if local is not None:
             local.stop(reason=reason)
         try:
@@ -928,6 +934,8 @@ class BrowserService:
                     and not pending_start
                 ):
                     raise ValueError("This meeting is not recording")
+                if action == "start" and user:
+                    self._cancel_call(logical)
                 browser.busy.add(tab)
                 browser.error = None
                 browser.attempted.add(tab)
