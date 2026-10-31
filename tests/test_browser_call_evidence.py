@@ -111,7 +111,7 @@ def test_rejected_auto_start_cannot_fall_back_after_evidence_disappears(policy, 
     service, browser, tasks = policy
     fallbacks = []
 
-    def reject(*_args):
+    def reject(*_args, **_kwargs):
         service.update(browser, dict(type="meetings", meetings=[meeting(heard=False)]))
         raise StartRejected("Generated source disappeared during Start")
 
