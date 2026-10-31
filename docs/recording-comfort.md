@@ -39,7 +39,7 @@ Run checks with the established private harnesses:
 CASSINI_TEST_BUILD="$PWD/_build-shot" build-aux/ux-screenshot.sh tests/ui/recording.py /tmp/recording.png
 tests/recording/run.sh /usr/bin/python3 tests/recording/comfort.py --build _build-shot
 CASSINI_TEST_BUILD="$PWD/_build-shot" tests/recording/run.sh node tests/recording/app-control.mjs
-build-aux/ux-boards.sh _install-shot/bin/cassini-viewer /tmp/ux-boards
+build-aux/ux-boards.sh _install-shot/bin/cassini-talk /tmp/ux-boards
 ```
 
 The first proof exercises portal wire requests (including immediate responses,

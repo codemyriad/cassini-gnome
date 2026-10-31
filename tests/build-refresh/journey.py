@@ -352,9 +352,9 @@ try:
         timeout=30,
     )
     before = {p: p.read_bytes() for p in paths}
-    program = "import sys;sys.path.insert(0,sys.argv[1]);from cassini_viewer.companion import register;register()"
+    program = "import sys;sys.path.insert(0,sys.argv[1]);from cassini_talk.companion import register;register()"
     subprocess.run(
-        ["python3", "-I", "-c", program, str(devel / "share/cassini-viewer")],
+        ["python3", "-I", "-c", program, str(devel / "share/cassini-talk")],
         check=True,
         stdout=activation_log,
         stderr=activation_log,
@@ -367,7 +367,7 @@ try:
             "-I",
             "-c",
             program.replace("register()", "register(force=True)"),
-            str(devel / "share/cassini-viewer"),
+            str(devel / "share/cassini-talk"),
         ],
         check=True,
         stdout=activation_log,

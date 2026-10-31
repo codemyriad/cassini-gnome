@@ -20,10 +20,10 @@ import gi  # noqa: E402
 gi.require_version("Gst", "1.0")
 from gi.repository import GLib, Gst  # noqa: E402
 
-from cassini_viewer.browser_capture import BrowserCapture  # noqa: E402
-from cassini_viewer.meeting_store import read_metadata  # noqa: E402
-from cassini_viewer.native_recorder import NativeRecorder  # noqa: E402
-from cassini_viewer.output_mute import intervals  # noqa: E402
+from cassini_talk.browser_capture import BrowserCapture  # noqa: E402
+from cassini_talk.meeting_store import read_metadata  # noqa: E402
+from cassini_talk.native_recorder import NativeRecorder  # noqa: E402
+from cassini_talk.output_mute import intervals  # noqa: E402
 
 Gst.init(None)
 artifacts = Path(os.environ["CASSINI_TEST_ARTIFACTS"])

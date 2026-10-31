@@ -5,7 +5,7 @@ import json
 import math
 from pathlib import Path
 
-from cassini_viewer import voices_logic as logic
+from cassini_talk import voices_logic as logic
 
 ROOT = Path(__file__).resolve().parent / "ux/voices"
 

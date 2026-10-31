@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from cassini_viewer.library_v2 import journal, publish
+from cassini_talk.library_v2 import journal, publish
 
 RATE = 48000
 CLICK_SECONDS = 0.004
@@ -157,7 +157,7 @@ def rows(root):
 
 def decoder_for(path, scratch):
     """track_source.OpusDecoder for a published file (it only opens confined `tracks/` spans)."""
-    from cassini_viewer.track_source import OpusDecoder
+    from cassini_talk.track_source import OpusDecoder
 
     folder = Path(scratch) / "decode" / "tracks"
     folder.mkdir(parents=True, exist_ok=True)
@@ -192,7 +192,7 @@ def emulate_case_insensitive(setattr_):
     `setattr_(obj, name, value)` installs a patch (pytest's monkeypatch.setattr, or setattr in a
     child process).
     """
-    from cassini_viewer.library_v2 import fsutil, names
+    from cassini_talk.library_v2 import fsutil, names
 
     real_rename, real_same = fsutil.rename_noreplace, fsutil.same_file
 

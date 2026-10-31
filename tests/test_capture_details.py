@@ -6,8 +6,8 @@ from dataclasses import replace
 import pytest
 from details_fixture import build_library, write_json
 
-from cassini_viewer.capture_details import UNKNOWN, read_details, timeline
-from cassini_viewer.library import LibraryScanner
+from cassini_talk.capture_details import UNKNOWN, read_details, timeline
+from cassini_talk.library import LibraryScanner
 
 
 @pytest.fixture
@@ -116,7 +116,7 @@ def test_reports_are_whitelisted_and_do_not_read_private_voice_stores(meetings):
     assert dict(report.writing)["Speaker separation"] == "Tell speakers apart was not installed"
     # New explicit facts are authoritative; an old cached sidecar alone does
     # not establish whether this writing attempt ran or reused separation.
-    from cassini_viewer.nemotron_model import MODEL_ID, REVISION
+    from cassini_talk.nemotron_model import MODEL_ID, REVISION
 
     details = dict(
         writingDown=dict(
@@ -270,7 +270,7 @@ def test_end_only_history_keeps_unknown_source_timeline_and_accepts_over_24_hour
 
 
 def test_end_reader_obeys_order_and_first_terminal_event(meetings):
-    from cassini_viewer.capture_details import _end
+    from cassini_talk.capture_details import _end
 
     meeting = replace(meetings["no-events"], metadata={})
     malformed = dict(
@@ -285,7 +285,7 @@ def test_end_reader_obeys_order_and_first_terminal_event(meetings):
 
 
 def test_only_observed_output_mute_facts_appear_in_details(meetings):
-    from cassini_viewer.strings import text
+    from cassini_talk.strings import text
 
     meeting = meetings["fallback"]
     metadata = dict(

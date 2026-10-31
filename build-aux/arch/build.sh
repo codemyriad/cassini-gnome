@@ -32,7 +32,7 @@ container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:r
   cp -a /in/. "/build/$name"
   cd "/build/$name"
   rm -rf .whistle-cache .sherpa-cache .git _build* _install _flatpak ./*.flatpak build builddir dist obj-* .flatpak-builder repo .venv \
-         .ruff_cache .pytest_cache debian/.debhelper debian/cassini-viewer debian/cassini-talk debian/tmp \
+         .ruff_cache .pytest_cache debian/.debhelper debian/cassini-talk debian/tmp \
     tests/recording/node_modules tests/recording/artifacts
   find . -name __pycache__ -prune -exec rm -rf {} +
   cd /build

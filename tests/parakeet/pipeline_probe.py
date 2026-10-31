@@ -17,8 +17,8 @@ args = parser.parse_args()
 sys.path.insert(0, str(args.modules))
 from golden_check import assess  # noqa: E402
 
-from cassini_viewer.parakeet_client import ParakeetClient  # noqa: E402
-from cassini_viewer.whistle_worker import onnxruntime_dir  # noqa: E402
+from cassini_talk.parakeet_client import ParakeetClient  # noqa: E402
+from cassini_talk.whistle_worker import onnxruntime_dir  # noqa: E402
 
 assert os.environ.get("CASSINI_WHISTLE_NETWORK_NONE") == "1"
 assert {name for _, name in socket.if_nameindex()} == {"lo"}

@@ -26,9 +26,9 @@ gi.require_version("Gst", "1.0")
 gi.require_version("GdkX11", "4.0")
 from gi.repository import Adw, Gdk, GdkX11, Gio, GLib, Gtk  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer import meeting_trash as module  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk import meeting_trash as module  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
 
 
 def until(check, timeout=8):

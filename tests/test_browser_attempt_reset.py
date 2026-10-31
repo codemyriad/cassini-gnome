@@ -11,7 +11,7 @@ from test_browser_capture import server  # noqa: F401
 from test_browser_service import meeting, no_command, service, wait_for  # noqa: F401
 from test_control_reconnect import INSTANCE, live, lose, peer
 
-from cassini_viewer.browser_service import STOPPED_CALL_GRACE, STOPPED_CALL_REPORT_WINDOW, request, send_packet
+from cassini_talk.browser_service import STOPPED_CALL_GRACE, STOPPED_CALL_REPORT_WINDOW, request, send_packet
 
 URL = meeting()["url"]
 

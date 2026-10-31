@@ -15,12 +15,12 @@ import test_model_download
 from test_library import capture
 from test_transcription import until
 
-from cassini_viewer import parakeet_model
-from cassini_viewer.meeting_store import read_metadata
-from cassini_viewer.model_download import ModelStore
-from cassini_viewer.parakeet_model import MODEL_ID, MODEL_TAG, REVISION
-from cassini_viewer.speech_models import SpeechModels
-from cassini_viewer.transcription import TranscriptionQueue
+from cassini_talk import parakeet_model
+from cassini_talk.meeting_store import read_metadata
+from cassini_talk.model_download import ModelStore
+from cassini_talk.parakeet_model import MODEL_ID, MODEL_TAG, REVISION
+from cassini_talk.speech_models import SpeechModels
+from cassini_talk.transcription import TranscriptionQueue
 
 
 @pytest.fixture
@@ -213,7 +213,7 @@ def test_quit_during_stalled_download_does_not_wait_for_network(tmp_path):
     # a ThreadPoolExecutor here would make this take ten seconds.
     script = """
 import threading, time
-from cassini_viewer.speech_models import SpeechModels
+from cassini_talk.speech_models import SpeechModels
 class Store:
     def _directory(self, *args):
         from pathlib import Path
@@ -350,7 +350,7 @@ def test_cancel_after_atomic_publish_keeps_completed_download_visible(model_fixt
 
 
 def test_valid_revision_restores_about_notice_before_model_use(model_fixture):
-    from cassini_viewer.model_download import has_downloaded_models
+    from cassini_talk.model_download import has_downloaded_models
 
     models, store, _, _ = model_fixture
     downloaded(models)

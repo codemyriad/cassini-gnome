@@ -26,8 +26,8 @@ from gi.repository import Gst  # noqa: E402
 from readiness import wait_until  # noqa: E402
 from signal_power import energy  # noqa: E402
 
-from cassini_viewer.browser_audio_proxy import BrowserAudioProxy  # noqa: E402
-from cassini_viewer.browser_service import BrowserService  # noqa: E402
+from cassini_talk.browser_audio_proxy import BrowserAudioProxy  # noqa: E402
+from cassini_talk.browser_service import BrowserService  # noqa: E402
 
 Gst.init(None)
 output = Path(os.environ["CASSINI_TEST_ARTIFACTS"])

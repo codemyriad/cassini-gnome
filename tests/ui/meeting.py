@@ -24,13 +24,13 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Adw, Gio, GLib, GObject, Gst, Gtk  # noqa: E402
 
 build = Path(os.environ["CASSINI_TEST_BUILD"])
-Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-viewer.gresource")))
+Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-talk.gresource")))
 sys.path.insert(0, str(ROOT / "tests"))
 from desktop_services import DesktopServices  # noqa: E402
 
-from cassini_viewer.folder_player import FolderPlayer  # noqa: E402
-from cassini_viewer.library_window import LibraryWindow  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
+from cassini_talk.folder_player import FolderPlayer  # noqa: E402
+from cassini_talk.library_window import LibraryWindow  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
 
 
 def until(check):
@@ -186,8 +186,8 @@ with tempfile.TemporaryDirectory() as temporary:
         # Growing transcripts splice stable rows and never drag a paused reader back.
         from dataclasses import replace
 
-        from cassini_viewer.meeting_text import DARK_COLOURS, reading_turns
-        from cassini_viewer.portable import Word
+        from cassini_talk.meeting_text import DARK_COLOURS, reading_turns
+        from cassini_talk.portable import Word
 
         timed = tuple(
             Word(meeting.speakers[i % len(meeting.speakers)].id, i * 1000, i * 1000 + 900, f"Item {i}")
@@ -304,7 +304,7 @@ with tempfile.TemporaryDirectory() as temporary:
     (own.directory / "meeting.json").write_text(json.dumps(changed))
     until(lambda: window.meeting_page.meeting.title == "Live Library rename")
     # An outside folder is read-only; the underlying Library keeps refreshing.
-    from cassini_viewer.recording_session import RecordingSession
+    from cassini_talk.recording_session import RecordingSession
 
     outside = Path(temporary) / "outside"
     outside.mkdir()

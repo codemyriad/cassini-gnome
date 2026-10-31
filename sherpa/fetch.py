@@ -11,7 +11,7 @@ import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PINS_FILE = HERE.parent / "src/cassini_viewer/sherpa-pins.json"
+PINS_FILE = HERE.parent / "src/cassini_talk/sherpa-pins.json"
 PINS = json.loads(PINS_FILE.read_text())
 LINUX = PINS["sherpa-onnx-go-linux"]
 FILES = {Path(name).name: (name, pin) for name, pin in LINUX["files"].items() if not name.endswith("cxx-api.so")}

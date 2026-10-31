@@ -32,12 +32,12 @@ from gi.repository import GdkX11, Gio, Gst  # noqa: E402
 from gst_evidence import GstEvidence  # noqa: E402
 from readiness import PCMProgress, wait_until  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(args.build.resolve() / "src/cassini-viewer.gresource")))
-from cassini_viewer import native_recorder  # noqa: E402
-from cassini_viewer.global_shortcut import GlobalShortcut  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.meeting_store import read_metadata  # noqa: E402
-from cassini_viewer.recording_session import RecordingSession  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(args.build.resolve() / "src/cassini-talk.gresource")))
+from cassini_talk import native_recorder  # noqa: E402
+from cassini_talk.global_shortcut import GlobalShortcut  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.meeting_store import read_metadata  # noqa: E402
+from cassini_talk.recording_session import RecordingSession  # noqa: E402
 
 artifacts = Path(os.environ["CASSINI_TEST_ARTIFACTS"])
 errors, producers, probes, observers = [], [], [], []

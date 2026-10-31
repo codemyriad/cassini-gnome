@@ -102,12 +102,12 @@ def _fake_onnxruntime_wheel(path, extension):
 def test_onnxruntime_is_unpacked_without_its_model_tools_and_checked_against_record(tmp_path, monkeypatch):
     import sysconfig
 
-    from cassini_viewer.whistle_worker import onnxruntime_dir, verify_onnxruntime
+    from cassini_talk.whistle_worker import onnxruntime_dir, verify_onnxruntime
 
     extension = "onnxruntime_pybind11_state" + sysconfig.get_config_var("EXT_SUFFIX")
     wheel = _fake_onnxruntime_wheel(tmp_path / "fake.whl", extension)
     monkeypatch.setattr(fetch, "cached", lambda *_a, **_k: wheel)
-    out = tmp_path / "lib/cassini-viewer/python"
+    out = tmp_path / "lib/cassini-talk/python"
     fetch.build_onnxruntime(out, tmp_path / "cache", "cp314", offline=True)
     installed = sorted(p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file())
     assert installed == [
@@ -144,7 +144,7 @@ def test_onnxruntime_needs_a_wheel_pinned_for_the_python_abi(tmp_path):
 
 
 def test_private_onnxruntime_is_used_only_for_the_matching_python(tmp_path):
-    from cassini_viewer.whistle_worker import onnxruntime_dir
+    from cassini_talk.whistle_worker import onnxruntime_dir
 
     config = tmp_path / "paths.json"
     assert onnxruntime_dir(config) is None  # a source run: no paths.json

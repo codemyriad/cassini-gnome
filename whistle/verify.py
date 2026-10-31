@@ -13,7 +13,7 @@ import sysconfig
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from cassini_viewer.whistle_worker import verify_bundle, verify_onnxruntime  # noqa: E402
+from cassini_talk.whistle_worker import verify_bundle, verify_onnxruntime  # noqa: E402
 
 if len(sys.argv) == 3 and sys.argv[1] == "--onnxruntime":
     runtime = verify_onnxruntime(sys.argv[2])

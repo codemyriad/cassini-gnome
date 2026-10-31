@@ -12,7 +12,7 @@ assert os.environ.get("CASSINI_SNI_TEST_ISOLATED") == "1" and not os.environ.get
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from gi.repository import Gio, GLib  # noqa: E402
 
-from cassini_viewer.status_notifier import ITEM, ITEM_PATH, MENU, MENU_PATH, WATCHER, StatusNotifier  # noqa: E402
+from cassini_talk.status_notifier import ITEM, ITEM_PATH, MENU, MENU_PATH, WATCHER, StatusNotifier  # noqa: E402
 
 
 def until(check, label):

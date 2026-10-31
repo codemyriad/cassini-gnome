@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer import ux_formats as fmt
-from cassini_viewer.meeting_state import MeetingState
+from cassini_talk import ux_formats as fmt
+from cassini_talk.meeting_state import MeetingState
 
 ROOT = Path(__file__).resolve().parents[1]
 FORMATS = json.loads((ROOT / "tests/ux/format-vectors.json").read_bytes())
@@ -124,7 +124,7 @@ def test_locale_clock_style_in_a_real_locale_process(locale_name, expected):
     code = """import locale,sys
 try: locale.setlocale(locale.LC_TIME,sys.argv[1])
 except locale.Error: sys.exit(77)
-from cassini_viewer.ux_formats import row_time
+from cassini_talk.ux_formats import row_time
 print(row_time(1793107080000,tz='Europe/Rome'))
 """
     import os

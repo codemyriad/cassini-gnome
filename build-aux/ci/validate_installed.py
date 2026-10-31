@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 def validate(prefix, app_id, version, *, run=subprocess.run):
-    extension = prefix / "share/cassini-viewer/browser-extension/manifest.json"
+    extension = prefix / "share/cassini-talk/browser-extension/manifest.json"
     extension_version = json.loads(extension.read_text()).get("version")
     if extension_version != "0.2.3":
         raise ValueError("Installed browser companion version must be 0.2.3")

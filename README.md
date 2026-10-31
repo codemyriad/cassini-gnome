@@ -28,31 +28,31 @@ Native packages need GTK 4.18 and libadwaita 1.8 or newer (Debian testing, Ubunt
 - **Flatpak** (uses the GNOME 50 runtime from Flathub):
 
   ```sh
-  flatpak install --user cassini-viewer.flatpak
+  flatpak install --user cassini-talk.flatpak
   ```
 
 - **Debian and Ubuntu**:
 
   ```sh
-  sudo apt install ./cassini-viewer_*.deb
+  sudo apt install ./cassini-talk_*.deb
   ```
 
 - **Fedora**:
 
   ```sh
-  sudo dnf install ./cassini-viewer-*.rpm
+  sudo dnf install ./cassini-talk-*.rpm
   ```
 
 - **openSUSE Tumbleweed**:
 
   ```sh
-  sudo zypper install ./cassini-viewer-*.rpm
+  sudo zypper install ./cassini-talk-*.rpm
   ```
 
 - **Arch Linux**:
 
   ```sh
-  sudo pacman -U cassini-viewer-*.pkg.tar.zst
+  sudo pacman -U cassini-talk-*.pkg.tar.zst
   ```
 
 ### Your first meeting

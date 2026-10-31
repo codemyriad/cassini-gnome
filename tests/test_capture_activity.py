@@ -10,8 +10,8 @@ from test_browser_service import browser, service, wait_for  # noqa: E402, F401
 from test_library import capture  # noqa: E402
 from test_library_monitor import spin_until  # noqa: E402
 
-from cassini_viewer.browser_service import send_packet  # noqa: E402
-from cassini_viewer.capture_activity import BrowserActivity, read_browser_activity, recorder_activity  # noqa: E402
+from cassini_talk.browser_service import send_packet  # noqa: E402
+from cassini_talk.capture_activity import BrowserActivity, read_browser_activity, recorder_activity  # noqa: E402
 
 
 def test_real_broker_reports_canonical_recording_and_clears_on_stop(service, tmp_path):  # noqa: F811
@@ -39,7 +39,7 @@ def test_real_broker_reports_canonical_recording_and_clears_on_stop(service, tmp
 def test_browser_watch_delivers_profile_changes_once_off_the_worker(service, monkeypatch):  # noqa: F811
     import threading
 
-    from cassini_viewer import browser_watch, companion
+    from cassini_talk import browser_watch, companion
 
     now, profile = [0], ["profile-one"]
     probes, notifications = [], []
@@ -124,7 +124,7 @@ def test_native_identity_only_comes_from_controller_owned_session(tmp_path):
 def test_desktop_probe_failure_preserves_watch_lease_and_status_polling(service, tmp_path, monkeypatch, failure):  # noqa: F811
     import subprocess
 
-    from cassini_viewer import browser_watch, companion, flatpak_bridge
+    from cassini_talk import browser_watch, companion, flatpak_bridge
 
     failed = [False]
     real_run = subprocess.run

@@ -7,8 +7,8 @@ import wave
 import pytest
 from test_browser_capture import Tap, remote, server, start  # noqa: F401
 
-from cassini_viewer.browser_audio_proxy import BrowserAudioProxy
-from cassini_viewer.browser_service import request
+from cassini_talk.browser_audio_proxy import BrowserAudioProxy
+from cassini_talk.browser_service import request
 
 
 def test_fallback_uses_input_host_stamps_and_keeps_other_sessions_independent(server):  # noqa: F811
@@ -100,7 +100,7 @@ def test_browser_close_failure_finalizes_and_releases_microphone(server, limit):
                 capture.host.session.add_track(f"ended-{index}", "Old", "remote", 48000, 1)
                 capture.host.session.end_track(f"ended-{index}")
         else:
-            from cassini_viewer.session_events import append_events
+            from cassini_talk.session_events import append_events
 
             append_events(
                 capture.host.session.manifest,

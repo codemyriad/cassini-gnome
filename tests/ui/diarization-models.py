@@ -26,12 +26,12 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 from test_diarization_models import Probe  # noqa: E402
 from test_model_download import remote  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer import nemotron_model  # noqa: E402
-from cassini_viewer.diarization_models import DiarizationModels  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.model_download import ModelStore  # noqa: E402
-from cassini_viewer.settings_dialog import SettingsDialog  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk import nemotron_model  # noqa: E402
+from cassini_talk.diarization_models import DiarizationModels  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.model_download import ModelStore  # noqa: E402
+from cassini_talk.settings_dialog import SettingsDialog  # noqa: E402
 
 
 def until(check):
@@ -170,7 +170,7 @@ try:
             app.begin_exit()
             window.close()
             app.do_shutdown()
-            assert "onnxruntime" not in sys.modules and "cassini_viewer.nemotron" not in sys.modules
+            assert "onnxruntime" not in sys.modules and "cassini_talk.nemotron" not in sys.modules
             print("PASS Nemotron GTK: Download/Cancel/failure/Try again/On/Remove; no engine in GTK")
 finally:
     fixture.close()

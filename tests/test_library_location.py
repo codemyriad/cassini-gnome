@@ -7,11 +7,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from cassini_viewer import library_location as location
-from cassini_viewer.library import LibraryCollectionScanner, library_root
-from cassini_viewer.meeting_store import update_metadata
-from cassini_viewer.recording_details import edit_recording
-from cassini_viewer.recording_session import BrowserHost, RecordingSession
+from cassini_talk import library_location as location
+from cassini_talk.library import LibraryCollectionScanner, library_root
+from cassini_talk.meeting_store import update_metadata
+from cassini_talk.recording_details import edit_recording
+from cassini_talk.recording_session import BrowserHost, RecordingSession
 
 
 @pytest.fixture
@@ -126,7 +126,7 @@ def test_publication_before_journal_checkpoint_recovers_on_restart(roots):
 
 
 def test_new_recording_does_not_wait_for_old_meeting_copy(roots, monkeypatch):
-    from cassini_viewer import library_move
+    from cassini_talk import library_move
 
     old, new = roots
     recording = session(old)
@@ -186,7 +186,7 @@ def test_two_capture_leases_are_independent_and_stop_moves_only_the_idle_one(roo
 def test_import_in_progress_publishes_into_new_primary_without_blocking_routing(roots, monkeypatch):
     from pathlib import Path
 
-    from cassini_viewer import received
+    from cassini_talk import received
 
     old, new = roots
     original = Path(__file__).parents[1] / "ux/library-vectors/assets/plain-title.opus"
@@ -264,7 +264,7 @@ def test_move_checkpoints_write_linear_metadata_instead_of_rewriting_every_plan(
 
 
 def test_actual_transcription_queue_keeps_old_paths_and_accepts_new_root_after_move(roots, tmp_path):
-    from cassini_viewer.transcription import TranscriptionQueue
+    from cassini_talk.transcription import TranscriptionQueue
 
     old, new = roots
     recording = session(old)

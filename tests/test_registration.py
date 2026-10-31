@@ -10,9 +10,9 @@ import pytest
 from test_browser_connection import Clock
 from test_flatpak_bridge import host as host_fixture
 
-from cassini_viewer import companion, registration
-from cassini_viewer import flatpak_bridge as bridge
-from cassini_viewer.browser_connection import setup
+from cassini_talk import companion, registration
+from cassini_talk import flatpak_bridge as bridge
+from cassini_talk.browser_connection import setup
 
 host = host_fixture
 
@@ -26,37 +26,6 @@ def executable(path):
 
 def hosts(path):
     return dict.fromkeys(("io.codemyriad.cassini", "io.codemyriad.cassini.control"), path)
-
-
-@pytest.mark.parametrize("legacy", ["com.gocassini.Viewer", "com.gocassini.Viewer.Devel"])
-def test_rename_recognises_legacy_relays_and_only_repairs_them_when_removed(host, legacy):
-    flatpak = host / "bin/flatpak"
-    flatpak.write_text(flatpak.read_text().replace("io.codemyriad.CassiniTalk.Devel", legacy))
-    relay = host / "data/cassini/native-hosts" / legacy / "cassini-browser-host"
-    relay.parent.mkdir(parents=True)
-    relay.write_text(
-        "#!/bin/sh\nexec flatpak run --command=cassini-browser-host --arch=x86_64 --branch=master " + legacy + "\n"
-    )
-    relay.chmod(0o700)
-    assert registration.native_target(relay)
-    previous = json.dumps(dict(path=str(relay))).encode()
-    desired = dict(path=str(executable(host / "new-host")))
-    assert registration.decision(
-        previous,
-        desired,
-        force=False,
-        protected=True,
-        target_ready=registration.native_target,
-    ) == (False, False), "Devel must not take over an installed legacy release"
-    (host / "deployment").rename(host / "removed-deployment")
-    assert registration.decision(
-        previous,
-        desired,
-        force=False,
-        protected=True,
-        target_ready=registration.native_target,
-    ) == (True, True), "An executable relay is dead when its legacy deployment is gone"
-    assert legacy not in bridge.APPLICATIONS, "New registrations must never use the retired ID"
 
 
 def test_source_keeps_valid_foreign_release_until_explicit_setup(tmp_path):

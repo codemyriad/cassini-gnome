@@ -21,9 +21,9 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.recording_session import RecordingSession  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.recording_session import RecordingSession  # noqa: E402
 
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)

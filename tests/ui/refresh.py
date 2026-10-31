@@ -22,11 +22,11 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib, Gst  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer.library_window import LibraryWindow  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.open_meeting import load_open_meeting  # noqa: E402
-from cassini_viewer.player import Player  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk.library_window import LibraryWindow  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.open_meeting import load_open_meeting  # noqa: E402
+from cassini_talk.player import Player  # noqa: E402
 
 
 def until(check):
@@ -92,7 +92,7 @@ with tempfile.TemporaryDirectory() as temporary:
     shutil.copyfile(opus, extra)
     for path in (opus, outside, extra):
         # File Open now imports/selects a Received row (UX4). Exercise the
-        # retained read-only viewer directly; outside folders use it as well.
+        # retained read-only app directly; outside folders use it as well.
         window.open_meeting(load_open_meeting(path, window.monitor.scanner.root), external=True)
         until(lambda path=path: window.meeting_page and window.meeting_page.meeting.audio_file == path)
         assert window._external_meeting and not window.meeting_page.meeting.metadata_editable

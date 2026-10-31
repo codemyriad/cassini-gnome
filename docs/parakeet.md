@@ -18,7 +18,7 @@ Debian, RPM, Arch and Flatpak enable this engine with the same pinned inputs:
 2. Configure Meson with `-Dwhistle=enabled -Dsherpa=enabled` and absolute
    `-Dsherpa_cache=...` / `-Dwhistle_cache=...` cache directories. Configuration
    and installation are offline. The feature defaults to disabled.
-3. Include the private `${libdir}/cassini-viewer/sherpa/` tree. Keep both
+3. Include the private `${libdir}/cassini-talk/sherpa/` tree. Keep both
    libraries byte for byte: **do not strip** them. Do not package the C++ wrapper.
    Include its manifest, pins, NOTICE and Apache-2.0 / MIT licence files.
 4. Keep the existing private Python ONNX Runtime 1.31 wheel for Silero. The

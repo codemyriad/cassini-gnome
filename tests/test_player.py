@@ -8,7 +8,7 @@ from gi.repository import Gst  # noqa: E402
 
 Gst.init(None)
 
-from cassini_viewer.player import Player  # noqa: E402
+from cassini_talk.player import Player  # noqa: E402
 
 
 def test_missing_element_is_named_instead_of_playing(monkeypatch):

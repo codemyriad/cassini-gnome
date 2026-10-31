@@ -22,17 +22,17 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib, Gst, Gtk  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from library_v2_support import simple_session  # noqa: E402
 
-from cassini_viewer import portable  # noqa: E402
-from cassini_viewer.library_edits import commit_metadata, transaction  # noqa: E402
-from cassini_viewer.library_recovery import LibraryRecovery  # noqa: E402
-from cassini_viewer.library_v2 import edit, finalize, xschema  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.meeting_store import read_metadata  # noqa: E402
-from cassini_viewer.portable_writer import MANIFEST_MIME, chunk_set  # noqa: E402
-from cassini_viewer.strings import text  # noqa: E402
+from cassini_talk import portable  # noqa: E402
+from cassini_talk.library_edits import commit_metadata, transaction  # noqa: E402
+from cassini_talk.library_recovery import LibraryRecovery  # noqa: E402
+from cassini_talk.library_v2 import edit, finalize, xschema  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.meeting_store import read_metadata  # noqa: E402
+from cassini_talk.portable_writer import MANIFEST_MIME, chunk_set  # noqa: E402
+from cassini_talk.strings import text  # noqa: E402
 
 
 def until(predicate, description):

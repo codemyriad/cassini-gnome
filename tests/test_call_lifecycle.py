@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 from test_browser_capture import Tap
 
-from cassini_viewer.browser_capture import BrowserCapture
-from cassini_viewer.browser_service import BrowserConnection, BrowserService
-from cassini_viewer.call_lifecycle import BROWSER_RETURN_GRACE, CALL_END_GRACE
+from cassini_talk.browser_capture import BrowserCapture
+from cassini_talk.browser_service import BrowserConnection, BrowserService
+from cassini_talk.call_lifecycle import BROWSER_RETURN_GRACE, CALL_END_GRACE
 
 VECTORS = Path(__file__).resolve().parents[1] / "browser-protocol/conformance/control/call-lifecycle-vectors.json"
 

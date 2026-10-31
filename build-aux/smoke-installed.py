@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Smoke-test an installed Cassini talk, for the package build scripts:
 #   python3 -I build-aux/smoke-installed.py [datadir] [--whistle GOLDENS]
-# datadir defaults to /usr/share/cassini-viewer. Runs the launcher's startup
+# datadir defaults to /usr/share/cassini-talk. Runs the launcher's startup
 # check, then fails unless every playback and recording GStreamer element is
 # present: the app only warns about those, but a package must pull them in.
 #
@@ -24,17 +24,30 @@ import tempfile
 from pathlib import Path
 
 parser = argparse.ArgumentParser()
-parser.add_argument("datadir", nargs="?", default="/usr/share/cassini-viewer", type=Path)
+parser.add_argument("datadir", nargs="?", default="/usr/share/cassini-talk", type=Path)
 parser.add_argument("--whistle", type=Path, metavar="GOLDENS", help="also run the offline D11 goldens")
 parser.add_argument("--parakeet", type=Path, metavar="MODEL", help="also run D16 using cached fixture weights")
 parser.add_argument("--parakeet-tests", type=Path, metavar="TESTS", help="path to tests/parakeet")
 args = parser.parse_args()
 
+# D45.2/D51: every package must be a fresh current-name installation, not a
+# compatibility layout. This check also runs inside the installed Flatpak.
+prefix = args.datadir.parents[1]
+required = [prefix / "bin/cassini-talk", args.datadir / "cassini_talk/__init__.py",
+            args.datadir / "cassini-talk.gresource",
+            prefix / "share/glib-2.0/schemas/io.codemyriad.CassiniTalk.gschema.xml"]
+obsolete = [prefix / "bin/cassini-viewer", prefix / "share/cassini-viewer",
+            args.datadir / "cassini_viewer",
+            prefix / "share/glib-2.0/schemas/com.gocassini.Viewer.gschema.xml"]
+if any(not path.is_file() for path in required) or any(path.exists() or path.is_symlink() for path in obsolete):
+    sys.exit("clean Cassini talk installation layout does not match the package")
+print("clean Cassini talk command, Python package, resource and schema verified")
+
 sys.path.insert(0, str(args.datadir))
-from cassini_viewer import runtime  # noqa: E402
+from cassini_talk import runtime  # noqa: E402
 
 runtime.check()  # exits with a readable message if a library is missing or too old
-from cassini_viewer.installed_build import read, verified  # noqa: E402
+from cassini_talk.installed_build import read, verified  # noqa: E402
 
 identity = read(args.datadir / "build-info.json")
 if not verified(identity, args.datadir, args.datadir.parents[1] / "bin/cassini-talk"):
@@ -62,7 +75,7 @@ print("muted-output observation query tool available")
 # ModelStore uses ctypes, so ELF dependency scanners cannot discover libzstd.
 # Exercise the installed app's loader in the same fresh/offline package smoke
 # used for both recognition engines, including the Flatpak runtime.
-from cassini_viewer.zstd_stream import library as zstd_library  # noqa: E402
+from cassini_talk.zstd_stream import library as zstd_library  # noqa: E402
 
 zstd = zstd_library()
 stream = zstd.ZSTD_createDStream()
@@ -78,8 +91,8 @@ print("model unpack runtime smoke test passed: libzstd")
 if args.whistle:
     import importlib.util  # noqa: E402
 
-    from cassini_viewer.transcription import unavailable_reason  # noqa: E402
-    from cassini_viewer.whistle_worker import onnxruntime_dir, verify_bundle, verify_onnxruntime  # noqa: E402
+    from cassini_talk.transcription import unavailable_reason  # noqa: E402
+    from cassini_talk.whistle_worker import onnxruntime_dir, verify_bundle, verify_onnxruntime  # noqa: E402
 
     bundle = args.datadir / "whistle"
     verify_bundle(bundle)  # every hash in manifest.json: nothing stripped or moved
@@ -124,7 +137,7 @@ if args.whistle:
     print("writing-down smoke test passed offline (D11.3)")
 
 if args.parakeet:
-    from cassini_viewer.sherpa_runtime import runtime_path, verify_runtime
+    from cassini_talk.sherpa_runtime import runtime_path, verify_runtime
 
     if not args.parakeet_tests:
         parser.error("--parakeet requires --parakeet-tests")

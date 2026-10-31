@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import pytest
 
-from cassini_viewer.meeting_text import item_markup, speaking_shares
-from cassini_viewer.portable import Word
+from cassini_talk.meeting_text import item_markup, speaking_shares
+from cassini_talk.portable import Word
 
 
 def test_r12_shares_use_item_durations_and_first_speaking_ties():
@@ -27,7 +27,7 @@ def test_r12_current_item_boundaries_future_dimming_and_escaping():
 def test_external_opus_and_folder_share_reading_model_without_writes(tmp_path):
     from test_library import ROOT, capture
 
-    from cassini_viewer.open_meeting import load_open_meeting
+    from cassini_talk.open_meeting import load_open_meeting
 
     session = capture(tmp_path)
     assert load_open_meeting(session.directory / "session.json").tracks
@@ -41,7 +41,7 @@ def test_external_opus_and_folder_share_reading_model_without_writes(tmp_path):
 
 
 def test_reading_paragraphs_bound_layout_without_losing_timed_items():
-    from cassini_viewer.meeting_text import reading_turns
+    from cassini_talk.meeting_text import reading_turns
 
     words = [Word("one", i * 100, i * 100 + 100, str(i)) for i in range(10000)]
     turns = reading_turns(words)
@@ -50,7 +50,7 @@ def test_reading_paragraphs_bound_layout_without_losing_timed_items():
 
 
 def test_d38_quotes_are_display_only_and_pair_within_a_turn():
-    from cassini_viewer.transcript import build_turns, quote_items, turn_text
+    from cassini_talk.transcript import build_turns, quote_items, turn_text
 
     texts = ['He said "hello', 'world" then "bye".', 'orphan"']
     assert quote_items(texts) == ("He said “hello", "world” then “bye”.", "orphan")
@@ -74,7 +74,7 @@ def test_d38_quote_markup_keeps_original_item_links_and_timings():
 def test_d38_markdown_cleans_turn_text_without_changing_timed_items():
     from copy import deepcopy
 
-    from cassini_viewer.export_model import markdown
+    from cassini_talk.export_model import markdown
 
     model = dict(
         title="Quote test",
@@ -104,8 +104,8 @@ def test_d38_markdown_cleans_turn_text_without_changing_timed_items():
 def test_d38_quotes_pair_across_reading_paragraphs_of_one_speaker_turn(words):
     # Regression (review 118 #2): reading_turns' 100-item/30 s split used to
     # make each paragraph pair alone, deleting both halves of the quote.
-    from cassini_viewer.meeting_text import reading_turns
-    from cassini_viewer.transcript import turn_text
+    from cassini_talk.meeting_text import reading_turns
+    from cassini_talk.transcript import turn_text
 
     turns = reading_turns(words)
     assert len(turns) == 2
@@ -118,7 +118,7 @@ def test_d38_quotes_pair_across_reading_paragraphs_of_one_speaker_turn(words):
 
 
 def test_d38_quote_pairing_stops_at_a_speaker_change():
-    from cassini_viewer.meeting_text import reading_turns
+    from cassini_talk.meeting_text import reading_turns
 
     turns = reading_turns([Word("a", 0, 10, 'Hi "x'), Word("b", 10, 20, 'y" ok')])
     assert [t.text for t in turns] == ["Hi x", "y ok"]
@@ -127,7 +127,7 @@ def test_d38_quote_pairing_stops_at_a_speaker_change():
 def test_d38_dropped_quote_with_whitespace_displays_nothing():
     # Regression (review 118 #6): ' "' used to survive as a blank item and a
     # whitespace-only link.
-    from cassini_viewer.transcript import quote_items, turn_text
+    from cassini_talk.transcript import quote_items, turn_text
 
     assert quote_items(["Hello", ' "', "world"]) == ("Hello", "", "world")
     assert turn_text(['" ', "Hello"]) == "Hello"

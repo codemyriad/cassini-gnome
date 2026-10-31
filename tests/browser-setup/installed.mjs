@@ -24,7 +24,7 @@ const wrapper = path.join(root, 'bin/chromium');
 await writeFile(wrapper, '#!/bin/sh\nexec ' + quote(chromium.executablePath()) + ' "$@"\n');
 await chmod(wrapper, 0o700);
 const profile = path.join(config, 'chromium');
-const extension = '/usr/share/cassini-viewer/browser-extension';
+const extension = '/usr/share/cassini-talk/browser-extension';
 const names = ['io.codemyriad.cassini', 'io.codemyriad.cassini.control'];
 const files = names.map(name => path.join(profile, 'NativeMessagingHosts', name + '.json'));
 const log = openSync(path.join(output, 'application.log'), 'w', 0o600);
@@ -65,8 +65,8 @@ try {
  const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker', {timeout: 15000});
  assert.equal(await worker.evaluate(() => chrome.runtime.id), id);
  await poll(async () => {
-  const value = await execute('python3', ['-c', 'import json;from cassini_viewer.browser_service import request;print(json.dumps(request()))'],
-   {env: {...env, PYTHONPATH: '/usr/share/cassini-viewer'}, timeout: 4000});
+  const value = await execute('python3', ['-c', 'import json;from cassini_talk.browser_service import request;print(json.dumps(request()))'],
+   {env: {...env, PYTHONPATH: '/usr/share/cassini-talk'}, timeout: 4000});
   status = JSON.parse(value.stdout);
   return status.connectedBrowsers >= 1;
  }, 'real extension hello without Connect');

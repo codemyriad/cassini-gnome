@@ -25,10 +25,10 @@ from library_v2_support import (  # noqa: E402
     track_audio,
 )
 
-from cassini_viewer import meeting_store, portable  # noqa: E402
-from cassini_viewer.library_v2 import edit, fsutil, journal, mixdown, ogg, publish  # noqa: E402
-from cassini_viewer.library_v2 import finalize as fin  # noqa: E402
-from cassini_viewer.portable import ogg_crc  # noqa: E402
+from cassini_talk import meeting_store, portable  # noqa: E402
+from cassini_talk.library_v2 import edit, fsutil, journal, mixdown, ogg, publish  # noqa: E402
+from cassini_talk.library_v2 import finalize as fin  # noqa: E402
+from cassini_talk.portable import ogg_crc  # noqa: E402
 
 OLD = "2026-10-30--18.02-Weekly sync.opus"
 

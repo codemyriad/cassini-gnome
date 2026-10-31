@@ -8,8 +8,8 @@ import time
 import pytest
 from test_transcription import until
 
-from cassini_viewer import companion
-from cassini_viewer.browser_connection import Backoff, BrowserConnection
+from cassini_talk import companion
+from cassini_talk.browser_connection import Backoff, BrowserConnection
 
 
 class Clock:
@@ -169,7 +169,7 @@ def test_startup_registers_both_hosts_preserves_mtime_and_repairs_an_updated_pat
     monkeypatch.setattr(companion, "host_paths", lambda: hosts)
     monkeypatch.setattr(companion, "in_flatpak", lambda: False)
     clock = Clock()
-    from cassini_viewer.browser_connection import setup
+    from cassini_talk.browser_connection import setup
 
     controller = clock.connection(setup)
     try:
@@ -198,7 +198,7 @@ def test_startup_registers_both_hosts_preserves_mtime_and_repairs_an_updated_pat
 
 
 def test_no_browser_is_neutral_and_prior_connection_is_latched():
-    from cassini_viewer.browser_connection import state_text
+    from cassini_talk.browser_connection import state_text
 
     clock = Clock()
     controller = clock.connection(lambda: (_ for _ in ()).throw(companion.SetupError("noBrowser")))
@@ -221,7 +221,7 @@ def test_registration_failure_keeps_the_installed_browser_available_for_add(tmp_
     monkeypatch.setattr(companion, "probe", lambda: (True, False))
     monkeypatch.setattr(companion, "installed_browsers", lambda: [browser])
     monkeypatch.setattr(companion, "register", lambda **_: (_ for _ in ()).throw(PermissionError(13, "config")))
-    from cassini_viewer.browser_connection import setup
+    from cassini_talk.browser_connection import setup
 
     clock = Clock()
     controller = clock.connection(setup)
@@ -251,7 +251,7 @@ def test_identical_observations_do_not_render_again():
 
 
 def test_dead_build_failure_renders_the_published_reason_and_remains_retryable():
-    from cassini_viewer.browser_connection import state_text
+    from cassini_talk.browser_connection import state_text
 
     clock = Clock()
 

@@ -18,9 +18,9 @@ from test_ci_release import module
     ("path", "extra"),
     [
         ("docs/notes.md", set()),
-        ("src/cassini_viewer/player.py", {"boards", "library", "offline"}),
-        ("src/cassini_viewer/library.py", {"boards", "library", "offline"}),
-        ("src/cassini_viewer/parakeet.py", {"boards", "library", "offline"}),
+        ("src/cassini_talk/player.py", {"boards", "library", "offline"}),
+        ("src/cassini_talk/library.py", {"boards", "library", "offline"}),
+        ("src/cassini_talk/parakeet.py", {"boards", "library", "offline"}),
         ("tests/parakeet/queue_probe.py", {"boards", "offline"}),
         ("tests/diarization/queue_probe.py", {"boards", "offline"}),
         ("tests/test_diarization_models.py", {"boards", "offline"}),
@@ -79,7 +79,7 @@ def test_actual_git_rename_keeps_old_area_coverage(tmp_path):
         )
 
     git("init", "--initial-branch=main")
-    source = tmp_path / "src/cassini_viewer/library.py"
+    source = tmp_path / "src/cassini_talk/library.py"
     source.parent.mkdir(parents=True)
     source.write_text("fixture\n")
     git("add", ".")
@@ -94,7 +94,7 @@ def test_actual_git_rename_keeps_old_area_coverage(tmp_path):
         "pull_request", payload, git=lambda command: subprocess.check_output(command, cwd=tmp_path, env=env)
     )
     assert areas["library"] and areas["offline"] and areas["boards"]
-    assert set(paths) == {"src/cassini_viewer/library.py", "notes.txt"}
+    assert set(paths) == {"src/cassini_talk/library.py", "notes.txt"}
 
 
 def test_invalid_event_file_still_emits_all_outputs_and_success(tmp_path):
@@ -166,15 +166,15 @@ def test_product_rejects_traversal_before_extraction(tmp_path, name):
 @pytest.mark.parametrize(
     "path",
     [
-        "src/cassini_viewer/model_download.py",
-        "src/cassini_viewer/model_manifest.py",
-        "src/cassini_viewer/zstd_stream.py",
-        "src/cassini_viewer/strings.json",
-        "src/cassini_viewer/portable_context.py",
-        "src/cassini_viewer/meeting_store.py",
-        "src/cassini_viewer/recording_session.py",
-        "src/cassini_viewer/future_dependency.py",
-        "src/cassini-viewer.gresource.xml",
+        "src/cassini_talk/model_download.py",
+        "src/cassini_talk/model_manifest.py",
+        "src/cassini_talk/zstd_stream.py",
+        "src/cassini_talk/strings.json",
+        "src/cassini_talk/portable_context.py",
+        "src/cassini_talk/meeting_store.py",
+        "src/cassini_talk/recording_session.py",
+        "src/cassini_talk/future_dependency.py",
+        "src/cassini-talk.gresource.xml",
         "build-aux/whistle-cache.sh",
     ],
 )

@@ -1,6 +1,6 @@
 #!@PYTHON@
 
-# cassini-viewer.in
+# cassini-talk.in
 #
 # Copyright 2026 Silvio Tomatis
 #
@@ -32,34 +32,29 @@ try:
     locale.setlocale(locale.LC_ALL, "")
 except locale.Error:
     pass  # An unavailable desktop locale keeps the existing C-locale fallback.
-locale.bindtextdomain("cassini-viewer", localedir)
-locale.textdomain("cassini-viewer")
-gettext.install("cassini-viewer", localedir)
+locale.bindtextdomain("cassini-talk", localedir)
+locale.textdomain("cassini-talk")
+gettext.install("cassini-talk", localedir)
 
 if __name__ == "__main__":
     # Freeze the running identity before lazy imports can see a later upgrade.
-    from cassini_viewer.installed_build import InstalledBuild
+    from cassini_talk.installed_build import InstalledBuild
 
     installed = InstalledBuild(pkgdatadir, Path(__file__).resolve(), VERSION,
                                flatpak=bool(os.environ.get("FLATPAK_ID")))
-    from cassini_viewer import runtime
+    from cassini_talk import runtime
 
     runtime.check()
 
-    from cassini_viewer.legacy_instance import forward
-
-    if forward(APPLICATION_ID, sys.argv):
-        sys.exit(0)
-
     from gi.repository import Gio
 
-    resource = Gio.Resource.load(os.path.join(pkgdatadir, "cassini-viewer.gresource"))
+    resource = Gio.Resource.load(os.path.join(pkgdatadir, "cassini-talk.gresource"))
     resource._register()
 
     if os.environ.get("CASSINI_SCREENSHOT_OUT"):
-        from cassini_viewer.screenshot import capture
+        from cassini_talk.screenshot import capture
         sys.exit(capture(APPLICATION_ID, VERSION, PROFILE))
-    from cassini_viewer import main
+    from cassini_talk import main
 
     result = main.main(APPLICATION_ID, VERSION, PROFILE, installed_build=installed)
     if installed.restart is not None:

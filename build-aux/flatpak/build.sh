@@ -18,7 +18,6 @@ RELEASE=
 REPOSITORY=repo
 SIGNING_KEY=
 SIGNING_HOME=
-LEGACY_BUNDLE=
 for arg in "$@"; do
   case $arg in
     --devel) APP_ID=io.codemyriad.CassiniTalk.Devel; BUNDLE=cassini-talk-devel ;;
@@ -27,7 +26,6 @@ for arg in "$@"; do
     --release) RELEASE=1 ;;
     --gpg-key=*) SIGNING_KEY=${arg#*=} ;;
     --gpg-homedir=*) SIGNING_HOME=${arg#*=} ;;
-    --legacy-bundle=*) LEGACY_BUNDLE=${arg#*=} ;;
     -h|--help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
@@ -75,7 +73,6 @@ mkdir -p dist
 if [ -n "$RELEASE" ]; then
   set -- python3 build-aux/flatpak/prepare-release.py "$REPOSITORY" dist \
     --key "$SIGNING_KEY" --gpg-homedir "$SIGNING_HOME"
-  if [ -n "$LEGACY_BUNDLE" ]; then set -- "$@" --legacy-bundle "$LEGACY_BUNDLE"; fi
   "$@"
 else
   flatpak build-bundle \

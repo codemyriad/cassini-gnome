@@ -1,12 +1,12 @@
 cassini-talk (0.3.0+talk1) UNRELEASED; urgency=medium
 
   * Rename the application and package to Cassini talk (D45).
-  * Preserve the existing Library and migrate explicit settings once.
-  * Keep a transitional cassini-viewer package for existing installations.
+  * Use cassini-talk and cassini_talk throughout; install only the current identity.
+  * Keep the Library at Music/Cassini; no development-build migration.
 
  -- Silvio Tomatis <silviot@gmail.com>  Fri, 30 Oct 2026 12:00:00 +0100
 
-cassini-viewer (0.3.0) UNRELEASED; urgency=medium
+cassini-talk (0.3.0) UNRELEASED; urgency=medium
 
   * Add the meeting Library, import, export and search across meetings.
   * Record independent browser meetings, choose sources and support the
@@ -17,7 +17,7 @@ cassini-viewer (0.3.0) UNRELEASED; urgency=medium
 
  -- Silvio Tomatis <silviot@gmail.com>  Thu, 29 Oct 2026 05:24:51 +0100
 
-cassini-viewer (0.2.0) unstable; urgency=medium
+cassini-talk (0.2.0) unstable; urgency=medium
 
   * Record meetings: microphone and desktop audio, and browser meetings
     per source through the companion extension and its native messaging
@@ -27,7 +27,7 @@ cassini-viewer (0.2.0) unstable; urgency=medium
 
  -- Silvio Tomatis <silviot@gmail.com>  Tue, 27 Oct 2026 21:00:00 +0100
 
-cassini-viewer (0.1.1) unstable; urgency=medium
+cassini-talk (0.1.1) unstable; urgency=medium
 
   * Fix transcript-click crashes and GTK label sizing warnings.
   * Remove participant hiding and port inline interjection grouping.
@@ -35,7 +35,7 @@ cassini-viewer (0.1.1) unstable; urgency=medium
 
  -- Silvio Tomatis <silviot@gmail.com>  Thu, 15 Oct 2026 13:10:00 +0200
 
-cassini-viewer (0.1.0) unstable; urgency=medium
+cassini-talk (0.1.0) unstable; urgency=medium
 
   * First release.
 

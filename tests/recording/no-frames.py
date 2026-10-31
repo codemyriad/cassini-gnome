@@ -41,8 +41,8 @@ from gi.repository import Gio, Gst  # noqa: E402
 from private_pipewire import PrivatePipeWire  # noqa: E402
 from readiness import wait_until  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(args.build.resolve() / "src/cassini-viewer.gresource")))
-from cassini_viewer.main import CassiniApplication  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(args.build.resolve() / "src/cassini-talk.gresource")))
+from cassini_talk.main import CassiniApplication  # noqa: E402
 
 Gst.init(None)
 services = DesktopServices()

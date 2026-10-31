@@ -21,13 +21,13 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from gi.repository import Adw, Gio, GLib  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 sys.path.insert(0, str(ROOT / "tests"))
 from desktop_services import DesktopServices  # noqa: E402
 
-from cassini_viewer.global_shortcut import GlobalShortcut  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.recording_details import SilenceClock  # noqa: E402
+from cassini_talk.global_shortcut import GlobalShortcut  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.recording_details import SilenceClock  # noqa: E402
 
 
 def until(predicate):
@@ -187,8 +187,8 @@ with tempfile.TemporaryDirectory() as tmp:
     assert page.lines.get_visible()
     # A muted system fallback shows the exact catalog warning on the page
     # and the live pill. Browser-only capture never inherits the sink's mute.
-    from cassini_viewer.session_events import source_state
-    from cassini_viewer.strings import text
+    from cassini_talk.session_events import source_state
+    from cassini_talk.strings import text
 
     original_sources = app.comfort.sources
     app.comfort.sources = lambda _meeting: source_state(
@@ -295,7 +295,7 @@ with tempfile.TemporaryDirectory() as tmp:
     app.comfort.close()
     # No Library window is required for the Browser window's controller state
     # to drive hidden notifications, meters, track changes and disk observation.
-    from cassini_viewer.recording_session import RecordingSession
+    from cassini_talk.recording_session import RecordingSession
 
     browser_app = CassiniApplication("com.gocassini.BrowserOnlyComfortTest", "test", "development")
     browser_app.register(None)

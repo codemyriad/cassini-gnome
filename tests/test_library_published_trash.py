@@ -17,10 +17,10 @@ except ValueError:
 
 from library_v2_support import simple_session
 
-from cassini_viewer.library import LibraryScanner
-from cassini_viewer.library_v2 import finalize, journal, publish
-from cassini_viewer.meeting_trash import trash_owned
-from cassini_viewer.trash_cleanup import TrashCleanup
+from cassini_talk.library import LibraryScanner
+from cassini_talk.library_v2 import finalize, journal, publish
+from cassini_talk.meeting_trash import trash_owned
+from cassini_talk.trash_cleanup import TrashCleanup
 
 
 @pytest.fixture

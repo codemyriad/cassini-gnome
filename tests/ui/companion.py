@@ -44,11 +44,11 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer import companion, companion_bundle  # noqa: E402
-from cassini_viewer.browser_service import BrowserService, connect, request, send_packet  # noqa: E402
-from cassini_viewer.companion_setup import CompanionSetup  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk import companion, companion_bundle  # noqa: E402
+from cassini_talk.browser_service import BrowserService, connect, request, send_packet  # noqa: E402
+from cassini_talk.companion_setup import CompanionSetup  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
 
 
 def until(check):
@@ -136,7 +136,7 @@ with tempfile.TemporaryDirectory() as temporary:
     files = list((tmp / "browser-config").rglob("io.codemyriad.cassini*.json"))
     assert len(files) == 8, "Both hosts must be registered at launch without Connect"
     before = {p: (p.read_bytes(), p.stat().st_mtime_ns, p.stat().st_ino) for p in files}
-    from cassini_viewer.settings_dialog import SettingsDialog
+    from cassini_talk.settings_dialog import SettingsDialog
 
     settings = app.settings_dialog = SettingsDialog(app, service_path=path)
     assert settings.browser.get_title() == "Waiting for the browser companion"

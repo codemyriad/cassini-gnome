@@ -22,15 +22,15 @@ parser.add_argument("output", type=Path)
 parser.add_argument("--modules", type=Path, required=True)
 args = parser.parse_args()
 sys.path.insert(0, str(args.modules))
-from cassini_viewer.diarization_models import DiarizationModels  # noqa: E402
-from cassini_viewer.meeting_store import atomic_json, update_metadata  # noqa: E402
-from cassini_viewer.model_download import ModelStore  # noqa: E402
-from cassini_viewer.nemotron_model import MODEL_TAG  # noqa: E402
-from cassini_viewer.recording_session import RecordingSession  # noqa: E402
-from cassini_viewer.transcription import REFERENCE, TranscriptionQueue  # noqa: E402
-from cassini_viewer.voice_models import VoiceModels  # noqa: E402
-from cassini_viewer.voice_store import VoiceStore  # noqa: E402
-from cassini_viewer.worker_diarization import FORMAT, PARAMS  # noqa: E402
+from cassini_talk.diarization_models import DiarizationModels  # noqa: E402
+from cassini_talk.meeting_store import atomic_json, update_metadata  # noqa: E402
+from cassini_talk.model_download import ModelStore  # noqa: E402
+from cassini_talk.nemotron_model import MODEL_TAG  # noqa: E402
+from cassini_talk.recording_session import RecordingSession  # noqa: E402
+from cassini_talk.transcription import REFERENCE, TranscriptionQueue  # noqa: E402
+from cassini_talk.voice_models import VoiceModels  # noqa: E402
+from cassini_talk.voice_store import VoiceStore  # noqa: E402
+from cassini_talk.worker_diarization import FORMAT, PARAMS  # noqa: E402
 
 
 def until(check):

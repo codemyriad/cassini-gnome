@@ -16,7 +16,7 @@ parser.add_argument("output", type=Path)
 parser.add_argument("--modules", type=Path, required=True)
 args = parser.parse_args()
 sys.path.insert(0, str(args.modules))
-from cassini_viewer.whistle_worker import PRIVACY, onnxruntime_dir, verify_onnxruntime  # noqa: E402
+from cassini_talk.whistle_worker import PRIVACY, onnxruntime_dir, verify_onnxruntime  # noqa: E402
 
 os.environ.update(PRIVACY)
 private = onnxruntime_dir()
@@ -24,7 +24,7 @@ if private is not None:
     sys.path.insert(0, str(verify_onnxruntime(private)))
 import numpy as np  # noqa: E402
 
-from cassini_viewer.speech_pipeline import SpeechDetector, segment_ranges  # noqa: E402
+from cassini_talk.speech_pipeline import SpeechDetector, segment_ranges  # noqa: E402
 
 assert {name for _, name in socket.if_nameindex()} == {"lo"}
 root = Path(__file__).resolve().parent

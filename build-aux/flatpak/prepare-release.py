@@ -11,11 +11,10 @@ import tempfile
 from pathlib import Path
 
 APP = "io.codemyriad.CassiniTalk"
-OLD = "com.gocassini.Viewer"
 URL = "https://cassini.talk/download/linux/flatpak/"
 
 
-def prepare(repo, output, key, homedir, *, legacy_bundle=None):
+def prepare(repo, output, key, homedir):
     repo, output, homedir = (Path(p).resolve() for p in (repo, output, homedir))
     if not re.fullmatch(r"[0-9a-fA-F]{40,64}", key):
         raise ValueError("Use the full signing-key fingerprint")
@@ -31,26 +30,23 @@ def prepare(repo, output, key, homedir, *, legacy_bundle=None):
     public = call("gpg", "--batch", "--homedir", str(homedir), "--export", key)
     if not public:
         raise ValueError("The signing key has no exportable public key")
-    if legacy_bundle is not None:
-        call("flatpak", "build-import-bundle", str(repo), str(Path(legacy_bundle).resolve()))
     refs = [line.split()[0] for line in call("flatpak", "repo", "--branches", str(repo)).decode().splitlines()]
-    allowed = {APP, OLD, APP + ".Locale", OLD + ".Locale"}
+    allowed = {APP, APP + ".Locale"}
     for ref in refs:
         parts = ref.split("/")
         if len(parts) == 4 and parts[0] in ("app", "runtime") and parts[1] not in allowed:
             raise ValueError("Use a stable-only release repository; unexpected ref: " + ref)
     arch = call("flatpak", "--default-arch").decode().strip()
-    for app in (APP, OLD):
+    for app in (APP,):
         if f"app/{app}/{arch}/master" not in refs:
             raise ValueError(f"Required release ref is absent: {app}")
-    call("sh", str(Path(__file__).with_name("rename-ref.sh")), str(repo))
     signing = ["--gpg-homedir=" + str(homedir), "--gpg-sign=" + key]
     for ref in refs:
         parts = ref.split("/")
         if len(parts) != 4 or parts[0] not in ("app", "runtime"):
             continue
         kind, app, ref_arch, branch = parts
-        if app not in (APP, OLD, APP + ".Locale", OLD + ".Locale"):
+        if app not in (APP, APP + ".Locale"):
             continue
         call(
             "flatpak",
@@ -92,10 +88,9 @@ def main():
     parser.add_argument("output", type=Path)
     parser.add_argument("--key", required=True, help="full public signing-key fingerprint")
     parser.add_argument("--gpg-homedir", type=Path, required=True)
-    parser.add_argument("--legacy-bundle", type=Path, help="released old-ID bundle, if not already in repo")
     args = parser.parse_args()
     try:
-        prepare(args.repo, args.output, args.key, args.gpg_homedir, legacy_bundle=args.legacy_bundle)
+        prepare(args.repo, args.output, args.key, args.gpg_homedir)
     except (ValueError, OSError, subprocess.SubprocessError) as error:
         parser.exit(1, f"Could not prepare the signed Flatpak release: {error}\n")
     print("Signed Flatpak repository, repo file and bundle prepared locally; nothing published")

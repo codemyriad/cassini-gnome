@@ -7,11 +7,11 @@ import pytest
 from test_library import capture, fingerprint, write_metadata
 from test_transcription import until
 
-from cassini_viewer.capture_facts import record_end, separation_result, separation_unavailable
-from cassini_viewer.library_schema import valid
-from cassini_viewer.meeting_store import read_metadata, update_metadata
-from cassini_viewer.nemotron_model import MODEL_ID, MODEL_TAG, REVISION
-from cassini_viewer.transcription import REFERENCE, TranscriptionQueue
+from cassini_talk.capture_facts import record_end, separation_result, separation_unavailable
+from cassini_talk.library_schema import valid
+from cassini_talk.meeting_store import read_metadata, update_metadata
+from cassini_talk.nemotron_model import MODEL_ID, MODEL_TAG, REVISION
+from cassini_talk.transcription import REFERENCE, TranscriptionQueue
 
 
 def test_manual_end_is_app_owned_exact_and_preserves_metadata(tmp_path):

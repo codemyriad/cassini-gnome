@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 from test_library import received
 
-from cassini_viewer import portable
-from cassini_viewer.library import scan_library
+from cassini_talk import portable
+from cassini_talk.library import scan_library
 
 ROOT = Path(__file__).resolve().parents[1]
 REFERENCE = ROOT / "tests/conformance/opus/001-minimal-v1.opus"

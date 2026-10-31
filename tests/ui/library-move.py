@@ -20,15 +20,15 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib, Gst, Gtk  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer import library_location as location  # noqa: E402
-from cassini_viewer.folder_player import FolderPlayer  # noqa: E402
-from cassini_viewer.library_publication import root_for  # noqa: E402
-from cassini_viewer.library_window import LibraryWindow  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.meeting_store import atomic_json, update_metadata  # noqa: E402
-from cassini_viewer.player import Player  # noqa: E402
-from cassini_viewer.recording_session import RecordingSession  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk import library_location as location  # noqa: E402
+from cassini_talk.folder_player import FolderPlayer  # noqa: E402
+from cassini_talk.library_publication import root_for  # noqa: E402
+from cassini_talk.library_window import LibraryWindow  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.meeting_store import atomic_json, update_metadata  # noqa: E402
+from cassini_talk.player import Player  # noqa: E402
+from cassini_talk.recording_session import RecordingSession  # noqa: E402
 
 
 def until(check):

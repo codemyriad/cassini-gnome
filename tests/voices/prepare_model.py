@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-from cassini_viewer.campplus_model import FILES, MODEL_ID, REVISION, check_manifest  # noqa: E402
-from cassini_viewer.model_download import ModelStore  # noqa: E402
+from cassini_talk.campplus_model import FILES, MODEL_ID, REVISION, check_manifest  # noqa: E402
+from cassini_talk.model_download import ModelStore  # noqa: E402
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--cache", type=Path, required=True)

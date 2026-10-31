@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer import diarization as d
-from cassini_viewer.library_schema import valid
-from cassini_viewer.meeting_store import read_metadata
-from cassini_viewer.recording_session import RecordingSession
-from cassini_viewer.strings import text
+from cassini_talk import diarization as d
+from cassini_talk.library_schema import valid
+from cassini_talk.meeting_store import read_metadata
+from cassini_talk.recording_session import RecordingSession
+from cassini_talk.strings import text
 
 HERE = Path(__file__).parent / "ux/diarization"
 CASES = json.loads((HERE / "assign-vectors.json").read_bytes())["cases"]
@@ -47,7 +47,7 @@ def test_shared_assignment_case(case, tmp_path):
         actual = d.group_tracks(case["tracks"], origin=case["origin"])
     elif operation == "rejoin":
         np = pytest.importorskip("numpy")
-        from cassini_viewer.diarization_audio import rejoin
+        from cassini_talk.diarization_audio import rejoin
 
         tracks = []
         for index, track in enumerate(case["tracks"]):

@@ -18,8 +18,8 @@ for name in ("bundle", "modules", "runtime", "parakeet-model", "output"):
     parser.add_argument("--" + name, required=True, type=Path)
 args = parser.parse_args()
 sys.path.insert(0, str(args.modules))
-from cassini_viewer.parakeet_client import ParakeetClient  # noqa: E402
-from cassini_viewer.whistle_client import WhistleClient  # noqa: E402
+from cassini_talk.parakeet_client import ParakeetClient  # noqa: E402
+from cassini_talk.whistle_client import WhistleClient  # noqa: E402
 
 assert {name for _, name in socket.if_nameindex()} == {"lo"}
 root = Path(__file__).resolve().parents[2]

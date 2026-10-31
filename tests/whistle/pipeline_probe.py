@@ -21,9 +21,9 @@ from golden_check import assess_pipeline  # noqa: E402
 sys.path.insert(0, str(args.modules))
 import numpy as np  # noqa: E402
 
-from cassini_viewer.speech_pipeline import resampled_chunks  # noqa: E402
-from cassini_viewer.whistle_client import WhistleClient  # noqa: E402
-from cassini_viewer.whistle_worker import onnxruntime_dir  # noqa: E402
+from cassini_talk.speech_pipeline import resampled_chunks  # noqa: E402
+from cassini_talk.whistle_client import WhistleClient  # noqa: E402
+from cassini_talk.whistle_worker import onnxruntime_dir  # noqa: E402
 
 assert os.environ.get("CASSINI_WHISTLE_NETWORK_NONE") == "1"
 # The interfaces of this process's own network namespace: /sys/class/net can

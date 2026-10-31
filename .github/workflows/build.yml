@@ -35,10 +35,10 @@ jobs:
         run: |
           meson setup _build-core
           meson test -C _build-core --print-errorlogs
-          meson compile -C _build-core cassini-viewer-pot
+          meson compile -C _build-core cassini-talk-pot
           DESTDIR=$PWD/products/core/install meson install -C _build-core
           mkdir -p products/core/build/src
-          cp _build-core/src/cassini-viewer.gresource products/core/build/src/
+          cp _build-core/src/cassini-talk.gresource products/core/build/src/
           python3 build-aux/ci/product.py pack products/core core.tar --commit "$GITHUB_SHA" --profile core
       - uses: actions/upload-artifact@v7
         with:
@@ -55,7 +55,7 @@ jobs:
         if: inputs.boards || inputs.offline
         with:
           path: .sherpa-cache
-          key: sherpa-${{ hashFiles('src/cassini_viewer/sherpa-pins.json') }}
+          key: sherpa-${{ hashFiles('src/cassini_talk/sherpa-pins.json') }}
       - name: Pinned build-time fetches, never model downloads
         if: inputs.boards || inputs.offline
         run: |
@@ -73,7 +73,7 @@ jobs:
           gtk4-update-icon-cache -q -t -f products/boards/install/share/icons/hicolor
           update-desktop-database -q products/boards/install/share/applications
           mkdir -p products/boards/build/src
-          cp _build-boards/src/cassini-viewer.gresource products/boards/build/src/
+          cp _build-boards/src/cassini-talk.gresource products/boards/build/src/
           python3 build-aux/ci/product.py pack products/boards boards.tar --commit "$GITHUB_SHA" --profile boards
       - uses: actions/upload-artifact@v7
         if: inputs.boards

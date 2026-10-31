@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from cassini_viewer import summary
+from cassini_talk import summary
 
 TEXT = """# Summary
 

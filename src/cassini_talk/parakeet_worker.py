@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from cassini_viewer.parakeet_model import MODEL_TAG  # noqa: E402
-from cassini_viewer.whistle_worker import PRIVACY, emit, onnxruntime_dir, verify_bundle, verify_onnxruntime  # noqa: E402
+from cassini_talk.parakeet_model import MODEL_TAG  # noqa: E402
+from cassini_talk.whistle_worker import PRIVACY, emit, onnxruntime_dir, verify_bundle, verify_onnxruntime  # noqa: E402
 
 
 def block_network(event, _args):
@@ -24,8 +24,8 @@ def main(bundle, model_path, runtime_path):
     if runtime is not None:
         sys.path.insert(0, str(verify_onnxruntime(runtime)))
     sys.addaudithook(block_network)
-    from cassini_viewer.parakeet import Parakeet
-    from cassini_viewer.speech_pipeline import process_tracks
+    from cassini_talk.parakeet import Parakeet
+    from cassini_talk.speech_pipeline import process_tracks
 
     model = Parakeet(model_path, runtime_path)
     try:
@@ -44,7 +44,7 @@ def main(bundle, model_path, runtime_path):
             for t in tracks
         ):
             raise ValueError("Invalid capture track")
-        from cassini_viewer.worker_diarization import complete, estimate
+        from cassini_talk.worker_diarization import complete, estimate
 
         options = message.get("diarization")
         summary = process_tracks(
@@ -61,7 +61,7 @@ def main(bundle, model_path, runtime_path):
             if line:
                 followup = json.loads(line)
                 if followup.get("type") == "voiceprints":
-                    from cassini_viewer.worker_voices import request
+                    from cassini_talk.worker_voices import request
 
                     request(followup, emit)
                 elif followup.get("type") != "quit":
@@ -76,8 +76,8 @@ def diarization_info(model_path, runtime_path):
     if any(os.environ.get(key) != value for key, value in PRIVACY.items()):
         raise RuntimeError("Speech privacy flags must be set before loading Nemotron")
     sys.addaudithook(block_network)
-    from cassini_viewer.nemotron import Nemotron
-    from cassini_viewer.nemotron_model import MODEL_TAG
+    from cassini_talk.nemotron import Nemotron
+    from cassini_talk.nemotron_model import MODEL_TAG
 
     model = Nemotron(model_path, runtime_path)
     try:
@@ -100,7 +100,7 @@ def voice_job():
         raise ValueError("Voice request exceeds limit")
     message = json.loads(line)
     if message.get("type") == "voiceprints":
-        from cassini_viewer.worker_voices import request
+        from cassini_talk.worker_voices import request
 
         request(message, emit)
     elif message.get("type") != "quit":
@@ -112,8 +112,8 @@ def embedding_info(model_path, runtime_path):
     if any(os.environ.get(key) != value for key, value in PRIVACY.items()):
         raise RuntimeError("Speech privacy flags must precede native construction")
     sys.addaudithook(block_network)
-    from cassini_viewer.campplus import SpeakerExtractor
-    from cassini_viewer.campplus_model import MODEL_TAG
+    from cassini_talk.campplus import SpeakerExtractor
+    from cassini_talk.campplus_model import MODEL_TAG
 
     model = SpeakerExtractor(model_path, runtime_path)
     try:

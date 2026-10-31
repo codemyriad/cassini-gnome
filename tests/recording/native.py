@@ -22,7 +22,7 @@ from gst_evidence import GstEvidence  # noqa: E402
 from readiness import PCMProgress, wait_until  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-from cassini_viewer.recorder import Recorder  # noqa: E402
+from cassini_talk.recorder import Recorder  # noqa: E402
 
 Gst.init(None)
 artifacts = Path(os.environ.get("CASSINI_TEST_ARTIFACTS", str(Path(__file__).parent / "artifacts" / "native")))

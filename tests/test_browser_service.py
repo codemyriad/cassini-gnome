@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from broker_fixture import stop_broker
 
-from cassini_viewer.browser_service import BrowserService, connect, read_packet, request, send_packet
+from cassini_talk.browser_service import BrowserService, connect, read_packet, request, send_packet
 
 
 class SilentTap:
@@ -325,7 +325,7 @@ def test_quitting_cassini_does_not_count_as_stopping_the_call(service):
 
 
 def test_a_new_call_at_the_stopped_address_after_a_reconnect_is_new(service, monkeypatch):
-    from cassini_viewer import browser_service
+    from cassini_talk import browser_service
 
     _, path = service
     monkeypatch.setattr(browser_service, "STOPPED_CALL_REPORT_WINDOW", 0.3)
@@ -359,7 +359,7 @@ def test_a_stopped_call_that_ended_while_connected_is_new_after_a_reconnect(serv
 
 
 def test_a_quiet_stopped_call_stays_stopped_while_its_link_is_up(service, monkeypatch):
-    from cassini_viewer import browser_service
+    from cassini_talk import browser_service
 
     _, path = service
     monkeypatch.setattr(browser_service, "STOPPED_CALL_GRACE", 0.3)
@@ -534,7 +534,7 @@ def test_control_host_relays_commands_over_native_framing(service):
     import sys
     from pathlib import Path
 
-    from cassini_viewer.recording_session import read_message, write_message
+    from cassini_talk.recording_session import read_message, write_message
 
     _, path = service
     env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")}
@@ -542,7 +542,7 @@ def test_control_host_relays_commands_over_native_framing(service):
         [
             sys.executable,
             "-c",
-            "import sys;from cassini_viewer.browser_control_host import main;sys.exit(main(path=sys.argv[1]))",
+            "import sys;from cassini_talk.browser_control_host import main;sys.exit(main(path=sys.argv[1]))",
             str(path),
         ],
         env=env,
@@ -578,8 +578,8 @@ def test_control_host_relays_commands_over_native_framing(service):
 def test_control_host_survives_an_idle_broker(service, monkeypatch):
     import os
 
-    from cassini_viewer import browser_control_host
-    from cassini_viewer.recording_session import read_message, write_message
+    from cassini_talk import browser_control_host
+    from cassini_talk.recording_session import read_message, write_message
 
     _, path = service
     # Shorten the connect timeout so a link that kept it would fail within the test.
@@ -645,7 +645,7 @@ def test_shared_control_host_vectors():
 
 
 def test_stop_expiry_is_checked_before_reconnecting_inventory_can_refresh_it(service):
-    from cassini_viewer.browser_service import STOPPED_CALL_GRACE
+    from cassini_talk.browser_service import STOPPED_CALL_GRACE
 
     server, path = service
     connection, stream = browser(path, "4242:99")
@@ -685,7 +685,7 @@ def test_direct_navigation_to_another_call_clears_suppression_without_empty_inve
 
 
 def test_lifecycle_uses_latest_explicit_page_fact_not_an_older_snapshot(tmp_path, monkeypatch):
-    from cassini_viewer.browser_service import BrowserConnection
+    from cassini_talk.browser_service import BrowserConnection
 
     service = BrowserService(tmp_path / "settings.json")
     browser = BrowserConnection(None)

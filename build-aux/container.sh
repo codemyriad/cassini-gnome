@@ -71,7 +71,7 @@ container_offline_smoke() {
   smoke_status=0
   container_run_offline --read-only --tmpfs /tmp:rw,exec,nosuid,nodev -e HOME=/tmp \
     -v "$PWD/build-aux:/aux:ro$Z" -v "$PWD/tests:/source/tests:ro$Z" -v "$smoke_model:/model:ro$Z" "$smoke_image" sh -ec '
-      cassini-viewer --help >/dev/null
+      cassini-talk --help >/dev/null
       python3 -I /aux/smoke-installed.py --whistle /source/tests/whistle --parakeet /model --parakeet-tests /source/tests/parakeet
       echo "clean install smoke test passed, offline"
     ' || smoke_status=$?

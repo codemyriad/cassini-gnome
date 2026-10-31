@@ -25,12 +25,12 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-viewer.gresource")))
-from cassini_viewer.folder_player import FolderPlayer  # noqa: E402
-from cassini_viewer.library_window import LibraryWindow  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.player import Player  # noqa: E402
-from cassini_viewer.strings import text  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-talk.gresource")))
+from cassini_talk.folder_player import FolderPlayer  # noqa: E402
+from cassini_talk.library_window import LibraryWindow  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.player import Player  # noqa: E402
+from cassini_talk.strings import text  # noqa: E402
 
 
 def until(predicate):
@@ -272,7 +272,7 @@ with tempfile.TemporaryDirectory() as tmp:
     assert empty.privacy_footer.get_visible()
     # A sandbox fallback is the initial Library too, but its footer must not
     # claim Music/Cassini. Settings/Show in Files use the actual primary path.
-    from cassini_viewer import library_location
+    from cassini_talk import library_location
 
     fallback = Path(tmp) / "private-data/cassini/Library"
     with (

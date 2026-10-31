@@ -18,12 +18,12 @@ except ValueError:
 from test_browser_capture import Tap, remote
 from test_recorder import spin_until
 
-from cassini_viewer import library_publication
-from cassini_viewer.browser_capture import BrowserCapture
-from cassini_viewer.library import LibraryScanner
-from cassini_viewer.library_location import capture_busy
-from cassini_viewer.library_v2 import finalize
-from cassini_viewer.native_recorder import NativeRecorder
+from cassini_talk import library_publication
+from cassini_talk.browser_capture import BrowserCapture
+from cassini_talk.library import LibraryScanner
+from cassini_talk.library_location import capture_busy
+from cassini_talk.library_v2 import finalize
+from cassini_talk.native_recorder import NativeRecorder
 
 
 def test_native_stop_keeps_main_loop_responsive_and_lease_until_published(tmp_path, monkeypatch):
@@ -158,9 +158,9 @@ def test_quit_cancels_native_publish_queued_behind_another_capture(tmp_path, mon
 def test_browser_rpc_stop_acknowledges_pcm_and_returns_saving_paths_for_quit(tmp_path, monkeypatch):
     from test_browser_capture import start as start_wire
 
-    from cassini_viewer.browser_audio_proxy import BrowserAudioProxy
-    from cassini_viewer.browser_service import BrowserService, request
-    from cassini_viewer.capture_activity import read_browser_activity
+    from cassini_talk.browser_audio_proxy import BrowserAudioProxy
+    from cassini_talk.browser_service import BrowserService, request
+    from cassini_talk.capture_activity import read_browser_activity
 
     root = tmp_path / "Library"
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(root))
@@ -208,7 +208,7 @@ def test_browser_rpc_stop_acknowledges_pcm_and_returns_saving_paths_for_quit(tmp
 def test_native_publication_failure_is_distinct_from_a_capture_start_failure(tmp_path, monkeypatch):
     import errno
 
-    from cassini_viewer.publication_state import failure_notice
+    from cassini_talk.publication_state import failure_notice
 
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path / "Library"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))

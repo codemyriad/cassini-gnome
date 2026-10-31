@@ -38,7 +38,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .sherpa-cache
-          key: sherpa-${{ hashFiles('src/cassini_viewer/sherpa-pins.json') }}
+          key: sherpa-${{ hashFiles('src/cassini_talk/sherpa-pins.json') }}
       - uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/parakeet-models
@@ -55,20 +55,6 @@ jobs:
         with:
           name: deb-${{ strategy.job-index }}
           path: dist/*.deb
-      - name: Upgrade the published Cassini Viewer 0.3.0 to Cassini talk
-        if: matrix.base == 'ubuntu:26.04'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash tests/upgrade/run.sh dist/cassini-talk_*.deb dist/cassini-viewer_*_all.deb "$RUNNER_TEMP/product-upgrade"
-      - uses: actions/upload-artifact@v7
-        if: always() && matrix.base == 'ubuntu:26.04'
-        with:
-          name: cassini-talk-upgrade
-          path: |
-            ${{ runner.temp }}/product-upgrade/*.json
-            ${{ runner.temp }}/product-upgrade/*.log
-            ${{ runner.temp }}/product-upgrade/source-install/live-handoff/*.json
-            ${{ runner.temp }}/product-upgrade/source-install/live-handoff/*.log
       - name: Installed package restarts after upgrades and preserves active audio
         if: matrix.base == 'ubuntu:26.04'
         run: tests/build-refresh/run.sh dist/cassini-talk_*.deb "$RUNNER_TEMP/build-refresh"

@@ -17,8 +17,8 @@ except ValueError:
 from library_v2_support import simple_session
 from test_library import capture
 
-from cassini_viewer.library import LibraryScanner
-from cassini_viewer.library_v2 import finalize, journal
+from cassini_talk.library import LibraryScanner
+from cassini_talk.library_v2 import finalize, journal
 
 
 def fingerprints(root):
@@ -66,8 +66,8 @@ def test_root_file_is_complete_without_the_hidden_session(tmp_path):
 
 
 def test_missing_published_file_is_not_an_interrupted_recording(tmp_path):
-    from cassini_viewer import portable
-    from cassini_viewer.meeting_store import update_metadata
+    from cassini_talk import portable
+    from cassini_talk.meeting_store import update_metadata
 
     sid, _directory = simple_session(tmp_path, 0.1)
     result = finalize.finalize(tmp_path, sid, zone="Europe/Rome")
@@ -141,9 +141,9 @@ def test_published_projection_is_reused_when_another_session_changes(tmp_path):
 
 
 def test_no_x_root_file_is_read_play_only_until_step_five(tmp_path):
-    from cassini_viewer import portable
-    from cassini_viewer.library_v2 import edit, xschema
-    from cassini_viewer.portable_writer import MANIFEST_MIME, chunk_set
+    from cassini_talk import portable
+    from cassini_talk.library_v2 import edit, xschema
+    from cassini_talk.portable_writer import MANIFEST_MIME, chunk_set
 
     sid, directory = simple_session(tmp_path, 0.1)
     result = finalize.finalize(tmp_path, sid)

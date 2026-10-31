@@ -11,9 +11,7 @@ from .recording_session import BrowserHost, ProtocolError, read_message, write_m
 LOG = logging.getLogger(__name__)
 
 
-def main(
-    directory=None, open_completed=True, *, viewer_path=None, input_stream=None, output_stream=None, launcher=None
-):
+def main(directory=None, open_completed=True, *, app_path=None, input_stream=None, output_stream=None, launcher=None):
     incoming = sys.stdin.buffer if input_stream is None else input_stream
     outgoing = sys.stdout.buffer if output_stream is None else output_stream
     launcher = subprocess.Popen if launcher is None else launcher
@@ -36,13 +34,13 @@ def main(
             if result["type"] == "stopped" and open_completed and not independent:
                 try:
                     launcher(
-                        [str(viewer_path or "cassini-viewer"), str(Path(result["path"]) / "session.json")],
+                        [str(app_path or "cassini-talk"), str(Path(result["path"]) / "session.json")],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         start_new_session=True,
                     )
                 except OSError as error:
-                    LOG.warning("Recording saved at %s, but the viewer could not start: %s", result["path"], error)
+                    LOG.warning("Recording saved at %s, but the app could not start: %s", result["path"], error)
             write_message(outgoing, result)
         host.close()
         return 0

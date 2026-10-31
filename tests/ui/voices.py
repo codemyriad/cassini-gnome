@@ -25,11 +25,11 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.meeting_store import read_metadata, update_metadata  # noqa: E402
-from cassini_viewer.settings_dialog import SettingsDialog  # noqa: E402
-from cassini_viewer.voice_board import seed  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.meeting_store import read_metadata, update_metadata  # noqa: E402
+from cassini_talk.settings_dialog import SettingsDialog  # noqa: E402
+from cassini_talk.voice_board import seed  # noqa: E402
 
 
 def until(check):
@@ -183,7 +183,7 @@ with tempfile.TemporaryDirectory() as temporary:
     first = next(iter(voices.rows))
     assert app.voice_store.snapshot()["voices"][0]["name"] == "Marta"
     assert voices.rows[first][1].get_sensitive()
-    from cassini_viewer.folder_player import FolderPlayer
+    from cassini_talk.folder_player import FolderPlayer
 
     original_init = FolderPlayer.__init__
 
@@ -203,7 +203,7 @@ with tempfile.TemporaryDirectory() as temporary:
         until(lambda: voices.player is None)
         assert player._pipeline is None and all(source.fd is None for source in sources)
     # A synchronous missing-plugin load error must also release its pipeline.
-    from cassini_viewer.player import Player
+    from cassini_talk.player import Player
 
     created = []
     original_player_init = Player.__init__
@@ -221,7 +221,7 @@ with tempfile.TemporaryDirectory() as temporary:
     )
     with (
         patch.object(Player, "__init__", track_player),
-        patch("cassini_viewer.player.runtime.missing_gst_elements", return_value=["fixture-missing"]),
+        patch("cassini_talk.player.runtime.missing_gst_elements", return_value=["fixture-missing"]),
     ):
         voices._play("broken")
     assert len(created) == 1 and created[0]._pipeline.get_state(0).state == Gst.State.NULL

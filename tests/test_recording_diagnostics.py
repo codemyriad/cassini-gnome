@@ -12,7 +12,7 @@ gi = pytest.importorskip("gi")
 gi.require_version("Gst", "1.0")
 from gi.repository import GLib, Gst  # noqa: E402
 
-from cassini_viewer.recording_session import ProtocolError, RecordingSession  # noqa: E402
+from cassini_talk.recording_session import ProtocolError, RecordingSession  # noqa: E402
 
 Gst.init(None)
 Evidence = runpy.run_path(str(Path(__file__).parent / "recording/gst_evidence.py"))["GstEvidence"]

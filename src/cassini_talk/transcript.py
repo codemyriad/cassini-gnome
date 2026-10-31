@@ -20,7 +20,7 @@ from .portable import Word
 # between words do not make the highlight flicker.
 LINGER_MS = 300
 
-# Ported from gocassini/cassini-viewer/src/core/overlap.ts. Judge whole
+# Ported from gocassini’s transcript overlap implementation. Judge whole
 # speaker runs, not individual fragments, so competing speech stays separate.
 SEAM_GAP_MS = 400
 ASIDE_MAX_MS = 2000

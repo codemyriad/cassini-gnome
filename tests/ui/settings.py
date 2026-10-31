@@ -24,13 +24,13 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib, Gst, Gtk  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer.browser_service import BrowserService, request, send_packet  # noqa: E402
-from cassini_viewer.browser_service import connect as broker_connect  # noqa: E402
-from cassini_viewer.folder_player import FolderPlayer  # noqa: E402
-from cassini_viewer.library_window import LibraryWindow  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.player import Player  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk.browser_service import BrowserService, request, send_packet  # noqa: E402
+from cassini_talk.browser_service import connect as broker_connect  # noqa: E402
+from cassini_talk.folder_player import FolderPlayer  # noqa: E402
+from cassini_talk.library_window import LibraryWindow  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.player import Player  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "tests"))
 from desktop_services import DesktopServices  # noqa: E402
@@ -105,7 +105,7 @@ with tempfile.TemporaryDirectory() as temporary:
     app.activate()
     window = app.get_active_window()
     until(lambda: not window._pending)
-    from cassini_viewer.settings_dialog import SettingsDialog
+    from cassini_talk.settings_dialog import SettingsDialog
 
     dialog = SettingsDialog(app, service_path=path)
     dialog.present(window)

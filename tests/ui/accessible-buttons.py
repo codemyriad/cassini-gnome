@@ -29,12 +29,12 @@ def child():
 
     sys.path.insert(0, str(ROOT / "src"))
     Gio.resources_register(
-        Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource"))
+        Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource"))
     )
-    from cassini_viewer.folder_player import FolderPlayer
-    from cassini_viewer.library_window import LibraryWindow
-    from cassini_viewer.main import CassiniApplication
-    from cassini_viewer.player import Player
+    from cassini_talk.folder_player import FolderPlayer
+    from cassini_talk.library_window import LibraryWindow
+    from cassini_talk.main import CassiniApplication
+    from cassini_talk.player import Player
 
     def until(check):
         deadline = time.monotonic() + 55

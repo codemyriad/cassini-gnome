@@ -31,7 +31,7 @@ jobs:
         if: inputs.product == ''
         with:
           path: .sherpa-cache
-          key: sherpa-${{ hashFiles('src/cassini_viewer/sherpa-pins.json') }}
+          key: sherpa-${{ hashFiles('src/cassini_talk/sherpa-pins.json') }}
       - name: Build a local installation for standalone dispatch
         if: inputs.product == ''
         run: |
@@ -39,7 +39,7 @@ jobs:
           build-aux/sherpa-cache.sh
           meson setup _build-shot --prefix="$PWD/_install-shot" -Dprofile=development -Dwhistle=enabled -Dwhistle_cache="$PWD/.whistle-cache" -Dsherpa=enabled -Dsherpa_cache="$PWD/.sherpa-cache"
           meson install -C _build-shot
-          echo "BOARD_APP=$PWD/_install-shot/bin/cassini-viewer" >> "$GITHUB_ENV"
+          echo "BOARD_APP=$PWD/_install-shot/bin/cassini-talk" >> "$GITHUB_ENV"
           echo "CASSINI_BOARD_BUILD=$PWD/_build-shot" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v8
         if: inputs.product != ''
@@ -52,7 +52,7 @@ jobs:
           python3 build-aux/ci/product.py unpack _ci-boards _ci-download/boards.tar --commit "$GITHUB_SHA" --profile boards
           test ! -e /tmp/cassini-ci-boards
           cp -a _ci-boards/install /tmp/cassini-ci-boards
-          echo "BOARD_APP=/tmp/cassini-ci-boards/bin/cassini-viewer" >> "$GITHUB_ENV"
+          echo "BOARD_APP=/tmp/cassini-ci-boards/bin/cassini-talk" >> "$GITHUB_ENV"
           echo "CASSINI_BOARD_BUILD=$PWD/_ci-boards/build" >> "$GITHUB_ENV"
       - name: Render the real current window in private Xvfb
         run: |

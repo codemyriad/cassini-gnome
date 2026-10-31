@@ -25,12 +25,12 @@ parser.add_argument("--voices", type=Path)
 parser.add_argument("--parakeet", type=Path)
 args = parser.parse_args()
 sys.path.insert(0, str(args.modules))
-from cassini_viewer.diarization_models import DiarizationModels  # noqa: E402
-from cassini_viewer.library import LibraryScanner  # noqa: E402
-from cassini_viewer.meeting_store import read_metadata, update_metadata  # noqa: E402
-from cassini_viewer.model_download import ModelStore  # noqa: E402
-from cassini_viewer.recording_session import RecordingSession  # noqa: E402
-from cassini_viewer.transcription import TranscriptionQueue  # noqa: E402
+from cassini_talk.diarization_models import DiarizationModels  # noqa: E402
+from cassini_talk.library import LibraryScanner  # noqa: E402
+from cassini_talk.meeting_store import read_metadata, update_metadata  # noqa: E402
+from cassini_talk.model_download import ModelStore  # noqa: E402
+from cassini_talk.recording_session import RecordingSession  # noqa: E402
+from cassini_talk.transcription import TranscriptionQueue  # noqa: E402
 
 assert os.environ.get("CASSINI_WHISTLE_NETWORK_NONE") == "1"
 assert {name for _, name in socket.if_nameindex()} == {"lo"}
@@ -62,8 +62,8 @@ before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in session.di
 finished = []
 voices = store = speech = None
 if args.voices:
-    from cassini_viewer.voice_models import VoiceModels
-    from cassini_viewer.voice_store import VoiceStore
+    from cassini_talk.voice_models import VoiceModels
+    from cassini_talk.voice_store import VoiceStore
 
     store = VoiceStore(args.output / "private-voices")
     voices = VoiceModels(
@@ -72,14 +72,14 @@ if args.voices:
     until(lambda: not voices.snapshot()["busy"])
     assert voices.snapshot()["ready"], voices.snapshot()
 if args.parakeet:
-    from cassini_viewer.parakeet_client import ParakeetClient
+    from cassini_talk.parakeet_client import ParakeetClient
 
     class SelectedSpeech:
         def snapshot(self):
             return dict(selected="parakeet-ultra-0.6b-int8")
 
         def start_parakeet(self, bundle, *, register):
-            from cassini_viewer.sherpa_runtime import runtime_path
+            from cassini_talk.sherpa_runtime import runtime_path
 
             client = ParakeetClient(bundle, args.parakeet, runtime_path())
             register(client)

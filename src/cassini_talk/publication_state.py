@@ -26,9 +26,9 @@ def failure_notice(error):
     # Inspect the internal error identity without importing the NumPy/GStreamer
     # encoder on GTK's main thread. The worker retains the actual exception.
     kind = (type(error).__module__, type(error).__name__)
-    if kind == ("cassini_viewer.library_v2.mixdown", "EmptyRecording"):
+    if kind == ("cassini_talk.library_v2.mixdown", "EmptyRecording"):
         return "library.publishNoAudio"
-    if kind == ("cassini_viewer.library_v2.finalize", "LowDisk") or (
+    if kind == ("cassini_talk.library_v2.finalize", "LowDisk") or (
         isinstance(error, OSError) and error.errno == errno.ENOSPC
     ):
         return "library.publishDiskLow"

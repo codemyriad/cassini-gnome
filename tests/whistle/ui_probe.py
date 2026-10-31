@@ -32,11 +32,11 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(args.resource)))
-from cassini_viewer.folder_player import FolderPlayer  # noqa: E402
-from cassini_viewer.library_window import LibraryWindow  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.meeting_store import atomic_json  # noqa: E402
-from cassini_viewer.recording_session import RecordingSession  # noqa: E402
+from cassini_talk.folder_player import FolderPlayer  # noqa: E402
+from cassini_talk.library_window import LibraryWindow  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.meeting_store import atomic_json  # noqa: E402
+from cassini_talk.recording_session import RecordingSession  # noqa: E402
 
 errors = []
 
@@ -126,7 +126,7 @@ try:
         native_hash = hashes(native.directory)
         # This is the production native finalisation hook; its audio writer and
         # Pulse sources are separately exercised by the recording integration job.
-        from cassini_viewer.native_recorder import NativeRecorder
+        from cassini_talk.native_recorder import NativeRecorder
 
         recorder = NativeRecorder()
         recorder.session = native

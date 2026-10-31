@@ -9,9 +9,9 @@ import pytest
 import test_model_download
 from test_transcription import until
 
-from cassini_viewer import diarization_models, nemotron_model
-from cassini_viewer.diarization_models import DiarizationModels
-from cassini_viewer.model_download import ModelStore
+from cassini_talk import diarization_models, nemotron_model
+from cassini_talk.diarization_models import DiarizationModels
+from cassini_talk.model_download import ModelStore
 
 
 class Probe:

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer import companion_bundle as bundle
+from cassini_talk import companion_bundle as bundle
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -198,7 +198,7 @@ def test_concurrent_versions_cannot_downgrade_the_copy(tmp_path, monkeypatch):
 
 
 def test_host_copy_uses_host_data_folder_and_only_existing_bridge(tmp_path, monkeypatch):
-    from cassini_viewer import flatpak_bridge
+    from cassini_talk import flatpak_bridge
 
     root = source(tmp_path)
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "sandbox-private"))

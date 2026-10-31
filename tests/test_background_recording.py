@@ -8,8 +8,8 @@ import pytest
 pytest.importorskip("gi.repository.Gio")
 from gi.repository import Gio, GLib
 
-from cassini_viewer import background_recording
-from cassini_viewer.background_recording import BackgroundRecording
+from cassini_talk import background_recording
+from cassini_talk.background_recording import BackgroundRecording
 
 
 class Delegate:

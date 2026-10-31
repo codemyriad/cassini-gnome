@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer import diarization_abi, parakeet_abi
-from cassini_viewer.parakeet import round_ms, words_from_tokens
+from cassini_talk import diarization_abi, parakeet_abi
+from cassini_talk.parakeet import round_ms, words_from_tokens
 
 HERE = Path(__file__).parent / "parakeet"
 
@@ -23,9 +23,7 @@ def test_shared_parakeet_reference_bytes_and_header_are_pinned():
         hashlib.sha256((HERE / "c-api.h").read_bytes()).hexdigest()
         == "426db2c6acfb51e02143aece67c45779fae699d961c7c26ccf6f1388fdeaa2df"
     )
-    assert (HERE / "pins.json").read_bytes() == (
-        HERE.parent.parent / "src/cassini_viewer/sherpa-pins.json"
-    ).read_bytes()
+    assert (HERE / "pins.json").read_bytes() == (HERE.parent.parent / "src/cassini_talk/sherpa-pins.json").read_bytes()
 
 
 def test_all_used_struct_sizes_and_every_field_offset_match_the_approved_fork_header(tmp_path):
@@ -149,7 +147,7 @@ def test_conformance_never_uses_the_whistle_as_ask_exception_or_draft_parakeet_e
 def test_model_pins_match_only_the_approved_revision_and_raw_files():
     from types import SimpleNamespace
 
-    from cassini_viewer.parakeet_model import FILES, MODEL_ID, REVISION, check_manifest
+    from cassini_talk.parakeet_model import FILES, MODEL_ID, REVISION, check_manifest
 
     files = [
         SimpleNamespace(

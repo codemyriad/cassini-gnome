@@ -33,10 +33,10 @@ gi.require_version("GdkX11", "4.0")
 gi.require_version("Gsk", "4.0")
 from gi.repository import GdkX11, Gio, GLib, Gtk  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.meeting_store import read_metadata  # noqa: E402
-from cassini_viewer.strings import text  # noqa: E402
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.meeting_store import read_metadata  # noqa: E402
+from cassini_talk.strings import text  # noqa: E402
 
 
 def until(check):
@@ -209,7 +209,7 @@ with tempfile.TemporaryDirectory() as temporary:
         until(lambda dialog=dialog: window.get_focus() == dialog.entry.get_delegate())
         # Keep the save pending beyond GtkText's cursor blink callback. Disabling
         # the focused inner text without a focus-out produces a delayed warning.
-        from cassini_viewer.meeting_rename import rename_meeting
+        from cassini_talk.meeting_rename import rename_meeting
 
         release = threading.Event()
 
@@ -217,7 +217,7 @@ with tempfile.TemporaryDirectory() as temporary:
             assert release.wait(8), "GUI did not release the metadata worker"
             return rename_meeting(*args)
 
-        with patch("cassini_viewer.rename_dialog.rename_meeting", side_effect=paused_save):
+        with patch("cassini_talk.rename_dialog.rename_meeting", side_effect=paused_save):
             key(window, 0xFF0D)  # Return through the actual entry/default button.
             until(lambda dialog=dialog: dialog.busy)
             started = time.monotonic()
@@ -257,7 +257,7 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: window.rename_dialog is not dialog and not window.rename_dialog.closed)
     dialog = window.rename_dialog
     dialog.entry.set_text("Retry name")
-    with patch("cassini_viewer.rename_dialog.rename_meeting", side_effect=PermissionError("read-only fixture")):
+    with patch("cassini_talk.rename_dialog.rename_meeting", side_effect=PermissionError("read-only fixture")):
         dialog.confirm.emit("clicked")
         until(lambda: not dialog.busy)
         assert not dialog.closed and dialog.problem.get_visible() and dialog.entry.get_text() == "Retry name"

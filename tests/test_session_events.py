@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer.recording_session import ProtocolError, RecordingSession, load_session
-from cassini_viewer.session_events import append_events, meeting_sources, read_events, source_state
+from cassini_talk.recording_session import ProtocolError, RecordingSession, load_session
+from cassini_talk.session_events import append_events, meeting_sources, read_events, source_state
 
 
 def initial():
@@ -20,7 +20,7 @@ def initial():
 
 
 def test_shared_s6_fixture_library_and_handwritten_timeline_states(tmp_path):
-    from cassini_viewer.library import LibraryScanner
+    from cassini_talk.library import LibraryScanner
 
     fixture = Path(__file__).parent / "ux/session-events"
     subprocess.run([sys.executable, str(fixture / "make.py"), str(tmp_path)], check=True, timeout=5)
@@ -50,8 +50,8 @@ def test_shared_s6_fixture_library_and_handwritten_timeline_states(tmp_path):
 
 
 def test_shared_browser_off_on_fixture_retains_one_speaker_and_each_span_offset(tmp_path):
-    from cassini_viewer.library import LibraryScanner
-    from cassini_viewer.transcription import prepare_tracks
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.transcription import prepare_tracks
 
     fixture = Path(__file__).parent / "ux/session-events"
     subprocess.run(
@@ -194,7 +194,7 @@ def test_process_crash_never_splits_event_from_track_checkpoint(tmp_path, crash)
     script = """import os,sys
 from pathlib import Path
 sys.path.insert(0,sys.argv[3])
-from cassini_viewer.recording_session import RecordingSession
+from cassini_talk.recording_session import RecordingSession
 session=RecordingSession(Path(sys.argv[1]))
 replace=Path.replace
 def crash_replace(path,target):

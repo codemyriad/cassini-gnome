@@ -10,7 +10,7 @@ import pytest
 from test_speakers import meeting  # noqa: F401
 from test_voice_store import RECORDING, VoiceStore, enrol
 
-from cassini_viewer.library import LibrarySnapshot
+from cassini_talk.library import LibrarySnapshot
 
 
 @pytest.fixture(scope="module")
@@ -31,14 +31,14 @@ def application_class(tmp_path_factory):
     subprocess.run(
         [
             compiler,
-            str(source / "cassini-viewer.gresource.xml"),
+            str(source / "cassini-talk.gresource.xml"),
             "--sourcedir=" + str(source),
             "--target=" + str(resource),
         ],
         check=True,
     )
     Gio.resources_register(Gio.Resource.load(str(resource)))
-    from cassini_viewer.main import CassiniApplication
+    from cassini_talk.main import CassiniApplication
 
     return CassiniApplication
 
@@ -124,8 +124,8 @@ def test_undo_recomputes_the_actual_popped_pair_even_after_navigating_back(appli
 
     from test_library_monitor import spin_until
 
-    from cassini_viewer.meeting_page import MeetingPage
-    from cassini_viewer.speaker_edits import current_meeting, merge_into
+    from cassini_talk.meeting_page import MeetingPage
+    from cassini_talk.speaker_edits import current_meeting, merge_into
 
     directory = meeting.directory
     merge_into(directory, "a", "b")
@@ -200,7 +200,7 @@ def test_removed_meeting_paths_cannot_be_resaved_by_hidden_callbacks(application
     application_class.write_down(app, gone)
     application_class.recompute_voices(app, gone, {"a"})
     # Even a stale browser poll cannot put the removed path back in hidden saves.
-    from cassini_viewer.capture_guard import remember_capture_paths
+    from cassini_talk.capture_guard import remember_capture_paths
 
     window._activity_source.paths["stale"] = gone_path
     assert remember_capture_paths(app) == {kept_path}
@@ -210,8 +210,8 @@ def test_native_finished_resumes_the_queue_intent_saved_by_a_background_close(ap
     from test_library import capture
     from test_transcription import until
 
-    from cassini_viewer import meeting_store
-    from cassini_viewer.transcription import TranscriptionQueue
+    from cassini_talk import meeting_store
+    from cassini_talk.transcription import TranscriptionQueue
 
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
     session = capture(tmp_path)
@@ -262,7 +262,7 @@ def test_native_finished_resumes_the_queue_intent_saved_by_a_background_close(ap
 def test_published_queued_work_starts_when_saving_clears_even_if_file_was_seen(application_class, status, phase):
     from pathlib import Path
 
-    from cassini_viewer.library import Meeting
+    from cassini_talk.library import Meeting
 
     directory = Path("/Library/.cassini/sessions/Recording-12345678-1234-1234-1234-123456789abc")
     row = Meeting(
@@ -290,7 +290,7 @@ def test_published_queued_work_starts_when_saving_clears_even_if_file_was_seen(a
 
 
 def test_both_library_refresh_paths_keep_recovery_and_stopping_activity(application_class):
-    from cassini_viewer.library_window import LibraryWindow
+    from cassini_talk.library_window import LibraryWindow
 
     ids = [f"12345678-1234-1234-1234-123456789ab{n}" for n in range(3)]
     app = SimpleNamespace(

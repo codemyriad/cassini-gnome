@@ -4,8 +4,8 @@ from types import SimpleNamespace
 import pytest
 
 pytest.importorskip("gi")
-from cassini_viewer.native_recorder import space_left  # noqa: E402
-from cassini_viewer.recording_session import ProtocolError, RecordingSession  # noqa: E402
+from cassini_talk.native_recorder import space_left  # noqa: E402
+from cassini_talk.recording_session import ProtocolError, RecordingSession  # noqa: E402
 
 
 def test_space_estimate_keeps_larger_of_gib_or_two_percent_reserve(tmp_path):
@@ -38,7 +38,7 @@ def test_stop_during_preparation_never_starts_audio_capture(tmp_path, monkeypatc
 
     from gi.repository import GLib
 
-    from cassini_viewer.native_recorder import NativeRecorder
+    from cassini_talk.native_recorder import NativeRecorder
 
     recorder = NativeRecorder()
     session, space = recorder._prepare(tmp_path)
@@ -51,7 +51,7 @@ def test_stop_during_preparation_never_starts_audio_capture(tmp_path, monkeypatc
     recorder.connect("finished", lambda *_: events.append("finished"))
     recorder.stop()
     monkeypatch.setattr(
-        "cassini_viewer.native_recorder.Gst.parse_launch", lambda _: pytest.fail("Capture started after Stop")
+        "cassini_talk.native_recorder.Gst.parse_launch", lambda _: pytest.fail("Capture started after Stop")
     )
     recorder._prepared(prepared, True)
     deadline = time.monotonic() + 3
@@ -70,7 +70,7 @@ def test_stop_during_replacement_first_sample_keeps_the_confirmed_tracks(tmp_pat
 
     from test_recorder import spin_until
 
-    from cassini_viewer.native_recorder import NativeRecorder
+    from cassini_talk.native_recorder import NativeRecorder
 
     recorder = NativeRecorder()
     errors = []
@@ -122,7 +122,7 @@ def test_stop_during_replacement_first_sample_keeps_the_confirmed_tracks(tmp_pat
 def test_preparation_stop_end_time_uses_this_start_not_an_old_recorder_clock(tmp_path):
     from test_recorder import spin_until
 
-    from cassini_viewer.native_recorder import NativeRecorder
+    from cassini_talk.native_recorder import NativeRecorder
 
     recorder = NativeRecorder()
     recorder._start_us = 0
@@ -141,7 +141,7 @@ def test_preparation_stop_end_time_uses_this_start_not_an_old_recorder_clock(tmp
 def test_stop_keeps_healthy_pcm_when_an_empty_source_never_acknowledges_eos(tmp_path, monkeypatch, empty):
     from gi.repository import Gst
 
-    from cassini_viewer.native_recorder import NativeRecorder
+    from cassini_talk.native_recorder import NativeRecorder
 
     Gst.init(None)
     recorder = NativeRecorder()

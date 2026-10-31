@@ -4,10 +4,10 @@
 import pytest
 from test_library import capture, write_metadata
 
-from cassini_viewer.capture_guard import queue_saved_for_later
-from cassini_viewer.meeting_store import LOCK, read_metadata
-from cassini_viewer.recording_session import RecordingSession
-from cassini_viewer.transcription import REFERENCE
+from cassini_talk.capture_guard import queue_saved_for_later
+from cassini_talk.meeting_store import LOCK, read_metadata
+from cassini_talk.recording_session import RecordingSession
+from cassini_talk.transcription import REFERENCE
 
 
 def test_close_save_does_not_queue_empty_capture(tmp_path, monkeypatch):
@@ -20,7 +20,7 @@ def test_close_save_does_not_queue_empty_capture(tmp_path, monkeypatch):
 
 
 def test_close_save_reads_and_updates_under_queue_lock(tmp_path, monkeypatch):
-    from cassini_viewer import meeting_store
+    from cassini_talk import meeting_store
 
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
     session = capture(tmp_path)
@@ -50,8 +50,8 @@ def test_close_save_never_overwrites_newer_running_reference(tmp_path, monkeypat
 
 
 def test_concurrent_browser_stop_is_already_successful(tmp_path, monkeypatch):
-    from cassini_viewer import browser_service
-    from cassini_viewer.capture_guard import stop_browser_captures
+    from cassini_talk import browser_service
+    from cassini_talk.capture_guard import stop_browser_captures
 
     path = str(tmp_path / "Recording-one")
     active = True
@@ -69,8 +69,8 @@ def test_concurrent_browser_stop_is_already_successful(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("meeting_present", [True, False])
 def test_stop_waits_for_an_existing_browser_save(tmp_path, monkeypatch, meeting_present):
-    from cassini_viewer import browser_service
-    from cassini_viewer.capture_guard import stop_browser_captures
+    from cassini_talk import browser_service
+    from cassini_talk.capture_guard import stop_browser_captures
 
     path = str(tmp_path / "Recording-one")
     attempts = []
@@ -91,7 +91,7 @@ def test_stop_waits_for_an_existing_browser_save(tmp_path, monkeypatch, meeting_
 def test_remember_browser_paths_before_library_scan_finishes(tmp_path):
     from types import SimpleNamespace
 
-    from cassini_viewer.capture_guard import remember_capture_paths
+    from cassini_talk.capture_guard import remember_capture_paths
 
     path = str(tmp_path / "Recording-new")
     window = SimpleNamespace(_activity_source=SimpleNamespace(paths={"new": path}, snapshot={"new": "recording"}))
@@ -101,8 +101,8 @@ def test_remember_browser_paths_before_library_scan_finishes(tmp_path):
 
 @pytest.mark.parametrize("reason", ["user", "disk", "error", "appQuit"])
 def test_browser_stop_records_the_same_requested_cause_in_optional_details(tmp_path, monkeypatch, reason):
-    from cassini_viewer import browser_service
-    from cassini_viewer.capture_guard import stop_browser_captures
+    from cassini_talk import browser_service
+    from cassini_talk.capture_guard import stop_browser_captures
 
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
     session = capture(tmp_path)
@@ -123,7 +123,7 @@ def test_browser_stop_records_the_same_requested_cause_in_optional_details(tmp_p
 def test_stopping_browser_capture_is_busy_and_its_path_is_retained(tmp_path, owner):
     from types import SimpleNamespace
 
-    from cassini_viewer.capture_guard import capture_targets, remember_capture_paths
+    from cassini_talk.capture_guard import capture_targets, remember_capture_paths
 
     path = str(tmp_path / "Recording-12345678-1234-1234-1234-123456789abc")
     statuses = dict(statuses=[dict(recording=False, stopping=True, path=path)])

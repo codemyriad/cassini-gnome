@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from cassini_viewer import transcript
-from cassini_viewer.portable import Word
+from cassini_talk import transcript
+from cassini_talk.portable import Word
 
 
 def w(speaker, start, end, text):

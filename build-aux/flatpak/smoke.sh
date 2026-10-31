@@ -21,7 +21,7 @@ if [ "$(uname -m)" = x86_64 ]; then
   python3 tests/parakeet/prepare_model.py --cache "$model_cache"
   model=$(realpath "$model_cache/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9")
 fi
-set -- -I "$PWD/build-aux/smoke-installed.py" /app/share/cassini-viewer
+set -- -I "$PWD/build-aux/smoke-installed.py" /app/share/cassini-talk
 if [ "$(uname -m)" = x86_64 ]; then
   set -- "$@" --whistle "$PWD/tests/whistle" --parakeet "$model" --parakeet-tests "$PWD/tests/parakeet"
 fi

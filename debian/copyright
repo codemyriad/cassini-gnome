@@ -33,7 +33,7 @@ License: Apache-2.0
 Comment: Not in the source tree: the offline writing-down artifacts are
  fetched at build time from the URLs pinned, with their sha256, in
  whistle/pins.json, checked, and installed unmodified (never stripped) in
- /usr/share/cassini-viewer/whistle. whistle.cact holds the Whistle speech
+ /usr/share/cassini-talk/whistle. whistle.cact holds the Whistle speech
  recognition weights; libneedle3.so is the Needle 3.3.0 engine, taken from
  its pinned wheel; wrapper.whl is the cactus-needle 3.2.0 Python wrapper.
  Sources: https://huggingface.co/Cactus-Compute/whistle,
@@ -46,7 +46,7 @@ License: MIT
 Comment: Not in the source tree: Silero VAD v6.2.1, from
  https://github.com/snakers4/silero-vad at the revision pinned, with its
  sha256, in whistle/pins.json; fetched at build time and installed
- unmodified in /usr/share/cassini-viewer/whistle.
+ unmodified in /usr/share/cassini-talk/whistle.
 
 Files: onnxruntime/*
 Copyright: Microsoft Corporation
@@ -54,7 +54,7 @@ License: MIT
 Comment: Not in the source tree: ONNX Runtime 1.31.0, the PyPI wheel for the
  package's Python, fetched at build time from the URL pinned, with its
  sha256, in whistle/pins.json, and installed unpacked and unmodified (never
- stripped) in /usr/lib/<multiarch>/cassini-viewer/python, without its
+ stripped) in /usr/lib/<multiarch>/cassini-talk/python, without its
  transformers, quantization, tools and backend subpackages or its C API
  library.
  The extension module includes third-party components under their own
@@ -67,8 +67,8 @@ License: Apache-2.0
 Comment: Not in the source tree: the Cassini fork C API at
  https://raw.githubusercontent.com/codemyriad/sherpa-onnx-go-linux/03a94bc4bfc1e1bd455cd2fa62b93e8d73817a85/
  fetched at build time, pinned by size and SHA256 in
- src/cassini_viewer/sherpa-pins.json, installed unstripped in
- /usr/lib/<multiarch>/cassini-viewer/sherpa. No model weights are packaged.
+ src/cassini_talk/sherpa-pins.json, installed unstripped in
+ /usr/lib/<multiarch>/cassini-talk/sherpa. No model weights are packaged.
  See sherpa/NOTICE.md and sherpa/LICENSE-sherpa-Apache-2.0.txt.
 
 Files: sherpa/libonnxruntime.so

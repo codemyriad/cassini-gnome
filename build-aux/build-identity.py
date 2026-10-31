@@ -25,11 +25,11 @@ def generate(source, build, inputs, version, profile, application):
     for path in map(Path, inputs):
         path = path.resolve()
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        if path in (build / "src/cassini-talk", build / "src/cassini-viewer"):
+        if path == build / "src/cassini-talk":
             launcher = digest
         elif path == build / "src/paths.json":
-            files["cassini_viewer/paths.json"] = digest
-        elif path == build / "src/cassini-viewer.gresource":
+            files["cassini_talk/paths.json"] = digest
+        elif path == build / "src/cassini-talk.gresource":
             files[path.name] = digest
         elif path.is_relative_to(source / "src"):
             files[path.relative_to(source / "src").as_posix()] = digest

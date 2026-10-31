@@ -13,7 +13,6 @@
         "--socket=pulseaudio",
         "--filesystem=xdg-music/Cassini:create",
         "--talk-name=org.freedesktop.Flatpak",
-        "--talk-name=com.gocassini.Viewer",
         "--talk-name=org.kde.StatusNotifierWatcher"
     ],
     "cleanup": [
@@ -91,7 +90,7 @@
                         ".pytest_cache",
                         ".ruff_cache",
                         "debian/.debhelper",
-                        "debian/cassini-viewer",
+                        "debian/cassini-talk",
                         "tests/recording/node_modules",
                         "tests/recording/artifacts",
                         ".whistle-cache",

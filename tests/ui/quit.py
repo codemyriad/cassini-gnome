@@ -53,15 +53,15 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
-Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-viewer.gresource")))
+Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 sys.path.insert(0, str(ROOT / "tests"))
 from desktop_services import DesktopServices  # noqa: E402
 
-from cassini_viewer.main import CassiniApplication  # noqa: E402
-from cassini_viewer.meeting_store import read_metadata  # noqa: E402
-from cassini_viewer.recording_session import RecordingSession  # noqa: E402
-from cassini_viewer.transcription import TranscriptionQueue  # noqa: E402
-from cassini_viewer.whistle_client import WhistleClient  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.meeting_store import read_metadata  # noqa: E402
+from cassini_talk.recording_session import RecordingSession  # noqa: E402
+from cassini_talk.transcription import TranscriptionQueue  # noqa: E402
+from cassini_talk.whistle_client import WhistleClient  # noqa: E402
 
 services = DesktopServices()
 mode = sys.argv[1]
@@ -88,7 +88,7 @@ class BusyClient(WhistleClient):
         # process that is busy for much longer than a permitted UI shutdown.
         from unittest.mock import patch
 
-        with patch("cassini_viewer.whistle_client.verify_bundle", lambda path: path):
+        with patch("cassini_talk.whistle_client.verify_bundle", lambda path: path):
             super().__init__(*args, **kwargs)
 
     def start(self):
@@ -246,7 +246,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 assert app._capture_background and not window.get_visible()
                 app.test_hidden_window = window
                 if mode in ("keep-browser-player", "keep-browser-companion"):
-                    from cassini_viewer.capture_guard import refresh_capture_background
+                    from cassini_talk.capture_guard import refresh_capture_background
 
                     assert refresh_capture_background(app)
                     assert window in app.get_windows(), "Only browser observer was orphaned"
@@ -269,7 +269,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 app.on_quit()
                 return False
         elif mode == "stop-error":
-            from cassini_viewer.recording_window import RecordingWindow
+            from cassini_talk.recording_window import RecordingWindow
 
             if phase == 0:
                 legacy = RecordingWindow(app)
@@ -289,7 +289,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 return False
         elif phase == 0:
             if mode == "prepare-failed":
-                from cassini_viewer.native_recorder import NativeRecorder
+                from cassini_talk.native_recorder import NativeRecorder
 
                 def fail(_parent):
                     raise OSError("Synthetic preparation failure")
@@ -297,7 +297,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 NativeRecorder._prepare = staticmethod(fail)
             app.start_native(test=True)
             if mode in ("keep-two-windows", "keep-reopen-two"):
-                from cassini_viewer.library_window import LibraryWindow
+                from cassini_talk.library_window import LibraryWindow
 
                 LibraryWindow(app).present()
             phase = 1
@@ -357,7 +357,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 window.close()
                 return False
         elif phase == 5:
-            from cassini_viewer.library_window import LibraryWindow
+            from cassini_talk.library_window import LibraryWindow
 
             visible = [w for w in app.get_windows() if w.get_visible()]
             if len(app.get_windows()) == 1 and isinstance(visible[0], LibraryWindow):
@@ -393,7 +393,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 original_begin = app.recorder._begin_finish
                 app.recorder._begin_finish = lambda problem=None: original_begin("Synthetic interrupted finalization")
             if mode == "stop-secondary-close":
-                from cassini_viewer.library_window import LibraryWindow
+                from cassini_talk.library_window import LibraryWindow
 
                 LibraryWindow(app).present()
                 secondary = app.get_active_window()

@@ -15,7 +15,7 @@ def test_stall_dumps_all_threads_once_and_recovers():
     script = """
 import logging, time
 from gi.repository import GLib
-from cassini_viewer.main_loop_watchdog import MainLoopWatchdog
+from cassini_talk.main_loop_watchdog import MainLoopWatchdog
 logging.basicConfig(level=logging.WARNING)
 watchdog = MainLoopWatchdog()
 loop = GLib.MainLoop()
@@ -40,7 +40,7 @@ def test_sigusr1_dumps_without_waiting_for_a_stall():
     script = """
 import os, signal
 from gi.repository import GLib
-from cassini_viewer.main_loop_watchdog import MainLoopWatchdog
+from cassini_talk.main_loop_watchdog import MainLoopWatchdog
 watchdog = MainLoopWatchdog()
 os.kill(os.getpid(), signal.SIGUSR1)
 watchdog.close()

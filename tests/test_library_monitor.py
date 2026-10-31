@@ -9,8 +9,8 @@ import pytest
 gi = pytest.importorskip("gi")
 from gi.repository import Gio, GLib  # noqa: E402
 
-from cassini_viewer.library_monitor import LibraryMonitor  # noqa: E402
-from cassini_viewer.recording_session import RecordingSession  # noqa: E402
+from cassini_talk.library_monitor import LibraryMonitor  # noqa: E402
+from cassini_talk.recording_session import RecordingSession  # noqa: E402
 
 
 def spin_until(predicate, timeout=4):
@@ -334,7 +334,7 @@ def test_preview_grouping_runs_on_worker_without_blocking_main_loop(tmp_path, mo
 
     from test_library import capture, write_metadata
 
-    from cassini_viewer import library
+    from cassini_talk import library
 
     session = capture(tmp_path)
     (session.directory / "transcript.json").write_text(
@@ -383,8 +383,8 @@ def test_monitor_follows_hidden_capture_and_root_publish_without_manual_refresh(
 
     from library_v2_support import simple_session
 
-    from cassini_viewer.library_v2 import finalize
-    from cassini_viewer.meeting_store import update_metadata
+    from cassini_talk.library_v2 import finalize
+    from cassini_talk.meeting_store import update_metadata
 
     root = tmp_path / "Library"
     root.mkdir()

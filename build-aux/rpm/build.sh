@@ -8,7 +8,7 @@ cd "$(dirname "$0")/../.."
 . build-aux/container.sh
 BASE=${1:-fedora:latest}
 VERSION=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -n1)
-SPEC_VERSION=$(sed -n 's/^Version: *//p' build-aux/rpm/cassini-viewer.spec)
+SPEC_VERSION=$(sed -n 's/^Version: *//p' build-aux/rpm/cassini-talk.spec)
 if [ "$VERSION" != "$SPEC_VERSION" ]; then
   echo "error: meson.build says $VERSION but the spec says $SPEC_VERSION" >&2
   exit 1
@@ -23,8 +23,8 @@ name_file=.rpm-name-$(image_slug "$BASE")
 container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z "$BASE" sh -ec '
   top=/build/rpmbuild src=/build/cassini-talk-$VERSION
   mkdir -p $top/SOURCES $top/SPECS "$src"
-  spec=$top/SPECS/cassini-viewer.spec
-  install -m 644 /in/build-aux/rpm/cassini-viewer.spec "$spec"
+  spec=$top/SPECS/cassini-talk.spec
+  install -m 644 /in/build-aux/rpm/cassini-talk.spec "$spec"
   if command -v dnf >/dev/null 2>&1; then
     dnf -y install rpm-build tar xz "dnf-command(builddep)"
     dnf -y --setopt=install_weak_deps=False builddep "$spec"
@@ -54,7 +54,7 @@ for info in pins[\"onnxruntime\"][\"wheels\"].values():
   cp -a /in/. "$src"
   cd "$src"
   rm -rf .whistle-cache .sherpa-cache .git _build* _install _flatpak build builddir dist repo .flatpak-builder .venv obj-* \
-    .pytest_cache .ruff_cache debian/.debhelper debian/cassini-viewer debian/cassini-talk debian/tmp \
+    .pytest_cache .ruff_cache debian/.debhelper debian/cassini-talk debian/tmp \
     tests/recording/node_modules tests/recording/artifacts *.flatpak
   find . -name __pycache__ -prune -exec rm -rf {} +
   cd /build
@@ -69,7 +69,7 @@ for info in pins[\"onnxruntime\"][\"wheels\"].values():
   fi
   rpmbuild -ba --define "_topdir $top" --define "dist $dist" "$spec"
   if command -v rpmlint >/dev/null 2>&1; then
-    rpmlint -r /in/build-aux/rpm/cassini-viewer-rpmlintrc $top/RPMS/x86_64/*.rpm $top/SRPMS/*.rpm || true
+    rpmlint -r /in/build-aux/rpm/cassini-talk-rpmlintrc $top/RPMS/x86_64/*.rpm $top/SRPMS/*.rpm || true
   fi
 
   install_rpm $top/RPMS/x86_64/*.rpm

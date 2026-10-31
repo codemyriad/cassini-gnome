@@ -2,5 +2,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import sys
 sys.path.insert(0, '@pkgdatadir@')
-from cassini_viewer.browser_control_host import main
+from cassini_talk.browser_control_host import main
 sys.exit(main())

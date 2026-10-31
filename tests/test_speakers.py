@@ -7,16 +7,16 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer import portable
-from cassini_viewer.export_model import markdown, model_projection
-from cassini_viewer.exporting import export_meeting
-from cassini_viewer.library import LibraryScanner, _speakers
-from cassini_viewer.meeting_store import atomic_json, read_metadata, update_metadata
-from cassini_viewer.portable_writer import descriptors
-from cassini_viewer.recording_session import RecordingSession
-from cassini_viewer.search_index import SearchIndex
-from cassini_viewer.speaker_edits import current_meeting, merge_into, name_value, save_name, undo_merge
-from cassini_viewer.speaker_merges import apply_merges, resolve_merges, speaker_metrics
+from cassini_talk import portable
+from cassini_talk.export_model import markdown, model_projection
+from cassini_talk.exporting import export_meeting
+from cassini_talk.library import LibraryScanner, _speakers
+from cassini_talk.meeting_store import atomic_json, read_metadata, update_metadata
+from cassini_talk.portable_writer import descriptors
+from cassini_talk.recording_session import RecordingSession
+from cassini_talk.search_index import SearchIndex
+from cassini_talk.speaker_edits import current_meeting, merge_into, name_value, save_name, undo_merge
+from cassini_talk.speaker_merges import apply_merges, resolve_merges, speaker_metrics
 
 
 @pytest.fixture
@@ -212,8 +212,8 @@ def test_outside_and_symlink_folders_are_never_edited(meeting, tmp_path, monkeyp
 
 
 def test_received_name_clear_uses_the_retained_scan_cache_without_rehashing(meeting, monkeypatch):
-    from cassini_viewer import library
-    from cassini_viewer.received import import_received
+    from cassini_talk import library
+    from cassini_talk.received import import_received
 
     source = Path(__file__).parents[1] / "ux/library-vectors/assets/onboarding.opus"
     imported = import_received(source, meeting.directory.parent)
@@ -245,6 +245,6 @@ def test_received_name_clear_uses_the_retained_scan_cache_without_rehashing(meet
     [(True, True, True), (False, True, False), (1, True, False), (True, 1, False), (1.0, 1, True)],
 )
 def test_schema_boolean_constants_are_distinct_from_numbers(value, const, expected):
-    from cassini_viewer.library_schema import valid
+    from cassini_talk.library_schema import valid
 
     assert valid(value, {"const": const}) is expected

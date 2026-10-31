@@ -12,9 +12,6 @@
 pkgname=cassini-talk
 pkgver=0.3.0
 pkgrel=2
-provides=("cassini-viewer=$pkgver")
-replaces=(cassini-viewer)
-conflicts=(cassini-viewer)
 pkgdesc='Record meetings and read along with their transcripts in the Cassini portable meeting format'
 # The offline writing-down engine is a pinned glibc x86_64 binary.
 arch=(x86_64)
@@ -83,9 +80,9 @@ check() {
 
 package() {
   meson install -C build --destdir "$pkgdir"
-  python "$_srcdir/whistle/verify.py" "$pkgdir/usr/share/cassini-viewer/whistle"
-  python "$_srcdir/whistle/verify.py" --onnxruntime "$pkgdir/usr/lib/cassini-viewer/python"
-  python "$_srcdir/sherpa/fetch.py" --cache "$srcdir" --verify "$pkgdir/usr/lib/cassini-viewer/sherpa"
+  python "$_srcdir/whistle/verify.py" "$pkgdir/usr/share/cassini-talk/whistle"
+  python "$_srcdir/whistle/verify.py" --onnxruntime "$pkgdir/usr/lib/cassini-talk/python"
+  python "$_srcdir/sherpa/fetch.py" --cache "$srcdir" --verify "$pkgdir/usr/lib/cassini-talk/sherpa"
   install -Dm644 -t "$pkgdir/usr/share/licenses/$pkgname/sherpa" \
     "$_srcdir/sherpa/NOTICE.md" "$_srcdir/sherpa/LICENSE-sherpa-Apache-2.0.txt" "$_srcdir/sherpa/LICENSE-ONNXRuntime-MIT.txt"
   install -Dm644 -t "$pkgdir/usr/share/licenses/$pkgname" \

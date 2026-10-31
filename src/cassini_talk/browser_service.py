@@ -95,7 +95,7 @@ def ensure_service(path=None, *, cancelled=None):
     # A filesystem lock in serve() elects one process if browser and app start together.
     env = dict(os.environ)
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
-    command = [sys.executable, "-m", "cassini_viewer.browser_service", "--serve", str(target)]
+    command = [sys.executable, "-m", "cassini_talk.browser_service", "--serve", str(target)]
     if os.environ.get("FLATPAK_ID") in {"io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"}:
         from .flatpak_bridge import broker_command
 

@@ -11,8 +11,8 @@ from pathlib import Path
 import pytest
 from test_library import capture, received, write_metadata
 
-from cassini_viewer import library
-from cassini_viewer.library_schema import SCHEMA, valid
+from cassini_talk import library
+from cassini_talk.library_schema import SCHEMA, valid
 
 ROOT = Path(__file__).resolve().parents[1]
 REF = dict(kind="sidecar", file="transcript.json", format="cassini.words.v1")
@@ -39,7 +39,7 @@ def test_fifo_is_never_opened_as_a_stream(tmp_path, name):
         [
             sys.executable,
             "-c",
-            "from cassini_viewer.library import scan_library;import sys;assert len(scan_library(sys.argv[1]).meetings)==1",
+            "from cassini_talk.library import scan_library;import sys;assert len(scan_library(sys.argv[1]).meetings)==1",
             str(tmp_path),
         ],
         env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
@@ -195,7 +195,7 @@ def test_same_uuid_under_both_prefixes_keeps_two_rows_with_distinct_internal_key
 
 
 def test_unknown_duration_omits_duration_without_inventing_copy():
-    from cassini_viewer import ux_formats as fmt
+    from cassini_talk import ux_formats as fmt
 
     assert fmt.row_meta(None, []) is None
     assert fmt.row_meta(None, ["Marta"]) == "Marta"

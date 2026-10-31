@@ -32,14 +32,13 @@
   </developer>
 
   <launchable type="desktop-id">@APP_ID@.desktop</launchable>
-  <translation type="gettext">cassini-viewer</translation>
+  <translation type="gettext">cassini-talk</translation>
 
   <url type="homepage">https://github.com/codemyriad/cassini-gnome</url>
   <url type="bugtracker">https://github.com/codemyriad/cassini-gnome/issues</url>
   <url type="vcs-browser">https://github.com/codemyriad/cassini-gnome</url>
   <url type="contribute">https://github.com/codemyriad/cassini-gnome/blob/main/CONTRIBUTING.md</url>
 
-  <replaces><id>@LEGACY_APP_ID@</id></replaces>
 
   <provides>
     <binary>cassini-talk</binary>

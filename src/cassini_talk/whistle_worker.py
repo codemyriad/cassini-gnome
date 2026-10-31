@@ -124,7 +124,7 @@ def main(bundle):
         if message.get("type") == "quit":
             return 0
         if message.get("type") == "voiceprints":
-            from cassini_viewer.worker_voices import request
+            from cassini_talk.worker_voices import request
 
             request(message, emit)
             continue
@@ -140,8 +140,8 @@ def main(bundle):
                 ):
                     raise ValueError("Invalid capture track")
             sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-            from cassini_viewer.speech_pipeline import process_tracks
-            from cassini_viewer.worker_diarization import complete, estimate
+            from cassini_talk.speech_pipeline import process_tracks
+            from cassini_talk.worker_diarization import complete, estimate
 
             options = message.get("diarization")
             summary = process_tracks(

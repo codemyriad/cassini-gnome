@@ -12,7 +12,7 @@ __pycache__/
 *.flatpak
 /obj-*/
 /debian/.debhelper/
-/debian/cassini-viewer/
+/debian/cassini-talk/
 /debian/debhelper-build-stamp
 /debian/files
 /debian/*.substvars

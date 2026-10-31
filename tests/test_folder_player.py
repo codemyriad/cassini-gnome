@@ -13,8 +13,8 @@ gi.require_version("Gst", "1.0")
 from gi.repository import GLib, Gst  # noqa: E402
 
 Gst.init(None)
-from cassini_viewer.folder_player import FolderPlayer  # noqa: E402
-from cassini_viewer.library import CaptureTrack  # noqa: E402
+from cassini_talk.folder_player import FolderPlayer  # noqa: E402
+from cassini_talk.library import CaptureTrack  # noqa: E402
 
 
 def tone(path, frequency, seconds=2, rate=48000, channels=1):
@@ -122,7 +122,7 @@ def test_main_fixture_plays_and_seeks_without_decoding_the_whole_meeting(tmp_pat
     import sys
     from pathlib import Path
 
-    from cassini_viewer.library import scan_library
+    from cassini_talk.library import scan_library
 
     root = Path(__file__).resolve().parents[1]
     subprocess.run([sys.executable, str(root / "ux/library-vectors/make.py"), str(tmp_path / "fixture")], check=True)
@@ -224,7 +224,7 @@ def test_folder_state_failure_does_not_mark_playing(tmp_path):
 @pytest.mark.parametrize("kind", ["folder", "file"])
 @pytest.mark.parametrize("end", [500, 12000])
 def test_voice_sample_has_a_real_stop_boundary_and_normal_playback_recovers(tmp_path, kind, end):
-    from cassini_viewer.player import Player
+    from cassini_talk.player import Player
 
     path = tmp_path / "voice.wav"
     frames = tone(path, 440, seconds=12)
@@ -268,7 +268,7 @@ def test_voice_sample_has_a_real_stop_boundary_and_normal_playback_recovers(tmp_
 
 @pytest.mark.parametrize("kind", ["folder", "file"])
 def test_voice_sample_waits_for_preroll_and_does_not_play_if_seek_fails(tmp_path, monkeypatch, kind):
-    from cassini_viewer.player import Player
+    from cassini_talk.player import Player
 
     path = tmp_path / "voice.wav"
     frames = tone(path, 440)

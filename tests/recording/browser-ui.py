@@ -31,12 +31,12 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
 sys.path[:0] = [str(root / "src"), str(root / "tests")]
-Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-viewer.gresource")))
+Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-talk.gresource")))
 from desktop_services import DesktopServices  # noqa: E402
 
-from cassini_viewer.global_shortcut import GlobalShortcut  # noqa: E402
-from cassini_viewer.library_window import LibraryWindow  # noqa: E402
-from cassini_viewer.main import CassiniApplication  # noqa: E402
+from cassini_talk.global_shortcut import GlobalShortcut  # noqa: E402
+from cassini_talk.library_window import LibraryWindow  # noqa: E402
+from cassini_talk.main import CassiniApplication  # noqa: E402
 
 services = DesktopServices()
 app = CassiniApplication("io.codemyriad.CassiniTalk.BrowserTest", "test", "development")
@@ -56,7 +56,7 @@ app.connect(
 
 def dispatch(packet, result, ready):
     try:
-        from cassini_viewer.capture_guard import recorder_busy
+        from cassini_talk.capture_guard import recorder_busy
 
         window = next((w for w in app.get_windows() if isinstance(w, LibraryWindow)), None)
         action = packet.get("action", "status")

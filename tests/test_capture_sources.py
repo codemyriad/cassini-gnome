@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from cassini_viewer.capture_sources import BrowserStreams, change_time
-from cassini_viewer.recording_session import BrowserHost, ProtocolError
+from cassini_talk.capture_sources import BrowserStreams, change_time
+from cassini_talk.recording_session import BrowserHost, ProtocolError
 
 
 def audio(host, sequence, offset, pcm):

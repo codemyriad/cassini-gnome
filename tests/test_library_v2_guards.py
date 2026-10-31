@@ -18,8 +18,8 @@ gi.require_version("Gst", "1.0")
 
 from library_v2_support import emulate_case_insensitive, meeting_json, root_files, simple_session  # noqa: E402
 
-from cassini_viewer.library_v2 import edit, journal, publish  # noqa: E402
-from cassini_viewer.library_v2 import finalize as fin  # noqa: E402
+from cassini_talk.library_v2 import edit, journal, publish  # noqa: E402
+from cassini_talk.library_v2 import finalize as fin  # noqa: E402
 
 OLD = "2026-10-30--18.02-Weekly sync.opus"
 NEW = "2026-10-30--18.02-Renamed.opus"

@@ -13,8 +13,8 @@ import pytest
 from test_browser_connection import Clock
 from test_transcription import until
 
-from cassini_viewer.build_refresh import BuildRefresh
-from cassini_viewer.installed_build import InstalledBuild, decode, read
+from cassini_talk.build_refresh import BuildRefresh
+from cassini_talk.installed_build import InstalledBuild, decode, read
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("build_identity", ROOT / "build-aux/build-identity.py")
@@ -24,17 +24,17 @@ spec.loader.exec_module(identity)
 
 def payload(root, text="old", *, version="0.3.0"):
     source, build = root / "source", root / "build"
-    module = source / "src/cassini_viewer/example.py"
+    module = source / "src/cassini_talk/example.py"
     module.parent.mkdir(parents=True, exist_ok=True)
     module.write_text(text)
-    launcher = build / "src/cassini-viewer"
+    launcher = build / "src/cassini-talk"
     launcher.parent.mkdir(parents=True, exist_ok=True)
     launcher.write_text("#!/usr/bin/python3\n")
     launcher.chmod(0o755)
     value = identity.generate(source, build, [module, launcher], version, "default", "io.codemyriad.CassiniTalk")
     installed = root / "install"
-    (installed / "cassini_viewer").mkdir(parents=True, exist_ok=True)
-    (installed / "cassini_viewer/example.py").write_text(text)
+    (installed / "cassini_talk").mkdir(parents=True, exist_ok=True)
+    (installed / "cassini_talk/example.py").write_text(text)
     (installed / "build-info.json").write_text(json.dumps(value))
     return value, installed, launcher
 
@@ -53,7 +53,7 @@ def test_manifest_published_before_files_never_restarts(tmp_path):
     _, root, launcher = payload(tmp_path)
     running = InstalledBuild(root, launcher, "0.3.0")
     payload(tmp_path, "new")
-    module = root / "cassini_viewer/example.py"
+    module = root / "cassini_talk/example.py"
     module.write_text("old")
     with pytest.raises(OSError, match="still being installed"):
         running.changed()
@@ -216,7 +216,7 @@ def test_close_cancels_retry_and_releases_check_hold():
 
 
 def test_live_broker_capture_overrides_an_idle_gtk_snapshot(monkeypatch):
-    from cassini_viewer import browser_service
+    from cassini_talk import browser_service
 
     app, held, finished, _ = application()
     app.browser_watch = object()
@@ -253,13 +253,13 @@ def test_many_activations_coalesce_one_io_check_and_close_balances_hold():
 
 
 def test_flatpak_checks_current_host_deployment_instead_of_running_app_mount(tmp_path, monkeypatch):
-    from cassini_viewer import flatpak_bridge as bridge
+    from cassini_talk import flatpak_bridge as bridge
 
     _, old_root, old_launcher = payload(tmp_path / "old")
     running = InstalledBuild(old_root, old_launcher, "0.3.0", flatpak=True)
     value, new_root, new_launcher = payload(tmp_path / "new", "new")
     location = tmp_path / "deployment"
-    root = location / "files/share/cassini-viewer"
+    root = location / "files/share/cassini-talk"
     shutil.copytree(new_root, root)
     launcher = location / "files/bin/cassini-talk"
     launcher.parent.mkdir(parents=True)
@@ -275,7 +275,7 @@ def test_flatpak_checks_current_host_deployment_instead_of_running_app_mount(tmp
     assert running.changed()
     assert read(old_root / "build-info.json") == running.running
     assert value["buildId"] != running.running["buildId"]
-    (root / "cassini_viewer/example.py").write_text("incomplete deployment")
+    (root / "cassini_talk/example.py").write_text("incomplete deployment")
     with pytest.raises(subprocess.CalledProcessError):
         running.changed()
 
@@ -348,9 +348,9 @@ def test_preparation_is_durable_before_restart_and_new_queue_can_resume(tmp_path
 
     from test_library import capture
 
-    from cassini_viewer.library import LibraryScanner
-    from cassini_viewer.meeting_store import read_metadata
-    from cassini_viewer.transcription import TranscriptionQueue
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.meeting_store import read_metadata
+    from cassini_talk.transcription import TranscriptionQueue
 
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
     session = capture(tmp_path)
@@ -462,7 +462,7 @@ def test_capture_started_during_trash_flush_is_rechecked_before_quitting():
 def test_changed_broker_state_during_worker_requires_a_fresh_check(monkeypatch):
     import threading
 
-    from cassini_viewer import browser_service
+    from cassini_talk import browser_service
 
     app, held, finished, _ = application()
     app.browser_watch = object()
@@ -491,7 +491,7 @@ def test_changed_broker_state_during_worker_requires_a_fresh_check(monkeypatch):
 
 
 def test_live_broker_state_disables_restart_banner(monkeypatch):
-    from cassini_viewer import browser_service
+    from cassini_talk import browser_service
 
     app, held, finished, windows = application()
     app.browser_watch = object()

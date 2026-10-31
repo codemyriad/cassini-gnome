@@ -83,7 +83,7 @@ Use the harness's project-scoped teardown when finished.
 The canonical Git snapshot is pinned in `browser-protocol/PINNED_COMMIT`.
 Run `python3 build-aux/verify-browser-protocol.py` to check its Git object/tree,
 upstream hashes and byte-identical extension. `pytest` and `meson test` run the
-shared stdio conformance runner with isolated output and no viewer launch.
+shared stdio conformance runner with isolated output and no app launch.
 Enable the opt-in suite with `meson configure _build -Drecording_tests=true`,
 then run `meson test -C _build --suite recording`.
 

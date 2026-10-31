@@ -6,8 +6,8 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
-from cassini_viewer.library import LibraryScanner, library_root, scan_library
-from cassini_viewer.recording_session import RecordingSession
+from cassini_talk.library import LibraryScanner, library_root, scan_library
+from cassini_talk.recording_session import RecordingSession
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -189,7 +189,7 @@ def test_missing_received_transcript_can_be_written_down_once(tmp_path):
 
 
 def test_failed_audio_integrity_keeps_granule_duration_but_withholds_transcript(tmp_path, monkeypatch):
-    from cassini_viewer import portable
+    from cassini_talk import portable
 
     directory = received(tmp_path)
     before = fingerprint(directory)
@@ -255,7 +255,7 @@ def test_default_root_is_literal_and_missing_scan_never_creates_it(tmp_path, mon
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("CASSINI_LIBRARY_DIR", raising=False)
     monkeypatch.setenv("XDG_MUSIC_DIR", str(tmp_path / "elsewhere"))
-    from cassini_viewer import library_location
+    from cassini_talk import library_location
 
     monkeypatch.setattr(library_location, "music_directory", lambda: tmp_path / "Musica")
     assert library_root() == tmp_path / "Musica/Cassini"
@@ -282,7 +282,7 @@ def test_pure_core_import_does_not_load_gi():
         [
             sys.executable,
             "-c",
-            'import sys;from cassini_viewer.library import LibraryScanner;assert "gi" not in sys.modules',
+            'import sys;from cassini_talk.library import LibraryScanner;assert "gi" not in sys.modules',
         ],
         env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
         check=True,
@@ -344,7 +344,7 @@ def test_none_and_failed_never_publish_stored_body_or_speakers(tmp_path):
 def test_preview_filters_asides_before_limit_and_reuses_grouping_on_metadata_change(tmp_path, monkeypatch):
     from test_transcript import WORDS, w
 
-    from cassini_viewer import library
+    from cassini_talk import library
 
     session = capture(tmp_path)
     words = WORDS + [w("d", 4000, 4400, "Third visible turn")]
@@ -411,7 +411,7 @@ def test_missing_root_and_unreadable_folder_evict_all_cached_bodies(tmp_path, mo
 
 
 def test_long_preview_bounds_legacy_grouping_and_retains_full_reading_body(tmp_path, monkeypatch):
-    from cassini_viewer import library, portable
+    from cassini_talk import library, portable
 
     scanner = LibraryScanner(tmp_path)
     original = library.build_turns
@@ -444,8 +444,8 @@ def test_default_title_is_a_placeholder_but_real_identical_titles_are_not(tmp_pa
 def test_unreadable_meeting_title_is_a_localised_fallback(tmp_path):
     # Regression (review 118 #4): unreadable folders stored English text as a
     # real (editable) title.
-    from cassini_viewer.library import _unreadable
-    from cassini_viewer.strings import text
+    from cassini_talk.library import _unreadable
+    from cassini_talk.strings import text
 
     directory = tmp_path / f"Recording-{uuid4()}"
     directory.mkdir()

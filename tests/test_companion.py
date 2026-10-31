@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from cassini_viewer import companion
+from cassini_talk import companion
 
 
 def test_registration_origin_matches_the_pinned_manifest_key():

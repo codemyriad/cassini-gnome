@@ -8,11 +8,11 @@ import pytest
 from test_transcription import until
 from test_voice_store import embedding
 
-from cassini_viewer.library import LibraryScanner
-from cassini_viewer.meeting_store import read_metadata, update_metadata
-from cassini_viewer.recording_session import RecordingSession
-from cassini_viewer.transcription import TranscriptionQueue
-from cassini_viewer.voice_store import VoiceStore
+from cassini_talk.library import LibraryScanner
+from cassini_talk.meeting_store import read_metadata, update_metadata
+from cassini_talk.recording_session import RecordingSession
+from cassini_talk.transcription import TranscriptionQueue
+from cassini_talk.voice_store import VoiceStore
 
 
 class Models:
@@ -27,8 +27,8 @@ class Models:
 def test_foreground_writing_preempts_historical_job_without_losing_its_hold(tmp_path, monkeypatch, during_probe):
     import threading
 
-    from cassini_viewer import voice_models
-    from cassini_viewer.transcription import REFERENCE
+    from cassini_talk import voice_models
+    from cassini_talk.transcription import REFERENCE
 
     old, foreground = meeting(tmp_path), meeting(tmp_path)
     update_metadata(old, transcript=dict(status="done", reference=REFERENCE))
@@ -131,8 +131,8 @@ def meeting(tmp_path):
 def test_historical_preparation_preserves_words_names_and_private_identity(tmp_path, monkeypatch, result):
     import threading
 
-    from cassini_viewer import voice_models
-    from cassini_viewer.transcription import REFERENCE
+    from cassini_talk import voice_models
+    from cassini_talk.transcription import REFERENCE
 
     directory = meeting(tmp_path)
     update_metadata(
@@ -360,7 +360,7 @@ def test_meeting_remains_readable_after_names_are_forgotten(tmp_path):
 def test_merge_and_undo_coalesce_to_latest_print_without_releasing_hold_early(tmp_path, monkeypatch):
     import threading
 
-    from cassini_viewer import voice_models
+    from cassini_talk import voice_models
 
     directory = meeting(tmp_path)
     store = VoiceStore(tmp_path / "private")
@@ -422,7 +422,7 @@ def test_merge_and_undo_coalesce_to_latest_print_without_releasing_hold_early(tm
 def test_request_at_completion_boundary_runs_instead_of_stranding_a_rerun(tmp_path, monkeypatch):
     import threading
 
-    from cassini_viewer import voice_models
+    from cassini_talk import voice_models
 
     directory = meeting(tmp_path)
     store = VoiceStore(tmp_path / "private")

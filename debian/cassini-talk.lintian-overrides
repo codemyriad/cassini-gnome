@@ -6,17 +6,17 @@ no-manual-page [usr/bin/cassini-browser-control-host]
 # its recognition child, from this directory, after checking every file
 # against the sha256 in manifest.json. They cannot move to a library
 # directory or be stripped; the engine is the pinned upstream binary.
-arch-dependent-file-in-usr-share [usr/share/cassini-viewer/whistle/libcassini_whistle_cpu.so]
-arch-dependent-file-in-usr-share [usr/share/cassini-viewer/whistle/libneedle3.so]
-# The private ONNX Runtime (/usr/lib/<multiarch>/cassini-viewer/python) is
+arch-dependent-file-in-usr-share [usr/share/cassini-talk/whistle/libcassini_whistle_cpu.so]
+arch-dependent-file-in-usr-share [usr/share/cassini-talk/whistle/libneedle3.so]
+# The private ONNX Runtime (/usr/lib/<multiarch>/cassini-talk/python) is
 # the pinned upstream PyPI wheel, installed unmodified and checked against its
 # RECORD before the recognition child loads it. Its extension module links
 # curl and mbedtls statically, for the Azure execution provider, which the
 # app never uses: it creates only CPUExecutionProvider sessions.
-embedded-library curl [usr/lib/x86_64-linux-gnu/cassini-viewer/python/onnxruntime/capi/onnxruntime_pybind11_state.cpython-*-x86_64-linux-gnu.so]
-embedded-library mbedtls [usr/lib/x86_64-linux-gnu/cassini-viewer/python/onnxruntime/capi/onnxruntime_pybind11_state.cpython-*-x86_64-linux-gnu.so]
+embedded-library curl [usr/lib/x86_64-linux-gnu/cassini-talk/python/onnxruntime/capi/onnxruntime_pybind11_state.cpython-*-x86_64-linux-gnu.so]
+embedded-library mbedtls [usr/lib/x86_64-linux-gnu/cassini-talk/python/onnxruntime/capi/onnxruntime_pybind11_state.cpython-*-x86_64-linux-gnu.so]
 
 # D16 pins both private libraries byte for byte. Stripping would invalidate
 # their approved hashes and make the worker refuse to load them.
-unstripped-binary-or-object [usr/lib/x86_64-linux-gnu/cassini-viewer/sherpa/libonnxruntime.so]
-unstripped-binary-or-object [usr/lib/x86_64-linux-gnu/cassini-viewer/sherpa/libsherpa-onnx-c-api.so]
+unstripped-binary-or-object [usr/lib/x86_64-linux-gnu/cassini-talk/sherpa/libonnxruntime.so]
+unstripped-binary-or-object [usr/lib/x86_64-linux-gnu/cassini-talk/sherpa/libsherpa-onnx-c-api.so]

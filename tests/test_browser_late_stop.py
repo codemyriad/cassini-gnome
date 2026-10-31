@@ -12,8 +12,8 @@ from test_browser_capture import server, start  # noqa: F401
 from test_browser_service import no_command, service, wait_for  # noqa: F401
 from test_control_reconnect import peer
 
-from cassini_viewer.browser_audio_proxy import BrowserAudioProxy
-from cassini_viewer.browser_service import request, send_packet
+from cassini_talk.browser_audio_proxy import BrowserAudioProxy
+from cassini_talk.browser_service import request, send_packet
 
 
 def state(extension, *, capture_id="late", path="/private/Recording-late"):

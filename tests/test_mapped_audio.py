@@ -17,10 +17,10 @@ except ValueError:
 
 from library_v2_support import write_wav
 
-from cassini_viewer.diarization import group_tracks
-from cassini_viewer.diarization_audio import rejoin
-from cassini_viewer.mapped_audio import end_ms, required
-from cassini_viewer.speech_pipeline import audio_chunks, audio_segments, resampled_chunks, resampled_stream
+from cassini_talk.diarization import group_tracks
+from cassini_talk.diarization_audio import rejoin
+from cassini_talk.mapped_audio import end_ms, required
+from cassini_talk.speech_pipeline import audio_chunks, audio_segments, resampled_chunks, resampled_stream
 
 
 def pcm(path):
@@ -142,8 +142,8 @@ def test_other_legal_capture_rates_use_the_shared_48k_path_before_fir(tmp_path, 
 
 
 def test_raw_playback_and_export_use_the_same_drift_map_as_publication(tmp_path):
-    from cassini_viewer.export_audio import track_pcm
-    from cassini_viewer.library import CaptureTrack
+    from cassini_talk.export_audio import track_pcm
+    from cassini_talk.library import CaptureTrack
 
     path = audio(tmp_path)
     source = CaptureTrack(path, 8 * 48000, 48000, 7250, True, clock_anchors=((0, 0), (8 * 48000, 8_040_000_000)))
@@ -162,8 +162,8 @@ def test_ten_hour_clocked_source_seeks_directly_with_bounded_reads(tmp_path, mon
 
     from library_v2_support import wav_header
 
-    from cassini_viewer.folder_player import PCMSource
-    from cassini_viewer.library import CaptureTrack
+    from cassini_talk.folder_player import PCMSource
+    from cassini_talk.library import CaptureTrack
 
     path = tmp_path / "track-ten-hours.wav"
     frames = 10 * 3600 * 48000
@@ -204,8 +204,8 @@ def test_ten_hour_clocked_source_seeks_directly_with_bounded_reads(tmp_path, mon
 def test_scalar_duration_is_the_core_mapping_endpoint_without_numpy_on_gtk(rate, offset):
     from types import SimpleNamespace
 
-    from cassini_viewer.capture_clock import mapped_end_sample
-    from cassini_viewer.library_v2.mixdown import Mapping
+    from cassini_talk.capture_clock import mapped_end_sample
+    from cassini_talk.library_v2.mixdown import Mapping
 
     frames = 10 * 3600 * rate
     anchors = ((0, 19_123_456_000), (frames // 3, 12_020_323_456_000), (frames, 36_025_523_456_000))
