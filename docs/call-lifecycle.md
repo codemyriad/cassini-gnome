@@ -36,6 +36,10 @@ and retiring an overlapping old worker cannot detach the replacement. A stalled
 or closed audio connection still triggers the ordinary fallback, and an explicit
 closed tab or ended call keeps its 2-second policy. The 120-second return deadline
 starts at the original control loss and is never reset by a half-reconnect.
+Recent PCM remains fresh across the instant of control disconnect; the next
+buffer need not have arrived yet. A reported navigation invalidates the old
+document's positive source count. A fast returning status waits for fresh
+inventory evidence before clearing the return timer.
 
 Every actual stop writes one terminal session event: `user`, `callEnded`,
 `tabClosed`, `pageGone`, `disk`, `error` or `appQuit`. Accepted PCM is finalized
