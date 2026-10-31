@@ -332,7 +332,39 @@ class NativeRecorder(GObject.Object):
         self.stopping = True
         self.emit("changed")
         self._timeout = GLib.timeout_add_seconds(10, self._timed_out)
-        request_eos(self.pipeline, self._eos_rejected)
+        pipeline = self.pipeline
+
+        # Pulse can wait forever for the first frame during EOS/preroll. Do
+        # not put that event ahead of the NULL transition that unlocks its
+        # read. Retire only empty branches; healthy queues still drain by EOS.
+        # Classify off GTK too: a writer may currently hold the sample lock.
+        def retire():
+            with self._lock:
+                empty = [
+                    branch
+                    for kind, branch in self._branches.items()
+                    if self.session.writers[self._track_ids[kind]].frames == 0
+                ]
+                self._retired_branches.update(empty)
+            for branch in empty:
+                branch.set_state(Gst.State.NULL)
+                pipeline.remove(branch)
+            return len(empty) == len(self._branches)
+
+        future = self._executor.submit(retire)
+        future.add_done_callback(lambda f: GLib.idle_add(self._empty_sources_stopped, f, pipeline))
+
+    def _empty_sources_stopped(self, future, pipeline):
+        if self.pipeline is not pipeline or self._finishing:
+            return False
+        try:
+            if future.result():
+                self._begin_finish()
+            else:
+                request_eos(pipeline, self._eos_rejected)
+        except Exception as error:
+            self._begin_finish(str(error))
+        return False
 
     def _eos_rejected(self, pipeline):
         if self.pipeline is pipeline and self.stopping:
