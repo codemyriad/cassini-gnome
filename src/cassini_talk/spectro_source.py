@@ -140,6 +140,22 @@ class SpectroSource:
         subscription.cancelled.set()
         self._update_subscriptions()
 
+    def release_if_idle(self):
+        """Producer-side reclamation after hidden observers stop requesting PCM.
+
+        The admission callbacks call this outside their capture locks. Never
+        wait for another producer, and recheck after acquiring the DSP lock.
+        GTK cancellation itself only sets the subscription flag.
+        """
+        if self.active or not self.lock.acquire(blocking=False):
+            return
+        try:
+            self._update_subscriptions()
+            if not self.active and (self.tracks or any(self.pending.values())):
+                self._reset_analysis(self.now_ms, watching=False, epoch=self._epoch)
+        finally:
+            self.lock.release()
+
     def retire(self, identifier):
         with self.lock:
             self.retired.add(identifier)

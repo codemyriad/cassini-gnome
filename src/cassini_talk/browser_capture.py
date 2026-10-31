@@ -248,6 +248,8 @@ class BrowserCapture:
                             )
             if picture is not None:
                 self.spectrogram.observe(**picture, now_ms=self.elapsed_ms())
+            else:
+                self.spectrogram.release_if_idle()
 
         def level(value):
             with self.lock:
@@ -454,6 +456,8 @@ class BrowserCapture:
                 self._sync_spectrogram()
         if picture is not None:
             self.spectrogram.observe(**picture, now_ms=self.elapsed_ms())
+        else:
+            self.spectrogram.release_if_idle()
         return result
 
     def stop(self, problem=None, *, reason=None):

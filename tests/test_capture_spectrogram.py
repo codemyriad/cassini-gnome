@@ -77,6 +77,7 @@ def test_browser_pcm_is_unchanged_and_analysis_is_outside_the_owner_lock(tmp_pat
         before = source.calls
         packet(capture, pcm, 1, 100)
         assert source.calls == before and len(calls) == 1 and capture.streams.picture is None
+        assert not source.tracks, "hidden producer retained FFT/history after accepting new PCM"
         capture.stop()
         assert read_pcm(capture, "wire") == pcm + pcm
     finally:
@@ -107,9 +108,12 @@ def test_broker_native_and_readiness_taps_keep_audio_independent_of_picture(tmp_
         tap.append(pcm, 100 + 4 * 1000 / 48000)
         assert len(observed) == 1 and observed[0]["kind"] == kind
         assert observed[0]["start_ms"] == (100 if kind == "microphone" else 0)
+        source.unsubscribe(next(iter(source.subscribers)))
+        tap.append(pcm, 200 + 4 * 1000 / 48000)
+        assert not source.tracks and len(observed) == 1
         capture.stop()
         prefix = bytes(9600) if kind == "system" else b""
-        assert read_pcm(capture, identifier) == prefix + struct.pack("<hhhh", 100, 200, 300, 400) + pcm
+        assert read_pcm(capture, identifier) == prefix + struct.pack("<hhhh", 100, 200, 300, 400) + pcm + pcm
     finally:
         capture.stop()
 

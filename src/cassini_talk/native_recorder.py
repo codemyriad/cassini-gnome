@@ -390,6 +390,8 @@ class NativeRecorder(GObject.Object):
                     now_ms=(GLib.get_monotonic_time() - self._start_us) / 1000,
                     level=self.levels[0 if identifier == "microphone" else 1],
                 )
+            else:
+                self.spectrogram.release_if_idle()
         except Exception as error:
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
