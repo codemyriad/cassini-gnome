@@ -52,6 +52,51 @@ def indicator(appid):
     )
 
 
+def wait_for_recording(root, appid, description):
+    """Keep the real frame condition; retain evidence when it cannot be met."""
+    try:
+        return until(lambda: recording(root), description)
+    except AssertionError:
+        roots = (root, HOME / ".var/app" / appid / "data/cassini/Library")
+        sessions = []
+        for candidate in roots:
+            for path in sorted(candidate.glob(".cassini/sessions/Recording-*/session.json"))[-12:]:
+                value = json.loads(path.read_text())
+                sessions.append(
+                    dict(
+                        path=str(path),
+                        state=value.get("state"),
+                        tracks=value.get("tracks"),
+                        events=value.get("events", [])[-8:],
+                        problem=value.get("problem"),
+                    )
+                )
+        audio = {}
+        for name, command in (
+            ("sources", ["pactl", "list", "short", "sources"]),
+            ("defaultSource", ["pactl", "get-default-source"]),
+            ("links", ["pw-link", "-l"]),
+        ):
+            result = subprocess.run(command, capture_output=True, text=True, timeout=5)
+            audio[name] = dict(code=result.returncode, stdout=result.stdout, stderr=result.stderr)
+        (OUT / ("recording-start-failed-" + appid + ".json")).write_text(
+            json.dumps(
+                dict(
+                    app=appid,
+                    roots=[str(path) for path in roots],
+                    sessions=sessions,
+                    indicator=indicator(appid),
+                    inputs=capture_inputs(),
+                    audio=audio,
+                ),
+                indent=2,
+            )
+            + "\n"
+        )
+        screenshot("recording-start-failed-" + appid + ".png")
+        raise
+
+
 def menu_diagnostic(appid, label):
     """What the app publishes over dbusmenu versus what the host shows."""
     try:
@@ -355,7 +400,7 @@ for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
     assert pid(appid) == initial_pid
     until(lambda appid=appid: not (indicator(appid) or {}).get("visible"), "idle SNI hidden with Library visible")
     action(appid, "record")
-    manifest = until(lambda: recording(root), "recorded microphone frames")
+    manifest = wait_for_recording(root, appid, "recorded microphone frames")
     live = until(
         lambda appid=appid: indicator(appid) if (indicator(appid) or {}).get("visible") else None, "recording SNI"
     )
@@ -394,7 +439,7 @@ for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
         until(lambda appid=appid: not (indicator(appid) or {}).get("visible"), "SNI passive after browser-only Stop")
     # The windowless Quit route must stop and keep without an invisible prompt.
     action(appid, "record")
-    second = until(lambda: recording(root), "second recording")
+    second = wait_for_recording(root, appid, "second recording")
     assert second != manifest
     close_window(appid)
     click("Keep Recording in Background")
@@ -420,7 +465,7 @@ for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
     # it stops and keeps, with no prompt waiting in that window.
     launch(appid)
     action(appid, "record")
-    third = until(lambda: recording(root), "recording with the Library open")
+    third = wait_for_recording(root, appid, "recording with the Library open")
     assert third not in (manifest, second) and windows(appid)
     until(lambda appid=appid: (indicator(appid) or {}).get("visible"), "recording SNI with the Library open")
     menu_click(appid, "Quit Cassini")
