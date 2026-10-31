@@ -129,6 +129,20 @@ class CaptureTrack:
     @property
     def display_end_ms(self):
         # Keep source offsets untouched; only display positions are integer ms.
+        if self.clock_anchors:
+            from .capture_clock import mapped_end_sample
+
+            return (
+                mapped_end_sample(
+                    self.frames,
+                    self.sample_rate,
+                    self.start_offset_ms,
+                    self.clock_anchors,
+                    decoded_frames=self.decoded_frames if self.codec == "opus" else None,
+                )
+                * 1000
+                // 48000
+            )
         total = Fraction(str(self.start_offset_ms or 0)) + Fraction(self.frames * 1000, self.sample_rate)
         return total.numerator // total.denominator
 

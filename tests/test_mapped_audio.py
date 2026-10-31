@@ -139,3 +139,75 @@ def test_other_legal_capture_rates_use_the_shared_48k_path_before_fir(tmp_path, 
     samples = collect(source)
     assert len(samples) == 32000 and end_ms(source) == 9250
     assert abs(float(np.sqrt(np.mean(samples[500:-500] ** 2))) - 0.1 / np.sqrt(2)) < 0.001
+
+
+def test_raw_playback_and_export_use_the_same_drift_map_as_publication(tmp_path):
+    from cassini_viewer.export_audio import track_pcm
+    from cassini_viewer.library import CaptureTrack
+
+    path = audio(tmp_path)
+    source = CaptureTrack(path, 8 * 48000, 48000, 7250, True, clock_anchors=((0, 0), (8 * 48000, 8_040_000_000)))
+    actual = np.concatenate([np.asarray(block) for block in track_pcm(source)])
+    assert len(actual) == 733920
+    positions = (np.arange(len(actual), dtype=np.float64) - 348000) / 1.005
+    original = pcm(path)
+    expected = np.interp(positions, np.arange(len(original)), original, left=0, right=0)
+    assert np.max(np.abs(actual - expected)) < 1e-6
+    assert source.display_end_ms == 15290
+
+
+@pytest.mark.parametrize("drift", [-100, 100])
+def test_ten_hour_clocked_source_seeks_directly_with_bounded_reads(tmp_path, monkeypatch, drift):
+    import os
+
+    from library_v2_support import wav_header
+
+    from cassini_viewer.folder_player import PCMSource
+    from cassini_viewer.library import CaptureTrack
+
+    path = tmp_path / "track-ten-hours.wav"
+    frames = 10 * 3600 * 48000
+    with path.open("wb") as stream:
+        stream.write(wav_header(frames, 48000, 1))
+        stream.truncate(44 + frames * 2)
+        stream.seek(44 + (frames - 48000) * 2)
+        stream.write(np.full(48000, 5000, dtype="<i2").tobytes())
+    elapsed_ns = 10 * 3600 * 1_000_000_000 * (1_000_000 + drift) // 1_000_000
+    track = CaptureTrack(path, frames, 48000, 6000, True, clock_anchors=((0, 0), (frames, elapsed_ns)))
+    source = PCMSource(track)
+    reads = []
+    original = os.pread
+
+    def observed(fd, count, offset):
+        reads.append((count, offset))
+        return original(fd, count, offset)
+
+    monkeypatch.setattr(os, "pread", observed)
+    try:
+        source._open()
+        tail = source.end_frame - 10000
+        assert source._seek(None, tail * 1_000_000_000 // 48000)
+        values = np.frombuffer(source._mapped_data(source.cursor, 2048), dtype="<f4")
+        assert np.all(values == np.float32(5000 / 32768))
+        assert sum(size for size, _ in reads) < 10000, "A late seek decoded the ten-hour prefix"
+        assert len(reads) == 1 and reads[0][1] > path.stat().st_size - 100000
+        assert source._seek(None, 0)
+        assert not np.any(np.frombuffer(source._mapped_data(0, 2048), dtype="<f4"))
+        assert len(reads) == 1, "Leading silence opened or decoded more source PCM"
+        assert track.display_end_ms == 6000 + elapsed_ns // 1_000_000
+    finally:
+        source.close()
+
+
+@pytest.mark.parametrize("rate", [8000, 16000, 32000, 44100, 48000, 96000, 192000])
+@pytest.mark.parametrize("offset", [0, 7250.5, 3600000])
+def test_scalar_duration_is_the_core_mapping_endpoint_without_numpy_on_gtk(rate, offset):
+    from types import SimpleNamespace
+
+    from cassini_viewer.capture_clock import mapped_end_sample
+    from cassini_viewer.library_v2.mixdown import Mapping
+
+    frames = 10 * 3600 * rate
+    anchors = ((0, 19_123_456_000), (frames // 3, 12_020_323_456_000), (frames, 36_025_523_456_000))
+    span = SimpleNamespace(info=SimpleNamespace(sample_rate=rate), start_ms=offset, anchors=anchors)
+    assert mapped_end_sample(frames, rate, offset, anchors) == Mapping(span).end(round(frames * 48000 / rate))

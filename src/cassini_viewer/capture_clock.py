@@ -34,3 +34,32 @@ class ClockAnchors:
         if self.latest is not None and self.latest != self.fixed[-1]:
             values.append(self.latest)
         return [list(point) for point in values]
+
+
+def mapped_end_sample(frames, rate, offset_ms, anchors, *, decoded_frames=None):
+    """Cheap scalar projection of Mapping.end, without importing NumPy in GTK.
+
+    Use the core's exact knot validation and 48 kHz grid. Playback/recognition
+    sample positions still use Mapping itself on their worker threads.
+    """
+    from .library_v2.mixdown import valid_anchors
+
+    points = valid_anchors(anchors, rate)
+    length = round(frames * 48000 / rate) if decoded_frames is None else decoded_frames
+    origin = float(offset_ms or 0) * 48
+    if len(points) < 2:
+        return length + round(origin)
+    xs = [index * 48000 / rate for index, _ in points]
+    seconds = [at for _, at in points]
+
+    def linear(x, ys):
+        from bisect import bisect_right
+
+        right = min(max(1, bisect_right(xs, x)), len(xs) - 1)
+        left = right - 1
+        slope = (ys[right] - ys[left]) / (xs[right] - xs[left])
+        return ys[left] + (x - xs[left]) * slope
+
+    zero = linear(0, seconds)
+    timeline = [origin + (at - zero) * 48000 for at in seconds]
+    return round(linear(length, timeline))
