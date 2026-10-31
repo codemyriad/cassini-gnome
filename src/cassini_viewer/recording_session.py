@@ -262,9 +262,11 @@ class RecordingSession:
             identifier = str(uuid4())
             self.directory = Path(parent) / f"Recording-{identifier}"
             self.directory.mkdir(mode=0o700, parents=True)
+            from .library_publication import root_for
             from .library_v2.fsutil import fsync_dir
 
-            fsync_dir(self.directory.parent)
+            if root_for(self.directory) is not None:
+                fsync_dir(self.directory.parent)
             self.manifest = {
                 "version": 1,
                 "id": identifier,

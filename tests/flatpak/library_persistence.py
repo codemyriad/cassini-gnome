@@ -65,7 +65,7 @@ files=sorted(exports.iterdir())
 assert {p.suffix for p in files} == {".md",".opus"}
 opus=next(p for p in files if p.suffix == ".opus")
 assert portable.verify_audio(str(opus),portable.read_meeting(str(opus))).state == portable.State.OK
-print(json.dumps({"library":str(root),"folder":folder.name,"sha256":{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.iterdir()},"exports":{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}))
+print(json.dumps({"library":str(root),"folder":str(folder.relative_to(root)),"sha256":{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.iterdir()},"exports":{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}))
 """
 results = []
 for mode in ("localized-music", "unconfigured-music", "disabled-music", "revoked-music"):

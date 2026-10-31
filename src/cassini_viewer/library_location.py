@@ -314,6 +314,11 @@ def request(destination):
         sources = {Path(e["source"]).resolve() for e in value["pending"]}
         for root in (Path(value["primary"]).resolve(),):
             if root.exists():
+                if any(p.suffix == ".opus" and not p.is_symlink() and p.is_file() for p in root.iterdir()):
+                    # Never claim a folder-only D15 move transferred its root
+                    # files. The paired S-12 move is pending R59; keep routing
+                    # intact until its transaction is implemented.
+                    raise ValueError("Published Library files need a paired move")
                 sources.update(p for p in root.iterdir() if meeting_id(p) and not p.is_symlink() and p.is_dir())
                 sessions = root / ".cassini/sessions"
                 if not (root / ".cassini").is_symlink() and not sessions.is_symlink() and sessions.is_dir():
@@ -384,6 +389,10 @@ def process(*, busy=(), activity=None, retry=False, cancelled=None, changed=lamb
                 with LOCK:
                     if not ready():
                         continue
+                    from .library_publication import root_for
+
+                    if root_for(source) is not None and read_metadata(source).get("published") is True:
+                        raise ValueError("Published Library files need a paired move")
                 started()
                 move_folder(source, target.parent, cancelled=cancelled, ready=ready)
             value["aliases"][str(source)] = str(target)

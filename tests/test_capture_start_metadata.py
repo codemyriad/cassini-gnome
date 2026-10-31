@@ -70,3 +70,24 @@ def test_naive_start_is_rejected_before_creating_any_recording_folder(tmp_path):
     with pytest.raises(ProtocolError, match="absolute time"):
         RecordingSession(tmp_path, started_at=datetime(2026, 10, 30))
     assert not list(tmp_path.iterdir())
+
+
+def test_parent_directory_durability_is_scoped_to_managed_sessions(tmp_path, monkeypatch):
+    from cassini_viewer.library_v2 import fsutil
+
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path / "Library"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "private-config"))
+    calls = []
+    original = fsutil.fsync_dir
+
+    def synced(path):
+        calls.append(path)
+        original(path)
+
+    monkeypatch.setattr(fsutil, "fsync_dir", synced)
+    legacy = RecordingSession(tmp_path / "explicit-raw-fixture")
+    legacy.finish()
+    assert not calls  # Existing raw protocol geometry/checkpoints stay unchanged.
+    managed = RecordingSession(None)
+    managed.finish()
+    assert managed.directory.parent in calls
