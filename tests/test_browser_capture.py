@@ -386,7 +386,7 @@ def bind_capture(peer, capture, tab=3):
     send_packet(peer.stream, dict(type="status", recording=True, sessions=list(peer.sessions.values())))
     wait_for(
         lambda: any(
-            s["id"].endswith(":" + str(tab)) and s.get("captureId") == capture.capture_id
+            s.get("tabId") == tab and s.get("captureId") == capture.capture_id
             for s in request(path=peer.path)["statuses"]
         )
     )

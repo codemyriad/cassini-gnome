@@ -19,7 +19,7 @@ import time
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from .call_lifecycle import BROWSER_RETURN_GRACE, CALL_END_GRACE, CONTROL_RECONNECT_GRACE, CallLifecycle
 
@@ -193,6 +193,10 @@ class BrowserService:
         self._capture_policy_pending = set()
         self._capture_lifecycles = {}
         self._control_reconnects = {}
+        self._call_aliases = {}
+        self._attempted_calls = set()
+        self._scheduled_calls = set()
+        self._call_lineage = {}
         self.capture_parent, self.tap_factory = capture_parent, tap_factory
         self.applications = {}
         self.application_pids = {}
@@ -212,6 +216,113 @@ class BrowserService:
         self.workers = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cassini-browser")
         self.closed = threading.Event()
 
+    def _meeting_id(self, browser, tab):
+        meeting = browser.meetings.get(tab)
+        if meeting is None and browser.browser_instance is not None:
+            binding = self.call_captures.get((browser.browser_instance, tab))
+            if binding is not None and binding[1] is not None:
+                meeting = dict(url=binding[1])
+        if browser.browser_instance is None or meeting is None:
+            return f"{browser.id}:{tab}"
+        identity = (browser.browser_instance, tab, meeting["url"])
+        identifier = "call/" + str(uuid5(NAMESPACE_URL, json.dumps(identity)))
+        entry = (identity, time.monotonic())
+        self._call_aliases[identifier] = entry
+        self._call_aliases[f"{browser.id}:{tab}"] = entry
+        # Bound disconnected history, retaining active and queued identities.
+        if len(self._call_aliases) <= 1024:
+            return identifier
+        protected = self._scheduled_calls | {
+            key
+            for key, (value, _) in self._call_aliases.items()
+            if any(
+                b.browser_instance == value[0] and b.meetings.get(value[1], {}).get("url") == value[2]
+                for b in self.browsers.values()
+            )
+        }
+        for key in list(self._call_aliases):
+            if len(self._call_aliases) <= 1024:
+                break
+            if key not in protected:
+                self._call_aliases.pop(key)
+                self._attempted_calls.discard(key)
+        return identifier
+
+    def _resolve_call(self, identifier, *, wait=False, deadline=None):
+        deadline = (
+            min(deadline, time.monotonic() + CONTROL_RECONNECT_GRACE)
+            if deadline is not None
+            else time.monotonic() + CONTROL_RECONNECT_GRACE
+        )
+        while True:
+            with self.lock:
+                browser_id, _, raw_tab = identifier.partition(":")
+                saved = self._call_aliases.get(identifier)
+                if saved is None:
+                    if browser_id in self.browsers and raw_tab.isdecimal():
+                        return identifier
+                    raise ValueError("This browser is no longer connected")
+                (instance, tab, url), _seen = saved
+                lineage = self._call_lineage.get((instance, tab))
+                if lineage is not None and lineage[0] != url:
+                    raise ValueError("This meeting is no longer available")
+                candidates = [
+                    b
+                    for b in self.browsers.values()
+                    if not b.closed
+                    and b.status_seen
+                    and b.browser_instance == instance
+                    and (
+                        b.meetings.get(tab, {}).get("url") == url
+                        or tab not in b.meetings
+                        and self.call_captures.get((instance, tab)) == (b.states.get(tab, {}).get("captureId"), url)
+                        and b.states.get(tab, {}).get("recording")
+                    )
+                ]
+                if candidates:
+                    browser = max(candidates, key=lambda b: b.connected_at)
+                    return f"{browser.id}:{tab}"
+            if not wait or time.monotonic() >= deadline or self.closed.wait(0.02):
+                raise ValueError("This browser is no longer connected")
+
+    def _recover_command(self, browser, tab, action, pending, deadline):
+        if browser.browser_instance is None:
+            return None
+        with self.lock:
+            identifier = self._meeting_id(browser, tab)
+        deadline = min(deadline, time.monotonic() + CONTROL_RECONNECT_GRACE)
+        while not self.closed.is_set() and time.monotonic() < deadline:
+            with self.lock:
+                if pending.get("cancelled"):
+                    return None
+                try:
+                    current = self._resolve_call(identifier)
+                except ValueError:
+                    current = None
+                if current is not None:
+                    owner, _, raw_tab = current.partition(":")
+                    replacement = self.browsers.get(owner)
+                    if replacement is not None and replacement is not browser:
+                        state = replacement.states.get(int(raw_tab), {})
+                        if bool(state.get("recording")) == (action == "start"):
+                            return dict(ok=True, status=dict(state))
+            self.closed.wait(0.02)
+        return None
+
+    def _remember_meeting_ids(self, browser):
+        for tab, meeting in browser.meetings.items():
+            identifier = self._meeting_id(browser, tab)
+            if tab in browser.attempted and browser.browser_instance is not None:
+                self._attempted_calls.add(identifier)
+            if browser.browser_instance is not None:
+                key = (browser.browser_instance, tab)
+                previous = self._call_lineage.get(key)
+                if previous is None or previous[1] <= browser.connected_at:
+                    self._call_lineage[key] = (meeting["url"], browser.connected_at)
+        while len(self._call_lineage) > 512:
+            oldest = min(self._call_lineage, key=lambda key: self._call_lineage[key][1])
+            self._call_lineage.pop(oldest)
+
     def snapshot(self):
         # Never hold the inventory lock while waiting for a writer lock: PCM
         # and finalization report changes in the opposite direction.
@@ -220,21 +331,29 @@ class BrowserService:
         owned = {c.capture_id: c.snapshot() for c in captures if c.directory is not None}
         with self.lock:
             meetings, statuses, seen = [], [], set()
+            owners = {}
+            for browser in sorted(self.browsers.values(), key=lambda browser: browser.connected_at):
+                for tab in browser.meetings.keys() | browser.states.keys():
+                    owners[(browser.browser_instance or browser.id, tab)] = browser
             for browser in self.browsers.values():
                 for tab, value in browser.states.items():
+                    if owners[(browser.browser_instance or browser.id, tab)] is not browser:
+                        continue
                     value = dict(value)
                     capture = owned.get(value.get("captureId"))
                     if capture is not None:
                         value.update(capture)
                         seen.add(capture["captureId"])
-                    value["id"] = f"{browser.id}:{tab}"
+                    value["id"] = self._meeting_id(browser, tab)
                     statuses.append(value)
                 for meeting in browser.meetings.values():
-                    value = next((v for v in statuses if v["id"] == f"{browser.id}:{meeting['tabId']}"), {})
+                    if owners[(browser.browser_instance or browser.id, meeting["tabId"])] is not browser:
+                        continue
+                    value = next((v for v in statuses if v["id"] == self._meeting_id(browser, meeting["tabId"])), {})
                     meetings.append(
                         dict(
                             meeting,
-                            id=f"{browser.id}:{meeting['tabId']}",
+                            id=self._meeting_id(browser, meeting["tabId"]),
                             recording=bool(value.get("recording")),
                             path=value.get("path"),
                             busy=meeting["tabId"] in browser.busy,
@@ -354,6 +473,7 @@ class BrowserService:
             self.auto_record_revision = max(self.auto_record_revision + 1, time.monotonic_ns())
             if enabled:
                 self.stopped_calls.clear()
+                self._attempted_calls.clear()
                 for browser in self.browsers.values():
                     browser.attempted.clear()
         self.policy()
@@ -475,7 +595,19 @@ class BrowserService:
                     meetings[value["tabId"]]["title"] = value["title"][:200]
                     meetings[value["tabId"]]["url"] = value["url"][:2048]
                 self._expire_stopped(time.monotonic())
+                self._remember_meeting_ids(browser)
+                for tab in browser.meetings.keys() - meetings.keys():
+                    identifier = self._meeting_id(browser, tab)
+                    owner = self.captures.get(browser.states.get(tab, {}).get("captureId"))
+                    if identifier not in self._scheduled_calls and (owner is None or owner.finished):
+                        self._attempted_calls.discard(identifier)
                 previous, browser.meetings = browser.meetings, meetings
+                for tab in meetings:
+                    if tab in previous and previous[tab]["url"] != meetings[tab]["url"]:
+                        browser.attempted.discard(tab)
+                    if self._meeting_id(browser, tab) in self._attempted_calls:
+                        browser.attempted.add(tab)
+                self._remember_meeting_ids(browser)
                 self._restore_stopped(browser, previous)
                 for tab, state in browser.states.items():
                     if state.get("recording") and isinstance(state.get("captureId"), str):
@@ -525,6 +657,8 @@ class BrowserService:
     def command(self, identifier, action, *, microphone=True, preserve_capture=False, user=False, reason="user"):
         from .session_events import END_REASONS
 
+        deadline = time.monotonic() + max(self.command_timeout, CONTROL_RECONNECT_GRACE)
+
         if (
             action not in ("start", "stop")
             or not isinstance(identifier, str)
@@ -542,6 +676,7 @@ class BrowserService:
                 self._remember_capture_stop(capture)
             capture.stop(reason=reason)
             return self.snapshot()
+        identifier = self._resolve_call(identifier, wait=True, deadline=deadline)
         browser_id, _, raw_tab = identifier.partition(":")
         with self.lock:
             browser = self.browsers.get(browser_id)
@@ -586,6 +721,8 @@ class BrowserService:
                 browser.busy.add(tab)
                 browser.error = None
                 browser.attempted.add(tab)
+                if browser.browser_instance is not None:
+                    self._attempted_calls.add(self._meeting_id(browser, tab))
                 if user:
                     self._remember_stop(browser, tab, action == "stop")
                 request_id = str(uuid4())
@@ -602,7 +739,7 @@ class BrowserService:
                 # user's Stop waiting after their audio is safely saved.
                 capture.stop(reason=reason)
                 return dict(self.snapshot(), stoppedPath=str(capture.directory))
-            if not joining["event"].wait(self.command_timeout):
+            if not joining["event"].wait(min(self.command_timeout, max(0, deadline - time.monotonic()))):
                 raise TimeoutError("The browser did not finish the recording command")
             result = joining["result"]
             if (result is None or result.get("ok") is not True) and (capture is None or not capture.finished):
@@ -625,9 +762,11 @@ class BrowserService:
                     else:
                         packet["reason"] = reason
             browser.send(packet)
-            if not pending["event"].wait(self.command_timeout):
+            if not pending["event"].wait(min(self.command_timeout, max(0, deadline - time.monotonic()))):
                 raise TimeoutError("The browser did not finish the recording command")
             result = pending["result"]
+            if result is None and browser.closed:
+                result = self._recover_command(browser, tab, action, pending, deadline)
             if result is None or result.get("ok") is not True:
                 error = (
                     StartRejected
@@ -693,6 +832,7 @@ class BrowserService:
     def start_fallback(self, identifier, meeting, microphone=True, *, cancelled=None, automatic_generation=None):
         from .browser_capture import BrowserCapture
 
+        identifier = self._resolve_call(identifier, wait=True)
         browser_id, _, raw_tab = identifier.partition(":")
         with self.lock:
             browser = self.browsers.get(browser_id)
@@ -989,12 +1129,17 @@ class BrowserService:
                     for tab, meeting in browser.meetings.items():
                         if (
                             tab not in browser.attempted
+                            and self._meeting_id(browser, tab) not in self._scheduled_calls
                             and self._auto_start_ready(browser, meeting)
                             and not browser.states.get(tab, {}).get("recording")
                         ):
                             browser.attempted.add(tab)
                             browser.scheduled.add(tab)
-                            tasks.append((f"{browser.id}:{tab}", "start"))
+                            identifier = self._meeting_id(browser, tab)
+                            self._scheduled_calls.add(identifier)
+                            if browser.browser_instance is not None:
+                                self._attempted_calls.add(identifier)
+                            tasks.append((identifier, "start"))
                             if not independent:
                                 break
         for identifier, action in tasks:
@@ -1043,7 +1188,9 @@ class BrowserService:
         )
 
     def _automatic(self, identifier, action, generation=None):
+        logical_identifier = identifier
         try:
+            identifier = self._resolve_call(identifier, wait=True)
             if action == "start":
                 with self.lock:
                     if (
@@ -1085,6 +1232,10 @@ class BrowserService:
                 except Exception as error:
                     logging.getLogger(__name__).warning("Could not show recording notification: %s", error)
         except StartRejected:
+            try:
+                identifier = self._resolve_call(logical_identifier, wait=True)
+            except ValueError:
+                return
             browser_id, _, tab = identifier.partition(":")
             with self.lock:
                 browser = self.browsers.get(browser_id)
@@ -1104,11 +1255,28 @@ class BrowserService:
                 except (OSError, ValueError, TimeoutError):
                     logging.getLogger(__name__).exception("Could not start the missing-browser fallback")
         except (OSError, ValueError, TimeoutError):
-            pass
+            if action == "start":
+                with self.lock:
+                    try:
+                        resolved = self._resolve_call(logical_identifier)
+                    except ValueError:
+                        resolved = None
+                    if resolved is not None:
+                        owner, _, tab = resolved.partition(":")
+                        browser = self.browsers[owner]
+                        tab = int(tab)
+                        if (
+                            owner != identifier.partition(":")[0]
+                            and not browser.states.get(tab, {}).get("recording")
+                            and (browser.browser_instance, tab) not in self.stopped_calls
+                        ):
+                            browser.attempted.discard(tab)
+                            self._attempted_calls.discard(logical_identifier)
         finally:
             with self.lock:
+                self._scheduled_calls.discard(logical_identifier)
                 browser_id, _, tab = identifier.partition(":")
-                if browser_id in self.browsers:
+                if browser_id in self.browsers and tab.isdecimal():
                     self.browsers[browser_id].scheduled.discard(int(tab))
             self.policy()
 
@@ -1217,6 +1385,27 @@ class BrowserService:
         finally:
             if browser:
                 with self.lock:
+                    self._remember_meeting_ids(browser)
+                    for tab, meeting in browser.meetings.items():
+                        state = browser.states.get(tab, {})
+                        identifier = self._meeting_id(browser, tab)
+                        if (
+                            state.get("captureId") not in self.captures
+                            and identifier not in self._scheduled_calls
+                            and not any(
+                                p.get("action") == "start" and p["tabId"] == tab for p in browser.pending.values()
+                            )
+                        ):
+                            self._attempted_calls.discard(identifier)
+                            for other in self.browsers.values():
+                                if (
+                                    other is not browser
+                                    and other.browser_instance == browser.browser_instance
+                                    and other.meetings.get(tab, {}).get("url") == meeting["url"]
+                                    and not other.states.get(tab, {}).get("recording")
+                                    and (other.browser_instance, tab) not in self.stopped_calls
+                                ):
+                                    other.attempted.discard(tab)
                     self._remember_control_loss(browser)
                     self._restore_stopped(browser, browser.meetings)
                     browser.closed = True
@@ -1311,8 +1500,13 @@ class BrowserService:
             return
         now = time.monotonic()
         for tab in previous.keys() - browser.meetings.keys():
-            self.stopped_calls.pop((instance, tab), None)
+            lineage = self._call_lineage.get((instance, tab))
+            if lineage is None or lineage[1] <= browser.connected_at:
+                self.stopped_calls.pop((instance, tab), None)
         for tab, meeting in browser.meetings.items():
+            lineage = self._call_lineage.get((instance, tab))
+            if lineage is not None and lineage[1] > browser.connected_at and lineage[0] != meeting["url"]:
+                continue
             if tab in previous and previous[tab]["url"] != meeting["url"]:
                 browser.attempted.discard(tab)
             stopped = self.stopped_calls.get((instance, tab))

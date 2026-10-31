@@ -53,3 +53,15 @@ bytes/track endpoints. The private browser integration loads the actual extensio
 and app with private Pulse, Xvfb and D-Bus: hang-up, tab closure, reload and restored
 browser tone, independent microphone/other call, worker reconnect and real 120 s
 expiry. Existing sample-count, tone and bleed thresholds are unchanged.
+
+D43.1(a) separates a call's public identity from its transport. With a browser
+instance, its opaque `call/…` ID is derived from that instance, tab and URL, so a
+worker reconnect keeps the same ID and a different address is a different call.
+Transport UUIDs stay immutable. Commands and queued automatic/fallback work resolve
+the logical call to the newest matching connection at dispatch; partial inventory
+gets the bounded reconnect window. An accepted Start whose reply was lost waits
+for replacement status instead of sending Start again. An unresolved Start is
+only retried after that window, and Stop still prevents automatic restarts.
+Overlapping transports publish one call; stale navigation or disconnect cannot
+clear the replacement's remembered Stop. Disconnected aliases and lineage are
+bounded, and browsers without an instance keep their existing transport IDs.
