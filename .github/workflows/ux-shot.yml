@@ -17,7 +17,7 @@ jobs:
       - name: Install GTK and pinned screenshot fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc libc6-dev python3-gi python3-numpy gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0 \
+          sudo apt-get install -y gcc libc6-dev openbox x11-utils python3-gi python3-numpy gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0 \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good meson ninja-build gettext \
             libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream xvfb xauth xdotool dbus-x11 \
             locales fontconfig python3-pil python3-pytest at-spi2-core gir1.2-atspi-2.0 libzstd1 fonts-cantarell=0.303.1-4 fonts-inter=4.1+ds-1
@@ -81,6 +81,8 @@ jobs:
           G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram.py ux-artifacts/spectrogram-components.png
           G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram-live.py ux-artifacts/spectrogram-live.png
           G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram-browser.py ux-artifacts/spectrogram-browser.png
+          CASSINI_SCREENSHOT_SCALE=2 G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram.py ux-artifacts/spectrogram-components-2x.png
+          CASSINI_SCREENSHOT_SCALE=2 G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram-live.py ux-artifacts/spectrogram-live-2x.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/accessible-buttons.py ux-artifacts/accessible-buttons.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/import-export.py ux-artifacts/import-export-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/rename.py ux-artifacts/rename.png

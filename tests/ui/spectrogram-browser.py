@@ -22,6 +22,7 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
+gi.require_version("Graphene", "1.0")
 from desktop_services import DesktopServices  # noqa: E402
 from gi.repository import Gio, GLib, Graphene, Gtk  # noqa: E402
 from readiness import wait_until  # noqa: E402
@@ -131,6 +132,31 @@ with tempfile.TemporaryDirectory() as temporary:
                 json.dumps(report, indent=2) + "\n"
             )
             print(json.dumps(report))
+        if not measure:
+            prior = model.last
+            events = reply(child, "fallback")["events"]
+            assert any(
+                e.get("type") == "othersSource" and e.get("source") == "system" and e.get("reason") == "lost"
+                for e in events
+            )
+            until(
+                lambda: any(
+                    e.get("type") == "othersSource" and e.get("source") == "system"
+                    for e in window.recording_page.meeting.capture_events
+                ),
+                "real fallback checkpoint reached the Recording page",
+            )
+            until(
+                lambda: (
+                    model.last > prior + 10
+                    and any(any(model.cell("others", slot)[1] or ()) for slot in range(prior + 1, model.last + 1))
+                ),
+                "system fallback span reached the visible spectrum",
+            )
+        painted = []
+        window.add_tick_callback(lambda *_: (painted.append(1), len(painted) < 2)[1])
+        window.queue_draw()
+        until(lambda: len(painted) >= 2, "fallback view painted before screenshot")
         snapshot = Gtk.Snapshot.new()
         Gtk.WidgetPaintable.new(window).snapshot(snapshot, window.get_width(), window.get_height())
         node, bounds = snapshot.to_node(), Graphene.Rect()

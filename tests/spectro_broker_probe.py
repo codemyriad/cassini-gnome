@@ -73,6 +73,8 @@ def main():
                 if closed.wait(max(0, origin + seq * 8192 / 48000 - time.monotonic())):
                     break
                 for n, pcm in enumerate(encoded):
+                    if capture.browser_lost:
+                        continue
                     proxy.handle(
                         dict(type="audio", id=f"voice-{n}", sequence=seq, offsetMs=seq * 8192 * 1000 / 48000, pcm=pcm)
                     )
@@ -104,7 +106,10 @@ def main():
                 selected = {
                     side: sum(source.tracks[k].side == side for k in source.selected) for side in ("me", "others")
                 }
-            if command == "begin":
+            if command == "fallback":
+                capture.fallback("lost")
+                report(dict(events=capture.host.session.manifest["events"]))
+            elif command == "begin":
                 before = now
                 report(dict(started=True))
             elif command == "report":

@@ -109,13 +109,16 @@ frames = []
 window.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 3)[1])
 window.queue_draw()
 until(lambda: len(frames) >= 2)
+scale = window.get_scale_factor()
+assert scale == int(os.environ.get("CASSINI_SCREENSHOT_SCALE", "1"))
 paintable, snapshot = Gtk.WidgetPaintable.new(window), Gtk.Snapshot.new()
+snapshot.scale(scale, scale)
 paintable.snapshot(snapshot, window.get_width(), window.get_height())
 node = snapshot.to_node()
 viewport = Graphene.Rect()
-viewport.init(5, 5, 1120, 720)
+viewport.init(5 * scale, 5 * scale, 1120 * scale, 720 * scale)
 texture = window.get_renderer().render_texture(node, viewport)
-assert (texture.get_width(), texture.get_height()) == (1120, 720)
+assert (texture.get_width(), texture.get_height()) == (1120 * scale, 720 * scale)
 assert texture.save_to_png(os.environ["CASSINI_SCREENSHOT_OUT"])
 # Re-bake on theme change; data remains bounded, and a detached view frees it.
 for strip in strips:

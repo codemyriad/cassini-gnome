@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -23,17 +24,31 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from desktop_services import DesktopServices  # noqa: E402
-from gi.repository import Adw, Gio, GLib, Graphene, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, GLib, Graphene, Gst, Gtk  # noqa: E402
 from readiness import wait_until  # noqa: E402
 from spectro_memory import render_state_bytes, source_digest  # noqa: E402
+from spectro_wm import WindowManager  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.recording_details import SilenceClock  # noqa: E402
+from cassini_talk.spectro_view_model import HOLE, OFF, SILENT  # noqa: E402
 from cassini_talk.spectrogram_strip import SpectrogramStrip  # noqa: E402
 
 
 def until(condition, message):
-    return wait_until(condition, message, timeout=15)
+    return wait_until(
+        condition,
+        message,
+        timeout=15,
+        diagnostics=lambda: (
+            {}
+            if "window" not in globals()
+            else dict(
+                mapped=window.get_mapped(), suspended=window.is_suspended(), state=str(window.get_surface().get_state())
+            )
+        ),
+    )
 
 
 def shot(window, name):
@@ -41,16 +56,99 @@ def shot(window, name):
     window.add_tick_callback(lambda *_: (frames.append(1), len(frames) < 2)[1])
     window.queue_draw()
     until(lambda: len(frames) >= 2, "window painted before screenshot")
+    scale = window.get_scale_factor()
+    assert scale == int(os.environ.get("CASSINI_SCREENSHOT_SCALE", "1"))
     snapshot = Gtk.Snapshot.new()
+    snapshot.scale(scale, scale)
     Gtk.WidgetPaintable.new(window).snapshot(snapshot, window.get_width(), window.get_height())
     node = snapshot.to_node()
     viewport = Graphene.Rect()
-    viewport.init(0, 0, 1120, 720)
+    viewport.init(0, 0, 1120 * scale, 720 * scale)
     assert (window.get_width(), window.get_height()) == (1120, 720), (window.get_width(), window.get_height())
     texture = window.get_renderer().render_texture(node, viewport)
-    assert (texture.get_width(), texture.get_height()) == (1120, 720)
-    path = Path(os.environ["CASSINI_SCREENSHOT_OUT"]).with_name(name + ".png")
+    assert (texture.get_width(), texture.get_height()) == (1120 * scale, 720 * scale)
+    path = Path(os.environ["CASSINI_SCREENSHOT_OUT"]).with_name(name + ("@2x" if scale == 2 else "") + ".png")
     assert texture.save_to_png(str(path))
+
+
+def native_states(window, page, recorder):
+    def source(kind):
+        iterator = recorder._branches[kind].iterate_recurse()
+        while True:
+            result, element = iterator.next()
+            assert result == Gst.IteratorResult.OK, f"No audiotestsrc in {kind} branch"
+            if element.get_factory() and element.get_factory().get_name() == "audiotestsrc":
+                return element
+
+    microphone = source("microphone")
+    old_volume = microphone.get_property("volume")
+    microphone.set_property("volume", 0)
+    until(lambda: recorder.levels[0] == 0, "actual microphone AC level became silent")
+    key = recorder.session.directory.name
+    window.get_application().comfort.clocks[key] = SilenceClock(GLib.get_monotonic_time() / 1e6 - 21)
+    window.get_application().comfort.native_level()
+    page.update_status()
+    until(
+        lambda: (
+            page.check.get_visible()
+            and any(flag & SILENT and flag != HOLE for flag in page.mic_level.model.flags["me"])
+        ),
+        "silent-microphone warning reached the rendered history",
+    )
+    shot(window, "spectrogram-silent-dark")
+    Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
+    shot(window, "spectrogram-silent")
+    microphone.set_property("volume", old_volume)
+    until(lambda: recorder.levels[0] > 0.1, "microphone AC level resumed")
+    window.get_application().comfort.native_level()
+    page.update_status()
+    system = source("system")
+    pad = system.get_static_pad("src")
+    token = pad.add_probe(Gst.PadProbeType.BUFFER, lambda *_: Gst.PadProbeReturn.DROP)
+    try:
+        start = recorder.session.writers[recorder._track_ids["microphone"]].frames
+        until(
+            lambda: recorder.session.writers[recorder._track_ids["microphone"]].frames >= start + 57600,
+            "microphone kept recording through a real system-source dropout",
+        )
+        assert HOLE in page.others_level.model.flags["others"]
+        shot(window, "spectrogram-dropout")
+    finally:
+        pad.remove_probe(token)
+    until(
+        lambda: page.others_level.model.cell("others", page.others_level.model.last)[0] != HOLE,
+        "system source resumed after the dropout",
+    )
+
+
+def stop_picture(window, recorder):
+    entered, release = threading.Event(), threading.Event()
+
+    def pause_finalizer():
+        entered.set()
+        assert release.wait(10), "test did not release the native finalizer"
+
+    recorder._executor.submit(pause_finalizer)
+    until(entered.is_set, "bounded finalizer barrier entered")
+    try:
+        recorder.stop()
+        until(
+            lambda: window.recording_page and window.recording_page.meeting.lifecycle == "saving",
+            "actual Stop entered saving",
+        )
+        page = window.recording_page
+        strips = (page.capture._controls["picture"], page.mic_level, page.others_level)
+        until(
+            lambda: not window.spectrograms.tick_id and all(s.has_css_class("spectro-stopping") for s in strips),
+            "stopping unsubscribed and froze every strip",
+        )
+        before = [s.texture_updates for s in strips]
+        painted_at = GLib.get_monotonic_time()
+        until(lambda: GLib.get_monotonic_time() - painted_at >= 230000, "stopping opacity transition completed")
+        assert [s.texture_updates for s in strips] == before
+        shot(window, "spectrogram-stopping")
+    finally:
+        release.set()
 
 
 def analysed(source):
@@ -63,7 +161,7 @@ def measure(window, recorder, case):
         window.open_meeting(window.live_meeting())
         until(lambda: window.recording_page and window.recording_page.get_mapped(), "Recording page mapped")
     if case == "C":
-        window.set_visible(False)
+        window.minimize()
         until(lambda: not recorder.spectrogram.active and not window.spectrograms.tick_id, "hidden views detached")
     frames = []
     handler = 0
@@ -140,6 +238,7 @@ with tempfile.TemporaryDirectory() as temporary:
     )
     subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
     os.environ.update(GSETTINGS_SCHEMA_DIR=str(schemas), CASSINI_LIBRARY_DIR=str(tmp / "Library"))
+    wm = WindowManager()
     services = DesktopServices()
     app = CassiniApplication("io.codemyriad.SpectrogramLiveTest", "test", "development")
     app.register(None)
@@ -200,19 +299,25 @@ with tempfile.TemporaryDirectory() as temporary:
             assert all(v.reduced_motion for v in views)
             shot(window, "spectrogram-reduced-motion")
             settings.set_property("gtk-enable-animations", True)
+            native_states(window, page, recorder)
             # A user selection is a real checkpointed source retirement/re-enable.
             changed = app.change_recording_sources(page.meeting, True, False)
             until(lambda: changed.done(), "others disabled")
             changed.result()
             page.update_status()
             assert not page.others_row.get_visible()
+            until(
+                lambda: any(flag == OFF for flag in page.capture._controls["picture"].model.flags["others"]),
+                "off selection reached the pill",
+            )
+            shot(window, "spectrogram-others-off")
             changed = app.change_recording_sources(page.meeting, True, True)
             until(lambda: changed.done(), "others re-enabled")
             changed.result()
             page.update_status()
             until(lambda: page.others_row.get_mapped() and page.others_level.texture, "re-enabled row rendered")
             first_model = page.mic_level.model
-            window.set_visible(False)
+            window.minimize()
             until(
                 lambda: not recorder.spectrogram.active and not window.spectrograms.tick_id, "hidden analysis stopped"
             )
@@ -232,18 +337,47 @@ with tempfile.TemporaryDirectory() as temporary:
             window.back_to_library()
             assert all(v not in window.spectrograms.bindings for v in views)
             assert page.mic_level.texture is None and page.others_level.texture is None
-        recorder.stop()
+            app.start_native(test=True)
+            second = app._last_native
+            until(
+                lambda: (
+                    second is not recorder
+                    and second.pipeline is not None
+                    and any(m.directory == second.session.directory for m in window.snapshot.meetings)
+                ),
+                "second independent native recording appeared in Library",
+            )
+            window.open_meeting(next(m for m in window.snapshot.meetings if m.directory == second.session.directory))
+            until(
+                lambda: second.spectrogram.active and window.recording_page.mic_level.texture is not None,
+                "second recording owns its own visible feed",
+            )
+            assert recorder.pipeline is not None and not recorder.spectrogram.active
+            shot(window, "spectrogram-second-session")
+            second.stop()
+            until(lambda: second.pipeline is None and not second.stopping, "second recording stopped independently")
+            window.open_meeting(next(m for m in window.snapshot.meetings if m.directory == recorder.session.directory))
+            until(
+                lambda: recorder.spectrogram.active and window.recording_page.mic_level.texture is not None,
+                "first recording resumed its visible feed",
+            )
+            stop_picture(window, recorder)
+        if recorder.pipeline is not None and not recorder.stopping:
+            recorder.stop()
         until(lambda: recorder.pipeline is None and not recorder.stopping, "capture stopped and saved")
         assert not recorder.spectrogram.subscribers
     finally:
-        if app.recorder and app.recorder.pipeline is not None:
-            app.recorder.stop()
-            until(lambda: app.recorder.pipeline is None and not app.recorder.stopping, "failed test capture reaped")
+        active = list(app.native_captures.values())
+        for item in active:
+            if item.pipeline is not None and not item.stopping:
+                item.stop()
+        until(lambda: all(item.pipeline is None and not item.stopping for item in active), "all test captures reaped")
         app._capture_close_allowed = True
         window.close()
         assert not window.spectrograms.bindings and not window.spectrograms.tick_id
         app.comfort.close()
         services.close()
+        wm.close()
 
 print(
     "PASS live application spectrogram: actual committed PCM, Library/page sharing, theme/sweep, selection, hidden-zero-analysis and page detach"
