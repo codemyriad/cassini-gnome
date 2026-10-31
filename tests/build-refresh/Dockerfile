@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 COPY app.deb /tmp/app.deb
 RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes && apt-get update && apt-get install -y --no-install-recommends \
     /tmp/app.deb dbus-x11 xvfb xauth xdotool pulseaudio pulseaudio-utils sudo \
-    at-spi2-core gir1.2-atspi-2.0 flatpak imagemagick meson ninja-build gettext libglib2.0-dev-bin libglib2.0-bin \
+    at-spi2-core gir1.2-atspi-2.0 flatpak imagemagick gcc libc6-dev meson ninja-build gettext libglib2.0-dev-bin libglib2.0-bin \
     desktop-file-utils appstream fonts-cantarell \
     && rm -rf /var/lib/apt/lists/* /tmp/app.deb
 RUN if ! getent group "$TEST_GID" >/dev/null; then groupadd -g "$TEST_GID" qa; fi \
