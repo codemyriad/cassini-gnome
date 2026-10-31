@@ -1,7 +1,7 @@
 # Browser call lifetime (D33)
 
-Shared protocol pin: `bb13da92fa8c3192bb6d9b8444acd3197c772d62` (merged PR #22).
-The extension stays at 0.2.2; this change does not package or upload it.
+Shared protocol pin: `6e581d66cfe897f13b05445ae4f67392619e08ff` (merged PR #23).
+Companion 0.2.3 replaces older local installs; no Chrome Web Store packaging or upload is performed.
 
 The broker owns every independent capture and its Library folder. With the
 `page-state-v1` capability it starts the extension with `keepOnNavigation: true`.
@@ -86,3 +86,5 @@ Overlapping Stop batches each retain their own barrier token. A missing browser
 acknowledgement is ignored only after its recording has actually stopped; a live
 unresponsive recording or failed native save remains an error. No audio sample,
 tone, bleed or source-lifecycle thresholds are changed.
+
+Shared wire vectors also exercise immediate page-state statuses around delayed inventories. Navigation invalidates the departing document’s source count; only fresh inventory evidence clears the return deadline. The companion waits for the entire metadata batch before reading all rows’ current source evidence.

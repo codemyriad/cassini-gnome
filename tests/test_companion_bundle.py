@@ -66,6 +66,27 @@ def test_install_is_stable_idempotent_and_newer_only_without_touching_profiles(t
     assert list(target.parent.glob(".browser-companion*")) == [target.parent / ".browser-companion.lock"]
 
 
+def test_pinned_companion_upgrades_an_installed_022_copy_with_all_resources(tmp_path):
+    current = ROOT / "browser-extension"
+    old = tmp_path / "installed-022-bundle"
+    shutil.copytree(current, old)
+    manifest = json.loads((old / "manifest.json").read_text())
+    manifest["version"] = "0.2.2"
+    (old / "manifest.json").write_text(json.dumps(manifest))
+    (old / "background.js").write_bytes(b"// previous installed companion bytes\n")
+    destination = tmp_path / "host-data" / "browser-companion"
+    bundle.prepare(old, destination=destination)
+    before = fingerprint(destination)
+    bundle.prepare(current, destination=destination)
+    files, published = bundle.bundle_files(current)
+    assert bundle.version(published) > bundle.version(manifest)
+    assert all((destination / name).read_bytes() == data for name, data in files.items())
+    assert fingerprint(destination) != before
+    after = fingerprint(destination)
+    bundle.prepare(current, destination=destination)
+    assert fingerprint(destination) == after
+
+
 def test_pinned_id_and_browser_version_comparison():
     assert bundle.version(dict(version="0.2.2")) == bundle.version(dict(version="0.2.2.0"))
     assert bundle.version(dict(version="0.10.0")) > bundle.version(dict(version="0.2.9"))

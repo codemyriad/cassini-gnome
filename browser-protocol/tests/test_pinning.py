@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import hashlib
+import json
 import pathlib
 import subprocess
 import sys
@@ -11,6 +12,12 @@ sys.path.insert(0, str(ROOT))
 from verify import verify
 
 class PinningTests(unittest.TestCase):
+    def test_reload_fix_can_replace_an_installed_022_companion(self):
+        manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
+        parts = tuple(int(part) for part in manifest['version'].split('.'))
+        self.assertGreater(parts + (0,) * (4 - len(parts)), (0, 2, 2, 0),
+                           'D39 installers skip equal versions; existing 0.2.2 installs must receive the reload fix')
+
     def test_vendored_extension_runs_its_node_suite(self):
         commit = subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip()
         with tempfile.TemporaryDirectory() as temp:

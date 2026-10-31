@@ -78,6 +78,17 @@ class SessionEventsTests(unittest.TestCase):
         spec.loader.exec_module(module)
         with redirect_stdout(io.StringIO()): module.check()
 
+    def test_wire_vectors_reject_a_reader_that_retains_departed_document_counts(self):
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        import io
+        spec = importlib.util.spec_from_file_location('call_lifecycle', ROOT/'conformance/check-call-lifecycle.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with patch.object(module.WirePolicy, 'invalidate', lambda _: None), redirect_stdout(io.StringIO()):
+            with self.assertRaises(AssertionError):
+                module.check_wire()
+
     def test_terminal_boundary_cannot_precede_accepted_pcm(self):
         session = json.loads((annotations.FIXTURES / 'call-return.session.json').read_text())
         session['events'][-1]['atMs'] = 3000  # Ordered, but finalized PCM runs to 5000.

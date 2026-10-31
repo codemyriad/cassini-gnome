@@ -18,7 +18,7 @@ async function setup({delay,previous,grantError,grantDelay=0,startDelay=0,storag
     if(delay!==undefined)setTimeout(()=>connect.emit({name:'cassini-frame',sender:{id:'test',tab:{id:1}},onMessage:event(),onDisconnect:event(),postMessage(){}}),delay);
   }},tabCapture:{async getMediaStreamId(){phase='grant';await wait(grantDelay);if(grantError)throw Error('No invocation');return 'stream'}},
   offscreen:{async closeDocument(){offscreen=false},async createDocument(){phase='offscreen-create';await wait(createDelay);offscreen=true}},action:{async setBadgeText(value){badge=value.text},async setBadgeBackgroundColor(){}}};
-  const context=vm.createContext({AppControl:class {start(){} publish(){}},chrome,setTimeout,clearTimeout,crypto:{randomUUID:()=> 'token'},queueMicrotask});
+  const context=vm.createContext({AppControl:class {start(){} publish(){} publishStatus(){}},chrome,setTimeout,clearTimeout,crypto:{randomUUID:()=> 'token'},queueMicrotask});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../background.js'),'utf8').replace(/^import .*\n/, '')+'\nglobalThis.api={start,stop,failure,status,recovery};',context);
   await context.api.recovery;
   return {api:context.api,stored,ports,get phase(){return phase},get offscreen(){return offscreen},get connections(){return nativeConnections},get badge(){return badge}};
