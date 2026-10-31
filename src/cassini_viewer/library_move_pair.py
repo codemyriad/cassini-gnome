@@ -113,8 +113,11 @@ def locked(source_root, target_root):
     from .meeting_store import LOCK
 
     with routing(), contextlib.ExitStack() as stack:
-        for root in sorted({source_root, target_root}, key=os.fsencode):
-            stack.enter_context(journal.LibraryLock(journal.Layout(root)))
+        try:
+            for root in sorted({source_root, target_root}, key=os.fsencode):
+                stack.enter_context(journal.LibraryLock(journal.Layout(root), blocking=False))
+        except journal.LockBusy as error:
+            raise MoveBusy("Another writer owns a Library needed by the move") from error
         with LOCK:
             yield
 
@@ -122,7 +125,7 @@ def locked(source_root, target_root):
 def _replay(layout, identity):
     report = journal.replay(layout, identity=identity)
     if report.blocks(*identity) or any(not isinstance(entry, dict) for entry, _reason in report.kept):
-        raise MoveBusy("A pending Library operation must finish before moving")
+        raise ValueError("A pending Library operation must finish before moving")
 
 
 def _integrity(path):
@@ -187,6 +190,11 @@ def _move_pair(source, target, *, checkpoint, record=None, ready=lambda: True, c
     record = dict(record) if record else None
     if record is not None:
         validate_record(record)
+        if record["phase"] == "copying":
+            previous = target_root / (".cassini-moving-" + record["op"])
+            if previous.exists():
+                shutil.rmtree(previous)
+                _sync(target_root)
     # A partial publication may have been edited/renamed after the crash. Verify
     # that version without holding either Library lock; never replace it with
     # an older staged copy.
@@ -207,10 +215,6 @@ def _move_pair(source, target, *, checkpoint, record=None, ready=lambda: True, c
                 raise FileNotFoundError("The source Cassini file is missing")
             if target.exists() or any(names.fold(p.name) == names.fold(name) for p in target_root.iterdir()):
                 raise FileExistsError("The move destination is occupied")
-            if record:
-                previous = target_root / (".cassini-moving-" + record["op"])
-                if previous.exists():
-                    shutil.rmtree(previous)
             record = dict(
                 op=str(uuid4()),
                 phase="copying",

@@ -14,7 +14,8 @@ producers never acquire that lease.
 Copying and verification run outside the locks. Closed audio uses same-inode
 links when available; cross-filesystem copies stream and verify SHA-256. JSON is
 copied. Commit takes routing, both Library locks in path order, then the metadata
-lock. It replays pending shared operations and rechecks source identity/content,
+lock. Library acquisition is nonblocking: contention releases both and defers
+the move, avoiding lock-order deadlocks with another platform. It replays pending shared operations and rechecks source identity/content,
 source activity, destination freedom and the routing entry before publishing.
 No-replace renames publish the file and optional session. Only after both are
 durable does the checkpoint make the destination authoritative. The originals

@@ -3,7 +3,8 @@
 
 Lock order is Library -> meeting_store.LOCK. Nested writers on the same worker
 reuse the transaction, rather than flocking a second descriptor and deadlocking.
-Legacy folders keep their existing metadata-only transaction.
+Managed writes hold the Library flock; legacy writes use mutation() and its
+stable per-meeting flock. Read-only/private-cache transactions create no files.
 """
 
 import threading
@@ -21,7 +22,7 @@ _LOCAL = threading.local()
 @contextmanager
 def transaction(directory, *, repair=True):
     from .library_location import owned_directory
-    from .meeting_store import LOCK, atomic_json, metadata_transaction, published_metadata
+    from .meeting_store import LOCK, atomic_json, published_metadata
 
     original = Path(directory)
 
@@ -35,7 +36,7 @@ def transaction(directory, *, repair=True):
         root = root_for(directory)
         active = getattr(_LOCAL, "root", None)
         if root is None:
-            with metadata_transaction(directory):
+            with LOCK:
                 yield
             return
         if root == active:
@@ -67,6 +68,23 @@ def transaction(directory, *, repair=True):
             finally:
                 _LOCAL.root = None
             return
+
+
+@contextmanager
+def mutation(directory):
+    """Whole metadata RMW: Library flock for v2, stable file flock for legacy.
+
+    Read-only/private-cache transactions must not create metadata control files,
+    or require a folder for an otherwise valid logical voice-store key.
+    """
+    from .meeting_store import metadata_transaction
+
+    with transaction(directory):
+        if getattr(_LOCAL, "root", None) is None:
+            with metadata_transaction(directory):
+                yield
+        else:
+            yield
 
 
 def commit_metadata(directory, current, changes, *, before_commit=None, words=None):

@@ -192,11 +192,11 @@ def transcript_snapshot(directory):
 
 
 def update_metadata(directory, *, before_commit=None, transient=False, transcript_body=None, **changes):
-    from .library_edits import commit_metadata, transaction
+    from .library_edits import commit_metadata, mutation
     from .library_publication import root_for
 
     directory = Path(directory)
-    with transaction(directory):
+    with mutation(directory):
         if not directory.exists():
             from .library_location import owned_directory
 

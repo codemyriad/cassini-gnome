@@ -5,7 +5,7 @@ import os
 from fractions import Fraction
 from pathlib import Path
 
-from .library_edits import transaction
+from .library_edits import mutation as transaction
 from .library_files import regular
 from .meeting_store import read_metadata, update_metadata
 from .recording_session import strict_json
