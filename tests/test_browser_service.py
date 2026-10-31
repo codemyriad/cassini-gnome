@@ -643,3 +643,43 @@ def test_shared_control_host_vectors():
     count = len(json.loads(runner.with_name("vectors.json").read_text()))
     assert result.returncode == 0, result.stdout + result.stderr
     assert f"{count} passed, 0 failed" in result.stdout
+
+
+def test_stop_expiry_is_checked_before_reconnecting_inventory_can_refresh_it(service):
+    from cassini_viewer.browser_service import STOPPED_CALL_GRACE
+
+    server, path = service
+    connection, stream = browser(path, "4242:99")
+    request("configure", path=path, autoRecord=True)
+    stop_automatic_call(path, stream)
+    stream.close()
+    connection.close()
+    wait_for(lambda: not server.browsers)
+    key = ("4242:99", 3)
+    with server.lock:
+        url, seen = server.stopped_calls[key]
+        server.stopped_calls[key] = (url, seen - STOPPED_CALL_GRACE - 1)
+    connection, stream = browser(path, "4242:99")
+    connection.settimeout(2)
+    try:
+        assert read_packet(stream)["action"] == "start"
+        assert key not in server.stopped_calls
+    finally:
+        stream.close()
+        connection.close()
+
+
+def test_direct_navigation_to_another_call_clears_suppression_without_empty_inventory(service):
+    server, path = service
+    connection, stream = browser(path, "4242:99")
+    request("configure", path=path, autoRecord=True)
+    stop_automatic_call(path, stream)
+    connection.settimeout(2)
+    try:
+        send_packet(stream, dict(type="meetings", meetings=[dict(meeting(), url="https://meeting.example/next")]))
+        command = read_packet(stream)
+        assert command["action"] == "start" and command["tabId"] == 3
+        assert ("4242:99", 3) not in server.stopped_calls
+    finally:
+        stream.close()
+        connection.close()

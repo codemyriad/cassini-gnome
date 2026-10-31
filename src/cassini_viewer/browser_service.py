@@ -257,7 +257,7 @@ class BrowserService:
         elif event == "finished" and capture.directory is not None:
             with self.lock:
                 self.call_captures = {
-                    key: value for key, value in self.call_captures.items() if value != capture.capture_id
+                    key: value for key, value in self.call_captures.items() if value[0] != capture.capture_id
                 }
                 for browser in self.browsers.values():
                     for state in browser.states.values():
@@ -391,7 +391,7 @@ class BrowserService:
             if owner is not None and not owner.finished and owner.browser_lost:
                 states.setdefault(tab, old)
         if browser.browser_instance is not None:
-            for (instance, tab), capture_id in list(self.call_captures.items()):
+            for (instance, tab), (capture_id, _url) in list(self.call_captures.items()):
                 owner = self.captures.get(capture_id)
                 if instance == browser.browser_instance and owner is not None and not owner.finished:
                     states.setdefault(
@@ -400,8 +400,17 @@ class BrowserService:
                     browser.attempted.add(tab)
             for tab, state in states.items():
                 capture_id = state.get("captureId")
-                if capture_id in self.captures and not self.captures[capture_id].finished:
-                    self.call_captures[(browser.browser_instance, tab)] = capture_id
+                owner = self.captures.get(capture_id)
+                if (
+                    isinstance(capture_id, str)
+                    and capture_id
+                    and state.get("recording")
+                    and (owner is None or not owner.finished)
+                ):
+                    # The extension announces the identity before opening its
+                    # audio socket. Preserve that association across an early
+                    # control disconnect, including the original call address.
+                    self._bind_capture(browser, tab, capture_id)
         browser.states = states
         for tab, old in previous.items():
             if old.get("recording") and not states.get(tab, {}).get("recording"):
@@ -438,8 +447,12 @@ class BrowserService:
                     meetings[value["tabId"]]["heard"] = value.get("heard") is True
                     meetings[value["tabId"]]["title"] = value["title"][:200]
                     meetings[value["tabId"]]["url"] = value["url"][:2048]
+                self._expire_stopped(time.monotonic())
                 previous, browser.meetings = browser.meetings, meetings
                 self._restore_stopped(browser, previous)
+                for tab, state in browser.states.items():
+                    if state.get("recording") and isinstance(state.get("captureId"), str):
+                        self._bind_capture(browser, tab, state["captureId"])
                 browser.attempted.intersection_update(meetings)
             elif kind == "status":
                 self._status(browser, packet)
@@ -487,31 +500,58 @@ class BrowserService:
             independent = "independent-sessions-v1" in browser.capabilities
             if action == "start" and tab not in browser.meetings:
                 raise ValueError("This meeting is no longer available")
+            capture = self.captures.get(browser.states.get(tab, {}).get("captureId"))
+            joining = (
+                next((p for p in browser.pending.values() if p.get("action") == "stop" and p["tabId"] == tab), None)
+                if action == "stop" and user
+                else None
+            )
+            if action == "stop" and user:
+                self._remember_stop(browser, tab, True)
+                if capture is not None and not preserve_capture:
+                    capture.stop_requested.set()
             pending_start = any(p.get("action") == "start" and p["tabId"] == tab for p in browser.pending.values())
             if action == "stop":
                 for pending in browser.pending.values():
                     if pending.get("action") == "start" and pending["tabId"] == tab:
                         pending["cancelled"] = True
-            if (tab in browser.busy or not independent and browser.busy) and not (action == "stop" and pending_start):
-                raise ValueError("A recording command is still being processed")
             if (
-                action == "stop"
-                and not browser.states.get(tab, {}).get("recording")
-                and not independent
-                and not pending_start
+                joining is None
+                and (tab in browser.busy or not independent and browser.busy)
+                and not (action == "stop" and pending_start)
             ):
-                raise ValueError("This meeting is not recording")
-            browser.busy.add(tab)
-            browser.error = None
-            browser.attempted.add(tab)
-            if user:
-                self._remember_stop(browser, tab, action == "stop")
-            request_id = str(uuid4())
-            pending = dict(event=threading.Event(), result=None, action=action, tabId=tab)
-            browser.pending[request_id] = pending
-            capture = self.captures.get(browser.states.get(tab, {}).get("captureId"))
-            if capture is not None and action == "stop" and not preserve_capture:
-                capture.stop_requested.set()
+                raise ValueError("A recording command is still being processed")
+            if joining is None:
+                if (
+                    action == "stop"
+                    and not browser.states.get(tab, {}).get("recording")
+                    and not independent
+                    and not pending_start
+                ):
+                    raise ValueError("This meeting is not recording")
+                browser.busy.add(tab)
+                browser.error = None
+                browser.attempted.add(tab)
+                if user:
+                    self._remember_stop(browser, tab, action == "stop")
+                request_id = str(uuid4())
+                pending = dict(event=threading.Event(), result=None, action=action, tabId=tab)
+                browser.pending[request_id] = pending
+                capture = self.captures.get(browser.states.get(tab, {}).get("captureId"))
+                if capture is not None and action == "stop" and not preserve_capture:
+                    capture.stop_requested.set()
+        if joining is not None:
+            if capture is not None and not preserve_capture:
+                capture.stop()
+            if not joining["event"].wait(self.command_timeout):
+                raise TimeoutError("The browser did not finish the recording command")
+            result = joining["result"]
+            if (result is None or result.get("ok") is not True) and (capture is None or not capture.finished):
+                raise ValueError(str((result or {}).get("error", "The browser disconnected"))[:500])
+            return dict(
+                self.snapshot(),
+                stoppedPath=str(capture.directory) if capture is not None else (result.get("status") or {}).get("path"),
+            )
         try:
             if capture is not None and capture.browser_lost and action == "stop" and not preserve_capture:
                 capture.stop()
@@ -617,7 +657,7 @@ class BrowserService:
                 self.captures[capture_id] = capture
                 browser.states[tab] = dict(recording=True, captureId=capture_id, tabId=tab)
                 if browser.browser_instance is not None:
-                    self.call_captures[(browser.browser_instance, tab)] = capture_id
+                    self._bind_capture(browser, tab, capture_id)
             else:
                 capture = None
         if capture is None:
@@ -641,7 +681,7 @@ class BrowserService:
                 if capture.directory is None:
                     self.captures.pop(capture_id, None)
                     self.call_captures = {
-                        key: value for key, value in self.call_captures.items() if value != capture_id
+                        key: value for key, value in self.call_captures.items() if value[0] != capture_id
                     }
                 if browser.states.get(tab, {}).get("captureId") == capture_id:
                     browser.states[tab] = dict(recording=False, tabId=tab)
@@ -706,6 +746,8 @@ class BrowserService:
                     if not c.finished and (directory is None or c.directory is not None and matches(str(c.directory)))
                 ]
             for capture in captures:
+                if quitting_pid is None:
+                    self._remember_capture_stop(capture)
                 capture.stop()
             return dict(self.snapshot(), stoppedPaths=list(dict.fromkeys(paths)))
         finally:
@@ -1020,11 +1062,29 @@ class BrowserService:
         finally:
             if browser:
                 with self.lock:
+                    self._restore_stopped(browser, browser.meetings)
                     browser.closed = True
                     self.browsers.pop(browser.id, None)
-                    self._restore_stopped(browser, browser.meetings)
                     for pending in browser.pending.values():
                         pending["event"].set()
+
+    def _bind_capture(self, browser, tab, capture_id):
+        if browser.browser_instance is None:
+            return
+        key = (browser.browser_instance, tab)
+        previous = self.call_captures.get(key)
+        # Never replace a capture's original address when the tab navigates.
+        if previous is not None and previous[0] == capture_id and previous[1] is not None:
+            return
+        self.call_captures[key] = (capture_id, browser.meetings.get(tab, {}).get("url"))
+
+    def _store_stop(self, key, url):
+        # An unknown URL must never suppress an unrelated call in this tab.
+        if url is None:
+            return
+        self.stopped_calls[key] = (url, time.monotonic())
+        while len(self.stopped_calls) > STOPPED_CALL_LIMIT:
+            del self.stopped_calls[min(self.stopped_calls, key=lambda key: self.stopped_calls[key][1])]
 
     def _remember_stop(self, browser, tab, stopped):
         """Remember a call the user stopped; starting it again forgets that."""
@@ -1034,27 +1094,26 @@ class BrowserService:
         if not stopped:
             self.stopped_calls.pop(key, None)
             return
-        self.stopped_calls[key] = (browser.meetings.get(tab, {}).get("url"), time.monotonic())
-        if len(self.stopped_calls) > STOPPED_CALL_LIMIT:
-            del self.stopped_calls[min(self.stopped_calls, key=lambda key: self.stopped_calls[key][1])]
+        bound = self.call_captures.get(key)
+        self._store_stop(key, bound[1] if bound else browser.meetings.get(tab, {}).get("url"))
 
     def _remember_capture_stop(self, capture):
-        """Remember the call of a recording whose browser link is down."""
+        """Remember the original call even when its browser link is down."""
         with self.lock:
-            for (instance, tab), capture_id in self.call_captures.items():
+            for key, (capture_id, url) in self.call_captures.items():
                 if capture_id == capture.capture_id:
-                    self.stopped_calls[(instance, tab)] = (None, time.monotonic())
+                    self._store_stop(key, url)
+
+    def _expire_stopped(self, now):
+        # Run against the prior live inventory, before an incoming report can
+        # revive a stop whose browser has been absent longer than the grace.
+        reported = {(b.browser_instance, tab) for b in self.browsers.values() if not b.closed for tab in b.meetings}
+        for key, (_, seen) in list(self.stopped_calls.items()):
+            if key not in reported and now - seen >= STOPPED_CALL_GRACE:
+                del self.stopped_calls[key]
 
     def _restore_stopped(self, browser, previous):
-        """Keep stopped calls stopped on this link, across reconnects.
-
-        The control link reconnects whenever the extension's worker restarts
-        or reloads, and a new worker reports meetings as its pages reconnect.
-        Tab ids are unique within one browser process, across its profiles.
-        A call that leaves a connected link's inventory has ended. One that
-        appears later, or with another address, is a different meeting. A
-        stop is forgotten once no link has reported its call for a while.
-        """
+        """Restore only the same call, within its reconnect/report grace."""
         instance = browser.browser_instance
         if instance is None:
             return
@@ -1062,19 +1121,18 @@ class BrowserService:
         for tab in previous.keys() - browser.meetings.keys():
             self.stopped_calls.pop((instance, tab), None)
         for tab, meeting in browser.meetings.items():
+            if tab in previous and previous[tab]["url"] != meeting["url"]:
+                browser.attempted.discard(tab)
             stopped = self.stopped_calls.get((instance, tab))
             if stopped is None:
                 continue
-            late = now - browser.connected_at >= STOPPED_CALL_REPORT_WINDOW
-            if tab not in previous and (late or stopped[0] not in (None, meeting["url"])):
+            late = min(now - browser.connected_at, now - stopped[1]) >= STOPPED_CALL_REPORT_WINDOW
+            if stopped[0] != meeting["url"] or tab not in previous and late:
                 del self.stopped_calls[(instance, tab)]
+                browser.attempted.discard(tab)
                 continue
             self.stopped_calls[(instance, tab)] = (meeting["url"], now)
             browser.attempted.add(tab)
-        reported = {(b.browser_instance, tab) for b in self.browsers.values() for tab in b.meetings}
-        for key, (_, seen) in list(self.stopped_calls.items()):
-            if key not in reported and now - seen >= STOPPED_CALL_GRACE:
-                del self.stopped_calls[key]
 
     def serve(self, path, ready=None, *, idle_timeout=None):
         import fcntl

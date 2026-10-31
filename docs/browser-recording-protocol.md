@@ -100,6 +100,17 @@ native-messaging frames stay on stdin/stdout, without a host Python dependency.
 The relays carry a local browser process/start-tick hint across the sandbox so
 worker reconnects retain their capture bindings. Native, regular Flatpak and
 development Flatpak brokers have separate runtime addresses.
+
+The persistent control host clears its connect timeout after connecting. A user
+Stop is remembered by browser process/start tick, tab and original meeting URL,
+including when its audio socket opened after the first control status or the
+control link disconnects during Stop. Reconnect restores only that same call;
+direct URL changes clear suppression. Expiry is checked against the prior live
+inventory before a new report can refresh it. The bounded store retains at most
+256 stopped calls, expiring unreported ones after ten minutes. A user Stop joins
+an automatic/source-fallback Stop already in flight and finishes its native
+capture without sending a duplicate browser command. Cassini's own stops and
+Quit do not suppress future automatic starts.
 The broker runs in its own sandbox instance: a child broker would keep the UI
 or native-host `flatpak run` wrapper alive. Host browser launch is detached for
 the same reason. The dedicated broker exits after ten idle seconds with no
