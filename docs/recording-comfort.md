@@ -94,3 +94,18 @@ until capture saves, then the same saved-intent checkpoint runs before that
 window closes. A new capture started during the asynchronous checkpoint keeps
 its observer/windows. The process probe covers a browser-only hidden Library
 with a visible legacy player and verifies completed writing-down before exit.
+
+A source which has never delivered PCM must not block Quit in PulseAudio's
+first-buffer preroll. Native Stop classifies sources on its IO worker, retires
+only empty branches, then drains the healthy branches normally with EOS before
+closing their WAVs. No capture-selection or timing/bleed threshold changes are
+needed. The existing ten-second finalization watchdog remains for other errors.
+
+`tests/recording/no-frames.py --build BUILD` runs through the isolated recording
+harness. It creates a private PipeWire server with hardware discovery disabled,
+a driverless microphone and a healthy system tone. The real GTK Quit action and
+Stop-and-keep confirmation must close the windows within three seconds, finalize
+every WAV, retain the captured system PCM byte for byte and record `appQuit`.
+Its process deadline stays armed through interpreter shutdown to catch a stuck
+IO worker. Evidence includes the frame counts, elapsed time, callbacks and
+thread dumps. Run it with `tests/recording/run.sh`; no desktop audio is used.

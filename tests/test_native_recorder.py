@@ -135,3 +135,67 @@ def test_preparation_stop_end_time_uses_this_start_not_an_old_recorder_clock(tmp
         assert end["reason"] == "user" and 0 <= end["atMs"] < 5000
     finally:
         recorder._executor.shutdown()
+
+
+@pytest.mark.parametrize("empty", [("microphone",), ("system",), ("microphone", "system")])
+def test_stop_keeps_healthy_pcm_when_an_empty_source_never_acknowledges_eos(tmp_path, monkeypatch, empty):
+    from gi.repository import Gst
+
+    from cassini_viewer.native_recorder import NativeRecorder
+
+    Gst.init(None)
+    recorder = NativeRecorder()
+    branch = recorder._branch
+    errors, finished = [], []
+    recorder.connect("error", lambda _r, value: errors.append(value))
+    recorder.connect("finished", lambda _r, value: finished.append(value))
+
+    def stalled(kind):
+        if kind not in empty:
+            return branch(kind)
+        result = Gst.parse_bin_from_description(
+            'appsrc name=unresponsive is-live=true format=time caps="audio/x-raw,format=S16LE,rate=48000,channels=1" '
+            f"! queue ! appsink name={kind} emit-signals=true sync=false async=false",
+            False,
+        )
+
+        # Model a source that never emits a frame or acknowledges the EOS.
+        def no_end(_pad, info):
+            return Gst.PadProbeReturn.DROP if info.get_event().type == Gst.EventType.EOS else Gst.PadProbeReturn.OK
+
+        result.get_by_name("unresponsive").get_static_pad("src").add_probe(Gst.PadProbeType.EVENT_DOWNSTREAM, no_end)
+        result.get_by_name(kind).connect("new-sample", recorder._sample, kind)
+        return result
+
+    monkeypatch.setattr(recorder, "_branch", stalled)
+    import time
+
+    from test_recorder import spin_until
+
+    try:
+        recorder.start(tmp_path, test=True)
+        spin_until(lambda: recorder.pipeline is not None)
+        healthy = set(("microphone", "system")) - set(empty)
+        if healthy:
+            spin_until(lambda: all(recorder.session.writers[kind].frames >= 9600 for kind in healthy))
+        else:
+            spin_until(lambda: recorder.pipeline.get_state(0).state == Gst.State.PLAYING)
+        saved = {kind: (recorder.session.directory / ("track-" + kind + ".wav")).read_bytes()[44:] for kind in healthy}
+        started = time.monotonic()
+        recorder.stop()
+        assert time.monotonic() - started < 0.2
+        spin_until(lambda: bool(finished), timeout=3)
+        assert not errors
+        assert recorder.session.manifest["state"] == ("completed" if healthy else "interrupted")
+        if not healthy:
+            assert recorder.session.manifest["problemKind"] == "empty"
+        assert all(track["ended"] for track in recorder.session.manifest["tracks"])
+        for kind in empty:
+            assert recorder.session.writers[kind].frames == 0
+        for kind, pcm in saved.items():
+            assert pcm and (recorder.session.directory / ("track-" + kind + ".wav")).read_bytes()[44:].startswith(pcm)
+    finally:
+        if recorder.pipeline is not None:
+            recorder._begin_finish()
+            spin_until(lambda: recorder.pipeline is None)
+        recorder._executor.shutdown()

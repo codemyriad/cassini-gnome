@@ -154,6 +154,10 @@ def test_stop_never_waits_for_source_stream_locks_on_main_context(tmp_path, monk
     recorder.connect("error", lambda _r, error: errors.append(error))
     recorder.start(tmp_path / "meeting.opus" if kind == "opus" else tmp_path, test=True)
     spin_until(lambda: recorder.pipeline is not None)
+    if kind == "tracks":
+        # This scenario tests two active stream locks, rather than empty
+        # sources which are retired without EOS before their first sample.
+        spin_until(lambda: all(writer.frames > 0 for writer in recorder.session.writers.values()))
     original = Gst.Element.send_event
 
     def slow_event(element, event):
@@ -168,7 +172,7 @@ def test_stop_never_waits_for_source_stream_locks_on_main_context(tmp_path, monk
         before = time.monotonic()
         recorder.stop()
         assert time.monotonic() - before < 0.2, "Stop waited on a streaming lock"
-        assert entered.wait(1)
+        spin_until(entered.is_set, timeout=1)
         spin_until(lambda: len(threads) == 2)
         assert len(set(threads)) == 2, "Both interleave inputs must be able to finish independently"
         idle = []
@@ -184,4 +188,6 @@ def test_stop_never_waits_for_source_stream_locks_on_main_context(tmp_path, monk
         if kind == "opus":
             recorder._cleanup()
         else:
+            recorder.stop()
+            spin_until(lambda: recorder.pipeline is None and not recorder._finishing)
             recorder._executor.shutdown(wait=True)
