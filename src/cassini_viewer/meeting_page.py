@@ -416,7 +416,7 @@ class MeetingPage(Adw.NavigationPage):
                 self.speakers.append(edit)
             else:
                 self.speakers.append(row)
-        if meeting.speakers:
+        if meeting.speakers and (meeting.metadata_editable or meeting.published_file is not None):
             self.name_speakers_button = Gtk.Button(
                 label=text("meeting.nameSpeakers"), sensitive=meeting.metadata_editable
             )
