@@ -49,37 +49,54 @@ class BackgroundRecording:
         cancellable = self.cancellable
         self.timer = GLib.timeout_add_seconds(120, self._expired)
 
-        # A private connection lets native apps register before *any* portal
-        # method, independently of GTK's Settings/FileChooser connection.
-        # Address discovery and registration are bounded worker IO.
         def connect():
-            bus, error = self.bus, None
-            try:
-                if bus is None:
-                    address = Gio.dbus_address_get_for_bus_sync(Gio.BusType.SESSION, cancellable)
-                    bus = Gio.DBusConnection.new_for_address_sync(
-                        address,
-                        Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
-                        None,
-                        cancellable,
-                    )
-                    if self.native and self.application_id:
-                        bus.call_sync(
-                            SERVICE,
-                            ROOT,
-                            "org.freedesktop.host.portal.Registry",
-                            "Register",
-                            GLib.Variant("(sa{sv})", (self.application_id, {})),
-                            None,
-                            Gio.DBusCallFlags.NONE,
-                            5000,
-                            cancellable,
-                        )
-            except GLib.Error as failure:
-                error = failure
+            bus, error = self._open(cancellable)
             GLib.idle_add(self._connected, bus, error, generation)
 
         threading.Thread(target=connect, name="cassini-background-portal", daemon=True).start()
+
+    def _open(self, cancellable):
+        """(bus, error) for a private session connection, registered when native.
+
+        A private connection lets native apps register before *any* portal
+        method, independently of GTK's Settings/FileChooser connection.
+        Address discovery and registration are bounded worker IO.
+        """
+        bus = self.bus
+        try:
+            if bus is None:
+                address = Gio.dbus_address_get_for_bus_sync(Gio.BusType.SESSION, cancellable)
+                bus = Gio.DBusConnection.new_for_address_sync(
+                    address,
+                    Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
+                    None,
+                    cancellable,
+                )
+                if self.native and self.application_id:
+                    self._register(bus, cancellable)
+        except GLib.Error as failure:
+            return bus, failure
+        return bus, None
+
+    def _register(self, bus, cancellable):
+        # The host Registry exists since xdg-desktop-portal 1.20. An older or
+        # rejecting portal still answers RequestBackground for the unique name.
+        try:
+            bus.call_sync(
+                SERVICE,
+                ROOT,
+                "org.freedesktop.host.portal.Registry",
+                "Register",
+                GLib.Variant("(sa{sv})", (self.application_id, {})),
+                None,
+                Gio.DBusCallFlags.NONE,
+                5000,
+                cancellable,
+            )
+        except GLib.Error as error:
+            if cancellable is not None and cancellable.is_cancelled():
+                raise
+            LOG.info("Host app registration unavailable: %s", error)
 
     def _connected(self, bus, error, generation):
         try:
