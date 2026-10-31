@@ -67,6 +67,8 @@ jobs:
           path: |
             ${{ runner.temp }}/product-upgrade/*.json
             ${{ runner.temp }}/product-upgrade/*.log
+            ${{ runner.temp }}/product-upgrade/source-install/live-handoff/*.json
+            ${{ runner.temp }}/product-upgrade/source-install/live-handoff/*.log
       - name: Installed package restarts after upgrades and preserves active audio
         if: matrix.base == 'ubuntu:26.04'
         run: tests/build-refresh/run.sh dist/cassini-talk_*.deb "$RUNNER_TEMP/build-refresh"

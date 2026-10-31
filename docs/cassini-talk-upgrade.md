@@ -18,6 +18,16 @@ schema remains installed; the old settings are not deleted. Portal permissions
 belong to the new application identity and must be requested again. They are
 not copied from the portal's permission store.
 
+Before opening Library services, the new launcher checks the matching old
+D-Bus identity and forwards activation/file intent to it. D42's existing safe
+restart flow defers takeover during capture and retains queued writing work.
+A pre-D42 released process remains the sole writer until it is closed. Each
+Flatpak profile grants IPC access only to its matching legacy identity for
+this handoff; no new filesystem access is added.
+
+The compatibility schema keeps its original filename, so consecutive Meson
+installs into an existing prefix do not define the old schema twice.
+
 ## Flatpak repository migration
 
 D45.1 fixes the production origin to
@@ -33,7 +43,7 @@ build-aux/flatpak/build.sh --release \
 For an already-built local repository, use the same preparation step directly:
 
 ```sh
-python3 build-aux/flatpak/prepare-release.py repo dist \
+python3 build-aux/flatpak/prepare-release.py release-repo dist \
   --key=FULL_PUBLIC_SIGNING_KEY_FINGERPRINT \
   --gpg-homedir="$HOME/.config/cassini/secrets/flatpak-gnupg" \
   --legacy-bundle=/path/to/released/cassini-viewer.flatpak
@@ -42,15 +52,16 @@ python3 build-aux/flatpak/prepare-release.py repo dist \
 The script requires both IDs, marks the old one as end-of-life, signs the
 app/Locale refs and repository summary, and produces:
 
-- `repo/`: the signed repository, containing the new ID and final old-ID rebase;
+- `release-repo/`: the signed repository from `build.sh --release`, containing the new ID and final old-ID rebase;
 - `dist/cassini-talk.flatpakrepo`: the canonical URL and embedded public key;
 - `dist/cassini-talk.flatpak`: the standalone bundle with `--repo-url` and public key;
 - `dist/cassini-talk.gpg`: only the exported public key.
 
 The private signing key stays in the explicit GnuPG home under
 `~/.config/cassini/secrets`, outside repository/output directories. It is never
-exported or committed. Local/development builds without `--release` remain
-unsigned and do not point at the production update origin. Development builds
+exported or committed. A separate `release-repo/` prevents local development
+refs from entering the release. Preparation rejects unrelated/development app
+refs. Local/development builds without `--release` remain unsigned and do not point at the production update origin. Development builds
 cannot use `--release`.
 
 These commands **only prepare local artifacts**. Publishing waits for upload
@@ -67,8 +78,17 @@ does not copy or merge private stores itself and gains no filesystem permission.
 Once the repository is published, internal testers who installed the old
 standalone bundle add the repository and accept the old-ID rebase. Do not
 launch a separate fresh new-ID installation before rebasing the old one, or
-delete the old app's data. The exact add/reinstall path is exercised by the
-signed migration gate below.
+delete the old app's data. The tested internal-tester path (after publication) is:
+
+```sh
+flatpak remote-add --user --if-not-exists cassini-talk \
+  https://cassini.talk/download/linux/flatpak/cassini-talk.flatpakrepo
+flatpak install --user --reinstall cassini-talk com.gocassini.Viewer
+```
+
+Selecting the old ID deliberately lets Flatpak offer its end-of-life rebase to
+the new ID, recording the previous identity before the first new run. The
+signed migration gate exercises this exact add/reinstall path.
 
 The packaging gate tests a real local repository rebase from the pinned released
 0.3.0 bundle, including an absolute Library path and model/voice data sentinels.
@@ -78,3 +98,10 @@ starts the replacement after installing both new Debian packages.
 References: [Flatpak command reference](https://docs.flatpak.org/en/latest/flatpak-command-reference.html)
 (`build-commit-from --end-of-life-rebase`) and
 [Flatpak's data migration implementation](https://github.com/flatpak/flatpak/blob/1.17.4/common/flatpak-run.c).
+
+The installed-upgrade gate starts the released 0.3.0 application recording real
+audio in a private PulseAudio server before installing the new package. It
+checks that the new identity never becomes a second writer, audio keeps growing,
+and settings and data survive. A second journey installs the pre-rename D42
+source build and the new source into the same Meson prefix while recording;
+it checks the deferred restart after Stop and compiles both schemas strictly.

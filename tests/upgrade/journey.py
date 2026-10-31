@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Upgrade the actual installed 0.3.0 package; exercise the new app's startup."""
 
+import atexit
 import hashlib
 import json
 import subprocess
@@ -9,6 +10,7 @@ import time
 from pathlib import Path
 
 from gi.repository import Gio, GLib
+from live import Audio, Live, until
 
 OLD = "com.gocassini.Viewer"
 NEW = "io.codemyriad.CassiniTalk"
@@ -43,6 +45,15 @@ for name in (
     path.write_bytes((name + "\n").encode())
     sentinels[name] = hashlib.sha256(path.read_bytes()).hexdigest()
 
+audio = Audio(OUT)
+live = Live(OUT)
+atexit.register(audio.close)
+atexit.register(live.close)
+legacy_app = live.launch("/usr/bin/cassini-viewer", "released-legacy-app")
+until(lambda: live.owner(OLD) and live.visible(legacy_app), "released app window")
+live.action(OLD, "record")
+recording = until(lambda: live.recording(home / "Music/Cassini"), "released app records real private audio")
+
 # Use the end-user package manager: apt orders the transition and handles
 # Breaks, whereas raw dpkg refuses to deconfigure the old installed package.
 subprocess.run(
@@ -65,6 +76,18 @@ assert not Path(f"/usr/share/applications/{OLD}.desktop").exists()
 assert not Path(f"/usr/share/dbus-1/services/{OLD}.service").exists()
 desktop = Path(f"/usr/share/applications/{NEW}.desktop").read_text()
 assert "Name=Cassini talk\n" in desktop and "Exec=cassini-talk" in desktop
+
+candidate = live.launch("/usr/bin/cassini-talk", "deferred-new-client")
+until(lambda: candidate.poll() is not None or live.owner(NEW), "new launch is forwarded or exposes a writer")
+assert not live.owner(NEW), "The new identity started while the legacy capture still owns the Library"
+assert candidate.wait(timeout=8) == 0
+assert live.owner(OLD) and not live.owner(NEW), "Only the legacy process may write during capture"
+frames = live.samples(recording)
+until(lambda: live.samples(recording) >= frames + 48000, "legacy capture continues after new-ID launch")
+live.action(OLD, "stop-recording")
+until(lambda: live.saved(recording), "released capture is kept")
+live.quit_legacy(OLD, legacy_app)
+until(lambda: not live.owner(OLD), "legacy writer releases its bus name")
 
 # A fresh schema source sees the files installed during the same session.
 source = Gio.SettingsSchemaSource.new_from_directory("/usr/share/glib-2.0/schemas", None, False)
@@ -138,6 +161,8 @@ with (OUT / "application.log").open("w") as log:
             settingsMigrated=True,
             legacyCommandKept=True,
             unchangedFiles=sentinels,
+            activeLegacyCaptureKept=True,
+            noConcurrentWriter=True,
         ),
         indent=2,
     )

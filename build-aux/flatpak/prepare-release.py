@@ -34,6 +34,11 @@ def prepare(repo, output, key, homedir, *, legacy_bundle=None):
     if legacy_bundle is not None:
         call("flatpak", "build-import-bundle", str(repo), str(Path(legacy_bundle).resolve()))
     refs = [line.split()[0] for line in call("flatpak", "repo", "--branches", str(repo)).decode().splitlines()]
+    allowed = {APP, OLD, APP + ".Locale", OLD + ".Locale"}
+    for ref in refs:
+        parts = ref.split("/")
+        if len(parts) == 4 and parts[0] in ("app", "runtime") and parts[1] not in allowed:
+            raise ValueError("Use a stable-only release repository; unexpected ref: " + ref)
     arch = call("flatpak", "--default-arch").decode().strip()
     for app in (APP, OLD):
         if f"app/{app}/{arch}/master" not in refs:

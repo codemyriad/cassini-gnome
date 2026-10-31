@@ -14,9 +14,10 @@ meson install -C "$task_root/old-build"
 export GSETTINGS_SCHEMA_DIR="$prefix/share/glib-2.0/schemas"
 export GSETTINGS_BACKEND=keyfile XDG_CONFIG_HOME="$task_root/config"
 gsettings set com.gocassini.Viewer window-width 935
+gsettings set com.gocassini.Viewer skip-record-first true
 meson setup "$task_root/new-build" "$current_source" --prefix="$prefix" \
   -Dprofile=development -Dwhistle=disabled -Dsherpa=disabled
-meson install -C "$task_root/new-build"
+python3 "$current_source/tests/upgrade/source-live.py" "$prefix" "$task_root/new-build" "$task_root/live-handoff"
 glib-compile-schemas --strict "$GSETTINGS_SCHEMA_DIR"
 PYTHONPATH="$prefix/share/cassini-viewer" python3 - <<'PY'
 from cassini_viewer.identity import settings

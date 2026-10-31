@@ -15,6 +15,7 @@ BUNDLE=cassini-talk
 INSTALL=
 SMOKE=
 RELEASE=
+REPOSITORY=repo
 SIGNING_KEY=
 SIGNING_HOME=
 LEGACY_BUNDLE=
@@ -32,6 +33,7 @@ for arg in "$@"; do
   esac
 done
 if [ -n "$RELEASE" ]; then
+  REPOSITORY=release-repo
   [ "$APP_ID" = io.codemyriad.CassiniTalk ] && [ -n "$SIGNING_KEY" ] && [ -n "$SIGNING_HOME" ] || {
     echo '--release requires the stable profile, --gpg-key and --gpg-homedir' >&2; exit 2;
   }
@@ -67,18 +69,18 @@ flatpak remote-add --user --if-not-exists flathub \
 # rofiles-fuse often cannot start from inside the Builder sandbox or in
 # containers; it is only an optimisation, so do without it.
 "$@" --user --install-deps-from=flathub --force-clean --disable-rofiles-fuse \
-  --state-dir=.flatpak-builder --repo=repo _flatpak "$MANIFEST"
+  --state-dir=.flatpak-builder --repo="$REPOSITORY" _flatpak "$MANIFEST"
 
 mkdir -p dist
 if [ -n "$RELEASE" ]; then
-  set -- python3 build-aux/flatpak/prepare-release.py repo dist \
+  set -- python3 build-aux/flatpak/prepare-release.py "$REPOSITORY" dist \
     --key "$SIGNING_KEY" --gpg-homedir "$SIGNING_HOME"
   if [ -n "$LEGACY_BUNDLE" ]; then set -- "$@" --legacy-bundle "$LEGACY_BUNDLE"; fi
   "$@"
 else
   flatpak build-bundle \
     --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
-    repo "dist/$BUNDLE.flatpak" "$APP_ID"
+    "$REPOSITORY" "dist/$BUNDLE.flatpak" "$APP_ID"
 fi
 ls -l "dist/$BUNDLE.flatpak"
 

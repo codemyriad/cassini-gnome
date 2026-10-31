@@ -295,7 +295,7 @@ def test_only_flatpak_accepts_valid_host_browser_process_hint(monkeypatch):
     assert parent_browser_info() != dict(browserName="Brave", browserInstance="1234:5678")
 
 
-def test_both_flatpak_recipes_add_only_the_approved_bus_permission():
+def test_flatpak_permissions_include_only_the_bridge_and_matching_legacy_identity():
     root = Path(__file__).parents[1]
     for application in bridge.APPLICATIONS:
         recipe = json.loads((root / "build-aux/flatpak" / (application + ".json")).read_text())
@@ -309,6 +309,7 @@ def test_both_flatpak_recipes_add_only_the_approved_bus_permission():
             "--socket=pulseaudio",
             "--filesystem=xdg-music/Cassini:create",
             "--talk-name=org.freedesktop.Flatpak",
+            "--talk-name=com.gocassini.Viewer" + (".Devel" if application.endswith(".Devel") else ""),
         ]
 
 

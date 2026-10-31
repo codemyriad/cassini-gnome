@@ -87,6 +87,11 @@ with tempfile.TemporaryDirectory(prefix="cassini-signing-test-", dir=REPORT.pare
     )
     # The test uses a local URL but the production artifact must name D45.1's
     # canonical origin. Signature verification is enabled, never bypassed.
+    assert sorted(p.name for p in output.iterdir()) == [
+        "cassini-talk.flatpak",
+        "cassini-talk.flatpakrepo",
+        "cassini-talk.gpg",
+    ], "Only public release artifacts may leave the signing step"
     repo_file = output / "cassini-talk.flatpakrepo"
     description = repo_file.read_text()
     canonical = "https://cassini.talk/download/linux/flatpak/"
