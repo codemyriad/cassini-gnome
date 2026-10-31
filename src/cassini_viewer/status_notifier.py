@@ -168,6 +168,8 @@ class StatusNotifier:
         self._clear_retry()
         self.registered = self.registering = False
         self.proxy = None
+        # A new watcher's host has fetched no layout from this item yet.
+        self.served_revision = -1
 
         def ready(_source, result):
             try:
@@ -178,7 +180,7 @@ class StatusNotifier:
                 return
             self.proxy = proxy
             proxy.connect("g-properties-changed", self._watcher_changed)
-            proxy.connect("g-signal", self._watcher_changed)
+            proxy.connect("g-signal", self._watcher_signal)
             self._watcher_changed()
 
         Gio.DBusProxy.new(
@@ -198,7 +200,7 @@ class StatusNotifier:
         self._clear_retry()
         self.proxy = None
         self.registered = self.registering = False
-
+        self.served_revision = -1
         self.changed()
 
     @property
@@ -209,6 +211,15 @@ class StatusNotifier:
     def _watcher_changed(self, *_):
         self._ensure()
         self.changed()
+
+    def _watcher_signal(self, proxy, _sender, signal, _parameters):
+        # GDBusProxy refreshes cached properties only from PropertiesChanged.
+        # KDE-style watchers announce hosts with these signals alone.
+        if signal in ("StatusNotifierHostRegistered", "StatusNotifierHostUnregistered"):
+            proxy.set_cached_property(
+                "IsStatusNotifierHostRegistered", GLib.Variant("b", signal == "StatusNotifierHostRegistered")
+            )
+        self._watcher_changed()
 
     def _clear_retry(self):
         if self.retry_timer:

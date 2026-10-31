@@ -152,3 +152,29 @@ def test_changed_properties_lists_only_differences():
         1: {"label": "Recording, 00:01"},
         3: {"enabled": True, "visible": True},
     }
+
+
+def test_watcher_host_signals_update_availability_without_properties_changed():
+    """KDE-style watchers emit only StatusNotifierHost(Un)Registered."""
+    cache = {"IsStatusNotifierHostRegistered": GLib.Variant("b", False)}
+    proxy = SimpleNamespace(
+        get_cached_property=cache.get, set_cached_property=lambda name, value: cache.__setitem__(name, value)
+    )
+    notifier = StatusNotifier.__new__(StatusNotifier)
+    notifier.proxy, notifier.registered = proxy, True
+    ensured, changes = [], []
+    notifier._ensure = lambda: ensured.append(notifier.available)
+    notifier.changed = lambda: changes.append(notifier.available)
+    assert not notifier.available
+    notifier._watcher_signal(proxy, ":1.7", "StatusNotifierHostRegistered", GLib.Variant("()", ()))
+    assert notifier.available and ensured == [True] and changes == [True]
+    notifier._watcher_signal(proxy, ":1.7", "StatusNotifierHostUnregistered", GLib.Variant("()", ()))
+    assert not notifier.available and changes == [True, False]
+
+
+def test_a_vanished_watcher_forgets_the_served_layout():
+    notifier = live_notifier()
+    notifier.generation, notifier.retry_timer = 0, 0
+    notifier.changed = lambda: None
+    notifier._vanished()
+    assert notifier.served_revision == -1 and notifier.served_revision != notifier.revision

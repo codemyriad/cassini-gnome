@@ -117,16 +117,18 @@ export = host.register_object(
 owned = Gio.bus_own_name_on_connection(host, WATCHER, Gio.BusNameOwnerFlags.NONE, None, None)
 until(lambda: notifier.proxy is not None, "watcher discovered without a registered host")
 assert not notifier.exports and not registrations
+# Like KDE's watcher, announce hosts only with the watcher's own signals: no
+# PropertiesChanged, so the proxy's cached property would otherwise stay stale.
 host_ready = True
-host.emit_signal(
-    None,
-    "/StatusNotifierWatcher",
-    "org.freedesktop.DBus.Properties",
-    "PropertiesChanged",
-    GLib.Variant("(sa{sv}as)", (WATCHER, {"IsStatusNotifierHostRegistered": GLib.Variant("b", True)}, [])),
-)
 host.emit_signal(None, "/StatusNotifierWatcher", WATCHER, "StatusNotifierHostRegistered", None)
 until(lambda: notifier.registered, "real asynchronous watcher registration")
+assert notifier.available
+host_ready = False
+host.emit_signal(None, "/StatusNotifierWatcher", WATCHER, "StatusNotifierHostUnregistered", None)
+until(lambda: not notifier.available, "host unregistration without PropertiesChanged")
+host_ready = True
+host.emit_signal(None, "/StatusNotifierWatcher", WATCHER, "StatusNotifierHostRegistered", None)
+until(lambda: notifier.available, "host registration again")
 assert registrations == [(server.get_unique_name(), server.get_unique_name())]
 assert server.get_unique_name().startswith(":")
 assert prop("Status") == "Active"
@@ -178,8 +180,11 @@ assert prop("Status") == "Passive", "idle icon must hide when the Library opens"
 call(MENU_PATH, MENU, "Event", GLib.Variant("(isvu)", (5, "clicked", GLib.Variant("s", ""), 0)))
 assert actions[-1] == "quit"
 client.signal_unsubscribe(subscription)
+call(MENU_PATH, MENU, "GetLayout", GLib.Variant("(iias)", (0, -1, [])))
+assert notifier.served_revision == notifier.revision
 Gio.bus_unown_name(owned)
 until(lambda: notifier.proxy is None, "watcher disappearance")
+assert notifier.served_revision == -1, "a new watcher's host must fetch the layout again"
 notifier.close()
 assert not notifier.exports and not errors
 host.unregister_object(export)
