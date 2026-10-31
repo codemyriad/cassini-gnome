@@ -20,7 +20,7 @@ def real_fft():
         pytest.skip("Install GStreamer base for the recording/GUI gate")
 
 
-@pytest.mark.parametrize("phase", ["loader", "fft", "quantizer"])
+@pytest.mark.parametrize("phase", ["reset", "loader", "fft", "quantizer"])
 def test_frame_hide_and_remap_finish_while_the_producer_is_blocked(monkeypatch, phase):
     pytest.importorskip("gi")
     from test_spectro_views import Strip, Window
@@ -35,6 +35,7 @@ def test_frame_hide_and_remap_finish_while_the_producer_is_blocked(monkeypatch, 
     first_hub.bind(first_strip, "one", lambda callback: NativeFeed(recorder, callback, clock=lambda: 100))
     entered, release = threading.Event(), threading.Event()
     cls, method = {
+        "reset": (SpectroSource, "_reset_analysis"),
         "loader": (spectro_analysis.Track, "__init__"),
         "fft": (spectro_analysis.FFT, "powers"),
         "quantizer": (spectro_analysis.Quantizer, "column"),

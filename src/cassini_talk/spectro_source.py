@@ -92,7 +92,7 @@ class SpectroSource:
             finally:
                 self.queue_lock.release()
 
-    def _reset_analysis(self, now_ms, *, watching):
+    def _reset_analysis(self, now_ms, *, watching, epoch):
         # Producer only, under the DSP lock. Never destroy FFT/history on GTK.
         self.tracks = (
             {key: SourceTrack(None, side, 0, now_ms, chunk_ms=chunk) for key, (side, chunk) in self.known.items()}
@@ -104,7 +104,7 @@ class SpectroSource:
         self.quantizers = {side: Quantizer() for side in self.pending}
         self.released = {side: -1 for side in self.pending}
         self.next_selection_ms = now_ms
-        self._analysis_epoch = self._epoch
+        self._analysis_epoch = epoch
 
     def observe(self, *args, **kwargs):
         try:
@@ -189,12 +189,12 @@ class SpectroSource:
             self._update_subscriptions()
             if not self.active:
                 if self.tracks or any(self.pending.values()):
-                    self._reset_analysis(now_ms, watching=False)
+                    self._reset_analysis(now_ms, watching=False, epoch=self._epoch)
                 return
             if identifier in self.retired:
                 return
             if self._analysis_epoch != self._epoch:
-                self._reset_analysis(now_ms, watching=True)
+                self._reset_analysis(now_ms, watching=True, epoch=self._epoch)
             started, cpu_started = time.perf_counter_ns(), time.thread_time_ns()
             self.calls += 1
             self.now_ms = now_ms
