@@ -679,6 +679,11 @@ class BrowserService:
         for tab, state in tuple(states.items()):
             if tab not in received_pages and "pageState" in state:
                 states[tab] = {key: value for key, value in state.items() if key != "pageState"}
+        for tab, page in received_pages.items():
+            if page in ("navigating", "closed") and tab in browser.meetings:
+                # A fast returning status can precede its asynchronous inventory.
+                # The departing document's positive count cannot prove return.
+                browser.meetings[tab] = dict(browser.meetings[tab], sourceCount=0, heard=False)
         browser.status_pages = received_pages
         browser.states = states
         browser.page_states.update(received_pages)
@@ -1409,7 +1414,10 @@ class BrowserService:
                         capture.tab_closed = True
                     if reconnect is not None:
                         known_page = peer is not None and peer[2] is not None
-                        fresh = capture.browser_ready_since(reconnect.since)
+                        # A disconnect can be observed between two PCM buffers. Recent
+                        # pre-disconnect PCM is still fresh; requiring the next
+                        # buffer here prematurely invents a page-loss timer.
+                        fresh = capture.browser_ready_since()
                         if known_page and page == "present":
                             self._control_reconnects.pop(key, None)
                             if lifecycle.missing == reconnect.since:

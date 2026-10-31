@@ -306,7 +306,6 @@ def test_hangup_during_control_reconnect_stops_after_two_seconds_without_system(
     extension, client, capture = live(service, path)
     try:
         lose(service, extension)
-        packet(client, 1)
         service.policy()
         assert service._capture_lifecycles[capture.capture_id].missing is None
         extension = peer(path, ())
@@ -429,4 +428,33 @@ def test_ordinary_extension_stop_during_reload_fallback_finalizes_all_audio(serv
         assert capture.host.session.manifest["events"][-1]["reason"] == "user"
     finally:
         service.captures["extension-stop-fallback"].stop()
+        client.close()
+
+
+def test_fast_page_return_does_not_reuse_the_departed_documents_positive_inventory(server):  # noqa: F811
+    service, path, _ = server
+    extension, client, capture = live(service, path)
+    try:
+        state = dict(recording=True, tabId=3, captureId="retained", path=str(capture.directory))
+        send_packet(
+            extension.stream, dict(type="status", recording=True, sessions=[dict(state, pageState="navigating")])
+        )
+        wait_for(lambda: service._capture_lifecycles["retained"].missing is not None)
+        since = service._capture_lifecycles["retained"].missing
+        # Lifecycle status can arrive while the next asynchronous tab inventory
+        # is still pending. Its old positive count is not return evidence.
+        send_packet(extension.stream, dict(type="status", recording=True, sessions=[dict(state, pageState="present")]))
+        wait_for(lambda: next(iter(service.browsers.values())).status_pages.get(3) == "present")
+        service.policy()
+        assert service._capture_lifecycles["retained"].missing == since
+        inventory(extension, (3,), count=0)
+        service.policy()
+        assert service._capture_lifecycles["retained"].missing == since
+        assert service._capture_lifecycles["retained"].ended is None
+        inventory(extension, (3,), count=2)
+        service.policy()
+        assert service._capture_lifecycles["retained"].missing is None
+    finally:
+        capture.stop()
+        extension.close()
         client.close()

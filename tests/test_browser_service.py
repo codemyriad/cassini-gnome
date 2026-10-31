@@ -698,6 +698,7 @@ def test_lifecycle_uses_latest_explicit_page_fact_not_an_older_snapshot(tmp_path
             dict(type="status", recording=True, sessions=[dict(tabId=3, recording=True, pageState="navigating")]),
         )
         assert browser.meetings[3]["pageState"] == "present"  # Older inventory is still retained.
+        assert browser.meetings[3]["sourceCount"] == 0  # Departed-document audio is invalidated.
         assert browser.page_states[3] == "navigating"
         service.update(browser, dict(type="meetings", meetings=[dict(meeting(), pageState="present")]))
         assert browser.states[3]["pageState"] == "navigating"  # Older status must not take priority either.
