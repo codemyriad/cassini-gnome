@@ -197,11 +197,13 @@ def update_metadata(directory, *, before_commit=None, transient=False, transcrip
 
     directory = Path(directory)
     with mutation(directory):
-        if not directory.exists():
-            from .library_location import owned_directory
+        from .library_location import owned_directory
 
-            with contextlib.suppress(ValueError):
-                directory = owned_directory(directory)
+        # A paired Move can publish the destination while retaining the source.
+        # Resolve after mutation() acquired/revalidated the routed Library lock,
+        # even when the stale source directory still exists.
+        with contextlib.suppress(ValueError):
+            directory = owned_directory(directory)
         value = read_metadata(directory)
         if value.get("published") is True and root_for(directory) is not None and not transient:
             return commit_metadata(directory, value, changes, before_commit=before_commit, words=transcript_body)

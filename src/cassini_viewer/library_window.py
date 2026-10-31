@@ -9,7 +9,7 @@ from pathlib import Path
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
 from . import ux_formats as fmt
-from .capture_activity import BrowserActivity, recorder_activity
+from .capture_activity import BrowserActivity, application_activity
 from .folder_player import FolderPlayer
 from .library import meeting_id
 from .library_monitor import LibraryMonitor
@@ -572,16 +572,7 @@ class LibraryWindow(Adw.ApplicationWindow):
     def capture_changed(self):
         # Level messages arrive at 10 Hz. Update meters, scanning only on a
         # controller phase change; date grouping stays on the one-second tick.
-        activity = dict(self._activity_source.snapshot) if self._activity_source else dict(self._fixture_activity)
-        app = self.get_application()
-        activity.update(recorder_activity(app.get_windows() + [app]))
-        if recovery := getattr(app, "library_recovery", None):
-            activity.update(recovery.activity)
-        from .library import meeting_id
-
-        for state in app._browser_snapshot.get("statuses", []):
-            if (state.get("recording") or state.get("stopping")) and isinstance(state.get("path"), str):
-                activity[meeting_id(Path(state["path"]))] = "saving" if state.get("stopping") else "recording"
+        activity = application_activity(self.get_application(), self._activity_source, self._fixture_activity)
         if activity != self._activity:
             self._activity = activity
             self.monitor.refresh_now()
@@ -604,14 +595,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         refresh = self.get_application().build_refresh
         if refresh:
             refresh.capture_changed()
-        activity = dict(self._activity_source.snapshot) if self._activity_source else dict(self._fixture_activity)
-        app = self.get_application()
-        activity.update(recorder_activity(app.get_windows() + [app]))
-        from .library import meeting_id
-
-        for state in app._browser_snapshot.get("statuses", []):
-            if state.get("recording") and isinstance(state.get("path"), str):
-                activity[meeting_id(Path(state["path"]))] = "saving" if state.get("stopping") else "recording"
+        activity = application_activity(self.get_application(), self._activity_source, self._fixture_activity)
         if activity != self._activity:
             self._activity = activity
             self.monitor.refresh_now()
@@ -1272,8 +1256,6 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.set_title(self.meeting_page.meeting.title if self.meeting_page else text("app.name"))
 
     def open_file(self, file):
-        from pathlib import Path
-
         from .open_meeting import load_open_meeting
         from .received import import_received
 

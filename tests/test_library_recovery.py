@@ -201,6 +201,7 @@ def test_file_only_write_down_recreates_only_optional_working_cache(tmp_path, mo
         assert portable.load_words(portable.read_meeting(str(meeting.audio_file)), "words")[0].text == "From the file"
         assert (directory / "transcript.json").is_file()
         assert not (directory / "session.json").exists() and not list(directory.glob("*.wav"))
+        assert list(library_publication.recover_completed(tmp_path)) == [], "Published caches need no capture manifest"
     finally:
         queue.close()
 
@@ -294,4 +295,70 @@ def test_retry_requested_during_a_sweep_is_not_lost_when_the_older_attempt_fails
         assert LibraryScanner(tmp_path).scan().meetings[0].published_file
     finally:
         release.set()
+        recovery.close()
+
+
+@pytest.mark.parametrize(
+    "state,ended,frames,eligible",
+    [
+        ("interrupted", False, 4800, False),
+        ("interrupted", True, 4800, True),
+        ("completed", False, 4800, True),
+        ("completed", False, 0, False),
+        ("interrupted", True, 0, False),
+    ],
+)
+def test_scans_do_not_restart_sweeps_for_unstopped_or_empty_sessions(tmp_path, state, ended, frames, eligible):
+    from types import SimpleNamespace
+
+    from cassini_viewer.library import LibrarySnapshot, Meeting
+
+    directory = tmp_path / ".cassini/sessions/Recording-12345678-1234-1234-1234-123456789abc"
+    meeting = Meeting(
+        id=directory.name.removeprefix("Recording-"),
+        directory=directory,
+        title="Retained",
+        started_at_ms=None,
+        duration_ms=frames // 48,
+        capture_state=state,
+        capture_events=([dict(type="end", atMs=100, reason="user")] if ended else []),
+        tracks=(SimpleNamespace(frames=frames),),
+    )
+    recovery = object.__new__(LibraryRecovery)
+    recovery.cancelled = threading.Event()
+    recovery.future, recovery.timer, recovery.attempted = None, 0, set()
+    calls = []
+    recovery.start = lambda: calls.append(True)
+    for _ in range(3):
+        recovery.observe(LibrarySnapshot(meetings=(meeting,)))
+    assert len(calls) == (3 if eligible else 0)
+
+
+def test_retry_does_not_read_routing_or_resolve_paths_on_gtk(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from cassini_viewer import library_location
+
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "private-config"))
+    _sid, directory = simple_session(tmp_path, 0.1)
+    app = App()
+    recovery = LibraryRecovery(app)
+    try:
+        wait_recovery(lambda: recovery.future is None, "initial publication sweep")
+
+        def on_worker(operation):
+            def checked(*args, **kwargs):
+                assert threading.get_ident() != app.thread, "Retry performed Library IO on GTK"
+                return operation(*args, **kwargs)
+
+            return checked
+
+        for name in ("owned_directory", "roots"):
+            monkeypatch.setattr(library_location, name, on_worker(getattr(library_location, name)))
+        monkeypatch.setattr(Path, "resolve", on_worker(Path.resolve))
+        assert recovery.retry(directory)
+        wait_recovery(lambda: recovery.future is None and not recovery.timer, "worker-only publication retry")
+        assert not recovery.failures and app.holds == 0
+    finally:
         recovery.close()

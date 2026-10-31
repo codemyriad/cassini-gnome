@@ -616,3 +616,49 @@ def test_unnamed_merge_and_chained_undo_restore_writer_labels_across_languages(p
         assert embedded.manifest["x"][xschema.DOMAIN]["meeting"]["speakers"] == cache["speakers"]
     (meeting,) = LibraryScanner(root).scan().meetings
     assert [s.name for s in meeting.speakers] == list(labels.values())
+
+
+@pytest.mark.parametrize("operation", ["open", "share"])
+def test_external_open_keeps_stored_numbered_label_and_share_keeps_stored_quotes(published, tmp_path, operation):
+    from cassini_viewer import open_meeting, portable_writer
+    from cassini_viewer.library_v2 import edit
+
+    _root, _sid, _directory, path = published
+    original = portable.read_meeting(str(path))
+    manifest = original.manifest
+    manifest["speakers"] = [dict(id="voice", label="Speaker 19")]
+    body = dict(
+        format=portable.WORDS_FORMAT,
+        wordCount=2,
+        items=[
+            dict(speaker="voice", startMs=0, endMs=30, text='"intentional"'),
+            dict(speaker="voice", startMs=30, endMs=60, text='orphan"'),
+        ],
+    )
+    words_tags, reference = portable_writer.chunk_set("CASSINI_TX_WORDS_PAYLOAD_", body, portable_writer.WORDS_MIME)
+    manifest["transcripts"][0].update(wordCount=2, payloadRef=reference)
+    tags, _ = portable_writer.chunk_set(edit.MANIFEST_PREFIX, manifest, portable_writer.MANIFEST_MIME)
+    with path.open("rb") as stream:
+        vendor, fields = edit.comment_fields(stream)
+    fields = edit.edited_fields(
+        fields,
+        dict(tags, **words_tags, CASSINI_SPEAKER_COUNT="1"),
+        chunk_prefixes=(edit.MANIFEST_PREFIX, "CASSINI_TX_WORDS_PAYLOAD_"),
+    )
+    changed = tmp_path / "stored.opus"
+    edit.rewrite(path, changed, fields, vendor)
+    meeting = open_meeting.load_open_meeting(changed)
+    if operation == "open":
+        assert [speaker.name for speaker in meeting.speakers] == ["Speaker 19"]
+        return
+    assert all(word.text_is_stored for word in meeting.words)
+    tags, _manifest = portable_writer.descriptors(
+        meeting, dict(channels=1, sampleCount=4800, durationMs=100, sha256="0" * 64)
+    )
+    # Decode the actual descriptor payload, as another app will read it.
+    head, comments, vendor = portable.parse_header(changed.read_bytes())
+    rewritten = portable.interpret(head, list(tags.items()), vendor)
+    assert [word.text for word in portable.load_words(rewritten, rewritten.default_transcript_id)] == [
+        '"intentional"',
+        'orphan"',
+    ]

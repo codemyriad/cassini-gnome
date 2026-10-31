@@ -311,3 +311,56 @@ def test_cross_filesystem_copy_verifies_bytes_and_same_filesystem_links_closed_a
     assert location.process()["pending"] == []
     assert (new / result.name).read_bytes() == original_bytes
     monkeypatch.setattr(library_move_pair.os, "link", original_link)
+
+
+@pytest.mark.parametrize("transient", [False, True])
+def test_old_path_editor_queued_across_published_move_crash_uses_destination(tmp_path, monkeypatch, transient):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from cassini_viewer import library_move_pair
+    from cassini_viewer.library_v2 import journal
+    from cassini_viewer.meeting_store import read_metadata, update_metadata
+
+    class Interrupted(BaseException):
+        pass
+
+    old, new, sid, directory = setup(tmp_path, monkeypatch)
+    finalize.finalize(old, sid)
+    location.request(new)
+    waiting = threading.Event()
+    original = journal.LibraryLock.__enter__
+    editor_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="queued-editor")
+    edit = None
+
+    def enter(lock):
+        if threading.current_thread().name.startswith("queued-editor"):
+            waiting.set()
+        return original(lock)
+
+    def checkpoint(point):
+        nonlocal edit
+        if point == "file-published":
+            edit = editor_pool.submit(
+                update_metadata, directory, transient=transient, title="Edit routed after crash", titleSource="user"
+            )
+            assert waiting.wait(5), "Editor did not queue behind the mover's Library lock"
+        if point == "published":
+            raise Interrupted()
+
+    monkeypatch.setattr(journal.LibraryLock, "__enter__", enter)
+    monkeypatch.setattr(library_move_pair, "CHECKPOINT", checkpoint)
+    try:
+        with pytest.raises(Interrupted):
+            location.process()
+        assert directory.exists(), "Crash must retain the stale source folder"
+        source_before = (directory / "meeting.json").read_bytes()
+        assert edit.result(timeout=5)["title"] == "Edit routed after crash"
+        target = new / ".cassini/sessions" / directory.name
+        assert read_metadata(target)["title"] == "Edit routed after crash"
+        assert (directory / "meeting.json").read_bytes() == source_before
+        if not transient:
+            (meeting,) = LibraryCollectionScanner().scan().meetings
+            assert meeting.title == "Edit routed after crash" and meeting.audio_file.parent == new
+    finally:
+        editor_pool.shutdown(wait=True)

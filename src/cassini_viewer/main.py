@@ -1067,6 +1067,7 @@ class CassiniApplication(Adw.Application):
                 (
                     previous is None
                     or meeting.key not in previous
+                    or previous[meeting.key][0] in ("recording", "saving")
                     or len(previous[meeting.key]) > 2
                     and not previous[meeting.key][2]
                     and meeting.published_file is not None

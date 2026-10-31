@@ -118,6 +118,10 @@ def recover_completed(
         began = False
         try:
             try:
+                with meeting_store.LOCK:
+                    metadata = meeting_store.read_metadata(directory)
+                if metadata.get("published") is True:
+                    continue  # File-only Write Down may recreate a cache without session.json.
                 session = finalize.read_session(directory)
                 from .session_events import read_events
 
@@ -127,10 +131,6 @@ def recover_completed(
                     session.get("state") == "interrupted" and explicitly_stopped
                 )
                 if session.get("id") != identifier or not stopped:
-                    continue
-                with meeting_store.LOCK:
-                    metadata = meeting_store.read_metadata(directory)
-                if metadata.get("published") is True:
                     continue
                 check_cancel(cancel)
                 started(directory)

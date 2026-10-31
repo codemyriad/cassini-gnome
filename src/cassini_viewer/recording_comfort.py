@@ -4,12 +4,13 @@
 import logging
 import time
 from concurrent.futures import CancelledError, ThreadPoolExecutor
+from dataclasses import replace
 from gettext import gettext as _
 
 from gi.repository import Gio, GLib, Gtk
 
 from . import ux_formats as fmt
-from .capture_guard import capture_targets, native_recorders, recorder_busy
+from .capture_guard import browser_capture_busy, capture_targets, native_recorders, recorder_busy
 from .recording_details import SilenceClock, edit_recording, live_meeting, live_observation
 from .session_events import meeting_sources, source_state
 from .strings import text
@@ -114,7 +115,7 @@ class RecordingComfort:
                 )
         for snapshot in snapshots:
             for status in snapshot.get("statuses", []):
-                if not status.get("recording") or not isinstance(status.get("path"), str):
+                if not browser_capture_busy(status) or not isinstance(status.get("path"), str):
                     continue
                 try:
                     directory = owned_directory(Path(status["path"]))
@@ -122,7 +123,11 @@ class RecordingComfort:
                     continue
                 load(directory, "saving" if status.get("stopping") else "recording")
         self.known = {
-            key: meeting
+            key: (
+                meeting
+                if meeting.lifecycle == controllers[meeting.id]
+                else replace(meeting, lifecycle=controllers[meeting.id])
+            )
             for key, meeting in self.known.items()
             if meeting.id in controllers
             and (meeting.capture_source != "gnome" or meeting.directory in native_directories)

@@ -8,6 +8,7 @@ from pathlib import Path
 from gi.repository import GLib
 
 from .browser_service import read_packet, send_packet, service_path
+from .capture_guard import browser_capture_busy
 from .library import meeting_id
 
 
@@ -21,11 +22,7 @@ def read_browser_activity(path=None, with_connection=False, with_paths=False):
                 value = read_packet(stream)
         result, paths = {}, {}
         for status in (value or {}).get("statuses", []):
-            if (
-                isinstance(status, dict)
-                and (status.get("recording") is True or status.get("stopping") is True)
-                and isinstance(status.get("path"), str)
-            ):
+            if isinstance(status, dict) and browser_capture_busy(status) and isinstance(status.get("path"), str):
                 directory = Path(status["path"])
                 identifier = meeting_id(directory) if directory.name.startswith("Recording-") else None
                 if identifier:
@@ -58,6 +55,20 @@ def recorder_activity(windows):
         if identifier:
             result[identifier] = "saving" if recorder.stopping else "recording"
     return result
+
+
+def application_activity(app, browser=None, fallback=()):
+    """One controller projection for both immediate and periodic Library refresh."""
+    activity = dict(browser.snapshot) if browser is not None else dict(fallback)
+    activity.update(recorder_activity(app.get_windows() + [app]))
+    if recovery := getattr(app, "library_recovery", None):
+        activity.update(recovery.activity)
+    for state in getattr(app, "_browser_snapshot", {}).get("statuses", []):
+        if browser_capture_busy(state) and isinstance(state.get("path"), str):
+            identifier = meeting_id(Path(state["path"]))
+            if identifier:
+                activity[identifier] = "saving" if state.get("stopping") else "recording"
+    return activity
 
 
 class BrowserActivity:

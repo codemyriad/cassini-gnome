@@ -255,3 +255,71 @@ def test_native_finished_resumes_the_queue_intent_saved_by_a_background_close(ap
         assert meeting_store.read_metadata(session.directory)["transcript"]["status"] == "done"
     finally:
         queue.close()
+
+
+@pytest.mark.parametrize("status", ["queued", "running"])
+@pytest.mark.parametrize("phase", ["recording", "saving"])
+def test_published_queued_work_starts_when_saving_clears_even_if_file_was_seen(application_class, status, phase):
+    from pathlib import Path
+
+    from cassini_viewer.library import Meeting
+
+    directory = Path("/Library/.cassini/sessions/Recording-12345678-1234-1234-1234-123456789abc")
+    row = Meeting(
+        id=directory.name.removeprefix("Recording-"),
+        directory=directory,
+        title="Deferred work",
+        started_at_ms=None,
+        duration_ms=100,
+        transcript=status,
+        published_file=Path("/Library/meeting.opus"),
+    )
+    calls = []
+    app = SimpleNamespace(
+        voice_backfill=None,
+        _voice_library_keys=frozenset([directory.name]),
+        settings_dialog=None,
+        transcription_enabled=True,
+        write_down=lambda row, **kwargs: calls.append((row, kwargs)),
+    )
+    application_class.observe_library(app, LibrarySnapshot(meetings=(row,)), {row.key: (phase, "completed", True)})
+    assert calls == [(row, dict(resume=True))]
+    calls.clear()
+    application_class.observe_library(app, LibrarySnapshot(meetings=(row,)), {row.key: ("saved", "completed", True)})
+    assert not calls, "Stable saved scans must not repeatedly enqueue the same work"
+
+
+def test_both_library_refresh_paths_keep_recovery_and_stopping_activity(application_class):
+    from cassini_viewer.library_window import LibraryWindow
+
+    ids = [f"12345678-1234-1234-1234-123456789ab{n}" for n in range(3)]
+    app = SimpleNamespace(
+        build_refresh=None,
+        get_windows=lambda: [],
+        native_captures={},
+        library_recovery=SimpleNamespace(activity={ids[1]: "saving"}),
+        _browser_snapshot=dict(
+            statuses=[dict(recording=False, stopping=True, path=f"/Library/.cassini/sessions/Recording-{ids[2]}")]
+        ),
+    )
+    scans = []
+    window = SimpleNamespace(
+        _activity_source=SimpleNamespace(snapshot={ids[0]: "saving"}, connected=True),
+        get_application=lambda: app,
+        _fixture_activity={},
+        _activity={},
+        monitor=SimpleNamespace(refresh_now=lambda: scans.append(True)),
+        _update_live=lambda: None,
+        meeting_page=None,
+        snapshot=None,
+    )
+    expected = dict.fromkeys(ids, "saving")
+    for refresh in (
+        LibraryWindow.capture_changed,
+        LibraryWindow._activity_tick,
+        LibraryWindow.capture_changed,
+        LibraryWindow._activity_tick,
+    ):
+        refresh(window)
+        assert window._activity == expected
+    assert len(scans) == 1, "Unchanged activity must not churn Library scans"

@@ -18,6 +18,11 @@ def recorder_busy(recorder):
     )
 
 
+def browser_capture_busy(status):
+    """PCM Stop still owns capture audio until publication/retirement finishes."""
+    return bool(status.get("recording") or status.get("stopping"))
+
+
 def native_recorders(target):
     registry = getattr(target, "native_captures", None)
     if registry is not None:
@@ -36,13 +41,13 @@ def capture_targets(app):
         if recorder_busy(recorder)
     )
     browser = bool(getattr(app, "_record_start_future", None)) or any(
-        (s.get("recording") or s.get("stopping")) for s in getattr(app, "_browser_snapshot", {}).get("statuses", [])
+        browser_capture_busy(s) for s in getattr(app, "_browser_snapshot", {}).get("statuses", [])
     )
     browser = browser or any(
         getattr(w, "_activity_source", None) and w._activity_source.snapshot for w in app.get_windows()
     )
     browser = browser or any(
-        any(s.get("recording") for s in getattr(w, "_browser_snapshot", {}).get("statuses", []))
+        any(browser_capture_busy(s) for s in getattr(w, "_browser_snapshot", {}).get("statuses", []))
         for w in app.get_windows()
     )
     return native, bool(browser)
@@ -149,7 +154,7 @@ def remember_capture_paths(app):
         if session:
             paths.add(str(session.directory))
     for status in getattr(app, "_browser_snapshot", {}).get("statuses", ()):
-        if status.get("recording") and isinstance(status.get("path"), str):
+        if browser_capture_busy(status) and isinstance(status.get("path"), str):
             paths.add(status["path"])
     for window in app.get_windows():
         activity = getattr(window, "_activity_source", None)
@@ -158,7 +163,7 @@ def remember_capture_paths(app):
             if meeting.lifecycle in ("recording", "saving"):
                 paths.add(str(meeting.directory))
         for status in getattr(window, "_browser_snapshot", {}).get("statuses", ()):
-            if status.get("recording") and isinstance(status.get("path"), str):
+            if browser_capture_busy(status) and isinstance(status.get("path"), str):
                 paths.add(status["path"])
     trash = getattr(app, "meeting_trash", None)
     if trash is not None:

@@ -67,7 +67,7 @@ def load_open_meeting(path, root=None):
         has_audio=duration is not None,
         words=words,
         turns=reading_turns(sorted(words, key=lambda w: w.start_ms)),
-        speakers=_speakers(words, [], embedded),
+        speakers=_speakers(words, [], embedded, stored_labels=True),
         metadata_editable=False,
         notes=embedded_notes(embedded),
         extensions=embedded.manifest.get("x", {})

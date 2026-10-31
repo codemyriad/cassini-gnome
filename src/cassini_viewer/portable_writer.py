@@ -91,7 +91,9 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
         if meeting.transcript == "done"
         else []
     )
-    body = dict(format=portable.WORDS_FORMAT, wordCount=len(items), items=normalize_quote_items(items))
+    if not all(getattr(word, "text_is_stored", False) for word in meeting.words):
+        items = normalize_quote_items(items)
+    body = dict(format=portable.WORDS_FORMAT, wordCount=len(items), items=items)
     words_tags, reference = chunk_set("CASSINI_TX_WORDS_PAYLOAD_", body, WORDS_MIME)
     shape = dict(
         sampleRate=48000,

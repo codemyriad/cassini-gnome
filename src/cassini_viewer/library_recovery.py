@@ -64,7 +64,14 @@ class LibraryRecovery:
             return
         if any(
             meeting.lifecycle == "saved"
-            and meeting.capture_state in ("completed", "interrupted")
+            and (
+                meeting.capture_state == "completed"
+                or (
+                    meeting.capture_state == "interrupted"
+                    and bool(meeting.capture_events and meeting.capture_events[-1].get("type") == "end")
+                )
+            )
+            and any(track.frames > 0 for track in meeting.tracks)
             and meeting.published_file is None
             and not meeting.published_missing
             and session_root_path(meeting.directory) is not None
@@ -93,19 +100,17 @@ class LibraryRecovery:
         """GTK action: retry this retained session, including during an active sweep."""
         from pathlib import Path
 
-        from .library_publication import root_for
         from .library_v2 import journal
+        from .publication_state import session_root_path
 
         if self.cancelled.is_set():
             return False
-        directory = library_location.owned_directory(Path(directory).absolute())
+        directory = Path(directory).absolute()
         identity = journal.identity_of(directory)
-        if (
-            identity is None
-            or identity[0] != "Recording"
-            or root_for(directory) not in {Path(root).resolve() for root in library_location.roots()}
-        ):
+        if identity is None or identity[0] != "Recording" or session_root_path(directory) is None:
             raise ValueError("Publication retry is outside the configured Library")
+        # This is only lexical validation. _sweep reads the configured roots and
+        # recover_completed validates paths/symlinks on the worker before writes.
         with self.lock:
             self.attempted.discard(directory)
             self.failures.pop(directory, None)
