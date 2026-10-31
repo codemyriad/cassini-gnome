@@ -208,7 +208,6 @@ python3 sherpa/fetch.py --cache .sherpa-cache --verify %{buildroot}%{_libdir}/ca
 %license %{_datadir}/licenses/%{name}/sherpa
 %doc README.md NEWS
 %{_bindir}/%{name}
-%{_bindir}/cassini-talk
 %{_bindir}/cassini-browser-host
 %{_bindir}/cassini-browser-control-host
 %{_datadir}/cassini-talk/*
@@ -222,11 +221,10 @@ python3 sherpa/fetch.py --cache .sherpa-cache --verify %{buildroot}%{_libdir}/ca
 %dir %{_datadir}/dbus-1/services
 %{_datadir}/dbus-1/services/io.codemyriad.CassiniTalk.service
 %{_mandir}/man1/cassini-talk.1*
-%{_mandir}/man1/cassini-talk.1*
 
 %changelog
 * Fri Oct 30 2026 Silvio Tomatis <silviot@gmail.com> - 0.3.0-2
-- Rename to Cassini talk; replace cassini-talk and preserve user settings.
+- Use the clean Cassini talk identity without development-build migration.
 
 * Thu Oct 29 2026 Silvio Tomatis <silviot@gmail.com> - 0.3.0-1
 - Add the meeting Library, independent browser capture and Flatpak companion.

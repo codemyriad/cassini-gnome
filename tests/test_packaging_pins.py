@@ -185,3 +185,11 @@ def test_rpm_filters_only_its_exact_private_native_ort_dependency():
         assert re.fullmatch(pattern, dependency)
     for dependency in ("libonnxruntime.so(VERS_1.31.0)(64bit)", "libstdc++.so.6()(64bit)", "libc.so.6()(64bit)"):
         assert not re.fullmatch(pattern, dependency)
+
+
+def test_rpm_payload_does_not_list_the_same_path_twice_after_macro_expansion():
+    spec = (ROOT / "build-aux/rpm/cassini-talk.spec").read_text()
+    name = next(line.split(":", 1)[1].strip() for line in spec.splitlines() if line.startswith("Name:"))
+    payload = spec.split("%files", 1)[1].split("%changelog", 1)[0]
+    paths = [line.strip().replace("%{name}", name) for line in payload.splitlines() if line.startswith("%{_")]
+    assert len(paths) == len(set(paths)), "RPM aliases must not duplicate canonical payload paths"
