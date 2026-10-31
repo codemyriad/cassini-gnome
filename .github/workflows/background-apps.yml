@@ -28,7 +28,7 @@ jobs:
           run-id: ${{ inputs.package_run || github.run_id }}
       - uses: actions/download-artifact@v5
         with:
-          name: cassini-viewer-devel-x86_64.flatpak
+          name: cassini-talk-devel-x86_64.flatpak
           path: _desktop-packages/flatpak
           github-token: ${{ github.token }}
           run-id: ${{ inputs.package_run || github.run_id }}
@@ -39,7 +39,7 @@ jobs:
       - name: Background Apps, app-grid reopen, and stop-and-keep on quit
         run: |
           CASSINI_DESKTOP_FLATPAK_CACHE="$PWD/.desktop-flatpak-cache" \
-            tests/desktop/run.sh _desktop-packages/deb/*.deb _desktop-packages/flatpak/*.flatpak desktop-evidence
+            tests/desktop/run.sh _desktop-packages/deb/cassini-talk_*.deb _desktop-packages/flatpak/*.flatpak desktop-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:

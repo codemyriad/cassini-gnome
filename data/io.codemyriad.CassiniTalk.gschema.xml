@@ -18,6 +18,7 @@
       <summary>Desktop recording shortcut description</summary>
     </key>
     <key name="browser-ever-connected" type="b">
+    <key name="background-notification-shown" type="b"><default>false</default><summary>Windowless automatic recording notification shown</summary></key>
       <default>false</default>
       <summary>Browser companion has connected before</summary>
     </key>

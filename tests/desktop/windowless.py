@@ -608,11 +608,18 @@ def main():
     )
     results = {"shell": version, "packages": versions, "cases": []}
     root = HOME / "Music/Cassini"
-    for appid in ("com.gocassini.Viewer", "com.gocassini.Viewer.Devel"):
+    for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
         flatpak = appid.endswith(".Devel")
         prefix = ["flatpak", "run", "--user", "--command=gsettings", appid] if flatpak else []
         subprocess.run(
-            [*prefix, *([] if flatpak else ["gsettings"]), "set", "com.gocassini.Viewer", "skip-record-first", "true"],
+            [
+                *prefix,
+                *([] if flatpak else ["gsettings"]),
+                "set",
+                "io.codemyriad.CassiniTalk",
+                "skip-record-first",
+                "true",
+            ],
             check=True,
         )
         # Explicit pre-consent isolates the Background Apps journey from the desktop

@@ -161,6 +161,41 @@ def tail_rms(manifest, kind, frames):
     return round(math.sqrt(sum(v * v for v in samples) / max(1, count)), 1)
 
 
+def still_recording(manifest, appid):
+    """Real capture evidence before Stop: the session is live and its audio advances."""
+    start = track_frames(manifest, "system")
+    try:
+        until(
+            lambda: (
+                json.loads(manifest.read_text()).get("state") == "recording"
+                and track_frames(manifest, "system") >= start + 24000
+                and (indicator(appid) or {}).get("title", "").startswith("Recording,")
+            ),
+            "recording continues after the muted lesson",
+        )
+    except AssertionError:
+        value = json.loads(manifest.read_text())
+        print(
+            "RECORDING ENDED",
+            dict(
+                state=value.get("state"),
+                tracks=[(t["kind"], t["frames"], t.get("ended")) for t in value["tracks"]],
+                events=value.get("events", [])[-8:],
+                end={k: v for k, v in value.items() if "end" in k.lower() or "problem" in k.lower()},
+                inputs=capture_inputs(),
+                indicator=indicator(appid),
+                meeting=(
+                    json.loads((manifest.parent / "meeting.json").read_text())
+                    if (manifest.parent / "meeting.json").exists()
+                    else None
+                ),
+            ),
+            flush=True,
+        )
+        screenshot("recording-ended.png")
+        raise
+
+
 def track_frames(manifest, kind):
     value = json.loads(manifest.read_text())
     return ([t["frames"] for t in value["tracks"] if t["kind"] == kind] or [0])[-1]
@@ -261,11 +296,11 @@ until(
 until(lambda: capture_inputs() == [] and not privacy_indicator()["visible"], "clean privacy baseline")
 results = dict(shell=version, baseline=privacy_indicator(), cases=[])
 root = HOME / "Music/Cassini"
-for appid in ("com.gocassini.Viewer", "com.gocassini.Viewer.Devel"):
+for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
     flatpak = appid.endswith(".Devel")
     command = ["flatpak", "run", "--user", "--command=gsettings", appid] if flatpak else ["gsettings"]
-    subprocess.run([*command, "set", "com.gocassini.Viewer", "skip-record-first", "true"], check=True)
-    subprocess.run([*command, "set", "com.gocassini.Viewer", "background-notification-shown", "false"], check=True)
+    subprocess.run([*command, "set", "io.codemyriad.CassiniTalk", "skip-record-first", "true"], check=True)
+    subprocess.run([*command, "set", "io.codemyriad.CassiniTalk", "background-notification-shown", "false"], check=True)
     if flatpak:
         subprocess.run(["flatpak", "permission-set", "background", "background", appid, "yes"], check=True)
     launch(appid)
@@ -332,6 +367,7 @@ for appid in ("com.gocassini.Viewer", "com.gocassini.Viewer.Devel"):
         privacy.append(dict(path="mic" if me else "system", inputs=capture_inputs(), indicator=measured))
         screenshot("privacy-" + ("mic" if me else "system") + "-" + appid + ".png")
     privacy.append(muted_lesson(manifest, appid))
+    still_recording(manifest, appid)
     menu_click(appid, "Stop Recording")
     until(lambda manifest=manifest: kept(manifest), "SNI Stop keeps WAVs")
     assert owner(appid)

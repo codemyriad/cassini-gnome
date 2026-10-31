@@ -119,13 +119,13 @@ services.background_error = False
 
 # Native registration uses the actual desktop ID and the same dedicated
 # connection as its Background request, before that request is dispatched.
-registered = BackgroundRecording("com.gocassini.Viewer", native=True)
+registered = BackgroundRecording("io.codemyriad.CassiniTalk", native=True)
 registered.request(answers.append)
 until(lambda: registered.granted)
 registration = next(c for c in services.calls if c["method"] == "Register")
 host_calls = [c for c in services.calls if c.get("sender") == registration["sender"]]
 assert [c["method"] for c in host_calls] == ["Register", "RequestBackground"]
-assert registration["values"] == ("com.gocassini.Viewer", {})
+assert registration["values"] == ("io.codemyriad.CassiniTalk", {})
 assert registration["sender"] != services.bus.get_unique_name()
 registered.close()
 

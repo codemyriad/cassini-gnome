@@ -40,7 +40,7 @@ def connection():
 server, client, host = connection(), connection(), connection()
 errors, actions, registrations = [], [], []
 app = SimpleNamespace(
-    get_application_id=lambda: "com.gocassini.Viewer",
+    get_application_id=lambda: "io.codemyriad.CassiniTalk",
     activate=lambda: actions.append("open"),
     activate_action=lambda name, _: actions.append(name),
 )
@@ -130,7 +130,7 @@ until(lambda: notifier.registered, "real asynchronous watcher registration")
 assert registrations == [(server.get_unique_name(), server.get_unique_name())]
 assert server.get_unique_name().startswith(":")
 assert prop("Status") == "Active"
-assert prop("IconName") == "com.gocassini.Viewer-symbolic"
+assert prop("IconName") == "io.codemyriad.CassiniTalk-symbolic"
 revision, layout = call(MENU_PATH, MENU, "GetLayout", GLib.Variant("(iias)", (0, -1, [])))
 assert [r[1].get("label") for r in layout[2] if r[1].get("visible")] == [
     "Ready to record browser meetings",
