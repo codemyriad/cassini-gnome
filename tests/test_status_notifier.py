@@ -50,7 +50,7 @@ def test_actions_do_not_stop_an_idle_app_or_activate_status_and_separator():
     assert not calls and not notifier._event(99, "clicked")
     notifier._event(2, "clicked")
     notifier._event(5, "clicked")
-    assert calls == ["open", "quit"]
+    assert calls == ["open", "stop-and-quit"]
     notifier.rows = menu_rows("Recording, 00:01", True)
     notifier._event(3, "clicked")
     assert calls[-1] == "stop-recording"

@@ -127,6 +127,7 @@ class CassiniApplication(Adw.Application):
         self._add_action("shortcuts", self.on_shortcuts, ["<primary>question"])
         self._add_action("preferences", self.on_preferences, ["<primary>comma"])
         self._add_action("quit", self.on_quit, ["<primary>q"])
+        self._add_action("stop-and-quit", self.on_stop_and_quit)
         self._add_action("restart", self.on_restart)
         self._add_action("record", self.on_record, ["<primary>r"])
         self._add_action("stop-recording", self.on_stop_recording)
@@ -376,13 +377,20 @@ class CassiniApplication(Adw.Application):
         for i in range(files.get_n_items()):
             self.open_in_new_window(files.get_item(i))
 
-    def confirm_capture_close(self, window, *, quitting=False):
+    def confirm_capture_close(self, window, *, quitting=False, force_stop=False):
         from .capture_guard import confirm_capture_close
 
-        return confirm_capture_close(self, window, quitting=quitting)
+        return confirm_capture_close(self, window, quitting=quitting, force_stop=force_stop)
 
     def on_quit(self, *_args):
         if self.confirm_capture_close(self.get_active_window(), quitting=True):
+            return
+        self.finish_quit()
+
+    def on_stop_and_quit(self, *_args):
+        # The top-bar menu's Quit: the window may be open but hidden behind
+        # the meeting, so never ask there. Stop, keep the audio, and exit.
+        if self.confirm_capture_close(self.get_active_window(), quitting=True, force_stop=True):
             return
         self.finish_quit()
 

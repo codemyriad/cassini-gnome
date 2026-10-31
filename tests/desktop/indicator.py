@@ -416,8 +416,27 @@ for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
         screenshot("indicator-quit-failed.png")
         raise
     until(lambda second=second: kept(second), "SNI Quit keeps WAVs")
+    # The top-bar Quit while the Library is open, perhaps behind the meeting:
+    # it stops and keeps, with no prompt waiting in that window.
+    launch(appid)
+    action(appid, "record")
+    third = until(lambda: recording(root), "recording with the Library open")
+    assert third not in (manifest, second) and windows(appid)
+    until(lambda appid=appid: (indicator(appid) or {}).get("visible"), "recording SNI with the Library open")
+    menu_click(appid, "Quit Cassini")
+    until(lambda appid=appid: not owner(appid), "SNI Quit with the Library open stops and exits")
+    until(lambda third=third: kept(third), "SNI Quit with the Library open keeps WAVs")
     results["cases"].append(
-        dict(app=appid, idle=idle, live=live, privacy=privacy, opened=True, stopped=True, quitKept=True)
+        dict(
+            app=appid,
+            idle=idle,
+            live=live,
+            privacy=privacy,
+            opened=True,
+            stopped=True,
+            quitKept=True,
+            openQuitKept=True,
+        )
     )
     (OUT / "status-notifier-desktop.json").write_text(json.dumps(results, indent=2) + "\n")
 print(json.dumps(results, indent=2))

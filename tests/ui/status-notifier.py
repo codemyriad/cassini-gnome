@@ -179,7 +179,7 @@ assert changes == ["ItemsPropertiesUpdated"], "timer changes must preserve menu 
 notifier.update(recording=False, windowless=False, automatic=True)
 assert prop("Status") == "Passive", "idle icon must hide when the Library opens"
 call(MENU_PATH, MENU, "Event", GLib.Variant("(isvu)", (5, "clicked", GLib.Variant("s", ""), 0)))
-assert actions[-1] == "quit"
+assert actions[-1] == "stop-and-quit"
 client.signal_unsubscribe(subscription)
 call(MENU_PATH, MENU, "GetLayout", GLib.Variant("(iias)", (0, -1, [])))
 assert notifier.served_revision == notifier.revision

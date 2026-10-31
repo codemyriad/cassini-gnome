@@ -38,6 +38,8 @@ if len(sys.argv) == 1:
         "stop-interrupted",
         "stop-finishing",
         "stop-error",
+        "indicator-quit-visible",
+        "indicator-quit-dialog",
     ):
         subprocess.run([sys.executable, __file__, mode], check=True, timeout=12)
     print("PASS real process exits: resumable busy writing, close, finalized stop/save and canceled start")
@@ -377,6 +379,16 @@ with tempfile.TemporaryDirectory() as tmp:
             and app.recorder.session
             and all(t["frames"] >= 9600 for t in app.recorder.session.manifest["tracks"])
         ):
+            if mode in ("indicator-quit-visible", "indicator-quit-dialog"):
+                # The top-bar Quit while the Library is open (perhaps behind
+                # the meeting), and while its own close dialog is unanswered.
+                assert window.get_visible()
+                if mode == "indicator-quit-dialog":
+                    window.close()
+                    assert app._capture_confirmation is not None and app.recorder.pipeline is not None
+                closing_at = time.monotonic()
+                app.activate_action("stop-and-quit", None)
+                return False
             if mode == "stop-interrupted":
                 original_begin = app.recorder._begin_finish
                 app.recorder._begin_finish = lambda problem=None: original_begin("Synthetic interrupted finalization")
@@ -439,7 +451,15 @@ with tempfile.TemporaryDirectory() as tmp:
         while queue_before_exit.client is not None and time.monotonic() < deadline:
             time.sleep(0.005)
         assert queue_before_exit.client is None, "Queue teardown did not finish"
-    elif mode in ("stop-save", "stop-after-finish", "stop-finishing", "stop-interrupted", "stop-secondary-close"):
+    elif mode in (
+        "stop-save",
+        "stop-after-finish",
+        "stop-finishing",
+        "stop-interrupted",
+        "stop-secondary-close",
+        "indicator-quit-visible",
+        "indicator-quit-dialog",
+    ):
         recorder = app.test_primary_recorder if mode == "stop-finishing" else app.recorder
         assert recorder.pipeline is None and not app.native_captures
         assert recorder.session.manifest["state"] == ("interrupted" if mode == "stop-interrupted" else "completed"), (

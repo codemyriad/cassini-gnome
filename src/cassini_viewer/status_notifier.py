@@ -350,7 +350,7 @@ class StatusNotifier:
         if event == "clicked" and row.get("enabled") and row.get("visible"):
             if identifier == 2:
                 self._open()
-            action = {3: "stop-recording", 5: "quit"}.get(identifier)
+            action = {3: "stop-recording", 5: "stop-and-quit"}.get(identifier)
             if action:
                 self.app.activate_action(action, None)
         return True
