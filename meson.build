@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-project('cassini-talk',
+project('cassini-talk', 'c',
           version: '0.3.0',
     meson_version: '>= 1.0.0',
   default_options: [ 'warning_level=2', 'werror=false', ],

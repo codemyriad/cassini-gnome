@@ -44,6 +44,10 @@ if any(not path.is_file() for path in required) or any(path.exists() or path.is_
 print("clean Cassini talk command, Python package, resource and schema verified")
 
 sys.path.insert(0, str(args.datadir))
+from cassini_talk.spectro_native import helper
+assert helper() is not None, "Recording indicator native helper missing"
+print("recording indicator C helper ABI verified")
+
 from cassini_talk import runtime  # noqa: E402
 
 runtime.check()  # exits with a readable message if a library is missing or too old

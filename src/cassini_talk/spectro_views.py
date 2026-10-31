@@ -121,7 +121,7 @@ class WindowSpectrograms:
         self.closed = False
         self.dark = self.reduced_motion = False
         self.last_pill = None
-        self.frames = self.tick_ns = 0
+        self.frames = self.tick_ns = self.tick_cpu_ns = 0
         self.handlers = [window.connect(signal, self._changed) for signal in ("map", "unmap", "notify::suspended")]
 
     def bind(self, widget, key, factory, *, events=(), silent=False, active=True, stopping=False):
@@ -221,7 +221,7 @@ class WindowSpectrograms:
             self._stop_tick()
 
     def _tick(self, _window, frame_clock):
-        started = time.perf_counter_ns()
+        started, cpu_started = time.perf_counter_ns(), time.thread_time_ns()
         self.in_tick = True
         try:
             if not self.tick_id:
@@ -258,6 +258,7 @@ class WindowSpectrograms:
         finally:
             self.in_tick = False
             self.tick_ns += time.perf_counter_ns() - started
+            self.tick_cpu_ns += time.thread_time_ns() - cpu_started
 
     def close(self):
         if self.closed:

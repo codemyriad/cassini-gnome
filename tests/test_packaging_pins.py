@@ -135,7 +135,7 @@ def test_debian_package_is_amd64_and_keeps_the_bundle_unstripped():
     assert re.search(r"^\s+\$\{cassini:Python\},$", control, re.M) and "-Vcassini:Python=" in rules
     assert "-Dwhistle=enabled" in rules
     for helper in ("dh_strip", "dh_dwz", "dh_strip_nondeterminism"):
-        assert f"\t{helper} -Xwhistle/ -Xcassini-talk/python/ -Xcassini-talk/sherpa/\n" in rules
+        assert f"\t{helper} -Xwhistle/ -Xcassini-talk/python/ -Xcassini-talk/sherpa/ -Xlibcassini-spectro.so\n" in rules
     assert "verify.py --onnxruntime $(ORT_DIR)" in rules
 
 

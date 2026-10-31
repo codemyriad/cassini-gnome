@@ -42,4 +42,6 @@ def source_digest():
         digest.update(path.read_bytes())
     resource = Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource"
     digest.update(resource.read_bytes())
+    digest.update((root / "src/native/spectro.c").read_bytes())
+    digest.update((Path(os.environ["CASSINI_TEST_BUILD"]) / "src/libcassini-spectro.so").read_bytes())
     return digest.hexdigest()

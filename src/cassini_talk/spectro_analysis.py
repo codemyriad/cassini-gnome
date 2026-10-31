@@ -11,10 +11,10 @@ import ctypes
 import ctypes.util
 import math
 import struct
-import threading
-from concurrent.futures import Future
 from fractions import Fraction
 from functools import lru_cache
+
+from .spectro_native import helper
 
 SPEC = "cassini-spectro-v1"
 BANDS = 32
@@ -33,37 +33,6 @@ EDGES = tuple(
     )
     for i in range(BANDS + 1)
 )
-
-
-_PREPARATION = None
-_PREPARATION_LOCK = threading.Lock()
-
-
-def prepare_acceleration():
-    """Warm the already-packaged numeric helper off GTK and capture callbacks.
-
-    The small pure-array path remains available immediately and if NumPy cannot
-    load. The FFT itself is always GStreamer's real libgstfft implementation.
-    """
-    global _PREPARATION
-    with _PREPARATION_LOCK:
-        if _PREPARATION is None:
-            future = _PREPARATION = Future()
-
-            def load():
-                try:
-                    import numpy
-
-                    future.set_result(numpy)
-                except Exception:
-                    future.set_result(None)
-
-            threading.Thread(target=load, name="cassini-spectro-prepare", daemon=True).start()
-    return _PREPARATION
-
-
-def acceleration():
-    return _PREPARATION.result() if _PREPARATION is not None and _PREPARATION.done() else None
 
 
 class Complex(ctypes.Structure):
@@ -114,11 +83,19 @@ class FFT:
         self.pointer = (ctypes.c_float * self.size).from_buffer(self.scratch)
         self.output = (Complex * (self.size // 2 + 1))()
         self.values = memoryview(self.output).cast("B").cast("f")
-        self._vector = self._band_vector = None
+        self.native = helper()
+        self.window = array.array("f", [1]) * self.size
+        self.window_pointer = (ctypes.c_float * self.size).from_buffer(self.window)
+        self.lib.gst_fft_f32_window(self.handle, self.window_pointer, 2)
         self.scale = 2 / (self.size * (3 * self.size / 8) * 32768**2)
         self.table = tuple(
             (bins[0][0], bins[0][1], bins[-1][0], bins[-1][1]) if bins else None for bins in weights(rate, self.size)
         )
+        self.first = (ctypes.c_uint * BANDS)(*(band[0] if band else 0 for band in self.table))
+        self.last = (ctypes.c_uint * BANDS)(*(band[2] if band else 0 for band in self.table))
+        self.low = (ctypes.c_double * BANDS)(*(band[1] if band else 0 for band in self.table))
+        self.high = (ctypes.c_double * BANDS)(*(band[3] if band else 0 for band in self.table))
+        self.band_power = (ctypes.c_double * BANDS)()
 
     def close(self):
         if getattr(self, "handle", None):
@@ -134,42 +111,18 @@ class FFT:
         self.scratch[:] = frame
         # Periodic Hann confines a constant to bins 0/1, outside every band.
         # D36 permits omitting the mean subtraction; the DC golden is exact.
-        np = acceleration()
-        if np is not None:
-            if self._vector is None:
-                window = array.array("f", [1]) * self.size
-                pointer = (ctypes.c_float * self.size).from_buffer(window)
-                self.lib.gst_fft_f32_window(self.handle, pointer, 2)
-                scratch = np.frombuffer(self.scratch, dtype=np.float32)
-                self._vector = (np.asarray(window), scratch)
-            window, scratch = self._vector
-            np.multiply(scratch, window, out=scratch)
+        if self.native is not None:
+            self.native.cassini_spectro_window(self.pointer, self.window_pointer, self.size)
         else:
             self.lib.gst_fft_f32_window(self.handle, self.pointer, 2)
         self.lib.gst_fft_f32_fft(self.handle, self.pointer, self.output)
-        if np is not None:
-            if self._band_vector is None:
-                first = np.asarray([band[0] if band else 0 for band in self.table])
-                last = np.asarray([band[2] if band else 0 for band in self.table])
-                first_weight = np.asarray([band[1] if band else 0 for band in self.table])
-                last_weight = np.asarray([band[3] if band and band[0] != band[2] else 0 for band in self.table])
-                indexes = np.column_stack((np.minimum(first + 1, last), last)).ravel()
-                self._band_vector = (
-                    first,
-                    last,
-                    first_weight,
-                    last_weight,
-                    indexes,
-                    (last > first + 1),
-                    np.empty(self.size + 2),
-                    np.empty(self.size // 2 + 1),
-                )
-            first, last, first_weight, last_weight, indexes, interior, squared, energy = self._band_vector
-            np.square(np.frombuffer(self.output, dtype=np.float32), dtype=np.float64, out=squared)
-            np.add(squared[::2], squared[1::2], out=energy)
-            powers = energy[first] * first_weight + energy[last] * last_weight
-            powers += np.add.reduceat(energy, indexes)[::2] * interior
-            return (powers * self.scale).tolist()
+        if self.native is not None:
+            status = self.native.cassini_spectro_powers(
+                self.output, self.size, self.first, self.last, self.low, self.high, self.scale, self.band_power
+            )
+            if status:
+                raise ValueError("Invalid recording spectrum geometry")
+            return list(self.band_power)
         values, result = self.values, []
         for band in self.table:
             if band is None:
@@ -233,13 +186,16 @@ class Track:
         # struct builds its integer tuple in C; array-to-array conversion of
         # unlike element types otherwise pays for the Python iterator per PCM
         # sample. The explicit little-endian format also covers big-endian hosts.
-        np = acceleration()
-        if np is not None:
-            samples = np.frombuffer(data, dtype="<i2").astype(np.float32)
-            if self.channels == 2:
-                samples = samples.reshape(-1, 2).mean(axis=1)
-            result = array.array("f")
-            result.frombytes(samples.tobytes())
+        if not data:
+            return array.array("f")
+        native = helper()
+        if native is not None:
+            frames = len(data) // (2 * self.channels)
+            result = array.array("f", [0]) * frames
+            if native.cassini_spectro_mono(
+                bytes(data), frames, self.channels, (ctypes.c_float * frames).from_buffer(result)
+            ):
+                raise ValueError("Invalid recording PCM geometry")
             return result
         samples = struct.unpack(f"<{len(data) // 2}h", data)
         if self.channels == 1:
@@ -298,18 +254,15 @@ class Quantizer:
     def column(self, slot, powers):
         if len(powers) != BANDS or any(not math.isfinite(p) or p < 0 for p in powers):
             raise ValueError("Invalid spectrogram powers")
-        np = acceleration()
-        if np is not None:
-            db = np.maximum(powers, 1e-12)
-            np.log10(db, out=db)
-            db *= 10
-            if self.held is not None and self.previous == slot - 1:
-                np.maximum(db, np.asarray(self.held) - self.release, out=db)
-            self.previous, self.held = slot, db
-            codes = (db + 80) * (255 / 60)
-            np.clip(codes, 0, 255, out=codes)
-            np.rint(codes, out=codes)
-            return codes.astype(np.uint8).tobytes()
+        native = helper()
+        if native is not None:
+            power = (ctypes.c_double * BANDS)(*powers)
+            held = (ctypes.c_double * BANDS)(*(self.held or [0] * BANDS))
+            codes = (ctypes.c_ubyte * BANDS)()
+            if native.cassini_spectro_codes(power, held, self.previous == slot - 1, self.release, codes):
+                raise ValueError("Invalid spectrogram powers")
+            self.previous, self.held = slot, list(held)
+            return bytes(codes)
         db = [10 * math.log10(max(power, 1e-12)) for power in powers]
         if self.held is not None and self.previous == slot - 1:
             db = [max(current, previous - self.release) for current, previous in zip(db, self.held, strict=True)]

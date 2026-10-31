@@ -48,7 +48,7 @@ class SpectrogramStrip(Gtk.Widget):
         self.last = None
         self.display = None
         self.level = 0
-        self.texture_updates = self.snapshots = self.snapshot_ns = 0
+        self.texture_updates = self.snapshots = self.snapshot_ns = self.snapshot_cpu_ns = 0
         self.set_size_request(self.columns, 20 if kind == "pill" else 32)
         self.set_halign(Gtk.Align.CENTER)
         self.set_valign(Gtk.Align.CENTER)
@@ -136,7 +136,7 @@ class SpectrogramStrip(Gtk.Widget):
     def do_snapshot(self, snapshot):
         if self.texture is None:
             return
-        started = time.perf_counter_ns()
+        started, cpu_started = time.perf_counter_ns(), time.thread_time_ns()
         width, height = self.get_width(), self.get_height()
         if not self.reduced_motion:
             snapshot.push_mask(Gsk.MaskMode.ALPHA)
@@ -175,3 +175,4 @@ class SpectrogramStrip(Gtk.Widget):
             snapshot.pop()
         self.snapshots += 1
         self.snapshot_ns += time.perf_counter_ns() - started
+        self.snapshot_cpu_ns += time.thread_time_ns() - cpu_started

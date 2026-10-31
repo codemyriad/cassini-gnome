@@ -93,7 +93,11 @@ with tempfile.TemporaryDirectory() as temporary:
         if measure:
             source_hash = source_digest()
             before = dict(
-                tick=window.spectrograms.tick_ns, snapshots=sum(v.snapshot_ns for v in views), late=model.late
+                cpu_tick=window.spectrograms.tick_cpu_ns,
+                cpu_snapshots=sum(v.snapshot_cpu_ns for v in views),
+                tick=window.spectrograms.tick_ns,
+                snapshots=sum(v.snapshot_ns for v in views),
+                late=model.late,
             )
             reply(child, "begin")
             start, cpu = time.monotonic(), time.process_time()
@@ -110,11 +114,14 @@ with tempfile.TemporaryDirectory() as temporary:
             assert source_digest() == source_hash, "source changed during browser measurement"
             report.update(
                 sourceSha256=source_hash,
+                appRssBytes=int(Path("/proc/self/statm").read_text().split()[1]) * os.sysconf("SC_PAGE_SIZE"),
                 renderStateBytes=render_state_bytes(views),
                 case="D",
                 appCpuPercent=100 * (time.process_time() - cpu) / elapsed,
-                drawingTickPercent=(window.spectrograms.tick_ns - before["tick"]) / (elapsed * 1e7),
-                snapshotPercent=(sum(v.snapshot_ns for v in views) - before["snapshots"]) / (elapsed * 1e7),
+                drawingTickWallPercent=(window.spectrograms.tick_ns - before["tick"]) / (elapsed * 1e7),
+                snapshotWallPercent=(sum(v.snapshot_ns for v in views) - before["snapshots"]) / (elapsed * 1e7),
+                drawingTickPercent=(window.spectrograms.tick_cpu_ns - before["cpu_tick"]) / (elapsed * 1e7),
+                snapshotPercent=(sum(v.snapshot_cpu_ns for v in views) - before["cpu_snapshots"]) / (elapsed * 1e7),
                 frameP95Ms=intervals[math.ceil(len(intervals) * 0.95) - 1],
                 frameMaxMs=max(intervals),
                 late=model.late - before["late"],

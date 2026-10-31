@@ -67,8 +67,6 @@ def measure(window, recorder, case):
         until(lambda: not recorder.spectrogram.active and not window.spectrograms.tick_id, "hidden views detached")
     frames = []
     handler = 0
-    if case != "C":
-        handler = window.add_tick_callback(lambda _w, clock: (frames.append(clock.get_frame_time() / 1000), True)[1])
     wait_until(
         lambda: min(w.frames for w in recorder.session.writers.values()) >= 48000 * 4,
         "four-second native PCM history before steady-state measurement",
@@ -80,10 +78,14 @@ def measure(window, recorder, case):
     snapshots_before = sum(v.snapshot_ns for v in window.spectrograms.bindings)
     late_before = sum(view.model.late for view in window.spectrograms.sessions.values())
     tick_before = window.spectrograms.tick_ns
+    cpu_tick_before = window.spectrograms.tick_cpu_ns
+    cpu_snapshots_before = sum(v.snapshot_cpu_ns for v in window.spectrograms.bindings)
     profile = cProfile.Profile() if os.environ.get("CASSINI_SPECTRO_PROFILE") else None
     if profile:
         profile.enable()
     duration = 10 if profile else 60
+    if case != "C":
+        handler = window.add_tick_callback(lambda _w, clock: (frames.append(clock.get_frame_time() / 1000), True)[1])
     started, cpu = time.monotonic(), time.process_time()
     # This is a timed measurement, not a startup wait. Let GTK run its real
     # blocking main loop: a readiness helper's poll cadence distorts frame pacing.
@@ -100,13 +102,18 @@ def measure(window, recorder, case):
     intervals = sorted(b - a for a, b in zip(frames, frames[1:], strict=False))
     report = dict(
         case=case,
+        processRssBytes=int(Path("/proc/self/statm").read_text().split()[1]) * os.sysconf("SC_PAGE_SIZE"),
+        numpyLoaded="numpy" in sys.modules,
         sourceSha256=source_hash,
         seconds=elapsed,
         processCpuPercent=100 * cpu / elapsed,
-        drawingTickPercent=100 * (window.spectrograms.tick_ns - tick_before) / (elapsed * 1e9),
-        snapshotPercent=100
+        drawingTickWallPercent=100 * (window.spectrograms.tick_ns - tick_before) / (elapsed * 1e9),
+        snapshotWallPercent=100
         * (sum(v.snapshot_ns for v in window.spectrograms.bindings) - snapshots_before)
         / (elapsed * 1e9),
+        drawingTickPercent=(window.spectrograms.tick_cpu_ns - cpu_tick_before) / (elapsed * 1e7),
+        snapshotPercent=(sum(v.snapshot_cpu_ns for v in window.spectrograms.bindings) - cpu_snapshots_before)
+        / (elapsed * 1e7),
         analysisWallPercent=(after[2] - before[2]) / (elapsed * 1e7),
         analysisCpuPercent=(after[3] - before[3]) / (elapsed * 1e7),
         analysisCalls=after[0] - before[0],

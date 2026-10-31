@@ -9,7 +9,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from fractions import Fraction
 
-from .spectro_analysis import Quantizer, Track, prepare_acceleration
+from .spectro_analysis import Quantizer, Track
 
 LOG = logging.getLogger(__name__)
 
@@ -78,7 +78,6 @@ class SpectroSource:
                     self.selected.add(identifier)
 
     def subscribe(self, now_ms=0):
-        prepare_acceleration()
         with self.lock:
             if not self.subscribers:
                 self.tracks = {

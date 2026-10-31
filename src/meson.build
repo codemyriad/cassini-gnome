@@ -1,3 +1,8 @@
+spectro_dir = get_option('prefix') / get_option('libdir') / 'cassini-talk'
+spectro_helper = shared_module('cassini-spectro', 'native/spectro.c',
+  dependencies: meson.get_compiler('c').find_library('m'),
+  override_options: ['optimization=3'], install: true, install_dir: spectro_dir,
+)
 # SPDX-License-Identifier: GPL-3.0-or-later
 talk_resources = gnome.compile_resources('cassini-talk',
   'cassini-talk.gresource.xml',
@@ -146,6 +151,7 @@ talk_sources = files(
   'cassini_talk/recorder.py',
   'cassini_talk/native_recorder.py',
   'cassini_talk/spectro_analysis.py',
+  'cassini_talk/spectro_native.py',
   'cassini_talk/spectro_source.py',
   'cassini_talk/spectro_transport.py',
   'cassini_talk/spectro_view_model.py',
@@ -214,7 +220,7 @@ install_data(
 runtime_paths = configure_file(
   input: 'cassini_talk/paths.json.in',
   output: 'paths.json',
-  configuration: {'ONNXRUNTIME_DIR': onnxruntime_dir, 'SHERPA_DIR': sherpa_dir, 'BINDIR': get_option('prefix') / get_option('bindir'), 'STORE_LISTING_PUBLIC': get_option('store_listing_public').to_string('true', 'false'), 'PROFILE': get_option('profile')},
+  configuration: {'SPECTRO_PATH': spectro_dir / 'libcassini-spectro.so', 'ONNXRUNTIME_DIR': onnxruntime_dir, 'SHERPA_DIR': sherpa_dir, 'BINDIR': get_option('prefix') / get_option('bindir'), 'STORE_LISTING_PUBLIC': get_option('store_listing_public').to_string('true', 'false'), 'PROFILE': get_option('profile')},
   install: true,
   install_dir: moduledir,
 )
@@ -224,7 +230,7 @@ runtime_paths = configure_file(
 identity_script = files('../build-aux/build-identity.py')
 extension_inputs = run_command(py, identity_script,
   '--list-extension', meson.project_source_root() / 'browser-extension', check: true).stdout().strip().split('\n')
-identity_inputs = talk_sources + [launcher, runtime_paths, talk_resources] + files(extension_inputs)
+identity_inputs = talk_sources + [launcher, runtime_paths, talk_resources, spectro_helper] + files(extension_inputs)
 if get_option('whistle').enabled()
   identity_inputs += files('../whistle/pins.json', '../whistle/cpu_limit.c')
 endif
@@ -234,7 +240,7 @@ custom_target('installed-build-identity',
   command: [py, identity_script, '--source', meson.project_source_root(),
     '--build', meson.project_build_root(), '--version', meson.project_version(),
     '--profile', get_option('profile'), '--application', application_id,
-    '--output', '@OUTPUT@', '@INPUT@'],
+    '--native-dir', fs.relative_to(spectro_dir, get_option('prefix')), '--output', '@OUTPUT@', '@INPUT@'],
   build_by_default: true,
   install: true,
   install_dir: pkgdatadir,
@@ -246,7 +252,7 @@ if pytest.found()
   test('pytest',
     pytest,
     args: ['-m', 'pytest', '-q', '--durations=20', meson.project_source_root() / 'tests'],
-    env: ['PYTHONPATH=' + meson.current_source_dir(), 'CASSINI_TEST_TIMINGS=1'],
+    env: ['PYTHONPATH=' + meson.current_source_dir(), 'CASSINI_TEST_TIMINGS=1', 'CASSINI_TEST_BUILD=' + meson.project_build_root()],
     workdir: meson.project_source_root(),
     # The suite re-runs both conformance suites as subprocesses, alongside
     # Meson's own conformance tests: 11-21 s in a package build container,

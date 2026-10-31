@@ -6,6 +6,9 @@ import ctypes.util
 import hashlib
 import json
 import math
+import os
+import shutil
+import subprocess
 import sys
 import wave
 from pathlib import Path
@@ -29,14 +32,44 @@ def test_vectors_match_their_pinned_inputs_and_reference_generated_hashes():
         assert hashlib.sha256((ROOT / name).read_bytes()).hexdigest() == digest
 
 
+@pytest.fixture(scope="session")
+def compiled_helper(tmp_path_factory):
+    from cassini_talk.spectro_native import load
+
+    if build := os.environ.get("CASSINI_TEST_BUILD"):
+        path = Path(build) / "src/libcassini-spectro.so"
+        assert path.is_file(), "Meson must build the native indicator helper"
+    else:
+        compiler = shutil.which("cc")
+        assert compiler, "Install a C compiler for the native indicator conformance gate"
+        path = tmp_path_factory.mktemp("spectro-c") / "libcassini-spectro.so"
+        subprocess.run(
+            [
+                compiler,
+                "-shared",
+                "-fPIC",
+                "-O3",
+                str(ROOT.parents[1] / "src/native/spectro.c"),
+                "-lm",
+                "-o",
+                str(path),
+            ],
+            check=True,
+            timeout=30,
+        )
+    return load(path)
+
+
 @pytest.mark.parametrize("accelerated", [False, True])
 @pytest.mark.parametrize("chunk", [480, 8192])
 @pytest.mark.parametrize("name", ["spectro-v1", "dc-quiet-jfk-v1"])
-def test_streaming_real_fft_matches_every_frozen_raw_and_display_cell(chunk, name, accelerated, monkeypatch):
+def test_streaming_real_fft_matches_every_frozen_raw_and_display_cell(
+    chunk, name, accelerated, monkeypatch, compiled_helper
+):
     from cassini_talk import spectro_analysis
 
-    helper = pytest.importorskip("numpy") if accelerated else None
-    monkeypatch.setattr(spectro_analysis, "acceleration", lambda: helper)
+    helper = compiled_helper if accelerated else None
+    monkeypatch.setattr(spectro_analysis, "helper", lambda: helper)
     golden = json.loads((ROOT / (name + ".golden.json")).read_text())
     assert golden["spec"] == "cassini-spectro-v1" and golden["firstFrame"] == 2
     assert golden["edgesHz"] == [round(edge, 3) for edge in EDGES]
@@ -149,44 +182,24 @@ def test_other_rates_follow_the_published_frame_table_and_stationary_power():
 
 
 @pytest.mark.parametrize("accelerated", [False, True])
-def test_stereo_mean_keeps_half_sample_precision_with_both_helpers(monkeypatch, accelerated):
+def test_stereo_mean_keeps_half_sample_precision_with_both_helpers(monkeypatch, accelerated, compiled_helper):
     from cassini_talk import spectro_analysis
 
-    helper = pytest.importorskip("numpy") if accelerated else None
-    monkeypatch.setattr(spectro_analysis, "acceleration", lambda: helper)
+    helper = compiled_helper if accelerated else None
+    monkeypatch.setattr(spectro_analysis, "helper", lambda: helper)
     stereo = array.array("h", [100, -99, -100, 99, 32767, -32768]).tobytes()
     assert list(Track(channels=2)._mono(stereo)) == [0.5, -0.5, -0.5]
 
 
-def test_numeric_helper_preparation_returns_before_loading_and_fails_to_pure_arrays(monkeypatch):
-    import builtins
+def test_native_helper_rejects_unsupported_abi_without_numpy(tmp_path):
+    import ctypes
     from types import SimpleNamespace
+    from unittest.mock import Mock, patch
 
-    from cassini_talk import spectro_analysis
+    from cassini_talk.spectro_native import load
 
-    tasks = []
-
-    class Worker:
-        def __init__(self, *, target, name, daemon):
-            assert name == "cassini-spectro-prepare" and daemon
-            self.target = target
-
-        def start(self):
-            tasks.append(self.target)
-
-    monkeypatch.setattr(spectro_analysis, "_PREPARATION", None)
-    monkeypatch.setattr(spectro_analysis, "threading", SimpleNamespace(Thread=Worker))
-    future = spectro_analysis.prepare_acceleration()
-    assert not future.done() and spectro_analysis.acceleration() is None
-    assert spectro_analysis.prepare_acceleration() is future and len(tasks) == 1
-    original = builtins.__import__
-
-    def missing(name, *args, **kwargs):
-        if name == "numpy":
-            raise ImportError("optional helper unavailable")
-        return original(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", missing)
-    tasks[0]()
-    assert future.done() and spectro_analysis.acceleration() is None
-    assert Track()._mono(b"\x01\x00").tolist() == [1.0]
+    with (
+        patch.object(ctypes, "CDLL", return_value=SimpleNamespace(cassini_spectro_abi=Mock(return_value=99))),
+        pytest.raises(OSError, match="ABI"),
+    ):
+        load(tmp_path / "lib.so")
