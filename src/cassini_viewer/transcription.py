@@ -229,6 +229,7 @@ class TranscriptionQueue:
             or not meeting.has_audio
             or meeting.origin == "own"
             and not any(t.frames for t in meeting.tracks)
+            and meeting.audio_file is None
         ):
             return None
         from .library_publication import root_for
@@ -251,6 +252,12 @@ class TranscriptionQueue:
         ):
             return None
         if not (directory / "transcript.json").exists():
+            if meeting.published_file is not None and not directory.exists():
+                from .library_v2.fsutil import fsync_dir
+
+                directory.mkdir(mode=0o700)
+                fsync_dir(directory.parent)
+                atomic_json(directory / "meeting.json", metadata, before_commit=self._check_open)
             atomic_json(
                 directory / "transcript.json",
                 dict(format="cassini.words.v1", language="und", items=[]),
@@ -384,7 +391,7 @@ class TranscriptionQueue:
                 before_commit=self._check_open,
             )
             self.changed(directory)
-        if meeting.origin == "received":
+        if meeting.origin == "received" or meeting.audio_file is not None and not meeting.tracks:
             tracks = [
                 dict(
                     id="received",

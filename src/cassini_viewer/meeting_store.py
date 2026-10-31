@@ -49,7 +49,13 @@ def read_metadata(directory):
     identifier = meeting_id(Path(directory))
     if identifier is None:
         raise ValueError("Meeting is outside the Library")
-    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        value = published_metadata(directory)
+        if value is not None:
+            return value
+        raise
     try:
         try:
             with regular(descriptor, "meeting.json") as (stream, _info):
@@ -83,6 +89,33 @@ def read_metadata(directory):
         quoteOverride=None,
         received=None,
     )
+
+
+def published_metadata(directory):
+    """Read a known file's x when its optional working metadata is absent.
+
+    This is a read, not a repair: no folder or sidecar is created. No-x files
+    require the shared adoption API and are deliberately not synthesized here.
+    """
+    from . import portable
+    from .library_publication import root_for
+    from .library_v2 import journal, publish, xschema
+
+    root = root_for(directory)
+    if root is None:
+        return None
+    origin, identifier = journal.identity_of(directory)
+    name = publish.find_file(journal.Layout(root), origin, identifier)
+    if name is None:
+        return None
+    embedded = portable.read_meeting(str(root / name))
+    ours = (embedded.manifest or {}).get("x", {}).get(xschema.DOMAIN)
+    if not embedded.is_readable or not isinstance(ours, dict) or not xschema.valid(ours):
+        raise ValueError("Published Library metadata is not editable")
+    if portable.verify_audio(str(root / name), embedded).state != portable.State.OK:
+        raise ValueError("Published Library audio does not verify")
+    notes = embedded.manifest["x"].get(xschema.NOTES_DOMAIN)
+    return dict(xschema.rebuild(ours, notes, session_exists=False), published=True)
 
 
 def transcript_snapshot(directory):

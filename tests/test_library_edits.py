@@ -1,10 +1,19 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# ruff: noqa: E402 - runtime-dependent fixtures follow explicit dependency checks.
 """App integration preserves file truth and routes mutations through one journal."""
 
 import threading
 from concurrent.futures import CancelledError
 
 import pytest
+
+pytest.importorskip("numpy")
+gi = pytest.importorskip("gi")
+try:
+    gi.require_version("Gst", "1.0")
+except ValueError:
+    pytest.skip("Real publication tests require GStreamer", allow_module_level=True)
+
 from library_v2_support import simple_session
 
 from cassini_viewer import meeting_store, portable
@@ -276,3 +285,21 @@ def test_existing_transcription_queue_commits_words_after_concurrent_title_edit(
     finally:
         finish_job.set()
         queue.close()
+
+
+def test_file_only_metadata_edit_does_not_create_a_working_folder(published, monkeypatch):
+    import shutil
+
+    root, sid, directory, original = published
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(root))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(root / "private-config"))
+    shutil.rmtree(directory)
+    digest = audio_digest(original)
+    from cassini_viewer.meeting_rename import rename_meeting
+
+    updated = rename_meeting(directory, "Standalone file title")
+    (meeting,) = LibraryScanner(root).scan().meetings
+    assert meeting.title == "Standalone file title" and meeting.metadata["revision"] == updated["revision"]
+    assert not directory.exists()
+    assert audio_digest(meeting.audio_file) == digest
+    assert meeting_store.read_metadata(directory)["title"] == "Standalone file title"

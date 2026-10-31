@@ -1,8 +1,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# ruff: noqa: E402 - runtime-dependent fixtures follow explicit dependency checks.
 """Private startup worker: live Saving, cancellation, no inference before publish."""
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
+
+import pytest
+
+pytest.importorskip("numpy")
+gi = pytest.importorskip("gi")
+try:
+    gi.require_version("Gst", "1.0")
+except ValueError:
+    pytest.skip("Real publication tests require GStreamer", allow_module_level=True)
 
 from library_v2_support import simple_session
 from test_recorder import spin_until
@@ -135,3 +145,61 @@ def test_publication_transition_enables_automatic_writing_once(tmp_path):
     assert should_auto_write(after, {before.key: ("saved", "completed", False)})
     assert not should_auto_write(after, {after.key: ("saved", "completed", True)})
     assert not should_auto_write(after, None)  # No transcription of arbitrary historical files.
+
+
+def test_file_only_write_down_recreates_only_optional_working_cache(tmp_path, monkeypatch):
+    import shutil
+
+    from cassini_viewer import portable
+
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "private-config"))
+    sid, directory = simple_session(tmp_path, 0.1)
+    result = finalize.finalize(tmp_path, sid)
+    shutil.rmtree(directory)
+    completed = threading.Event()
+    seen = []
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, progress):
+            seen.extend(tracks)
+            assert len(tracks) == 1 and tracks[0]["path"] == str(tmp_path / result.name)
+            progress(
+                dict(
+                    type="progress",
+                    trackId=tracks[0]["id"],
+                    trackOrder=0,
+                    language="en",
+                    etaMinutes=0,
+                    words=[dict(startMs=0, endMs=90, text="From the file")],
+                )
+            )
+            return dict(diagnostics=[])
+
+    queue = TranscriptionQueue(
+        lambda _directory: None,
+        lambda _directory: completed.set(),
+        root=tmp_path,
+        bundle=tmp_path,
+        client_factory=Client,
+    )
+    try:
+        assert queue.enqueue(directory)
+        assert completed.wait(5)
+        assert seen
+        (meeting,) = LibraryScanner(tmp_path).scan().meetings
+        assert meeting.transcript == "done" and meeting.words[0].text == "From the file"
+        assert portable.load_words(portable.read_meeting(str(meeting.audio_file)), "words")[0].text == "From the file"
+        assert (directory / "transcript.json").is_file()
+        assert not (directory / "session.json").exists() and not list(directory.glob("*.wav"))
+    finally:
+        queue.close()

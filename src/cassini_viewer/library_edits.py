@@ -20,7 +20,7 @@ _LOCAL = threading.local()
 
 @contextmanager
 def transaction(directory):
-    from .meeting_store import LOCK
+    from .meeting_store import LOCK, atomic_json, published_metadata
 
     directory = Path(directory)
     if not directory.exists():
@@ -45,6 +45,10 @@ def transaction(directory):
         _LOCAL.root = root
         try:
             with LOCK:
+                if directory.is_dir() and not (directory / "meeting.json").exists():
+                    metadata = published_metadata(directory)
+                    if metadata is not None:
+                        atomic_json(directory / "meeting.json", metadata)
                 yield
         finally:
             _LOCAL.root = None
@@ -156,7 +160,12 @@ def commit_metadata(directory, current, changes, *, before_commit=None, words=No
             if displayed != previous_title
             else None
         ),
-        meeting_update={key: updated[key] for key in changes},
+        meeting_update=(
+            {key: value for key, value in updated.items() if key != "revision"}
+            if not (directory / "meeting.json").exists()
+            else {key: updated[key] for key in changes}
+        ),
+        meeting_rebuilt=not (directory / "meeting.json").exists(),
         write_stage=write_stage,
     )
     return updated

@@ -375,6 +375,12 @@ def test_preview_grouping_runs_on_worker_without_blocking_main_loop(tmp_path, mo
 
 
 def test_monitor_follows_hidden_capture_and_root_publish_without_manual_refresh(tmp_path):
+    pytest.importorskip("numpy")
+    try:
+        gi.require_version("Gst", "1.0")
+    except ValueError:
+        pytest.skip("Publication requires GStreamer; source/Recording jobs cover this case")
+
     from library_v2_support import simple_session
 
     from cassini_viewer.library_v2 import finalize

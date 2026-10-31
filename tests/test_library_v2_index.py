@@ -1,8 +1,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# ruff: noqa: E402 - runtime-dependent fixtures follow explicit dependency checks.
 """S-12 app scanner: one row across capture/publish/recovery, without writes."""
 
 import hashlib
 import shutil
+
+import pytest
+
+pytest.importorskip("numpy")
+gi = pytest.importorskip("gi")
+try:
+    gi.require_version("Gst", "1.0")
+except ValueError:
+    pytest.skip("Real publication tests require GStreamer", allow_module_level=True)
 
 from library_v2_support import simple_session
 from test_library import capture

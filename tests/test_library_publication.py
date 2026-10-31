@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# ruff: noqa: E402 - runtime-dependent fixtures follow explicit dependency checks.
 """Actual Stop -> encode -> journal -> file; startup retry with process leases."""
 
 import hashlib
@@ -8,6 +9,14 @@ import threading
 from concurrent.futures import CancelledError
 
 import pytest
+
+pytest.importorskip("numpy")
+gi = pytest.importorskip("gi")
+try:
+    gi.require_version("Gst", "1.0")
+except ValueError:
+    pytest.skip("Real publication tests require GStreamer", allow_module_level=True)
+
 from library_v2_support import simple_session
 
 from cassini_viewer import meeting_store, portable

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# ruff: noqa: E402 - runtime-dependent fixtures follow explicit dependency checks.
 """Real synthetic capture owners publish after Stop, never on the GTK thread."""
 
 import threading
@@ -6,6 +7,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+
+pytest.importorskip("numpy")
+gi = pytest.importorskip("gi")
+try:
+    gi.require_version("Gst", "1.0")
+except ValueError:
+    pytest.skip("Real publication tests require GStreamer", allow_module_level=True)
+
 from test_browser_capture import Tap, remote
 from test_recorder import spin_until
 
