@@ -127,7 +127,7 @@
 .library-window .first-run-icon { background: alpha(@view_fg_color, 0.08); border-radius: 24px; padding: 24px; margin-bottom: 0; }
 .library-window .excerpt { line-height: 1.5; }
 
-.library-window .live-pill { background: #fbe4e6; border-radius: 6px; padding: 4px 8px; min-height: 26px; }
+.library-window .live-pill { background: #fbe4e6; border-radius: 6px; padding: 4px 4px 4px 12px; min-height: 26px; }
 .library-window .live-dot { background: #c01c28; border-radius: 100px; }
 .library-window .live-timer { color: #c01c28; font-weight: 600; font-feature-settings: "tnum"; }
 .library-window .live-levels progressbar trough { min-width: 30px; min-height: 4px; background: #eab8bd; border-radius: 2px; }
@@ -221,3 +221,13 @@
 .details-span { padding: 6px 0; }
 .details-marker { background: @accent_bg_color; border-radius: 3px; }
 .details-time { font-variant-numeric: tabular-nums; opacity: 0.75; }
+
+/* D36: recording colour follows the actual application appearance. */
+.library-window.spectro-dark .live-pill { background: #4a2a2d; }
+.library-window.spectro-dark .live-timer { color: #ff7b7f; }
+.library-window.spectro-dark .live-dot { background: #ff8a8e; }
+.library-window.spectro-dark .mic-silent { background: alpha(#f8e45c, 0.18); color: #f8e45c; }
+.library-window.spectro-dark .mic-silent button { background: alpha(#f8e45c, 0.12); color: #f8e45c; }
+.library-window .spectro-stopping { opacity: 0.45; transition: opacity 220ms ease-out; }
+
+.library-window .spectro-check { padding: 0 8px; min-width: 0; }

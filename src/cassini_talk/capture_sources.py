@@ -48,11 +48,13 @@ class WireTrack:
 
 
 class BrowserStreams:
-    def __init__(self, session, *, me=True, others=True):
+    def __init__(self, session, *, me=True, others=True, picture_enabled=None):
         self.session = session
         self.me, self.others, self.browser = me, others, True
         self.tracks = {}
         self.selection_at = 0
+        self.picture_enabled = picture_enabled
+        self.picture = None
 
     def enabled(self, track):
         return self.browser and track.available and (self.me if track.kind in ME_KINDS else self.others)
@@ -82,6 +84,7 @@ class BrowserStreams:
         self.tracks[identifier] = track
 
     def append(self, identifier, data, offset):
+        self.picture = None
         track = self.tracks[identifier]
         start, padding = chunk_plan(track.rate, track.channels, track.frames, track.start, data, offset)
         frames = track.frames + padding + len(data) // (track.channels * 2)
@@ -97,6 +100,20 @@ class BrowserStreams:
             selected, selected_offset = selected_pcm(data, offset, track.rate, track.channels, track.boundary)
             if selected:
                 self.session.append(track.recorded, selected, selected_offset)
+                if self.picture_enabled is not None and self.picture_enabled():
+                    record = next(t for t in self.session.manifest["tracks"] if t["id"] == track.recorded)
+                    spans = record.get("spans") or [record]
+                    start_ms = spans[0].get("startOffsetMs")
+                    self.picture = dict(
+                        identifier=track.recorded,
+                        data=selected,
+                        offset_ms=selected_offset,
+                        rate=track.rate,
+                        channels=track.channels,
+                        kind=track.kind,
+                        start_ms=selected_offset if start_ms is None else start_ms,
+                        level=None,
+                    )
         track.start, track.frames = start, frames
 
     @contextmanager

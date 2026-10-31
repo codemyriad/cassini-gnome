@@ -1,0 +1,15 @@
+{
+  "spec": "cassini-spectro-v1",
+  "coordinationCommit": "2203709",
+  "directory": "ux-draft/spectro",
+  "normativeReferenceSha256": "bc63f9caa4234b49d08ff4bdb47dde17e211ef54ee804a600d3536c960dbdad3",
+  "files": {
+    "spectro-v1.wav": "153059cb2933fc68ad9ff416680f21b95465705bb17883dad3ff833e85aa5e36",
+    "spectro-v1.golden.json": "0df0dff55f2c462afc20ac1f32cd8141addf975e2702957783f762cece0b1aaf",
+    "dc-quiet-jfk-v1.golden.json": "ac6c00a001942b0f242738182f352e86d2f31fbedf279a63f810f760d5570f89"
+  },
+  "inputs": {
+    "../dc/dc-quiet-jfk-v1.wav": "071f051241d394587c85463272e9414f133ee18c4bb835d1382b662e4154efda"
+  },
+  "generatedGolden": "dc-quiet-jfk-v1.golden.json generated with the unchanged normativeReferenceSha256; candidate for shared publication"
+}

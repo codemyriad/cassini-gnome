@@ -8,6 +8,7 @@ from gi.repository import Adw, Gio, GLib, Gtk
 from . import ux_formats as fmt
 from .inline_line import InlineLine
 from .library_window import label, vertical
+from .spectrogram_strip import SpectrogramStrip
 from .strings import text
 
 
@@ -100,13 +101,20 @@ class RecordingPage(Adw.NavigationPage):
         )
         mic_labels.append(self.mic_warning)
         self.mic_row.append(mic_labels)
-        self.mic_level = Gtk.ProgressBar(
-            width_request=96, valign=Gtk.Align.CENTER, accessible_role=Gtk.AccessibleRole.PRESENTATION
-        )
+        self.mic_level = SpectrogramStrip(kind="row", lanes=("me",))
         self.mic_row.append(self.mic_level)
-        self.check = Gtk.Button(label=text("errors.micSilentRow.action"), valign=Gtk.Align.CENTER, visible=False)
+        self.check_slot = Gtk.Stack(hhomogeneous=True, vhomogeneous=True, width_request=58)
+        self.check_slot.add_named(Gtk.Box(width_request=58), "empty")
+        self.check = Gtk.Button(
+            label=text("errors.micSilentRow.action"),
+            valign=Gtk.Align.CENTER,
+            visible=False,
+            width_request=58,
+            css_classes=["spectro-check"],
+        )
         self.check.connect("clicked", self._check_sound)
-        self.mic_row.append(self.check)
+        self.check_slot.add_named(self.check, "check")
+        self.mic_row.append(self.check_slot)
         sources.append(self.mic_row)
         self.source_separator = Gtk.Separator()
         sources.append(self.source_separator)
@@ -117,11 +125,9 @@ class RecordingPage(Adw.NavigationPage):
         self.others_caption = label("", "small", "dim-label", xalign=0)
         others_labels.append(self.others_caption)
         others.append(others_labels)
-        self.others_level = Gtk.ProgressBar(
-            width_request=96, valign=Gtk.Align.CENTER, accessible_role=Gtk.AccessibleRole.PRESENTATION
-        )
+        self.others_level = SpectrogramStrip(kind="row", lanes=("others",))
         others.append(self.others_level)
-        others.append(Gtk.Box(width_request=66))
+        others.append(Gtk.Box(width_request=58))
         sources.append(others)
         sources.append(Gtk.Separator())
         self.change_sources = Gtk.Button(
@@ -246,9 +252,11 @@ class RecordingPage(Adw.NavigationPage):
         silent = status["silent"]
         self.mic_warning.set_visible(silent)
         self.check.set_visible(silent)
+        self.check_slot.set_visible_child_name("check" if silent else "empty")
         (self.mic_row.add_css_class if silent else self.mic_row.remove_css_class)("mic-silent")
         for bar, level in zip((self.mic_level, self.others_level), status["levels"], strict=True):
             bar.set_fraction(level)
+            self.window.bind_spectrogram(bar, self.meeting, silent=silent)
         browser = sources.source == "browser"
         self.others_caption.set_label(
             text("recording.others.browserVoices", n=status["voices"]) if browser else text("recordFirst.sound.title")
@@ -287,5 +295,7 @@ class RecordingPage(Adw.NavigationPage):
             self.sources_dialog.force_close()
         self.window._editor_focus(self.title_entry, False)
         self.flush_edits()
+        for picture in (self.mic_level, self.others_level, self.capture._controls["picture"]):
+            self.window.spectrograms.remove(picture)
         if self.capture._controls in self.window._capture_headers:
             self.window._capture_headers.remove(self.capture._controls)
