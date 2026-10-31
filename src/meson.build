@@ -240,7 +240,7 @@ if pytest.found()
   test('pytest',
     pytest,
     args: ['-m', 'pytest', '-q', '--durations=20', meson.project_source_root() / 'tests'],
-    env: ['PYTHONPATH=' + meson.current_source_dir()],
+    env: ['PYTHONPATH=' + meson.current_source_dir(), 'CASSINI_TEST_TIMINGS=1'],
     workdir: meson.project_source_root(),
     # The suite re-runs both conformance suites as subprocesses, alongside
     # Meson's own conformance tests: 11-21 s in a package build container,
