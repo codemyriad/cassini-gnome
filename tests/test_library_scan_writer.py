@@ -5,6 +5,7 @@
 import multiprocessing
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -19,6 +20,7 @@ from library_v2_support import simple_session
 
 from cassini_viewer.library import LibraryScanner
 from cassini_viewer.library_v2 import finalize, fsutil, journal
+from cassini_viewer.trash_cleanup import TrashCleanup
 
 
 def _writer(root, sid, name, ready, release, response):
@@ -56,9 +58,14 @@ def _writer(root, sid, name, ready, release, response):
         response.close()
 
 
-def test_scan_during_journal_fsync_and_rename_does_not_remove_the_live_partial(tmp_path):
-    sid, _directory = simple_session(tmp_path, 0.1)
+@pytest.mark.parametrize("reader", ["scanner", "trash-cleanup"])
+def test_read_during_journal_fsync_and_rename_does_not_remove_the_live_partial(tmp_path, monkeypatch, reader):
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "private-config"))
+    sid, directory = simple_session(tmp_path, 0.1)
     published = finalize.finalize(tmp_path, sid)
+    cleanup = TrashCleanup(SimpleNamespace(root=tmp_path / "private-voices/store"))
+    cleanup.add(directory)
     context = multiprocessing.get_context("spawn")
     ready, release = context.Event(), context.Event()
     receiver, sender = context.Pipe(duplex=False)
@@ -69,7 +76,11 @@ def test_scan_during_journal_fsync_and_rename_does_not_remove_the_live_partial(t
         assert ready.wait(10), "Writer did not fsync its partial"
         partials = list(journal.Layout(tmp_path).journal.glob("*.json.partial"))
         assert len(partials) == 1
-        snapshot = LibraryScanner(tmp_path).scan()
+        if reader == "scanner":
+            snapshot = LibraryScanner(tmp_path).scan()
+            assert len(snapshot.meetings) == 1, "An uncommitted delete must not hide the meeting"
+        else:
+            cleanup.retry()
         survived = partials[0].exists()
     finally:
         release.set()
@@ -80,7 +91,6 @@ def test_scan_during_journal_fsync_and_rename_does_not_remove_the_live_partial(t
     assert not writer.is_alive(), "Journal writer did not exit"
     assert survived and succeeded, f"Read-only scan removed the writer's partial: {error}"
     assert writer.exitcode == 0
-    assert len(snapshot.meetings) == 1, "An uncommitted delete must not hide the meeting"
     # The committed delete is still respected by the following scan.
     assert not LibraryScanner(tmp_path).scan().meetings
 
