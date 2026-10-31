@@ -123,9 +123,40 @@ class LibraryRecovery:
             self.start()
         return True
 
+    def _retry_paths(self, roots):
+        """Resolve queued dialog paths on this worker, including paired-Move aliases."""
+        from pathlib import Path
+
+        from .library_publication import root_for
+
+        allowed = {Path(root).resolve() for root in roots}
+        with self.lock:
+            requests = [
+                (path, revision) for path, revision in self._requested.items() if revision <= self.started_revision
+            ]
+        for requested, revision in requests:
+            if self.cancelled.is_set():
+                break
+            try:
+                directory = library_location.owned_directory(requested)
+                if root_for(directory) not in allowed:
+                    raise ValueError("Publication retry is outside the configured Library")
+            except (OSError, ValueError) as error:
+                with self.lock:
+                    self.failures[requested] = error
+                    self.attempted.add(requested)
+                GLib.idle_add(self._changed)
+                continue
+            with self.lock:
+                self.attempted.discard(directory)
+                self.failures.pop(directory, None)
+                self._requested[directory] = max(self._requested.get(directory, 0), revision)
+
     def _sweep(self):
         skipped = []
-        for root in library_location.roots():
+        roots = library_location.roots()
+        self._retry_paths(roots)
+        for root in roots:
             if self.cancelled.is_set():
                 break
             try:
@@ -162,6 +193,12 @@ class LibraryRecovery:
         except Exception:
             LOG.exception("Library recovery failed; original audio is kept")
             needs_retry = False
+        # Keep newer requests accepted while this sweep was in flight. Consume
+        # older ones so a later scan cannot clear an attempted failure again.
+        with self.lock:
+            self._requested = {
+                path: revision for path, revision in self._requested.items() if revision > self.started_revision
+            }
         self.app.release()
         if trash := getattr(self.app, "meeting_trash", None):
             trash.executor.submit(trash.cleanup.retry)

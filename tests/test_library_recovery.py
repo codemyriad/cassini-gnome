@@ -362,3 +362,38 @@ def test_retry_does_not_read_routing_or_resolve_paths_on_gtk(tmp_path, monkeypat
         assert not recovery.failures and app.holds == 0
     finally:
         recovery.close()
+
+
+def test_retry_resolves_a_moved_dialog_path_on_the_worker(tmp_path, monkeypatch):
+    from cassini_viewer import library_location
+
+    root = tmp_path / "new"
+    root.mkdir()
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(root))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "private-config"))
+    _sid, directory = simple_session(root, 0.1)
+    original = finalize.finalize
+    attempts = []
+
+    def fail_once(*args, **kwargs):
+        attempts.append(True)
+        if len(attempts) == 1:
+            raise OSError("Initial publication failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(finalize, "finalize", fail_once)
+    app = App()
+    recovery = LibraryRecovery(app)
+    try:
+        wait_recovery(lambda: recovery.future is None and bool(recovery.failures), "initial publication failure")
+        old = tmp_path / "old/.cassini/sessions" / directory.name
+        value = library_location.load()
+        value["aliases"][str(old)] = str(directory)
+        library_location.save(value)
+        assert library_location.owned_directory(old) == directory
+        assert recovery.retry(old), "A dialog can retain its pre-Move path"
+        wait_recovery(lambda: recovery.future is None and not recovery.timer, "routed publication retry")
+        assert len(attempts) == 2 and not recovery.failures
+        assert LibraryScanner(root).scan().meetings[0].published_file
+    finally:
+        recovery.close()
