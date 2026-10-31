@@ -193,3 +193,25 @@ def test_rpm_payload_does_not_list_the_same_path_twice_after_macro_expansion():
     payload = spec.split("%files", 1)[1].split("%changelog", 1)[0]
     paths = [line.strip().replace("%{name}", name) for line in payload.splitlines() if line.startswith("%{_")]
     assert len(paths) == len(set(paths)), "RPM aliases must not duplicate canonical payload paths"
+
+
+@pytest.mark.parametrize("translated", [False, True])
+def test_rpm_locale_manifest_works_with_empty_or_current_translations(tmp_path, translated):
+    import subprocess
+
+    spec = (ROOT / "build-aux/rpm/cassini-talk.spec").read_text()
+    name = next(line.split(":", 1)[1].strip() for line in spec.splitlines() if line.startswith("Name:"))
+    start = spec.index("\n%find_lang") + 1
+    fragment = spec[start : spec.index("\n%check", start)]
+    fragment = fragment.replace("%find_lang", "find_lang").replace("%{name}", name)
+    fragment = fragment.replace("%{_datadir}", "/usr/share").replace("%%", "%")
+    stub = (
+        "find_lang() { printf '%s\\n' '/usr/share/locale/fr/LC_MESSAGES/cassini-talk.mo' > \"$1.lang\"; }\n"
+        if translated
+        else "find_lang() { return 1; }\n"
+    )
+    result = subprocess.run(["bash", "-euc", stub + fragment], cwd=tmp_path, capture_output=True, text=True, timeout=5)
+    assert result.returncode == 0, f"RPM locale install failed: {result.stderr}"
+    lines = (tmp_path / (name + ".lang")).read_text().splitlines()
+    assert f"%dir /usr/share/{name}" in lines
+    assert any("/locale/fr/" in line for line in lines) == translated

@@ -189,8 +189,7 @@ chmod 0755 %{buildroot}%{_bindir}/%{name} %{buildroot}%{_bindir}/cassini-browser
   %{buildroot}%{_bindir}/cassini-browser-control-host \
   %{buildroot}%{_datadir}/cassini-talk/browser-extension/install-host.py
 # po/LINGUAS may list no languages yet; an empty list is fine.
-%find_lang cassini-talk || : > cassini-talk.lang
-mv cassini-talk.lang %{name}.lang
+%find_lang %{name} || : > %{name}.lang
 # rpm rejects an empty -f list, so the package's data directory goes in it.
 echo "%%dir %{_datadir}/cassini-talk" >> %{name}.lang
 
