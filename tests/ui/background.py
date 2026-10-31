@@ -247,7 +247,7 @@ with tempfile.TemporaryDirectory() as temporary:
     window = app.get_active_window()
     if window is not None:
         window.close()
-    app.comfort.tick()
+    # No manual tick: closing the window publishes windowless state on idle.
     until(lambda: "background" in services.notifications)
     assert services.notifications["background"]["title"] == "Cassini is still running"
     assert services.notifications["background"]["body"] == (

@@ -1153,6 +1153,10 @@ class CassiniApplication(Adw.Application):
             and not any(w is not window for w in self.get_windows())
         ):
             self.begin_exit()
+        elif not self._quitting:
+            # Publish the indicator, background status and one-time notice once
+            # GTK has hidden the window, not on the next one-second tick.
+            GLib.idle_add(lambda: self.windowless_background.refresh() or GLib.SOURCE_REMOVE)
 
     def _capture_background_active(self):
         from .capture_guard import capture_targets
