@@ -306,9 +306,11 @@ def test_delayed_device_query_does_not_block_pcm_or_error_handling(tmp_path, mon
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
-    import gi
-
-    gi.require_version("Gst", "1.0")
+    gi = pytest.importorskip("gi")
+    try:
+        gi.require_version("Gst", "1.0")
+    except ValueError:
+        pytest.skip("Capture lock regressions require the GStreamer typelib")
     from gi.repository import GLib, Gst
 
     Gst.init(None)
@@ -408,9 +410,11 @@ def test_source_change_closes_history_before_slow_device_shutdown(tmp_path, monk
     import time
     from concurrent.futures import ThreadPoolExecutor
 
-    import gi
-
-    gi.require_version("Gst", "1.0")
+    gi = pytest.importorskip("gi")
+    try:
+        gi.require_version("Gst", "1.0")
+    except ValueError:
+        pytest.skip("Capture lock regressions require the GStreamer typelib")
     from gi.repository import GLib, Gst
 
     from cassini_viewer.browser_capture import BrowserCapture
