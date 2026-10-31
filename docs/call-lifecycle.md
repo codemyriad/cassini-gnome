@@ -59,3 +59,11 @@ browser tone, independent microphone/other call, worker reconnect and real 120 s
 expiry. Existing sample-count, tone and bleed thresholds are unchanged.
 
 Shared wire vectors also exercise immediate page-state statuses around delayed inventories. Navigation invalidates the departing document’s source count; only fresh inventory evidence clears the return deadline. The companion waits for the entire metadata batch before reading all rows’ current source evidence.
+
+A top-level status with a tab ID and no `sessions` list updates only that tab.
+It retains the known capture ID, path and stopping state when omitted; explicit
+fields take priority, and a replacement capture inherits none of its predecessor's
+state. This also covers the interval before the audio socket opens and connections
+without a browser instance. Every shared wire case runs both as published and
+with tab-scoped status deltas, checking retained folder/microphone ownership and
+the actual saved end reason.

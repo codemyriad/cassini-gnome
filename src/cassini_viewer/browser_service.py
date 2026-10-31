@@ -367,7 +367,9 @@ class BrowserService:
         previous = browser.states
         received_pages = {}
         browser.status = {
-            key: value[key] for key in ("recording", "tabId", "path", "message", "tracks", "pageState") if key in value
+            key: value[key]
+            for key in ("recording", "tabId", "path", "message", "tracks", "stopping", "captureId", "pageState")
+            if key in value
         }
         if "sessions" in value:
             items = value["sessions"]
@@ -395,7 +397,15 @@ class BrowserService:
             tab = value.get("tabId")
             if type(tab) is int and value.get("pageState") in ("present", "navigating", "closed"):
                 received_pages[tab] = value["pageState"]
-            states = {tab: dict(browser.status)} if value["recording"] else {}
+            if type(tab) is int:
+                # A tab-scoped status is a delta, not a full session inventory.
+                states = dict(previous)
+                if value["recording"]:
+                    states[tab] = dict(browser.status)
+                else:
+                    states.pop(tab, None)
+            else:
+                states = {tab: dict(browser.status)} if value["recording"] else {}
         interrupted = value.get("interrupted", [])
         if isinstance(interrupted, list):
             for item in interrupted[:100]:
@@ -409,6 +419,21 @@ class BrowserService:
             owner = self.captures.get(old.get("captureId"))
             if owner is not None and not owner.finished and owner.browser_lost:
                 states.setdefault(tab, old)
+            state = states.get(tab, {})
+            capture_id = old.get("captureId")
+            if (
+                old.get("recording")
+                and isinstance(capture_id, str)
+                and capture_id
+                and (owner is None or not owner.finished)
+                and state.get("recording")
+                and state.get("captureId", capture_id) == capture_id
+            ):
+                # Keep ownership through a page-state delta, including before
+                # the audio socket opens. Explicit changes still take priority.
+                for key in ("captureId", "path", "stopping"):
+                    if key in old:
+                        state.setdefault(key, old[key])
         if browser.browser_instance is not None:
             for (instance, tab), (capture_id, _url) in list(self.call_captures.items()):
                 owner = self.captures.get(capture_id)
