@@ -126,17 +126,20 @@ def commit_metadata(directory, current, changes, *, before_commit=None, words=No
         original_words = tuple(
             portable.Word(item["speaker"], item["startMs"], item["endMs"], item["text"]) for item in body["items"]
         )
-    speakers = library._speakers(original_words, updated["speakers"], live)
-    # Retain unknown fields on existing entries, including vendor provenance.
+    # A title, note, status or other unrelated edit cannot rename stored voices.
     entries = {item["id"]: item for item in manifest["speakers"]}
-    for speaker in speakers:
-        entries.setdefault(speaker.id, dict(id=speaker.id))["label"] = speaker.name
-    from .speaker_merges import resolve_merges
+    changed_names = updated["speakers"] != current["speakers"]
+    changed_merges = updated.get("speakerMerges", []) != current.get("speakerMerges", [])
+    if words is not None or changed_names or changed_merges:
+        speakers = library._speakers(original_words, updated["speakers"], live)
+        for speaker in speakers:
+            entries.setdefault(speaker.id, dict(id=speaker.id))["label"] = speaker.name
+        from .speaker_merges import resolve_merges
 
-    mapping = resolve_merges(updated.get("speakerMerges", []), entries)
-    labels = {speaker_id: entry["label"] for speaker_id, entry in entries.items()}
-    for speaker_id, into in mapping.items():
-        entries[speaker_id]["label"] = labels[into]
+        mapping = resolve_merges(updated.get("speakerMerges", []), entries)
+        labels = {speaker_id: entry["label"] for speaker_id, entry in entries.items()}
+        for speaker_id, into in mapping.items():
+            entries[speaker_id]["label"] = labels[into]
     manifest["speakers"] = list(entries.values())
     replacements["CASSINI_SPEAKER_COUNT"] = str(len(entries))
     if displayed != previous_title:

@@ -374,3 +374,35 @@ def test_root_file_uses_its_stored_label_even_if_it_looks_like_an_unnamed_rank(p
     embedded = SimpleNamespace(speakers=[portable.Speaker("a", "Speaker 19")])
     local = [dict(id="a", name=None, provenance="unnamed", colourIndex=0)]
     assert _speakers(words, local, embedded, stored_labels=True)[0].name == "Speaker 19"
+
+
+def test_unrelated_edit_never_relabels_a_stored_unnamed_voice(published):
+    from cassini_viewer.library_v2 import edit
+    from cassini_viewer.portable_writer import MANIFEST_MIME, chunk_set
+
+    _root, _sid, directory, path = published
+    body = dict(format=portable.WORDS_FORMAT, items=[dict(speaker="a", startMs=0, endMs=20, text="hello")])
+    with transaction(directory):
+        commit_metadata(
+            directory,
+            meeting_store.read_metadata(directory),
+            dict(
+                speakers=[dict(id="a", name=None, provenance="unnamed", colourIndex=0)],
+                transcript=dict(status="done", reference=None),
+            ),
+            words=body,
+        )
+    manifest = portable.read_meeting(str(path)).manifest
+    manifest["speakers"][0]["label"] = "Parlante 19"
+    tags, _ = chunk_set(edit.MANIFEST_PREFIX, manifest, MANIFEST_MIME)
+    with path.open("rb") as stream:
+        vendor, fields = edit.comment_fields(stream)
+    fields = edit.edited_fields(fields, tags, chunk_prefixes=(edit.MANIFEST_PREFIX,))
+    stage = path.with_suffix(".test-stage")
+    edit.rewrite(path, stage, fields, vendor)
+    edit.verify(stage)
+    stage.replace(path)
+    digest = audio_digest(path)
+    commit(directory, notes=[dict(atMs=0, text="A note")])
+    assert portable.read_meeting(str(path)).speakers[0].label == "Parlante 19"
+    assert audio_digest(path) == digest
