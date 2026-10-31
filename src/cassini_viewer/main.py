@@ -858,7 +858,7 @@ class CassiniApplication(Adw.Application):
             ):
                 recorder.stop()
 
-    def stop_browser_recordings(self, directory=None):
+    def stop_browser_recordings(self, directory=None, *, reason="user"):
         from concurrent.futures import ThreadPoolExecutor
         from pathlib import Path
 
@@ -873,6 +873,7 @@ class CassiniApplication(Adw.Application):
         future = executor.submit(
             stop_browser_captures,
             directory,
+            reason=reason,
             cancel_groups=[self._record_start_group] if self._record_start_group and directory is None else [],
         )
 

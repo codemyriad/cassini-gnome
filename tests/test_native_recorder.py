@@ -106,7 +106,9 @@ def test_stop_during_replacement_first_sample_keeps_the_confirmed_tracks(tmp_pat
         spin_until(lambda: recorder.pipeline is None and not recorder._finishing)
         with pytest.raises(ValueError, match="No source change"):
             replacement.result()
-        assert session.manifest["events"] == events and set(session.writers) == tracks
+        assert session.manifest["events"][:-1] == events and set(session.writers) == tracks
+        assert session.manifest["events"][-1]["type"] == "end"
+        assert session.manifest["events"][-1]["reason"] == "user"
         assert session.manifest["state"] == "completed" and not errors
         assert not recorder._pending_sources
         assert len(list(session.directory.glob("track-*.wav"))) == len(tracks)
@@ -114,6 +116,24 @@ def test_stop_during_replacement_first_sample_keeps_the_confirmed_tracks(tmp_pat
         release.set()
         recorder.stop()
         spin_until(lambda: recorder.pipeline is None and not recorder._finishing)
+        recorder._executor.shutdown()
+
+
+def test_preparation_stop_end_time_uses_this_start_not_an_old_recorder_clock(tmp_path):
+    from test_recorder import spin_until
+
+    from cassini_viewer.native_recorder import NativeRecorder
+
+    recorder = NativeRecorder()
+    recorder._start_us = 0
+    recorder.start(tmp_path, test=True)
+    recorder.stop()  # Before the prepared result reaches the main context.
+    try:
+        spin_until(lambda: recorder.session is not None and recorder.session.finished and not recorder._finishing)
+        assert recorder.pipeline is None and all(t["frames"] == 0 for t in recorder.session.manifest["tracks"])
+        end = recorder.session.manifest["events"][-1]
+        assert end["reason"] == "user" and 0 <= end["atMs"] < 5000
+    finally:
         recorder._executor.shutdown()
 
 

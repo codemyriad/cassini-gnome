@@ -52,6 +52,60 @@ class Policy:
         return []
 
 
+class WirePolicy:
+    """One tab's effective evidence before passing it to the lifecycle oracle."""
+    def __init__(self, tab):
+        self.tab = tab
+        self.page = None
+        self.count = 0
+        self.heard = False
+        self.policy = Policy()
+
+    def invalidate(self):
+        self.count = 0
+        self.heard = False
+
+    def step(self, value):
+        packet = value['packet']
+        if packet is not None:
+            if packet['type'] == 'meetings':
+                row = next((row for row in packet['meetings'] if row['tabId'] == self.tab), None)
+                self.count = row['sourceCount'] if row else 0
+                self.heard = row.get('heard') is True if row else False
+                self.page = row.get('pageState') if row else None
+            elif packet['type'] == 'status':
+                rows = packet.get('sessions', [packet])
+                row = next((row for row in rows if row['tabId'] == self.tab), None)
+                if row is not None and 'pageState' in row:
+                    self.page = row['pageState']
+                    if self.page in ('navigating', 'closed'):
+                        self.invalidate()
+        return self.policy.step(dict(atMs=value['atMs'], pageState=self.page, sourceCount=self.count))
+
+
+def check_wire():
+    from jsonschema import Draft202012Validator
+    validator = Draft202012Validator(json.loads((ROOT / 'schemas/control-extension.schema.json').read_text()))
+    value = json.loads((ROOT / 'conformance/control/call-lifecycle-wire-vectors.json').read_text())
+    assert value['version'] == 1
+    validator.validate(value['hello'])
+    names = set()
+    for case in value['cases']:
+        assert case['name'] not in names
+        names.add(case['name'])
+        policy = WirePolicy(case['tabId'])
+        previous = -1
+        for step in case['steps']:
+            assert step['atMs'] >= previous
+            previous = step['atMs']
+            if step['packet'] is not None:
+                validator.validate(step['packet'])
+            assert policy.step(step) == step['expect'], (case['name'], step)
+            assert dict(pageState=policy.page, sourceCount=policy.count, heard=policy.heard) == step['expectEvidence'], (case['name'], step)
+            assert dict(missingAtMs=policy.policy.missing, endedAtMs=policy.policy.ended) == step['expectTimers'], (case['name'], step)
+        print('PASS D33 lifecycle wire:', case['name'])
+
+
 def check():
     value = json.loads((ROOT / 'conformance/control/call-lifecycle-vectors.json').read_text())
     assert value['constants'] == dict(CALL_END_GRACE=2, BROWSER_RETURN_GRACE=120)
@@ -66,6 +120,7 @@ def check():
             previous = step['atMs']
             assert policy.step(step) == step['expect'], (case['name'], step)
         print('PASS D33 lifecycle:', case['name'])
+    check_wire()
 
 
 if __name__ == '__main__':

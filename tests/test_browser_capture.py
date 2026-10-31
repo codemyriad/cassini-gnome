@@ -473,7 +473,7 @@ def test_reload_fallback_survives_return_but_stops_when_call_does_not_return(ser
         peer.inventory(())
         wait_for(lambda: "reload" in service._capture_missing_since)
         with service.lock:
-            service._capture_missing_since["reload"] = time.monotonic() - 30.01
+            service._capture_missing_since["reload"] = time.monotonic() - 120.01
         service.policy()
         wait_for(lambda: capture.finished)
         assert all(tap.stopped for tap in Tap.instances)
@@ -500,7 +500,7 @@ def test_disconnected_fallback_is_saved_after_bounded_browser_return_grace(serve
     service.policy()
     assert not capture.finished
     with service.lock:
-        service._capture_missing_since["disconnected"] = time.monotonic() - 30.01
+        service._capture_missing_since["disconnected"] = time.monotonic() - 120.01
     service.policy()
     wait_for(lambda: capture.finished)
     assert all(tap.stopped for tap in Tap.instances)
@@ -542,7 +542,7 @@ def test_unobserved_audio_disconnect_still_starts_bounded_fallback_grace(server)
         assert not capture.finished
         with service.lock:
             service._capture_missing_since.pop("unobserved-loss")
-            capture.browser_lost_since = time.monotonic() - 30.01
+            capture.browser_lost_since = time.monotonic() - 120.01
         service.policy()
         wait_for(lambda: capture.finished)
         assert all(tap.stopped for tap in Tap.instances)
@@ -572,7 +572,7 @@ def test_initial_system_fallback_expires_when_control_left_before_first_policy(s
     key = capture.capture_id
     assert key not in service._capture_observed and capture.browser_lost
     with service.lock:
-        capture.browser_lost_since = time.monotonic() - 30.01
+        capture.browser_lost_since = time.monotonic() - 120.01
     service.policy()
     wait_for(lambda: capture.finished)
     assert all(tap.stopped for tap in Tap.instances)
@@ -755,12 +755,15 @@ def test_user_stop_joins_pending_automatic_stop_and_finishes_its_capture(server,
             automatic = pool.submit(service.command, identifier, "stop", preserve_capture=preserve_capture)
             command = peer.receive()
             user = pool.submit(request, "stop-all", path=path)
-            wait_for(lambda: capture.finished)
+            wait_for(lambda: capture.finished and ("4242:99", 3) in service.stopped_calls)
             assert service.stopped_calls[("4242:99", 3)][0] == meeting()["url"]
             # The user sees the completed local save even if the page has not
             # acknowledged the automatic/fallback stop yet.
             assert not any(s.get("recording") for s in user.result(2)["statuses"])
-            assert not automatic.done()
+            if preserve_capture:
+                assert not automatic.done()
+            else:
+                assert automatic.result(0.2)["stoppedPath"] == str(capture.directory)
             peer.answer(command)
             assert automatic.result(2)
             assert not next(iter(service.browsers.values())).pending, "A second wire Stop must not be sent"

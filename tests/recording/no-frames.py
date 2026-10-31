@@ -127,8 +127,8 @@ try:
     with wave.open(str(path), "rb") as audio:
         assert audio.getnframes() >= frames
         assert audio.readframes(len(before) // 2) == before
-    details = json.loads((session.directory / "meeting.json").read_text())["recordingDetails"]
-    assert details["end"]["reason"] == "appQuit"
+    ends = [event for event in session.manifest["events"] if event["type"] == "end"]
+    assert len(ends) == 1 and ends[0]["reason"] == "appQuit", session.manifest
     report.update(
         passed=True,
         quitSeconds=elapsed,

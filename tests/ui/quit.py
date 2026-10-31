@@ -183,9 +183,9 @@ with tempfile.TemporaryDirectory() as tmp:
         finish_gate = threading.Event()
         original_finish = RecordingSession.finish
 
-        def slow_finish(session, *args):
+        def slow_finish(session, *args, **kwargs):
             assert finish_gate.wait(5), "Finalization was not released"
-            return original_finish(session, *args)
+            return original_finish(session, *args, **kwargs)
 
         RecordingSession.finish = slow_finish
 

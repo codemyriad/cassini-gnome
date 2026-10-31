@@ -106,3 +106,77 @@ test('a previous gap warning does not rewrite the explicit terminal Stop reason'
   assert.ok(packet.problem);assert.equal(packet.reason,'user');
  } finally {app.close();}
 });
+
+test('fast reload publishes navigation before a blocked asynchronous inventory can coalesce it away',async()=>{
+ const app=await setup();let release;
+ try {
+  await app.command(start());await app.api.appControl.publishing;
+  const port=app.ports.at(-1),before=port.sent.length;
+  const lookup=app.chrome.tabs.get;
+  let entered=false;const gate=new Promise(resolve=>{release=resolve;});
+  app.chrome.tabs.get=async id=>{entered=true;await gate;return lookup(id);};
+  app.api.appControl.publish();await until(()=>entered);
+  app.chrome.tabs.onUpdated.emit(2,{status:'loading'});
+  app.pages[0].onDisconnect.emit();app.frame(2,0);
+  const states=port.sent.slice(before).filter(p=>p.type==='status').map(p=>p.sessions.find(s=>s.tabId===2)?.pageState);
+  assert.ok(states.includes('navigating'),'active navigation evidence must not wait for chrome.tabs.get');
+  assert.ok(states.indexOf('navigating')<states.lastIndexOf('present'),'return follows the published navigation');
+  release();await app.api.appControl.publishing;
+  await app.command(stop());
+ } finally {release?.();app.close();}
+});
+
+test('inventory recomputes source evidence after tab lookup instead of mixing old counts with the returned document',async()=>{
+ const app=await setup();let release;
+ try {
+  await app.command(start());await app.api.appControl.publishing;
+  const lookup=app.chrome.tabs.get;let entered=false;
+  const gate=new Promise(resolve=>{release=resolve;});
+  app.chrome.tabs.get=async id=>{entered=true;await gate;return lookup(id);};
+  const pending=app.api.meetings();await until(()=>entered);
+  app.chrome.tabs.onUpdated.emit(2,{status:'loading'});
+  app.pages[0].onDisconnect.emit();app.frame(2,0);
+  release();const snapshot=await pending;
+  const current=snapshot.meetings.find(m=>m.tabId===2);
+  assert.equal(current.sourceCount,0);assert.equal(current.heard,false);assert.equal(current.pageState,'present');
+  await app.api.appControl.publishing;await app.command(stop());
+ } finally {release?.();app.close();}
+});
+
+test('all tab lookups settle before any tab source evidence is collected',async()=>{
+ const app=await setup();let release;
+ try {
+  app.frame(99,2);
+  assert.equal((await app.command(start(2))).ok,true);
+  assert.equal((await app.command(start(99))).ok,true);
+  await app.api.appControl.publishing;
+  const port=app.ports.at(-1),before=port.sent.length;
+  const lookup=app.chrome.tabs.get;let aResolved=false,bPending=false;
+  const gate=new Promise(resolve=>{release=resolve;});
+  app.chrome.tabs.get=async id=>{
+   if(id===99){bPending=true;await gate;}
+   const tab=await lookup(id);
+   if(id===2)aResolved=true;
+   return tab;
+  };
+  app.api.appControl.publish();await until(()=>aResolved&&bPending);
+  // Flush already-ready A's promise continuations; B remains explicitly gated.
+  await new Promise(resolve=>setImmediate(resolve));
+  app.chrome.tabs.onUpdated.emit(2,{status:'loading'});
+  app.pages[0].onDisconnect.emit();app.frame(2,0);
+  const states=port.sent.slice(before).filter(p=>p.type==='status').map(p=>p.sessions.find(s=>s.tabId===2)?.pageState);
+  assert.ok(states.includes('navigating'));
+  assert.ok(states.indexOf('navigating')<states.lastIndexOf('present'));
+  release();await app.api.appControl.publishing;
+  const inventories=port.sent.slice(before).filter(p=>p.type==='meetings');
+  assert.ok(inventories.length>=2,'the pending publication and dirty refresh both complete');
+  for(const packet of inventories){
+   const a=packet.meetings.find(row=>row.tabId===2),b=packet.meetings.find(row=>row.tabId===99);
+   assert.equal(a.pageState,'present');
+   assert.equal(a.sourceCount,0,'A must not publish its pre-reload count after the navigation/return statuses');
+   assert.equal(a.heard,false);
+   assert.equal(b.sourceCount,2,'B keeps its independent source evidence');
+  }
+  await app.command(stop(2));await app.command(stop(99));
+ } finally {release?.();app.close();}
+});

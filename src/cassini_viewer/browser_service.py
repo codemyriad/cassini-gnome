@@ -17,18 +17,27 @@ import sys
 import threading
 import time
 from concurrent.futures import CancelledError, ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
+from .call_lifecycle import BROWSER_RETURN_GRACE, CALL_END_GRACE, CONTROL_RECONNECT_GRACE, CallLifecycle
+
 MAX_PACKET = 512 * 1024
-CALL_END_GRACE = 2
-BROWSER_RETURN_GRACE = 30
 # A call the user stopped stays stopped beyond the control link that carried
 # the stop, so a reconnect does not start it again automatically.
 STOPPED_CALL_GRACE = 10 * 60
 STOPPED_CALL_LIMIT = 256
 # A new extension worker reports the calls already open as its pages reconnect.
 STOPPED_CALL_REPORT_WINDOW = 30
+
+
+@dataclass(frozen=True)
+class ControlReconnect:
+    instance: str
+    tab: int
+    since: float
+    lifecycle: bool
 
 
 class StartRejected(ValueError):
@@ -144,6 +153,8 @@ class BrowserConnection:
         self.scheduled = set()
         self.missing_since = {}
         self.states = {}
+        self.page_states = {}
+        self.status_pages = {}
         self.capabilities = set()
         self.closed = False
 
@@ -181,6 +192,8 @@ class BrowserService:
         self._capture_missing_since = {}
         self._capture_observed = set()
         self._capture_policy_pending = set()
+        self._capture_lifecycles = {}
+        self._control_reconnects = {}
         self.capture_parent, self.tap_factory = capture_parent, tap_factory
         self.applications = {}
         self.application_pids = {}
@@ -256,6 +269,7 @@ class BrowserService:
             self.workers.submit(capture.stop, capture.error)
         elif event == "finished" and capture.directory is not None:
             with self.lock:
+                self._control_reconnects.pop(capture.capture_id, None)
                 self.call_captures = {
                     key: value for key, value in self.call_captures.items() if value[0] != capture.capture_id
                 }
@@ -317,7 +331,7 @@ class BrowserService:
             if capture is not None:
                 try:
                     if problem or self.closed.is_set():
-                        capture.stop(problem)
+                        capture.stop(problem, reason="error" if problem else "appQuit")
                     else:
                         capture.close()
                 finally:
@@ -351,8 +365,9 @@ class BrowserService:
             return
         browser.status_seen = True
         previous = browser.states
+        received_pages = {}
         browser.status = {
-            key: value[key] for key in ("recording", "tabId", "path", "message", "tracks") if key in value
+            key: value[key] for key in ("recording", "tabId", "path", "message", "tracks", "pageState") if key in value
         }
         if "sessions" in value:
             items = value["sessions"]
@@ -367,15 +382,19 @@ class BrowserService:
                 ):
                     raise ValueError("Invalid recording status")
                 tab = item["tabId"]
+                if item.get("pageState") in ("present", "navigating", "closed"):
+                    received_pages[tab] = item["pageState"]
                 if tab in states or not 0 <= tab <= 9007199254740991:
                     raise ValueError("Invalid or duplicate recording tab")
                 states[tab] = {
                     key: item[key]
-                    for key in ("recording", "tabId", "path", "message", "tracks", "stopping", "captureId")
+                    for key in ("recording", "tabId", "path", "message", "tracks", "stopping", "captureId", "pageState")
                     if key in item
                 }
         else:
             tab = value.get("tabId")
+            if type(tab) is int and value.get("pageState") in ("present", "navigating", "closed"):
+                received_pages[tab] = value["pageState"]
             states = {tab: dict(browser.status)} if value["recording"] else {}
         interrupted = value.get("interrupted", [])
         if isinstance(interrupted, list):
@@ -393,10 +412,19 @@ class BrowserService:
         if browser.browser_instance is not None:
             for (instance, tab), (capture_id, _url) in list(self.call_captures.items()):
                 owner = self.captures.get(capture_id)
-                if instance == browser.browser_instance and owner is not None and not owner.finished:
-                    states.setdefault(
+                if (
+                    instance == browser.browser_instance
+                    and tab in (browser.meetings.keys() | states.keys() | previous.keys())
+                    and owner is not None
+                    and not owner.finished
+                ):
+                    state = states.setdefault(
                         tab, dict(recording=True, tabId=tab, captureId=capture_id, path=str(owner.directory))
                     )
+                    if state.get("recording") and not state.get("captureId"):
+                        # A tab-scoped compatibility status can omit captureId.
+                        # Preserve the independently owned audio association.
+                        state.update(captureId=capture_id, path=str(owner.directory))
                     browser.attempted.add(tab)
             for tab, state in states.items():
                 capture_id = state.get("captureId")
@@ -411,7 +439,20 @@ class BrowserService:
                     # audio socket. Preserve that association across an early
                     # control disconnect, including the original call address.
                     self._bind_capture(browser, tab, capture_id)
+        for tab, state in tuple(states.items()):
+            if tab not in received_pages and "pageState" in state:
+                states[tab] = {key: value for key, value in state.items() if key != "pageState"}
+        for tab, page in received_pages.items():
+            if page in ("navigating", "closed") and tab in browser.meetings:
+                # A fast returning status can precede its asynchronous inventory.
+                # The departing document's positive count cannot prove return.
+                browser.meetings[tab] = dict(browser.meetings[tab], sourceCount=0, heard=False)
+        browser.status_pages = received_pages
         browser.states = states
+        browser.page_states.update(received_pages)
+        for tab in tuple(browser.page_states):
+            if tab not in received_pages and tab not in browser.meetings and browser.page_states[tab] != "closed":
+                browser.page_states.pop(tab, None)
         for tab, old in previous.items():
             if old.get("recording") and not states.get(tab, {}).get("recording"):
                 close = browser.notifications.pop(tab, None)
@@ -444,15 +485,38 @@ class BrowserService:
                     ):
                         continue
                     meetings[value["tabId"]] = {key: value[key] for key in ("tabId", "title", "url", "sourceCount")}
+                    if value.get("pageState") in ("present", "navigating", "closed"):
+                        meetings[value["tabId"]]["pageState"] = value["pageState"]
+                        browser.page_states[value["tabId"]] = value["pageState"]
                     meetings[value["tabId"]]["heard"] = value.get("heard") is True
                     meetings[value["tabId"]]["title"] = value["title"][:200]
                     meetings[value["tabId"]]["url"] = value["url"][:2048]
                 self._expire_stopped(time.monotonic())
                 previous, browser.meetings = browser.meetings, meetings
+                for tab in previous.keys() - meetings.keys():
+                    if tab not in browser.status_pages and browser.page_states.get(tab) != "closed":
+                        browser.page_states.pop(tab, None)
+                        if tab in browser.states:
+                            browser.states[tab] = {
+                                key: value for key, value in browser.states[tab].items() if key != "pageState"
+                            }
                 self._restore_stopped(browser, previous)
                 for tab, state in browser.states.items():
                     if state.get("recording") and isinstance(state.get("captureId"), str):
                         self._bind_capture(browser, tab, state["captureId"])
+                if browser.browser_instance is not None:
+                    for (instance, tab), (capture_id, _url) in self.call_captures.items():
+                        owner = self.captures.get(capture_id)
+                        if (
+                            instance == browser.browser_instance
+                            and tab in meetings
+                            and owner is not None
+                            and not owner.finished
+                        ):
+                            browser.states.setdefault(
+                                tab, dict(recording=True, tabId=tab, captureId=capture_id, path=str(owner.directory))
+                            )
+                            browser.attempted.add(tab)
                 browser.attempted.intersection_update(meetings)
             elif kind == "status":
                 self._status(browser, packet)
@@ -475,10 +539,23 @@ class BrowserService:
                 )
             else:
                 raise ValueError("Unknown browser control event")
+            browser.page_states = {
+                tab: page
+                for tab, page in browser.page_states.items()
+                if tab in browser.states or tab in browser.meetings
+            }
         self.policy()
 
-    def command(self, identifier, action, *, microphone=True, preserve_capture=False, user=False):
-        if action not in ("start", "stop") or not isinstance(identifier, str) or type(microphone) is not bool:
+    def command(self, identifier, action, *, microphone=True, preserve_capture=False, user=False, reason="user"):
+        from .session_events import END_REASONS
+
+        if (
+            action not in ("start", "stop")
+            or not isinstance(identifier, str)
+            or type(microphone) is not bool
+            or not isinstance(reason, str)
+            or reason not in END_REASONS
+        ):
             raise ValueError("Invalid meeting command")
         if identifier.startswith("capture:"):
             with self.lock:
@@ -487,7 +564,7 @@ class BrowserService:
                 raise ValueError("This meeting is no longer available")
             if user:
                 self._remember_capture_stop(capture)
-            capture.stop()
+            capture.stop(reason=reason)
             return self.snapshot()
         browser_id, _, raw_tab = identifier.partition(":")
         with self.lock:
@@ -509,6 +586,7 @@ class BrowserService:
             if action == "stop" and user:
                 self._remember_stop(browser, tab, True)
                 if capture is not None and not preserve_capture:
+                    capture.end_reason = capture.end_reason or reason
                     capture.stop_requested.set()
             pending_start = any(p.get("action") == "start" and p["tabId"] == tab for p in browser.pending.values())
             if action == "stop":
@@ -539,13 +617,14 @@ class BrowserService:
                 browser.pending[request_id] = pending
                 capture = self.captures.get(browser.states.get(tab, {}).get("captureId"))
                 if capture is not None and action == "stop" and not preserve_capture:
+                    capture.end_reason = capture.end_reason or reason
                     capture.stop_requested.set()
         if joining is not None:
             if capture is not None and not preserve_capture:
                 # Local save is authoritative. The existing browser Stop may
                 # still be waiting for an unreachable page; do not keep the
                 # user's Stop waiting after their audio is safely saved.
-                capture.stop()
+                capture.stop(reason=reason)
                 return dict(self.snapshot(), stoppedPath=str(capture.directory))
             if not joining["event"].wait(self.command_timeout):
                 raise TimeoutError("The browser did not finish the recording command")
@@ -557,13 +636,19 @@ class BrowserService:
                 stoppedPath=str(capture.directory) if capture is not None else (result.get("status") or {}).get("path"),
             )
         try:
-            if capture is not None and capture.browser_lost and action == "stop" and not preserve_capture:
-                capture.stop()
-                return dict(self.snapshot(), stoppedPath=str(capture.directory))
+            if capture is not None and action == "stop" and not preserve_capture:
+                capture.stop(reason=reason)
             packet = dict(type="command", requestId=request_id, action=action, tabId=tab, mode="tracks")
             if independent:
                 packet.update(independent=True, captureLocal=False, microphone=microphone)
+                if "page-state-v1" in browser.capabilities:
+                    if action == "start":
+                        packet["keepOnNavigation"] = True
+                    else:
+                        packet["reason"] = reason
             browser.send(packet)
+            if capture is not None and capture.finished and action == "stop" and not preserve_capture:
+                return dict(self.snapshot(), stoppedPath=str(capture.directory))
             if not pending["event"].wait(self.command_timeout):
                 raise TimeoutError("The browser did not finish the recording command")
             result = pending["result"]
@@ -576,9 +661,15 @@ class BrowserService:
                 raise error(str((result or {}).get("error", "The browser disconnected"))[:500])
             snapshot = self.snapshot()
             if action == "stop":
-                snapshot["stoppedPath"] = (result.get("status") or {}).get("path")
+                snapshot["stoppedPath"] = (
+                    str(capture.directory)
+                    if capture is not None and capture.directory is not None
+                    else (result.get("status") or {}).get("path")
+                )
             return snapshot
         except (OSError, ValueError, TimeoutError) as error:
+            if capture is not None and capture.finished and action == "stop" and not preserve_capture:
+                return dict(self.snapshot(), stoppedPath=str(capture.directory))
             with self.lock:
                 browser.error = str(error)
             raise
@@ -695,7 +786,12 @@ class BrowserService:
             raise
         return capture.snapshot()
 
-    def stop_all(self, directory=None, *, cancel_groups=(), quitting_pid=None, quitting_generation=0):
+    def stop_all(self, directory=None, *, cancel_groups=(), quitting_pid=None, quitting_generation=0, reason="user"):
+        from .session_events import END_REASONS
+
+        reason = "appQuit" if quitting_pid is not None else reason
+        if not isinstance(reason, str) or reason not in END_REASONS:
+            raise ValueError("Invalid recording end reason")
         if type(quitting_generation) is not int or quitting_generation < 0:
             raise ValueError("Invalid application generation")
         if (
@@ -712,6 +808,13 @@ class BrowserService:
             self._stopping_all.set()
             with self.lock:
                 self._stop_generation += 1
+                if quitting_pid is None:
+                    # The selected call may have finished locally between the
+                    # user's click and this RPC. Stop also cancels its retry.
+                    for browser in self.browsers.values():
+                        for tab, meeting in browser.meetings.items():
+                            if meeting.get("sourceCount", 0) > 0 or browser.states.get(tab, {}).get("recording"):
+                                self._remember_stop(browser, tab, True)
                 if quitting_pid is not None:
                     self.paused_pids[quitting_pid] = max(self.paused_pids.get(quitting_pid, -1), quitting_generation)
                     for key, pid in self.application_pids.items():
@@ -739,7 +842,7 @@ class BrowserService:
                     )
             for identifier in commands:
                 try:
-                    result = self.command(identifier, "stop", user=quitting_pid is None)
+                    result = self.command(identifier, "stop", user=quitting_pid is None, reason=reason)
                     if isinstance(result.get("stoppedPath"), str):
                         paths.append(result["stoppedPath"])
                 except ValueError:
@@ -755,7 +858,7 @@ class BrowserService:
             for capture in captures:
                 if quitting_pid is None:
                     self._remember_capture_stop(capture)
-                capture.stop()
+                capture.stop(reason=reason)
             return dict(self.snapshot(), stoppedPaths=list(dict.fromkeys(paths)))
         finally:
             if directory is None:
@@ -776,6 +879,9 @@ class BrowserService:
                 for tab, state in browser.states.items()
                 if state.get("recording")
             }
+            for capture_id, reconnect in tuple(self._control_reconnects.items()):
+                if capture_id not in self.captures and now - reconnect.since >= CONTROL_RECONNECT_GRACE:
+                    self._control_reconnects.pop(capture_id, None)
             self._capture_observed.update(observed)
             self._capture_observed.intersection_update(self.captures)
             for key, capture in self.captures.items():
@@ -785,14 +891,94 @@ class BrowserService:
                     or capture.stopping
                     or capture.stop_requested.is_set()
                     or key not in self._capture_observed
+                    and key not in self._control_reconnects
                     and not capture.browser_lost
                 ):
                     self._capture_missing_since.pop(key, None)
                     continue
                 peer = observed.get(key)
+                reconnect = self._control_reconnects.get(key)
+                if reconnect is not None:
+                    binding = self.call_captures.get((reconnect.instance, reconnect.tab))
+                    if binding is None or binding[0] != key:
+                        self._control_reconnects.pop(key, None)
+                        reconnect = None
+                    elif reconnect.lifecycle:
+                        capture.lifecycle_capable = True
+                if peer is not None and "page-state-v1" in peer[0].capabilities:
+                    capture.lifecycle_capable = True
+                if capture.lifecycle_capable:
+                    lifecycle = self._capture_lifecycles.setdefault(key, CallLifecycle())
+                    if key not in self._capture_observed and capture.browser_lost and lifecycle.missing is None:
+                        lifecycle.missing = capture.browser_lost_since
+                    page, count = None, 0
+                    if peer is not None:
+                        state = peer[0].states[peer[1]]
+                        meeting = peer[2] or {}
+                        page = browser_page = peer[0].page_states.get(peer[1])
+                        if browser_page is None:
+                            page = state.get("pageState") or meeting.get("pageState")
+                        count = meeting.get("sourceCount", 0)
+                        if (
+                            lifecycle.missing is not None
+                            and "call-evidence-v1" in peer[0].capabilities
+                            and meeting.get("heard") is not True
+                            and not capture.browser_ready_since(lifecycle.missing)
+                        ):
+                            count = 0  # Returning pre-join slots are not received audio.
+                    if page == "closed":
+                        capture.tab_closed = True
+                    if reconnect is not None:
+                        known_page = peer is not None and peer[2] is not None
+                        # A disconnect can be observed between two PCM buffers. Recent
+                        # pre-disconnect PCM is still fresh; requiring the next
+                        # buffer here prematurely invents a page-loss timer.
+                        fresh = capture.browser_ready_since()
+                        if known_page and page == "present":
+                            self._control_reconnects.pop(key, None)
+                            if lifecycle.missing == reconnect.since:
+                                lifecycle.missing = None
+                        elif page in ("closed", "navigating"):
+                            self._control_reconnects.pop(key, None)
+                            if not capture.browser_lost and fresh and lifecycle.missing == reconnect.since:
+                                lifecycle.missing = None
+                        elif (
+                            not known_page
+                            and now - reconnect.since < CONTROL_RECONNECT_GRACE
+                            and not capture.tab_closed
+                            and not capture.browser_lost
+                            and fresh
+                        ):
+                            continue  # Rediscovery is not evidence that the page navigated.
+                        elif lifecycle.missing is None and lifecycle.ended is None:
+                            lifecycle.missing = reconnect.since
+                    action = lifecycle.decide(
+                        now,
+                        page,
+                        count,
+                        fallback=capture.browser_lost,
+                        others=capture.others,
+                        restore_ready=capture.browser_ready,
+                    )
+                    if reconnect is not None and page == "present" and count > 0 and lifecycle.missing is None:
+                        self._control_reconnects.pop(key, None)
+                    identifier = f"{peer[0].id}:{peer[1]}" if peer is not None else None
+                    if action and key not in self._capture_policy_pending:
+                        self._capture_policy_pending.add(key)
+                        capture_tasks.append((key, capture, identifier, action))
+                    continue
                 if peer is not None and peer[2] is not None and peer[2]["sourceCount"] > 0:
+                    self._control_reconnects.pop(key, None)
                     self._capture_missing_since.pop(key, None)
                     continue
+                if reconnect is not None:
+                    self._capture_missing_since.setdefault(key, reconnect.since)
+                    if (
+                        now - reconnect.since < CONTROL_RECONNECT_GRACE
+                        and not capture.browser_lost
+                        and capture.browser_ready_since(reconnect.since)
+                    ):
+                        continue
                 # A lost audio/control peer can disappear before its first
                 # status was observed. Its native fallback still needs a
                 # bounded lifetime, measured from loss, not a later policy tick.
@@ -812,7 +998,7 @@ class BrowserService:
                 identifier = f"{peer[0].id}:{peer[1]}" if peer is not None else None
                 action = None
                 if now - since >= (CALL_END_GRACE if ended else BROWSER_RETURN_GRACE):
-                    action = "stop"
+                    action = "stop:callEnded" if ended else "stop:pageGone"
                 elif not ended and not capture.browser_lost and (peer is not None or now - since >= CALL_END_GRACE):
                     action = "fallback"
                 if action and key not in self._capture_policy_pending:
@@ -820,6 +1006,8 @@ class BrowserService:
                     capture_tasks.append((key, capture, identifier, action))
             for key in self._capture_missing_since.keys() - self.captures.keys():
                 self._capture_missing_since.pop(key, None)
+            for key in self._capture_lifecycles.keys() - self.captures.keys():
+                self._capture_lifecycles.pop(key, None)
             for browser in self.browsers.values():
                 if browser.closed or not browser.status_seen:
                     continue
@@ -870,11 +1058,14 @@ class BrowserService:
                     self._fallback(identifier, capture)
                 else:
                     capture.fallback()
+            elif action == "restore":
+                capture.restore()
             else:
                 # Save before waiting for a potentially unreachable extension.
-                capture.stop()
+                reason = action.partition(":")[2] or "user"
+                capture.stop(reason=reason)
                 if identifier is not None:
-                    self.command(identifier, "stop")
+                    self.command(identifier, "stop", reason=reason)
         except (OSError, ValueError, TimeoutError):
             logging.getLogger(__name__).exception("Browser capture lifecycle: %s", action)
         finally:
@@ -884,7 +1075,8 @@ class BrowserService:
     def _fallback(self, identifier, capture):
         try:
             capture.fallback()
-            self.command(identifier, "stop", preserve_capture=True)
+            if not capture.lifecycle_capable:
+                self.command(identifier, "stop", preserve_capture=True)
         except (OSError, ValueError, TimeoutError) as error:
             logging.getLogger(__name__).warning("Browser source fallback: %s", error)
         finally:
@@ -1040,6 +1232,7 @@ class BrowserService:
                                 cancel_groups=packet.get("cancelGroups", []),
                                 quitting_pid=pid if packet.get("quitting") is True else None,
                                 quitting_generation=packet.get("generation", 0),
+                                reason=packet.get("reason", "user"),
                             )
                         elif action == "configure":
                             result = self.configure(packet.get("autoRecord"))
@@ -1059,7 +1252,11 @@ class BrowserService:
                             result = capture.select(packet.get("me"), packet.get("others"))
                         else:
                             result = self.command(
-                                packet.get("id"), action, microphone=packet.get("microphone", True), user=True
+                                packet.get("id"),
+                                action,
+                                microphone=packet.get("microphone", True),
+                                user=True,
+                                reason=packet.get("reason", "user"),
                             )
                     except (OSError, ValueError, TimeoutError) as error:
                         result = {"error": str(error)}
@@ -1069,11 +1266,48 @@ class BrowserService:
         finally:
             if browser:
                 with self.lock:
+                    self._remember_control_loss(browser)
                     self._restore_stopped(browser, browser.meetings)
                     browser.closed = True
                     self.browsers.pop(browser.id, None)
                     for pending in browser.pending.values():
                         pending["event"].set()
+
+    def _remember_control_loss(self, browser):
+        if browser.browser_instance is None:
+            return
+        for tab, state in browser.states.items():
+            capture_id = state.get("captureId")
+            binding = self.call_captures.get((browser.browser_instance, tab))
+            page = browser.page_states.get(tab)
+            meeting = browser.meetings.get(tab)
+            if (
+                not state.get("recording")
+                or binding is None
+                or binding[0] != capture_id
+                or page in ("closed", "navigating")
+                or meeting is not None
+                and meeting.get("sourceCount", 0) == 0
+            ):
+                continue
+            if any(
+                other is not browser
+                and not other.closed
+                and other.status_seen
+                and other.browser_instance == browser.browser_instance
+                and other.states.get(tab, {}).get("captureId") == capture_id
+                for other in self.browsers.values()
+            ):
+                continue  # Retiring an old link must not lose the replacement's control.
+            self._control_reconnects.setdefault(
+                capture_id,
+                ControlReconnect(
+                    browser.browser_instance, tab, time.monotonic(), "page-state-v1" in browser.capabilities
+                ),
+            )
+        while len(self._control_reconnects) > STOPPED_CALL_LIMIT:
+            oldest = min(self._control_reconnects, key=lambda key: self._control_reconnects[key].since)
+            self._control_reconnects.pop(oldest)
 
     def _bind_capture(self, browser, tab, capture_id):
         if browser.browser_instance is None:

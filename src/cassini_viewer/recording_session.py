@@ -13,7 +13,7 @@ import os
 import struct
 import time
 import unicodedata
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,6 +37,15 @@ def optional_string(value, default, code):
     if not isinstance(value, str):
         raise ProtocolError(code, "Expected a string or null")
     return value
+
+
+def stop_reason(message):
+    from .session_events import END_REASONS
+
+    reason = message.get("reason", "user")
+    if not isinstance(reason, str) or reason not in END_REASONS:
+        raise ProtocolError("state", "Invalid recording end reason")
+    return reason
 
 
 def label_text(value):
@@ -240,7 +249,9 @@ class RecordingSession:
             self._native_io_error = None
             self._changing = False
             self._last_checkpoint = 0
+            self._checkpoint_generation = 0
             self.checkpoint()
+            self._started_at = self._last_checkpoint
             if default_parent:
                 self._lease_fd = capture_lease(identifier)
 
@@ -257,6 +268,7 @@ class RecordingSession:
             output.flush()
             os.fsync(output.fileno())
         temporary.replace(path)
+        self._checkpoint_generation += 1
         descriptor = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY)
         try:
             os.fsync(descriptor)
@@ -279,19 +291,32 @@ class RecordingSession:
             raise ProtocolError("state", "No source change is available")
         previous, identifiers = deepcopy(self.manifest), set(self.writers)
         append_events(self.manifest, events)
+        generation = self._checkpoint_generation
         self._changing = True
         try:
             yield
+            self._changing = False
+            self.checkpoint()
         except BaseException:
             added = [t for t in self.manifest["tracks"] if t["id"] not in identifiers]
             self.manifest = previous
+            self._changing = False
+            published = self._checkpoint_generation != generation
+            if published:
+                # Rename may already have exposed the proposed tracks. Restore
+                # the old working selection if storage permits, but retain all
+                # proposed files even if this recovery checkpoint also fails.
+                with suppress(OSError):  # Keep the original durability error.
+                    self.checkpoint()
             for track in added:
-                self.writers.pop(track["id"]).close()
-                (self.directory / track["file"]).unlink()
+                writer = self.writers.pop(track["id"])
+                with suppress(OSError):
+                    writer.close()
+                if not published:
+                    (self.directory / track["file"]).unlink()
             raise
         finally:
             self._changing = False
-        self.checkpoint()
 
     def end_track(self, identifier):
         track = next((t for t in self.manifest["tracks"] if t["id"] == identifier), None)
@@ -378,7 +403,14 @@ class RecordingSession:
             track["frames"] = writer.frames
             raise
 
-    def finish(self, problem=None, *, problem_kind=None):
+    def finish(self, problem=None, *, problem_kind=None, reason=None, at_ms=None):
+        from .capture_sources import change_time
+        from .session_events import END_REASONS, append_events
+
+        if reason is not None and (not isinstance(reason, str) or reason not in END_REASONS):
+            raise ProtocolError("state", "Invalid recording end reason")
+        if at_ms is not None and (type(at_ms) not in (int, float) or not math.isfinite(at_ms) or at_ms < 0):
+            raise ProtocolError("state", "Invalid recording end time")
         problem = optional_string(problem, None, "state") or None
         if self.finished:
             return
@@ -413,6 +445,13 @@ class RecordingSession:
         if problem:
             self.manifest.update(problem=problem[:1000], problemKind=problem_kind)
         self.manifest["state"] = "interrupted" if problem else "completed"
+        # A warning about earlier missing PCM does not change the explicit stop
+        # cause. A failed capture or disk write is an actual error termination.
+        end_reason = reason or ("error" if problem and problem_kind != "gap" else "user")
+        if failure or self._native_io_error:
+            end_reason = "error"
+        elapsed = max(0, (self.clock() - self._started_at) * 1000) if at_ms is None else at_ms
+        append_events(self.manifest, [dict(type="end", atMs=change_time(self, elapsed), reason=end_reason)])
         try:
             self.checkpoint()
         finally:
@@ -478,7 +517,7 @@ class BrowserHost:
             (self.audio_sink or self.session).append(identifier, data, message.get("offsetMs"))
             self.sequences[identifier] += 1
         elif kind == "stop":
-            self.session.finish(optional_string(message.get("problem"), None, "state"))
+            self.session.finish(optional_string(message.get("problem"), None, "state"), reason=stop_reason(message))
             self.stopped = True
             result = {"type": "stopped", "path": str(self.session.directory)}
             if "problem" in self.session.manifest:
@@ -488,7 +527,7 @@ class BrowserHost:
 
     def close(self, problem="Browser disconnected before recording was stopped.", *, problem_kind=None):
         if self.session and not self.stopped:
-            self.session.finish(problem, problem_kind=problem_kind)
+            self.session.finish(problem, problem_kind=problem_kind, reason="error")
             self.stopped = True
 
 

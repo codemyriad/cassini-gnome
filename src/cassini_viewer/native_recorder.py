@@ -2,7 +2,6 @@
 """Separate native PCM tracks on one GStreamer clock, checkpointed off GTK."""
 
 import contextlib
-import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -64,11 +63,11 @@ class NativeRecorder(GObject.Object):
         if self.pipeline is not None or self.starting or self.stopping or self._changing_sources or self._finishing:
             raise RuntimeError("Already recording")
         self.starting = True
+        self._start_us = GLib.get_monotonic_time()
         self._stop_requested = False
         self.session = None
         self.stopping = self._finishing = False
-        self._problem = self.line = None
-        self.end_reason = None
+        self._problem = self.line = self.end_reason = None
         self.levels = [0.0, 0.0]
         self._track_ids = {"microphone": "microphone", "system": "system"}
         self._boundaries = {"microphone": 0, "system": 0}
@@ -99,7 +98,7 @@ class NativeRecorder(GObject.Object):
                 session.manifest["tracks"][-1]["startOffsetMs"] = 0
             return session, space_left(session.directory)
         except Exception as error:
-            session.finish(str(error))
+            session.finish(str(error), reason="error")
             raise
 
     def _prepared(self, future, test):
@@ -132,6 +131,7 @@ class NativeRecorder(GObject.Object):
             self.emit("changed")
             if reserve:
                 self.line = "errors.diskStopped.line"
+                self.end_reason = "disk"
                 self.stop()
             elif self._stop_requested:
                 self.stop()
@@ -388,20 +388,14 @@ class NativeRecorder(GObject.Object):
                 GLib.source_remove(timer)
         self._timeout = self._disk_timer = 0
         pipeline, session = self.pipeline, self.session
+        reason = "error" if problem else (self.end_reason or "user")
+        at_ms = max(0, (GLib.get_monotonic_time() - self._start_us) / 1000)
 
         def finish():
             if pipeline is not None:
                 pipeline.set_state(Gst.State.NULL)
             with self._lock:
-                session.finish(problem)
-            reason = "error" if problem else self.end_reason
-            if reason:
-                from .capture_facts import record_end
-
-                try:
-                    record_end(session.directory, reason, manifest=session.manifest)
-                except (OSError, ValueError):
-                    logging.getLogger(__name__).warning("Could not save recording end details", exc_info=True)
+                session.finish(problem, reason=reason, at_ms=at_ms)
 
         future = self._executor.submit(finish)
         future.add_done_callback(lambda f: GLib.idle_add(self._finished, f, pipeline))
