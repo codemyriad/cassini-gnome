@@ -81,7 +81,11 @@ def markdown(value):
             turns.append([item["speaker"], item["startMs"], [item["text"]]])
     for identifier, start, texts in turns:
         name = names.get(identifier, "Speaker " + str(order.index(identifier) + 1))
-        lines += [f"**{escaped(name)}** · {fmt.position(start)}", escaped(turn_text(texts)), ""]
+        lines += [
+            f"**{escaped(name)}** · {fmt.position(start)}",
+            escaped(" ".join(texts) if value.get("verbatim") else turn_text(texts)),
+            "",
+        ]
     if value.get("notes"):
         lines += ["## Notes", ""]
         lines += [
@@ -103,4 +107,5 @@ def model_projection(meeting, *, tz=None):
         if meeting.transcript == "done"
         else [],
         notes=list(meeting.notes),
+        **({"verbatim": True} if meeting.words and all(w.text_is_stored for w in meeting.words) else {}),
     )

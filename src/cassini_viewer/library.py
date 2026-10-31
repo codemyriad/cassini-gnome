@@ -838,7 +838,7 @@ def _sidecar_words(body):
     return tuple(words)
 
 
-def _speakers(words, values, embedded):
+def _speakers(words, values, embedded, *, stored_labels=False):
     from .speaker_merges import speaker_metrics
 
     metrics = speaker_metrics(words)
@@ -850,10 +850,14 @@ def _speakers(words, values, embedded):
     result = []
     for rank, identifier in enumerate(sorted(first, key=first.get)):
         value = metadata.get(identifier, {})
-        name = value.get("name")
+        name = labels.get(identifier) if stored_labels else value.get("name")
         if name is None:
             label = labels.get(identifier) if value.get("provenance") != "unnamed" else None
-            name = label if label and not re.fullmatch(r"Speaker \d+", label) else f"Speaker {rank + 1}"
+            name = (
+                label
+                if label and not re.fullmatch(r"Speaker \d+", label)
+                else text("common.speaker.unnamed", n=rank + 1)
+            )
         result.append(
             LibrarySpeaker(
                 identifier,

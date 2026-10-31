@@ -4,7 +4,7 @@
 from fractions import Fraction
 from html import escape
 
-from .transcript import quote_items
+from .transcript import display_items
 
 COLOURS = ("#1c71d8", "#b34d00", "#813d9c", "#21804b", "#bd2028", "#167c8b")
 DARK_COLOURS = ("#78aeed", "#ffa348", "#ce91df", "#77d39a", "#ff9298", "#79c7d1")
@@ -28,7 +28,7 @@ def speaking_shares(words, speaker_ids):
 def item_markup(words, position, *, dark=False, values=None):
     """Markup for timed items; *values* is their displayed text (D38.5)."""
     if values is None:
-        values = quote_items(w.text for w in words)
+        values = display_items(words)
     parts = []
     for index, (word, value) in enumerate(zip(words, values, strict=True)):
         if not value:
@@ -65,7 +65,7 @@ def reading_turns(words):
     for end in range(1, len(turns) + 1):
         if end == len(turns) or turns[end].speaker != turns[start].speaker:
             run = turns[start:end]
-            values = quote_items(w.text for turn in run for w in turn.words)
+            values = display_items(w for turn in run for w in turn.words)
             offset = 0
             for turn in run:
                 turn.display = values[offset : offset + len(turn.words)]

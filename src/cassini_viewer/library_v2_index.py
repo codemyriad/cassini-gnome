@@ -273,7 +273,7 @@ class PublishedIndex:
                 eta_minutes=eta,
                 error=error,
                 words=tuple(words),
-                speakers=_speakers(words, metadata.get("speakers", []), embedded),
+                speakers=_speakers(words, metadata.get("speakers", []), embedded, stored_labels=True),
                 preview_turns=preview,
                 turns=self.scanner._preview_cache.get(preview_key, (None, None, ()))[2],
                 quote_line=_quote(words, metadata.get("quoteOverride"))

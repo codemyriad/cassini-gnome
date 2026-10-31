@@ -328,3 +328,49 @@ def test_export_reuses_published_audio_without_tracks_and_preserves_recording_da
     assert result.tags["CASSINI_CREATED_AT"] == result.manifest["meeting"]["createdAtUtc"]
     assert result.manifest["audioEncode"] == source.manifest["audioEncode"]
     assert not directory.exists()
+
+
+def test_published_quotes_and_merged_labels_are_file_content_and_undo_restores_names(published):
+    root, _sid, directory, path = published
+    body = dict(
+        format=portable.WORDS_FORMAT,
+        items=[
+            dict(speaker="a", startMs=0, endMs=20, text='"hello"', future=7),
+            dict(speaker="b", startMs=20, endMs=40, text='unpaired"'),
+        ],
+    )
+    speakers = [
+        dict(id=i, name=n, provenance="user", colourIndex=j) for j, (i, n) in enumerate([("a", "Alice"), ("b", "Bob")])
+    ]
+    digest = audio_digest(path)
+    with transaction(directory):
+        commit_metadata(
+            directory,
+            meeting_store.read_metadata(directory),
+            dict(
+                speakers=speakers,
+                transcript=dict(status="done", reference=None),
+                speakerMerges=[{"from": "a", "into": "b"}],
+            ),
+            words=body,
+        )
+    embedded = portable.read_meeting(str(path))
+    assert {speaker.id: speaker.label for speaker in embedded.speakers} == {"a": "Bob", "b": "Bob"}
+    words = portable.load_words(embedded, embedded.default_transcript_id)
+    assert [(w.speaker, w.text) for w in words] == [("a", "“hello”"), ("b", "unpaired")]
+    assert audio_digest(path) == digest
+    commit(directory, speakerMerges=[])
+    embedded = portable.read_meeting(str(path))
+    assert {speaker.id: speaker.label for speaker in embedded.speakers} == {"a": "Alice", "b": "Bob"}
+    assert audio_digest(path) == digest
+
+
+def test_root_file_uses_its_stored_label_even_if_it_looks_like_an_unnamed_rank(published):
+    from types import SimpleNamespace
+
+    from cassini_viewer.library import _speakers
+
+    words = [portable.Word("a", 0, 10, "hello")]
+    embedded = SimpleNamespace(speakers=[portable.Speaker("a", "Speaker 19")])
+    local = [dict(id="a", name=None, provenance="unnamed", colourIndex=0)]
+    assert _speakers(words, local, embedded, stored_labels=True)[0].name == "Speaker 19"

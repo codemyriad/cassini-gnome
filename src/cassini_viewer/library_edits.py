@@ -106,13 +106,16 @@ def commit_metadata(directory, current, changes, *, before_commit=None, words=No
         extension.pop(xschema.NOTES_DOMAIN, None)
     manifest["meeting"]["title"] = displayed
     replacements, prefixes = {}, [edit.MANIFEST_PREFIX]
-    # Speaker names are local overrides; use the same display rule as the
-    # Library. Merge history stays in x, original body IDs remain available.
+    # D47 writes labels into the manifest. Merge history stays in x and
+    # original body IDs remain available, with the resolved label on each ID.
     original_words = portable.load_words(live, live.default_transcript_id)
     if words is not None:
         if not isinstance(words, dict) or words.get("format") != portable.WORDS_FORMAT:
             raise ValueError("Invalid transcript snapshot")
+        from .transcript import normalize_quote_items
+
         body = deepcopy(words)
+        body["items"] = normalize_quote_items(body["items"])
         body["wordCount"] = len(body["items"])
         entry = next(item for item in manifest["transcripts"] if item["id"] == live.default_transcript_id)
         prefix = entry["payloadRef"]["prefix"]
@@ -128,6 +131,12 @@ def commit_metadata(directory, current, changes, *, before_commit=None, words=No
     entries = {item["id"]: item for item in manifest["speakers"]}
     for speaker in speakers:
         entries.setdefault(speaker.id, dict(id=speaker.id))["label"] = speaker.name
+    from .speaker_merges import resolve_merges
+
+    mapping = resolve_merges(updated.get("speakerMerges", []), entries)
+    labels = {speaker_id: entry["label"] for speaker_id, entry in entries.items()}
+    for speaker_id, into in mapping.items():
+        entries[speaker_id]["label"] = labels[into]
     manifest["speakers"] = list(entries.values())
     replacements["CASSINI_SPEAKER_COUNT"] = str(len(entries))
     if displayed != previous_title:

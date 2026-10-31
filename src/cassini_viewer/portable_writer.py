@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 from . import portable
 from .export_audio import check_cancel
+from .transcript import normalize_quote_items
 from .ux_formats import _local
 
 ENCODING = "base64url+gzip+utf8json"
@@ -90,7 +91,7 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
         if meeting.transcript == "done"
         else []
     )
-    body = dict(format=portable.WORDS_FORMAT, wordCount=len(items), items=items)
+    body = dict(format=portable.WORDS_FORMAT, wordCount=len(items), items=normalize_quote_items(items))
     words_tags, reference = chunk_set("CASSINI_TX_WORDS_PAYLOAD_", body, WORDS_MIME)
     shape = dict(
         sampleRate=48000,
