@@ -4,7 +4,8 @@
 import unicodedata
 from pathlib import Path
 
-from .meeting_store import LOCK, read_metadata, update_metadata
+from .library_location import owned_directory
+from .meeting_store import metadata_transaction, read_metadata, update_metadata
 
 
 def name_value(value):
@@ -16,7 +17,6 @@ def name_value(value):
 
 def current_meeting(directory, *, scanner=None):
     from .library import LibraryScanner
-    from .library_location import owned_directory
 
     directory = owned_directory(Path(directory))
     scanner = scanner if scanner is not None else LibraryScanner(directory.parent)
@@ -30,7 +30,8 @@ def current_meeting(directory, *, scanner=None):
 
 def save_name(directory, identifier, value, *, scanner=None):
     value = name_value(value)
-    with LOCK:
+    directory = owned_directory(Path(directory))
+    with metadata_transaction(directory):
         meeting = current_meeting(directory, scanner=scanner)
         visible = {s.id: s for s in meeting.speakers}
         if identifier not in visible:
@@ -47,7 +48,8 @@ def save_name(directory, identifier, value, *, scanner=None):
 
 
 def merge_into(directory, source, target, *, scanner=None):
-    with LOCK:
+    directory = owned_directory(Path(directory))
+    with metadata_transaction(directory):
         meeting = current_meeting(directory, scanner=scanner)
         visible = {s.id for s in meeting.speakers}
         if source == target or source not in visible or target not in visible:
@@ -59,7 +61,8 @@ def merge_into(directory, source, target, *, scanner=None):
 
 
 def undo_merge(directory, *, scanner=None):
-    with LOCK:
+    directory = owned_directory(Path(directory))
+    with metadata_transaction(directory):
         meeting = current_meeting(directory, scanner=scanner)
         metadata = read_metadata(meeting.directory)
         history = list(metadata.get("speakerMerges", []))

@@ -50,7 +50,11 @@ def meeting(tmp_path, monkeypatch):
 
 
 def hashes(directory):
-    return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in directory.iterdir() if p.name != "meeting.json"}
+    return {
+        p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in directory.iterdir()
+        if p.name not in ("meeting.json", ".meeting.lock")
+    }
 
 
 def test_trimmed_name_clear_and_revision_preserve_other_fields(meeting):

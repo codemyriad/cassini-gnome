@@ -134,7 +134,10 @@ class NativeRecorder(GObject.Object):
                 from .output_mute import OutputMuteObserver
 
                 self._mute_observer = OutputMuteObserver(
-                    self.session.directory, self._output_sample, self._output_changed
+                    self.session.directory,
+                    self._output_sample,
+                    lambda muted, owner=self.session: self._output_changed(owner, muted),
+                    validate=self._output_validate,
                 )
                 self._mute_observer.start()
             self._disk_timer = GLib.timeout_add_seconds(1, self._check_disk)
@@ -173,19 +176,35 @@ class NativeRecorder(GObject.Object):
         return branch
 
     def _output_sample(self):
-        from .output_mute import monitor_device
+        from .output_mute import OutputSample, monitor_device
 
         with self._lock:
             track = self._track_ids.get("system")
-            return (
-                track,
-                monitor_device(self._branches.get("system")),
-                max(0, (GLib.get_monotonic_time() - self._start_us) // 1000),
-            )
+            branch, session = self._branches.get("system"), self.session
+            at_ms = max(0, (GLib.get_monotonic_time() - self._start_us) // 1000)
+        monitor = monitor_device(branch)
+        return OutputSample(track, monitor, at_ms, (session, branch))
 
-    def _output_changed(self, muted):
-        if self.output_muted != muted:
-            self.output_muted = muted
+    def _output_validate(self, sample):
+        with self._lock:
+            session, branch = sample.token
+            if (
+                session is self.session
+                and branch is self._branches.get("system")
+                and sample.track == self._track_ids.get("system")
+                and self.pipeline is not None
+                and not self.stopping
+                and not self._finishing
+            ):
+                return max(0, (GLib.get_monotonic_time() - self._start_us) // 1000)
+        return None
+
+    def _output_changed(self, owner, muted):
+        with self._lock:
+            changed = self.session is owner and self.output_muted != muted
+            if changed:
+                self.output_muted = muted
+        if changed:
             GLib.idle_add(self.emit, "changed")
 
     def select(self, me, others):
@@ -240,6 +259,7 @@ class NativeRecorder(GObject.Object):
                 elif "system" in added:
                     events.append(dict(atMs=at, type="othersSource", source="system", reason="user"))
                 identifiers = dict(self._track_ids)
+                retired_system = identifiers.get("system") if "system" in removed else None
                 with self.session.change(events):
                     for kind in removed:
                         self.session.end_track(identifiers.pop(kind))
@@ -258,6 +278,8 @@ class NativeRecorder(GObject.Object):
                     self._branches[kind] = attempt["branch"]
                     self._pending_sources.pop(kind)
                 committed = True
+            if retired_system is not None and self._mute_observer:
+                self._mute_observer.retire(retired_system, at)
             for kind in removed:
                 self.levels[0 if kind == "microphone" else 1] = 0
             for branch in retired:

@@ -6,6 +6,7 @@ import logging
 import subprocess
 import threading
 from dataclasses import dataclass
+from typing import NamedTuple
 
 
 @dataclass(frozen=True)
@@ -13,6 +14,13 @@ class OutputState:
     monitor: str
     sink: str
     muted: bool
+
+
+class OutputSample(NamedTuple):
+    track: str | None
+    monitor: str | None
+    at_ms: int
+    token: object
 
 
 def read_output_state(monitor):
@@ -80,14 +88,14 @@ class MuteHistory:
         self.active = None  # (track id, actual monitor device)
 
     def observe(self, track, monitor, muted, at_ms):
-        from .meeting_store import LOCK, read_metadata, update_metadata
+        from .meeting_store import metadata_transaction, read_metadata, update_metadata
 
         identity = (track, monitor) if track and monitor else None
         end = self.active is not None and (identity != self.active or muted is False)
         begin = identity is not None and muted is True and (self.active is None or end)
         if not end and not begin:
             return
-        with LOCK:
+        with metadata_transaction(self.directory):
             current = read_metadata(self.directory)
             details = dict(current.get("recordingDetails", {}))
             health = dict(details.get("audioHealth", {}))
@@ -108,10 +116,14 @@ class MuteHistory:
 class OutputMuteObserver:
     """One bounded read-only worker per capture; never query Pulse on GTK or PCM."""
 
-    def __init__(self, directory, sample, changed=lambda _: None, *, query=read_output_state):
-        # sample returns (committed system track id, actual monitor, meeting ms).
+    def __init__(self, directory, sample, changed=lambda _: None, *, query=read_output_state, validate=None):
+        # Query without the capture lock, then revalidate the committed source
+        # and timestamp after both Pulse queries finish. Tokens stay opaque here.
         self.history, self.sample, self.changed, self.query = MuteHistory(directory), sample, changed, query
+        self.validate = validate or (lambda value: value[2])
         self.closed, self.wakeup = threading.Event(), threading.Event()
+        self._retire_lock = threading.Lock()
+        self._retired, self._retirements = set(), []
         self.end_ms = 0
         self.thread = threading.Thread(target=self._run, name="cassini-output-mute", daemon=True)
 
@@ -121,22 +133,47 @@ class OutputMuteObserver:
     def refresh(self):
         self.wakeup.set()
 
+    def retire(self, track, at_ms):
+        """Queue the committed boundary without querying Pulse or writing on PCM/GTK."""
+        with self._retire_lock:
+            self._retired.add(track)
+            self._retirements.append((track, at_ms))
+        self.wakeup.set()
+
+    def _drain_retirements(self):
+        with self._retire_lock:
+            pending, self._retirements = self._retirements, []
+        for track, at_ms in pending:
+            if self.history.active is not None and self.history.active[0] == track:
+                self.history.observe(None, None, None, at_ms)
+                self.changed(False)
+
     def _run(self):
         try:
             while not self.closed.is_set():
                 self.wakeup.clear()
                 try:
-                    track, monitor, at_ms = self.sample()
+                    self._drain_retirements()
+                    sample = self.sample()
+                    track, monitor = sample[:2]
                     state = self.query(monitor) if track and monitor else None
+                    self._drain_retirements()
                     if self.closed.is_set():
                         break
-                    self.history.observe(track, monitor, state.muted if state else None, at_ms)
-                    self.changed(self.history.active is not None)
+                    at_ms = self.validate(sample)
+                    with self._retire_lock:
+                        retired = track in self._retired
+                    # A missing source is closed by its committed retirement,
+                    # never by the timestamp of a later polling iteration.
+                    if track and not retired and at_ms is not None:
+                        self.history.observe(track, monitor, state.muted if state else None, at_ms)
+                        self.changed(self.history.active is not None)
                 except Exception:
                     logging.getLogger(__name__).exception("Could not observe the captured output's mute state")
                 self.wakeup.wait(1)
         finally:
             try:
+                self._drain_retirements()
                 self.history.observe(None, None, None, self.end_ms)
                 self.changed(False)
             except Exception:

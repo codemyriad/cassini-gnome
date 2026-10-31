@@ -13,7 +13,7 @@ from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
 
 from .library import LibraryScanner, library_root, meeting_id
-from .meeting_store import LOCK, atomic_json, read_metadata, update_metadata
+from .meeting_store import LOCK, atomic_json, metadata_transaction, read_metadata, update_metadata
 from .strings import text
 from .transcript_publish import TranscriptPublisher
 from .whistle_client import WhistleClient
@@ -105,7 +105,7 @@ def prepare_tracks(meeting):
 
 
 def update_progress_metadata(directory, speakers, *, check_active=None, **changes):
-    with LOCK:
+    with metadata_transaction(directory):
         if check_active is not None:
             check_active()
         current = read_metadata(directory)
@@ -506,7 +506,7 @@ class TranscriptionQueue:
                 self._check_open()
 
                 def apply_names(names):
-                    with LOCK:
+                    with metadata_transaction(directory):
                         self._check_open()
                         self._owned(directory)
                         current = read_metadata(directory)
@@ -562,7 +562,7 @@ class TranscriptionQueue:
         segments = complete.get("segments")
         if type(segments) is int and 0 <= segments <= 9007199254740991:
             facts["speechSegments"] = segments
-        with LOCK:
+        with metadata_transaction(directory):
             self._check_open()
             # End facts or other metadata may have arrived while this job ran.
             details = writing_details(read_metadata(directory).get("recordingDetails", {}), facts)

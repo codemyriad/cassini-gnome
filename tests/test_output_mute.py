@@ -166,3 +166,344 @@ def test_failed_observation_does_not_end_capture_and_next_refresh_can_recover(tm
     finally:
         observer.close(30)
         session.finish()
+
+
+def _metadata_process(directory, role, ready, release, waiting):
+    """Spawned broker/GTK analogue; synchronize at the atomic commit/flock."""
+    import fcntl
+
+    from cassini_viewer import meeting_store
+    from cassini_viewer.output_mute import MuteHistory
+
+    if ready is not None:
+        original = meeting_store.atomic_json
+
+        def staged(path, value, **kwargs):
+            def before_commit():
+                ready.set()
+                assert release.wait(8), "Parent did not release the staged metadata commit"
+
+            return original(path, value, before_commit=before_commit)
+
+        meeting_store.atomic_json = staged
+    else:
+        original_flock = fcntl.flock
+
+        def entering_lock(descriptor, operation):
+            if operation == fcntl.LOCK_EX:
+                waiting.set()
+            return original_flock(descriptor, operation)
+
+        fcntl.flock = entering_lock
+    if role == "rename":
+        meeting_store.update_metadata(directory, title="Changed in GTK", titleSource="user")
+    else:
+        history = MuteHistory(directory)
+        history.observe("system", "sink.monitor", True, 10)
+        history.observe("system", "sink.monitor", False, 200)
+        assert history.active is None
+
+
+@pytest.mark.parametrize("first", ["rename", "history"])
+def test_metadata_edits_serialize_across_processes_at_commit(tmp_path, first):
+    import multiprocessing
+
+    from cassini_viewer.meeting_store import read_metadata
+    from cassini_viewer.output_mute import intervals
+    from cassini_viewer.recording_session import RecordingSession
+
+    session = RecordingSession(tmp_path)
+    ctx = multiprocessing.get_context("spawn")
+    ready, release, waiting = ctx.Event(), ctx.Event(), ctx.Event()
+    one = ctx.Process(target=_metadata_process, args=(session.directory, first, ready, release, None))
+    two = ctx.Process(
+        target=_metadata_process,
+        args=(session.directory, "history" if first == "rename" else "rename", None, release, waiting),
+    )
+    try:
+        one.start()
+        assert ready.wait(8), "First process did not stage its metadata replacement"
+        two.start()
+        assert waiting.wait(8), "Second process never entered the cross-process metadata lock"
+        release.set()
+        for process in (one, two):
+            process.join(8)
+            assert not process.is_alive(), "Metadata writer did not finish after lock release"
+            assert process.exitcode == 0
+        metadata = read_metadata(session.directory)
+        assert metadata["title"] == "Changed in GTK"
+        assert intervals(metadata) == [dict(trackId="system", startMs=10, endMs=200)]
+    finally:
+        release.set()
+        for process in (one, two):
+            if process.pid is not None:
+                process.join(2)
+                if process.is_alive():
+                    process.terminate()
+                    process.join(2)
+        session.finish()
+
+
+def test_metadata_lock_rejects_symlink(tmp_path):
+    from cassini_viewer.meeting_store import update_metadata
+    from cassini_viewer.recording_session import RecordingSession
+
+    session = RecordingSession(tmp_path)
+    target = tmp_path / "foreign"
+    target.write_bytes(b"Do not lock or edit")
+    (session.directory / ".meeting.lock").symlink_to(target)
+    try:
+        with pytest.raises(OSError):
+            update_metadata(session.directory, title="Unsafe")
+        assert target.read_bytes() == b"Do not lock or edit"
+        assert not (session.directory / "meeting.json").exists()
+    finally:
+        session.finish()
+
+
+def test_retirement_uses_commit_time_even_with_a_delayed_stale_query(tmp_path):
+    import threading
+
+    from cassini_viewer.meeting_store import read_metadata
+    from cassini_viewer.output_mute import OutputMuteObserver, intervals
+    from cassini_viewer.recording_session import RecordingSession
+
+    session = RecordingSession(tmp_path)
+    applied, querying, release, ended = (threading.Event() for _ in range(4))
+    block = threading.Event()
+
+    def query(monitor):
+        if block.is_set():
+            querying.set()
+            assert release.wait(5), "Stale Pulse query was not released"
+        return OutputState(monitor, "sink", True)
+
+    observer = OutputMuteObserver(
+        session.directory,
+        lambda: ("system", "sink.monitor", 900 if block.is_set() else 10),
+        lambda muted: (applied if muted else ended).set(),
+        query=query,
+    )
+    observer.start()
+    try:
+        assert applied.wait(3), "Initial mute interval missing"
+        block.set()
+        observer.refresh()
+        assert querying.wait(3), "Delayed query never started"
+        observer.retire("system", 120)
+        release.set()
+        assert ended.wait(3), "Committed retirement was not persisted"
+        assert intervals(read_metadata(session.directory)) == [dict(trackId="system", startMs=10, endMs=120)]
+    finally:
+        release.set()
+        observer.close(1000)
+        session.finish()
+    assert intervals(read_metadata(session.directory)) == [dict(trackId="system", startMs=10, endMs=120)]
+
+
+@pytest.mark.parametrize("kind", ["native", "browser"])
+def test_delayed_device_query_does_not_block_pcm_or_error_handling(tmp_path, monkeypatch, kind):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    import gi
+
+    gi.require_version("Gst", "1.0")
+    from gi.repository import GLib, Gst
+
+    Gst.init(None)
+
+    from cassini_viewer.browser_capture import BrowserCapture
+    from cassini_viewer.native_recorder import NativeRecorder
+    from cassini_viewer.recording_session import RecordingSession
+
+    entered, release, progressed = threading.Event(), threading.Event(), threading.Event()
+    session = RecordingSession(tmp_path)
+    session.add_track("system", "The others", "system", 48000, 1)
+    if kind == "native":
+        capture = NativeRecorder()
+        capture._stop_requested = False
+        capture.session, capture.pipeline = session, object()
+        capture._start_us = GLib.get_monotonic_time()
+        capture._track_ids = {"system": "system"}
+        capture._branches = {"system": object()}
+        capture._boundaries = {"system": 0}
+        error_handled = threading.Event()
+        monkeypatch.setattr(capture, "_begin_finish", lambda *_: error_handled.set())
+        buffer = Gst.Buffer.new_allocate(None, 960, None)
+        buffer.fill(0, bytes(960))
+        buffer.pts = 0
+        sample = Gst.Sample.new(buffer, None, None, None)
+
+        def pcm_and_error():
+            capture._sample(SimpleNamespace(emit=lambda _: sample), "system")
+            progressed.set()
+
+        def retire():
+            with capture._lock:
+                capture._track_ids.clear()
+                capture._branches.clear()
+
+    else:
+
+        class Tap:
+            def __init__(self, kind, origin, append, failed, *, level):
+                self.append, self.failed, self.pipeline = append, failed, object()
+
+        capture = BrowserCapture(lambda *_: None, tap_factory=Tap)
+        capture.host.session = session
+        capture.origin_ms = 0
+        tap, _state = capture._make_native("system", "system", active=True)
+        capture.native_taps["system"] = "system", tap
+
+        def pcm_and_error():
+            tap.append(bytes(960), 0)
+            tap.failed("Synthetic error")
+            assert capture.error == "Synthetic error"
+            progressed.set()
+
+        def retire():
+            with capture.lock:
+                capture.native_taps.clear()
+
+    def device(_branch):
+        entered.set()
+        assert release.wait(5), "Test did not release the delayed Pulse query"
+        return "sink.monitor"
+
+    monkeypatch.setattr("cassini_viewer.output_mute.monitor_device", device)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        pending = executor.submit(capture._output_sample)
+        try:
+            assert entered.wait(3), "Device query did not start"
+            pcm = executor.submit(pcm_and_error)
+            assert progressed.wait(3), "Device query blocked the PCM/error-handler capture lock"
+            pcm.result()
+            if kind == "native":
+                # Dispatch the GTK bus-handler path on the main test thread,
+                # while the Pulse query is still blocked on the worker.
+                capture._message(
+                    None,
+                    SimpleNamespace(
+                        type=Gst.MessageType.ERROR,
+                        parse_error=lambda: (SimpleNamespace(message="Synthetic error"), None),
+                        src=object(),
+                    ),
+                )
+                assert error_handled.is_set()
+            assert session.manifest["tracks"][0]["frames"] == 480
+            retire()
+        finally:
+            release.set()
+        result = pending.result(timeout=3)
+        assert capture._output_validate(result) is None, "Retired source's delayed result was accepted"
+    session.finish()
+    if kind == "native":
+        capture._executor.shutdown()
+
+
+@pytest.mark.parametrize("kind", ["native", "browser"])
+def test_source_change_closes_history_before_slow_device_shutdown(tmp_path, monkeypatch, kind):
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    import gi
+
+    gi.require_version("Gst", "1.0")
+    from gi.repository import GLib, Gst
+
+    from cassini_viewer.browser_capture import BrowserCapture
+    from cassini_viewer.meeting_store import read_metadata
+    from cassini_viewer.native_recorder import NativeRecorder
+    from cassini_viewer.output_mute import OutputMuteObserver, intervals
+    from cassini_viewer.recording_session import RecordingSession
+
+    Gst.init(None)
+    applied, ended, stopping, release = (threading.Event() for _ in range(4))
+    monkeypatch.setattr("cassini_viewer.output_mute.monitor_device", lambda _: "sink.monitor")
+    if kind == "native":
+        session = RecordingSession(tmp_path)
+        for track in ("microphone", "system"):
+            session.add_track(track, track, track, 48000, 1)
+            session.append(track, bytes(960), 0)
+
+        class Branch:
+            def set_state(self, _state):
+                stopping.set()
+                assert release.wait(5), "Test did not release device shutdown"
+
+        capture = NativeRecorder()
+        capture._stop_requested = False
+        capture.session = session
+        capture._start_us = GLib.get_monotonic_time() - 10_000
+        capture._track_ids = {"microphone": "microphone", "system": "system"}
+        capture._branches = {"microphone": object(), "system": Branch()}
+        capture.pipeline = SimpleNamespace(
+            get_clock=lambda: SimpleNamespace(get_time=lambda: 1000 * Gst.MSECOND),
+            get_base_time=lambda: 0,
+            remove=lambda _: None,
+        )
+
+        def change():
+            return capture._select(True, False)
+    else:
+
+        class Tap:
+            def __init__(self, kind, origin, append, failed, *, level):
+                self.kind, self.append, self.pipeline = kind, append, object()
+
+            def start(self):
+                self.append(bytes(960), 0)
+
+            def stop(self):
+                if self.kind == "system":
+                    stopping.set()
+                    assert release.wait(5), "Test did not release tap shutdown"
+
+        capture = BrowserCapture(lambda *_: None, parent=tmp_path, tap_factory=Tap)
+        capture.start(
+            dict(
+                type="start",
+                version=1,
+                independent=True,
+                captureId="retirement",
+                timelineOriginMs=int(time.time() * 1000),
+                microphone=True,
+                title="Retirement",
+            ),
+            others_source="system",
+        )
+        session = capture.host.session
+
+        def change():
+            return capture.select(True, False)
+
+    observer = capture._mute_observer = OutputMuteObserver(
+        session.directory,
+        capture._output_sample,
+        lambda muted: (applied if muted else ended).set(),
+        query=lambda monitor: OutputState(monitor, "sink", True),
+        validate=capture._output_validate,
+    )
+    observer.start()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        try:
+            assert applied.wait(3), "Initial mute interval was not persisted"
+            future = executor.submit(change)
+            if not stopping.wait(3):
+                if future.done():
+                    future.result()
+                pytest.fail("Device retirement did not reach its slow shutdown")
+            assert ended.wait(3), "History waited for device shutdown instead of the committed retirement"
+            event = next(e for e in reversed(session.manifest["events"]) if e["type"] == "othersSource")
+            assert event["source"] == "none"
+            rows = intervals(read_metadata(session.directory))
+            assert len(rows) == 1 and rows[0]["endMs"] == event["atMs"]
+        finally:
+            release.set()
+            observer.close(5000)
+        future.result(timeout=3)
+    session.finish()
+    if kind == "native":
+        capture._executor.shutdown()

@@ -118,7 +118,9 @@ class BrowserCapture:
             if self.tap_factory is None:
                 from .output_mute import OutputMuteObserver
 
-                self._mute_observer = OutputMuteObserver(self.directory, self._output_sample, self._output_changed)
+                self._mute_observer = OutputMuteObserver(
+                    self.directory, self._output_sample, self._output_changed, validate=self._output_validate
+                )
                 self._mute_observer.start()
         except Exception as error:
             self.starting = False
@@ -134,11 +136,28 @@ class BrowserCapture:
         return result
 
     def _output_sample(self):
-        from .output_mute import monitor_device
+        from .output_mute import OutputSample, monitor_device
 
         with self.lock:
             identifier, tap = self.native_taps.get("system", (None, None))
-            return identifier, monitor_device(tap.pipeline if tap else None), self.elapsed_ms()
+            session = self.host.session
+            at_ms = self.elapsed_ms()
+        monitor = monitor_device(tap.pipeline if tap else None)
+        return OutputSample(identifier, monitor, at_ms, (session, tap))
+
+    def _output_validate(self, sample):
+        with self.lock:
+            session, tap = sample.token
+            identifier, current = self.native_taps.get("system", (None, None))
+            if (
+                session is self.host.session
+                and tap is current
+                and sample.track == identifier
+                and not self.stopping
+                and not self.finished
+            ):
+                return self.elapsed_ms()
+        return None
 
     def _output_changed(self, muted):
         with self.lock:
@@ -346,6 +365,8 @@ class BrowserCapture:
                         self.native_taps[kind] = identifier, tap
                     self.microphone = self.native_taps.get("microphone", (None, None))[1]
                     committed = True
+                if "system" in removed and self._mute_observer:
+                    self._mute_observer.retire(removed["system"][0], at)
                 for _identifier, tap in removed.values():
                     try:
                         tap.stop()

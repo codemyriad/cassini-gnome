@@ -72,6 +72,13 @@ audio into a failed Stop if its optional metadata write fails. Native WAVs and
 capture manifests are unchanged by the new facts, and repeated identical Stop
 bookkeeping does not increment the metadata revision.
 
+Metadata edits use `meeting_store.metadata_transaction`: the process-local lock
+plus an exclusive `flock` on the stable `.meeting.lock` file next to
+`meeting.json`. The complete read/merge/atomic replacement must be inside that
+transaction, including independent GTK and broker writers. Nested edits reuse
+the held file lock; the lock file is retained across replacements. It contains
+no recording data and is not a capture file.
+
 The dialog follows its content’s natural size as the asynchronous report arrives;
 short reports are shorter than long timelines. Facts use a grid so GTK can negotiate the height-for-width columns without asking
 for their width at a viewport height below their minimum. Unchanged reports (and
