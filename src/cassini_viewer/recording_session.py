@@ -265,8 +265,11 @@ class RecordingSession:
             from .library_publication import root_for
             from .library_v2.fsutil import fsync_dir
 
-            if root_for(self.directory) is not None:
+            self.library_root = root_for(self.directory)
+            if self.library_root is not None:
                 fsync_dir(self.directory.parent)
+            self._native_clock_origin_ns = time.monotonic_ns()
+            self._native_clocks = {}
             self.manifest = {
                 "version": 1,
                 "id": identifier,
@@ -292,6 +295,9 @@ class RecordingSession:
     def checkpoint(self):
         if self._changing:
             return
+        for track in self.manifest["tracks"]:
+            if (clock := self._native_clocks.get(track["id"])) and (anchors := clock.values()):
+                track["clockAnchors"] = anchors
         path = self.directory / "session.json"
         temporary = path.with_suffix(".tmp")
         for writer in self.writers.values():
@@ -401,7 +407,7 @@ class RecordingSession:
         if self.clock() - self._last_checkpoint >= 1:
             self.checkpoint()
 
-    def append_native(self, identifier, data, offset, *, gap_frames=0):
+    def append_native(self, identifier, data, offset, *, gap_frames=0, host_ns=None):
         if self.finished or identifier not in self.writers:
             raise ProtocolError("chunk", "Invalid native audio source")
         writer = self.writers[identifier]
@@ -432,6 +438,14 @@ class RecordingSession:
                         track["gapFrames"] = track.get("gapFrames", 0) + written
                     track["frames"] = writer.frames
             self.append(identifier, data, offset)
+            if self.library_root is not None and host_ns is not None:
+                from .capture_clock import ClockAnchors
+
+                clock = self._native_clocks.get(identifier)
+                if clock is None:
+                    clock = self._native_clocks[identifier] = ClockAnchors(writer.rate, self._native_clock_origin_ns)
+                index = writer.frames - len(data) // (writer.channels * 2)
+                clock.add(index, host_ns)
         except Exception as error:
             self._native_io_error = str(error)
             track["frames"] = writer.frames

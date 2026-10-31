@@ -169,6 +169,7 @@ viewer_sources = files(
   'cassini_viewer/browser_watch.py',
   'cassini_viewer/native_tap.py',
   'cassini_viewer/native_timing.py',
+  'cassini_viewer/capture_clock.py',
   'cassini_viewer/browser_control_host.py',
   'cassini_viewer/browser_service.py',
   'cassini_viewer/companion.py',

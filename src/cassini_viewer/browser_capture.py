@@ -175,7 +175,13 @@ class BrowserCapture:
                         skipped = (len(data) - len(selected)) // 2
                         stamp = round(original_offset * 1_000_000) if host_ns is None else host_ns
                         offset, gap = state["timeline"].map(stamp + skipped * NS // 48000, len(selected) // 2, offset)
-                        self.host.session.append_native(identifier, selected, offset, gap_frames=gap)
+                        self.host.session.append_native(
+                            identifier,
+                            selected,
+                            offset,
+                            gap_frames=gap,
+                            host_ns=host_ns + skipped * NS // 48000 if host_ns is not None else None,
+                        )
 
         def level(value):
             with self.lock:
