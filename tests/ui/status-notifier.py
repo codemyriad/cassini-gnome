@@ -143,9 +143,10 @@ assert [r[1].get("label") for r in layout[2] if r[1].get("visible")] == [
 call(ITEM_PATH, ITEM, "Activate", GLib.Variant("(ii)", (0, 0)))
 call(MENU_PATH, MENU, "Event", GLib.Variant("(isvu)", (3, "clicked", GLib.Variant("s", ""), 0)))
 assert actions == ["open"], "hidden Stop must not stop an idle app"
-notifier.update(recording=True, message="Recording, 00:12", windowless=False)
+notifier.update(recording=True, message="Recording, 00:00:12", label="00:00:12", windowless=False)
 assert prop("IconName") == "" and prop("Status") == "Active"
-assert prop("ToolTip")[2] == "Recording, 00:12"
+assert prop("XAyatanaLabel") == "00:00:12" and prop("XAyatanaLabelGuide") == "00:00:00"
+assert prop("ToolTip")[2] == "Recording, 00:00:12"
 pixmap = prop("IconPixmap")[0]
 assert pixmap[:2] == (24, 24) and len(pixmap[2]) == 24 * 24 * 4
 call(ITEM_PATH, ITEM, "ProvideXdgActivationToken", GLib.Variant("(s)", ("test-token",)))
@@ -169,10 +170,10 @@ subscription = client.signal_subscribe(
     Gio.DBusSignalFlags.NONE,
     lambda _bus, _sender, _path, _interface, name, _args: changes.append(name),
 )
-notifier.update(recording=True, message="Recording, 00:12", windowless=False)
+notifier.update(recording=True, message="Recording, 00:00:12", label="00:00:12", windowless=False)
 call(MENU_PATH, MENU, "GetLayout", GLib.Variant("(iias)", (0, -1, [])))
 assert changes == [], "unchanged status must not rebuild the menu"
-notifier.update(recording=True, message="Recording, 00:13", windowless=False)
+notifier.update(recording=True, message="Recording, 00:00:13", label="00:00:13", windowless=False)
 call(MENU_PATH, MENU, "GetLayout", GLib.Variant("(iias)", (0, -1, [])))
 assert changes == ["ItemsPropertiesUpdated"], "timer changes must preserve menu focus"
 notifier.update(recording=False, windowless=False, automatic=True)

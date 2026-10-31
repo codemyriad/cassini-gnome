@@ -47,7 +47,7 @@ def actor(appid):
 def indicator(appid):
     return shell(
         "(() => {const a=" + actor(appid) + ";if(!a)return null;return {visible:a.visible,mapped:a.mapped,"
-        "title:a._indicator.title,status:a._indicator.status,icon:!!a._icon,"
+        "title:a._indicator.title,status:a._indicator.status,icon:!!a._icon,label:a._label?.text??'',"
         "menu:a.menu._getMenuItems().filter(i=>i.visible).map(i=>i.label?.text??'')};})()"
     )
 
@@ -347,6 +347,7 @@ for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
     assert idle_notifications(appid) == 1
     idle = indicator(appid)
     assert idle["mapped"] and idle["title"] == "Ready to record browser meetings", idle
+    assert idle["label"] == "", "an idle panel item shows only the icon"
     assert "Stop Recording" not in idle["menu"], idle
     screenshot("indicator-idle-" + appid + ".png")
     menu_click(appid, "Open Cassini")
@@ -359,6 +360,13 @@ for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
         lambda appid=appid: indicator(appid) if (indicator(appid) or {}).get("visible") else None, "recording SNI"
     )
     assert live["mapped"] and live["title"].startswith("Recording,"), live
+    # The text GNOME actually renders beside the icon (XAyatanaLabel), not
+    # only the item's Title: it must show the timer and keep advancing.
+    first = until(lambda appid=appid: (indicator(appid) or {}).get("label"), "rendered panel timer")
+    until(
+        lambda appid=appid, first=first: (indicator(appid) or {}).get("label") not in ("", None, first),
+        "rendered panel timer advances",
+    )
     screenshot("indicator-recording-" + appid + ".png")
     privacy = []
     # D41.1: GNOME's own top-bar microphone privacy indicator, per capture path.

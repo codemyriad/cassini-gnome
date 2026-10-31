@@ -215,10 +215,9 @@ class RecordingComfort:
             key=lambda m: (m.started_at_ms if m.started_at_ms is not None else float("inf"), m.key),
             default=None,
         )
-        status = (
-            text("hidden.status", liveBig=fmt.live_big(self.elapsed(meeting) if meeting else 0)) if recording else ""
-        )
-        self.app.windowless_background.refresh(status)
+        timer = fmt.live_big(self.elapsed(meeting) if meeting else 0) if recording else ""
+        status = text("hidden.status", liveBig=timer) if recording else ""
+        self.app.windowless_background.refresh(status, timer)
         hidden = recording and not any(w.get_visible() for w in self.app.get_windows())
         if hidden:
             if meeting:

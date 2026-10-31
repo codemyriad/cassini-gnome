@@ -154,22 +154,26 @@ def test_indicator_remains_visible_for_recording_with_library_open():
         updates.append(values)
         app.status_notifier.recording = values["recording"]
         app.status_notifier.message = values["message"]
+        app.status_notifier.label = values["label"]
 
-    app.status_notifier = SimpleNamespace(recording=False, message="", update=update)
+    app.status_notifier = SimpleNamespace(recording=False, message="", label="", update=update)
     recorder = SimpleNamespace(pipeline=object())
     app.native_captures = {"one": recorder}
     presence = WindowlessBackground(app)
-    presence.refresh("Recording, 00:12")
-    assert updates[-1] == dict(recording=True, message="Recording, 00:12", windowless=False, automatic=True)
+    presence.refresh("Recording, 00:12", "00:12")
+    assert updates[-1] == dict(
+        recording=True, message="Recording, 00:12", label="00:12", windowless=False, automatic=True
+    )
     assert not app.background_recording.requests
     presence.refresh()  # Activation/level refresh before the next timer tick.
     assert updates[-1]["recording"] and updates[-1]["message"] == "Recording, 00:12"
+    assert updates[-1]["label"] == "00:12", "the panel timer must not blank between ticks"
     app._quitting = True
     presence.refresh()
     assert updates[-1]["recording"], "Capture must stay visible until audio finishes"
     app.native_captures = {}
     presence.refresh()
-    assert not updates[-1]["recording"] and not updates[-1]["automatic"]
+    assert not updates[-1]["recording"] and not updates[-1]["automatic"] and updates[-1]["label"] == ""
 
 
 def test_idle_indicator_only_runs_when_automatic_recording_is_armed_and_windowless():

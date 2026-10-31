@@ -35,6 +35,8 @@ ITEM_XML = """<node><interface name="org.kde.StatusNotifierItem">
 <property name="AttentionIconPixmap" type="a(iiay)" access="read"/>
 <property name="AttentionMovieName" type="s" access="read"/>
 <property name="ToolTip" type="(sa(iiay)ss)" access="read"/>
+<property name="XAyatanaLabel" type="s" access="read"/>
+<property name="XAyatanaLabelGuide" type="s" access="read"/>
 <method name="Activate"><arg type="i" direction="in"/><arg type="i" direction="in"/></method>
 <method name="SecondaryActivate"><arg type="i" direction="in"/><arg type="i" direction="in"/></method>
 <method name="ContextMenu"><arg type="i" direction="in"/><arg type="i" direction="in"/></method>
@@ -42,6 +44,7 @@ ITEM_XML = """<node><interface name="org.kde.StatusNotifierItem">
 <method name="ProvideXdgActivationToken"><arg type="s" direction="in"/></method>
 <signal name="NewTitle"/><signal name="NewIcon"/><signal name="NewToolTip"/>
 <signal name="NewStatus"><arg type="s"/></signal>
+<signal name="XAyatanaNewLabel"><arg type="s"/><arg type="s"/></signal>
 </interface></node>"""
 MENU_XML = """<node><interface name="com.canonical.dbusmenu">
 <property name="Version" type="u" access="read"/>
@@ -112,6 +115,7 @@ class StatusNotifier:
         self.retry_timer = 0
         self.wanted = self.recording = False
         self.message = text("hidden.status.watching")
+        self.label = ""  # Ayatana panel text: the live timer, empty when idle.
         self.rows = menu_rows(self.message, False)
         self.exports = []
         self.cancel = Gio.Cancellable()
@@ -121,12 +125,13 @@ class StatusNotifier:
         self.pixels = recording_pixels()
         self.activation_token = ""
 
-    def update(self, *, recording, message="", windowless=False, automatic=False):
+    def update(self, *, recording, message="", label="", windowless=False, automatic=False):
         wanted = bool(recording or (windowless and automatic))
         message = message or text("hidden.status.watching")
-        previous = self.wanted, self.recording, self.message
-        self.wanted, self.recording, self.message = wanted, bool(recording), message
-        if previous == (self.wanted, self.recording, self.message) or self.closed:
+        label = label if recording else ""
+        previous = self.wanted, self.recording, self.message, self.label
+        self.wanted, self.recording, self.message, self.label = wanted, bool(recording), message, label
+        if previous == (self.wanted, self.recording, self.message, self.label) or self.closed:
             return
         rows, self.rows = self.rows, menu_rows(message, self.recording)
         layout_changed = previous[1] != self.recording
@@ -152,10 +157,20 @@ class StatusNotifier:
             )
         for signal in ("NewTitle", "NewToolTip"):
             self.bus.emit_signal(None, ITEM_PATH, ITEM, signal, None)
+        if previous[3] != self.label:
+            # Ubuntu's AppIndicator host renders this text beside the icon.
+            self.bus.emit_signal(
+                None, ITEM_PATH, ITEM, "XAyatanaNewLabel", GLib.Variant("(ss)", (self.label, self.label_guide))
+            )
         if previous[1] != self.recording:
             self.bus.emit_signal(None, ITEM_PATH, ITEM, "NewIcon", None)
         if previous[0] != wanted:
             self.bus.emit_signal(None, ITEM_PATH, ITEM, "NewStatus", GLib.Variant("(s)", (self.status,)))
+
+    @property
+    def label_guide(self):
+        # The widest text of this length, so the panel does not reflow each second.
+        return "".join("0" if character.isdigit() else character for character in self.label)
 
     @property
     def status(self):
@@ -290,6 +305,8 @@ class StatusNotifier:
             "AttentionIconPixmap": ("a(iiay)", []),
             "AttentionMovieName": ("s", ""),
             "ToolTip": ("(sa(iiay)ss)", (icon, pixmaps, self.message, "")),
+            "XAyatanaLabel": ("s", self.label),
+            "XAyatanaLabelGuide": ("s", self.label_guide),
         }
         return GLib.Variant(*values[name])
 

@@ -14,7 +14,7 @@ class WindowlessBackground:
         self.attempted = False
         self.refused = False
 
-    def refresh(self, recording_message=""):
+    def refresh(self, recording_message="", timer=""):
         app = self.app
         windowless = not any(window.get_visible() for window in app.get_windows())
         from .capture_guard import capture_targets
@@ -27,10 +27,12 @@ class WindowlessBackground:
             recording_message = (
                 indicator.message if indicator and indicator.recording else text("hidden.status", liveBig=live_big(0))
             )
+            timer = indicator.label if indicator and indicator.recording else live_big(0)
         if indicator:
             indicator.update(
                 recording=recording,
                 message=recording_message,
+                label=timer if recording else "",
                 windowless=windowless,
                 automatic=app._auto_recording_held and not app._quitting,
             )

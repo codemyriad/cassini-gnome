@@ -9,6 +9,8 @@ pytest.importorskip("gi.repository.Gio")
 from gi.repository import Gio, GLib
 
 from cassini_viewer.status_notifier import (
+    ITEM,
+    ITEM_PATH,
     ITEM_XML,
     MENU_XML,
     StatusNotifier,
@@ -104,6 +106,7 @@ def live_notifier():
     notifier.exports = [1]
     notifier.wanted = notifier.recording = False
     notifier.message = "Ready to record browser meetings"
+    notifier.label = ""
     notifier.rows = menu_rows(notifier.message, False)
     notifier.revision = 0
     notifier.served_revision = 0
@@ -178,3 +181,34 @@ def test_a_vanished_watcher_forgets_the_served_layout():
     notifier.changed = lambda: None
     notifier._vanished()
     assert notifier.served_revision == -1 and notifier.served_revision != notifier.revision
+
+
+class SignalLog:
+    def __init__(self):
+        self.signals = []
+
+    def emit_signal(self, _destination, path, interface, name, parameters):
+        self.signals.append((path, interface, name, parameters.unpack() if parameters is not None else None))
+
+
+def test_ayatana_label_shows_the_live_timer_and_clears_when_idle():
+    notifier = live_notifier()
+    notifier.bus = SignalLog()
+    notifier.app = SimpleNamespace(get_application_id=lambda: "io.codemyriad.CassiniTalk")
+    notifier.pixels = recording_pixels()
+    interface = Gio.DBusNodeInfo.new_for_xml(ITEM_XML).interfaces[0]
+    assert interface.lookup_property("XAyatanaLabel") and interface.lookup_signal("XAyatanaNewLabel")
+
+    def labels():
+        return [s[3] for s in notifier.bus.signals if s[:3] == (ITEM_PATH, ITEM, "XAyatanaNewLabel")]
+
+    def prop(name):
+        return notifier._item_property(None, None, ITEM_PATH, ITEM, name).unpack()
+
+    assert prop("XAyatanaLabel") == ""
+    notifier.update(recording=True, message="Recording, 00:00:01", label="00:00:01")
+    notifier.update(recording=True, message="Recording, 00:00:02", label="00:00:02")
+    assert labels() == [("00:00:01", "00:00:00"), ("00:00:02", "00:00:00")]
+    assert prop("XAyatanaLabel") == "00:00:02" and prop("XAyatanaLabelGuide") == "00:00:00"
+    notifier.update(recording=False, message="", label="00:00:02", windowless=True, automatic=True)
+    assert labels()[-1] == ("", "") and prop("XAyatanaLabel") == "", "an idle panel shows only the icon"
