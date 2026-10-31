@@ -1106,6 +1106,12 @@ class BrowserService:
                     raise ValueError("This meeting is not recording")
                 if action == "start" and user:
                     self._cancel_call(logical)
+                if action == "stop" and browser.states.get(tab, {}).get("recording"):
+                    # This transport already received Stop for this capture.
+                    # Only a newly reported capture or returning worker needs
+                    # policy to issue another; stale state after a timeout must
+                    # not race the user's next manual Record with a retry.
+                    browser.stop_attempted.add((tab, browser.states[tab].get("captureId")))
                 browser.busy.add(tab)
                 browser.error = None
                 if user and (action == "start" or expected is None):

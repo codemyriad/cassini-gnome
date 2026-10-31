@@ -200,7 +200,7 @@ def test_stop_all_deduplicates_a_logical_status_and_pending_transport_start(serv
 
 def test_late_old_stop_ack_cannot_hide_a_newer_accepted_recording(service):  # noqa: F811
     broker, path = service
-    broker.command_timeout = 0.1
+    broker.command_timeout = 1
     extension = peer(path)
     try:
         identifier = request(path=path)["meetings"][0]["id"]
@@ -208,12 +208,16 @@ def test_late_old_stop_ack_cannot_hide_a_newer_accepted_recording(service):  # n
             started = pool.submit(request, "start", path=path, id=identifier)
             extension.answer(extension.receive())
             started.result(1)
+            broker.command_timeout = 0.1
             stopped = pool.submit(request, "stop", path=path, id=identifier)
             old_stop = extension.receive()
             with pytest.raises(ValueError):
                 stopped.result(1)
+            broker.command_timeout = 1
             newer = pool.submit(request, "start", path=path, id=identifier)
-            extension.answer(extension.receive())
+            next_command = extension.receive()
+            assert next_command["action"] == "start", "stale state must not schedule a competing Stop"
+            extension.answer(next_command)
             newer.result(1)
         current = extension.sessions[3]["captureId"]
         result(extension, old_stop, dict(recording=False, tabId=3, sessions=[]))
