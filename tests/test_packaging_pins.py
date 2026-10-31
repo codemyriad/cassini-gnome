@@ -210,7 +210,7 @@ def test_rpm_locale_manifest_works_with_empty_or_current_translations(tmp_path, 
         if translated
         else "find_lang() { return 1; }\n"
     )
-    result = subprocess.run(["bash", "-euc", stub + fragment], cwd=tmp_path, capture_output=True, text=True, timeout=5)
+    result = subprocess.run(["sh", "-euc", stub + fragment], cwd=tmp_path, capture_output=True, text=True, timeout=5)
     assert result.returncode == 0, f"RPM locale install failed: {result.stderr}"
     lines = (tmp_path / (name + ".lang")).read_text().splitlines()
     assert f"%dir /usr/share/{name}" in lines
