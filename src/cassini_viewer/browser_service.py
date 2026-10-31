@@ -431,9 +431,11 @@ class BrowserService:
             ):
                 # Keep ownership through a page-state delta, including before
                 # the audio socket opens. Explicit changes still take priority.
-                for key in ("captureId", "path", "stopping"):
+                for key in ("captureId", "path"):
                     if key in old:
                         state.setdefault(key, old[key])
+                if "sessions" not in value and "stopping" in old:
+                    state.setdefault("stopping", old["stopping"])
         if browser.browser_instance is not None:
             for (instance, tab), (capture_id, _url) in list(self.call_captures.items()):
                 owner = self.captures.get(capture_id)

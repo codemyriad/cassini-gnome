@@ -64,3 +64,15 @@ def test_new_capture_does_not_inherit_previous_stopping_or_path(owned):
     assert browser.states[3]["captureId"] == "replacement"
     assert browser.states[3]["stopping"] is False
     assert "path" not in browser.states[3]
+
+
+@pytest.mark.parametrize("instance", [None, "fixture:99"])
+def test_full_inventory_can_clear_omitted_stopping_without_losing_identity(owned, instance):
+    broker, browser, capture = owned
+    browser.browser_instance = instance
+    if instance is not None:
+        broker.call_captures[(instance, 3)] = ("owned", "https://meeting.example/call")
+    broker._status(browser, dict(recording=True, sessions=[dict(tabId=3, recording=True, captureId="owned")]))
+    assert browser.states[3]["captureId"] == "owned"
+    assert browser.states[3]["path"] == str(capture.directory)
+    assert "stopping" not in browser.states[3]
