@@ -281,6 +281,56 @@ def test_indicator_registration_waits_for_background_permission_before_notifying
     presence = WindowlessBackground(app)
     presence.refresh()
     presence.indicator_ready()
-    assert not notifications
+    assert not notifications, "the portal answer comes first"
+    app.background_recording.finish(True)
+    assert len(notifications) == 1 and not window.visible
+
+
+@pytest.mark.parametrize("registering", [False, True])
+def test_native_indicator_stays_windowless_when_the_portal_is_absent_or_fails(notification_body, registering):
+    app, window, notifications = application()
+    app.in_flatpak = False
+    window.visible = False
+    indicator = app.status_notifier = SimpleNamespace(
+        available=not registering, registering=registering, recording=False, message="", update=lambda **_: None
+    )
+    presence = WindowlessBackground(app)
+    presence.refresh()
+    app.background_recording.finish(False)  # No portal, no Background, or a failed request.
+    if registering:
+        assert not window.visible and not notifications
+        indicator.registering, indicator.available = False, True
+        presence.indicator_ready()
+    assert not window.visible, "an accepted top-bar item keeps a native app reachable"
+    assert notifications[0][1].body.endswith("use Cassini’s icon in the top bar.")
+    presence.refresh()
+    presence.indicator_ready()
+    assert len(notifications) == 1 and app.background_recording.requests == 1 and not window.visible
+
+
+def test_native_without_an_accepted_indicator_reopens_when_the_portal_fails():
+    app, window, notifications = application()
+    app.in_flatpak = False
+    window.visible = False
+    indicator = app.status_notifier = SimpleNamespace(
+        available=False, registering=True, recording=False, message="", update=lambda **_: None
+    )
+    presence = WindowlessBackground(app)
+    presence.refresh()
+    app.background_recording.finish(False)
+    assert not window.visible, "wait for the host's answer"
+    indicator.registering = False
+    presence.indicator_ready()
+    assert window.visible and not notifications
+
+
+def test_flatpak_keeps_portal_enforcement_even_with_an_indicator():
+    app, window, notifications = application()
+    window.visible = False
+    app.status_notifier = SimpleNamespace(
+        available=True, registering=False, recording=False, message="", update=lambda **_: None
+    )
+    presence = WindowlessBackground(app)
+    presence.refresh()
     app.background_recording.finish(False)
     assert window.visible and not notifications

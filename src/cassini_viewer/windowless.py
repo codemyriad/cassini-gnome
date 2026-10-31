@@ -12,6 +12,7 @@ class WindowlessBackground:
         self.message = ""
         self.idle = False
         self.attempted = False
+        self.refused = False
 
     def refresh(self, recording_message=""):
         app = self.app
@@ -40,21 +41,41 @@ class WindowlessBackground:
             else ""
         )
         if not self.message:
-            self.attempted = False
+            self.attempted = self.refused = False
             app.background_recording.status("")
             return
         if app.background_recording.granted:
             self._publish()
+        elif self.refused and self._indicator_route():
+            self._published(False)
         elif app.background_recording.callback is None and not self.attempted:
             self.attempted = True
             app.background_recording.request(self._permitted)
 
+    def _indicator_route(self):
+        """A native app whose top-bar item a host accepted stays reachable without the portal."""
+        indicator = getattr(self.app, "status_notifier", None)
+        return not self.app.in_flatpak and bool(getattr(indicator, "available", False))
+
     def _permitted(self, allowed):
         if allowed:
             self._publish()
-        elif self.message and not self.app._quitting:
-            # A denied request must leave a reachable window, rather than an
-            # invisible automatic recorder that the desktop may terminate.
+            return
+        self.refused = True
+        indicator = getattr(self.app, "status_notifier", None)
+        if self._indicator_route():
+            self._published(False)
+        elif not self.app.in_flatpak and getattr(indicator, "registering", False):
+            return  # indicator_ready() chooses once the host answers.
+        else:
+            self._reopen()
+
+    def _reopen(self):
+        if self.message and not self.app._quitting:
+            # A denied or failed request must leave a reachable window, rather
+            # than an invisible automatic recorder the desktop may terminate.
+            # Flatpak always needs the portal; a native app needs it only
+            # without an accepted top-bar item.
             self.app.activate()
 
     def _publish(self):
@@ -62,7 +83,9 @@ class WindowlessBackground:
 
     def _published(self, available):
         app = self.app
-        if not self.idle or not self.message or app._quitting or not app.background_recording.granted:
+        if not self.idle or not self.message or app._quitting:
+            return
+        if not app.background_recording.granted and not (self.refused and self._indicator_route()):
             return
         flatpak = app.in_flatpak
         background_available = available and flatpak
@@ -93,3 +116,6 @@ class WindowlessBackground:
         # can finish a deferred notification, but never one after reopening.
         if not self.app.in_flatpak or not self.app.background_recording.status_supported:
             self._published(False)
+        indicator = getattr(self.app, "status_notifier", None)
+        if self.refused and not self._indicator_route() and not getattr(indicator, "registering", False):
+            self._reopen()
