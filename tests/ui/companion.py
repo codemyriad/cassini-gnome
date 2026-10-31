@@ -105,9 +105,6 @@ with tempfile.TemporaryDirectory() as temporary:
     thread = threading.Thread(target=service.serve, args=(path, ready), daemon=True)
     thread.start()
     assert ready.wait(2)
-    legacy = Path(os.environ["XDG_CONFIG_HOME"]) / "chromium/NativeMessagingHosts/com.codemyriad.cassini.json"
-    legacy.parent.mkdir(parents=True)
-    legacy.write_text(json.dumps(dict(name="com.codemyriad.cassini", path="/old/cassini-browser-host")))
     original = companion.installed_browsers
     browsers = original(config=tmp / "browser-config", which=lambda command: "/test/" + command)
     companion.installed_browsers = lambda: browsers
@@ -124,7 +121,6 @@ with tempfile.TemporaryDirectory() as temporary:
     os.environ.pop("CASSINI_SCREENSHOT_ISOLATED")
     with patch.dict(os.environ, {"CASSINI_ISOLATED_AUDIO": "1"}):
         app.register(None)
-        until(lambda: not legacy.exists())
     os.environ["CASSINI_SCREENSHOT_ISOLATED"] = "1"
     app.activate()
     window = app.get_active_window()
