@@ -531,28 +531,33 @@ def prepare_desktop():
     # Create the virtual pointer before any Shell menu takes a modal grab: a
     # device first used under a menu's grab had its first click ignored.
     pointer_move(640, 400, "parked pointer")
-    # PipeWire's shipped pipewire.conf documents the adapter/audiotestsrc
-    # factory. It generates microphone PCM without opening a loopback capture
-    # stream, so an idle privacy indicator remains a meaningful baseline.
-    # live = true makes it its own timer-driven driver; a non-live source has
-    # no driver in a mic-to-Cassini graph and never produces a frame.
-    config = HOME / ".config/pipewire/pipewire.conf.d"
-    config.mkdir(parents=True, exist_ok=True)
-    (config / "90-cassini-qa-source.conf").write_text(
-        "context.spa-libs = { audiotestsrc = audiotestsrc/libspa-audiotestsrc }\n"
-        "context.objects = [{ factory = adapter args = { factory.name = audiotestsrc "
-        'node.name = mic node.description = "QA microphone" media.class = Audio/Source '
-        "audio.position = [ MONO ] audio.rate = 48000 node.always-process = true "
-        "node.param.Props = { live = true } } }]\n"
-    )
     subprocess.Popen(["pipewire"], stdout=(OUT / "pipewire.log").open("w"), stderr=subprocess.STDOUT)
     until(lambda: (Path(os.environ["XDG_RUNTIME_DIR"]) / "pipewire-0").exists(), "PipeWire")
     subprocess.Popen(["wireplumber"], stdout=(OUT / "wireplumber.log").open("w"), stderr=subprocess.STDOUT)
     subprocess.Popen(["pipewire-pulse"], stdout=(OUT / "pulse.log").open("w"), stderr=subprocess.STDOUT)
     until(lambda: subprocess.run(["pactl", "info"], capture_output=True).returncode == 0, "private Pulse server")
+    # The QA microphone is a virtual source fed by its own null sink, the same
+    # timer-driven mechanism that keeps "speakers" running. An audiotestsrc
+    # driver node stalled at random steps (pw-top: quantum 0 while IDLE), so
+    # even a fresh capture of it produced no sample. The feed is a link, not a
+    # stream: no capture stream exists until Cassini opens one, so an idle
+    # privacy indicator remains a meaningful baseline.
     for args, resource, name in (
         (["load-module", "module-null-sink", "sink_name=voice"], "sinks", "voice"),
         (["load-module", "module-null-sink", "sink_name=speakers"], "sinks", "speakers"),
+        (["load-module", "module-null-sink", "sink_name=micfeed", "channel_map=mono"], "sinks", "micfeed"),
+        (
+            [
+                "load-module",
+                "module-null-sink",
+                "media.class=Audio/Source/Virtual",
+                "sink_name=mic",
+                "channel_map=mono",
+                "sink_properties=device.description=QA-microphone",
+            ],
+            "sources",
+            "mic",
+        ),
     ):
         subprocess.run(["pactl", *args], check=True, capture_output=True)
         until(
@@ -563,11 +568,11 @@ def prepare_desktop():
             "private audio " + name,
         )
     until(
-        lambda: any(
-            line.split()[1] == "mic"
-            for line in subprocess.check_output(["pactl", "list", "short", "sources"], text=True).splitlines()
+        lambda: (
+            subprocess.run(["pw-link", "micfeed:monitor_MONO", "mic:input_MONO"], capture_output=True).returncode == 0
+            or "micfeed:monitor_MONO" in subprocess.check_output(["pw-link", "-l"], text=True)
         ),
-        "private virtual microphone",
+        "private virtual microphone feed",
     )
     for args in (["set-default-source", "mic"], ["set-default-sink", "speakers"]):
         diagnostic = []
@@ -594,6 +599,17 @@ def prepare_desktop():
         )
     subprocess.Popen(
         ["sh", "-c", 'while true; do paplay --device=speakers "$1"; done', "cassini-qa-tone", str(tone)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    voice = OUT / "voice.wav"
+    with wave.open(str(voice), "wb") as wav:
+        wav.setparams((1, 2, 48000, 0, "NONE", "not compressed"))
+        wav.writeframes(
+            b"".join(struct.pack("<h", round(6000 * math.sin(2 * math.pi * 660 * i / 48000))) for i in range(48000))
+        )
+    subprocess.Popen(
+        ["sh", "-c", 'while true; do paplay --device=micfeed "$1"; done', "cassini-qa-voice", str(voice)],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )

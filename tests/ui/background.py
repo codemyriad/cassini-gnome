@@ -246,8 +246,11 @@ with tempfile.TemporaryDirectory() as temporary:
     app.set_auto_recording_hold(True)
     window = app.get_active_window()
     if window is not None:
-        window.close()
-    # No manual tick: closing the window publishes windowless state on idle.
+        window.close()  # Publishes windowless state on idle, without a tick.
+    else:
+        # Background Stop already retired the hidden window. Arming alone
+        # publishes on the next one-second tick; run that tick here.
+        app.comfort.tick()
     until(lambda: "background" in services.notifications)
     assert services.notifications["background"]["title"] == "Cassini is still running"
     assert services.notifications["background"]["body"] == (
