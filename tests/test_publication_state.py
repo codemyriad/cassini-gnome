@@ -54,3 +54,17 @@ def test_foreign_or_future_track_metadata_cannot_break_the_library_projection():
     for tracks in (None, 1, "future", [None], [{"spans": 2}], [{"spans": [None]}]):
         row = meeting(published_file=Path("/Library/file.opus"), extensions={"codemyriad.io": {"tracks": tracks}})
         assert project(row).publication_notice is None
+
+
+def test_display_projection_never_queries_a_disconnected_library(monkeypatch):
+    from cassini_viewer.publication_state import session_root_path
+
+    def blocked(*_args, **_kwargs):
+        raise AssertionError("GTK tried to query a potentially disconnected Library")
+
+    monkeypatch.setattr(Path, "stat", blocked)
+    monkeypatch.setattr(Path, "lstat", blocked)
+    directory = Path("/offline/Library/.cassini/sessions/Recording-12345678-1234-1234-1234-123456789abc")
+    row = replace(meeting(capture_state="completed"), directory=directory)
+    assert project(row).publication_notice is None
+    assert session_root_path(directory) == Path("/offline/Library")

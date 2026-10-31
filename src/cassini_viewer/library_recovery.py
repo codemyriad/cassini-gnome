@@ -58,7 +58,7 @@ class LibraryRecovery:
         return replace(snapshot, meetings=meetings) if meetings != snapshot.meetings else snapshot
 
     def observe(self, snapshot):
-        from .library_publication import root_for
+        from .publication_state import session_root_path
 
         if self.cancelled.is_set() or self.future is not None or self.timer:
             return
@@ -67,7 +67,7 @@ class LibraryRecovery:
             and meeting.capture_state in ("completed", "interrupted")
             and meeting.published_file is None
             and not meeting.published_missing
-            and root_for(meeting.directory) is not None
+            and session_root_path(meeting.directory) is not None
             and meeting.directory not in self.attempted
             for meeting in snapshot.meetings
         ):

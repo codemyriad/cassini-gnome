@@ -241,10 +241,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         if not notice:
             return None
         if notice == "library.publishedMissing":
-            from .library_publication import root_for
+            from .publication_state import session_root_path
 
             def show():
-                root = root_for(meeting.directory) or meeting.directory.parent
+                root = session_root_path(meeting.directory) or meeting.directory.parent
                 Gtk.FileLauncher(file=Gio.File.new_for_path(str(root))).launch(self, None, None, None)
 
             return InlineLine(notice, info=True, action="meeting.showInFiles", callback=show)
