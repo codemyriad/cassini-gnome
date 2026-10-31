@@ -114,10 +114,19 @@ def menu_click(appid, label):
             ),
             "SNI menu row settled " + label,
         )
+        # Record activations on the indicator's menu, not on one row object.
+        # When the menu opens after row properties changed while it was closed
+        # (the live timer relabels row 1 every second), the AppIndicator host
+        # refetches each row, and its resetProperties() re-emits "type", so
+        # every row is replaced just after it is first shown. The click then
+        # activates the replacement. A handler on the original row never fired,
+        # and the retry below aimed at a Stop Recording row that the real Stop
+        # had already removed. PopupMenuBase emits "activate" for every row,
+        # including replacements.
         assert shell(
-            "(() => {const i=" + expression + ";if(!i)return false;global._cassiniQaActivations??=[];"
-            "if(!i._cassiniQaWatched){i._cassiniQaWatched=true;"
-            "i.connect('activate',()=>global._cassiniQaActivations.push(i.label.text));}return true;})()"
+            "(() => {const a=" + actor(appid) + ";if(!a)return false;global._cassiniQaActivations??=[];"
+            "if(!a.menu._cassiniQaWatched){a.menu._cassiniQaWatched=true;"
+            "a.menu.connect('activate',(_m,i)=>global._cassiniQaActivations.push(i.label?.text??''));}return true;})()"
         )
         pointer_click(centre[0], centre[1], "SNI menu row " + label)
         # The hosted runner occasionally drops a click on a freshly opened
