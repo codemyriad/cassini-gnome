@@ -569,3 +569,50 @@ def test_produced_labels_use_writer_language_and_readers_keep_stored_words_and_l
     output = markdown(model_projection(meeting))
     assert "Parlante 1" in output and "“Buongiorno mondo”" in output and 'orfana"' not in output
     assert path.read_bytes() == before
+
+
+def test_unnamed_merge_and_chained_undo_restore_writer_labels_across_languages(published, monkeypatch):
+    from cassini_viewer import library
+
+    root, _sid, directory, path = published
+    real_text = library.text
+    monkeypatch.setattr(
+        library,
+        "text",
+        lambda key, **args: f"Parlante {args['n']}" if key == "common.speaker.unnamed" else real_text(key, **args),
+    )
+    body = dict(
+        format=portable.WORDS_FORMAT,
+        items=[dict(speaker=s, startMs=i * 20, endMs=i * 20 + 20, text=s) for i, s in enumerate("abc")],
+    )
+    with transaction(directory):
+        commit_metadata(
+            directory,
+            meeting_store.read_metadata(directory),
+            dict(
+                speakers=[dict(id=s, name=None, provenance="unnamed", colourIndex=i) for i, s in enumerate("abc")],
+                transcript=dict(status="done", reference=None),
+            ),
+            words=body,
+        )
+    labels = dict(a="Parlante 1", b="Parlante 2", c="Parlante 3")
+    monkeypatch.setattr(
+        library,
+        "text",
+        lambda key, **args: f"Sprecher {args['n']}" if key == "common.speaker.unnamed" else real_text(key, **args),
+    )
+    first = [{"from": "a", "into": "b"}]
+    for history, expected in (
+        (first, dict(a=labels["b"], b=labels["b"], c=labels["c"])),
+        (first + [{"from": "b", "into": "c"}], dict.fromkeys("abc", labels["c"])),
+        (first, dict(a=labels["b"], b=labels["b"], c=labels["c"])),
+        ([], labels),
+    ):
+        commit(directory, speakerMerges=history)
+        embedded = portable.read_meeting(str(path))
+        assert {s.id: s.label for s in embedded.speakers} == expected
+        cache = meeting_store.read_metadata(directory)
+        assert {s["id"]: s["label"] for s in cache["speakers"]} == labels
+        assert embedded.manifest["x"][xschema.DOMAIN]["meeting"]["speakers"] == cache["speakers"]
+    (meeting,) = LibraryScanner(root).scan().meetings
+    assert [s.name for s in meeting.speakers] == list(labels.values())

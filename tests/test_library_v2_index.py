@@ -123,3 +123,29 @@ def test_published_projection_is_reused_when_another_session_changes(tmp_path):
     rows = scanner.scan().meetings
     assert next(m for m in rows if m.id == sid) is first
     assert {m.id for m in rows} == {sid, sid2}
+
+
+def test_no_x_root_file_is_read_play_only_until_step_five(tmp_path):
+    from cassini_viewer import portable
+    from cassini_viewer.library_v2 import edit, xschema
+    from cassini_viewer.portable_writer import MANIFEST_MIME, chunk_set
+
+    sid, directory = simple_session(tmp_path, 0.1)
+    result = finalize.finalize(tmp_path, sid)
+    path = tmp_path / result.name
+    manifest = portable.read_meeting(str(path)).manifest
+    manifest["x"].pop(xschema.DOMAIN)
+    tags, _ = chunk_set(edit.MANIFEST_PREFIX, manifest, MANIFEST_MIME)
+    with path.open("rb") as stream:
+        vendor, fields = edit.comment_fields(stream)
+    fields = edit.edited_fields(fields, tags, chunk_prefixes=(edit.MANIFEST_PREFIX,))
+    stage = path.with_suffix(".test-stage")
+    edit.rewrite(path, stage, fields, vendor)
+    edit.verify(stage)
+    stage.replace(path)
+    shutil.rmtree(directory)
+    before = fingerprints(tmp_path)
+    (meeting,) = LibraryScanner(tmp_path).scan().meetings
+    assert meeting.has_audio and meeting.audio_file == path
+    assert not meeting.metadata_editable and not meeting.can_write_down
+    assert fingerprints(tmp_path) == before

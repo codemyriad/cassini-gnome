@@ -35,3 +35,8 @@ readiness notification and a signal wait. Tests also cover an absent session
 cache, retained destination edits, an editor queued on the old lock, source
 edits during copying, collisions, cancellation and cross-filesystem fallback.
 Unowned root files remain pending the shared adoption API (coordination R55).
+
+D48 adopts this paired Move for step 3b. Adoption/editing of root files without
+known `x["codemyriad.io"]` is deferred to step 5: those files can be read/played,
+with edit and Trash actions insensitive. A Library containing unowned root files
+keeps the existing Move guard until that adoption API is available.

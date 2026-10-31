@@ -117,6 +117,7 @@ class MeetingTrash:
         return bool(
             meeting
             and meeting.lifecycle == "saved"
+            and (meeting.published_file is None or meeting.metadata.get("version") == 1)
             and not self.hides(meeting.directory)
             and not self.app._quitting
             and not (self.app.library_relocator and self.app.library_relocator.running)

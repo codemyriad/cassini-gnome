@@ -47,6 +47,38 @@ class LibraryRecovery:
             self.app._transcription_changed()
         return False
 
+    def project(self, snapshot):
+        from dataclasses import replace
+
+        from .publication_state import project
+
+        with self.lock:
+            failures = dict(self.failures)
+        meetings = tuple(project(meeting, failures.get(meeting.directory)) for meeting in snapshot.meetings)
+        return replace(snapshot, meetings=meetings) if meetings != snapshot.meetings else snapshot
+
+    def observe(self, snapshot):
+        from .library_publication import root_for
+
+        if self.cancelled.is_set() or self.future is not None or self.timer:
+            return
+        if any(
+            meeting.lifecycle == "saved"
+            and meeting.capture_state in ("completed", "interrupted")
+            and meeting.published_file is None
+            and not meeting.published_missing
+            and root_for(meeting.directory) is not None
+            and meeting.directory not in self.attempted
+            for meeting in snapshot.meetings
+        ):
+            self.start()
+
+    def report(self, directory, error):
+        with self.lock:
+            self.failures[directory] = error
+            self.attempted.add(directory)
+        self._changed()
+
     def start(self):
         self.timer = 0
         if self.cancelled.is_set() or self.future is not None:

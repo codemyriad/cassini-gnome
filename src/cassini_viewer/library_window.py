@@ -234,6 +234,28 @@ class LibraryWindow(Adw.ApplicationWindow):
             callback=lambda: self.get_application().meeting_trash.request(meeting, self),
         )
 
+    def publication_line(self, meeting):
+        from .inline_line import InlineLine
+
+        notice = meeting.publication_notice
+        if not notice:
+            return None
+        if notice == "library.publishedMissing":
+            from .library_publication import root_for
+
+            def show():
+                root = root_for(meeting.directory) or meeting.directory.parent
+                Gtk.FileLauncher(file=Gio.File.new_for_path(str(root))).launch(self, None, None, None)
+
+            return InlineLine(notice, info=True, action="meeting.showInFiles", callback=show)
+        retry = notice in ("library.publishFailed", "library.publishDiskLow")
+        recovery = getattr(self.get_application(), "library_recovery", None)
+        return InlineLine(
+            notice,
+            action="common.tryAgain" if retry else None,
+            callback=(lambda: recovery.retry(meeting.directory)) if retry and recovery else None,
+        )
+
     def update_build_banner(self):
         app = self.get_application()
         refresh = app.build_refresh
@@ -282,7 +304,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         menu = Gio.Menu()
         menu.append_item(self.rename_item())
         menu.append(text("common.exportEllipsis"), "win.export")
-        if self.get_application().meeting_trash.allowed(row.meeting, self):
+        if self.get_application().meeting_trash.allowed(row.meeting, self) or (
+            row.meeting.published_file is not None and not row.meeting.metadata_editable
+        ):
             section = Gio.Menu()
             from .meeting_trash import menu_item
 
@@ -725,7 +749,9 @@ class LibraryWindow(Adw.ApplicationWindow):
                 received=meeting.origin == "received",
             ),
             meeting.speakers,
-            tuple(self.get_application().voice_store.has_match(meeting.directory, s.id) for s in meeting.speakers),
+            tuple(self.get_application().voice_store.has_match(meeting.directory, s.id) for s in meeting.speakers)
+            if meeting.metadata_editable
+            else (),
             meeting.preview_turns,
             meeting.has_audio,
             meeting.legacy_transcript_file,
@@ -733,6 +759,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             meeting.transcript,
             meeting.eta_minutes,
             meeting.error,
+            meeting.publication_notice,
             tuple(t.start_offset_ms for t in meeting.tracks),
             (meeting.metadata.get("received") or {}).get("originalFolderName"),
         )
@@ -762,6 +789,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
 
     def _updated(self, snapshot):
+        if recovery := getattr(self.get_application(), "library_recovery", None):
+            recovery.observe(snapshot)
+            snapshot = recovery.project(snapshot)
         snapshot = self.get_application().meeting_trash.project(snapshot)
         fresh_scan = snapshot is not self.snapshot
         self.get_application().observe_library(snapshot, self._observed_phases)
@@ -987,6 +1017,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         from .inline_line import InlineLine
 
         writing = getattr(self.get_application(), "writing_available", True)
+        publication = self.publication_line(meeting)
+        if publication:
+            self.preview.append(publication)
         trash_error = self.trash_error_line(meeting)
         if trash_error:
             self.preview.append(trash_error)

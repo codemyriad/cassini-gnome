@@ -118,7 +118,9 @@ def commit_metadata(directory, current, changes, *, before_commit=None, words=No
         raise ValueError("The meeting's private metadata is not editable")
     if ours["revision"] > current["revision"]:
         raise edit.FileAhead("The file is ahead of its session metadata")
+    changes = deepcopy(changes)
     updated = dict(current, **changes, revision=max(current["revision"], ours["revision"]) + 1)
+    updated["speakers"] = deepcopy(updated["speakers"])
     if not library_schema.valid(updated):
         raise ValueError("Invalid app-owned metadata update")
     automatic = ours.get("automaticTitle")
@@ -129,9 +131,6 @@ def commit_metadata(directory, current, changes, *, before_commit=None, words=No
         else previous_title
     )
     extension = manifest["x"]
-    extension[xschema.DOMAIN] = xschema.private_data(updated, origin=origin, automatic_title=automatic, base=ours)
-    if not xschema.valid(extension[xschema.DOMAIN]):
-        raise ValueError("Invalid private Library metadata")
     notes = xschema.notes_domain(extension.get(xschema.NOTES_DOMAIN), updated.get("notes"))
     if notes:
         extension[xschema.NOTES_DOMAIN] = notes
@@ -175,14 +174,34 @@ def commit_metadata(directory, current, changes, *, before_commit=None, words=No
         for speaker in speakers:
             old, new = previous.get(speaker.id, {}), following.get(speaker.id, {})
             name_changed = any(old.get(key) != new.get(key) for key in ("name", "provenance", "nameCleared"))
-            restored = before_mapping.get(speaker.id, speaker.id) != mapping.get(speaker.id, speaker.id)
-            # Producing words writes labels in the writer's language. Later
-            # edits must not relocalize or renumber unrelated unnamed voices.
-            if words is not None or speaker.id not in entries or name_changed or restored:
-                entries.setdefault(speaker.id, dict(id=speaker.id))["label"] = speaker.name
+            produced = words is not None or speaker.id not in entries or name_changed
+            if produced:
+                original = speaker.name
+            elif before_mapping.get(speaker.id, speaker.id) == speaker.id:
+                original = entries[speaker.id]["label"]
+            elif isinstance(new.get("label", old.get("label")), str):
+                original = new["label"] if "label" in new else old["label"]
+            else:
+                # Old merged files without the optional label cannot recover
+                # information their original writer did not retain.
+                original = new.get("name") or speaker.name
+            entry = following.setdefault(
+                speaker.id,
+                dict(id=speaker.id, name=None, provenance="unnamed", colourIndex=speaker.colour_index),
+            )
+            entry["label"] = original
+            entries.setdefault(speaker.id, dict(id=speaker.id))["label"] = original
+        updated["speakers"] = list(following.values())
+        if updated["speakers"] != current["speakers"]:
+            changes["speakers"] = updated["speakers"]
         labels = {speaker_id: entry["label"] for speaker_id, entry in entries.items()}
         for speaker_id, into in mapping.items():
             entries[speaker_id]["label"] = labels[into]
+    if not library_schema.valid(updated):
+        raise ValueError("Invalid speaker labels")
+    extension[xschema.DOMAIN] = xschema.private_data(updated, origin=origin, automatic_title=automatic, base=ours)
+    if not xschema.valid(extension[xschema.DOMAIN]):
+        raise ValueError("Invalid private Library metadata")
     manifest["speakers"] = list(entries.values())
     replacements["CASSINI_SPEAKER_COUNT"] = str(len(entries))
     if displayed != previous_title:

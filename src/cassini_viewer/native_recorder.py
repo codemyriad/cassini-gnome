@@ -55,6 +55,7 @@ class NativeRecorder(GObject.Object):
         self._publication_cancel = threading.Event()
         self._publication_future = None
         self.publication = None
+        self.publication_error = None
         self._mute_observer = None
         self.output_muted = False
 
@@ -84,6 +85,7 @@ class NativeRecorder(GObject.Object):
         self._publication_cancel.clear()
         self._publication_future = None
         self.publication = None
+        self.publication_error = None
         self._mute_observer = None
         self.output_muted = False
         future = self._executor.submit(self._prepare, Path(parent) if parent is not None else None)
@@ -465,7 +467,13 @@ class NativeRecorder(GObject.Object):
                     self._publication_future = submit_stopped(session, cancel=self._publication_cancel)
                     if self._publication_cancel.is_set():
                         self._publication_future.cancel()
-                    self.publication = self._publication_future.result()
+                    try:
+                        self.publication = self._publication_future.result()
+                    except CancelledError:
+                        raise
+                    except Exception as error:
+                        self.publication_error = error
+                        raise
             except CancelledError:
                 pass  # Completed WAVs and queue intent are recovered next launch.
             finally:

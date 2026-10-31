@@ -343,7 +343,8 @@ class MeetingPage(Adw.NavigationPage):
         matches = frozenset(
             s.id
             for s in meeting.speakers
-            if self.window.get_application().voice_store.has_match(meeting.directory, s.id)
+            if meeting.metadata_editable
+            and self.window.get_application().voice_store.has_match(meeting.directory, s.id)
         )
         signature = (
             undo,
@@ -354,6 +355,7 @@ class MeetingPage(Adw.NavigationPage):
             meeting.transcript,
             meeting.eta_minutes,
             meeting.error,
+            meeting.publication_notice,
             meeting.metadata_editable,
             dark,
         )
@@ -366,7 +368,9 @@ class MeetingPage(Adw.NavigationPage):
         self.more_menu.append(text("common.exportEllipsis"), "win.export")
         if undo:
             self.more_menu.append(text("meeting.undoMerge"), "win.undo-speaker-merge")
-        if self.window.get_application().meeting_trash.allowed(meeting, self.window):
+        if self.window.get_application().meeting_trash.allowed(meeting, self.window) or (
+            meeting.published_file is not None and not meeting.metadata_editable
+        ):
             section = Gio.Menu()
             from .meeting_trash import menu_item
 
@@ -412,12 +416,17 @@ class MeetingPage(Adw.NavigationPage):
                 self.speakers.append(edit)
             else:
                 self.speakers.append(row)
-        if meeting.speakers and meeting.metadata_editable:
-            self.name_speakers_button = Gtk.Button(label=text("meeting.nameSpeakers"))
+        if meeting.speakers:
+            self.name_speakers_button = Gtk.Button(
+                label=text("meeting.nameSpeakers"), sensitive=meeting.metadata_editable
+            )
             self.name_speakers_button.connect("clicked", lambda *_: self.name_speakers())
             self.speakers.append(self.name_speakers_button)
         while child := self.lines.get_first_child():
             self.lines.remove(child)
+        publication = self.window.publication_line(meeting)
+        if publication:
+            self.lines.append(publication)
         trash_error = self.window.trash_error_line(meeting)
         if trash_error:
             self.lines.append(trash_error)

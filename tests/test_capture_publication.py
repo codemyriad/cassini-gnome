@@ -203,3 +203,33 @@ def test_browser_rpc_stop_acknowledges_pcm_and_returns_saving_paths_for_quit(tmp
         service.closed.set()
         worker.join(3)
         assert not worker.is_alive()
+
+
+def test_native_publication_failure_is_distinct_from_a_capture_start_failure(tmp_path, monkeypatch):
+    import errno
+
+    from cassini_viewer.publication_state import failure_notice
+
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path / "Library"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    failure = OSError(errno.ENOSPC, "Synthetic full disk after Stop")
+
+    def full(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(finalize, "finalize", full)
+    recorder = NativeRecorder()
+    finished = []
+    recorder.connect("finished", lambda *_: finished.append(True))
+    try:
+        recorder.start(test=True)
+        spin_until(lambda: recorder.session and all(t["frames"] >= 4800 for t in recorder.session.manifest["tracks"]))
+        recorder.stop()
+        spin_until(lambda: bool(finished))
+        assert recorder.publication_error is failure
+        assert failure_notice(recorder.publication_error) == "library.publishDiskLow"
+        assert not list((tmp_path / "Library").glob("*.opus"))
+        assert all((recorder.session.directory / t["file"]).is_file() for t in recorder.session.manifest["tracks"])
+        assert not capture_busy(recorder.session.manifest["id"])
+    finally:
+        recorder.close()

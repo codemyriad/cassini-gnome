@@ -187,6 +187,7 @@ class Meeting(MeetingState):
     audio_file: Path | None = None
     published_file: Path | None = None
     published_missing: bool = False
+    publication_notice: str | None = None
     recording_offset_minutes: int | None = None
     audio_size_bytes: int | None = None
     legacy_transcript_file: Path | None = None
@@ -210,6 +211,8 @@ class Meeting(MeetingState):
 
     def row_texts(self):
         """R11 state-specific meta and second line; no capture labels become names."""
+        if self.publication_notice and self.lifecycle == "saved":
+            return ux_formats.row_meta(self.duration_ms, self.speaker_names), text(self.publication_notice)
         if self.lifecycle == "recording":
             state = meeting_sources(self)
             if self.capture_source in ("chromium", "chrome", "firefox", "browser", "browser-host") and (

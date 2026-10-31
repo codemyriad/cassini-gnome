@@ -847,7 +847,12 @@ class CassiniApplication(Adw.Application):
         self._native_changed()
 
     def _native_error(self, _recorder, message):
-        self.recording_error = message
+        publication_error = getattr(_recorder, "publication_error", None)
+        recovery = getattr(self, "library_recovery", None)
+        if publication_error is not None and recovery is not None:
+            recovery.report(_recorder.session.directory, publication_error)
+        else:
+            self.recording_error = message
         if not _recorder.pipeline and not _recorder.starting:
             self._release_native()
         self._native_changed()

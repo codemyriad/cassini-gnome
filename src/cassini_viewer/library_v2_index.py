@@ -153,16 +153,28 @@ class PublishedIndex:
                     meeting,
                     interrupted_at_ms=None,
                     published_missing=True,
+                    publication_notice="library.publishedMissing",
+                    metadata_editable=False,
+                    has_audio=False,
+                    words=(),
+                    preview_turns=(),
+                    quote_line=None,
                     diagnostics=(*meeting.diagnostics, Diagnostic(meeting.directory, "published-file-missing")),
                 )
         return LibrarySnapshot(
-            meetings=tuple(sorted(rows.values(), key=_sort)),
+            meetings=tuple(sorted((self._publication_state(m) for m in rows.values()), key=_sort)),
             diagnostics=tuple(diagnostics),
             unavailable=base.unavailable or hidden.unavailable,
             directories=tuple(
                 dict.fromkeys((*base.directories, *hidden.directories, *((sessions,) if sessions is not None else ())))
             ),
         )
+
+    @staticmethod
+    def _publication_state(meeting):
+        from .publication_state import project
+
+        return project(meeting)
 
     @staticmethod
     def _identity(meeting):
@@ -293,7 +305,7 @@ class PublishedIndex:
                     safe_sessions
                     and audio.trusted
                     and not audio.words_damaged
-                    and (xschema.DOMAIN not in extension or known)
+                    and known
                     and (working is None or working.metadata_editable)
                 ),
                 metadata=metadata,
