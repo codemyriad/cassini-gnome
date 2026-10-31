@@ -757,9 +757,12 @@ def test_user_stop_joins_pending_automatic_stop_and_finishes_its_capture(server,
             user = pool.submit(request, "stop-all", path=path)
             wait_for(lambda: capture.finished)
             assert service.stopped_calls[("4242:99", 3)][0] == meeting()["url"]
+            # The user sees the completed local save even if the page has not
+            # acknowledged the automatic/fallback stop yet.
+            assert not any(s.get("recording") for s in user.result(2)["statuses"])
+            assert not automatic.done()
             peer.answer(command)
             assert automatic.result(2)
-            assert not any(s.get("recording") for s in user.result(2)["statuses"])
             assert not next(iter(service.browsers.values())).pending, "A second wire Stop must not be sent"
     finally:
         peer.close()

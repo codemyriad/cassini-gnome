@@ -542,7 +542,11 @@ class BrowserService:
                     capture.stop_requested.set()
         if joining is not None:
             if capture is not None and not preserve_capture:
+                # Local save is authoritative. The existing browser Stop may
+                # still be waiting for an unreachable page; do not keep the
+                # user's Stop waiting after their audio is safely saved.
                 capture.stop()
+                return dict(self.snapshot(), stoppedPath=str(capture.directory))
             if not joining["event"].wait(self.command_timeout):
                 raise TimeoutError("The browser did not finish the recording command")
             result = joining["result"]
@@ -580,6 +584,9 @@ class BrowserService:
             raise
         finally:
             with self.lock:
+                # Also release joiners when send/timeout fails without a
+                # result packet. They must not wait for another full timeout.
+                pending["event"].set()
                 browser.pending.pop(request_id, None)
                 if not any(p["tabId"] == tab for p in browser.pending.values()):
                     browser.busy.discard(tab)
