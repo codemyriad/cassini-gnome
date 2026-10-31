@@ -52,6 +52,35 @@ def indicator(appid):
     )
 
 
+def menu_diagnostic(appid, label):
+    """What the app publishes over dbusmenu versus what the host shows."""
+    try:
+        revision, layout = call(
+            appid,
+            "/StatusNotifierItem/Menu",
+            "com.canonical.dbusmenu",
+            "GetLayout",
+            GLib.Variant("(iias)", (0, -1, [])),
+        )
+        rows = {child[0]: child[1] for child in layout[2]}
+        item = call(
+            appid,
+            "/StatusNotifierItem",
+            "org.freedesktop.DBus.Properties",
+            "GetAll",
+            GLib.Variant("(s)", ("org.kde.StatusNotifierItem",)),
+        )[0]
+        published = dict(revision=revision, rows=rows, item={k: item[k] for k in ("Status", "Title", "IconName")})
+    except GLib.Error as error:
+        published = str(error)
+    shown = shell(
+        "(() => {const a=" + actor(appid) + ";if(!a)return null;return {open:a.menu.isOpen,"
+        "items:a.menu._getMenuItems().map(i=>({label:i.label?.text??'',visible:i.visible,mapped:i.mapped}))};})()"
+    )
+    print("SNI menu diagnostic", label, dict(published=published, shown=shown), flush=True)
+    screenshot("indicator-menu-failed.png")
+
+
 def menu_click(appid, label):
     expression = f"{actor(appid)}?.menu._getMenuItems().find(i=>i.label?.text==={json.dumps(label)} && i.visible)"
 
@@ -69,7 +98,11 @@ def menu_click(appid, label):
     # pointer had clicked inside a client window.)
     previous = shell("global._cassiniQaActivations?.length??0")
     for attempt in range(3):
-        until(row_shown, "SNI menu row " + label)
+        try:
+            until(row_shown, "SNI menu row " + label)
+        except AssertionError:
+            menu_diagnostic(appid, label)
+            raise
         # The menu slides open; aim only once the compositor's own pick at the
         # row's centre is that row, so the click cannot land beside the menu.
         centre = until(
@@ -99,8 +132,8 @@ def menu_click(appid, label):
             break
         except AssertionError:
             if attempt == 2:
-                print("SNI menu diagnostic", label, indicator(appid), shell("global.get_pointer()"), flush=True)
-                screenshot("indicator-menu-failed.png")
+                print("SNI click", label, shell("global.get_pointer()"), flush=True)
+                menu_diagnostic(appid, label)
                 raise
     assert shell("global._cassiniQaActivations.length") == previous + 1
     assert shell("global._cassiniQaActivations.at(-1)") == label

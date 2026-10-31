@@ -72,6 +72,15 @@ def menu_rows(message, recording):
     }
 
 
+def changed_properties(before, after):
+    """(id, {property: new value}) for every row property that differs."""
+    return [
+        (key, changed)
+        for key, row in after.items()
+        if (changed := {name: value for name, value in row.items() if before.get(key, {}).get(name) != value})
+    ]
+
+
 def variants(properties, names=()):
     return {
         key: GLib.Variant("b" if isinstance(value, bool) else "s", value)
@@ -99,6 +108,7 @@ class StatusNotifier:
         self.proxy = None
         self.owner = ""
         self.generation = self.revision = 0
+        self.served_revision = -1
         self.retry_timer = 0
         self.wanted = self.recording = False
         self.message = text("hidden.status.watching")
@@ -118,7 +128,7 @@ class StatusNotifier:
         self.wanted, self.recording, self.message = wanted, bool(recording), message
         if previous == (self.wanted, self.recording, self.message) or self.closed:
             return
-        self.rows = menu_rows(message, self.recording)
+        rows, self.rows = self.rows, menu_rows(message, self.recording)
         layout_changed = previous[1] != self.recording
         if layout_changed:
             self.revision = (self.revision + 1) % (2**32)
@@ -127,13 +137,18 @@ class StatusNotifier:
             return
         if layout_changed:
             self.bus.emit_signal(None, MENU_PATH, MENU, "LayoutUpdated", GLib.Variant("(ui)", (self.revision, 0)))
-        elif previous[2] != message:
+        # A host may keep its cached properties for items whose IDs survive a
+        # LayoutUpdated (the AppIndicator extension re-reads only type and
+        # children-display). Every changed property is therefore also sent as
+        # ItemsPropertiesUpdated, e.g. Stop Recording becoming visible.
+        changed = changed_properties(rows, self.rows)
+        if changed:
             self.bus.emit_signal(
                 None,
                 MENU_PATH,
                 MENU,
                 "ItemsPropertiesUpdated",
-                GLib.Variant("(a(ia{sv})a(ias))", ([(1, variants({"label": message}))], [])),
+                GLib.Variant("(a(ia{sv})a(ias))", ([(key, variants(value)) for key, value in changed], [])),
             )
         for signal in ("NewTitle", "NewToolTip"):
             self.bus.emit_signal(None, ITEM_PATH, ITEM, signal, None)
@@ -317,6 +332,7 @@ class StatusNotifier:
         try:
             if method == "GetLayout":
                 result = GLib.Variant("(u(ia{sv}av))", (self.revision, self._layout(*args)))
+                self.served_revision = self.revision
             elif method == "GetGroupProperties":
                 ids, names = args
                 result = GLib.Variant(
@@ -332,9 +348,11 @@ class StatusNotifier:
             elif method == "EventGroup":
                 result = GLib.Variant("(ai)", ([e[0] for e in args[0] if not self._event(e[0], e[1])],))
             elif method == "AboutToShow":
-                result = GLib.Variant("(b)", (False,))
+                # Ask the host to refetch if it has not seen the current layout.
+                result = GLib.Variant("(b)", (self.served_revision != self.revision,))
             elif method == "AboutToShowGroup":
-                result = GLib.Variant("(aiai)", ([], [key for key in args[0] if key not in self.rows]))
+                stale = [0] if self.served_revision != self.revision else []
+                result = GLib.Variant("(aiai)", (stale, [key for key in args[0] if key not in self.rows]))
             else:
                 raise ValueError("Unknown menu method")
             invocation.return_value(result)
