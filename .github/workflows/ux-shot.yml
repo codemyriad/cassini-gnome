@@ -41,7 +41,7 @@ jobs:
           meson install -C _build-shot
           echo "BOARD_APP=$PWD/_install-shot/bin/cassini-viewer" >> "$GITHUB_ENV"
           echo "CASSINI_BOARD_BUILD=$PWD/_build-shot" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         if: inputs.product != ''
         with:
           name: ${{ inputs.product }}

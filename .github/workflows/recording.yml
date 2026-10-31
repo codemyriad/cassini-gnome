@@ -26,7 +26,7 @@ jobs:
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good xvfb xauth xdotool dbus-x11 \
             gir1.2-gtk-4.0 gir1.2-adw-1 imagemagick pulseaudio-utils meson ninja-build gettext \
             libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream at-spi2-core gir1.2-atspi-2.0 pipewire pipewire-pulse wireplumber
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         if: inputs.product != ''
         with:
           name: ${{ inputs.product }}
