@@ -16,7 +16,7 @@ import subprocess
 import sys
 import threading
 import time
-from concurrent.futures import CancelledError, ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, CancelledError, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid4, uuid5
@@ -140,7 +140,7 @@ class BrowserConnection:
         )
         self.id = str(uuid4())
         self.stream = stream
-        self.write_lock = threading.Lock()
+        self.write_lock = threading.RLock()
         self.meetings = {}
         self.status = {"recording": False}
         self.status_seen = self.hello_seen = False
@@ -208,6 +208,8 @@ class BrowserService:
         self._record_groups = {}
         self._cancelled_groups = {}
         self.command_timeout = command_timeout
+        self.batch_timeout = 25
+        self._stop_batches = set()
         if notifier is None:
             from .browser_notifications import notify_recording
 
@@ -654,10 +656,27 @@ class BrowserService:
             }
         self.policy()
 
-    def command(self, identifier, action, *, microphone=True, preserve_capture=False, user=False, reason="user"):
+    def command(
+        self,
+        identifier,
+        action,
+        *,
+        microphone=True,
+        preserve_capture=False,
+        user=False,
+        reason="user",
+        deadline=None,
+        cancelled=None,
+    ):
         from .session_events import END_REASONS
 
-        deadline = time.monotonic() + max(self.command_timeout, CONTROL_RECONNECT_GRACE)
+        deadline = (
+            min(deadline, time.monotonic() + max(self.command_timeout, CONTROL_RECONNECT_GRACE))
+            if deadline is not None
+            else time.monotonic() + max(self.command_timeout, CONTROL_RECONNECT_GRACE)
+        )
+        if action == "start" and (time.monotonic() >= deadline or cancelled is not None and cancelled.is_set()):
+            raise ValueError("Recording start was cancelled")
 
         if (
             action not in ("start", "stop")
@@ -683,7 +702,12 @@ class BrowserService:
             if browser is None or not raw_tab.isdecimal():
                 raise ValueError("This browser is no longer connected")
             tab = int(raw_tab)
-            if action == "start" and self._stopping_all.is_set():
+            if action == "start" and (
+                self._stopping_all.is_set()
+                or time.monotonic() >= deadline
+                or cancelled is not None
+                and cancelled.is_set()
+            ):
                 raise ValueError("Recording start was cancelled")
             independent = "independent-sessions-v1" in browser.capabilities
             if action == "start" and tab not in browser.meetings:
@@ -761,7 +785,10 @@ class BrowserService:
                         packet["keepOnNavigation"] = True
                     else:
                         packet["reason"] = reason
-            browser.send(packet)
+            with browser.write_lock:
+                if action == "start" and (pending.get("cancelled") or cancelled is not None and cancelled.is_set()):
+                    raise ValueError("Recording start was cancelled")
+                browser.send(packet)
             if not pending["event"].wait(min(self.command_timeout, max(0, deadline - time.monotonic()))):
                 raise TimeoutError("The browser did not finish the recording command")
             result = pending["result"]
@@ -791,6 +818,47 @@ class BrowserService:
                 if not any(p["tabId"] == tab for p in browser.pending.values()):
                     browser.busy.discard(tab)
 
+    def _batch(self, jobs, deadline, *, cancelled=None):
+        if not jobs:
+            return [], []
+        executor = ThreadPoolExecutor(max_workers=min(32, len(jobs)), thread_name_prefix="cassini-browser-batch")
+        futures = [(identifier, executor.submit(job)) for identifier, job in jobs]
+        remaining = {future for _identifier, future in futures}
+        try:
+            while remaining and time.monotonic() < deadline and not (cancelled is not None and cancelled.is_set()):
+                _done, remaining = wait(
+                    remaining, timeout=min(0.05, max(0, deadline - time.monotonic())), return_when=FIRST_COMPLETED
+                )
+            if remaining and cancelled is not None:
+                cancelled.set()
+                for future in remaining:
+                    future.cancel()
+            results = []
+            for identifier, future in futures:
+                if future.done() and not future.cancelled():
+                    try:
+                        results.append((identifier, future.result(), None))
+                    except Exception as error:
+                        if not isinstance(error, (OSError, ValueError, CancelledError)):
+                            logging.getLogger(__name__).exception("Unexpected browser batch failure: %s", identifier)
+                        results.append((identifier, None, error))
+                else:
+                    results.append((identifier, None, TimeoutError("The browser did not finish the recording command")))
+            return results, [future for _identifier, future in futures]
+        finally:
+            executor.shutdown(wait=False, cancel_futures=cancelled is not None)
+
+    def _release_stop_batch(self, token, futures):
+        if any(not future.done() for future in futures):
+            return
+        with self.lock:
+            if token not in self._stop_batches:
+                return
+            self._stop_batches.discard(token)
+            if not self._stop_batches:
+                self._stopping_all.clear()
+        self.policy()
+
     def start_all(self, *, microphone=True, group_id=None):
         if type(microphone) is not bool:
             raise ValueError("Invalid microphone selection")
@@ -809,30 +877,49 @@ class BrowserService:
                 if meeting.get("sourceCount", 0) > 0 and not b.states.get(tab, {}).get("recording")
             ]
             self._record_groups[token] = group
-        failures = []
+        deadline = time.monotonic() + self.batch_timeout
+
+        def start_one(identifier, meeting):
+            if group.is_set() or self._stopping_all.is_set() or time.monotonic() >= deadline:
+                raise ValueError("Recording start was cancelled")
+            try:
+                return self.command(
+                    identifier, "start", microphone=microphone, user=True, deadline=deadline, cancelled=group
+                )
+            except StartRejected:
+                if group.is_set() or self._stopping_all.is_set() or time.monotonic() >= deadline:
+                    raise ValueError("Recording start was cancelled") from None
+                return self.start_fallback(identifier, meeting, microphone, cancelled=group, deadline=deadline)
+            finally:
+                if group.is_set() and time.monotonic() >= deadline:
+                    # The request can return while a late accepted Start is
+                    # being retired. Never leave that unacknowledged capture on.
+                    with contextlib.suppress(OSError, ValueError, TimeoutError):
+                        self.command(identifier, "stop", user=True, deadline=deadline)
+
         try:
-            for identifier, meeting in targets:
-                if group.is_set() or self._stopping_all.is_set():
-                    break
-                try:
-                    self.command(identifier, "start", microphone=microphone, user=True)
-                except StartRejected:
-                    if not group.is_set() and not self._stopping_all.is_set():
-                        try:
-                            self.start_fallback(identifier, meeting, microphone, cancelled=group)
-                        except (OSError, ValueError, TimeoutError) as fallback_error:
-                            failures.append(dict(id=identifier, title=meeting["title"], error=str(fallback_error)))
-                except (OSError, ValueError, TimeoutError) as error:
-                    failures.append(dict(id=identifier, title=meeting["title"], error=str(error)))
+            jobs = [
+                (identifier, lambda identifier=identifier, meeting=meeting: start_one(identifier, meeting))
+                for identifier, meeting in targets
+            ]
+            results, _futures = self._batch(jobs, deadline, cancelled=group)
+            titles = {identifier: meeting["title"] for identifier, meeting in targets}
+            failures = [
+                dict(id=identifier, title=titles[identifier], error=str(error))
+                for identifier, _result, error in results
+                if error is not None
+            ]
             return dict(self.snapshot(), attempted=len(targets), cancelled=group.is_set(), failures=failures)
         finally:
             with self.lock:
                 self._record_groups.pop(token, None)
 
-    def start_fallback(self, identifier, meeting, microphone=True, *, cancelled=None, automatic_generation=None):
+    def start_fallback(
+        self, identifier, meeting, microphone=True, *, cancelled=None, automatic_generation=None, deadline=None
+    ):
         from .browser_capture import BrowserCapture
 
-        identifier = self._resolve_call(identifier, wait=True)
+        identifier = self._resolve_call(identifier, wait=True, deadline=deadline)
         browser_id, _, raw_tab = identifier.partition(":")
         with self.lock:
             browser = self.browsers.get(browser_id)
@@ -840,6 +927,7 @@ class BrowserService:
                 browser is None
                 or self._stopping_all.is_set()
                 or (cancelled is not None and cancelled.is_set())
+                or (deadline is not None and time.monotonic() >= deadline)
                 or (
                     automatic_generation is not None
                     and (
@@ -894,6 +982,9 @@ class BrowserService:
                 if browser.states.get(tab, {}).get("captureId") == capture_id:
                     browser.states[tab] = dict(recording=False, tabId=tab)
             raise
+        if cancelled is not None and cancelled.is_set() or deadline is not None and time.monotonic() >= deadline:
+            capture.stop(reason="user")
+            raise ValueError("Recording start was cancelled")
         return capture.snapshot()
 
     def stop_all(self, directory=None, *, cancel_groups=(), quitting_pid=None, quitting_generation=0, reason="user"):
@@ -914,9 +1005,13 @@ class BrowserService:
         def matches(path):
             return isinstance(path, str) and (directory is None or Path(path).resolve() == Path(directory).resolve())
 
+        stop_token = str(uuid4())
+        futures = []
+        deadline = time.monotonic() + self.batch_timeout
         if directory is None:
-            self._stopping_all.set()
             with self.lock:
+                self._stop_batches.add(stop_token)
+                self._stopping_all.set()
                 self._stop_generation += 1
                 if quitting_pid is not None:
                     self.paused_pids[quitting_pid] = max(self.paused_pids.get(quitting_pid, -1), quitting_generation)
@@ -943,29 +1038,47 @@ class BrowserService:
                         for p in b.pending.values()
                         if p.get("action") == "start"
                     )
-            for identifier in commands:
-                try:
-                    result = self.command(identifier, "stop", user=quitting_pid is None, reason=reason)
-                    if isinstance(result.get("stoppedPath"), str):
-                        paths.append(result["stoppedPath"])
-                except ValueError:
-                    current = self.snapshot()
-                    if any(s.get("recording") and s["id"] == identifier for s in current["statuses"]):
-                        raise
             with self.lock:
                 captures = [
-                    c
-                    for c in self.captures.values()
+                    (key, c)
+                    for key, c in self.captures.items()
                     if not c.finished and (directory is None or c.directory is not None and matches(str(c.directory)))
                 ]
-            for capture in captures:
-                if quitting_pid is None:
-                    self._remember_capture_stop(capture)
-                capture.stop(reason=reason)
-            return dict(self.snapshot(), stoppedPaths=list(dict.fromkeys(paths)))
+                for _key, capture in captures:
+                    if quitting_pid is None:
+                        self._remember_capture_stop(capture)
+                    capture.end_reason = capture.end_reason or reason
+                    capture.stop_requested.set()
+            # Save native-owned audio before waiting for any browser acknowledgement.
+            jobs = [
+                ("capture:" + key, lambda capture=capture: capture.stop(reason=reason)) for key, capture in captures
+            ]
+            jobs.extend(
+                (
+                    identifier,
+                    lambda identifier=identifier: self.command(
+                        identifier, "stop", user=quitting_pid is None, reason=reason, deadline=deadline
+                    ),
+                )
+                for identifier in commands
+            )
+            results, futures = self._batch(jobs, deadline)
+            errors = []
+            current = self.snapshot()
+            active = {state["id"] for state in current["statuses"] if state.get("recording")}
+            for identifier, result, error in results:
+                if result is not None and isinstance(result.get("stoppedPath", result.get("path")), str):
+                    paths.append(result.get("stoppedPath", result.get("path")))
+                if error is not None and (identifier.startswith("capture:") or identifier in active):
+                    errors.append(error)
+            if errors:
+                raise TimeoutError(str(errors[0]))
+            return dict(current, stoppedPaths=list(dict.fromkeys(paths)))
         finally:
             if directory is None:
-                self._stopping_all.clear()
+                self._release_stop_batch(stop_token, futures)
+                for future in futures:
+                    future.add_done_callback(lambda _future: self._release_stop_batch(stop_token, futures))
 
     def policy(self):
         if self.closed.is_set() or self._stopping_all.is_set():

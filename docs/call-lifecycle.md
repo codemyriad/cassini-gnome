@@ -65,3 +65,20 @@ only retried after that window, and Stop still prevents automatic restarts.
 Overlapping transports publish one call; stale navigation or disconnect cannot
 clear the replacement's remembered Stop. Disconnected aliases and lineage are
 bounded, and browsers without an instance keep their existing transport IDs.
+
+D43.1(c) gives Record-all and Stop-all one 25-second broker budget, inside the
+application socket's 30-second timeout. Independent calls run concurrently on a
+bounded batch executor; a slow tab cannot serialize every other acknowledgement.
+The same deadline covers command waits, reconnect recovery and fallback startup.
+Each unfinished Start is reported as a failure; queued Starts are cancelled and
+fallbacks that finish too late are stopped and kept. Already accepted successful
+recordings keep running. Start and Stop share the transport write lock so Stop
+cannot overtake a prepared Start and leave it recording afterwards.
+
+Stop schedules native saves before browser acknowledgement work and remembers
+all owned calls immediately. If saving outlasts the request, it continues in the
+broker and the start barrier stays set until every background Stop finishes.
+Overlapping Stop batches each retain their own barrier token. A missing browser
+acknowledgement is ignored only after its recording has actually stopped; a live
+unresponsive recording or failed native save remains an error. No audio sample,
+tone, bleed or source-lifecycle thresholds are changed.

@@ -120,12 +120,16 @@ def test_stop_cancels_a_batch_while_its_first_start_is_pending(service):  # noqa
     try:
         with ThreadPoolExecutor(2) as executor:
             started = executor.submit(request, "start-all", path=path, groupId="pending-batch")
-            first = peer.receive()
+            starts = [peer.receive(), peer.receive()]
+            assert {command["tabId"] for command in starts} == {3, 4}
             stopped = executor.submit(request, "stop-all", path=path, cancelGroups=["pending-batch"])
-            stop = peer.receive()
-            assert stop["action"] == "stop" and stop["tabId"] == first["tabId"]
-            peer.answer(first, ok=False)
-            peer.answer(stop)
+            stops = [peer.receive(), peer.receive()]
+            assert all(command["action"] == "stop" for command in stops)
+            assert {command["tabId"] for command in stops} == {3, 4}
+            for command in starts:
+                peer.answer(command, ok=False)
+            for command in stops:
+                peer.answer(command)
             assert started.result(2)["cancelled"]
             assert not stopped.result(2)["statuses"]
             assert not next(iter(server.browsers.values())).pending
