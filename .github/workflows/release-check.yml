@@ -26,12 +26,12 @@ jobs:
     name: Version and release metadata
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Check every package version and the proposed tag name without creating it
         run: |
           version=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -n1)
           python3 build-aux/ci/release_metadata.py --tag "v$version" --report release-metadata.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-metadata
           path: release-metadata.json
@@ -46,7 +46,7 @@ jobs:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
       options: --privileged
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
         with:
           bundle: cassini-talk.flatpak
@@ -65,7 +65,7 @@ jobs:
         env:
           CASSINI_PARAKEET_TEST_CACHE: ${{ runner.temp }}/parakeet-models
         run: build-aux/flatpak/smoke.sh cassini-talk.flatpak io.codemyriad.CassiniTalk
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: release-flatpak-evidence

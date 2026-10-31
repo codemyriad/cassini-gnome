@@ -11,8 +11,8 @@ jobs:
     name: Lint and test
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - run: pip install ruff pytest
@@ -43,7 +43,7 @@ jobs:
           - archlinux:latest
           - alpine:edge
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       # Retried once because distribution mirrors occasionally time out.
       - run: build-aux/check-distros.sh "${{ matrix.image }}" || build-aux/check-distros.sh "${{ matrix.image }}"
 
