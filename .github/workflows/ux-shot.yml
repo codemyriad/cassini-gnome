@@ -83,6 +83,7 @@ jobs:
           G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram-browser.py ux-artifacts/spectrogram-browser.png
           CASSINI_SCREENSHOT_SCALE=2 G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram.py ux-artifacts/spectrogram-components-2x.png
           CASSINI_SCREENSHOT_SCALE=2 G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram-live.py ux-artifacts/spectrogram-live-2x.png
+          CASSINI_SCREENSHOT_SCALE=2 G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram-browser.py ux-artifacts/spectrogram-browser-2x.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/accessible-buttons.py ux-artifacts/accessible-buttons.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/import-export.py ux-artifacts/import-export-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/rename.py ux-artifacts/rename.png

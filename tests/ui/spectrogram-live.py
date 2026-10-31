@@ -52,6 +52,22 @@ def until(condition, message):
 
 
 def shot(window, name):
+    manager = Adw.StyleManager.get_default()
+    original = manager.get_color_scheme()
+    render_shot(window, name)
+    try:
+        for label, scheme in (("light", Adw.ColorScheme.FORCE_LIGHT), ("dark", Adw.ColorScheme.FORCE_DARK)):
+            manager.set_color_scheme(scheme)
+            until(
+                lambda: all(v.dark == manager.get_dark() for v in window.spectrograms.bindings),
+                "spectrogram palette follows screenshot theme",
+            )
+            render_shot(window, name + "-" + label)
+    finally:
+        manager.set_color_scheme(original)
+
+
+def render_shot(window, name):
     frames = []
     window.add_tick_callback(lambda *_: (frames.append(1), len(frames) < 2)[1])
     window.queue_draw()

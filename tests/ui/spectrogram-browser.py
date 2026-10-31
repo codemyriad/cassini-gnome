@@ -24,7 +24,7 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 gi.require_version("Graphene", "1.0")
 from desktop_services import DesktopServices  # noqa: E402
-from gi.repository import Gio, GLib, Graphene, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, GLib, Graphene, Gtk  # noqa: E402
 from readiness import wait_until  # noqa: E402
 from spectro_memory import render_state_bytes, source_digest  # noqa: E402
 
@@ -153,16 +153,23 @@ with tempfile.TemporaryDirectory() as temporary:
                 ),
                 "system fallback span reached the visible spectrum",
             )
-        painted = []
-        window.add_tick_callback(lambda *_: (painted.append(1), len(painted) < 2)[1])
-        window.queue_draw()
-        until(lambda: len(painted) >= 2, "fallback view painted before screenshot")
-        snapshot = Gtk.Snapshot.new()
-        Gtk.WidgetPaintable.new(window).snapshot(snapshot, window.get_width(), window.get_height())
-        node, bounds = snapshot.to_node(), Graphene.Rect()
-        bounds.init(0, 0, 1120, 720)
-        texture = window.get_renderer().render_texture(node, bounds)
-        assert texture.save_to_png(os.environ["CASSINI_SCREENSHOT_OUT"])
+        scale = window.get_scale_factor()
+        assert scale == int(os.environ.get("CASSINI_SCREENSHOT_SCALE", "1"))
+        for label, scheme in (("light", Adw.ColorScheme.FORCE_LIGHT), ("dark", Adw.ColorScheme.FORCE_DARK)):
+            Adw.StyleManager.get_default().set_color_scheme(scheme)
+            painted = []
+            window.add_tick_callback(lambda *_, painted=painted: (painted.append(1), len(painted) < 2)[1])
+            window.queue_draw()
+            until(lambda painted=painted: len(painted) >= 2, "fallback view painted before screenshot")
+            snapshot = Gtk.Snapshot.new()
+            snapshot.scale(scale, scale)
+            Gtk.WidgetPaintable.new(window).snapshot(snapshot, window.get_width(), window.get_height())
+            node, bounds = snapshot.to_node(), Graphene.Rect()
+            bounds.init(0, 0, 1120 * scale, 720 * scale)
+            texture = window.get_renderer().render_texture(node, bounds)
+            assert (texture.get_width(), texture.get_height()) == (1120 * scale, 720 * scale)
+            output = Path(os.environ["CASSINI_SCREENSHOT_OUT"])
+            assert texture.save_to_png(str(output.with_name(output.stem + "-" + label + ".png")))
         window.set_visible(False)
         until(
             lambda: not window.spectrograms.sessions and not window.spectrograms.tick_id,
