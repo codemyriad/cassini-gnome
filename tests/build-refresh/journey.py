@@ -9,7 +9,6 @@ import re
 import struct
 import subprocess
 import sys
-import time
 import wave
 from pathlib import Path
 
@@ -35,19 +34,38 @@ report = dict(initial=initial["buildId"], version=initial["version"], fixturePac
 
 
 def until(check, label, timeout=20):
-    deadline = time.monotonic() + timeout
-    last = None
-    while time.monotonic() < deadline:
-        while GLib.MainContext.default().pending():
-            GLib.MainContext.default().iteration(False)
+    loop = GLib.MainLoop()
+    result, failures, last = [], [], []
+
+    def observe():
         try:
             value = check()
             if value:
-                return value
+                result.append(value)
+                loop.quit()
+                return False
         except (GLib.Error, OSError) as error:
-            last = str(error)
-        time.sleep(0.02)
-    raise AssertionError(f"Timed out: {label}; last error={last}")
+            last[:] = [str(error)]
+        except BaseException as error:
+            failures.append(error)
+            loop.quit()
+            return False
+        return True
+
+    def expired():
+        failures.append(AssertionError(f"Timed out: {label}; last error={last}"))
+        loop.quit()
+        return False
+
+    tick = GLib.timeout_add(10, observe)
+    limit = GLib.timeout_add(max(1, int(timeout * 1000)), expired)
+    loop.run()
+    for source in (tick, limit):
+        if GLib.MainContext.default().find_source_by_id(source):
+            GLib.source_remove(source)
+    if failures:
+        raise failures[0]
+    return result[0]
 
 
 def owner():
@@ -232,11 +250,36 @@ try:
     settings = Gio.Settings.new("io.codemyriad.CassiniTalk")
     assert settings.set_boolean("skip-record-first", True)
     Gio.Settings.sync()
+    # The upgrade journey deliberately leaves automatic recording armed. Give
+    # it a private Background portal, rather than racing whether the container
+    # happens to have a portal/indicator: absent consent correctly reopens GTK.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from desktop_services import DesktopServices
+
+    desktop = DesktopServices()
+    until(
+        lambda: bus.call_sync(
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "NameHasOwner",
+            GLib.Variant("(s)", ("org.freedesktop.portal.Desktop",)),
+            None,
+            Gio.DBusCallFlags.NONE,
+            1000,
+            None,
+        ).unpack()[0],
+        "private Background portal owns its bus name",
+    )
     process = subprocess.Popen([str(APP)], stdout=log, stderr=log)
     until(lambda: owner() and image(initial["buildId"]) and window_ids(), "initial installed app")
     switch_on()
     close_window()
     assert owner(), "Automatic recording lost the windowless app"
+    until(
+        lambda: any(c["method"] == "RequestBackground" for c in desktop.calls),
+        "windowless automatic recording requests background permission",
+    )
     first = install("N1", 1)
     assert owner() and not image(first["buildId"]), "Installing alone must not rewrite the running identity"
     activate()
