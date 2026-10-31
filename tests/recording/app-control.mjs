@@ -202,8 +202,12 @@ try {
  for (const page of [prejoin, prejoinRemote]) await page.goto(`http://127.0.0.1:${server.address().port}/`);
  await prejoin.evaluate(() => {document.title = 'Pre-join evidence fixture';});
  await automatic(true);
- const previousFolders = (await readdir(artifacts, {withFileTypes: true}))
-  .filter(entry => entry.isDirectory() && entry.name.startsWith('Recording-')).map(entry => path.join(artifacts, entry.name)).sort();
+ const previousFolders = (await Promise.all([artifacts, path.join(artifacts, '.cassini', 'sessions')].map(async parent => {
+  let entries;
+  try {entries = await readdir(parent, {withFileTypes: true});}
+  catch (error) {if (error.code === 'ENOENT') return []; throw error;}
+  return entries.filter(entry => entry.isDirectory() && entry.name.startsWith('Recording-')).map(entry => path.join(parent, entry.name));
+ }))).flat().sort();
  await poll(async () => JSON.stringify((await call()).library.map(m => m.path).sort()) === JSON.stringify(previousFolders), 'saved Library observed before pre-join');
  await connectReceiveSlots(prejoin, prejoinRemote, [[1100], [1320], [1540]], {prejoin: true});
  await prejoin.evaluate(() => {
