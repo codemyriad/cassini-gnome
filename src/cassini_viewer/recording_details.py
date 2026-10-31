@@ -7,8 +7,9 @@ import os
 import time
 
 from .library import LibraryScanner, meeting_id
+from .library_edits import transaction
 from .library_files import regular
-from .meeting_store import LOCK, update_metadata
+from .meeting_store import update_metadata
 
 
 def ac_rms(samples, channels=1):
@@ -85,7 +86,7 @@ def edit_recording(directory, *, title=None, notes=None):
         changes.update(title=value or None, titleSource="user" if value else "meeting-window")
     if notes is not None:
         changes["notes"] = notes
-    with LOCK:
+    with transaction(directory):
         from .library_location import owned_directory
 
         directory = owned_directory(directory)
@@ -142,7 +143,7 @@ def live_meeting(directory, phase="recording"):
     return next(
         (
             m
-            for m in LibraryScanner(directory.parent)
+            for m in LibraryScanner.for_meeting(directory)
             .scan(changed_directories={directory}, capture_activity={identifier: phase})
             .meetings
             if m.directory == directory

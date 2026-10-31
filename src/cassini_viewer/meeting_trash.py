@@ -36,7 +36,7 @@ def trash_owned(directory, *, queue=None, voices=None, trash=None, cleanup=None)
             if directory.exists():
                 if location.capture_busy(meeting_id(directory)):
                     raise ValueError("Meeting is still recording or saving")
-                snapshot = LibraryScanner(directory.parent).scan(changed_directories={directory})
+                snapshot = LibraryScanner.for_meeting(directory).scan(changed_directories={directory})
                 meeting = next((m for m in snapshot.meetings if m.directory == directory), None)
                 if meeting is None or meeting.lifecycle != "saved":
                     raise ValueError("Meeting is not ready for Trash")

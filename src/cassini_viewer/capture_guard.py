@@ -506,8 +506,9 @@ def queue_saved_for_later(path):
     """On explicit exit, publish resumable intent without starting inference."""
     from pathlib import Path
 
+    from .library_edits import transaction
     from .library_location import owned_directory
-    from .meeting_store import LOCK, read_metadata, update_metadata
+    from .meeting_store import read_metadata, update_metadata
 
     if not path:
         return
@@ -515,7 +516,7 @@ def queue_saved_for_later(path):
         directory = owned_directory(Path(path))
     except ValueError:
         return
-    with LOCK:
+    with transaction(directory):
         if not directory.exists() and directory.parent.is_dir():
             return  # D29: a removed meeting is not a failed hidden-window save.
         value = read_metadata(directory)
@@ -525,7 +526,7 @@ def queue_saved_for_later(path):
             meeting = next(
                 (
                     m
-                    for m in LibraryScanner(directory.parent).scan(changed_directories={directory}).meetings
+                    for m in LibraryScanner.for_meeting(directory).scan(changed_directories={directory}).meetings
                     if m.directory == directory
                 ),
                 None,

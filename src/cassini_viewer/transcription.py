@@ -13,7 +13,8 @@ from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
 
 from .library import LibraryScanner, library_root, meeting_id
-from .meeting_store import LOCK, atomic_json, read_metadata, update_metadata
+from .library_edits import transaction
+from .meeting_store import atomic_json, read_metadata, transcript_snapshot, update_metadata
 from .strings import text
 from .transcript_publish import TranscriptPublisher
 from .whistle_client import WhistleClient
@@ -104,8 +105,10 @@ def prepare_tracks(meeting):
     return tracks, speakers
 
 
-def update_progress_metadata(directory, speakers, *, check_active=None, **changes):
-    with LOCK:
+def update_progress_metadata(
+    directory, speakers, *, check_active=None, transient=False, transcript_body=None, **changes
+):
+    with transaction(directory):
         if check_active is not None:
             check_active()
         current = read_metadata(directory)
@@ -117,9 +120,11 @@ def update_progress_metadata(directory, speakers, *, check_active=None, **change
             if previous.get("provenance") in ("user", "recognised", "unnamed"):
                 merged[identifier] = previous
         changes["speakers"] = list(merged.values())
-        if all(current.get(key) == value for key, value in changes.items()):
+        if transcript_body is None and all(current.get(key) == value for key, value in changes.items()):
             return False
-        update_metadata(directory, before_commit=check_active, **changes)
+        update_metadata(
+            directory, before_commit=check_active, transient=transient, transcript_body=transcript_body, **changes
+        )
         return True
 
 
@@ -187,21 +192,26 @@ class TranscriptionQueue:
 
             return owned_directory(directory)
         canonical = directory.resolve()
-        if directory.is_symlink() or canonical.parent != self.root.resolve() or not meeting_id(canonical):
+        from .library_publication import root_for
+
+        if (
+            directory.is_symlink()
+            or canonical.parent != self.root.resolve()
+            and root_for(directory) != self.root.resolve()
+            or not meeting_id(canonical)
+        ):
             raise ValueError("Transcription may only write inside the configured Library")
         return canonical
 
     def _mark_queued(self, directory, resume):
-        from .meeting_store import LOCK
-
-        with self._job_scope(directory), LOCK:
+        with self._job_scope(directory), transaction(directory):
             return self._mark_queued_locked(directory, resume)
 
     def _mark_queued_locked(self, directory, resume):
         self._check_open()
         canonical = self._owned(directory)
         directory = canonical
-        scanner = LibraryScanner(canonical.parent)
+        scanner = LibraryScanner.for_meeting(canonical)
         meeting = next(m for m in scanner.scan(changed_directories={canonical}).meetings if m.directory == canonical)
         metadata = read_metadata(directory)
         if (
@@ -226,6 +236,7 @@ class TranscriptionQueue:
         update_metadata(
             directory,
             transcript=dict(metadata["transcript"], status="queued", reference=REFERENCE),
+            transient=True,
             etaMinutes=None,
             error=None,
             before_commit=self._check_open,
@@ -275,11 +286,12 @@ class TranscriptionQueue:
         LOG.warning("Meeting transcription failed: %s", error)
         try:
             directory = self._owned(directory)
-            with LOCK:
+            with transaction(directory):
                 self._check_open()
                 update_metadata(
                     directory,
                     transcript=dict(read_metadata(directory)["transcript"], status="failed", reference=REFERENCE),
+                    transcript_body=transcript_snapshot(directory),
                     etaMinutes=None,
                     error=dict(id="transcribe-failed", action="Try again"),
                     before_commit=self._check_open,
@@ -323,6 +335,7 @@ class TranscriptionQueue:
         update_metadata(
             directory,
             transcript=dict(status="running", reference=REFERENCE, model=tag),
+            transient=True,
             etaMinutes=None,
             error=None,
             before_commit=self._check_open,
@@ -344,6 +357,7 @@ class TranscriptionQueue:
             update_metadata(
                 directory,
                 transcript=dict(status="running", reference=REFERENCE, model=tag),
+                transient=True,
                 before_commit=self._check_open,
             )
             self.changed(directory)
@@ -433,7 +447,7 @@ class TranscriptionQueue:
             else:
                 published = False
             updated = update_progress_metadata(
-                directory, speakers, etaMinutes=value["etaMinutes"], check_active=self._check_open
+                directory, speakers, etaMinutes=value["etaMinutes"], check_active=self._check_open, transient=True
             )
             if published or updated:
                 self.changed(directory)
@@ -471,7 +485,7 @@ class TranscriptionQueue:
             ]
             if groups:
                 words, voices = apply_transcript(publisher.words, groups)
-                with LOCK:
+                with transaction(directory):
                     if self.closed:
                         raise CancelledError()
                     self._owned(directory)
@@ -482,7 +496,7 @@ class TranscriptionQueue:
                     )
                     if voices:
                         speakers.update(voices)
-                        update_progress_metadata(directory, speakers, check_active=self._check_open)
+                        update_progress_metadata(directory, speakers, check_active=self._check_open, transient=True)
                         publisher.reassign(words)
             if separation["reason"] != "notApplicable":
                 separation = separation_result(result, groups, reused_groups)
@@ -498,7 +512,7 @@ class TranscriptionQueue:
         publisher.flush(force=True, complete=True)
         if voices_options and self.client is not None:
             try:
-                with LOCK:
+                with transaction(directory):
                     history = read_metadata(directory).get("speakerMerges", [])
                 prints = self.client.voiceprints(
                     tracks, dict(voices_options, directory=str(directory), speakerMerges=history), self._check_open
@@ -506,7 +520,7 @@ class TranscriptionQueue:
                 self._check_open()
 
                 def apply_names(names):
-                    with LOCK:
+                    with transaction(directory):
                         self._check_open()
                         self._owned(directory)
                         current = read_metadata(directory)
@@ -562,7 +576,7 @@ class TranscriptionQueue:
         segments = complete.get("segments")
         if type(segments) is int and 0 <= segments <= 9007199254740991:
             facts["speechSegments"] = segments
-        with LOCK:
+        with transaction(directory):
             self._check_open()
             # End facts or other metadata may have arrived while this job ran.
             details = writing_details(read_metadata(directory).get("recordingDetails", {}), facts)
@@ -570,6 +584,7 @@ class TranscriptionQueue:
                 directory,
                 speakers,
                 transcript=dict(status="done", reference=REFERENCE, model=tag),
+                transcript_body=transcript_snapshot(directory),
                 recordingDetails=details,
                 etaMinutes=None,
                 error=None,
@@ -658,7 +673,7 @@ class TranscriptionQueue:
                 return
             meeting = next(
                 m
-                for m in LibraryScanner(directory.parent).scan(changed_directories={directory}).meetings
+                for m in LibraryScanner.for_meeting(directory).scan(changed_directories={directory}).meetings
                 if m.directory == directory
             )
             if not meeting.metadata_editable:
@@ -693,7 +708,7 @@ class TranscriptionQueue:
                 self.client = self.client_model = None
             from .voice_models import VoiceJobClient
 
-            with LOCK:
+            with transaction(directory):
                 history = read_metadata(directory).get("speakerMerges", [])
             self._register_client(
                 VoiceJobClient(self.bundle, options["modelPath"], options["runtimePath"], timeout=120)

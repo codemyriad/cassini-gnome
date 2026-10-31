@@ -85,15 +85,41 @@ def read_metadata(directory):
     )
 
 
-def update_metadata(directory, *, before_commit=None, **changes):
+def transcript_snapshot(directory):
+    """Read a validated working body for the final journaled file commit."""
+    from .library import _sidecar_words
+    from .portable import INFLATE_CEILING
+
+    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        try:
+            with regular(descriptor, "transcript.json") as (stream, _info):
+                raw = stream.read(INFLATE_CEILING + 1)
+        except FileNotFoundError:
+            return None
+    finally:
+        os.close(descriptor)
+    if len(raw) > INFLATE_CEILING:
+        raise ValueError("Transcript snapshot exceeds limit")
+    value = strict_json(raw)
+    _sidecar_words(value)
+    return value
+
+
+def update_metadata(directory, *, before_commit=None, transient=False, transcript_body=None, **changes):
+    from .library_edits import commit_metadata, transaction
+    from .library_publication import root_for
+
     directory = Path(directory)
-    with LOCK:
+    with transaction(directory):
         if not directory.exists():
             from .library_location import owned_directory
 
             with contextlib.suppress(ValueError):
                 directory = owned_directory(directory)
         value = read_metadata(directory)
+        if value.get("published") is True and root_for(directory) is not None and not transient:
+            return commit_metadata(directory, value, changes, before_commit=before_commit, words=transcript_body)
         value.update(changes)
         value["revision"] += 1
         if not valid(value):

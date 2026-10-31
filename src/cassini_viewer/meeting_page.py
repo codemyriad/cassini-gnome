@@ -486,7 +486,8 @@ class MeetingPage(Adw.NavigationPage):
     def undo_speaker_merge(self):
         if self._closed or self._speaker_future is not None or not self.meeting.metadata_editable:
             return
-        from .meeting_store import LOCK, read_metadata
+        from .library_edits import transaction
+        from .meeting_store import read_metadata
         from .speaker_edits import undo_merge
 
         directory = self.meeting.directory
@@ -494,7 +495,7 @@ class MeetingPage(Adw.NavigationPage):
         self._undo_voice_app = self.window.get_application()
 
         def undo():
-            with LOCK:
+            with transaction(directory):
                 history = read_metadata(directory).get("speakerMerges", [])
                 undo_merge(directory, scanner=self.window.monitor.scanner)
                 affected = (history[-1]["from"], history[-1]["into"]) if history else ()

@@ -330,6 +330,12 @@ class LibraryScanner:
         self._preview_cache = {}
         self._published_index = None
 
+    @classmethod
+    def for_meeting(cls, directory):
+        from .library_publication import root_for
+
+        return cls(root_for(directory) or Path(directory).parent)
+
     def scan(self, *, capture_activity=None, changed_directories=None):
         with self._lock:
             return self._scan(capture_activity or {}, changed_directories)

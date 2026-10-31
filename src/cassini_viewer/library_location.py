@@ -246,7 +246,10 @@ def owned_directory(path):
     allowed = {Path(value["primary"]).resolve()}
     pending = {Path(e["source"]).resolve() for e in value["pending"]}
     canonical = original.resolve()
-    if canonical.parent in allowed or canonical in pending and original.exists():
+    from .library_publication import root_for
+
+    managed_root = root_for(original)
+    if canonical.parent in allowed or managed_root in allowed or canonical in pending and original.exists():
         return canonical
     for entry in value["pending"]:
         if not original.exists() and Path(entry["source"]).resolve() == canonical:

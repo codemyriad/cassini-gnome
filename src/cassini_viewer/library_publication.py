@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import meeting_store
 from .export_audio import check_cancel
-from .library_v2 import finalize, journal
+from .library_v2 import journal
 from .library_v2.fsutil import fsync_dir
 
 
@@ -53,6 +53,8 @@ def publish_stopped(session, *, cancel=None):
     outside its PCM/transition locks after closing its writers and checkpointing
     the end event; it retains the capture lease until this function returns.
     """
+    from .library_v2 import finalize
+
     if not session.finished:
         raise ValueError("Capture writers are still active")
     root = root_for(session.directory)
@@ -77,6 +79,7 @@ def recover_completed(root, *, cancel=None):
     again. The caller may stop between results; no unbounded PCM is retained.
     """
     from .library_location import capture_lease
+    from .library_v2 import finalize
 
     root = Path(root).resolve()
     layout = journal.Layout(root)
