@@ -41,6 +41,10 @@ with tempfile.TemporaryDirectory() as temporary:
     meeting.finish()
     app = CassiniApplication("com.gocassini.RestartHandoffTest", "test", "development")
     app.transcription_enabled = False
+    # This handoff test has no Background portal. Closing the last window
+    # now publishes windowless state at once, and a refused request would
+    # reopen the window before the check below; grant it as a desktop would.
+    app.background_recording.request = lambda callback: callback(True)
     app._resume_automatic = app._resume_background = app._resume_record = True
     records, startups, errors, completed = [], [], [], []
     # Verify the real dispatch calls the production Record entry once, without
