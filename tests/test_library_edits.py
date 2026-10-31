@@ -448,3 +448,124 @@ def test_share_has_resolved_words_without_library_ownership_or_unusable_undo_his
     commit(directory, speakerMerges=[])
     (restored,) = LibraryScanner(root).scan().meetings
     assert {w.speaker for w in restored.words} == {"a", "b"}
+
+
+def _replace_stored_labels(path, labels):
+    from cassini_viewer.library_v2 import edit
+    from cassini_viewer.portable_writer import MANIFEST_MIME, chunk_set
+
+    manifest = portable.read_meeting(str(path)).manifest
+    for entry in manifest["speakers"]:
+        entry["label"] = labels[entry["id"]]
+    tags, _ = chunk_set(edit.MANIFEST_PREFIX, manifest, MANIFEST_MIME)
+    with path.open("rb") as stream:
+        vendor, fields = edit.comment_fields(stream)
+    fields = edit.edited_fields(fields, tags, chunk_prefixes=(edit.MANIFEST_PREFIX,))
+    stage = path.with_suffix(".test-stage")
+    edit.rewrite(path, stage, fields, vendor)
+    edit.verify(stage)
+    stage.replace(path)
+
+
+@pytest.mark.parametrize("edit_kind", ["name", "clear", "colour", "merge-other"])
+def test_edit_preserves_other_speakers_stored_unnamed_labels_across_locales(published, monkeypatch, edit_kind):
+    from cassini_viewer import library
+
+    root, _sid, directory, path = published
+    speakers = [dict(id=s, name=None, provenance="unnamed", colourIndex=i) for i, s in enumerate("abc")]
+    body = dict(
+        format=portable.WORDS_FORMAT,
+        items=[dict(speaker=s, startMs=i * 20, endMs=i * 20 + 20, text=s) for i, s in enumerate("abc")],
+    )
+    with transaction(directory):
+        commit_metadata(
+            directory,
+            meeting_store.read_metadata(directory),
+            dict(speakers=speakers, transcript=dict(status="done", reference=None)),
+            words=body,
+        )
+    _replace_stored_labels(path, dict(a="Parlante 19", b="Parlante 20", c="Parlante 21"))
+    digest = audio_digest(path)
+    real_text = library.text
+    monkeypatch.setattr(
+        library,
+        "text",
+        lambda key, **args: f"Locuteur {args['n']}" if key == "common.speaker.unnamed" else real_text(key, **args),
+    )
+    expected = dict(a="Parlante 19", b="Parlante 20", c="Parlante 21")
+    if edit_kind == "name":
+        speakers[1] = dict(speakers[1], name="Beatrice", provenance="user")
+        commit(directory, speakers=speakers)
+        expected["b"] = "Beatrice"
+    elif edit_kind == "clear":
+        speakers[1] = dict(speakers[1], nameCleared=True)
+        commit(directory, speakers=speakers)
+        expected["b"] = "Locuteur 2"
+    elif edit_kind == "colour":
+        speakers[1] = dict(speakers[1], colourIndex=9)
+        commit(directory, speakers=speakers)
+    else:
+        commit(directory, speakerMerges=[{"from": "b", "into": "c"}])
+        expected["b"] = expected["c"]
+    embedded = portable.read_meeting(str(path))
+    assert {s.id: s.label for s in embedded.speakers} == expected
+    assert audio_digest(path) == digest
+    # A reader in another locale never substitutes its own unnamed labels.
+    monkeypatch.setattr(
+        library,
+        "text",
+        lambda key, **args: f"Sprecher {args['n']}" if key == "common.speaker.unnamed" else real_text(key, **args),
+    )
+    (meeting,) = LibraryScanner(root).scan().meetings
+    assert {s.id: s.name for s in meeting.speakers} == {
+        s: expected[s] for s in expected if s != "b" or edit_kind != "merge-other"
+    }
+
+
+def test_produced_labels_use_writer_language_and_readers_keep_stored_words_and_labels(published, monkeypatch):
+    from cassini_viewer import library
+    from cassini_viewer.export_model import markdown, model_projection
+    from cassini_viewer.meeting_text import reading_turns
+    from cassini_viewer.transcript import build_turns
+
+    root, _sid, directory, path = published
+    source = [
+        dict(speaker="a", startMs=0, endMs=10, text='"Buongiorno'),
+        dict(speaker="a", startMs=10, endMs=20, text='mondo"'),
+        dict(speaker="b", startMs=20, endMs=30, text='orfana"'),
+    ]
+    real_text = library.text
+    monkeypatch.setattr(
+        library,
+        "text",
+        lambda key, **args: f"Parlante {args['n']}" if key == "common.speaker.unnamed" else real_text(key, **args),
+    )
+    with transaction(directory):
+        commit_metadata(
+            directory,
+            meeting_store.read_metadata(directory),
+            dict(
+                speakers=[dict(id=s, name=None, provenance="unnamed", colourIndex=i) for i, s in enumerate("ab")],
+                transcript=dict(status="done", reference=None),
+            ),
+            words=dict(format=portable.WORDS_FORMAT, items=source),
+        )
+    assert source[0]["text"] == '"Buongiorno'  # Writer doesn't mutate recognizer results.
+    embedded = portable.read_meeting(str(path))
+    assert {s.id: s.label for s in embedded.speakers} == dict(a="Parlante 1", b="Parlante 2")
+    expected = ["“Buongiorno", "mondo”", "orfana"]
+    assert [w.text for w in portable.load_words(embedded, embedded.default_transcript_id)] == expected
+    before = path.read_bytes()
+    monkeypatch.setattr(
+        library,
+        "text",
+        lambda key, **args: f"Speaker {args['n']}" if key == "common.speaker.unnamed" else real_text(key, **args),
+    )
+    (meeting,) = LibraryScanner(root).scan().meetings
+    assert [s.name for s in meeting.speakers] == ["Parlante 1", "Parlante 2"]
+    assert [w.text for w in meeting.words] == expected and all(w.text_is_stored for w in meeting.words)
+    for build in (build_turns, reading_turns):
+        assert [turn.text for turn in build(list(meeting.words))] == ["“Buongiorno mondo”", "orfana"]
+    output = markdown(model_projection(meeting))
+    assert "Parlante 1" in output and "“Buongiorno mondo”" in output and 'orfana"' not in output
+    assert path.read_bytes() == before

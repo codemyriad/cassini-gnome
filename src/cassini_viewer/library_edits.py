@@ -131,12 +131,22 @@ def commit_metadata(directory, current, changes, *, before_commit=None, words=No
     changed_names = updated["speakers"] != current["speakers"]
     changed_merges = updated.get("speakerMerges", []) != current.get("speakerMerges", [])
     if words is not None or changed_names or changed_merges:
-        speakers = library._speakers(original_words, updated["speakers"], live)
-        for speaker in speakers:
-            entries.setdefault(speaker.id, dict(id=speaker.id))["label"] = speaker.name
         from .speaker_merges import resolve_merges
 
-        mapping = resolve_merges(updated.get("speakerMerges", []), entries)
+        speakers = library._speakers(original_words, updated["speakers"], live)
+        previous = {speaker["id"]: speaker for speaker in current["speakers"]}
+        following = {speaker["id"]: speaker for speaker in updated["speakers"]}
+        identifiers = entries.keys() | {speaker.id for speaker in speakers}
+        before_mapping = resolve_merges(current.get("speakerMerges", []), identifiers)
+        mapping = resolve_merges(updated.get("speakerMerges", []), identifiers)
+        for speaker in speakers:
+            old, new = previous.get(speaker.id, {}), following.get(speaker.id, {})
+            name_changed = any(old.get(key) != new.get(key) for key in ("name", "provenance", "nameCleared"))
+            restored = before_mapping.get(speaker.id, speaker.id) != mapping.get(speaker.id, speaker.id)
+            # Producing words writes labels in the writer's language. Later
+            # edits must not relocalize or renumber unrelated unnamed voices.
+            if words is not None or speaker.id not in entries or name_changed or restored:
+                entries.setdefault(speaker.id, dict(id=speaker.id))["label"] = speaker.name
         labels = {speaker_id: entry["label"] for speaker_id, entry in entries.items()}
         for speaker_id, into in mapping.items():
             entries[speaker_id]["label"] = labels[into]
