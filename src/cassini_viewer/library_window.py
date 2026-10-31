@@ -546,10 +546,12 @@ class LibraryWindow(Adw.ApplicationWindow):
         activity = dict(self._activity_source.snapshot) if self._activity_source else dict(self._fixture_activity)
         app = self.get_application()
         activity.update(recorder_activity(app.get_windows() + [app]))
+        if recovery := getattr(app, "library_recovery", None):
+            activity.update(recovery.activity)
         from .library import meeting_id
 
         for state in app._browser_snapshot.get("statuses", []):
-            if state.get("recording") and isinstance(state.get("path"), str):
+            if (state.get("recording") or state.get("stopping")) and isinstance(state.get("path"), str):
                 activity[meeting_id(Path(state["path"]))] = "saving" if state.get("stopping") else "recording"
         if activity != self._activity:
             self._activity = activity
@@ -757,7 +759,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         snapshot = self.get_application().meeting_trash.project(snapshot)
         fresh_scan = snapshot is not self.snapshot
         self.get_application().observe_library(snapshot, self._observed_phases)
-        self._observed_phases = {m.key: (m.lifecycle, m.capture_state) for m in snapshot.meetings}
+        self._observed_phases = {
+            m.key: (m.lifecycle, m.capture_state, m.published_file is not None) for m in snapshot.meetings
+        }
         self.snapshot = snapshot
         from .library_location import initial_root, music_directory, primary
 
@@ -1104,9 +1108,10 @@ class LibraryWindow(Adw.ApplicationWindow):
     def _ensure_player(self, meeting):
         if self._loaded_key == meeting.key and self._loaded_directory == meeting.directory:
             return not self._playback_failed
-        if not meeting.has_audio or (meeting.origin == "own" and not FolderPlayer.can_play(meeting)):
+        use_file = meeting.audio_file is not None
+        if not meeting.has_audio or (not use_file and not FolderPlayer.can_play(meeting)):
             return False
-        desired = FolderPlayer if meeting.origin == "own" else Player
+        desired = Player if use_file else FolderPlayer
         if type(self.player) is not desired:
             self.player.shutdown()
             self.player = desired()
@@ -1158,7 +1163,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._refresh_export()
             return
         if not self._ensure_player(meeting):
-            desired = FolderPlayer if meeting.origin == "own" else Player
+            desired = Player if meeting.audio_file is not None else FolderPlayer
             self.player.shutdown()
             self.player = desired()
             self.player.set_rate(self._rate)

@@ -36,7 +36,7 @@ def capture_targets(app):
         if recorder_busy(recorder)
     )
     browser = bool(getattr(app, "_record_start_future", None)) or any(
-        s.get("recording") for s in getattr(app, "_browser_snapshot", {}).get("statuses", [])
+        (s.get("recording") or s.get("stopping")) for s in getattr(app, "_browser_snapshot", {}).get("statuses", [])
     )
     browser = browser or any(
         getattr(w, "_activity_source", None) and w._activity_source.snapshot for w in app.get_windows()
@@ -364,6 +364,8 @@ def confirm_capture_close(app, window, *, quitting=False, force_stop=False):
                 target.recorder.end_reason = getattr(target.recorder, "end_reason", None) or (
                     "appQuit" if exiting else "user"
                 )
+                if exiting and hasattr(target.recorder, "cancel_publication"):
+                    target.recorder.cancel_publication()
                 target.recorder.stop()
             except Exception:
                 abort()
@@ -506,8 +508,9 @@ def queue_saved_for_later(path):
     """On explicit exit, publish resumable intent without starting inference."""
     from pathlib import Path
 
+    from .library_edits import transaction
     from .library_location import owned_directory
-    from .meeting_store import LOCK, read_metadata, update_metadata
+    from .meeting_store import read_metadata, update_metadata
 
     if not path:
         return
@@ -515,7 +518,7 @@ def queue_saved_for_later(path):
         directory = owned_directory(Path(path))
     except ValueError:
         return
-    with LOCK:
+    with transaction(directory):
         if not directory.exists() and directory.parent.is_dir():
             return  # D29: a removed meeting is not a failed hidden-window save.
         value = read_metadata(directory)
@@ -525,7 +528,7 @@ def queue_saved_for_later(path):
             meeting = next(
                 (
                     m
-                    for m in LibraryScanner(directory.parent).scan(changed_directories={directory}).meetings
+                    for m in LibraryScanner.for_meeting(directory).scan(changed_directories={directory}).meetings
                     if m.directory == directory
                 ),
                 None,

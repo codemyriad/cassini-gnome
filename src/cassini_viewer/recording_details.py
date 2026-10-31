@@ -7,8 +7,9 @@ import os
 import time
 
 from .library import LibraryScanner, meeting_id
+from .library_edits import transaction
 from .library_files import regular
-from .meeting_store import LOCK, update_metadata
+from .meeting_store import update_metadata
 
 
 def ac_rms(samples, channels=1):
@@ -85,7 +86,7 @@ def edit_recording(directory, *, title=None, notes=None):
         changes.update(title=value or None, titleSource="user" if value else "meeting-window")
     if notes is not None:
         changes["notes"] = notes
-    with LOCK:
+    with transaction(directory):
         from .library_location import owned_directory
 
         directory = owned_directory(directory)
@@ -96,17 +97,16 @@ def edit_recording(directory, *, title=None, notes=None):
 
 def recording_observation(meeting, *, freshness_seconds=1):
     """Read <=one second per track; meters use the latest 100 ms. Never rewrite capture files or infer liveness."""
-    levels, voices, rate = [0.0, 0.0], 0, 0
+    levels, rate = [0.0, 0.0], 0
+    voices = sum(t.kind == "remote" and t.ended is not True for t in meeting.tracks)
     recent_sound = False
     descriptor = os.open(meeting.directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        for track in meeting.tracks:
+        for track in (span for logical in meeting.tracks for span in (logical.spans or (logical,))):
             # Live meters read growing WAVs only; compacted spans are never live.
             if track.ended is True or track.codec != "pcm":
                 continue
             index = 0 if track.kind in ("microphone", "local") else 1
-            if track.kind == "remote":
-                voices += 1
             rate += track.sample_rate * track.channels * 2
             with regular(descriptor, track.path.name) as (stream, info):
                 if freshness_seconds is not None and time.time() - info.st_mtime > freshness_seconds:
@@ -142,7 +142,7 @@ def live_meeting(directory, phase="recording"):
     return next(
         (
             m
-            for m in LibraryScanner(directory.parent)
+            for m in LibraryScanner.for_meeting(directory)
             .scan(changed_directories={directory}, capture_activity={identifier: phase})
             .meetings
             if m.directory == directory

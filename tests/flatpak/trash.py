@@ -65,11 +65,17 @@ def worker(application, private, output, portal_prefix=None):
                 "s=RecordingSession(None,title='Private native Trash check',source='gnome');"
                 "s.add_track('mic','Me','microphone',48000,1);"
                 "s.append('mic',b'\\x01\\x00'*9600,0);s.finish();"
-                "print(json.dumps(dict(path=str(s.directory))))"
+                "from cassini_viewer.library_publication import publish_stopped;"
+                "from cassini_viewer.library_location import primary;"
+                "result=publish_stopped(s);"
+                "print(json.dumps(dict(path=str(s.directory),file=str(primary()/result.name))))"
             )
             folder = Path(created["path"])
             music = private / "Musica" / "Cassini"
-            assert folder.parent == music and folder.is_dir(), (folder, music)
+            assert folder.parent == music / ".cassini/sessions" and folder.is_dir(), (folder, music)
+            published = Path(created["file"])
+            assert published.parent == music and published.is_file()
+            audio_hash = hashlib.sha256(published.read_bytes()).hexdigest()
             before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.iterdir()}
             result = inside(
                 "import json,gi;from pathlib import Path;gi.require_version('Adw','1');"
@@ -79,10 +85,13 @@ def worker(application, private, output, portal_prefix=None):
                 f"p=Path({str(folder)!r});trash_owned(p,cleanup=TrashCleanup(VoiceStore()));"
                 "print(json.dumps(dict(removed=not p.exists())))"
             )
-            assert result["removed"] and not folder.exists()
+            assert result["removed"] and not folder.exists() and not published.exists()
             host_trash = private / "data" / "Trash" / "files"
             (trashed,) = [p for p in host_trash.iterdir() if p.name.startswith(folder.name)]
             assert {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in trashed.iterdir()} == before
+            audio_copies = [p for p in host_trash.iterdir() if p.is_file() and p.suffix == ".opus"]
+            assert len(audio_copies) == 1
+            assert hashlib.sha256(audio_copies[0].read_bytes()).hexdigest() == audio_hash
             restarted = inside(
                 "import json;from cassini_viewer.library import LibraryCollectionScanner;"
                 "print(json.dumps(dict(meetings=len(LibraryCollectionScanner().scan().meetings))))"
@@ -99,6 +108,8 @@ def worker(application, private, output, portal_prefix=None):
                         allBytesPreserved=True,
                         restartStillRemoved=True,
                         files=before,
+                        publishedAudioSHA256=audio_hash,
+                        fileAndSessionTrashed=True,
                     ),
                     indent=2,
                 )

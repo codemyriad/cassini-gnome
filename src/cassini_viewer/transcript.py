@@ -29,7 +29,7 @@ TOUCH_TOLERANCE_MS = 20
 
 
 def quote_items(texts):
-    """D38.5 display-only paired quotes, retaining one output per timed item.
+    """D38.5 quote pairing; D47 uses this at write time for new transcripts.
 
     Pairing runs in reading order over everything passed in, which must be one
     whole speaker turn. A final unmatched straight quote is dropped; an item
@@ -56,6 +56,31 @@ def quote_items(texts):
         joined = "".join(chars)
         result.append("" if dropped and not joined.strip() else joined)
     return tuple(result)
+
+
+def normalize_quote_items(items):
+    """D47: store paired quotes once, retaining IDs, timing and additive fields.
+
+    A consecutive speaker run is the pairing boundary. Already normalized
+    curly quotes are unchanged, so retry/publication is idempotent. Raw
+    recognition items are never mutated (a later partial may complete a pair).
+    """
+    result = [dict(item) for item in items]
+    first = 0
+    for end in range(1, len(result) + 1):
+        if end == len(result) or result[end]["speaker"] != result[first]["speaker"]:
+            for item, value in zip(result[first:end], quote_items(i["text"] for i in result[first:end]), strict=True):
+                item["text"] = value
+            first = end
+    return result
+
+
+def display_items(words):
+    """Read Cassini words verbatim; legacy folders keep their migration bridge."""
+    words = tuple(words)
+    if all(word.text_is_stored for word in words):
+        return tuple(word.text for word in words)
+    return quote_items(word.text for word in words)
 
 
 def turn_text(texts):
@@ -85,7 +110,7 @@ class Turn:
         """Displayed text of each timed item; "" for an item shown as nothing."""
         if self.display is not None and len(self.display) == len(self.words):
             return self.display
-        return quote_items(w.text for w in self.words)
+        return display_items(self.words)
 
     @property
     def text(self) -> str:
@@ -135,7 +160,7 @@ def build_turns(words: list[Word]) -> list[Turn]:
     # Markdown and the Meeting page; rejoining must never pair across a
     # speaker change.
     for fragment in fragments:
-        fragment.display = quote_items(w.text for w in fragment.words)
+        fragment.display = display_items(fragment.words)
     spans = [_spans(fragment.words) for fragment in fragments]
     turns = []
     opened = {}

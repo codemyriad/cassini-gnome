@@ -372,3 +372,36 @@ def test_preview_grouping_runs_on_worker_without_blocking_main_loop(tmp_path, mo
     finally:
         release.set()
         monitor.close()
+
+
+def test_monitor_follows_hidden_capture_and_root_publish_without_manual_refresh(tmp_path):
+    pytest.importorskip("numpy")
+    try:
+        gi.require_version("Gst", "1.0")
+    except ValueError:
+        pytest.skip("Publication requires GStreamer; source/Recording jobs cover this case")
+
+    from library_v2_support import simple_session
+
+    from cassini_viewer.library_v2 import finalize
+    from cassini_viewer.meeting_store import update_metadata
+
+    root = tmp_path / "Library"
+    root.mkdir()
+    snapshots = []
+    monitor = LibraryMonitor(snapshots.append, root, debounce_ms=10)
+    try:
+        monitor.refresh()
+        spin_until(lambda: bool(snapshots))
+        sid, directory = simple_session(root, 0.1)
+        spin_until(lambda: bool(snapshots[-1].meetings))
+        assert snapshots[-1].meetings[0].id == sid
+        update_metadata(directory, title="Changed hidden title", titleSource="user")
+        spin_until(lambda: snapshots[-1].meetings[0].title == "Changed hidden title")
+        result = finalize.finalize(root, sid, zone="Europe/Rome")
+        spin_until(lambda: snapshots[-1].meetings[0].published_file == root / result.name)
+        assert len(snapshots[-1].meetings) == 1
+        (root / result.name).unlink()
+        spin_until(lambda: snapshots[-1].meetings[0].published_missing)
+    finally:
+        monitor.close()

@@ -111,6 +111,8 @@ def test_native_identity_only_comes_from_controller_owned_session(tmp_path):
     recorder.stopping = True
     assert recorder_activity([window]) == {session.manifest["id"]: "saving"}
     recorder.pipeline = None
+    assert recorder_activity([window]) == {session.manifest["id"]: "saving"}
+    recorder.stopping = False
     assert recorder_activity([window]) == {}
     standalone = SimpleNamespace(
         recorder=SimpleNamespace(pipeline=object(), path=str(tmp_path / "cassini-2026-10-27.opus"), stopping=False)

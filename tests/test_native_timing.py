@@ -111,7 +111,9 @@ def test_pinned_gnome_gap_fixture_through_native_input_callbacks(tmp_path, monke
                             == Gst.FlowReturn.OK
                         )
         session.finish()
-        assert {key: value for key, value in session.manifest.items() if key != "events"} == expected
+        assert {
+            key: value for key, value in session.manifest.items() if key not in ("events", "startedAtUtcOffsetMinutes")
+        } == expected
         assert session.manifest["events"] == [dict(type="end", atMs=3000, reason="user")]
         for track in expected["tracks"]:
             assert (session.directory / track["file"]).read_bytes() == (FIXTURE / track["file"]).read_bytes()

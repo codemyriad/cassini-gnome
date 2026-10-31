@@ -5,12 +5,14 @@ import base64
 import gzip
 import hashlib
 import json
+import re
 import struct
 from copy import deepcopy
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 
 from . import portable
 from .export_audio import check_cancel
+from .transcript import normalize_quote_items
 from .ux_formats import _local
 
 ENCODING = "base64url+gzip+utf8json"
@@ -56,7 +58,25 @@ def chunk_set(prefix, value, mime):
     return tags, ref
 
 
-def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None):
+def recording_date(value):
+    """Only an absolute DATE with an explicit, known offset is capture time."""
+    if (
+        not isinstance(value, str)
+        or not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})", value)
+        or value.endswith("-00:00")
+        or not value.endswith("Z")
+        and int(value[-2:]) >= 60
+    ):
+        return None
+    try:
+        instant = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    offset = instant.utcoffset().total_seconds() / 60
+    return instant.replace(microsecond=0).isoformat() if -720 <= offset <= 840 else None
+
+
+def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None, recorded_date=None):
     items = (
         [
             dict(
@@ -71,7 +91,7 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
         if meeting.transcript == "done"
         else []
     )
-    body = dict(format=portable.WORDS_FORMAT, wordCount=len(items), items=items)
+    body = dict(format=portable.WORDS_FORMAT, wordCount=len(items), items=normalize_quote_items(items))
     words_tags, reference = chunk_set("CASSINI_TX_WORDS_PAYLOAD_", body, WORDS_MIME)
     shape = dict(
         sampleRate=48000,
@@ -80,6 +100,15 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
         durationMs=digest["durationMs"],
     )
     date = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    capture_date = recording_date(recorded_date)
+    started = None
+    if meeting.origin == "own" and meeting.published_file is None and meeting.started_at_ms is not None:
+        offset = meeting.recording_offset_minutes
+        if type(offset) is int and -720 <= offset <= 840:
+            started = datetime.fromtimestamp(meeting.started_at_ms // 1000, timezone(timedelta(minutes=offset)))
+        else:
+            started = _local(meeting.started_at_ms // 1000 * 1000, tz)
+        capture_date = capture_date or started.isoformat(timespec="seconds")
     identifier = "mtg_" + digest["sha256"]
     manifest = dict(
         kind="cassini-portable-meeting",
@@ -93,9 +122,7 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
             dict(id="words", default=True, format=portable.WORDS_FORMAT, wordCount=len(items), payloadRef=reference)
         ],
     )
-    if meeting.origin == "own" and meeting.started_at_ms is not None:
-        manifest["meeting"]["recordedAtLocal"] = _local(meeting.started_at_ms, tz).strftime("%Y-%m-%dT%H:%M:%S")
-    elif recorded_at_local is not None:
+    if recorded_at_local is not None:
         # A Received row's Library date may be artifact/export/import time.
         # Carry only an explicitly stored recording wall-clock label forward.
         try:
@@ -105,9 +132,20 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
         else:
             if parsed.strftime("%Y-%m-%dT%H:%M:%S") == recorded_at_local:
                 manifest["meeting"]["recordedAtLocal"] = recorded_at_local
+    elif started is not None:
+        manifest["meeting"]["recordedAtLocal"] = started.strftime("%Y-%m-%dT%H:%M:%S")
     if policy is not None:
         manifest["audioEncode"] = deepcopy(policy)
     extension = deepcopy(meeting.extensions)
+    # A share is a new, resolved transcript, not the Library's original-ID
+    # document. Do not export our understood UUID ownership/Undo history
+    # without the original words it describes. Foreign/future x stays opaque.
+    ours = extension.get("codemyriad.io")
+    if isinstance(ours, dict) and ours.get("schema") == 1:
+        from .library_v2.xschema import valid
+
+        if valid(ours):
+            extension.pop("codemyriad.io")
     domain = extension.get("gocassini.com")
     domain = domain if isinstance(domain, dict) else {}
     if meeting.origin == "own" and any(t.start_offset_ms is None for t in meeting.tracks):
@@ -125,7 +163,7 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
         extension.pop("gocassini.com", None)
     if extension:
         manifest["x"] = extension
-    return file_tags(manifest, words_tags, date=date), manifest
+    return file_tags(manifest, words_tags, date=capture_date or date), manifest
 
 
 def file_tags(manifest, words_tags, *, date):

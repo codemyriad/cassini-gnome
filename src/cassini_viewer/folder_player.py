@@ -25,6 +25,17 @@ class PCMSource:
     def __init__(self, track):
         if track.start_offset_ms is None:
             raise ValueError("Cannot align a track with an unknown start offset")
+        from .mapped_audio import required
+
+        self.track = track
+        self.children = [PCMSource(span) for span in getattr(track, "spans", ())]
+        self.mapped = (
+            bool(self.children)
+            or bool(getattr(track, "clock_anchors", ()))
+            and required(dict(sampleRate=track.sample_rate, clockAnchors=track.clock_anchors))
+        )
+        self.mapping = None
+        self._mapped_cache = None
         self.path = track.path
         self.fd = None
         self.codec = track.codec
@@ -33,13 +44,27 @@ class PCMSource:
         self.offset_ns = round(track.start_offset_ms * Gst.MSECOND)
         self.leading_frames = (self.offset_ns * self.rate + Gst.SECOND - 1) // Gst.SECOND
         self.end_frame = self.leading_frames + self.frames
+        if self.children:
+            self.rate = 48000
+            self.end_frame = max(round(child.end_frame * 48000 / child.rate) for child in self.children)
+        elif self.mapped:
+            from .capture_clock import mapped_end_sample
+
+            end = mapped_end_sample(
+                track.frames,
+                track.sample_rate,
+                track.start_offset_ms,
+                track.clock_anchors,
+                decoded_frames=track.pcm_frames if track.codec == "opus" else None,
+            )
+            self.end_frame = max(0, round(end * self.rate / 48000))
         self.cursor = 0
         self.lock = threading.Lock()
         self.src = Gst.ElementFactory.make("appsrc", None)
         self.src.set_property(
             "caps",
             Gst.Caps.from_string(
-                f"audio/x-raw,format=S16LE,layout=interleaved,rate={self.rate},channels={self.channels}"
+                f"audio/x-raw,format={'F32LE' if self.mapped else 'S16LE'},layout=interleaved,rate={self.rate},channels={self.channels}"
             ),
         )
         self.src.set_property("format", Gst.Format.TIME)
@@ -54,7 +79,7 @@ class PCMSource:
 
     def _open(self):
         # appsrc calls need-data on its streaming thread, including this initial IO.
-        if self.fd is not None or self.decoder is not None:
+        if self.children or self.fd is not None or self.decoder is not None:
             return
         if self.codec == "opus":
             decoder = OpusDecoder(self.path)
@@ -83,22 +108,25 @@ class PCMSource:
                 if frames <= 0:
                     src.emit("end-of-stream")
                     return
-                silence = min(frames, max(0, self.leading_frames - cursor))
-                audio_frames = frames - silence
-                data = bytes(silence * self.channels * 2)
-                if audio_frames and self.decoder is not None:
-                    self.decoder.seek(max(0, cursor - self.leading_frames))
-                    data += self.decoder.read(audio_frames)
-                    if len(data) != frames * self.channels * 2:
-                        raise ValueError("Incomplete recording source")
-                elif audio_frames:
-                    data += os.pread(
-                        self.fd,
-                        audio_frames * self.channels * 2,
-                        44 + max(0, cursor - self.leading_frames) * self.channels * 2,
-                    )
-                    if len(data) != frames * self.channels * 2:
-                        raise ValueError("Incomplete recording source")
+                if self.mapped:
+                    data = self._mapped_data(cursor, frames)
+                else:
+                    silence = min(frames, max(0, self.leading_frames - cursor))
+                    audio_frames = frames - silence
+                    data = bytes(silence * self.channels * 2)
+                    if audio_frames and self.decoder is not None:
+                        self.decoder.seek(max(0, cursor - self.leading_frames))
+                        data += self.decoder.read(audio_frames)
+                        if len(data) != frames * self.channels * 2:
+                            raise ValueError("Incomplete recording source")
+                    elif audio_frames:
+                        data += os.pread(
+                            self.fd,
+                            audio_frames * self.channels * 2,
+                            44 + max(0, cursor - self.leading_frames) * self.channels * 2,
+                        )
+                        if len(data) != frames * self.channels * 2:
+                            raise ValueError("Incomplete recording source")
                 self.cursor += frames
         except (OSError, ValueError, TimeoutError, GLib.Error) as error:
             message = GLib.Error.new_literal(Gst.ResourceError.quark(), str(error), Gst.ResourceError.READ)
@@ -111,9 +139,85 @@ class PCMSource:
         buffer.duration = (cursor + frames) * Gst.SECOND // self.rate - buffer.pts
         src.emit("push-buffer", buffer)
 
+    def _mapped_segment(self, first, end):
+        """A bounded native-rate window; sequential Opus reads retain their overlap."""
+        import numpy as np
+
+        values = np.zeros((0, self.channels), dtype=np.float64)
+        start = first
+        if self._mapped_cache is not None:
+            base, cached = self._mapped_cache
+            if base <= first < base + len(cached):
+                stop = min(end, base + len(cached))
+                values = cached[first - base : stop - base]
+                start = stop
+        if start < end:
+            count = end - start
+            if self.decoder is not None:
+                self.decoder.seek(start)
+                data = self.decoder.read(count)
+            else:
+                data = os.pread(self.fd, count * self.channels * 2, 44 + start * self.channels * 2)
+            if len(data) != count * self.channels * 2:
+                raise ValueError("Incomplete recording source")
+            extra = np.frombuffer(data, dtype="<i2").reshape(-1, self.channels).astype(np.float64) / 32768
+            values = np.concatenate((values, extra))
+        self._mapped_cache = first, values
+        return values
+
+    def _mapped_data(self, cursor, count, *, output_rate=None):
+        """Use the publisher's clock map, preserving channels and never touching the WAV."""
+        import numpy as np
+
+        from .library_v2.mixdown import Mapping, Span
+        from .track_source import SpanInfo
+
+        output_rate = output_rate or self.rate
+        if self.children:
+            output = np.zeros((count, self.channels), dtype=np.float64)
+            for child in self.children:
+                first = child.track.start_offset_ms * 48
+                end = child.end_frame * 48000 / child.rate
+                if cursor + count > first and cursor < end:
+                    child._open()
+                    output += np.frombuffer(child._mapped_data(cursor, count, output_rate=48000), dtype="<f4").reshape(
+                        -1, self.channels
+                    )
+                else:
+                    child._release_input()
+            return output.astype("<f4").tobytes()
+        if self.mapping is None:
+            track = self.track
+            info = SpanInfo(
+                self.codec, (self.path.name,), track.frames, track.sample_rate, self.channels, self.frames, self.rate
+            )
+            self.mapping = Mapping(
+                Span(getattr(track, "id", "source"), self.path, info, track.start_offset_ms, track.clock_anchors)
+            )
+        output = np.zeros((count, self.channels), dtype=np.float64)
+        source = self.mapping.source(np.arange(cursor, cursor + count, dtype=np.float64) * 48000 / output_rate)
+        source *= self.rate / 48000
+        inside = (source >= 0) & (source <= self.frames - 1)
+        if inside.any():
+            positions = source[inside]
+            low = np.floor(positions).astype(np.int64)
+            first, end = int(low.min()), min(self.frames, int(low.max()) + 2)
+            segment = self._mapped_segment(first, end)
+            segment = np.concatenate((segment, np.zeros((1, self.channels))))
+            fraction = (positions - low)[:, None]
+            index = low - first
+            output[inside] = segment[index] * (1 - fraction) + segment[index + 1] * fraction
+        return output.astype("<f4").tobytes()
+
     def close(self):
+        for child in self.children:
+            child.close()
         for handler in self.handlers:
             self.src.disconnect(handler)
+        self._release_input()
+
+    def _release_input(self):
+        self._mapped_cache = self.mapping = None
         if self.fd is not None:
             os.close(self.fd)
             self.fd = None

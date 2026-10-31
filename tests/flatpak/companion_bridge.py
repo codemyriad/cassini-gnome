@@ -46,14 +46,38 @@ def worker(application, private, report):
     ]
     prefix = "import sys;sys.path.insert(0,'/app/share/cassini-viewer');"
 
-    def until(check):
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline:
-            value = check()
-            if value:
-                return value
-            time.sleep(0.05)
-        raise AssertionError("Installed bridge did not reach the expected state")
+    def until(check, description="installed bridge state"):
+        from gi.repository import GLib
+
+        loop = GLib.MainLoop()
+        result, failures = [], []
+
+        def observe():
+            try:
+                value = check()
+                if value:
+                    result.append(value)
+                    loop.quit()
+                    return False
+            except BaseException as error:
+                failures.append(error)
+                loop.quit()
+                return False
+            return True
+
+        def expired():
+            failures.append(AssertionError(f"Timed out waiting for {description}"))
+            loop.quit()
+            return False
+
+        tick, limit = GLib.timeout_add(20, observe), GLib.timeout_add_seconds(15, expired)
+        loop.run()
+        for source in (tick, limit):
+            if GLib.MainContext.default().find_source_by_id(source):
+                GLib.source_remove(source)
+        if failures:
+            raise failures[0]
+        return result[0]
 
     def inside(code, *, deny=False):
         command = base
@@ -246,7 +270,7 @@ def worker(application, private, report):
             reply = receive(audio)
             assert reply["type"] == "started", reply
             directory = Path(reply["path"])
-            assert directory.parent == private / "Musica/Cassini"
+            assert directory.parent == private / "Musica/Cassini/.cassini/sessions"
             directories.append(directory)
             send(
                 audio,
@@ -283,6 +307,7 @@ def worker(application, private, report):
                 assert sum(s["recording"] for s in status()["statuses"]) == 1
         control.stdin.close()
         assert control.wait(10) == 0
+        published_files = []
         for directory, data in expected.items():
             manifest = json.loads((directory / "session.json").read_text())
             assert manifest["state"] == "completed" and len(manifest["tracks"]) == 1
@@ -290,10 +315,28 @@ def worker(application, private, report):
             assert track["frames"] == 96000 and track["sourceTrackId"] == "remote"
             with wave.open(str(directory / track["file"]), "rb") as stream:
                 assert stream.readframes(96000) == data
+            identifier = directory.name.removeprefix("Recording-")
+            published = until(
+                lambda identifier=identifier: inside(
+                    "import json;from cassini_viewer.library_v2 import journal,publish;"
+                    "from cassini_viewer.library_location import primary;"
+                    "root=primary();found=publish.find_file(journal.Layout(root),'Recording'," + repr(identifier) + ");"
+                    "print(json.dumps(str(root/found) if found else None))"
+                ),
+                "each stopped browser recording publishes its Cassini file",
+            )
+            assert Path(published).parent == private / "Musica/Cassini"
+            assert Path(published).is_file(), "Published audio is not on the host's persistent Library"
+            published_files.append(published)
+
         assert inside(
-            "import json,time;from cassini_viewer.browser_service import service_path;"
-            "path=service_path();deadline=time.monotonic()+15;"
-            "exec('while path.exists() and time.monotonic()<deadline: time.sleep(.05)');"
+            "import json;from gi.repository import Gio,GLib;"
+            "from cassini_viewer.browser_service import service_path;"
+            "path=service_path();loop=GLib.MainLoop();"
+            "monitor=Gio.File.new_for_path(str(path)).monitor_file(Gio.FileMonitorFlags.NONE,None);"
+            "monitor.connect('changed',lambda *_: loop.quit() if not path.exists() else None);"
+            "GLib.timeout_add_seconds(15,lambda: (loop.quit(),False)[1]);"
+            "exec('if path.exists(): loop.run()');monitor.cancel();"
             "print(json.dumps(not path.exists()))"
         ), "Dedicated broker must exit after its last client becomes idle"
         report.write_text(
@@ -314,6 +357,7 @@ def worker(application, private, report):
                     idleExit=True,
                     independentPipes=2,
                     exactPCMFramesPerPipe=96000,
+                    persistentPublishedFiles=published_files,
                     completed=True,
                     individualStop=True,
                 ),

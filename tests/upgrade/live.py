@@ -146,7 +146,7 @@ class Live:
         )
 
     def recording(self, root):
-        for folder in Path(root).glob("Recording-*"):
+        for folder in (*Path(root).glob("Recording-*"), *Path(root).glob(".cassini/sessions/Recording-*")):
             manifest = json.loads((folder / "session.json").read_text())
             if manifest["state"] == "recording" and self.samples(folder) >= 48000:
                 return folder

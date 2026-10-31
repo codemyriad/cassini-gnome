@@ -32,7 +32,7 @@ def historical_words(directory):
     # sidecars. Long transcripts never cross the 512 KiB worker request pipe.
     meeting = next(
         m
-        for m in LibraryScanner(directory.parent).scan(changed_directories={directory}).meetings
+        for m in LibraryScanner.for_meeting(directory).scan(changed_directories={directory}).meetings
         if m.directory == directory
     )
     if meeting.transcript != "done" or not meeting.metadata_editable:

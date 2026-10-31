@@ -43,8 +43,8 @@ if sys.argv[3] == "write":
         session.append(identifier,data*9600,0)
     session.finish()
 else:
-    assert len(list(root.glob("Recording-*"))) == 1
-folder,=root.glob("Recording-*")
+    assert len(list(root.glob(".cassini/sessions/Recording-*"))) == 1
+folder,=root.glob(".cassini/sessions/Recording-*")
 manifest=json.loads((folder/"session.json").read_text())
 assert manifest["state"] == "completed"
 assert {t["kind"] for t in manifest["tracks"]} == {"microphone","system"}
@@ -65,7 +65,7 @@ files=sorted(exports.iterdir())
 assert {p.suffix for p in files} == {".md",".opus"}
 opus=next(p for p in files if p.suffix == ".opus")
 assert portable.verify_audio(str(opus),portable.read_meeting(str(opus))).state == portable.State.OK
-print(json.dumps({"library":str(root),"folder":folder.name,"sha256":{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.iterdir()},"exports":{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}))
+print(json.dumps({"library":str(root),"folder":str(folder.relative_to(root)),"sha256":{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.iterdir()},"exports":{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}))
 """
 results = []
 for mode in ("localized-music", "unconfigured-music", "disabled-music", "revoked-music"):

@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from .library import meeting_id
+from .library_edits import transaction
 from .meeting_store import LOCK as METADATA_LOCK
 from .meeting_store import atomic_json
 from .model_download import model_root
@@ -388,7 +389,7 @@ class VoiceStore:
         self, directory, prints, generation, *, check_active=lambda: None, apply_names=None, auto_eligible=None
     ):
         key = _key(directory)
-        with self._locked(), METADATA_LOCK:
+        with self._locked(), transaction(directory):
             people = self._people()
             if people["generation"] != generation:
                 return {}
