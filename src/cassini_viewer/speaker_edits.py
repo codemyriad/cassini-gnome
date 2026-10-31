@@ -4,8 +4,9 @@
 import unicodedata
 from pathlib import Path
 
+from .library_edits import mutation as transaction
 from .library_location import owned_directory
-from .meeting_store import metadata_transaction, read_metadata, update_metadata
+from .meeting_store import read_metadata, update_metadata
 
 
 def name_value(value):
@@ -19,7 +20,7 @@ def current_meeting(directory, *, scanner=None):
     from .library import LibraryScanner
 
     directory = owned_directory(Path(directory))
-    scanner = scanner if scanner is not None else LibraryScanner(directory.parent)
+    scanner = scanner if scanner is not None else LibraryScanner.for_meeting(directory)
     meeting = next(
         (m for m in scanner.scan(changed_directories={directory}).meetings if m.directory == directory), None
     )
@@ -31,7 +32,7 @@ def current_meeting(directory, *, scanner=None):
 def save_name(directory, identifier, value, *, scanner=None):
     value = name_value(value)
     directory = owned_directory(Path(directory))
-    with metadata_transaction(directory):
+    with transaction(directory):
         meeting = current_meeting(directory, scanner=scanner)
         visible = {s.id: s for s in meeting.speakers}
         if identifier not in visible:
@@ -49,7 +50,7 @@ def save_name(directory, identifier, value, *, scanner=None):
 
 def merge_into(directory, source, target, *, scanner=None):
     directory = owned_directory(Path(directory))
-    with metadata_transaction(directory):
+    with transaction(directory):
         meeting = current_meeting(directory, scanner=scanner)
         visible = {s.id for s in meeting.speakers}
         if source == target or source not in visible or target not in visible:
@@ -62,7 +63,7 @@ def merge_into(directory, source, target, *, scanner=None):
 
 def undo_merge(directory, *, scanner=None):
     directory = owned_directory(Path(directory))
-    with metadata_transaction(directory):
+    with transaction(directory):
         meeting = current_meeting(directory, scanner=scanner)
         metadata = read_metadata(meeting.directory)
         history = list(metadata.get("speakerMerges", []))

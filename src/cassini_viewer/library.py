@@ -116,6 +116,8 @@ class CaptureTrack:
     # source metadata; readers decode pcm_frames at pcm_rate.
     codec: str = "pcm"
     decoded_frames: int | None = None
+    clock_anchors: tuple[tuple[int, int], ...] = ()
+    spans: tuple["CaptureTrack", ...] = ()
 
     @property
     def pcm_rate(self):
@@ -128,6 +130,22 @@ class CaptureTrack:
     @property
     def display_end_ms(self):
         # Keep source offsets untouched; only display positions are integer ms.
+        if self.spans:
+            return max((span.display_end_ms for span in self.spans), default=0)
+        if self.clock_anchors:
+            from .capture_clock import mapped_end_sample
+
+            return (
+                mapped_end_sample(
+                    self.frames,
+                    self.sample_rate,
+                    self.start_offset_ms,
+                    self.clock_anchors,
+                    decoded_frames=self.decoded_frames if self.codec == "opus" else None,
+                )
+                * 1000
+                // 48000
+            )
         total = Fraction(str(self.start_offset_ms or 0)) + Fraction(self.frames * 1000, self.sample_rate)
         return total.numerator // total.denominator
 
@@ -167,6 +185,10 @@ class Meeting(MeetingState):
     capture_state: str | None = None
     capture_events: tuple[dict, ...] = ()
     audio_file: Path | None = None
+    published_file: Path | None = None
+    published_missing: bool = False
+    publication_notice: str | None = None
+    recording_offset_minutes: int | None = None
     audio_size_bytes: int | None = None
     legacy_transcript_file: Path | None = None
     has_audio: bool = False
@@ -189,6 +211,8 @@ class Meeting(MeetingState):
 
     def row_texts(self):
         """R11 state-specific meta and second line; no capture labels become names."""
+        if self.publication_notice and self.lifecycle == "saved":
+            return ux_formats.row_meta(self.duration_ms, self.speaker_names), text(self.publication_notice)
         if self.lifecycle == "recording":
             state = meeting_sources(self)
             if self.capture_source in ("chromium", "chrome", "firefox", "browser", "browser-host") and (
@@ -211,7 +235,8 @@ class Meeting(MeetingState):
     @property
     def can_write_down(self):
         return (
-            (super().can_write_down or self.lifecycle == "saved" and self.no_speech)
+            not self.published_missing
+            and (super().can_write_down or self.lifecycle == "saved" and self.no_speech)
             and self.has_audio
             and self.metadata_editable
         )
@@ -315,7 +340,8 @@ class LibraryScanner:
     the root. One lock serializes scans/caches, including worker-thread callers.
     """
 
-    def __init__(self, root=None):
+    def __init__(self, root=None, *, include_published=True):
+        self.include_published = include_published
         self.root = library_root(root)
         self._lock = threading.RLock()
         self._files = FileCache()
@@ -324,6 +350,13 @@ class LibraryScanner:
         self._folder_diagnostics = {}
         self._directories = {}
         self._preview_cache = {}
+        self._published_index = None
+
+    @classmethod
+    def for_meeting(cls, directory):
+        from .library_publication import root_for
+
+        return cls(root_for(directory) or Path(directory).parent)
 
     def scan(self, *, capture_activity=None, changed_directories=None):
         with self._lock:
@@ -421,11 +454,19 @@ class LibraryScanner:
                 else:
                     self._rows[name] = meeting
             diagnostics.extend(self._folder_diagnostics.values())
-            return LibrarySnapshot(
+            snapshot = LibrarySnapshot(
                 tuple(sorted(self._rows.values(), key=_sort)),
                 tuple(diagnostics),
                 directories=tuple(sorted(self._directories.values())),
             )
+            if not self.include_published:
+                return snapshot
+            # Keep v1 folders readable while new recordings publish root files.
+            from .library_v2_index import PublishedIndex
+
+            if self._published_index is None:
+                self._published_index = PublishedIndex(self)
+            return self._published_index.combine(snapshot, activity)
         except OSError:
             return LibrarySnapshot(diagnostics=(Diagnostic(self.root, "library-unreadable"),), unavailable=True)
         finally:
@@ -513,65 +554,106 @@ class LibraryScanner:
         ]
         used = set(identifiers)
         files = set()
-        for value in values:
-            try:
-                if not isinstance(value, dict):
-                    raise ValueError("invalid-track")
-                span = track_source.describe(
-                    value,
-                    lambda parts, kind, loader: self._load_span(fd, directory, parts, kind, loader),
-                    recovered=salvaged,
-                )
-                name, frames, rate, channels = span.relative, span.frames, span.sample_rate, span.channels
-                offset = value.get("startOffsetMs")
-                if type(offset) not in (int, float) or not 0 <= offset <= 86400000 or not math.isfinite(offset):
-                    offset = None
-                    diagnostics.append(Diagnostic(directory / name, "start-offset-unknown-display-zero"))
-                if name in files:
-                    raise ValueError("duplicate-track-file")
-                files.add(name)
-                identity = value.get("id")
-                if (
-                    not isinstance(identity, str)
-                    or not identity
-                    or len(identity.encode()) > 200
-                    or identifiers.count(identity) != 1
-                ):
-                    nonce = 0
-                    identity = "recovered-" + str(uuid5(NAMESPACE_URL, name))
-                    while identity in used:
-                        nonce += 1
-                        identity = "recovered-" + str(uuid5(NAMESPACE_URL, name + str(nonce)))
-                    diagnostics.append(Diagnostic(directory / name, "track-identity-recovered"))
-                used.add(identity)
-                kind = value.get("kind")
-                if not isinstance(kind, str) or kind not in KINDS:
-                    kind = {"track-microphone.wav": "microphone", "track-system.wav": "system"}.get(name, "unknown")
-                source_identity = value.get("sourceTrackId")
-                if source_identity is not None and (
-                    not isinstance(source_identity, str) or not source_identity or len(source_identity.encode()) > 200
-                ):
-                    source_identity = None
-                    diagnostics.append(Diagnostic(directory / name, "source-track-identity-invalid"))
-                if kind in ("microphone", "local", "system"):
-                    source_identity = None
-                tracks.append(
-                    CaptureTrack(
-                        directory / name,
-                        frames,
-                        rate,
-                        offset,
-                        value.get("ended"),
-                        channels,
-                        identity,
-                        kind,
-                        source_identity,
-                        span.codec,
-                        span.decoded_frames if span.codec == "opus" else None,
-                    )
-                )
-            except (OSError, ValueError, TypeError):
+        for logical in values:
+            start = len(tracks)
+            physical = logical.get("spans") if isinstance(logical, dict) else None
+            if physical is None:
+                physical = [logical]
+            elif not isinstance(physical, list) or not physical or len(physical) > 4096:
                 diagnostics.append(Diagnostic(directory, "capture-track-unreadable"))
+                continue
+            for row in physical:
+                value = dict(logical, **row) if isinstance(logical, dict) and isinstance(row, dict) else row
+                if isinstance(value, dict) and isinstance(logical, dict) and logical.get("ended") is True:
+                    value["ended"] = True
+                try:
+                    if not isinstance(value, dict):
+                        raise ValueError("invalid-track")
+                    span = track_source.describe(
+                        value,
+                        lambda parts, kind, loader: self._load_span(fd, directory, parts, kind, loader),
+                        recovered=salvaged,
+                    )
+                    name, frames, rate, channels = span.relative, span.frames, span.sample_rate, span.channels
+                    offset = value.get("startOffsetMs")
+                    if type(offset) not in (int, float) or not 0 <= offset <= 86400000 or not math.isfinite(offset):
+                        offset = None
+                        diagnostics.append(Diagnostic(directory / name, "start-offset-unknown-display-zero"))
+                    if name in files:
+                        raise ValueError("duplicate-track-file")
+                    files.add(name)
+                    identity = value.get("id")
+                    if (
+                        not isinstance(identity, str)
+                        or not identity
+                        or len(identity.encode()) > 200
+                        or identifiers.count(identity) != 1
+                    ):
+                        nonce = 0
+                        identity = "recovered-" + str(uuid5(NAMESPACE_URL, name))
+                        while identity in used:
+                            nonce += 1
+                            identity = "recovered-" + str(uuid5(NAMESPACE_URL, name + str(nonce)))
+                        diagnostics.append(Diagnostic(directory / name, "track-identity-recovered"))
+                    used.add(identity)
+                    kind = value.get("kind")
+                    if not isinstance(kind, str) or kind not in KINDS:
+                        kind = {"track-microphone.wav": "microphone", "track-system.wav": "system"}.get(name, "unknown")
+                    source_identity = value.get("sourceTrackId")
+                    if source_identity is not None and (
+                        not isinstance(source_identity, str)
+                        or not source_identity
+                        or len(source_identity.encode()) > 200
+                    ):
+                        source_identity = None
+                        diagnostics.append(Diagnostic(directory / name, "source-track-identity-invalid"))
+                    if kind in ("microphone", "local", "system"):
+                        source_identity = None
+                    tracks.append(
+                        CaptureTrack(
+                            directory / name,
+                            frames,
+                            rate,
+                            offset,
+                            value.get("ended"),
+                            channels,
+                            identity,
+                            kind,
+                            source_identity,
+                            span.codec,
+                            span.decoded_frames if span.codec == "opus" else None,
+                            tuple(
+                                tuple(point)
+                                for point in value.get("clockAnchors", ())
+                                if isinstance(point, list)
+                                and len(point) == 2
+                                and all(type(part) is int and 0 <= part <= 2**63 for part in point)
+                            )
+                            if isinstance(value.get("clockAnchors", ()), (list, tuple))
+                            else (),
+                        )
+                    )
+                except (OSError, ValueError, TypeError):
+                    diagnostics.append(Diagnostic(directory, "capture-track-unreadable"))
+            if len(tracks) - start > 1:
+                from dataclasses import replace
+
+                spans = tuple(tracks[start:])
+                offset = min((span.start_offset_ms for span in spans if span.start_offset_ms is not None), default=0)
+                if any(span.start_offset_ms is None for span in spans):
+                    offset = None
+                tracks[start:] = [
+                    replace(
+                        spans[0],
+                        frames=sum(span.frames for span in spans),
+                        start_offset_ms=offset,
+                        codec="pcm",
+                        decoded_frames=None,
+                        clock_anchors=(),
+                        ended=logical.get("ended"),
+                        spans=spans,
+                    )
+                ]
         return capture, tuple(tracks), salvaged
 
     def _read(self, fd, directory, identifier, active, names):
@@ -670,6 +752,12 @@ class LibraryScanner:
             capture_source=capture.get("source") if origin == "own" else None,
             capture_state=capture.get("state") if origin == "own" else None,
             capture_events=read_events(capture.get("events")) if origin == "own" else (),
+            recording_offset_minutes=(
+                capture["startedAtUtcOffsetMinutes"]
+                if type(capture.get("startedAtUtcOffsetMinutes")) is int
+                and -720 <= capture["startedAtUtcOffsetMinutes"] <= 840
+                else None
+            ),
             audio_file=audio_file,
             audio_size_bytes=audio_size,
             legacy_transcript_file=legacy_transcript_file,
@@ -812,7 +900,7 @@ def _sidecar_words(body):
     return tuple(words)
 
 
-def _speakers(words, values, embedded):
+def _speakers(words, values, embedded, *, stored_labels=False):
     from .speaker_merges import speaker_metrics
 
     metrics = speaker_metrics(words)
@@ -824,10 +912,14 @@ def _speakers(words, values, embedded):
     result = []
     for rank, identifier in enumerate(sorted(first, key=first.get)):
         value = metadata.get(identifier, {})
-        name = value.get("name")
+        name = labels.get(identifier) if stored_labels else value.get("name")
         if name is None:
             label = labels.get(identifier) if value.get("provenance") != "unnamed" else None
-            name = label if label and not re.fullmatch(r"Speaker \d+", label) else f"Speaker {rank + 1}"
+            name = (
+                label
+                if label and not re.fullmatch(r"Speaker \d+", label)
+                else text("common.speaker.unnamed", n=rank + 1)
+            )
         result.append(
             LibrarySpeaker(
                 identifier,
@@ -897,6 +989,7 @@ class LibraryCollectionScanner:
         value = load()
         current_roots = roots(value)
         pending = {Path(e["source"]).resolve() for e in value["pending"]}
+        pairs = [entry for entry in value["pending"] if entry.get("pair")]
         meetings, diagnostics, directories, seen = [], [], [], set()
         unavailable = False
         for root in current_roots:
@@ -910,6 +1003,20 @@ class LibraryCollectionScanner:
             unavailable |= snapshot.unavailable and root == current_roots[0]
             diagnostics.extend(snapshot.diagnostics)
             for meeting in snapshot.meetings:
+                directory = meeting.directory.resolve()
+                skip = False
+                for entry in pairs:
+                    phase = entry["pair"]["phase"]
+                    if directory == Path(entry["source"]).resolve() and phase in ("published", "retired"):
+                        skip = True
+                    if directory == Path(entry["target"]).resolve() and phase == "staged":
+                        from .library_publication import root_for
+
+                        stage = root_for(directory) / (".cassini-moving-" + entry["pair"]["op"])
+                        if not (stage / "audio.opus").exists():
+                            skip = True  # Our partial destination is not yet authoritative.
+                if skip:
+                    continue
                 if root != current_roots[0] and meeting.directory.resolve() not in pending:
                     continue
                 if meeting.key in seen:

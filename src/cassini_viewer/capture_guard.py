@@ -18,6 +18,11 @@ def recorder_busy(recorder):
     )
 
 
+def browser_capture_busy(status):
+    """PCM Stop still owns capture audio until publication/retirement finishes."""
+    return bool(status.get("recording") or status.get("stopping"))
+
+
 def native_recorders(target):
     registry = getattr(target, "native_captures", None)
     if registry is not None:
@@ -36,13 +41,13 @@ def capture_targets(app):
         if recorder_busy(recorder)
     )
     browser = bool(getattr(app, "_record_start_future", None)) or any(
-        s.get("recording") for s in getattr(app, "_browser_snapshot", {}).get("statuses", [])
+        browser_capture_busy(s) for s in getattr(app, "_browser_snapshot", {}).get("statuses", [])
     )
     browser = browser or any(
         getattr(w, "_activity_source", None) and w._activity_source.snapshot for w in app.get_windows()
     )
     browser = browser or any(
-        any(s.get("recording") for s in getattr(w, "_browser_snapshot", {}).get("statuses", []))
+        any(browser_capture_busy(s) for s in getattr(w, "_browser_snapshot", {}).get("statuses", []))
         for w in app.get_windows()
     )
     return native, bool(browser)
@@ -149,7 +154,7 @@ def remember_capture_paths(app):
         if session:
             paths.add(str(session.directory))
     for status in getattr(app, "_browser_snapshot", {}).get("statuses", ()):
-        if status.get("recording") and isinstance(status.get("path"), str):
+        if browser_capture_busy(status) and isinstance(status.get("path"), str):
             paths.add(status["path"])
     for window in app.get_windows():
         activity = getattr(window, "_activity_source", None)
@@ -158,7 +163,7 @@ def remember_capture_paths(app):
             if meeting.lifecycle in ("recording", "saving"):
                 paths.add(str(meeting.directory))
         for status in getattr(window, "_browser_snapshot", {}).get("statuses", ()):
-            if status.get("recording") and isinstance(status.get("path"), str):
+            if browser_capture_busy(status) and isinstance(status.get("path"), str):
                 paths.add(status["path"])
     trash = getattr(app, "meeting_trash", None)
     if trash is not None:
@@ -364,6 +369,8 @@ def confirm_capture_close(app, window, *, quitting=False, force_stop=False):
                 target.recorder.end_reason = getattr(target.recorder, "end_reason", None) or (
                     "appQuit" if exiting else "user"
                 )
+                if exiting and hasattr(target.recorder, "cancel_publication"):
+                    target.recorder.cancel_publication()
                 target.recorder.stop()
             except Exception:
                 abort()
@@ -506,8 +513,9 @@ def queue_saved_for_later(path):
     """On explicit exit, publish resumable intent without starting inference."""
     from pathlib import Path
 
+    from .library_edits import transaction
     from .library_location import owned_directory
-    from .meeting_store import LOCK, read_metadata, update_metadata
+    from .meeting_store import read_metadata, update_metadata
 
     if not path:
         return
@@ -515,7 +523,7 @@ def queue_saved_for_later(path):
         directory = owned_directory(Path(path))
     except ValueError:
         return
-    with LOCK:
+    with transaction(directory):
         if not directory.exists() and directory.parent.is_dir():
             return  # D29: a removed meeting is not a failed hidden-window save.
         value = read_metadata(directory)
@@ -525,7 +533,7 @@ def queue_saved_for_later(path):
             meeting = next(
                 (
                     m
-                    for m in LibraryScanner(directory.parent).scan(changed_directories={directory}).meetings
+                    for m in LibraryScanner.for_meeting(directory).scan(changed_directories={directory}).meetings
                     if m.directory == directory
                 ),
                 None,

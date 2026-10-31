@@ -212,7 +212,7 @@ def install(marker, number):
 
 
 def microphone_ready(root):
-    for path in root.glob("Recording-*/session.json"):
+    for path in (*root.glob("Recording-*/session.json"), *root.glob(".cassini/sessions/Recording-*/session.json")):
         value = json.loads(path.read_text())
         if value.get("state") == "recording" and any(t["frames"] >= 9600 for t in value["tracks"]):
             return path

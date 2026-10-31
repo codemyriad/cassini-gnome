@@ -103,3 +103,41 @@ def test_progress_and_completion_keep_a_source_speaker_explicitly_unnamed(tmp_pa
         session.directory, planned, transcript=dict(status="done", reference=None), etaMinutes=None
     )
     assert read_metadata(session.directory)["speakers"] == [cleared]
+
+
+def test_quotes_are_written_paired_without_changing_raw_items_ids_or_times(tmp_path):
+    from cassini_viewer.transcript import normalize_quote_items
+
+    source = [
+        dict(speaker="a", startMs=0, endMs=10, text='Say "hello', future=1),
+        dict(speaker="a", startMs=10, endMs=20, text='there"'),
+        dict(speaker="b", startMs=20, endMs=30, text='"'),
+        dict(speaker="a", startMs=30, endMs=40, text='orphan"'),
+    ]
+    result = normalize_quote_items(source)
+    assert [row["text"] for row in result] == ["Say “hello", "there”", "", "orphan"]
+    assert source[0]["text"] == 'Say "hello' and source[2]["text"] == '"'
+    assert normalize_quote_items(result) == result
+    for raw, stored in zip(source, result, strict=True):
+        assert {k: v for k, v in raw.items() if k != "text"} == {k: v for k, v in stored.items() if k != "text"}
+    publisher = transcript_publish.TranscriptPublisher(tmp_path)
+    publisher.add([dict(text='"hello"', startMs=0, endMs=1)], "a", 0, "en")
+    publisher.flush(complete=True)
+    assert json.loads((tmp_path / "transcript.json").read_text())["items"][0]["text"] == "“hello”"
+    assert publisher.words[0]["text"] == '"hello"'
+
+
+def test_cassini_file_text_is_verbatim_and_only_legacy_folders_keep_the_bridge():
+    from dataclasses import replace
+
+    from cassini_viewer.meeting_text import item_markup, reading_turns
+    from cassini_viewer.portable import Word
+    from cassini_viewer.transcript import build_turns
+
+    legacy = [Word("a", 0, 1, '"hello"'), Word("a", 1, 2, 'orphan"')]
+    stored = [replace(word, text_is_stored=True) for word in legacy]
+    for builder in (build_turns, reading_turns):
+        assert builder(legacy)[0].text == "“hello” orphan"
+        assert builder(stored)[0].text == '"hello" orphan"'
+    assert "&quot;hello&quot;" in item_markup(stored, 0)
+    assert "“hello”" in item_markup(legacy, 0)

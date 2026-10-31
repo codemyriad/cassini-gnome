@@ -63,9 +63,9 @@ def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
             elif kind == "cassini":
                 policy = None
                 original = None
-                if meeting.origin == "own":
-                    if meeting.lifecycle != "saved":
-                        raise ValueError("Only saved recordings can be exported")
+                if meeting.lifecycle != "saved":
+                    raise ValueError("Only saved recordings can be exported")
+                if meeting.origin == "own" and meeting.audio_file is None:
                     # D19's export-only recovery policy does not alter the
                     # Library model, capture metadata or playback alignment.
                     tracks = tuple(
@@ -92,8 +92,10 @@ def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
                     if audio_path is None:
                         raise ValueError("Meeting has no audio")
                 with regular_input(audio_path) as audio:
-                    if meeting.origin != "own":
+                    trusted_source = False
+                    if meeting.audio_file is not None:
                         original = portable.interpret(*portable.read_header(audio))
+                        trusted_source = original.state == portable.State.PLAIN_AUDIO
                         audio.seek(0)
                     digest = portable.compute_audio_digest(audio, cancelled=lambda: bool(cancel and cancel.is_set()))
                     if original and original.manifest:
@@ -102,12 +104,14 @@ def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
                             integrity.get(k) == digest[k] for k in ("channels", "sampleCount", "durationMs")
                         ):
                             policy = original.manifest.get("audioEncode")
+                            trusted_source = True
                     tags, _manifest = descriptors(
                         meeting,
                         digest,
                         policy=policy,
                         tz=tz,
                         recorded_at_local=original.recorded_at_local if original else None,
+                        recorded_date=original.tags.get("DATE") if original and trusted_source else None,
                     )
                     rewrite_tags(audio, output, tags, cancel)
             else:

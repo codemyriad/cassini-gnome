@@ -93,10 +93,21 @@ def atomic_json(path, value, *, before_commit=None):
 
 def read_metadata(directory):
     directory = Path(directory)
+    if not directory.exists():
+        from .library_location import owned_directory
+
+        with contextlib.suppress(ValueError):
+            directory = owned_directory(directory)
     identifier = meeting_id(Path(directory))
     if identifier is None:
         raise ValueError("Meeting is outside the Library")
-    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        value = published_metadata(directory)
+        if value is not None:
+            return value
+        raise
     try:
         try:
             with regular(descriptor, "meeting.json") as (stream, _info):
@@ -132,15 +143,70 @@ def read_metadata(directory):
     )
 
 
-def update_metadata(directory, *, before_commit=None, **changes):
-    directory = Path(directory)
-    with metadata_transaction(directory):
-        if not directory.exists():
-            from .library_location import owned_directory
+def published_metadata(directory):
+    """Read a known file's x when its optional working metadata is absent.
 
-            with contextlib.suppress(ValueError):
-                directory = owned_directory(directory)
+    This is a read, not a repair: no folder or sidecar is created. No-x files
+    require the shared adoption API and are deliberately not synthesized here.
+    """
+    from . import portable
+    from .library_publication import root_for
+    from .library_v2 import journal, publish, xschema
+
+    root = root_for(directory)
+    if root is None:
+        return None
+    origin, identifier = journal.identity_of(directory)
+    name = publish.find_file(journal.Layout(root), origin, identifier)
+    if name is None:
+        return None
+    embedded = portable.read_meeting(str(root / name))
+    ours = (embedded.manifest or {}).get("x", {}).get(xschema.DOMAIN)
+    if not embedded.is_readable or not isinstance(ours, dict) or not xschema.valid(ours):
+        raise ValueError("Published Library metadata is not editable")
+    if portable.verify_audio(str(root / name), embedded).state != portable.State.OK:
+        raise ValueError("Published Library audio does not verify")
+    notes = embedded.manifest["x"].get(xschema.NOTES_DOMAIN)
+    return dict(xschema.rebuild(ours, notes, session_exists=False), published=True)
+
+
+def transcript_snapshot(directory):
+    """Read a validated working body for the final journaled file commit."""
+    from .library import _sidecar_words
+    from .portable import INFLATE_CEILING
+
+    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        try:
+            with regular(descriptor, "transcript.json") as (stream, _info):
+                raw = stream.read(INFLATE_CEILING + 1)
+        except FileNotFoundError:
+            return None
+    finally:
+        os.close(descriptor)
+    if len(raw) > INFLATE_CEILING:
+        raise ValueError("Transcript snapshot exceeds limit")
+    value = strict_json(raw)
+    _sidecar_words(value)
+    return value
+
+
+def update_metadata(directory, *, before_commit=None, transient=False, transcript_body=None, **changes):
+    from .library_edits import commit_metadata, mutation
+    from .library_publication import root_for
+
+    directory = Path(directory)
+    with mutation(directory):
+        from .library_location import owned_directory
+
+        # A paired Move can publish the destination while retaining the source.
+        # Resolve after mutation() acquired/revalidated the routed Library lock,
+        # even when the stale source directory still exists.
+        with contextlib.suppress(ValueError):
+            directory = owned_directory(directory)
         value = read_metadata(directory)
+        if value.get("published") is True and root_for(directory) is not None and not transient:
+            return commit_metadata(directory, value, changes, before_commit=before_commit, words=transcript_body)
         value.update(changes)
         value["revision"] += 1
         if not valid(value):

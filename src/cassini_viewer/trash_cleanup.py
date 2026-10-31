@@ -71,6 +71,17 @@ class TrashCleanup:
                     current = location.owned_directory(directory)
                 except ValueError:
                     current = directory
+                from .library_publication import root_for
+                from .library_v2 import journal
+
+                if root := root_for(current):
+                    identity = journal.identity_of(current)
+                    if any(
+                        entry["kind"] == "delete"
+                        and (entry["identity"]["origin"], entry["identity"]["sessionId"]) == identity
+                        for entry in journal.pending(journal.Layout(root), cleanup=False).entries
+                    ):
+                        continue  # A file-only partial Trash is still an accepted delete, not a restore.
                 if current.exists():
                     self.forget(directory)  # Aborted Trash or an already-restored meeting.
                 else:

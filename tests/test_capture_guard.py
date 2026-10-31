@@ -117,3 +117,19 @@ def test_browser_stop_records_the_same_requested_cause_in_optional_details(tmp_p
     monkeypatch.setattr(browser_service, "request", request)
     assert stop_browser_captures(reason=reason) == [path]
     assert read_metadata(session.directory)["recordingDetails"]["end"]["reason"] == reason
+
+
+@pytest.mark.parametrize("owner", ["application", "window"])
+def test_stopping_browser_capture_is_busy_and_its_path_is_retained(tmp_path, owner):
+    from types import SimpleNamespace
+
+    from cassini_viewer.capture_guard import capture_targets, remember_capture_paths
+
+    path = str(tmp_path / "Recording-12345678-1234-1234-1234-123456789abc")
+    statuses = dict(statuses=[dict(recording=False, stopping=True, path=path)])
+    window = SimpleNamespace(_browser_snapshot=statuses if owner == "window" else {})
+    app = SimpleNamespace(
+        get_windows=lambda: [window], native_captures={}, _browser_snapshot=statuses if owner == "application" else {}
+    )
+    assert capture_targets(app) == ([], True)
+    assert remember_capture_paths(app) == {path}

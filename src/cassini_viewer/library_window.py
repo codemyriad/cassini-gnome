@@ -9,7 +9,7 @@ from pathlib import Path
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
 from . import ux_formats as fmt
-from .capture_activity import BrowserActivity, recorder_activity
+from .capture_activity import BrowserActivity, application_activity
 from .folder_player import FolderPlayer
 from .library import meeting_id
 from .library_monitor import LibraryMonitor
@@ -234,6 +234,28 @@ class LibraryWindow(Adw.ApplicationWindow):
             callback=lambda: self.get_application().meeting_trash.request(meeting, self),
         )
 
+    def publication_line(self, meeting):
+        from .inline_line import InlineLine
+
+        notice = meeting.publication_notice
+        if not notice:
+            return None
+        if notice == "library.publishedMissing":
+            from .publication_state import session_root_path
+
+            def show():
+                root = session_root_path(meeting.directory) or meeting.directory.parent
+                Gtk.FileLauncher(file=Gio.File.new_for_path(str(root))).launch(self, None, None, None)
+
+            return InlineLine(notice, info=True, action="meeting.showInFiles", callback=show)
+        retry = notice in ("library.publishFailed", "library.publishDiskLow")
+        recovery = getattr(self.get_application(), "library_recovery", None)
+        return InlineLine(
+            notice,
+            action="common.tryAgain" if retry else None,
+            callback=(lambda: recovery.retry(meeting.directory)) if retry and recovery else None,
+        )
+
     def update_build_banner(self):
         app = self.get_application()
         refresh = app.build_refresh
@@ -282,7 +304,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         menu = Gio.Menu()
         menu.append_item(self.rename_item())
         menu.append(text("common.exportEllipsis"), "win.export")
-        if self.get_application().meeting_trash.allowed(row.meeting, self):
+        if self.get_application().meeting_trash.allowed(row.meeting, self) or (
+            row.meeting.published_file is not None and not row.meeting.metadata_editable
+        ):
             section = Gio.Menu()
             from .meeting_trash import menu_item
 
@@ -548,14 +572,7 @@ class LibraryWindow(Adw.ApplicationWindow):
     def capture_changed(self):
         # Level messages arrive at 10 Hz. Update meters, scanning only on a
         # controller phase change; date grouping stays on the one-second tick.
-        activity = dict(self._activity_source.snapshot) if self._activity_source else dict(self._fixture_activity)
-        app = self.get_application()
-        activity.update(recorder_activity(app.get_windows() + [app]))
-        from .library import meeting_id
-
-        for state in app._browser_snapshot.get("statuses", []):
-            if state.get("recording") and isinstance(state.get("path"), str):
-                activity[meeting_id(Path(state["path"]))] = "saving" if state.get("stopping") else "recording"
+        activity = application_activity(self.get_application(), self._activity_source, self._fixture_activity)
         if activity != self._activity:
             self._activity = activity
             self.monitor.refresh_now()
@@ -578,14 +595,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         refresh = self.get_application().build_refresh
         if refresh:
             refresh.capture_changed()
-        activity = dict(self._activity_source.snapshot) if self._activity_source else dict(self._fixture_activity)
-        app = self.get_application()
-        activity.update(recorder_activity(app.get_windows() + [app]))
-        from .library import meeting_id
-
-        for state in app._browser_snapshot.get("statuses", []):
-            if state.get("recording") and isinstance(state.get("path"), str):
-                activity[meeting_id(Path(state["path"]))] = "saving" if state.get("stopping") else "recording"
+        activity = application_activity(self.get_application(), self._activity_source, self._fixture_activity)
         if activity != self._activity:
             self._activity = activity
             self.monitor.refresh_now()
@@ -723,7 +733,9 @@ class LibraryWindow(Adw.ApplicationWindow):
                 received=meeting.origin == "received",
             ),
             meeting.speakers,
-            tuple(self.get_application().voice_store.has_match(meeting.directory, s.id) for s in meeting.speakers),
+            tuple(self.get_application().voice_store.has_match(meeting.directory, s.id) for s in meeting.speakers)
+            if meeting.metadata_editable
+            else (),
             meeting.preview_turns,
             meeting.has_audio,
             meeting.legacy_transcript_file,
@@ -731,6 +743,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             meeting.transcript,
             meeting.eta_minutes,
             meeting.error,
+            meeting.publication_notice,
             tuple(t.start_offset_ms for t in meeting.tracks),
             (meeting.metadata.get("received") or {}).get("originalFolderName"),
         )
@@ -760,10 +773,15 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
 
     def _updated(self, snapshot):
+        if recovery := getattr(self.get_application(), "library_recovery", None):
+            recovery.observe(snapshot)
+            snapshot = recovery.project(snapshot)
         snapshot = self.get_application().meeting_trash.project(snapshot)
         fresh_scan = snapshot is not self.snapshot
         self.get_application().observe_library(snapshot, self._observed_phases)
-        self._observed_phases = {m.key: (m.lifecycle, m.capture_state) for m in snapshot.meetings}
+        self._observed_phases = {
+            m.key: (m.lifecycle, m.capture_state, m.published_file is not None) for m in snapshot.meetings
+        }
         self.snapshot = snapshot
         from .library_location import initial_root, music_directory, primary
 
@@ -983,6 +1001,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         from .inline_line import InlineLine
 
         writing = getattr(self.get_application(), "writing_available", True)
+        publication = self.publication_line(meeting)
+        if publication:
+            self.preview.append(publication)
         trash_error = self.trash_error_line(meeting)
         if trash_error:
             self.preview.append(trash_error)
@@ -1110,9 +1131,10 @@ class LibraryWindow(Adw.ApplicationWindow):
     def _ensure_player(self, meeting):
         if self._loaded_key == meeting.key and self._loaded_directory == meeting.directory:
             return not self._playback_failed
-        if not meeting.has_audio or (meeting.origin == "own" and not FolderPlayer.can_play(meeting)):
+        use_file = meeting.audio_file is not None
+        if not meeting.has_audio or (not use_file and not FolderPlayer.can_play(meeting)):
             return False
-        desired = FolderPlayer if meeting.origin == "own" else Player
+        desired = Player if use_file else FolderPlayer
         if type(self.player) is not desired:
             self.player.shutdown()
             self.player = desired()
@@ -1164,7 +1186,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._refresh_export()
             return
         if not self._ensure_player(meeting):
-            desired = FolderPlayer if meeting.origin == "own" else Player
+            desired = Player if meeting.audio_file is not None else FolderPlayer
             self.player.shutdown()
             self.player = desired()
             self.player.set_rate(self._rate)
@@ -1234,8 +1256,6 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.set_title(self.meeting_page.meeting.title if self.meeting_page else text("app.name"))
 
     def open_file(self, file):
-        from pathlib import Path
-
         from .open_meeting import load_open_meeting
         from .received import import_received
 

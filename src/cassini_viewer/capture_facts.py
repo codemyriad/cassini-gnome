@@ -5,8 +5,9 @@ import os
 from fractions import Fraction
 from pathlib import Path
 
+from .library_edits import mutation as transaction
 from .library_files import regular
-from .meeting_store import metadata_transaction, read_metadata, update_metadata
+from .meeting_store import read_metadata, update_metadata
 from .recording_session import strict_json
 
 MAX_INTEGER = 9007199254740991
@@ -57,7 +58,7 @@ def record_end(directory, reason, *, manifest=None):
     end = dict(reason=reason)
     if ends and max(ends) <= MAX_INTEGER:
         end["atMs"] = max(ends)
-    with metadata_transaction(directory):
+    with transaction(directory):
         current = read_metadata(directory)
         details = dict(current.get("recordingDetails", {}))
         previous = dict(details.get("end", {}))

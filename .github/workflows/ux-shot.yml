@@ -17,7 +17,7 @@ jobs:
       - name: Install GTK and pinned screenshot fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0 \
+          sudo apt-get install -y python3-gi python3-numpy gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0 \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good meson ninja-build gettext \
             libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream xvfb xauth xdotool dbus-x11 \
             locales fontconfig python3-pil python3-pytest at-spi2-core gir1.2-atspi-2.0 libzstd1 fonts-cantarell=0.303.1-4 fonts-inter=4.1+ds-1
@@ -91,6 +91,7 @@ jobs:
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/companion-sandbox.py ux-artifacts/companion-sandbox.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/what-is-recorded.py ux-artifacts/what-is-recorded.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/library-move.py ux-artifacts/library-move-gui.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/library-publication.py ux-artifacts/library-publication-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speech-models.py ux-artifacts/speech-models.png
           CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speech-models.py ux-artifacts/dark/speech-models.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/diarization-models.py ux-artifacts/diarization-models.png

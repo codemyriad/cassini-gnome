@@ -8080,6 +8080,71 @@
    "milestone": "D18.1",
    "status": "harmony",
    "note": "Coordinator (D18.1). Recording details, only for observed mute facts (recordingDetails.audioHealth.outputMuted), never inferred from quiet audio."
+  },
+  {
+   "id": "library.publishFailed",
+   "en": "Couldn’t save this meeting as a Cassini file. The original audio is kept.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D44",
+   "status": "harmony",
+   "note": "Coordinator (D48, R56). Shown on the meeting row/page when publishing the stopped capture as a Library Cassini file fails. Action common.tryAgain."
+  },
+  {
+   "id": "library.publishDiskLow",
+   "en": "There isn’t enough space to save this meeting as a Cassini file. The original audio is kept.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D44",
+   "status": "harmony",
+   "note": "Coordinator (D48, R56). Publish failed for lack of disk space. Action common.tryAgain; the user frees space first."
+  },
+  {
+   "id": "library.publishNoAudio",
+   "en": "No audio was recorded. The recording details are kept.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D44",
+   "status": "harmony",
+   "note": "Coordinator (D48, R56). Every source recorded zero frames. No retry action; nothing to publish."
+  },
+  {
+   "id": "library.publishSourcesEmpty",
+   "en": "Some sources recorded no audio. The other audio is saved.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D44",
+   "status": "harmony",
+   "note": "Coordinator (D48, R56). Published, but one or more sources had zero frames. No action; Details names the empty sources."
+  },
+  {
+   "id": "library.publishedMissing",
+   "en": "This meeting’s Cassini file is missing.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "info",
+   "boards": [],
+   "milestone": "D44",
+   "status": "harmony",
+   "note": "Coordinator (D48, R56). The Library row's published file is gone from disk. Action: show the Library folder. Never call it interrupted and never silently re-publish it."
   }
  ]
 }

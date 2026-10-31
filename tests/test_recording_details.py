@@ -179,6 +179,6 @@ def test_default_capture_directory_is_canonical_under_symlinked_library(tmp_path
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(link))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     session = RecordingSession(None)
-    assert session.directory.parent == real
+    assert session.directory.parent == real / ".cassini/sessions"
     assert session.directory == session.directory.resolve()
     session.finish()

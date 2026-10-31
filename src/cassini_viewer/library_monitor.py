@@ -51,6 +51,11 @@ class LibraryMonitor:
                 roots.add(resolved)
                 resolved_roots.append(resolved)
                 targets.update((self._ancestor(resolved), self._ancestor(resolved.parent)))
+                # These may appear after bootstrap. Watching their nearest
+                # existing ancestors closes the creation -> first scan race.
+                for hidden in (resolved / ".cassini", resolved / ".cassini/sessions", resolved / ".cassini/journal"):
+                    if not (resolved / ".cassini").is_symlink() and not hidden.is_symlink():
+                        targets.add(self._ancestor(hidden))
         return roots, targets, tuple(resolved_roots)
 
     def _add_watches(self, paths, roots, existing, created):
@@ -82,15 +87,18 @@ class LibraryMonitor:
             if changed is None:
                 directories = set()
                 for root in resolved:
-                    try:
-                        with os.scandir(root) as entries:
-                            directories.update(
-                                Path(entry.path)
-                                for entry in entries
-                                if meeting_id(Path(entry.name)) and entry.is_dir(follow_symlinks=False)
-                            )
-                    except OSError:
-                        pass
+                    for parent in (root, root / ".cassini/sessions"):
+                        try:
+                            if parent.is_symlink() or (root / ".cassini").is_symlink():
+                                continue
+                            with os.scandir(parent) as entries:
+                                directories.update(
+                                    Path(entry.path)
+                                    for entry in entries
+                                    if meeting_id(Path(entry.name)) and entry.is_dir(follow_symlinks=False)
+                                )
+                        except OSError:
+                            pass
             self._add_watches(directories, roots, existing, created)
             snapshot = self.scanner.scan(capture_activity=activity, changed_directories=changed)
             new_roots, new_targets, _resolved = self._watch_roots()
@@ -128,6 +136,14 @@ class LibraryMonitor:
             if name is None:
                 continue
             path = Path(name)
+            if any(
+                path.parent == r
+                and (path.name == ".cassini" or path.suffix == ".opus")
+                or path.parent in (r / ".cassini", r / ".cassini/sessions", r / ".cassini/journal")
+                for r in roots
+            ):
+                self.refresh()
+                return
             if any(path == r or path in r.parents or path.parent == r and meeting_id(path) for r in roots):
                 self.refresh()
                 return

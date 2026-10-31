@@ -4,6 +4,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from broker_fixture import stop_broker
 
 from cassini_viewer.browser_service import BrowserService, connect, read_packet, request, send_packet
 
@@ -45,9 +46,7 @@ def service(tmp_path):
     thread.start()
     assert ready.wait(2)
     yield service, path
-    service.closed.set()
-    thread.join(2)
-    assert not thread.is_alive()
+    stop_broker(service, thread, path)
 
 
 def wait_for(check):

@@ -5,6 +5,7 @@ import math
 import time
 
 from .meeting_store import atomic_json
+from .transcript import normalize_quote_items
 
 
 class TranscriptPublisher:
@@ -45,7 +46,7 @@ class TranscriptPublisher:
             if self.published and count < self.published + max(32, math.ceil(self.published / 8)):
                 return False
         ordered = sorted(self.words, key=lambda word: (word["startMs"], word["_order"]))
-        body = [{key: value for key, value in word.items() if key != "_order"} for word in ordered]
+        body = normalize_quote_items({key: value for key, value in word.items() if key != "_order"} for word in ordered)
         value = dict(format="cassini.words.v1", language=self.language, items=body)
         if self.check_active is None:
             atomic_json(self.directory / "transcript.json", value)

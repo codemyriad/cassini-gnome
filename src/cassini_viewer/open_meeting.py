@@ -24,7 +24,7 @@ def load_open_meeting(path, root=None):
     except ValueError:
         owned = False
     if path.name == "session.json" or path.is_dir() or owned and directory.name.startswith("Received-"):
-        snapshot = LibraryScanner(directory.parent).scan(changed_directories={directory})
+        snapshot = LibraryScanner.for_meeting(directory).scan(changed_directories={directory})
         meeting = next((m for m in snapshot.meetings if m.directory == directory), None)
         if meeting is not None and (path.is_dir() or path.name == "session.json" or meeting.audio_file == path):
             return replace(meeting, metadata_editable=meeting.metadata_editable and owned)
@@ -67,7 +67,7 @@ def load_open_meeting(path, root=None):
         has_audio=duration is not None,
         words=words,
         turns=reading_turns(sorted(words, key=lambda w: w.start_ms)),
-        speakers=_speakers(words, [], embedded),
+        speakers=_speakers(words, [], embedded, stored_labels=True),
         metadata_editable=False,
         notes=embedded_notes(embedded),
         extensions=embedded.manifest.get("x", {})

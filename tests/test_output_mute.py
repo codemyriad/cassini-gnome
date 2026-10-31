@@ -205,14 +205,16 @@ def _metadata_process(directory, role, ready, release, waiting):
 
 
 @pytest.mark.parametrize("first", ["rename", "history"])
-def test_metadata_edits_serialize_across_processes_at_commit(tmp_path, first):
+@pytest.mark.parametrize("managed", [False, True])
+def test_metadata_edits_serialize_across_processes_at_commit(tmp_path, first, managed):
     import multiprocessing
 
+    from cassini_viewer.library_publication import capture_parent
     from cassini_viewer.meeting_store import read_metadata
     from cassini_viewer.output_mute import intervals
     from cassini_viewer.recording_session import RecordingSession
 
-    session = RecordingSession(tmp_path)
+    session = RecordingSession(capture_parent(tmp_path) if managed else tmp_path)
     ctx = multiprocessing.get_context("spawn")
     ready, release, waiting = ctx.Event(), ctx.Event(), ctx.Event()
     one = ctx.Process(target=_metadata_process, args=(session.directory, first, ready, release, None))
@@ -325,7 +327,7 @@ def test_delayed_device_query_does_not_block_pcm_or_error_handling(tmp_path, mon
     if kind == "native":
         capture = NativeRecorder()
         capture._stop_requested = False
-        capture.session, capture.pipeline = session, object()
+        capture.session, capture.pipeline = session, SimpleNamespace(get_base_time=lambda: 0)
         capture._start_us = GLib.get_monotonic_time()
         capture._track_ids = {"system": "system"}
         capture._branches = {"system": object()}
@@ -338,7 +340,7 @@ def test_delayed_device_query_does_not_block_pcm_or_error_handling(tmp_path, mon
         sample = Gst.Sample.new(buffer, None, None, None)
 
         def pcm_and_error():
-            capture._sample(SimpleNamespace(emit=lambda _: sample), "system")
+            assert capture._sample(SimpleNamespace(emit=lambda _: sample), "system") == Gst.FlowReturn.OK
             progressed.set()
 
         def retire():

@@ -5,7 +5,8 @@ from pathlib import Path
 
 from . import library_location as location
 from .library import LibraryScanner, meeting_id
-from .meeting_store import LOCK, read_metadata, update_metadata
+from .library_edits import transaction
+from .meeting_store import read_metadata, update_metadata
 
 
 def title_value(value):
@@ -32,14 +33,14 @@ def renames(meeting, metadata, title):
 
 def rename_meeting(directory, value):
     title = title_value(value)
-    with location.routing(), LOCK:
+    with location.routing(), transaction(directory):
         directory = location.owned_directory(Path(directory))
         if location.capture_busy(meeting_id(directory)):
             raise ValueError("The meeting is still recording or saving")
         meeting = next(
             (
                 m
-                for m in LibraryScanner(directory.parent).scan(changed_directories={directory}).meetings
+                for m in LibraryScanner.for_meeting(directory).scan(changed_directories={directory}).meetings
                 if m.directory == directory
             ),
             None,

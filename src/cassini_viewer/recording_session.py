@@ -218,32 +218,69 @@ class WAVWriter:
             self.file.close()
 
 
+def recording_utc_offset(instant):
+    """Record the site's offset at capture start, not the Library's later zone."""
+    try:
+        offset = instant.astimezone().utcoffset()
+    except (OSError, OverflowError, ValueError):
+        return None
+    if offset is None or offset.total_seconds() % 60:
+        return None
+    minutes = int(offset.total_seconds() / 60)
+    return minutes if -720 <= minutes <= 840 else None
+
+
 class RecordingSession:
     def __init__(
-        self, parent, title="Browser recording", source="chromium", *, clock=time.monotonic, writer_factory=WAVWriter
+        self,
+        parent,
+        title="Browser recording",
+        source="chromium",
+        *,
+        clock=time.monotonic,
+        writer_factory=WAVWriter,
+        started_at=None,
     ):
         from contextlib import nullcontext
 
         from .library_location import capture_lease, primary, routing
 
+        instant = datetime.now(UTC) if started_at is None else started_at
+        if not isinstance(instant, datetime) or instant.tzinfo is None or instant.utcoffset() is None:
+            raise ProtocolError("state", "Recording start must be an absolute time")
+        instant = instant.astimezone(UTC)
+        offset = recording_utc_offset(instant)
         self._lease_fd = None
         default_parent = parent is None
         with routing() if parent is None else nullcontext():
-            parent = primary().resolve() if parent is None else parent
+            if parent is None:
+                from .library_publication import capture_parent
+
+                parent = capture_parent(primary())
             self.clock = clock
             self.writer_factory = writer_factory
             identifier = str(uuid4())
             self.directory = Path(parent) / f"Recording-{identifier}"
             self.directory.mkdir(mode=0o700, parents=True)
+            from .library_publication import root_for
+            from .library_v2.fsutil import fsync_dir
+
+            self.library_root = root_for(self.directory)
+            if self.library_root is not None:
+                fsync_dir(self.directory.parent)
+            self._native_clock_origin_ns = time.monotonic_ns()
+            self._native_clocks = {}
             self.manifest = {
                 "version": 1,
                 "id": identifier,
-                "createdAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "createdAt": instant.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "title": optional_string(title, "Browser recording", "state")[:500],
                 "source": source,
                 "state": "recording",
                 "tracks": [],
             }
+            if offset is not None:
+                self.manifest["startedAtUtcOffsetMinutes"] = offset
             self.writers = {}
             self.finished = False
             self._native_io_error = None
@@ -258,6 +295,15 @@ class RecordingSession:
     def checkpoint(self):
         if self._changing:
             return
+        for writer in self.writers.values():
+            snapshot = getattr(writer, "snapshot", None)
+            if snapshot:
+                snapshot()
+        for track in self.manifest["tracks"]:
+            if track.get("spans"):
+                continue
+            if (clock := self._native_clocks.get(track["id"])) and (anchors := clock.values()):
+                track["clockAnchors"] = anchors
         path = self.directory / "session.json"
         temporary = path.with_suffix(".tmp")
         for writer in self.writers.values():
@@ -336,7 +382,12 @@ class RecordingSession:
         if filename is not None and filename not in ("track-microphone.wav", "track-system.wav"):
             raise ProtocolError("source", "Invalid native track filename")
         filename = filename or f"track-{uuid4()}.wav"
-        self.writers[identifier] = self.writer_factory(self.directory / filename, rate, channels)
+        writer = self.writer_factory(self.directory / filename, rate, channels)
+        if self.library_root is not None and isinstance(writer, WAVWriter):
+            from .rotating_wav import RotatingWAV
+
+            writer = RotatingWAV(self, identifier, writer)
+        self.writers[identifier] = writer
         self.manifest["tracks"].append(
             {
                 "id": identifier,
@@ -367,7 +418,7 @@ class RecordingSession:
         if self.clock() - self._last_checkpoint >= 1:
             self.checkpoint()
 
-    def append_native(self, identifier, data, offset, *, gap_frames=0):
+    def append_native(self, identifier, data, offset, *, gap_frames=0, host_ns=None):
         if self.finished or identifier not in self.writers:
             raise ProtocolError("chunk", "Invalid native audio source")
         writer = self.writers[identifier]
@@ -391,19 +442,30 @@ class RecordingSession:
             if gap_frames:
                 before = writer.frames
                 try:
-                    writer.silence(gap_frames)
+                    silence = getattr(writer, "silence_gap", writer.silence)
+                    silence(gap_frames)
                 finally:
                     written = writer.frames - before
                     if written:
                         track["gapFrames"] = track.get("gapFrames", 0) + written
                     track["frames"] = writer.frames
+            if self.library_root is not None and host_ns is not None:
+                from .capture_clock import ClockAnchors
+
+                clock = self._native_clocks.get(identifier)
+                if clock is None:
+                    clock = self._native_clocks[identifier] = ClockAnchors(writer.rate, self._native_clock_origin_ns)
+                index = writer.frames
+                clock.add(index, host_ns)
+                if hasattr(writer, "observe_clock"):
+                    writer.observe_clock(host_ns)
             self.append(identifier, data, offset)
         except Exception as error:
             self._native_io_error = str(error)
             track["frames"] = writer.frames
             raise
 
-    def finish(self, problem=None, *, problem_kind=None, reason=None, at_ms=None):
+    def finish(self, problem=None, *, problem_kind=None, reason=None, at_ms=None, retain_lease=False):
         from .capture_sources import change_time
         from .session_events import END_REASONS, append_events
 
@@ -455,11 +517,16 @@ class RecordingSession:
         try:
             self.checkpoint()
         finally:
-            if self._lease_fd is not None:
-                os.close(self._lease_fd)
-                self._lease_fd = None
+            if not retain_lease:
+                self.release_lease()
         if failure:
             raise failure
+
+    def release_lease(self):
+        """Release ownership only after publication/cancellation has finished."""
+        if self._lease_fd is not None:
+            os.close(self._lease_fd)
+            self._lease_fd = None
 
 
 class BrowserHost:
@@ -470,7 +537,7 @@ class BrowserHost:
         self.stopped = False
         self.audio_sink = None
 
-    def handle(self, message):
+    def handle(self, message, *, started_at=None):
         kind = message.get("type")
         if kind not in ("start", "track", "audio", "stop"):
             raise ProtocolError("version", "Unknown browser message type")
@@ -482,7 +549,7 @@ class BrowserHost:
             if type(version) is not int or version != 1:
                 raise ProtocolError("version", "Unsupported browser recording protocol version")
             title = optional_string(message.get("title"), "Browser recording", "state")
-            self.session = RecordingSession(self.directory, title)
+            self.session = RecordingSession(self.directory, title, started_at=started_at)
             return {"type": "started", "path": str(self.session.directory)}
         if self.session is None or self.stopped:
             raise ProtocolError("state", "No active recording")
@@ -687,7 +754,18 @@ def _load_session(path, fd, regular, track_source):
     tracks = manifest["tracks"]
     if len(tracks) > 64:
         raise ValueError("Invalid recording tracks")
+    physical_tracks = []
     for track in tracks:
+        if not isinstance(track, dict):
+            raise ValueError("Invalid recording track")
+        spans = track.get("spans")
+        if spans is None:
+            physical_tracks.append(track)
+        elif not isinstance(spans, list) or not spans or len(spans) > 4096:
+            raise ValueError("Invalid recording spans")
+        else:
+            physical_tracks.extend(spans)
+    for track in physical_tracks:
         if not isinstance(track, dict) or not isinstance(track.get("file"), str):
             raise ValueError("Invalid recording track")
         if "codec" in track:
@@ -710,4 +788,7 @@ def _load_session(path, fd, regular, track_source):
             type(offset) not in (int, float) or not 0 <= offset <= 86400000 or not math.isfinite(offset)
         ):
             raise ValueError("Invalid recording track offset")
+    for track in tracks:
+        if isinstance(track.get("spans"), list):
+            track["frames"] = sum(span["frames"] for span in track["spans"])
     return manifest

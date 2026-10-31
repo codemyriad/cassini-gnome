@@ -148,3 +148,18 @@ def test_saved_notification_waits_for_readable_finished_audio_and_releases_its_h
         close(comfort)
         if not capture.finished:
             capture.finish()
+
+
+def test_stopping_browser_capture_stays_active_while_publication_finishes(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    capture = session(tmp_path, "Saving browser call", "chromium")
+    meeting = live_meeting(capture.directory, "recording")
+    app = application({}, browser=dict(statuses=[dict(recording=False, stopping=True, path=str(capture.directory))]))
+    comfort = RecordingComfort(app, automatic=False)
+    comfort.known[meeting.key] = meeting
+    try:
+        assert set(comfort.active()) == {meeting.key}
+        assert comfort.active()[meeting.key].lifecycle == "saving"
+    finally:
+        close(comfort)
+        capture.finish()

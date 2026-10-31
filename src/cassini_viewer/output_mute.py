@@ -88,14 +88,15 @@ class MuteHistory:
         self.active = None  # (track id, actual monitor device)
 
     def observe(self, track, monitor, muted, at_ms):
-        from .meeting_store import metadata_transaction, read_metadata, update_metadata
+        from .library_edits import mutation as transaction
+        from .meeting_store import read_metadata, update_metadata
 
         identity = (track, monitor) if track and monitor else None
         end = self.active is not None and (identity != self.active or muted is False)
         begin = identity is not None and muted is True and (self.active is None or end)
         if not end and not begin:
             return
-        with metadata_transaction(self.directory):
+        with transaction(self.directory):
             current = read_metadata(self.directory)
             details = dict(current.get("recordingDetails", {}))
             health = dict(details.get("audioHealth", {}))

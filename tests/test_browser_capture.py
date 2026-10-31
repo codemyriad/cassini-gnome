@@ -10,6 +10,7 @@ import wave
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from broker_fixture import stop_broker
 
 from cassini_viewer.browser_audio_proxy import BrowserAudioProxy
 from cassini_viewer.browser_service import BrowserService, request
@@ -48,9 +49,7 @@ def server(tmp_path):
     worker.start()
     assert ready.wait(2)
     yield service, path, tmp_path / "library"
-    service.closed.set()
-    worker.join(2)
-    assert not worker.is_alive()
+    stop_broker(service, worker, path)
 
 
 def start(client, identifier, *, microphone=True):

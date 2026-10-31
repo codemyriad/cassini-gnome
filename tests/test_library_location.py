@@ -37,7 +37,7 @@ def test_destination_publishes_immediately_and_preexisting_host_uses_it(roots):
     location.request(new)
     assert library_root() == new and recording.directory.exists()
     path = browser.handle(dict(type="start"))["path"]
-    assert browser.session.directory.parent == new and str(new) in path
+    assert browser.session.directory.parent == new / ".cassini/sessions" and str(new) in path
     browser.handle(dict(type="stop"))
     location.process()
     assert not recording.directory.exists() and (new / recording.directory.name).is_dir()
@@ -148,7 +148,7 @@ def test_new_recording_does_not_wait_for_old_meeting_copy(roots, monkeypatch):
         started = pool.submit(browser.handle, dict(type="start"))
         try:
             started.result(timeout=2)
-            assert browser.session.directory.parent == new
+            assert browser.session.directory.parent == new / ".cassini/sessions"
         finally:
             proceed.set()
         moving.result(timeout=5)
@@ -180,7 +180,7 @@ def test_two_capture_leases_are_independent_and_stop_moves_only_the_idle_one(roo
     assert not one.exists() and two.exists()
     second.handle(dict(type="stop"))
     assert location.process()["pending"] == []
-    assert (new / one.name).is_dir() and (new / two.name).is_dir()
+    assert (new / ".cassini/sessions" / one.name).is_dir() and (new / ".cassini/sessions" / two.name).is_dir()
 
 
 def test_import_in_progress_publishes_into_new_primary_without_blocking_routing(roots, monkeypatch):
@@ -333,12 +333,15 @@ def test_default_capture_and_late_edits_follow_canonical_move_from_a_symlink(roo
     browser = BrowserHost()
     browser.handle(dict(type="start"))
     directory = browser.session.directory
-    assert directory.parent == old
+    assert directory.parent == old / ".cassini/sessions"
     browser.handle(dict(type="stop"))
     location.request(new)
     assert location.process()["pending"] == []
-    edit_recording(link / directory.name, title="Edit queued at the old symlink")
-    assert location.owned_directory(link / directory.name) == new / directory.name
+    edit_recording(link / ".cassini/sessions" / directory.name, title="Edit queued at the old symlink")
+    assert (
+        location.owned_directory(link / ".cassini/sessions" / directory.name)
+        == new / ".cassini/sessions" / directory.name
+    )
 
 
 def test_trash_discards_its_pending_move_and_aliases_only(roots):
@@ -382,7 +385,7 @@ def test_flatpak_default_uses_only_host_backed_storage(tmp_path, monkeypatch, mo
     assert location.initial_root() == expected
     recording = RecordingSession(None, source="gnome", title="Persistent")
     try:
-        assert recording.directory.parent == expected
+        assert recording.directory.parent == expected / ".cassini/sessions"
     finally:
         recording.finish()
 
