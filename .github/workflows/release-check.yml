@@ -26,7 +26,7 @@ jobs:
     name: Version and release metadata
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Check every package version and the proposed tag name without creating it
         run: |
           version=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -n1)
@@ -46,7 +46,7 @@ jobs:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
       options: --privileged
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
         with:
           bundle: cassini-talk.flatpak
