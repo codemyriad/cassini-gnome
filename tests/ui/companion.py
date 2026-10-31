@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Real setup dialog, per-user writes, pending/failure/retry and handshake gating."""
 
-import json
 import os
 import re
 import shutil
