@@ -156,8 +156,13 @@ class PublishedIndex:
                     publication_notice="library.publishedMissing",
                     metadata_editable=False,
                     has_audio=False,
+                    transcript="none",
+                    eta_minutes=None,
+                    error=None,
+                    speakers=(),
                     words=(),
                     preview_turns=(),
+                    turns=(),
                     quote_line=None,
                     diagnostics=(*meeting.diagnostics, Diagnostic(meeting.directory, "published-file-missing")),
                 )

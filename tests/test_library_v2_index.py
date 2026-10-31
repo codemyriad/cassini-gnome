@@ -66,12 +66,27 @@ def test_root_file_is_complete_without_the_hidden_session(tmp_path):
 
 
 def test_missing_published_file_is_not_an_interrupted_recording(tmp_path):
+    from cassini_viewer import portable
+    from cassini_viewer.meeting_store import update_metadata
+
     sid, _directory = simple_session(tmp_path, 0.1)
     result = finalize.finalize(tmp_path, sid, zone="Europe/Rome")
+    update_metadata(
+        _directory,
+        speakers=[dict(id="a", name=None, provenance="unnamed", colourIndex=0)],
+        transcript=dict(status="done", reference=None),
+        transcript_body=dict(
+            format=portable.WORDS_FORMAT, items=[dict(speaker="a", startMs=0, endMs=90, text="File words")]
+        ),
+    )
+    update_metadata(_directory, transient=True, transcript=dict(status="queued", reference=None))
     (tmp_path / result.name).unlink()
     (meeting,) = LibraryScanner(tmp_path).scan().meetings
     assert meeting.id == sid and meeting.published_missing
     assert meeting.interrupted_at_ms is None and not meeting.can_write_down
+    assert meeting.publication_notice == "library.publishedMissing" and not meeting.has_audio
+    assert meeting.transcript == "none" and not meeting.words and not meeting.turns and not meeting.speakers
+    assert meeting.badge() is None
     assert any(d.code == "published-file-missing" for d in meeting.diagnostics)
 
 
