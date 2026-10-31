@@ -167,6 +167,8 @@ class Meeting(MeetingState):
     capture_state: str | None = None
     capture_events: tuple[dict, ...] = ()
     audio_file: Path | None = None
+    published_file: Path | None = None
+    published_missing: bool = False
     audio_size_bytes: int | None = None
     legacy_transcript_file: Path | None = None
     has_audio: bool = False
@@ -211,7 +213,8 @@ class Meeting(MeetingState):
     @property
     def can_write_down(self):
         return (
-            (super().can_write_down or self.lifecycle == "saved" and self.no_speech)
+            not self.published_missing
+            and (super().can_write_down or self.lifecycle == "saved" and self.no_speech)
             and self.has_audio
             and self.metadata_editable
         )
@@ -315,7 +318,8 @@ class LibraryScanner:
     the root. One lock serializes scans/caches, including worker-thread callers.
     """
 
-    def __init__(self, root=None):
+    def __init__(self, root=None, *, include_published=True):
+        self.include_published = include_published
         self.root = library_root(root)
         self._lock = threading.RLock()
         self._files = FileCache()
@@ -324,6 +328,7 @@ class LibraryScanner:
         self._folder_diagnostics = {}
         self._directories = {}
         self._preview_cache = {}
+        self._published_index = None
 
     def scan(self, *, capture_activity=None, changed_directories=None):
         with self._lock:
@@ -421,11 +426,19 @@ class LibraryScanner:
                 else:
                     self._rows[name] = meeting
             diagnostics.extend(self._folder_diagnostics.values())
-            return LibrarySnapshot(
+            snapshot = LibrarySnapshot(
                 tuple(sorted(self._rows.values(), key=_sort)),
                 tuple(diagnostics),
                 directories=tuple(sorted(self._directories.values())),
             )
+            if not self.include_published:
+                return snapshot
+            # Keep v1 folders readable while new recordings publish root files.
+            from .library_v2_index import PublishedIndex
+
+            if self._published_index is None:
+                self._published_index = PublishedIndex(self)
+            return self._published_index.combine(snapshot, activity)
         except OSError:
             return LibrarySnapshot(diagnostics=(Diagnostic(self.root, "library-unreadable"),), unavailable=True)
         finally:

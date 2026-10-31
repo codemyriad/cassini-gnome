@@ -133,6 +133,7 @@ viewer_sources = files(
   'cassini_viewer/strings.py',
   'cassini_viewer/strings.json',
   'cassini_viewer/library.py',
+  'cassini_viewer/library_v2_index.py',
   'cassini_viewer/library_files.py',
   'cassini_viewer/track_source.py',
   'cassini_viewer/library_schema.py',
