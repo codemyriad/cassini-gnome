@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install headless Python and GFileMonitor test dependencies
         run: |
           sudo apt-get update
@@ -33,7 +33,7 @@ jobs:
           result={'expected':expected,'passed':passed,'goldenSource':json.loads((root/'UPSTREAM.json').read_text())}
           Path('ux-artifacts/vector-results.json').write_text(json.dumps(result,indent=2)+'\n')
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: gnome-ux-library-vectors

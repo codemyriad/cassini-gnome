@@ -15,7 +15,7 @@ jobs:
     outputs:
       run_id: ${{ steps.main.outputs.run_id }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Require the tag to match every source and package version
         run: python3 build-aux/ci/release_metadata.py --tag "$GITHUB_REF_NAME"
       - name: Require all main checks and the five package artifacts
@@ -29,14 +29,14 @@ jobs:
     needs: main-inputs
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           github-token: ${{ github.token }}
           run-id: ${{ needs.main-inputs.outputs.run_id }}
           pattern: deb-*
           merge-multiple: true
           path: dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-deb
           path: dist/*.deb
@@ -47,20 +47,20 @@ jobs:
     needs: main-inputs
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           github-token: ${{ github.token }}
           run-id: ${{ needs.main-inputs.outputs.run_id }}
           pattern: rpm-*
           merge-multiple: true
           path: dist
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           github-token: ${{ github.token }}
           run-id: ${{ needs.main-inputs.outputs.run_id }}
           name: arch
           path: dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-packages
           path: dist/*
@@ -74,7 +74,7 @@ jobs:
     needs: [deb, packages, flatpak]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true

@@ -19,14 +19,14 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v5
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: deb-0
           path: _desktop-packages/deb
           github-token: ${{ github.token }}
           run-id: ${{ inputs.package_run || github.run_id }}
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: cassini-talk-devel-x86_64.flatpak
           path: _desktop-packages/flatpak
@@ -40,7 +40,7 @@ jobs:
         run: |
           CASSINI_DESKTOP_FLATPAK_CACHE="$PWD/.desktop-flatpak-cache" \
             tests/desktop/run.sh _desktop-packages/deb/cassini-talk_*.deb _desktop-packages/flatpak/*.flatpak desktop-evidence
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: background-apps-desktop
