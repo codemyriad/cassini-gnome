@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 CALL_END_GRACE = 2
 BROWSER_RETURN_GRACE = 120
+# D43: a control-worker reconnect is separate from losing page/audio input.
+CONTROL_RECONNECT_GRACE = 10
 
 
 @dataclass

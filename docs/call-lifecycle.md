@@ -27,6 +27,16 @@ metadata and retains every proposed WAV, including when recovery cannot sync it.
 A dead native connection (for example a browser worker restart) is not presented
 as a restored source; its working system fallback stays selected.
 
+A control-worker reconnect has its own bounded 10-second rediscovery window
+(D43.1). It is keyed by the original browser instance and tab, and preserves the
+existing capture only while fresh PCM continues on its retained audio connection.
+A replacement worker may report status before its tab inventory; it adopts only
+the tabs it actually reports. Another profile or browser cannot extend the window,
+and retiring an overlapping old worker cannot detach the replacement. A stalled
+or closed audio connection still triggers the ordinary fallback, and an explicit
+closed tab or ended call keeps its 2-second policy. The 120-second return deadline
+starts at the original control loss and is never reset by a half-reconnect.
+
 Every actual stop writes one terminal session event: `user`, `callEnded`,
 `tabClosed`, `pageGone`, `disk`, `error` or `appQuit`. Accepted PCM is finalized
 before the event and saved state are checkpointed. Its timestamp is at least

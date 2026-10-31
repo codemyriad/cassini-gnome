@@ -2,7 +2,6 @@
 """Separate native PCM tracks on one GStreamer clock, checkpointed off GTK."""
 
 import contextlib
-import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
