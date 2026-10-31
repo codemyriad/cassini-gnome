@@ -3,7 +3,7 @@
 
 import contextlib
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
 from uuid import uuid4
 
@@ -52,10 +52,13 @@ class NativeRecorder(GObject.Object):
         self._retired_branches = set()
         self._timelines = {}
         self._ac_meters = {}
+        self._publication_cancel = threading.Event()
+        self._publication_future = None
+        self.publication = None
 
     @property
     def activity(self):
-        if self.pipeline is None or self.session is None:
+        if self.session is None or not (self.pipeline is not None or self.starting or self.stopping or self._finishing):
             return {}
         return {self.session.manifest["id"]: "saving" if self.stopping else "recording"}
 
@@ -76,6 +79,9 @@ class NativeRecorder(GObject.Object):
         self._retired_branches = set()
         self._timelines = {}
         self._ac_meters = {}
+        self._publication_cancel.clear()
+        self._publication_future = None
+        self.publication = None
         future = self._executor.submit(self._prepare, Path(parent) if parent is not None else None)
         future.add_done_callback(lambda f: GLib.idle_add(self._prepared, f, test))
 
@@ -392,10 +398,23 @@ class NativeRecorder(GObject.Object):
         at_ms = max(0, (GLib.get_monotonic_time() - self._start_us) / 1000)
 
         def finish():
+            from .library_publication import root_for, submit_stopped
+
             if pipeline is not None:
                 pipeline.set_state(Gst.State.NULL)
-            with self._lock:
-                session.finish(problem, reason=reason, at_ms=at_ms)
+            try:
+                with self._lock:
+                    session.finish(problem, reason=reason, at_ms=at_ms, retain_lease=True)
+                # Encoding never holds the PCM lock or GTK main context.
+                if root_for(session.directory) is not None:
+                    self._publication_future = submit_stopped(session, cancel=self._publication_cancel)
+                    if self._publication_cancel.is_set():
+                        self._publication_future.cancel()
+                    self.publication = self._publication_future.result()
+            except CancelledError:
+                pass  # Completed WAVs and queue intent are recovered next launch.
+            finally:
+                session.release_lease()
 
         future = self._executor.submit(finish)
         future.add_done_callback(lambda f: GLib.idle_add(self._finished, f, pipeline))
@@ -456,3 +475,9 @@ class NativeRecorder(GObject.Object):
         if self.pipeline is not None or self.starting or self.stopping or self._finishing:
             raise RuntimeError("Capture has not finished")
         self._executor.shutdown(wait=False)
+
+    def cancel_publication(self):
+        """An explicit Quit keeps the stopped WAVs without waiting for encode."""
+        self._publication_cancel.set()
+        if self._publication_future is not None:
+            self._publication_future.cancel()

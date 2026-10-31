@@ -364,6 +364,8 @@ def confirm_capture_close(app, window, *, quitting=False, force_stop=False):
                 target.recorder.end_reason = getattr(target.recorder, "end_reason", None) or (
                     "appQuit" if exiting else "user"
                 )
+                if exiting and hasattr(target.recorder, "cancel_publication"):
+                    target.recorder.cancel_publication()
                 target.recorder.stop()
             except Exception:
                 abort()

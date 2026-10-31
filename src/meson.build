@@ -135,6 +135,7 @@ viewer_sources = files(
   'cassini_viewer/library.py',
   'cassini_viewer/library_v2_index.py',
   'cassini_viewer/library_publication.py',
+  'cassini_viewer/library_recovery.py',
   'cassini_viewer/library_edits.py',
   'cassini_viewer/library_files.py',
   'cassini_viewer/track_source.py',

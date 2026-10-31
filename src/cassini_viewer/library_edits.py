@@ -7,8 +7,9 @@ Legacy folders keep their existing metadata-only transaction.
 """
 
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from copy import deepcopy
+from pathlib import Path
 
 from .library_publication import root_for
 from .library_v2 import edit, journal, publish, xschema
@@ -21,6 +22,12 @@ _LOCAL = threading.local()
 def transaction(directory):
     from .meeting_store import LOCK
 
+    directory = Path(directory)
+    if not directory.exists():
+        from .library_location import owned_directory
+
+        with suppress(ValueError):
+            directory = owned_directory(directory)
     root = root_for(directory)
     active = getattr(_LOCAL, "root", None)
     if root is None or root == active:

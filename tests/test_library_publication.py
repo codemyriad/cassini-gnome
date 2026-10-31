@@ -121,3 +121,16 @@ def test_hidden_symlinks_are_rejected_without_mutation(tmp_path):
     with pytest.raises(ValueError):
         list(recover_completed(library))
     assert list(outside.iterdir()) == []
+
+
+def test_encoder_timeout_is_reported_once_instead_of_retrying_future_result_forever(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    sid, directory = simple_session(tmp_path, 0.1)
+
+    def timeout(*_args, **_kwargs):
+        raise TimeoutError("synthetic encoder timeout")
+
+    monkeypatch.setattr(finalize, "finalize", timeout)
+    (result,) = recover_completed(tmp_path)
+    assert result.directory == directory and isinstance(result.error, TimeoutError)
+    assert not list(tmp_path.glob("*.opus"))

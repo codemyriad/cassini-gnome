@@ -546,6 +546,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         activity = dict(self._activity_source.snapshot) if self._activity_source else dict(self._fixture_activity)
         app = self.get_application()
         activity.update(recorder_activity(app.get_windows() + [app]))
+        if recovery := getattr(app, "library_recovery", None):
+            activity.update(recovery.activity)
         from .library import meeting_id
 
         for state in app._browser_snapshot.get("statuses", []):
@@ -757,7 +759,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         snapshot = self.get_application().meeting_trash.project(snapshot)
         fresh_scan = snapshot is not self.snapshot
         self.get_application().observe_library(snapshot, self._observed_phases)
-        self._observed_phases = {m.key: (m.lifecycle, m.capture_state) for m in snapshot.meetings}
+        self._observed_phases = {
+            m.key: (m.lifecycle, m.capture_state, m.published_file is not None) for m in snapshot.meetings
+        }
         self.snapshot = snapshot
         from .library_location import initial_root, music_directory, primary
 

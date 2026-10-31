@@ -253,12 +253,18 @@ class RecordingSession:
         self._lease_fd = None
         default_parent = parent is None
         with routing() if parent is None else nullcontext():
-            parent = primary().resolve() if parent is None else parent
+            if parent is None:
+                from .library_publication import capture_parent
+
+                parent = capture_parent(primary())
             self.clock = clock
             self.writer_factory = writer_factory
             identifier = str(uuid4())
             self.directory = Path(parent) / f"Recording-{identifier}"
             self.directory.mkdir(mode=0o700, parents=True)
+            from .library_v2.fsutil import fsync_dir
+
+            fsync_dir(self.directory.parent)
             self.manifest = {
                 "version": 1,
                 "id": identifier,
@@ -429,7 +435,7 @@ class RecordingSession:
             track["frames"] = writer.frames
             raise
 
-    def finish(self, problem=None, *, problem_kind=None, reason=None, at_ms=None):
+    def finish(self, problem=None, *, problem_kind=None, reason=None, at_ms=None, retain_lease=False):
         from .capture_sources import change_time
         from .session_events import END_REASONS, append_events
 
@@ -481,11 +487,16 @@ class RecordingSession:
         try:
             self.checkpoint()
         finally:
-            if self._lease_fd is not None:
-                os.close(self._lease_fd)
-                self._lease_fd = None
+            if not retain_lease:
+                self.release_lease()
         if failure:
             raise failure
+
+    def release_lease(self):
+        """Release ownership only after publication/cancellation has finished."""
+        if self._lease_fd is not None:
+            os.close(self._lease_fd)
+            self._lease_fd = None
 
 
 class BrowserHost:

@@ -5,6 +5,7 @@ import contextlib
 import logging
 import threading
 import time
+from concurrent.futures import CancelledError
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -41,6 +42,10 @@ class BrowserCapture:
         self.origin_ms = None
         self.line = None
         self.minutes_left = 0
+        self._pcm_stopped = threading.Event()
+        self._publication_cancel = threading.Event()
+        self._publication_future = None
+        self.publication = None
 
     @property
     def directory(self):
@@ -357,6 +362,10 @@ class BrowserCapture:
 
         if reason is not None and (not isinstance(reason, str) or reason not in END_REASONS):
             raise ProtocolError("state", "Invalid recording end reason")
+        if reason == "appQuit":
+            self._publication_cancel.set()
+            if self._publication_future is not None:
+                self._publication_future.cancel()
         with self.lock:
             self.end_reason = self.end_reason or reason or ("error" if problem else "user")
             self.stop_requested.set()
@@ -372,9 +381,10 @@ class BrowserCapture:
             joining = self.stopping
             self.stopping = True
         if joining:
-            if not self.stopped.wait(12):
+            if not self._pcm_stopped.wait(12):
                 raise TimeoutError("Recording is still being saved")
             return dict(type="stopped", path=str(self.directory))
+        publishing = False
         try:
             with self.transition:
                 for _identifier, tap in tuple(self.native_taps.values()):
@@ -384,19 +394,45 @@ class BrowserCapture:
                         problem = problem or str(error)
                         self.end_reason = "error"
                 with self.lock:
-                    self.host.session.finish(problem, reason=self.end_reason, at_ms=self.elapsed_ms())
+                    self.host.session.finish(
+                        problem, reason=self.end_reason, at_ms=self.elapsed_ms(), retain_lease=True
+                    )
                     self.host.stopped = True
-                    return dict(type="stopped", path=str(self.directory))
+            from .library_publication import root_for, submit_stopped
+
+            if root_for(self.directory) is not None:
+                self._publication_future = submit_stopped(self.host.session, cancel=self._publication_cancel)
+                if self._publication_cancel.is_set():
+                    self._publication_future.cancel()
+                publishing = True
+                self._publication_future.add_done_callback(self._published)
+            return dict(type="stopped", path=str(self.directory))
         except Exception as error:
             self.error = str(error)
             raise
         finally:
-            with self.lock:
-                self.finished = True
-                self.stopping = False
-                self.levels = [0.0, 0.0]
-                self.stopped.set()
-            self.changed(self, "finished")
+            self._pcm_stopped.set()
+            if not publishing:
+                self._finish_stop()
+
+    def _published(self, future):
+        try:
+            self.publication = future.result()
+        except CancelledError:
+            pass  # Completed PCM remains available for startup publication.
+        except Exception as error:
+            self.error = str(error)
+        finally:
+            self._finish_stop()
+
+    def _finish_stop(self):
+        with self.lock:
+            self.host.session.release_lease()
+            self.finished = True
+            self.stopping = False
+            self.levels = [0.0, 0.0]
+            self.stopped.set()
+        self.changed(self, "finished")
 
     def close(self, problem="Browser disconnected before recording was stopped."):
         self.audio_connected = False

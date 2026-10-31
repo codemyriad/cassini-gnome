@@ -59,6 +59,7 @@ class CassiniApplication(Adw.Application):
         self._recording_settings = None
         self._watchdog = None
         self.transcriber = None
+        self.library_recovery = None
         self.speech_models = None
         self.diarization_models = None
         self.voice_models = None
@@ -208,6 +209,10 @@ class CassiniApplication(Adw.Application):
         from .library_relocator import LibraryRelocator
 
         self.library_relocator = LibraryRelocator(self)
+        if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
+            from .library_recovery import LibraryRecovery
+
+            self.library_recovery = LibraryRecovery(self)
         if (
             not os.environ.get("CASSINI_SCREENSHOT_ISOLATED")
             and not os.environ.get("CASSINI_ISOLATED_AUDIO")
@@ -1050,8 +1055,17 @@ class CassiniApplication(Adw.Application):
         from .transcription import should_auto_write
 
         for meeting in snapshot.meetings:
+            managed = meeting.directory.parent.name == "sessions" and meeting.directory.parent.parent.name == ".cassini"
+            if managed and meeting.published_file is None:
+                continue  # Keep queued intent, but wait for publication before inference.
             if (
-                (previous is None or meeting.key not in previous)
+                (
+                    previous is None
+                    or meeting.key not in previous
+                    or len(previous[meeting.key]) > 2
+                    and not previous[meeting.key][2]
+                    and meeting.published_file is not None
+                )
                 and meeting.lifecycle == "saved"
                 and meeting.transcript in ("queued", "running")
             ):
@@ -1142,6 +1156,8 @@ class CassiniApplication(Adw.Application):
             self.voice_models.close()
         if self.library_relocator:
             self.library_relocator.close()
+        if getattr(self, "library_recovery", None):
+            self.library_recovery.close()
         self._transcription_generation += 1
         if getattr(self, "_capture_background", False):
             self._capture_background = False

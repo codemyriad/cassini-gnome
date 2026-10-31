@@ -8,7 +8,7 @@ process never finalizes its still-saving session.
 """
 
 import os
-from concurrent.futures import CancelledError
+from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +16,17 @@ from . import meeting_store
 from .export_audio import check_cancel
 from .library_v2 import journal
 from .library_v2.fsutil import fsync_dir
+
+_ENCODER = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-library-publish")
+
+
+def submit_stopped(session, *, cancel=None):
+    """Bound encode concurrency across independent capture owners in a process."""
+    if cancel is not None and cancel.is_set():
+        future = Future()
+        future.cancel()
+        return future
+    return _ENCODER.submit(publish_stopped, session, cancel=cancel)
 
 
 def root_for(directory):
@@ -27,7 +38,7 @@ def root_for(directory):
         return None
     if any(path.is_symlink() for path in (directory, directory.parent, directory.parent.parent)):
         raise ValueError("Unsafe Library session path")
-    return directory.parent.parent.parent
+    return directory.parent.parent.parent.resolve()
 
 
 def capture_parent(root):
@@ -71,7 +82,9 @@ class RecoveryResult:
     error: Exception | None = None
 
 
-def recover_completed(root, *, cancel=None):
+def recover_completed(
+    root, *, cancel=None, started=lambda _path: None, finished=lambda _path: None, skipped=lambda: None, excluded=()
+):
     """Replay first, then publish idle completed sessions one at a time (§11).
 
     A failed candidate is reported once and its WAVs are kept. Published-but-
@@ -95,12 +108,14 @@ def recover_completed(root, *, cancel=None):
         if identity is None or identity[0] != "Recording" or directory.is_symlink() or not directory.is_dir():
             continue
         origin, identifier = identity
-        if report.blocks(origin, identifier):
+        if directory in excluded or report.blocks(origin, identifier):
             continue
         try:
             lease = capture_lease(identifier)
         except BlockingIOError:
+            skipped()
             continue  # Includes saving, not just active PCM capture.
+        began = False
         try:
             try:
                 session = finalize.read_session(directory)
@@ -111,7 +126,19 @@ def recover_completed(root, *, cancel=None):
                 if metadata.get("published") is True:
                     continue
                 check_cancel(cancel)
-                result = finalize.finalize(root, identifier, cancel=cancel)
+                started(directory)
+                began = True
+                job = _ENCODER.submit(finalize.finalize, root, identifier, cancel=cancel)
+                while True:
+                    try:
+                        result = job.result(timeout=0.25)
+                        break
+                    except TimeoutError:
+                        if job.done():
+                            result = job.result()  # Propagate an actual encoder timeout, not a wait timeout.
+                            break
+                        if cancel is not None and cancel.is_set():
+                            job.cancel()  # A queued encode cannot hold Quit behind another session.
             except CancelledError:
                 raise
             except (OSError, ValueError, RuntimeError) as error:
@@ -120,3 +147,5 @@ def recover_completed(root, *, cancel=None):
                 yield RecoveryResult(directory, published=result)
         finally:
             os.close(lease)
+            if began:
+                finished(directory)

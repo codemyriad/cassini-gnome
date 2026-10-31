@@ -231,8 +231,14 @@ def primary():
 
 
 def roots(value=None):
+    from .library_publication import root_for
+
     value = value or load()
-    return tuple(dict.fromkeys([Path(value["primary"]), *(Path(e["source"]).parent for e in value["pending"])]))
+    return tuple(
+        dict.fromkeys(
+            [Path(value["primary"]), *(root_for(e["source"]) or Path(e["source"]).parent for e in value["pending"])]
+        )
+    )
 
 
 def owned_directory(path):
@@ -262,7 +268,9 @@ def owned_directory(path):
         visited.add(str(original))
         original = Path(value["aliases"][str(original)])
     canonical = original.resolve()
-    if not original.is_symlink() and (canonical.parent in allowed or canonical in pending):
+    if not original.is_symlink() and (
+        canonical.parent in allowed or root_for(original) in allowed or canonical in pending
+    ):
         return canonical
     raise ValueError("Meeting is outside the configured Library")
 
@@ -298,6 +306,7 @@ def forget_meeting(directory):
 
 def request(destination):
     from .library import meeting_id
+    from .library_publication import capture_parent, root_for
 
     destination = Path(destination).resolve()
     with routing():
@@ -306,14 +315,22 @@ def request(destination):
         for root in (Path(value["primary"]).resolve(),):
             if root.exists():
                 sources.update(p for p in root.iterdir() if meeting_id(p) and not p.is_symlink() and p.is_dir())
+                sessions = root / ".cassini/sessions"
+                if not (root / ".cassini").is_symlink() and not sessions.is_symlink() and sessions.is_dir():
+                    sources.update(p for p in sessions.iterdir() if meeting_id(p) and not p.is_symlink() and p.is_dir())
         if any(p == destination or p in destination.parents for p in sources):
             raise ValueError("The destination cannot be inside a meeting")
         destination.mkdir(mode=0o700, parents=True, exist_ok=True)
+        managed_parent = capture_parent(destination) if any(root_for(p) is not None for p in sources) else None
         value["primary"] = str(destination)
         value["pending"] = [
-            dict(source=str(p), target=str(destination / p.name), state="waiting")
+            dict(
+                source=str(p),
+                target=str((managed_parent if root_for(p) is not None else destination) / p.name),
+                state="waiting",
+            )
             for p in sorted(sources)
-            if p.parent.resolve() != destination
+            if (root_for(p) or p.parent.resolve()) != destination
         ]
         save(value)
         return value

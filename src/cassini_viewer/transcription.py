@@ -69,10 +69,20 @@ def should_auto_write(meeting, previous):
         or meeting.capture_state not in ("completed", "interrupted")
         or meeting.transcript != "none"
         or not meeting.metadata_editable
+        or meeting.directory.parent.name == "sessions"
+        and meeting.directory.parent.parent.name == ".cassini"
+        and meeting.published_file is None
     ):
         return False
     before = previous.get(meeting.key)
-    return before is None or before[0] in ("recording", "saving") or before[1] not in ("completed", "interrupted")
+    return (
+        before is None
+        or before[0] in ("recording", "saving")
+        or before[1] not in ("completed", "interrupted")
+        or len(before) > 2
+        and not before[2]
+        and meeting.published_file is not None
+    )
 
 
 def prepare_tracks(meeting):
@@ -221,6 +231,19 @@ class TranscriptionQueue:
             and not any(t.frames for t in meeting.tracks)
         ):
             return None
+        from .library_publication import root_for
+
+        if root_for(directory) is not None and meeting.published_file is None:
+            if meeting.capture_state in ("completed", "interrupted"):
+                update_metadata(
+                    directory,
+                    transcript=dict(metadata["transcript"], status="queued", reference=REFERENCE),
+                    etaMinutes=None,
+                    error=None,
+                    before_commit=self._check_open,
+                    transient=True,
+                )
+            return None  # Publication/recovery makes this durable intent runnable.
         if (
             meeting.transcript not in ("none", "failed")
             and not meeting.no_speech
