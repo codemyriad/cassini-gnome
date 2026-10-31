@@ -68,16 +68,23 @@ def shot(window, name):
 
 
 def render_shot(window, name):
-    frames = []
-    window.add_tick_callback(lambda *_: (frames.append(1), len(frames) < 2)[1])
-    window.queue_draw()
-    until(lambda: len(frames) >= 2, "window painted before screenshot")
     scale = window.get_scale_factor()
     assert scale == int(os.environ.get("CASSINI_SCREENSHOT_SCALE", "1"))
-    snapshot = Gtk.Snapshot.new()
-    snapshot.scale(scale, scale)
-    Gtk.WidgetPaintable.new(window).snapshot(snapshot, window.get_width(), window.get_height())
-    node = snapshot.to_node()
+    # Retain the paintable while GTK completes theme/layout invalidation.
+    # Tick callbacks precede paint and cannot prove a snapshot is available.
+    paintable = Gtk.WidgetPaintable.new(window)
+
+    def rendered():
+        snapshot = Gtk.Snapshot.new()
+        snapshot.scale(scale, scale)
+        paintable.snapshot(snapshot, window.get_width(), window.get_height())
+        node = snapshot.to_node()
+        if node is None:
+            window.queue_draw()
+        return node
+
+    window.queue_draw()
+    node = until(rendered, "non-empty window snapshot after theme/layout invalidation")
     viewport = Graphene.Rect()
     viewport.init(0, 0, 1120 * scale, 720 * scale)
     assert (window.get_width(), window.get_height()) == (1120, 720), (window.get_width(), window.get_height())

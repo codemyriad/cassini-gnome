@@ -157,14 +157,20 @@ with tempfile.TemporaryDirectory() as temporary:
         assert scale == int(os.environ.get("CASSINI_SCREENSHOT_SCALE", "1"))
         for label, scheme in (("light", Adw.ColorScheme.FORCE_LIGHT), ("dark", Adw.ColorScheme.FORCE_DARK)):
             Adw.StyleManager.get_default().set_color_scheme(scheme)
-            painted = []
-            window.add_tick_callback(lambda *_, painted=painted: (painted.append(1), len(painted) < 2)[1])
+            paintable = Gtk.WidgetPaintable.new(window)
+
+            def rendered(paintable=paintable):
+                snapshot = Gtk.Snapshot.new()
+                snapshot.scale(scale, scale)
+                paintable.snapshot(snapshot, window.get_width(), window.get_height())
+                node = snapshot.to_node()
+                if node is None:
+                    window.queue_draw()
+                return node
+
             window.queue_draw()
-            until(lambda painted=painted: len(painted) >= 2, "fallback view painted before screenshot")
-            snapshot = Gtk.Snapshot.new()
-            snapshot.scale(scale, scale)
-            Gtk.WidgetPaintable.new(window).snapshot(snapshot, window.get_width(), window.get_height())
-            node, bounds = snapshot.to_node(), Graphene.Rect()
+            node = until(rendered, "non-empty browser snapshot after theme/layout invalidation")
+            bounds = Graphene.Rect()
             bounds.init(0, 0, 1120 * scale, 720 * scale)
             texture = window.get_renderer().render_texture(node, bounds)
             assert (texture.get_width(), texture.get_height()) == (1120 * scale, 720 * scale)
