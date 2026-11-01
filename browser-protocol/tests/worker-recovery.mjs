@@ -26,14 +26,18 @@ try {
   await context.close();
   context = await launch([`--allowlisted-extension-id=${id}`]);
   const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
-  let host = process.env.CASSINI_NATIVE_HOST;
-  if (!host) {
-    // No shell: the generated launcher imports only this checked-in test fixture.
-    host = path.join(temporary, 'host.py');
-    const fixture = path.join(root, 'tests/browser_host_fixture.py');
-    await writeFile(host, `#!/usr/bin/env python3\nimport sys\nsys.argv=[${JSON.stringify(fixture)},${JSON.stringify(temporary)}]\nexec(compile(open(sys.argv[0]).read(),sys.argv[0],'exec'))\n`);
-    await chmod(host, 0o700);
-  }
+  // Every host, the fixture or an app's real one, runs with a private Library:
+  // a legacy host resolves ~/Music/Cassini from the user record, not HOME.
+  const library = path.join(temporary, 'Library');
+  await mkdir(library);
+  const configured = process.env.CASSINI_NATIVE_HOST;
+  const fixture = path.join(root, 'tests/browser_host_fixture.py');
+  const host = path.join(temporary, 'host.py');
+  const environment = `import os,sys\nos.environ['CASSINI_LIBRARY_DIR']=${JSON.stringify(library)}\n`;
+  await writeFile(host, '#!/usr/bin/env python3\n' + environment + (configured
+    ? `os.execv(${JSON.stringify(path.resolve(configured))},[${JSON.stringify(path.resolve(configured))},*sys.argv[1:]])\n`
+    : `sys.argv=[${JSON.stringify(fixture)},${JSON.stringify(library)}]\nexec(compile(open(sys.argv[0]).read(),sys.argv[0],'exec'))\n`));
+  await chmod(host, 0o700);
   const hosts = path.join(profile, 'NativeMessagingHosts');
   await mkdir(hosts, { recursive: true });
   await writeFile(path.join(hosts, 'io.codemyriad.cassini.json'), JSON.stringify({ name: 'io.codemyriad.cassini', description: 'Cassini worker test', path: path.resolve(host), type: 'stdio', allowed_origins: [`chrome-extension://${id}/`] }));
@@ -57,7 +61,7 @@ try {
   for (const mode of (process.env.CASSINI_WORKER_TEST_MODES || 'tracks,tab').split(',')) {
     const current = context.serviceWorkers().find(item => item.url().includes(id)) || await context.waitForEvent('serviceworker');
     await current.evaluate(tab => { chrome.tabs.query = async () => [tab]; }, meetingTab);
-    const result = await workerDeathDuringRecording({ context, meetingPage, popup, extensionId: id, mode });
+    const result = await workerDeathDuringRecording({ context, meetingPage, popup, extensionId: id, mode, library });
     await rm(result.path, { recursive: true, force: true });
     console.log(`PASS worker death after Start (${mode}): saved audio, interruption/path, badge cleared${mode === 'tab' ? ', offscreen closed' : ''}`);
   }

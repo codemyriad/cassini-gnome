@@ -119,7 +119,8 @@ def run(host, case):
                 endpoint.chmod(0o600)
                 listener.listen()
                 listener.settimeout(3)
-                env = dict(os.environ, CASSINI_CONTROL_SOCKET=str(endpoint))
+                # A control host must never reach a real Library either.
+                env = dict(os.environ, CASSINI_CONTROL_SOCKET=str(endpoint), CASSINI_LIBRARY_DIR=str(directory / 'Library'))
                 connection(host, listener, env, case)
                 if case.get('kind') == 'reconnect':
                     connection(host, listener, env, case, resumed=True)

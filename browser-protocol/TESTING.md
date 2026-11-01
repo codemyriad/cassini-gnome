@@ -1,6 +1,8 @@
 # Layered recording checks
 
-1. Portable raw-JSON stdio vectors in conformance/, against both executable hosts. Includes
+1. Portable raw-JSON stdio vectors in conformance/, against both executable hosts. Each case
+   gets a private `CASSINI_LIBRARY_DIR`; a host that writes elsewhere stops the run
+   (tests/test_library_isolation.py guards the real user Library). Includes
    null/type/lexical-number rules, nonfinite input, sequence, silence gaps, EOF, errors and WAV
    finalization. Swift additionally tests malformed/truncated/oversize native framing directly.
 2. Portable extension worklet/clock/buffering unit tests (extension/tests/*.test.cjs).

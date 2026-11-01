@@ -1,6 +1,6 @@
 # Browser call lifetime (D33)
 
-Shared protocol pin: `3238aabecce29ae4f7faca57383e6b0b37faa9df` (merged gap-ranges PR #29).
+Shared protocol pin: `8e160acf194fc6e21e8b132893afd612f0223557` (merged test-Library isolation PR #30).
 Companion 0.2.8 replaces older local installs; no Chrome Web Store packaging or upload is performed.
 
 The broker owns every independent capture and its Library folder. With the

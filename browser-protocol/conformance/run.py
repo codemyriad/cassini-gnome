@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""Request-derived output conformance. Failed sessions are retained for inspection."""
-import base64, datetime, json, math, os, pathlib, selectors, shutil, struct, subprocess, sys, threading, time, uuid
+"""Request-derived output conformance. Failed sessions are retained for inspection.
+
+Every case runs its host with a fresh private Library: CASSINI_LIBRARY_DIR (the
+test-only override every host honours) plus HOME/XDG directories under the same
+temporary folder. A host that writes a meeting anywhere else stops the whole run.
+"""
+import base64, datetime, json, math, os, pathlib, selectors, shutil, struct, subprocess, sys, tempfile, threading, time, uuid
 from jsonschema import Draft202012Validator, FormatChecker
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 VALIDATORS = {name: Draft202012Validator(json.loads((ROOT/'schemas'/(name+'.schema.json')).read_text()), format_checker=FormatChecker()) for name in ['response','session']}
@@ -34,6 +39,18 @@ def rounded(value):
 def clean_label(value):
     import unicodedata
     return ''.join(c for c in value if unicodedata.category(c) not in ['Cc','Cf'])[:200]
+
+class LibraryEscape(AssertionError):
+    """A host ignored the test Library and wrote somewhere real."""
+
+def isolated(temporary):
+    temporary = pathlib.Path(temporary)
+    library, home = temporary/'Library', temporary/'home'
+    library.mkdir(mode=0o700); home.mkdir(mode=0o700)
+    env = dict(os.environ, CASSINI_LIBRARY_DIR=str(library), HOME=str(home),
+               XDG_CONFIG_HOME=str(home/'.config'), XDG_DATA_HOME=str(home/'.local/share'),
+               XDG_MUSIC_DIR=str(home/'Music'))
+    return library, env
 
 def check_session(directory, case, accepted, stopped, stop_response, start_request):
     manifest = json.loads((directory/'session.json').read_text())
@@ -81,8 +98,10 @@ def check_session(directory, case, accepted, stopped, stop_response, start_reque
             for key,value in fields.items(): assert by_id[id].get(key)==value,(id,key)
     return manifest
 
-def run(host, case):
-    process = subprocess.Popen([host],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+def run(host, case, parent=None):
+    temporary = tempfile.mkdtemp(prefix='cassini-conformance-', dir=parent)
+    library, env = isolated(temporary)
+    process = subprocess.Popen([host],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=env)
     stderr = bytearray()
     def drain():
         for chunk in iter(lambda:os.read(process.stderr.fileno(),8192),b''):
@@ -109,6 +128,8 @@ def run(host, case):
             if result['type']=='started':
                 directory=pathlib.Path(result['path'])
                 assert directory.is_absolute() and directory.name.startswith('Recording-'), 'invalid started path'
+                if not directory.resolve().is_relative_to(library.resolve()):
+                    raise LibraryEscape(f'host ignored CASSINI_LIBRARY_DIR and wrote {directory}; left in place, remove it by hand')
                 uuid.UUID(directory.name[len('Recording-'):]);assert directory.is_dir()
                 start_request=request
             elif result['type']=='ack' and request['type']=='track':
@@ -137,9 +158,13 @@ def run(host, case):
             if case.get('fault'):
                 assert failed_response and (directory/'session.json').is_dir(), 'IO fault was not exercised'
             else: check_session(directory,case,accepted,stopped,stop_response,start_request)
-            shutil.rmtree(directory)
+        shutil.rmtree(temporary)
         print('PASS',case['name']);return True
+    except LibraryEscape as error:
+        shutil.rmtree(temporary,ignore_errors=True)
+        print('FAIL',case['name'],str(error),file=sys.stderr);raise
     except Exception as error:
+        if directory is None: shutil.rmtree(temporary,ignore_errors=True)  # nothing to inspect
         print('FAIL',case['name'],str(error),'retained session:',directory,file=sys.stderr);return False
     finally:
         if process.poll() is None:process.kill()
@@ -152,5 +177,7 @@ def run(host, case):
 if __name__=='__main__':
     host=str(pathlib.Path(sys.argv[1]).resolve())
     cases=json.loads(pathlib.Path(__file__).with_name('vectors.json').read_text())
-    results=[run(host,case) for case in cases];failed=results.count(False)
+    try: results=[run(host,case) for case in cases]
+    except LibraryEscape: sys.exit('Stopped: the host wrote outside its test Library; no further cases were run.')
+    failed=results.count(False)
     print(f'{len(cases)-failed} passed, {failed} failed');sys.exit(1 if failed else 0)
