@@ -129,6 +129,7 @@ talk_sources = files(
   'cassini_talk/status_notifier.py',
   'cassini_talk/capture_sources.py',
   'cassini_talk/source_ownership.py',
+  'cassini_talk/source_spans.py',
   'cassini_talk/capture_record.py',
   'cassini_talk/call_lifecycle.py',
   'cassini_talk/session_events.py',
