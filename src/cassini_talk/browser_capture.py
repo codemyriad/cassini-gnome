@@ -453,6 +453,8 @@ class BrowserCapture:
             return self.stop(message.get("problem"), reason=reason)
         with self.lock:
             if self.finished or self.stopping:
+                if self.host.source_outcomes and message.get("type") == "sources":
+                    return dict(type="error", code="state", message="Capture already saved", scope="command")
                 if self.host.source_outcomes and message.get("type") in ("track", "audio", "trackEnd"):
                     return self.host.refuse_source(message, ProtocolError("state", "No active recording"), record=False)
                 raise ProtocolError("state", "No active recording")

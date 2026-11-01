@@ -608,6 +608,8 @@ class BrowserHost:
         try:
             return self._handle(message, started_at=started_at)
         except (ProtocolError, SourceIOError) as error:
+            if self.source_outcomes and message.get("type") == "sources" and isinstance(error, ProtocolError):
+                return dict(type="error", code=error.code, message=str(error), scope="command")
             if not self.source_outcomes or message.get("type") not in ("track", "audio", "trackEnd"):
                 raise
             identifier = message.get("id")
@@ -653,6 +655,10 @@ class BrowserHost:
             return None
         if message.get("captureId") != self.capture_id:
             return dict(type="error", code="state", message="Capture identity does not match", scope="command")
+        if self.session.finished:
+            if message.get("discoveredSources"):
+                return dict(type="error", code="state", message="Capture already saved", scope="command")
+            return dict(type="stopped", path=str(self.session.directory))
         try:
             self.session.capture_record.discover(message.get("discoveredSources", []))
         except ProtocolError as error:
@@ -661,7 +667,9 @@ class BrowserHost:
 
     def _handle(self, message, *, started_at=None):
         kind = message.get("type")
-        if kind not in ("start", "track", "audio", "stop") and not (self.source_outcomes and kind == "trackEnd"):
+        if kind not in ("start", "track", "audio", "stop") and not (
+            self.source_outcomes and kind in ("trackEnd", "sources")
+        ):
             raise ProtocolError("version", "Unknown browser message type")
         if kind == "start":
             if self.session:
@@ -689,9 +697,17 @@ class BrowserHost:
                 self.session.capture_record = CaptureRecord()
                 result["features"] = ["source-outcomes-v1"]
             return result
-        if self.session is None or self.stopped:
+        if kind == "stop" and self.source_outcomes and self.session is not None and self.session.finished:
+            return self.prepare_stop(message)
+        if self.session is None or self.stopped or self.session.finished:
             raise ProtocolError("state", "No active recording")
-        if kind == "track":
+        if kind == "sources":
+            sources = message.get("discoveredSources")
+            if not isinstance(sources, list) or not sources:
+                raise ProtocolError("source", "Invalid discovered audio sources")
+            self.session.capture_record.discover(sources)
+            self.session.checkpoint()
+        elif kind == "track":
             identifier = message.get("id")
             if self.source_outcomes:
                 label = source_parameters(
@@ -755,8 +771,15 @@ class BrowserHost:
             if message.get("reason") not in ("ended", "replaced", "retry", "stopped", "failed", "callChanged"):
                 raise ProtocolError("source", "Invalid source end reason")
             dropped = message.get("droppedFrames")
-            if type(dropped) is not int or not 0 <= dropped <= 9007199254740991:
+            if type(dropped) is not int or not 0 <= dropped <= 2147483629:
                 raise ProtocolError("source", "Invalid dropped frame count")
+            end = message.get("endOffsetMs")
+            if (
+                "endOffsetMs" not in message
+                or end is not None
+                and (type(end) not in (int, float) or not math.isfinite(end) or not 0 <= end <= 86460000)
+            ):
+                raise ProtocolError("source", "Invalid source end time")
             if identifier not in self.ended:
                 stored = self.audio_sink.tracks[identifier].recorded if self.audio_sink is not None else identifier
                 track = next((t for t in self.session.manifest["tracks"] if t["id"] == stored), None)

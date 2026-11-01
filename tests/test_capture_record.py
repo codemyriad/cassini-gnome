@@ -85,7 +85,7 @@ def test_live_and_stored_overlap_refuse_only_the_offending_source(host):
     host.handle(pcm("one", 48000))
     live = host.handle(declare("live-overlap", "receiver"))
     assert live["type"] == "error" and live["scope"] == "source" and live["id"] == "live-overlap"
-    host.handle(dict(type="trackEnd", id="one", reason="ended", droppedFrames=0))
+    host.handle(dict(type="trackEnd", id="one", reason="ended", droppedFrames=0, endOffsetMs=None))
     host.handle(declare("stored-overlap", "receiver"))
     overlap = host.handle(pcm("stored-overlap", 48000, offset=500))
     assert overlap["type"] == "error" and overlap["scope"] == "source"
@@ -179,7 +179,7 @@ def test_failed_source_with_others_off_is_checkpointed_without_a_wav(tmp_path):
     host.handle(dict(type="start", features=["source-outcomes-v1"]))
     host.audio_sink = BrowserStreams(host.session, others=False)
     host.handle(declare("off", "receiver"))
-    host.handle(dict(type="trackEnd", id="off", reason="failed", droppedFrames=0))
+    host.handle(dict(type="trackEnd", id="off", reason="failed", droppedFrames=0, endOffsetMs=None))
     saved = json.loads((host.session.directory / "session.json").read_text())
     assert saved["tracks"] == []
     assert saved["captureOutcome"]["sources"][0]["captureOutcome"] == "failed"
@@ -201,7 +201,7 @@ def test_wrong_capture_stop_and_retired_audio_do_not_end_or_damage_the_session(h
     host.handle(pcm("one", 48000))
     wrong = host.handle(dict(type="stop", captureId="another-capture"))
     assert wrong["scope"] == "command" and not host.session.finished
-    host.handle(dict(type="trackEnd", id="one", reason="stopped", droppedFrames=0))
+    host.handle(dict(type="trackEnd", id="one", reason="stopped", droppedFrames=0, endOffsetMs=None))
     late = host.handle(pcm("one", 1, sequence=1, offset=1000))
     assert late["scope"] == "source"
     stop(host)
@@ -262,3 +262,42 @@ def test_negotiated_stdio_refusal_leaves_the_connection_usable(tmp_path):
     assert code == 0
     assert replies[3]["scope"] == "source"
     assert [r["type"] for r in replies] == ["started", "ack", "ack", "error", "ack", "ack", "stopped"]
+
+
+def test_live_discovery_is_durable_before_native_stop_and_late_updates_cannot_rewrite_it(host):
+    source = dict(sourceTrackId="never-opened", kind="remote", label="Guest", failed=True)
+    assert host.handle(dict(type="sources", discoveredSources=[source])) == dict(type="ack")
+    path = host.session.directory / "session.json"
+    before = json.loads(path.read_text())
+    assert before["tracks"] == [] and before["captureOutcome"]["sources"][0]["captureOutcome"] == "failed"
+    host.session.finish(reason="user")  # The app stops without waiting for the extension.
+    final = path.read_bytes()
+    assert stop(host)["type"] == "stopped"
+    late = host.handle(dict(type="sources", discoveredSources=[dict(source, sourceTrackId="too-late")]))
+    assert late["scope"] == "command" and late["code"] == "state"
+    assert path.read_bytes() == final and "too-late" not in host.session.capture_record.seen
+    late_summary = stop(host, discoveredSources=[dict(source, sourceTrackId="late-summary")])
+    assert late_summary["scope"] == "command" and path.read_bytes() == final
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        dict(sourceTrackId="é" * 101, kind="remote"),
+        dict(sourceTrackId="bad", kind="system"),
+        dict(sourceTrackId="bad", kind="remote", label=None),
+        dict(sourceTrackId="bad", kind="remote", label="x" * 201),
+    ],
+)
+def test_source_batch_validation_is_atomic_and_other_audio_continues(host, bad):
+    before = (host.session.directory / "session.json").read_bytes()
+    refused = host.handle(
+        dict(type="sources", discoveredSources=[dict(sourceTrackId="must-not-stick", kind="remote"), bad])
+    )
+    assert refused["scope"] == "command" and refused["code"] == "source"
+    assert not host.session.capture_record.seen
+    assert (host.session.directory / "session.json").read_bytes() == before
+    host.handle(declare("healthy"))
+    assert host.handle(pcm("healthy", 48000)) == dict(type="ack")
+    stop(host)
+    assert host.session.manifest["state"] == "completed"

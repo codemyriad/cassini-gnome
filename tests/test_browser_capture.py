@@ -910,3 +910,33 @@ def test_fresh_stop_can_be_reported_late_on_an_old_control_link(server):
     finally:
         peer.close()
         client.close()
+
+
+def test_broker_native_first_stop_keeps_a_never_opened_source_without_late_rewrites(server):
+    service, path, _root = server
+    client = BrowserAudioProxy(path=path)
+    try:
+        client.handle(
+            dict(
+                type="start",
+                independent=True,
+                captureId="native-first",
+                microphone=False,
+                timelineOriginMs=int(time.time() * 1000),
+                features=["source-outcomes-v1"],
+            )
+        )
+        source = dict(sourceTrackId="never-opened", kind="remote", failed=True)
+        assert client.handle(dict(type="sources", discoveredSources=[source])) == dict(type="ack")
+        capture = service.captures["native-first"]
+        capture.stop(reason="user")
+        saved = json.loads((capture.directory / "session.json").read_text())
+        assert saved["tracks"] == []
+        assert saved["captureOutcome"]["sources"][0]["captureOutcome"] == "failed"
+        final = (capture.directory / "session.json").read_bytes()
+        assert client.handle(dict(type="stop", captureId="native-first"))["type"] == "stopped"
+        late = client.handle(dict(type="sources", discoveredSources=[dict(source, sourceTrackId="too-late")]))
+        assert late["scope"] == "command" and late["code"] == "state"
+        assert (capture.directory / "session.json").read_bytes() == final
+    finally:
+        client.close()

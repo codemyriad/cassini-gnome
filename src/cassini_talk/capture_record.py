@@ -32,6 +32,10 @@ class CaptureRecord:
         for source in sources:
             if not isinstance(source, dict):
                 raise ProtocolError("source", "Invalid discovered audio source")
+            if source.get("kind") not in ("local", "remote", "media", "tab", "application"):
+                raise ProtocolError("source", "Invalid discovered audio source kind")
+            if "label" in source and (not isinstance(source["label"], str) or len(source["label"]) > 200):
+                raise ProtocolError("source", "Invalid discovered audio source label")
             proposed.observe(
                 source.get("sourceTrackId"), source.get("kind"), source.get("label"), failed=source.get("failed", False)
             )
