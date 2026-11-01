@@ -388,8 +388,22 @@ unrelated sources. Source-update refusals do not skip the terminal native Stop.
 Test writers refuse track, audio and trackEnd after finalization and cannot
 reopen an ended span or rewrite published metadata with its repeated ending.
 
+## Optional native resume (D52.1 / R67)
 
-### Source retirement during an active capture (extension0.2.7)
+The opt-in management `resume-capture-v1` operation uses a first native packet
+with `type:"resume"`, version1, independent:true, the active captureId, original
+timelineOriginMs, selected callGeneration and requested features. It must attach
+only to that exact active native stand-in. It must not create a folder, reset
+its clock or alter its selection/microphone. Unknown/refused resume requests
+fail before any file is created. A stopped/changed target is an error, never a
+fresh Start. The handler's target validation and Stop share one transaction.
+Explicit successful proof is a `started` response with resumed:true, the exact
+captureId/timelineOriginMs/callGeneration, path and resume-capture-v1 feature.
+See SPEC-CONTROL.md and conformance/control/RESUME-CAPTURE.md for cancellation,
+interleavings and the shared seam fixture. Existing ordinary Start is unchanged.
+
+
+### Source retirement during an active capture (extension0.2.8)
 
 An ended/failed physical span in a still-active capture returns error with
 code:state, scope:source, id and retired:true. It does not mean the whole capture

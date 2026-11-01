@@ -13,10 +13,16 @@ sys.path.insert(0, str(ROOT))
 from verify import verify
 
 class PinningTests(unittest.TestCase):
-    def test_source_retirement_fix_can_replace_an_installed_026_companion(self):
+    def test_source_retirement_fix_can_replace_an_installed_027_companion(self):
         manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
         parts = tuple(int(part) for part in manifest['version'].split('.'))
-        self.assertGreater(parts + (0,) * (4 - len(parts)), (0, 2, 6, 0))
+        self.assertGreater(parts + (0,) * (4 - len(parts)), (0, 2, 7, 0))
+
+    def test_resume_feature_can_replace_an_installed_026_companion(self):
+        manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
+        parts = tuple(int(part) for part in manifest['version'].split('.'))
+        self.assertGreater(parts + (0,) * (4 - len(parts)), (0, 2, 6, 0),
+                           'R67 needs a newer version: local installers never replace equal 0.2.6')
 
     def test_reload_fix_can_replace_an_installed_022_companion(self):
         manifest = json.loads((ROOT / 'extension/manifest.json').read_text())

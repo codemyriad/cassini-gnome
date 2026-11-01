@@ -3,7 +3,7 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `4aef818b`, ships companion 0.2.7 with authoritative page-state
+The current pin, `014c56e0`, ships companion 0.2.8 with authoritative page-state
 publication and a coherent multi-tab inventory. Call identity and the hook
 baseline survive worker restarts; persisted addresses use bounded fingerprints.
 A worklet must prove its render clock is advancing before source PCM is armed;

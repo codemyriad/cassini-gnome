@@ -204,6 +204,11 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 200
+              },
+              "timelineOriginMs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 253402300799000
               }
             },
             "required": [
@@ -246,6 +251,11 @@
           "minLength": 1,
           "maxLength": 200,
           "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+        },
+        "timelineOriginMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 253402300799000
         }
       },
       "required": [
@@ -396,6 +406,11 @@
           "minLength": 1,
           "maxLength": 200,
           "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+        },
+        "timelineOriginMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 253402300799000
         }
       },
       "required": [

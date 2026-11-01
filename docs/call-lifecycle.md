@@ -1,7 +1,7 @@
 # Browser call lifetime (D33)
 
-Shared protocol pin: `4aef818bc57057ccbfee5c131832d39d523a29d7` (source-isolation PR #28 review pin).
-Companion 0.2.7 replaces older local installs; no Chrome Web Store packaging or upload is performed.
+Shared protocol pin: `014c56e014f79aca0d4addbed24c40cd7ec91711` (source-isolation PR #28 review pin).
+Companion 0.2.8 replaces older local installs; no Chrome Web Store packaging or upload is performed.
 
 The broker owns every independent capture and its Library folder. With the
 `page-state-v1` capability it starts the extension with `keepOnNavigation: true`.

@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "note": "Hand-written R67 app/extension interleavings. Native target validation is atomic; Stop affects the app job as well as its browser transport. No fixture computes expected results from production code.",
+  "initial": {"captureId":"stand-in-F","timelineOriginMs":1000,"callGeneration":"call-A","microphoneFrames":96000,"selection":{"me":true,"others":true},"othersSource":"system"},
+  "cases": [
+    {"name":"status-before-native","schedule":["resume-command","pending-status","native-resume-accepted","page-start","stop"],"expectedNativeTypes":["resume","stop"],"expectedCaptureId":"stand-in-F","expectedOrigin":1000,"newFolders":0},
+    {"name":"native-before-status","schedule":["resume-command","hold-status","native-resume-accepted","page-start","release-status","stop"],"expectedNativeTypes":["resume","stop"],"expectedCaptureId":"stand-in-F","expectedOrigin":1000,"newFolders":0},
+    {"name":"stop-before-construction","schedule":["queue-resume","stop-target","construct-session"],"expectedNativeTypes":[],"expectedResume":false,"newFolders":0},
+    {"name":"stop-during-lookup","schedule":["resume-command","hold-lookup","stop-target","release-lookup"],"expectedNativeTypes":[],"expectedResume":false,"newFolders":0},
+    {"name":"stop-before-native","schedule":["resume-command","hold-native-dispatch","stop-target","release-native-dispatch"],"expectedNativeTypes":["resume"],"expectedResume":false,"newFolders":0},
+    {"name":"stop-during-ack","schedule":["resume-command","hold-native-ack","stop-target","release-native-ack"],"expectedNativeTypes":["resume","stop"],"expectedResume":false,"newFolders":0},
+    {"name":"stale-call-A","schedule":["resume-A-command","call-B-current","lookup"],"expectedNativeTypes":[],"expectedResume":false,"newFolders":0},
+    {"name":"fresh-record-after-stop","schedule":["stop-target","fresh-manual-record","late-stop-F","stop-new-target"],"expectedNativeTypes":["start","stop"],"newFolders":1,"freshIdDiffers":true}
+  ],
+  "seam": {
+    "atMs":6000,
+    "events":[{"type":"selection","atMs":0,"me":true,"others":true,"reason":"start"},{"type":"othersSource","atMs":0,"source":"system","reason":"missing"},{"type":"othersSource","atMs":6000,"source":"browser","reason":"callConnected"}],
+    "tracks":[{"id":"microphone","kind":"microphone","startMs":0,"endMs":10000},{"id":"system","kind":"system","startMs":0,"endMs":7000},{"id":"browser","kind":"remote","startMs":5000,"endMs":10000}],
+    "expectedWindows":{"microphone":[[0,10000]],"system":[[0,6000]],"browser":[[6000,10000]]},
+    "ownershipAt":[{"atMs":5999.999,"others":["system"]},{"atMs":6000,"others":["browser"]},{"atMs":7000,"others":["browser"]}]
+  }
+}
