@@ -36,6 +36,28 @@
         "io",
         "framing"
       ]
+    },
+    "features": {
+      "type": "array",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 64
+      }
+    },
+    "scope": {
+      "enum": [
+        "source",
+        "command",
+        "session"
+      ]
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
     }
   },
   "additionalProperties": true,

@@ -301,3 +301,22 @@ def test_source_batch_validation_is_atomic_and_other_audio_continues(host, bad):
     assert host.handle(pcm("healthy", 48000)) == dict(type="ack")
     stop(host)
     assert host.session.manifest["state"] == "completed"
+
+
+def test_late_span_packets_are_refused_without_failing_the_replacement(host):
+    host.handle(declare("old", "receiver"))
+    host.handle(pcm("old", 48000))
+    host.handle(dict(type="trackEnd", id="old", reason="ended", droppedFrames=0, endOffsetMs=None))
+    host.handle(declare("new", "receiver"))
+    host.handle(pcm("new", 48000, offset=1000))
+    before = (host.session.directory / "session.json").read_bytes()
+    for packet in [
+        declare("old", "receiver"),
+        pcm("old", 48000, offset=1000, sequence=1),
+        dict(type="trackEnd", id="old", reason="failed", droppedFrames=123, endOffsetMs=2000),
+    ]:
+        reply = host.handle(packet)
+        assert reply["type"] == "error" and reply["scope"] == "source"
+        assert (host.session.directory / "session.json").read_bytes() == before
+    assert stop(host)["type"] == "stopped"
+    assert host.session.manifest["captureOutcome"]["sources"][0]["captureOutcome"] == "captured"

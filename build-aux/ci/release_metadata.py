@@ -19,8 +19,8 @@ def value(root, path, pattern):
 
 def check(root, tag=None):
     extension_version = json.loads((root / "browser-extension/manifest.json").read_text()).get("version")
-    if extension_version != "0.2.3":
-        raise ValueError("Browser companion version must be 0.2.3")
+    if extension_version != "0.2.4":
+        raise ValueError("Browser companion version must be 0.2.4")
     versions = {
         "meson": value(root, "meson.build", r"^\s*version:\s*'([^']+)'"),
         "debian": value(root, "debian/changelog", r"\Acassini-talk \(([^)]+)\)").split("+")[0].split("-")[0],

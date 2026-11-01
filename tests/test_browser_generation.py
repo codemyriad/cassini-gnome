@@ -124,3 +124,49 @@ def test_call_boundary_fences_pcm_before_worker_then_late_A_cannot_mutate_B(tmp_
         for capture in captures:
             capture.stop()
         workers.drain()
+
+
+def test_adopting_commands_echo_the_selected_generation_and_capture_id(tmp_path, monkeypatch):
+    broker = BrowserService(tmp_path / "settings.json", notifier=lambda *_: None)
+    peer = BrowserConnection(None)
+    broker.browsers[peer.id] = peer
+    broker.update(peer, dict(type="hello", version=1, capabilities=["independent-sessions-v1", "multi-stream-v1"]))
+    broker.update(peer, dict(type="status", recording=False))
+    broker.update(
+        peer,
+        dict(
+            type="meetings",
+            meetings=[
+                dict(
+                    tabId=2,
+                    title="Synthetic",
+                    url="https://meeting.test/A",
+                    sourceCount=1,
+                    heard=True,
+                    callGeneration="selected-generation",
+                )
+            ],
+        ),
+    )
+    commands = []
+
+    def send(packet):
+        commands.append(packet)
+        broker.update(
+            peer,
+            dict(
+                type="result",
+                requestId=packet["requestId"],
+                ok=True,
+                status=dict(recording=packet["action"] == "start", tabId=2, captureId="selected-capture"),
+            ),
+        )
+
+    monkeypatch.setattr(peer, "send", send)
+    try:
+        broker.command(f"{peer.id}:2", "start")
+        broker.command(f"{peer.id}:2", "stop")
+        assert commands[0]["callGeneration"] == "selected-generation"
+        assert commands[1]["captureId"] == "selected-capture"
+    finally:
+        broker.workers.shutdown()

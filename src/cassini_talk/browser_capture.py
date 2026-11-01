@@ -336,7 +336,14 @@ class BrowserCapture:
             if self.others:
                 events.append(dict(atMs=at, type="othersSource", source="none", reason="user"))
         elif not lost and old.fallback:
-            events.append(dict(atMs=at, type="othersSource", source="browser", reason="restored"))
+            events.append(
+                dict(
+                    atMs=at,
+                    type="othersSource",
+                    source="browser",
+                    reason="callConnected" if old.reason == "missing" else "restored",
+                )
+            )
         elif not self.others or (lost and old.source != "system"):
             events.append(
                 dict(
@@ -465,6 +472,8 @@ class BrowserCapture:
                 raise ProtocolError("state", "No active recording")
             self.streams.picture = None
             result = self.host.handle(message)
+            if message.get("type") == "audio" and result.get("type") == "ack":
+                self.audio_connected = True
             picture, self.streams.picture = self.streams.picture, None
             if message.get("type") in ("track", "trackEnd") or (
                 picture is not None and picture["identifier"] not in self.spectrogram.known

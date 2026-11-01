@@ -38,10 +38,15 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
     service.workers.shutdown()
     service.workers = Inline()
     capture = BrowserCapture(service._capture_changed, parent=tmp_path / "Library", tap_factory=Tap)
-    capture.start(dict(type="start", captureId="call", timelineOriginMs=int(time.time() * 1000), microphone=True))
+    capture.start(
+        dict(type="start", captureId="call", timelineOriginMs=int(time.time() * 1000), microphone=True),
+        others_source=case.get("source", "browser"),
+        reason=case.get("sourceReason", "start"),
+    )
     capture.elapsed_ms = lambda: now[0] * 1000
-    capture.host.handle(dict(type="track", id="original", kind="remote", sampleRate=48000, channels=1))
-    capture.host.handle(dict(type="audio", id="original", sequence=0, offsetMs=0, pcm="AQACAA=="))
+    if case.get("source", "browser") == "browser" and not case.get("multistream"):
+        capture.host.handle(dict(type="track", id="original", kind="remote", sampleRate=48000, channels=1))
+        capture.host.handle(dict(type="audio", id="original", sequence=0, offsetMs=0, pcm="AQACAA=="))
     if not case.get("others", True):
         capture.select(True, False)
     service.captures["call"] = capture
@@ -69,9 +74,11 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
             now[0] = step["atMs"] / 1000
             same = step.get("sameTab", True)
             page = step["pageState"] if same else None
-            count = step["sourceCount"] if same else 0
+            count = step.get("sourceCount", 0) if same else 0
             browser.states[3]["pageState"] = page
-            browser.meetings = {3: dict(pageState=page, sourceCount=count, heard=step.get("heard", True))}
+            browser.meetings = {
+                3: dict(pageState=page, sourceCount=count, heard=step.get("heard", not case.get("multistream", False)))
+            }
             browser.meetings[3]["sourceCountKnown"] = step.get("sourceCountKnown", True)
             if not step.get("rowPresent", True):
                 browser.meetings = {}
@@ -293,3 +300,14 @@ def test_multistream_reload_through_present_zero_keeps_the_two_minute_return_dea
             ],
         ),
     )
+
+
+D52_VECTORS = VECTORS.parents[1] / "multistream/lifecycle.json"
+
+
+@pytest.mark.parametrize("case", json.loads(D52_VECTORS.read_text())["cases"], ids=lambda case: case["name"])
+def test_d52_shared_lifecycle_on_actual_capture(tmp_path, monkeypatch, case):
+    case = dict(
+        case, multistream=True, steps=[dict(step, pageState=step.get("pageState", "present")) for step in case["steps"]]
+    )
+    test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monkeypatch, case)

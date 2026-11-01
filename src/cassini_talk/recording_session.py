@@ -709,6 +709,8 @@ class BrowserHost:
             self.session.checkpoint()
         elif kind == "track":
             identifier = message.get("id")
+            if self.source_outcomes and isinstance(identifier, str) and identifier in self.ended:
+                raise ProtocolError("state", "Audio source has ended")
             if self.source_outcomes:
                 label = source_parameters(
                     identifier,
@@ -766,6 +768,8 @@ class BrowserHost:
             self.sequences[identifier] += 1
         elif kind == "trackEnd":
             identifier = message.get("id")
+            if isinstance(identifier, str) and identifier in self.ended:
+                raise ProtocolError("state", "Audio source has ended")
             if not isinstance(identifier, str) or identifier not in self.sequences:
                 raise ProtocolError("source", "Unknown audio source")
             if message.get("reason") not in ("ended", "replaced", "retry", "stopped", "failed", "callChanged"):

@@ -110,6 +110,9 @@ export class AppControl {
       }
       const validOptions = ['independent', 'captureLocal', 'microphone', 'keepOnNavigation'].every(key => message[key] === undefined || typeof message[key] === 'boolean')
         && (message.keepOnNavigation !== true || (message.action === 'start' && message.independent === true))
+        && (message.callGeneration === undefined || (message.action === 'start' && typeof message.callGeneration === 'string' && message.callGeneration.length > 0 && message.callGeneration.length <= 200))
+        && (message.captureId === undefined || (message.action === 'stop' && typeof message.captureId === 'string' && message.captureId.length > 0 &&
+            Array.from(message.captureId).reduce((n,c)=>n+(c.codePointAt(0)<=127?1:c.codePointAt(0)<=2047?2:c.codePointAt(0)<=65535?3:4),0)<=200))
         && (message.reason === undefined || (message.action === 'stop' &&
             ['user', 'callEnded', 'tabClosed', 'pageGone', 'disk', 'error', 'appQuit'].includes(message.reason)));
       if (message.independent === true && message.action === 'stop' && Number.isSafeInteger(message.tabId) && message.tabId >= 0 && validOptions)

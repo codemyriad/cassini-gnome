@@ -1,26 +1,26 @@
-tree 541a34f9744ca19da25d8e61b75a4dba86857921
-parent bb13da92fa8c3192bb6d9b8444acd3197c772d62
-parent ff9154e857a75907aede52a2fa0b0001b2e965ae
-author Silvio Tomatis <silviot@gmail.com> 1793419839 +0100
-committer GitHub <noreply@github.com> 1793419839 +0100
+tree ac113cf9ef7bec18ac50792ba3c590facb21c314
+parent 6e581d66cfe897f13b05445ae4f67392619e08ff
+parent 13b3941dcc312eea2a22f606b1f527d50433a2ee
+author Silvio Tomatis <silviot@gmail.com> 1793502669 +0100
+committer GitHub <noreply@github.com> 1793502669 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq5Wo/CRC1aQ7uu5UhlAAAdLgQAHs0j3uExiUcH7nnUki3JM8e
- TUThsfmxYqoG//ULoz+2IXiAn7RL3YmyC+fhKTcFsA6aFuRdJRkVgVwD2v6CJe39
- W6t/oYnGdkqJpyKfOysbDjYbBqQWDgS+odUM0x0lkOLJ6wiZfLTksnZKIaC3xQ7Q
- 8LwpLv2kP5Gz8lCPlDAxa3hT7gpoD3yXVEwGP9LtXB3sXAeA2HJ7ncY0FwUY/1ro
- 0P8CsyJCkwEH0JM47UkTMFiShljah2EuuJHMi8s1mBNMLFpOo2B+7DU9VPS75+h9
- tVIczH1qnL0VsOgExI37EjR8ZMCypCL97ppY3OYqvVLN0uojpFkJWvfm/HkDVmJd
- HCyXzyjoUHy4sEjk1Hr8a9tQ9g45EC102BhGxzUPpW7NKqyml8bG1ct24vCyrTT5
- qGgcZj1TnN62hU1S0+x6mRm4YLTPYTDTMq8FFAL8mhIRSeFt0pSzdg1USPrQV2fO
- YY2frg8N2obj/SAmiU8+QFvvBQAtizfwEAgknms6OGKfc2cBUKKK7aXLzJ56yxru
- 741U+04y0nxrFlcuw1q0OC4jiplhiTyw+Xh2a696tfhFLNeuzNkSMBFw+JMyoVkM
- vsVjn+OxrCw1PBIvSIAwz/iDYUGCOofGPgiq/yeX4MsF7OKKOezHgbbKlQkgyuGd
- u/LOcmIQJEpwxZgZo+YR
- =1cNi
+ wsFcBAABCAAQBQJq5q3NCRC1aQ7uu5UhlAAARt0QAEuuaJTogn20aR0ZEbeap3XY
+ Bobm+zQvtv6emBHpRR0unPmDDdqpe4Un9CQ/BxoHeTI2nFF8Ymrhpv392U4LNCVh
+ IvkLZ9iTmVybgOKOQhK7uIGLFt83yqNfhqTGIRb/gcAKrgj4ng7dhyV4FbdiocP0
+ R6rbdaL6/PjTF53Y2eLGurTsTY8oD55et7iRo1NP3rqToS/SyBnEQ2MjBwWdPdSD
+ /d5RvD8dqSftatQ5VMmlXbVnXd1B6XyZmcIjjp1v/mvHvbuNxWBHaTA0BwRhmGkT
+ f/iNlLqV+DZf3FEjZKPKPZUMGXlas54NmXsb1pZvWvM1/Alq9lwMZC8Z7+WKomL8
+ WId+/iEbuuOvzUBKP6VCIM3MQy7YHAJs5dOEiGfuycUFsp7h0x2OLh6hhnCVBNzm
+ SouLEahig5oJo5gBVjNokfepF5RkSbjYcNubcnx6JG6643jj/j7P+PtB5rzbi3ek
+ fqD68wiLPsiDg4igpYa3h8SpwqcrDDzHqKIZQqPd6IMEspkD6+ujj42fbwRKTBSc
+ IfiK43SS0PHVj7JUuwzz+1RPd9fhw7bRj3k++gq4eaV6sh3TXAAL8Mt/UbJyDHdh
+ zN91mVcYQHklK+EsJq1tsbQdQP7cLSaNHpqupVJljKp6/1qBgVo6hzzwwuelIKEg
+ J3t6mGiRnJ7GAKUDC9q3
+ =kHY7
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #23 from codemyriad/fix/publish-call-page-transitions
+Merge pull request #24 from codemyriad/feat/multistream-reliability
 
-Preserve active page transitions during asynchronous discovery
+D52: account for every multi-stream capture source

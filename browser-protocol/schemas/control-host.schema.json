@@ -51,6 +51,17 @@
         "error",
         "appQuit"
       ]
+    },
+    "captureId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+    },
+    "callGeneration": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
     }
   },
   "required": [

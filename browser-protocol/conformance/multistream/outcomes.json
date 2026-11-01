@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "minimumAudioMs": 1000,
+  "note": "Hand-written D52 outcomes. Frames count received PCM, including zeros and DC, and exclude padding. Source labels never establish identity.",
+  "cases": [
+    {
+      "name": "announced-missing-and-zero-valued",
+      "tracks": [{"id":"a","sourceTrackId":"source-a"},{"id":"b","sourceTrackId":"source-b"},{"id":"c","sourceTrackId":"source-c"}],
+      "writes": [{"id":"a","offsetMs":0,"frames":16000,"value":200},{"id":"c","offsetMs":0,"frames":16000,"value":0}],
+      "expected": {"a":"captured","b":"neverAudio","c":"captured"},
+      "sourceExpected": {"source-a":"captured","source-b":"neverAudio","source-c":"captured"}
+    },
+    {
+      "name": "half-a-second-is-low-audio",
+      "tracks": [{"id":"short","sourceTrackId":"source-short"}],
+      "writes": [{"id":"short","offsetMs":0,"frames":4000,"value":1000}],
+      "expected": {"short":"lowAudio"},
+      "sourceExpected": {"source-short":"lowAudio"}
+    },
+    {
+      "name": "failed-attach-stays-in-the-capture-record",
+      "tracks": [{"id":"good","sourceTrackId":"source-good"}],
+      "writes": [{"id":"good","offsetMs":0,"frames":8000,"value":0}],
+      "discoveredSources": [{"sourceTrackId":"source-refused","kind":"remote","label":"Guest","failed":true}],
+      "expected": {"good":"captured"},
+      "sourceExpected": {"source-good":"captured","source-refused":"failed"}
+    },
+    {
+      "name": "padding-is-not-received-audio",
+      "tracks": [{"id":"sparse","sourceTrackId":"source-sparse"}],
+      "writes": [{"id":"sparse","offsetMs":0,"frames":2000,"value":0},{"id":"sparse","offsetMs":10000,"frames":2000,"value":0}],
+      "expected": {"sparse":"lowAudio"},
+      "sourceExpected": {"source-sparse":"lowAudio"}
+    },
+    {
+      "name": "live-discovery-durable-before-native-stop",
+      "tracks": [],
+      "writes": [],
+      "announcedSources": [
+        {
+          "sourceTrackId": "not-opened",
+          "kind": "remote",
+          "label": "Guest",
+          "failed": true
+        },
+        {
+          "sourceTrackId": "not-yet-audible",
+          "kind": "media",
+          "label": "Lesson"
+        }
+      ],
+      "expected": {},
+      "sourceExpected": {
+        "not-opened": "failed",
+        "not-yet-audible": "neverAudio"
+      }
+    }
+  ]
+}

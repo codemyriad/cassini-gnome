@@ -31,6 +31,7 @@ class CallLifecycle:
         inventory_known=True,
         control_alive=True,
         pcm_live=False,
+        initial_missing=False,
     ):
         self.heard |= heard
         if page == "closed" and self.closed is None:
@@ -55,6 +56,7 @@ class CallLifecycle:
                 restore_ready=restore_ready,
                 inventory_known=inventory_known,
                 control_alive=control_alive,
+                initial_missing=initial_missing,
             )
         if page == "present" and count > 0:
             self.missing = self.ended = None
@@ -68,10 +70,14 @@ class CallLifecycle:
             self.ended = now
         return "stop:callEnded" if now - self.ended >= CALL_END_GRACE else None
 
-    def _multistream(self, now, page, count, *, fallback, others, restore_ready, inventory_known, control_alive):
+    def _multistream(
+        self, now, page, count, *, fallback, others, restore_ready, inventory_known, control_alive, initial_missing
+    ):
         if page == "present" and control_alive and inventory_known and count > 0:
             self.missing = self.ended = None
-            return "restore" if self.heard and fallback and others and restore_ready else None
+            if self.heard and fallback and others and restore_ready:
+                return "switch:browser:callConnected" if initial_missing else "restore"
+            return None
         if page != "present" or not control_alive or self.missing is not None:
             self.ended = None
             if self.missing is None:

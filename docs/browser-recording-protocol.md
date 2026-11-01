@@ -3,7 +3,7 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `6e581d66`, ships companion 0.2.3 with authoritative page-state
+The current pin, `a6d240e8`, ships companion 0.2.4 with authoritative page-state
 publication and a coherent multi-tab inventory. D33 records explicit end causes
 and permits `othersSource.reason: restored` only for a retained browser connection
 returning with fresh PCM after fallback; older recordings remain readable.

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import hashlib
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -24,7 +25,8 @@ class PinningTests(unittest.TestCase):
             destination, extension = pathlib.Path(temp) / 'browser-protocol', pathlib.Path(temp) / 'BrowserExtension'
             subprocess.run([sys.executable, str(ROOT / 'vendor.py'), commit, str(destination), str(extension)], check=True, capture_output=True)
             scripts = sorted(str(path) for path in (extension / 'tests').glob('*.test.cjs'))
-            result = subprocess.run(['node', '--test', *scripts], capture_output=True, text=True, timeout=30)
+            result = subprocess.run(['node', '--test', *scripts], capture_output=True, text=True, timeout=30,
+                                    env={**os.environ, 'CASSINI_TEST_NATIVE_HOST_FIXTURE': str(ROOT / 'tests/browser_host_fixture.py')})
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_exact_commit_and_mutations(self):

@@ -207,7 +207,7 @@ installed (unpacked, self-hosted or from a store):
 
 This additive capability preserves all v1 messages and legacy vectors. Without
 `independent: true`, the popup/app start retains the v1 single-slot refusal.
-The extension's hello now advertises `capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1"]`.
+The extension's hello now advertises `capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1"]`.
 Only apps that see that capability may request concurrent capture.
 
 An app may send `start` with `independent: true` for each active-call tab. Each
@@ -365,3 +365,39 @@ force. `conformance/control/call-lifecycle-vectors.json` supplies literal timed
 expectations for both apps, checked by an independent fixture oracle. It is not
 production policy code. Each app must additionally test its actual writer and
 fallback/restore device failures.
+
+## D52 multi-stream lifecycle (extension 0.2.4; draft PR)
+
+The extension advertises multi-stream-v1 alongside its existing capabilities.
+The following policy supersedes the legacy two-second present-page call-end
+rule only for adopting apps: after remote audio has been heard in this call,
+a present page with a known zero source count has OTHERS_GONE_GRACE=30 seconds.
+A 15-second rejoin survives; a call that never supplied remote audio does not
+arm this timer. A closed tab retains its two-second grace. Missing inventory is
+unknown, never zero. Active rows retain their last browser-owned title/URL when
+lookup fails and mark sourceCountKnown:false; the cached count is not evidence.
+Healthy admitted browser PCM prevents fallback for absent control. The native
+microphone alone is not that evidence. Shared literal cases are in
+conformance/multistream/lifecycle.json; P11 heartbeat transport remains wave 2.
+
+Rows/status include optional documentGeneration and callGeneration; capture
+statuses retain captureId. Adopting starts echo callGeneration and are checked
+after tab lookup. Stops echo captureId and are checked before cancellation.
+A changed call address retires the old token before admitting new-call audio;
+fragment-only navigation preserves the existing call. Document-local generation
+changes likewise fence old spans. Reloading the same address retains the
+browser-owned call generation. Old peers closing late cannot open B under A.
+Peer roots retain their call binding across stats reads and local sender changes.
+A reused peer is rebound only after a successful remote description whose API
+call began in the new generation; a negotiation begun in A and completed in B
+cannot rebind it. Deliberate call fencing emits trackEnd(callChanged), never a
+source failure or retry into the new call. Fresh RTP baseline/progress is required before reopening its
+remote spans. Sender/media aliases belonging to a fenced peer stay excluded.
+
+Live sources retry indefinitely with monotonic deadlines: 1, 5, 15, then 30-second
+backoff, resetting after 60 seconds of healthy acknowledged audio (zero samples
+are healthy). Initial attach failures retry too. Remote spans require a connected
+peer and positive inbound RTP progress, not merely recvonly slots. A suspension
+that would create a gap above 60 seconds rotates the span before sending it.
+The background never forwards a 65th distinct track ID; a refusal stays per
+source and is visible in failedSources. See the schemas and new source tests.

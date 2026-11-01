@@ -10,13 +10,15 @@ chrome.runtime.onMessage.addListener((message, _sender, respond) => {
       } }, video: false });
       for (const track of stream.getTracks()) track.addEventListener("ended", () => fail("Tab audio ended. The partial recording was saved."), { once: true });
       recording = await capture({ stream, id: crypto.randomUUID(), label: "Tab audio", kind: "tab", channels: 2,
+        sourceTrackId: message.sourceTrackId, reportOutcomes: message.sourceOutcomes === true,
         origin: message.origin, workletURL: new URL("pcm-worklet.js", location.href).href, audible: true, fail,
-        warn: () => { void chrome.runtime.sendMessage({ target: "background", type: "warning" }); },
+        warn: (_message, details) => { void chrome.runtime.sendMessage({ target: "background", type: "warning", transient: details?.kind === "retry" }); },
         send: async packet => {
           const result = await chrome.runtime.sendMessage({ target: "background", type: "packet", packet });
-          if (result?.error) throw new Error(result.error);
+          if (result?.error) throw Object.assign(new Error(result.error), {code: result.code, scope: result.scope});
         } });
     } else if (message.type === "stop") {
+      if (recording?.state === "retrying") await chrome.runtime.sendMessage({ target: "background", type: "warning" });
       try { await recording?.stop(); }
       finally { stream?.getTracks().forEach(track => track.stop()); recording = null; stream = null; }
     }

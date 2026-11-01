@@ -22,6 +22,7 @@ from pathlib import Path
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from .call_lifecycle import BROWSER_RETURN_GRACE, CALL_END_GRACE, CONTROL_RECONNECT_GRACE, CallLifecycle
+from .session_events import source_state
 
 MAX_PACKET = 512 * 1024
 # A call the user stopped stays stopped beyond the control link that carried
@@ -1246,6 +1247,8 @@ class BrowserService:
                     reason=reason,
                     preserve_capture=preserve_capture,
                     captures=set(),
+                    captureId=browser.states.get(tab, {}).get("captureId"),
+                    callGeneration=browser.meetings.get(tab, {}).get("callGeneration"),
                     event=threading.Event(),
                     result=None,
                     action=action,
@@ -1292,6 +1295,11 @@ class BrowserService:
             packet = dict(type="command", requestId=request_id, action=action, tabId=tab, mode="tracks")
             if independent:
                 packet.update(independent=True, captureLocal=False, microphone=microphone)
+                if "multi-stream-v1" in browser.capabilities:
+                    if action == "start" and pending.get("callGeneration") is not None:
+                        packet["callGeneration"] = pending["callGeneration"]
+                    elif action == "stop" and pending.get("captureId") is not None:
+                        packet["captureId"] = pending["captureId"]
                 if "page-state-v1" in browser.capabilities:
                     if action == "start":
                         packet["keepOnNavigation"] = True
@@ -1768,6 +1776,7 @@ class BrowserService:
                         and meeting.get("sourceCountKnown", True),
                         control_alive=peer is not None,
                         pcm_live=capture.multistream_capable and capture.browser_ready_since(recorded=True),
+                        initial_missing=source_state(capture.host.session.manifest.get("events")).reason == "missing",
                     )
                     if reconnect is not None and page == "present" and count > 0 and lifecycle.missing is None:
                         self._control_reconnects.pop(key, None)
@@ -1884,7 +1893,7 @@ class BrowserService:
                     self._fallback(identifier, capture)
                 else:
                     capture.fallback()
-            elif action == "restore":
+            elif action in ("restore", "switch:browser:callConnected"):
                 capture.restore()
             else:
                 # Save before waiting for a potentially unreachable extension.
