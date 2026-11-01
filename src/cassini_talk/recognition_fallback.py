@@ -51,6 +51,7 @@ class ActivityMeter:
         self.codes = bytearray()
         self.samples = 0
         self._tail = np.empty(0, dtype="<f4")
+        self._inside = []
 
     def wrap(self, chunks):
         for block in chunks:
@@ -68,14 +69,22 @@ class ActivityMeter:
             self.codes.append(SILENT if level <= 0 else int(min(120, max(0, round(120 + 20 * math.log10(level))))))
 
     def inside(self):
-        """Per frame: whether the frame lies wholly inside one presence range."""
+        """Per frame: whether the frame lies wholly inside one presence range.
+
+        Computed once per frame count, so threshold_db() and active() share it
+        after metering ends.
+        """
+        if len(self._inside) == len(self.codes):
+            return self._inside
         if self.presence is None:
-            return [True] * len(self.codes)
-        inside = [False] * len(self.codes)
-        for start, end in self.presence:
-            first, last = -(-max(0, start) // FRAME), min(len(self.codes), end // FRAME)
-            if first < last:
-                inside[first:last] = [True] * (last - first)
+            inside = [True] * len(self.codes)
+        else:
+            inside = [False] * len(self.codes)
+            for start, end in self.presence:
+                first, last = -(-max(0, start) // FRAME), min(len(self.codes), end // FRAME)
+                if first < last:
+                    inside[first:last] = [True] * (last - first)
+        self._inside = inside
         return inside
 
     def threshold_db(self):
