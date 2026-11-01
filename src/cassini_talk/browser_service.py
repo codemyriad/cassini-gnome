@@ -16,6 +16,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from concurrent.futures import FIRST_COMPLETED, CancelledError, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +32,15 @@ STOPPED_CALL_GRACE = 10 * 60
 STOPPED_CALL_LIMIT = 256
 # A new extension worker reports the calls already open as its pages reconnect.
 STOPPED_CALL_REPORT_WINDOW = 30
+# A peer that stops reading must not hold a writer, or the commands behind it.
+WRITE_DEADLINE = 10
+OUTBOUND_LIMIT = 64
+# A frozen companion keeps its audio socket open. A healthy one can leave an
+# open remote span silent while a failed recorder waits to reattach: capture.js
+# retryDelay() backs off 1, 5, 15, then 30 s, and the broker cannot see that
+# state. So: the longest retry wait plus the extension's 10 s acknowledgement
+# limit, still under the 60 s span cut that would end the source anyway.
+PCM_STALE_AFTER = 40
 
 
 @dataclass(frozen=True)
@@ -68,11 +78,15 @@ def read_packet(stream):
     return value
 
 
-def send_packet(stream, value):
+def encode_packet(value):
     data = json.dumps(value, allow_nan=False).encode() + b"\n"
     if len(data) > MAX_PACKET:
         raise ValueError("Control packet is too large")
-    stream.write(data)
+    return data
+
+
+def send_packet(stream, value):
+    stream.write(encode_packet(value))
     stream.flush()
 
 
@@ -133,15 +147,69 @@ def request(action="status", *, path=None, **values):
         return response
 
 
-class BrowserConnection:
-    def __init__(self, stream, browser_name=None, browser_instance=None):
+class Transport:
+    """A peer socket that a watchdog can close without taking its writer's locks."""
+
+    def __init__(self, connection, clock):
+        self.connection = connection
+        self.clock = clock
+        self.write_started = None
+        self.shut_down = threading.Event()
+
+    def expired(self, now):
+        started = self.write_started
+        if started is not None and now - started >= WRITE_DEADLINE:
+            return "stopped reading"
+        return None
+
+    def shutdown(self):
+        # Never close here: the reader thread still owns the descriptor. Its
+        # blocked read sees EOF and a blocked write fails, so both unwind.
+        self.shut_down.set()
+        if self.connection is not None:
+            with contextlib.suppress(OSError):
+                self.connection.shutdown(socket.SHUT_RDWR)
+
+
+class AudioTransport(Transport):
+    def __init__(self, connection, clock):
+        super().__init__(connection, clock)
+        self.capture = None
+        # Any packet counts, so declaring a new span restarts the wait.
+        self.last_inbound = clock()
+
+    def expired(self, now):
+        capture = self.capture
+        if (
+            capture is not None
+            and capture.multistream_capable
+            and now - self.last_inbound >= PCM_STALE_AFTER
+            and not (capture.finished or capture.stopping or capture.stop_requested.is_set() or capture.browser_lost)
+            and capture.remote_open()
+        ):
+            # Only a running remote recorder must keep sending. Before the first
+            # PCM, or after every span ended (a guest left, the receiver dropped
+            # out during a network blip), a quiet transport is still healthy.
+            return "stopped sending audio"
+        return super().expired(now)
+
+
+class BrowserConnection(Transport):
+    def __init__(self, stream, browser_name=None, browser_instance=None, *, connection=None, clock=time.monotonic):
+        super().__init__(connection, clock)
         self.browser_name = browser_name if isinstance(browser_name, str) and len(browser_name) <= 100 else None
         self.browser_instance = (
             browser_instance if isinstance(browser_instance, str) and 0 < len(browser_instance) <= 128 else None
         )
         self.id = str(uuid4())
         self.stream = stream
-        self.write_lock = threading.RLock()
+        # Orders a command's validity check with its place in the queue. No
+        # socket I/O happens under it; one writer thread owns the stream.
+        self.order_lock = threading.RLock()
+        self.outbound = deque()
+        self.outbound_ready = threading.Condition(threading.RLock())
+        self.writer = None
+        self.ignored = set()
         self.meetings = {}
         self.status = {"recording": False}
         self.status_seen = self.hello_seen = False
@@ -163,8 +231,42 @@ class BrowserConnection:
         self.closed = False
 
     def send(self, packet):
-        with self.write_lock:
-            send_packet(self.stream, packet)
+        data = encode_packet(packet)
+        with self.outbound_ready:
+            if self.shut_down.is_set():
+                raise OSError("The browser connection is closed")
+            if len(self.outbound) >= OUTBOUND_LIMIT:
+                self.shutdown()
+                raise OSError("The browser stopped reading commands")
+            self.outbound.append(data)
+            if self.writer is None:
+                self.writer = threading.Thread(target=self._write, daemon=True, name="cassini-browser-writer")
+                self.writer.start()
+            self.outbound_ready.notify()
+
+    def shutdown(self):
+        super().shutdown()
+        with self.outbound_ready:
+            self.outbound.clear()
+            self.outbound_ready.notify()
+
+    def _write(self):
+        while True:
+            with self.outbound_ready:
+                while not self.outbound and not self.shut_down.is_set():
+                    self.outbound_ready.wait()
+                if self.shut_down.is_set():
+                    return
+                data = self.outbound.popleft()
+                self.write_started = self.clock()
+            try:
+                self.stream.write(data)
+                self.stream.flush()
+            except (OSError, ValueError):
+                self.shutdown()
+                return
+            finally:
+                self.write_started = None
 
 
 class BrowserService:
@@ -177,6 +279,7 @@ class BrowserService:
         capture_parent=None,
         tap_factory=None,
         require_application=False,
+        clock=time.monotonic,
     ):
         self.config = (
             Path(config)
@@ -188,7 +291,10 @@ class BrowserService:
         with contextlib.suppress(OSError, ValueError, AttributeError):
             self.auto_record = json.loads(self.config.read_text()).get("autoRecord") is True
         self.lock = threading.RLock()
+        # Transport liveness only; lifecycle timers keep their own clock.
+        self.clock = clock
         self.browsers = {}
+        self._audio_transports = set()
         self.recordings = []
         self.captures = {}
         self.call_captures = {}
@@ -678,15 +784,27 @@ class BrowserService:
             recording = dict(path=path, title=title, message=message or "Recording saved")
             self.recordings = [recording] + [r for r in self.recordings if r["path"] != path][:19]
 
-    def _audio(self, stream):
+    def _audio(self, stream, connection=None):
         from .browser_capture import BrowserCapture
         from .recording_session import ProtocolError
 
         capture = None
         problem = None
-        send_packet(stream, dict(ready=True, protocol=2))
+        transport = AudioTransport(connection, self.clock)
+
+        def reply(packet):
+            transport.write_started = self.clock()
+            try:
+                send_packet(stream, packet)
+            finally:
+                transport.write_started = None
+
+        with self.lock:
+            self._audio_transports.add(transport)
         try:
+            reply(dict(ready=True, protocol=2))
             while (packet := read_packet(stream)) is not None:
+                transport.last_inbound = self.clock()
                 try:
                     if capture is None:
                         if packet.get("type") != "start" or packet.get("independent") is not True:
@@ -711,6 +829,7 @@ class BrowserService:
                             # Reserve identity before startup. Snapshots ignore a
                             # reservation until it has created its own folder.
                             self.captures[identifier] = capture
+                            transport.capture = capture
                         result = capture.start(packet)
                     else:
                         result = capture.handle(packet)
@@ -725,16 +844,18 @@ class BrowserService:
                     )
                     # Keep the original failure if its error reply is lost.
                     with contextlib.suppress(ConnectionError):
-                        send_packet(stream, dict(type="error", code=code, message=str(error)))
+                        reply(dict(type="error", code=code, message=str(error)))
                     break
                 try:
-                    send_packet(stream, result)
+                    reply(result)
                 except ConnectionError:
                     # PCM/metadata was accepted; losing its acknowledgement
                     # is transport loss, just like EOF. Preserve the native
                     # microphone and invoke Q4 rather than ending the meeting.
                     break
         finally:
+            with self.lock:
+                self._audio_transports.discard(transport)
             if capture is not None:
                 try:
                     if problem or self.closed.is_set():
@@ -1082,7 +1203,12 @@ class BrowserService:
                     else set()
                 )
             else:
-                raise ValueError("Unknown browser control event")
+                # Forward compatible: a newer companion's message is not a
+                # broken link. Log each new type once per connection.
+                name = kind[:64] if isinstance(kind, str) else type(kind).__name__
+                if name not in browser.ignored and len(browser.ignored) < 16:
+                    browser.ignored.add(name)
+                    logging.getLogger(__name__).info("Ignoring unknown browser control event: %s", name)
             browser.page_states = {
                 tab: page
                 for tab, page in browser.page_states.items()
@@ -1313,7 +1439,7 @@ class BrowserService:
                         packet["keepOnNavigation"] = True
                     else:
                         packet["reason"] = reason
-            with browser.write_lock:
+            with browser.order_lock:
                 if (
                     action == "start"
                     and expected is not None
@@ -1681,6 +1807,22 @@ class BrowserService:
                 self._release_stop_batch(stop_token, futures)
                 for future in futures:
                     future.add_done_callback(lambda _future: self._release_stop_batch(stop_token, futures))
+
+    def tick(self):
+        """Close transports past their deadline, then run lifecycle policy.
+
+        Runs during Stop too: policy pauses then, but a stuck peer must not.
+        A closed transport unwinds through its reader's normal EOF path.
+        """
+        now = self.clock()
+        with self.lock:
+            transports = [*self.browsers.values(), *self._audio_transports]
+        for transport in transports:
+            reason = transport.expired(now)
+            if reason is not None and not transport.shut_down.is_set():
+                logging.getLogger(__name__).warning("Closing a browser peer that %s", reason)
+                transport.shutdown()
+        self.policy()
 
     def policy(self):
         if self.closed.is_set() or self._stopping_all.is_set():
@@ -2091,11 +2233,22 @@ class BrowserService:
                 if not packet:
                     return
                 if packet.get("role") == "extension":
-                    browser = BrowserConnection(stream, packet.get("browserName"), packet.get("browserInstance"))
+                    browser = BrowserConnection(
+                        stream,
+                        packet.get("browserName"),
+                        packet.get("browserInstance"),
+                        connection=connection,
+                        clock=self.clock,
+                    )
                     with self.lock:
                         self.browsers[browser.id] = browser
-                    while (packet := read_packet(stream)) is not None:
-                        self.update(browser, packet)
+                    try:
+                        while (packet := read_packet(stream)) is not None:
+                            self.update(browser, packet)
+                    finally:
+                        # Release a writer still blocked on this peer before
+                        # closing the stream it writes to.
+                        browser.shutdown()
                 elif packet.get("role") == "application":
                     self._application(connection, stream, packet.get("active", True), packet.get("generation", 0))
                 elif packet.get("role") == "meter":
@@ -2103,7 +2256,7 @@ class BrowserService:
 
                     serve_meter(self, connection, stream, packet.get("path"))
                 elif packet.get("role") == "audio":
-                    self._audio(stream)
+                    self._audio(stream, connection)
                 elif packet.get("role") == "app":
                     try:
                         action = packet.get("action")
@@ -2339,8 +2492,8 @@ class BrowserService:
                         except TimeoutError:
                             pass
                         # UI/PCM traffic may keep accept() busy indefinitely;
-                        # call-end and return deadlines must still advance.
-                        self.policy()
+                        # call-end, return and transport deadlines must still advance.
+                        self.tick()
                         if idle_timeout is not None:
                             with self.lock:
                                 active = (
