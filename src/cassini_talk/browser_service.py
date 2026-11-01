@@ -38,9 +38,9 @@ OUTBOUND_LIMIT = 64
 # A frozen companion keeps its audio socket open. A healthy one can leave an
 # open remote span silent while a failed recorder waits to reattach: capture.js
 # retryDelay() backs off 1, 5, 15, then 30 s, and the broker cannot see that
-# state. So: the longest retry wait plus the extension's 10 s acknowledgement
-# limit, still under the 60 s span cut that would end the source anyway.
-PCM_STALE_AFTER = 40
+# state. The longest retry wait plus the extension's 10 s acknowledgement limit
+# is 40 s, so 5 s of margin on top (D52.5), still under the 60 s span cut.
+PCM_STALE_AFTER = 45
 # heartbeat-v1 (D52.4): the app pings a negotiated control link, and any
 # inbound frame proves it alive. Two missed pings plus 5 s of slack.
 HEARTBEAT_INTERVAL = 10
@@ -179,13 +179,18 @@ class AudioTransport(Transport):
     def __init__(self, connection, clock):
         super().__init__(connection, clock)
         self.capture = None
-        # Any packet counts, so declaring a new span restarts the wait.
+        # Any packet counts (PCM, track, sources, trackEnd), so declaring a new
+        # span restarts the wait.
         self.last_inbound = clock()
+        # While the reader handles a packet, a quiet peer is the broker's own
+        # stall (a disk write under the capture lock), never the browser's.
+        self.handling = False
 
     def expired(self, now):
         capture = self.capture
         if (
             capture is not None
+            and not self.handling
             and capture.multistream_capable
             and now - self.last_inbound >= PCM_STALE_AFTER
             and not (capture.finished or capture.stopping or capture.stop_requested.is_set() or capture.browser_lost)
@@ -818,6 +823,7 @@ class BrowserService:
             reply(dict(ready=True, protocol=2))
             while (packet := read_packet(stream)) is not None:
                 transport.last_inbound = self.clock()
+                transport.handling = True
                 try:
                     if capture is None:
                         if packet.get("type") != "start" or packet.get("independent") is not True:
@@ -866,6 +872,9 @@ class BrowserService:
                     # is transport loss, just like EOF. Preserve the native
                     # microphone and invoke Q4 rather than ending the meeting.
                     break
+                # The peer could not send while this packet was handled.
+                transport.last_inbound = self.clock()
+                transport.handling = False
         finally:
             with self.lock:
                 self._audio_transports.discard(transport)

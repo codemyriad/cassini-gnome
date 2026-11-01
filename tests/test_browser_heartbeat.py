@@ -160,3 +160,51 @@ def test_heartbeat_loss_takes_the_ordinary_control_loss_path(broker):
         assert (reconnect.instance, reconnect.tab, reconnect.lifecycle) == ("heartbeat-browser", 3, True)
     finally:
         link.close()
+
+
+def test_a_returning_frozen_companion_does_not_auto_start_a_second_recording(broker, tmp_path, monkeypatch):
+    import time
+
+    from test_browser_capture import Tap
+
+    from cassini_talk.browser_capture import BrowserCapture
+
+    service, clock, frame = broker
+    capabilities = ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "heartbeat-v1"]
+    meeting = dict(
+        tabId=3, title="Frozen call", url="https://meet.example/frozen", sourceCount=1, heard=True, callGeneration="g1"
+    )
+    capture = BrowserCapture(service._capture_changed, parent=tmp_path / "Library", tap_factory=Tap)
+    capture.start(dict(type="start", captureId="first", callGeneration="g1", timelineOriginMs=int(time.time() * 1000)))
+    service.captures["first"] = capture
+    first = Link(service)
+    second = None
+    try:
+        frame(first, dict(type="hello", version=1, capabilities=capabilities))
+        frame(first, dict(type="meetings", meetings=[meeting]))
+        session = dict(recording=True, tabId=3, captureId="first", callGeneration="g1", pageState="present")
+        frame(first, dict(type="status", recording=True, sessions=[session]))
+        # Freeze: the audio transport closes onto system/lost, then control is lost.
+        capture.close()
+        assert capture.browser_lost and not capture.finished
+        clock.now = CONTROL_LOSS_AFTER
+        service.tick()
+        first.thread.join(5)
+        assert not first.thread.is_alive()
+        service.auto_record = True
+        tasks = []
+        monkeypatch.setattr(service.workers, "submit", lambda function, *args: tasks.append((function, args)))
+        # SIGCONT: the same browser instance returns with the same tab and call.
+        second = Link(service)
+        frame(second, dict(type="hello", version=1, capabilities=capabilities))
+        frame(second, dict(type="meetings", meetings=[meeting]))
+        frame(second, dict(type="status", recording=False, sessions=[]))
+        service.policy()
+        starts = [args for function, args in tasks if function == service._automatic and args[1] == "start"]
+        assert not starts, "D52.5: a call on system/lost must not get a second recording"
+        assert list(service.captures) == ["first"] and len(list((tmp_path / "Library").iterdir())) == 1
+    finally:
+        capture.stop()
+        first.close()
+        if second is not None:
+            second.close()

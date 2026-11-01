@@ -375,8 +375,9 @@ def test_a_recorder_waiting_out_its_longest_retry_is_not_cut_over(broker):
         assert client.handle(declare("guest", "receiver")) == ACK
         assert client.handle(pcm("guest", 480)) == ACK
         # capture.js retryDelay() waits up to 30 s before reattaching a failed
-        # recorder, sending nothing meanwhile, not even trackEnd.
-        clock.now = 30 + 5
+        # recorder, sending nothing meanwhile, not even trackEnd; its first
+        # new packet may then take up to the 10 s acknowledgement limit.
+        clock.now = 30 + 10
         service.tick()
         (transport,) = service._audio_transports
         assert not transport.shut_down.is_set()
@@ -384,6 +385,95 @@ def test_a_recorder_waiting_out_its_longest_retry_is_not_cut_over(broker):
         assert client.handle(declare("guest-retry", "receiver")) == ACK
         assert not capture.browser_lost and not lost.is_set()
         capture.stop()
+    finally:
+        client.close()
+
+
+def test_a_navigated_frames_dead_spans_do_not_keep_the_watchdog_armed(broker):
+    service, path, clock, _lost = broker
+    client = BrowserAudioProxy(path=path)
+    try:
+        capture = negotiated(client, service, "reloaded")
+        assert client.handle(declare("old-frame", "receiver")) == ACK
+        assert client.handle(pcm("old-frame", 480)) == ACK
+        # The page reloads: the old document's recorder dies without trackEnd,
+        # policy falls back, and the new document's span restores the browser.
+        capture.fallback()
+        assert client.handle(declare("new-frame", "receiver-reloaded")) == ACK
+        assert client.handle(pcm("new-frame", 480, offset=1000)) == ACK
+        capture.restore()
+        assert not capture.browser_lost
+        # Later the guest leaves: the only live span ends and the transport is quiet.
+        assert client.handle(end("new-frame")) == ACK
+        clock.now = PCM_STALE_AFTER * 10
+        service.tick()
+        (transport,) = service._audio_transports
+        assert not transport.shut_down.is_set(), "a dead frame's span is not a running recorder"
+        assert client.handle(declare("guest-back", "receiver-back")) == ACK
+        assert not capture.browser_lost and len(lost_events(capture)) == 1, "only the reload's own fallback"
+        capture.stop()
+    finally:
+        client.close()
+
+
+def test_the_brokers_own_stall_is_not_blamed_on_the_peer(broker):
+    service, path, clock, lost = broker
+    client = BrowserAudioProxy(path=path)
+    try:
+        capture = negotiated(client, service, "slow-disk")
+        assert client.handle(declare("guest", "receiver")) == ACK
+        assert client.handle(pcm("guest", 480)) == ACK
+        (transport,) = service._audio_transports
+        handle = capture.handle
+        during = []
+
+        def stalled(message):
+            # A long write under the capture lock: fake time passes and the
+            # serve loop ticks while the peer waits for this acknowledgement.
+            clock.now += PCM_STALE_AFTER * 2
+            service.tick()
+            during.append(transport.shut_down.is_set())
+            return handle(message)
+
+        capture.handle = stalled
+        assert client.handle(pcm("guest", 480, sequence=1, offset=10)) == ACK
+        capture.handle = handle
+        assert during == [False]
+        clock.now += PCM_STALE_AFTER - 1
+        service.tick()
+        assert not transport.shut_down.is_set(), "the wait restarts once the peer could send again"
+        assert client.handle(pcm("guest", 480, sequence=2, offset=20)) == ACK
+        assert not capture.browser_lost and not lost.is_set()
+        capture.stop()
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize("kind", ["sources", "track", "trackEnd"])
+def test_every_frame_on_the_audio_transport_counts(broker, kind):
+    service, path, clock, lost = broker
+    client = BrowserAudioProxy(path=path)
+    try:
+        negotiated(client, service, "frames-" + kind)
+        assert client.handle(declare("guest", "receiver-a")) == ACK
+        assert client.handle(pcm("guest", 480)) == ACK
+        assert client.handle(declare("second", "receiver-b")) == ACK
+        assert client.handle(pcm("second", 480)) == ACK
+        clock.now = 30
+        frame = dict(
+            sources=dict(type="sources", discoveredSources=[dict(sourceTrackId="receiver-a", kind="remote")]),
+            track=declare("third", "receiver-c"),
+            trackEnd=end("second"),  # "guest" stays open, so the watchdog stays armed.
+        )[kind]
+        assert client.handle(frame) == ACK
+        (transport,) = service._audio_transports
+        clock.now = 30 + PCM_STALE_AFTER - 0.5
+        service.tick()
+        assert not transport.shut_down.is_set(), f"a {kind} frame did not restart the wait"
+        clock.now = 30 + PCM_STALE_AFTER
+        service.tick()
+        assert transport.shut_down.is_set()
+        assert lost.wait(5)
     finally:
         client.close()
 
