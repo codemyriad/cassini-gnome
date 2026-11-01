@@ -356,6 +356,8 @@ class BrowserService:
         return None
 
     def _command_result(self, browser, packet):
+        if isinstance(packet.get("status"), dict):
+            packet = dict(packet, status=self._capture_status(packet["status"]))
         request_id = packet.get("requestId")
         pending = browser.pending.get(request_id)
         metadata = pending or browser.commands.get(request_id)
@@ -420,7 +422,20 @@ class BrowserService:
                 pending["cancelled"] = True
                 pending["event"].set()
 
-    def _validate_call(self, browser, tab, expected, *, version=None):
+    def _validate_call(self, browser, tab, expected, *, version=None, stand_in=None):
+        joining_stand_in = (
+            stand_in is not None
+            and not stand_in.finished
+            and not stand_in.stopping
+            and not stand_in.stop_requested.is_set()
+            and stand_in.transport_id is None
+            and stand_in.browser_lost
+            and stand_in.directory is not None
+            and browser.states.get(tab, {}).get("captureId") == stand_in.capture_id
+            and stand_in.call_generation is not None
+            and browser.meetings.get(tab, {}).get("callGeneration") == stand_in.call_generation
+            and source_state(stand_in.host.session.manifest.get("events")).reason == "missing"
+        )
         if (
             expected is not None
             and (browser.browser_instance, tab, browser.meetings.get(tab, {}).get("url")) != expected
@@ -431,6 +446,7 @@ class BrowserService:
             version != self._call_versions.get(logical, 0)
             or self._stopped_identity(expected)
             or browser.states.get(tab, {}).get("recording")
+            and not joining_stand_in
         ):
             raise ValueError("Recording start was cancelled")
         return logical
@@ -678,6 +694,30 @@ class BrowserService:
             recording = dict(path=path, title=title, message=message or "Recording saved")
             self.recordings = [recording] + [r for r in self.recordings if r["path"] != path][:19]
 
+    def _capture_key(self, token):
+        if token in self.captures:
+            return token
+        return next(
+            (
+                key
+                for key, owner in self.captures.items()
+                if getattr(owner, "transport_id", None) == token and token is not None
+            ),
+            token,
+        )
+
+    def _capture_status(self, value):
+        def normalise(row):
+            row = dict(row)
+            if isinstance(row.get("captureId"), str):
+                row["captureId"] = self._capture_key(row["captureId"])
+            return row
+
+        result = normalise(value)
+        if isinstance(result.get("sessions"), list):
+            result["sessions"] = [normalise(row) if isinstance(row, dict) else row for row in result["sessions"]]
+        return result
+
     def _audio(self, stream):
         from .browser_capture import BrowserCapture
         from .recording_session import ProtocolError
@@ -703,17 +743,30 @@ class BrowserService:
                                 if url is not None
                             ):
                                 raise ProtocolError("state", "Recording start was cancelled")
-                            if identifier in self.captures:
+                            if self._capture_key(identifier) in self.captures:
                                 raise ProtocolError("state", "A capture with this identity already exists")
-                            capture = BrowserCapture(
-                                self._capture_changed, parent=self.capture_parent, tap_factory=self.tap_factory
-                            )
-                            # Reserve identity before startup. Snapshots ignore a
-                            # reservation until it has created its own folder.
-                            self.captures[identifier] = capture
-                        result = capture.start(packet)
+                            generation = packet.get("callGeneration")
+                            candidates = [
+                                owner
+                                for owner in self.captures.values()
+                                if generation is not None and owner.call_generation == generation and not owner.finished
+                            ]
+                            if len(candidates) > 1:
+                                raise ProtocolError("state", "Browser call identity is ambiguous")
+                            if candidates:
+                                owner = candidates[0]
+                                result = owner.attach_transport(packet)
+                                capture = owner
+                            else:
+                                capture = BrowserCapture(
+                                    self._capture_changed, parent=self.capture_parent, tap_factory=self.tap_factory
+                                )
+                                # Reserve identity before startup; snapshots ignore it.
+                                self.captures[identifier] = capture
+                        if not candidates:
+                            result = capture.start(packet)
                     else:
-                        result = capture.handle(packet)
+                        result = capture.handle_transport(packet)
                     send_packet(stream, result)
                 except Exception as error:
                     problem = str(error)
@@ -761,6 +814,7 @@ class BrowserService:
         return self.snapshot()
 
     def _status(self, browser, value):
+        value = self._capture_status(value)
         if type(value.get("recording")) is not bool:
             return
         browser.status_seen = True
@@ -1187,7 +1241,7 @@ class BrowserService:
             if action == "start":
                 if tab not in browser.meetings:
                     raise ValueError("This meeting is no longer available")
-                self._validate_call(browser, tab, expected, version=call_version)
+                self._validate_call(browser, tab, expected, version=call_version, stand_in=selected)
             if expected_capture is not None and browser.states.get(tab, {}).get("captureId") != expected_capture:
                 raise ValueError("This meeting is no longer available")
             capture = self.captures.get(browser.states.get(tab, {}).get("captureId"))
@@ -1299,7 +1353,8 @@ class BrowserService:
                     if action == "start" and pending.get("callGeneration") is not None:
                         packet["callGeneration"] = pending["callGeneration"]
                     elif action == "stop" and pending.get("captureId") is not None:
-                        packet["captureId"] = pending["captureId"]
+                        owner = self.captures.get(pending["captureId"])
+                        packet["captureId"] = getattr(owner, "transport_id", None) or pending["captureId"]
                 if "page-state-v1" in browser.capabilities:
                     if action == "start":
                         packet["keepOnNavigation"] = True
@@ -1783,6 +1838,20 @@ class BrowserService:
                     if reconnect is not None and page == "present" and count > 0 and lifecycle.missing is None:
                         self._control_reconnects.pop(key, None)
                     identifier = f"{peer[0].id}:{peer[1]}" if peer is not None else None
+                    if (
+                        action is None
+                        and capture.multistream_capable
+                        and capture.browser_lost
+                        and capture.transport_id is None
+                        and capture.call_generation is not None
+                        and source_state(capture.host.session.manifest.get("events")).reason == "missing"
+                        and capture.others
+                        and peer is not None
+                        and page == "present"
+                        and self._auto_start_ready(peer[0], meeting)
+                        and now >= capture.transport_retry_after
+                    ):
+                        action = "attach"
                     if action and key not in self._capture_policy_pending:
                         self._capture_policy_pending.add(key)
                         capture_tasks.append((key, capture, identifier, action))
@@ -1897,6 +1966,20 @@ class BrowserService:
                     capture.fallback()
             elif action in ("restore", "switch:browser:callConnected"):
                 capture.restore()
+            elif action == "attach":
+                if identifier is not None:
+                    with self.lock:
+                        browser_id, _, raw_tab = identifier.partition(":")
+                        browser = self.browsers.get(browser_id)
+                        if (
+                            browser is None
+                            or capture.stop_requested.is_set()
+                            or capture.finished
+                            or browser.meetings.get(int(raw_tab), {}).get("callGeneration") != capture.call_generation
+                        ):
+                            return
+                        version = self._call_versions.get(self._meeting_id(browser, int(raw_tab)), 0)
+                    self.command(identifier, "start", microphone=capture.me, expected_capture=key, call_version=version)
             else:
                 # Save before waiting for a potentially unreachable extension.
                 reason = action.partition(":")[2] or "user"
@@ -1908,6 +1991,8 @@ class BrowserService:
         finally:
             with self.lock:
                 self._capture_policy_pending.discard(key)
+                if action == "attach":
+                    capture.transport_retry_after = time.monotonic() + 5
 
     def _fallback(self, identifier, capture):
         try:

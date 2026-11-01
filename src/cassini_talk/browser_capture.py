@@ -24,6 +24,9 @@ class BrowserCapture:
         self.transition = threading.RLock()
         self.capture_id = None
         self.call_generation = None
+        self.transport_id = None
+        self.transport_delta_ms = 0
+        self.transport_retry_after = 0
         self.microphone = None
         self.native_taps = {}
         self.me, self.others = True, True
@@ -86,7 +89,8 @@ class BrowserCapture:
                 events=list(self.host.session.manifest.get("events", [])),
             )
 
-    def start(self, message, *, others_source="browser", reason="start"):
+    @staticmethod
+    def _start_metadata(message):
         identifier = message.get("captureId")
         origin = message.get("timelineOriginMs")
         microphone = message.get("microphone", True)
@@ -101,6 +105,71 @@ class BrowserCapture:
             and (not isinstance(generation, str) or not 0 < len(generation.encode("utf-8")) <= 200)
         ):
             raise ProtocolError("state", "Invalid independent capture metadata")
+        return identifier, origin, microphone, generation
+
+    def attach_transport(self, message):
+        """Bind a first browser transport without replacing its native stand-in."""
+        identifier, origin, _microphone, generation = self._start_metadata(message)
+        features = message.get("features", [])
+        if (
+            message.get("version", 1) != 1
+            or type(message.get("version", 1)) is not int
+            or not isinstance(features, list)
+            or len(features) > 8
+            or any(not isinstance(f, str) or len(f) > 64 for f in features)
+            or len(set(features)) != len(features)
+        ):
+            raise ProtocolError("version", "Invalid browser transport metadata")
+        with self.transition, self.lock:
+            if (
+                self.finished
+                or self.stopping
+                or self.starting
+                or self.stop_requested.is_set()
+                or self.transport_id is not None
+                or self.audio_connected
+                or not self.browser_lost
+                or source_state(self.host.session.manifest.get("events")).reason != "missing"
+                or generation is None
+                or generation != self.call_generation
+                or origin < self.origin_ms
+            ):
+                raise ProtocolError("state", "This browser transport cannot join the recording")
+            if "source-outcomes-v1" in features:
+                from .capture_record import CaptureRecord
+
+                if self.host.session.capture_record is None:
+                    self.host.session.capture_record = CaptureRecord()
+            self.host.source_outcomes = "source-outcomes-v1" in features
+            self.transport_id = identifier
+            self.transport_delta_ms = origin - self.origin_ms
+            # Selection and native taps are deliberately retained. Real PCM,
+            # not a declaration, will make the existing atomic restore ready.
+            result = dict(type="started", path=str(self.directory))
+            if self.host.source_outcomes:
+                result["features"] = ["source-outcomes-v1"]
+            return result
+
+    def handle_transport(self, message):
+        if self.transport_id != self.capture_id:
+            message = dict(message)
+            if message.get("type") == "stop":
+                if message.get("captureId") != self.transport_id:
+                    return dict(type="error", code="state", scope="command", message="Capture identity does not match")
+                message["captureId"] = self.capture_id
+            field = (
+                "offsetMs"
+                if message.get("type") == "audio"
+                else "endOffsetMs"
+                if message.get("type") == "trackEnd"
+                else None
+            )
+            if field is not None and type(message.get(field)) in (int, float):
+                message[field] += self.transport_delta_ms
+        return self.handle(message)
+
+    def start(self, message, *, others_source="browser", reason="start"):
+        identifier, origin, microphone, generation = self._start_metadata(message)
         instant = datetime.fromtimestamp(origin / 1000, UTC)
         created = instant.isoformat(timespec="milliseconds").replace("+00:00", "Z")
         try:
@@ -108,6 +177,7 @@ class BrowserCapture:
                 if self.finished or self.stop_requested.is_set():
                     raise ProtocolError("state", "Recording start was cancelled")
                 self.capture_id, self.origin_ms = identifier, origin
+                self.transport_id = identifier if others_source == "browser" else None
                 self.call_generation = generation
                 self.audio_connected = others_source == "browser"
                 self.starting = True

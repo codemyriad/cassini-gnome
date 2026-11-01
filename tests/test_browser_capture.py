@@ -976,3 +976,353 @@ def test_initial_system_stand_in_retains_the_selected_logical_call_generation(se
         capture.stop()
     finally:
         peer.close()
+
+
+def test_fresh_browser_transport_joins_one_native_stand_in_and_translates_its_clock(server):
+    from cassini_talk.browser_capture import BrowserCapture
+
+    service, path, root = server
+    capture = BrowserCapture(service._capture_changed, parent=root, tap_factory=Tap)
+    origin = int(time.time() * 1000)
+    capture.start(
+        dict(
+            type="start",
+            captureId="native-owner",
+            timelineOriginMs=origin,
+            microphone=True,
+            callGeneration="logical-call",
+        ),
+        others_source="system",
+        reason="missing",
+    )
+    service.captures["native-owner"] = capture
+    folder, microphone = capture.directory, capture.microphone
+    client = BrowserAudioProxy(path=path)
+    try:
+        result = client.handle(
+            dict(
+                type="start",
+                version=1,
+                independent=True,
+                captureId="browser-transport",
+                timelineOriginMs=origin + 1000,
+                microphone=False,
+                callGeneration="logical-call",
+                features=["source-outcomes-v1"],
+            )
+        )
+        assert result["path"] == str(folder)
+        assert list(service.captures) == ["native-owner"]
+        assert capture.capture_id == "native-owner" and capture.transport_id == "browser-transport"
+        assert capture.directory == folder and capture.microphone is microphone
+        assert len(Tap.instances) == 2  # No new microphone or system tap.
+        client.handle(
+            dict(
+                type="track",
+                id="remote",
+                sourceTrackId="receiver",
+                label="Guest",
+                kind="remote",
+                sampleRate=48000,
+                channels=1,
+            )
+        )
+        client.handle(dict(type="audio", id="remote", sequence=0, offsetMs=500, pcm="AQACAA=="))
+        assert capture.streams.tracks["remote"].start == 1500
+        assert capture.browser_ready and capture.browser_lost
+        capture.elapsed_ms = lambda: 1500 + 2 / 48
+        capture.restore()
+        client.handle(dict(type="audio", id="remote", sequence=1, offsetMs=500 + 2 / 48, pcm="AwAEAA=="))
+        source = next(t for t in capture.host.session.manifest["tracks"] if t["kind"] == "remote")
+        assert abs(source["startOffsetMs"] - (1500 + 2 / 48)) < 1e-8
+        assert source["frames"] == 2
+        value = capture.host.session.manifest["events"][-1]
+        assert value["source"] == "browser" and value["reason"] == "callConnected"
+        assert capture.microphone is microphone and not capture.browser_lost
+        refused = client.handle(dict(type="stop", captureId="wrong-transport"))
+        assert refused["scope"] == "command" and not capture.finished
+        client.handle(dict(type="stop", captureId="browser-transport"))
+        assert capture.finished
+    finally:
+        capture.stop()
+        client.close()
+
+
+def test_d49_automatic_handoff_uses_real_control_audio_and_transport_stop(server):
+    from test_browser_service import meeting, wait_for
+    from test_browser_sessions import Extension
+
+    from cassini_talk.browser_service import send_packet
+
+    service, path, root = server
+    peer = Extension(path, (3,), instance="d49-browser")
+    client = BrowserAudioProxy(path=path)
+    try:
+        send_packet(
+            peer.stream,
+            dict(
+                type="hello",
+                version=1,
+                capabilities=[
+                    "independent-sessions-v1",
+                    "page-state-v1",
+                    "call-evidence-v1",
+                    "multi-stream-v1",
+                    "source-outcomes-v1",
+                ],
+            ),
+        )
+        send_packet(
+            peer.stream,
+            dict(
+                type="meetings", meetings=[dict(meeting(), pageState="present", heard=True, callGeneration="d49-call")]
+            ),
+        )
+        wait_for(lambda: next(iter(service.browsers.values())).meetings[3].get("callGeneration") == "d49-call")
+        with ThreadPoolExecutor(1) as pool:
+            pending = pool.submit(request, "start-all", path=path, microphone=True)
+            peer.answer(peer.receive(), ok=False)
+            result = pending.result(2)
+            assert not result["failures"]
+            (capture,) = service.captures.values()
+            folder, microphone = capture.directory, capture.microphone
+            service.policy()
+            attach = peer.receive()
+            assert attach["action"] == "start" and attach["callGeneration"] == "d49-call"
+            origin = capture.origin_ms + 1000
+            started = client.handle(
+                dict(
+                    type="start",
+                    version=1,
+                    independent=True,
+                    captureId="d49-transport",
+                    timelineOriginMs=origin,
+                    microphone=True,
+                    callGeneration="d49-call",
+                    features=["source-outcomes-v1"],
+                )
+            )
+            assert started["path"] == str(folder)
+            value = dict(
+                recording=True,
+                tabId=3,
+                captureId="d49-transport",
+                path=str(folder),
+                pageState="present",
+                callGeneration="d49-call",
+            )
+            send_packet(
+                peer.stream,
+                dict(type="result", requestId=attach["requestId"], ok=True, status=dict(value, sessions=[value])),
+            )
+            client.handle(
+                dict(
+                    type="track",
+                    id="d49-remote",
+                    sourceTrackId="d49-receiver",
+                    kind="remote",
+                    sampleRate=48000,
+                    channels=1,
+                )
+            )
+            capture.elapsed_ms = lambda: 2000
+            client.handle(dict(type="audio", id="d49-remote", sequence=0, offsetMs=999, pcm="AQACAA=="))
+            service.policy()
+            wait_for(lambda: not capture.browser_lost)
+            assert capture.directory == folder and capture.microphone is microphone
+            assert len(Tap.instances) == 2 and Tap.instances[1].stopped
+            assert len(list(root.glob("Recording-*"))) == 1
+            assert any(e.get("reason") == "callConnected" for e in capture.host.session.manifest["events"])
+            state = next(s for s in request(path=path)["statuses"] if s.get("path") == str(folder))
+            assert state["captureId"] == capture.capture_id != "d49-transport"
+            identifier = next(m["id"] for m in request(path=path)["meetings"] if m["tabId"] == 3)
+            stopped = pool.submit(request, "stop", path=path, id=identifier)
+            command = peer.receive()
+            assert command["action"] == "stop" and command["captureId"] == "d49-transport"
+            client.handle(dict(type="stop", captureId="d49-transport"))
+            send_packet(
+                peer.stream,
+                dict(
+                    type="result",
+                    requestId=command["requestId"],
+                    ok=True,
+                    status=dict(value, recording=False, sessions=[]),
+                ),
+            )
+            stopped.result(2)
+            assert capture.finished and len(service.captures) == 1
+    finally:
+        client.close()
+        peer.close()
+
+
+@pytest.mark.parametrize("mutation", ["stopping", "features"])
+def test_a_failed_stand_in_attach_does_not_end_or_replace_the_native_recording(server, mutation):
+    from cassini_talk.browser_capture import BrowserCapture
+    from cassini_talk.recording_session import ProtocolError
+
+    service, path, root = server
+    capture = BrowserCapture(service._capture_changed, parent=root, tap_factory=Tap)
+    origin = int(time.time() * 1000)
+    capture.start(
+        dict(
+            type="start", captureId="keep-native", timelineOriginMs=origin, microphone=False, callGeneration="keep-call"
+        ),
+        others_source="system",
+        reason="missing",
+    )
+    service.captures["keep-native"] = capture
+    message = dict(
+        type="start",
+        version=1,
+        independent=True,
+        captureId="failed-transport",
+        timelineOriginMs=origin + 1000,
+        callGeneration="keep-call",
+    )
+    if mutation == "stopping":
+        capture.stop_requested.set()
+    else:
+        message["features"] = [None]
+    client = BrowserAudioProxy(path=path)
+    try:
+        with pytest.raises(ProtocolError):
+            client.handle(message)
+        assert not capture.finished and list(service.captures) == ["keep-native"]
+        assert capture.transport_id is None and len(list(root.glob("Recording-*"))) == 1
+    finally:
+        capture.stop()
+        client.close()
+
+
+def test_d49_different_generation_stays_an_independent_recording(server):
+    from cassini_talk.browser_capture import BrowserCapture
+
+    service, path, root = server
+    capture = BrowserCapture(service._capture_changed, parent=root, tap_factory=Tap)
+    origin = int(time.time() * 1000)
+    capture.start(
+        dict(
+            type="start", captureId="call-a", timelineOriginMs=origin, microphone=False, callGeneration="generation-a"
+        ),
+        others_source="system",
+        reason="missing",
+    )
+    service.captures["call-a"] = capture
+    client = BrowserAudioProxy(path=path)
+    try:
+        result = client.handle(
+            dict(
+                type="start",
+                version=1,
+                independent=True,
+                captureId="call-b",
+                timelineOriginMs=origin + 1000,
+                microphone=False,
+                callGeneration="generation-b",
+            )
+        )
+        assert result["path"] != str(capture.directory)
+        assert set(service.captures) == {"call-a", "call-b"}
+        assert capture.browser_lost and capture.transport_id is None and not capture.finished
+        client.handle(dict(type="stop"))
+        assert not capture.finished
+    finally:
+        capture.stop()
+        client.close()
+
+
+def test_queued_handoff_cannot_start_the_replacement_call(server, monkeypatch):
+    from cassini_talk.browser_capture import BrowserCapture
+    from cassini_talk.browser_service import BrowserConnection
+
+    service, _path, root = server
+    capture = BrowserCapture(service._capture_changed, parent=root, tap_factory=Tap)
+    capture.start(
+        dict(
+            type="start",
+            captureId="queued-a",
+            timelineOriginMs=int(time.time() * 1000),
+            microphone=False,
+            callGeneration="generation-a",
+        ),
+        others_source="system",
+        reason="missing",
+    )
+    service.captures["queued-a"] = capture
+    browser = BrowserConnection(None)
+    browser.meetings = {3: dict(url="https://meeting.example/test", callGeneration="generation-b")}
+    service.browsers[browser.id] = browser
+    commands = []
+    monkeypatch.setattr(service, "command", lambda *args, **kwargs: commands.append((args, kwargs)))
+    try:
+        service._capture_lifecycle("queued-a", capture, f"{browser.id}:3", "attach")
+        assert commands == [] and not capture.finished and capture.transport_id is None
+    finally:
+        capture.stop()
+        service.browsers.pop(browser.id, None)
+
+
+def test_r67_late_transport_after_stop_cannot_create_a_second_recording(server):
+    """Known failing spike: the control Start and audio Start have no shared intent id."""
+    from test_browser_service import meeting, wait_for
+    from test_browser_sessions import Extension
+
+    from cassini_talk.browser_service import send_packet
+    from cassini_talk.recording_session import ProtocolError
+
+    service, path, root = server
+    peer = Extension(path, (3,), instance="late-d49-browser")
+    client = BrowserAudioProxy(path=path)
+    try:
+        send_packet(
+            peer.stream,
+            dict(
+                type="hello",
+                version=1,
+                capabilities=["independent-sessions-v1", "page-state-v1", "call-evidence-v1", "multi-stream-v1"],
+            ),
+        )
+        send_packet(
+            peer.stream,
+            dict(
+                type="meetings",
+                meetings=[dict(meeting(), pageState="present", heard=True, callGeneration="late-d49-call")],
+            ),
+        )
+        wait_for(lambda: next(iter(service.browsers.values())).meetings[3].get("callGeneration") == "late-d49-call")
+        with ThreadPoolExecutor(1) as pool:
+            initial = pool.submit(request, "start-all", path=path, microphone=False)
+            peer.answer(peer.receive(), ok=False)
+            assert not initial.result(2)["failures"]
+            (capture,) = service.captures.values()
+            service.policy()
+            attach = peer.receive()
+            assert attach["action"] == "start"
+            # The extension generated this transport before the user's Stop,
+            # but its native-host lookup/launch has not delivered Start yet.
+            delayed = dict(
+                type="start",
+                version=1,
+                independent=True,
+                captureId="late-unrelated-token",
+                timelineOriginMs=capture.origin_ms,
+                microphone=False,
+                callGeneration="late-d49-call",
+                features=["source-outcomes-v1"],
+            )
+            identifier = next(m["id"] for m in request(path=path)["meetings"] if m["tabId"] == 3)
+            stopping = pool.submit(request, "stop", path=path, id=identifier)
+            command = peer.receive()
+            assert command["action"] == "stop" and command["captureId"] == capture.capture_id
+            peer.answer(command)
+            stopping.result(2)
+            assert capture.finished
+            with pytest.raises(ProtocolError):
+                client.handle(delayed)
+            assert len(list(root.glob("Recording-*"))) == 1
+    finally:
+        if "late-unrelated-token" in service.captures:
+            client.handle(dict(type="stop", captureId="late-unrelated-token"))
+        client.close()
+        peer.close()
