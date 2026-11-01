@@ -103,6 +103,48 @@ def test_broker_preserves_receiver_identity_across_new_wire_spans(server):
         client.close()
 
 
+def test_broker_keeps_negotiated_source_io_errors_scoped_and_retries_a_fresh_span(server, monkeypatch):
+    from test_capture_record import declare, pcm
+
+    service, path, _root = server
+    client = BrowserAudioProxy(path=path)
+    try:
+        reply = client.handle(
+            dict(
+                type="start",
+                independent=True,
+                captureId="source-error",
+                timelineOriginMs=int(time.time() * 1000),
+                microphone=False,
+                features=["source-outcomes-v1"],
+            )
+        )
+        assert reply["features"] == ["source-outcomes-v1"]
+        client.handle(declare("broken", "receiver-a"))
+        capture = service.captures["source-error"]
+
+        def no_space(_data):
+            raise OSError(28, "Generated ENOSPC")
+
+        monkeypatch.setattr(capture.host.session.writers["broken"], "append", no_space)
+        failed = client.handle(pcm("broken", 48000))
+        assert failed["scope"] == "source" and failed["code"] == "io"
+        assert not capture.finished and not capture.stopping
+        assert client.handle(declare("healthy", "receiver-b")) == dict(type="ack")
+        assert client.handle(pcm("healthy", 48000)) == dict(type="ack")
+        assert client.handle(declare("retry", "receiver-a")) == dict(type="ack")
+        assert client.handle(pcm("retry", 48000, offset=1000)) == dict(type="ack")
+        refused = client.handle(dict(type="stop", captureId="stale-capture"))
+        assert refused["scope"] == "command" and not capture.finished
+        client.handle(dict(type="stop", captureId="source-error"))
+        assert capture.finished and capture.host.session.manifest["problemKind"] == "io"
+        before = (capture.directory / "session.json").read_bytes()
+        assert client.handle(pcm("healthy", 1, sequence=1, offset=1000))["scope"] == "source"
+        assert (capture.directory / "session.json").read_bytes() == before
+    finally:
+        client.close()
+
+
 def test_independent_native_host_writers_copy_only_the_selected_microphone(server):
     service, path, root = server
     one, two = BrowserAudioProxy(path=path), BrowserAudioProxy(path=path)

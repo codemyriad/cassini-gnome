@@ -438,6 +438,9 @@ class BrowserCapture:
 
     def handle(self, message):
         if message.get("type") == "stop":
+            refused = self.host.prepare_stop(message)
+            if refused is not None:
+                return refused
             reason = stop_reason(message)
             if not self.stop_requested.is_set() and message.get("failureReason") == "lost":
                 self.fallback()
@@ -447,11 +450,13 @@ class BrowserCapture:
             return self.stop(message.get("problem"), reason=reason)
         with self.lock:
             if self.finished or self.stopping:
+                if self.host.source_outcomes and message.get("type") in ("track", "audio", "trackEnd"):
+                    return self.host.refuse_source(message, ProtocolError("state", "No active recording"), record=False)
                 raise ProtocolError("state", "No active recording")
             self.streams.picture = None
             result = self.host.handle(message)
             picture, self.streams.picture = self.streams.picture, None
-            if message.get("type") == "track" or (
+            if message.get("type") in ("track", "trackEnd") or (
                 picture is not None and picture["identifier"] not in self.spectrogram.known
             ):
                 self._sync_spectrogram()

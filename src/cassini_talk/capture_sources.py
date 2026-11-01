@@ -40,6 +40,7 @@ class WireTrack:
     rate: int
     channels: int
     source_track_id: str | None = None
+    ended: bool = False
     start: float | None = None
     frames: int = 0
     recorded: str | None = None
@@ -58,11 +59,16 @@ class BrowserStreams:
         self.picture = None
 
     def enabled(self, track):
-        return self.browser and track.available and (self.me if track.kind in ME_KINDS else self.others)
+        return (
+            self.browser
+            and track.available
+            and not track.ended
+            and (self.me if track.kind in ME_KINDS else self.others)
+        )
 
     def additions(self, me, others, *, browser=True):
         return sum(
-            t.recorded is None and browser and t.available and (me if t.kind in ME_KINDS else others)
+            t.recorded is None and browser and t.available and not t.ended and (me if t.kind in ME_KINDS else others)
             for t in self.tracks.values()
         )
 
@@ -94,9 +100,19 @@ class BrowserStreams:
                 self._record(identifier, track)
         self.tracks[identifier] = track
 
+    def end_track(self, identifier):
+        track = self.tracks[identifier]
+        if track.recorded is not None:
+            self.session.end_track(track.recorded)
+            track.recorded = None
+        track.ended = True
+        track.available = False
+
     def append(self, identifier, data, offset):
         self.picture = None
         track = self.tracks[identifier]
+        if track.ended:
+            raise ProtocolError("source", "Audio source has ended")
         start, padding = chunk_plan(track.rate, track.channels, track.frames, track.start, data, offset)
         frames = track.frames + padding + len(data) // (track.channels * 2)
         if frames * track.channels * 2 > 0xFFFFFFFF - 36:

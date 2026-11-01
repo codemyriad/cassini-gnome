@@ -872,6 +872,8 @@ class BrowserService:
                 # A fast returning status can precede its asynchronous inventory.
                 # The departing document's positive count cannot prove return.
                 browser.meetings[tab] = dict(browser.meetings[tab], sourceCount=0, heard=False)
+                if "multi-stream-v1" in browser.capabilities:
+                    browser.meetings[tab]["sourceCountKnown"] = False
         browser.stop_attempted = {
             (tab, capture_id)
             for tab, capture_id in browser.stop_attempted

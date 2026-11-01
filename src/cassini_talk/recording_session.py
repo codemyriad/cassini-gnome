@@ -31,6 +31,14 @@ class ProtocolError(ValueError):
         self.code = code
 
 
+class SourceIOError(OSError):
+    """A known track writer failed; shared session checkpoint errors stay fatal."""
+
+    def __init__(self, identifier, error):
+        super().__init__(error.errno, str(error))
+        self.identifier = identifier
+
+
 def optional_string(value, default, code):
     if value is None:
         return default
@@ -171,8 +179,15 @@ class WAVWriter:
         self.rate, self.channels, self.size = rate, channels, 0
         self.max_bytes = max_bytes
         self.file = open(path, "x+b")  # noqa: SIM115 — owned until session finalization
-        os.chmod(path, 0o600)
-        self._header()
+        try:
+            os.chmod(path, 0o600)
+            self._header()
+        except BaseException:
+            with suppress(OSError):
+                self.file.close()
+            with suppress(OSError):
+                Path(path).unlink()
+            raise
 
     @property
     def frames(self):
@@ -293,6 +308,7 @@ class RecordingSession:
             self.writers = {}
             self.finished = False
             self._native_io_error = None
+            self.capture_record = None
             self._changing = False
             self._last_checkpoint = 0
             self._checkpoint_generation = 0
@@ -302,6 +318,8 @@ class RecordingSession:
                 self._lease_fd = capture_lease(identifier)
 
     def checkpoint(self):
+        if self.capture_record is not None:
+            self.capture_record.finish(self.manifest)
         if self._changing:
             return
         for writer in self.writers.values():
@@ -394,7 +412,12 @@ class RecordingSession:
         if filename is not None and filename not in ("track-microphone.wav", "track-system.wav"):
             raise ProtocolError("source", "Invalid native track filename")
         filename = filename or f"track-{uuid4()}.wav"
-        writer = self.writer_factory(self.directory / filename, rate, channels)
+        try:
+            writer = self.writer_factory(self.directory / filename, rate, channels)
+        except OSError as error:
+            if self.capture_record is not None:
+                raise SourceIOError(identifier, error) from error
+            raise
         if self.library_root is not None and isinstance(writer, WAVWriter):
             from .rotating_wav import RotatingWAV
 
@@ -425,10 +448,28 @@ class RecordingSession:
             raise ProtocolError("chunk", "Audio source has ended")
         start, delta = chunk_plan(writer.rate, writer.channels, writer.frames, track.get("startOffsetMs"), data, offset)
         track["startOffsetMs"] = start
-        if delta:
-            writer.silence(delta)
-        writer.append(data)
+        input_frames = len(data) // (writer.channels * 2)
+        if self.capture_record is not None:
+            self.capture_record.check_overlap(self.manifest, identifier, writer.frames, delta + input_frames)
+        previous = writer.frames
+        try:
+            if delta:
+                writer.silence(delta)
+                if self.capture_record is not None:
+                    track["gapFrames"] = track.get("gapFrames", 0) + delta
+            writer.append(data)
+        except OSError as error:
+            if self.capture_record is not None:
+                received = min(input_frames, max(0, writer.frames - previous - delta))
+                self.capture_record.admit(identifier, received)
+                self.capture_record.fail(self.manifest, identifier, io=True)
+                track["frames"] = writer.frames
+                track["droppedFrames"] = track.get("droppedFrames", 0) + input_frames - received
+                raise SourceIOError(identifier, error) from error
+            raise
         track["frames"] = writer.frames
+        if self.capture_record is not None:
+            self.capture_record.admit(identifier, input_frames)
         if self.clock() - self._last_checkpoint >= 1:
             self.checkpoint()
 
@@ -492,16 +533,22 @@ class RecordingSession:
             return
         self.finished = True
         failure = None
-        for writer in self.writers.values():
+        for identifier, writer in self.writers.items():
             try:
                 writer.close()
             except OSError as error:
                 failure = failure or error
+                if self.capture_record is not None:
+                    self.capture_record.fail(self.manifest, identifier, io=True)
         for track in self.manifest["tracks"]:
             track["ended"] = True
             if track.get("startOffsetMs") is not None:
                 track["endOffsetMs"] = track["startOffsetMs"] + track["frames"] * 1000 / track["sampleRate"]
         gaps = [t for t in self.manifest["tracks"] if t.get("gapFrames", 0)]
+        if self.capture_record is not None and self.capture_record.finish(self.manifest):
+            problem = problem or "Some announced audio was not fully captured."
+            if problem_kind != "io":
+                problem_kind = "io" if self.capture_record.io_failed else "capture"
         if self._native_io_error:
             problem, problem_kind = problem or self._native_io_error, "io"
         elif not problem and gaps:
@@ -550,10 +597,66 @@ class BrowserHost:
         self.sequences = {}
         self.stopped = False
         self.audio_sink = None
+        self.source_outcomes = False
+        self.capture_id = None
+        self.declarations = {}
+        self.ended = set()
 
     def handle(self, message, *, started_at=None):
+        try:
+            return self._handle(message, started_at=started_at)
+        except (ProtocolError, SourceIOError) as error:
+            if not self.source_outcomes or message.get("type") not in ("track", "audio", "trackEnd"):
+                raise
+            identifier = message.get("id")
+            retired = isinstance(identifier, str) and identifier in self.ended
+            return self.refuse_source(message, error, record=not retired)
+
+    def refuse_source(self, message, error, *, record=True):
+        identifier = message.get("id")
+        code = error.code if isinstance(error, ProtocolError) else "io"
+        if record and self.session is not None and not self.session.finished:
+            ledger = self.session.capture_record
+            declaration = self.declarations.get(identifier) if isinstance(identifier, str) else None
+            if declaration is not None:
+                identity = declaration[3] or identifier
+                ledger.seen[identity]["failed"] = True
+                stored = identifier
+                if self.audio_sink is not None:
+                    wire = self.audio_sink.tracks.get(identifier)
+                    stored = wire.recorded if wire is not None else None
+                ledger.fail(self.session.manifest, stored, io=code == "io")
+                # A failed WAV is retired; the extension retries with a fresh
+                # wire span. Other sources and this connection stay usable.
+                if message.get("type") == "audio" or identifier not in self.sequences:
+                    self.ended.add(identifier)
+                    if self.audio_sink is not None and identifier in self.audio_sink.tracks:
+                        with suppress(OSError):
+                            self.audio_sink.end_track(identifier)
+                    elif stored in self.session.writers:
+                        with suppress(OSError):
+                            self.session.end_track(stored)
+            with suppress(OSError):
+                self.session.checkpoint()
+        result = dict(type="error", code=code, message=str(error), scope="source")
+        if isinstance(identifier, str):
+            result["id"] = identifier
+        return result
+
+    def prepare_stop(self, message):
+        if not self.source_outcomes:
+            return None
+        if message.get("captureId") != self.capture_id:
+            return dict(type="error", code="state", message="Capture identity does not match", scope="command")
+        try:
+            self.session.capture_record.discover(message.get("discoveredSources", []))
+        except ProtocolError as error:
+            return dict(type="error", code=error.code, message=str(error), scope="command")
+        return None
+
+    def _handle(self, message, *, started_at=None):
         kind = message.get("type")
-        if kind not in ("start", "track", "audio", "stop"):
+        if kind not in ("start", "track", "audio", "stop") and not (self.source_outcomes and kind == "trackEnd"):
             raise ProtocolError("version", "Unknown browser message type")
         if kind == "start":
             if self.session:
@@ -563,12 +666,47 @@ class BrowserHost:
             if type(version) is not int or version != 1:
                 raise ProtocolError("version", "Unsupported browser recording protocol version")
             title = optional_string(message.get("title"), "Browser recording", "state")
+            features = message.get("features", [])
+            if not isinstance(features, list) or len(features) > 16 or any(not isinstance(f, str) for f in features):
+                raise ProtocolError("version", "Invalid recording features")
             self.session = RecordingSession(self.directory, title, started_at=started_at)
-            return {"type": "started", "path": str(self.session.directory)}
+            self.source_outcomes = "source-outcomes-v1" in features
+            self.capture_id = message.get("captureId")
+            result = {"type": "started", "path": str(self.session.directory)}
+            if self.source_outcomes:
+                from .capture_record import CaptureRecord
+
+                self.session.capture_record = CaptureRecord()
+                result["features"] = ["source-outcomes-v1"]
+            return result
         if self.session is None or self.stopped:
             raise ProtocolError("state", "No active recording")
         if kind == "track":
             identifier = message.get("id")
+            if self.source_outcomes:
+                label = source_parameters(
+                    identifier,
+                    message.get("label"),
+                    message.get("kind"),
+                    message.get("sampleRate"),
+                    message.get("channels"),
+                    {},
+                )
+                root = source_track_identity(message.get("sourceTrackId"))
+                declaration = (message.get("kind"), message.get("sampleRate"), message.get("channels"), root)
+                if identifier in self.declarations:
+                    if self.declarations[identifier] != declaration:
+                        raise ProtocolError("source", "Conflicting track declaration")
+                    if identifier not in self.sequences:
+                        raise ProtocolError("source", "Source declaration was refused")
+                    return dict(type="ack")
+                self.session.capture_record.observe(root or identifier, message["kind"], label)
+                self.declarations[identifier] = declaration
+                if root is not None and any(
+                    other != identifier and value[3] == root and other not in self.ended
+                    for other, value in self.declarations.items()
+                ):
+                    raise ProtocolError("source", "Overlapping live source spans")
             (self.audio_sink or self.session).add_track(
                 identifier,
                 message.get("label"),
@@ -582,6 +720,8 @@ class BrowserHost:
             identifier = message.get("id")
             if not isinstance(identifier, str) or identifier not in self.sequences:
                 raise ProtocolError("source", "Unknown audio source")
+            if identifier in self.ended:
+                raise ProtocolError("source", "Audio source has ended")
             sequence = message.get("sequence")
             if (
                 type(sequence) is not int
@@ -598,7 +738,31 @@ class BrowserHost:
                 raise ProtocolError("chunk", "Invalid base64 PCM") from error
             (self.audio_sink or self.session).append(identifier, data, message.get("offsetMs"))
             self.sequences[identifier] += 1
+        elif kind == "trackEnd":
+            identifier = message.get("id")
+            if not isinstance(identifier, str) or identifier not in self.sequences:
+                raise ProtocolError("source", "Unknown audio source")
+            if message.get("reason") not in ("ended", "replaced", "retry", "stopped", "failed", "callChanged"):
+                raise ProtocolError("source", "Invalid source end reason")
+            dropped = message.get("droppedFrames")
+            if type(dropped) is not int or not 0 <= dropped <= 9007199254740991:
+                raise ProtocolError("source", "Invalid dropped frame count")
+            if identifier not in self.ended:
+                stored = self.audio_sink.tracks[identifier].recorded if self.audio_sink is not None else identifier
+                track = next((t for t in self.session.manifest["tracks"] if t["id"] == stored), None)
+                if track is not None:
+                    track["droppedFrames"] = dropped
+                    if message["reason"] == "failed":
+                        self.session.capture_record.fail(self.session.manifest, stored)
+                if message["reason"] == "failed":
+                    root = self.declarations[identifier][3] or identifier
+                    self.session.capture_record.seen[root]["failed"] = True
+                (self.audio_sink or self.session).end_track(identifier)
+                self.ended.add(identifier)
         elif kind == "stop":
+            refused = self.prepare_stop(message)
+            if refused is not None:
+                return refused
             self.session.finish(optional_string(message.get("problem"), None, "state"), reason=stop_reason(message))
             self.stopped = True
             result = {"type": "stopped", "path": str(self.session.directory)}
