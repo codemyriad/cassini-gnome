@@ -23,6 +23,7 @@ class BrowserCapture:
         self.lock = threading.RLock()
         self.transition = threading.RLock()
         self.capture_id = None
+        self.call_generation = None
         self.microphone = None
         self.native_taps = {}
         self.me, self.others = True, True
@@ -89,12 +90,15 @@ class BrowserCapture:
         identifier = message.get("captureId")
         origin = message.get("timelineOriginMs")
         microphone = message.get("microphone", True)
+        generation = message.get("callGeneration")
         if (
             not isinstance(identifier, str)
             or not 0 < len(identifier) <= 128
             or type(origin) is not int
             or not 0 <= origin <= 253402300799000
             or type(microphone) is not bool
+            or generation is not None
+            and (not isinstance(generation, str) or not 0 < len(generation.encode("utf-8")) <= 200)
         ):
             raise ProtocolError("state", "Invalid independent capture metadata")
         instant = datetime.fromtimestamp(origin / 1000, UTC)
@@ -104,6 +108,7 @@ class BrowserCapture:
                 if self.finished or self.stop_requested.is_set():
                     raise ProtocolError("state", "Recording start was cancelled")
                 self.capture_id, self.origin_ms = identifier, origin
+                self.call_generation = generation
                 self.audio_connected = others_source == "browser"
                 self.starting = True
                 result = self.host.handle(message, started_at=instant)
@@ -217,7 +222,7 @@ class BrowserCapture:
                 if not state["active"]:
                     return  # Readiness PCM is not a committed recording span.
                 track = next(t for t in self.host.session.manifest["tracks"] if t["id"] == identifier)
-                if not self.finished and not track.get("ended"):
+                if not self.finished and not self.stop_requested.is_set() and not track.get("ended"):
                     original_offset = offset
                     selected, offset = selected_pcm(data, offset, 48000, 1, state["at"])
                     if selected:
@@ -452,7 +457,7 @@ class BrowserCapture:
                 self.user_stopped = True
             return self.stop(message.get("problem"), reason=reason)
         with self.lock:
-            if self.finished or self.stopping:
+            if self.finished or self.stopping or self.stop_requested.is_set():
                 if self.host.source_outcomes and message.get("type") == "sources":
                     return dict(type="error", code="state", message="Capture already saved", scope="command")
                 if self.host.source_outcomes and message.get("type") in ("track", "audio", "trackEnd"):
