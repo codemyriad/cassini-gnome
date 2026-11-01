@@ -772,3 +772,72 @@ def test_selection_expectations_rollback_durably_after_the_first_directory_barri
         assert not session.capture_record.seen["B"]["expected"]
     finally:
         host.close()
+
+
+def selected_host(tmp_path, *, others=True):
+    host = BrowserHost(tmp_path)
+    host.handle(dict(type="start", features=["source-outcomes-v1"], captureId="capture-a"))
+    host.audio_sink = BrowserStreams(host.session, me=False, others=others)
+    return host
+
+
+def dropped(host):
+    return {t["id"]: t.get("droppedFrames") for t in host.session.manifest["tracks"]}
+
+
+def test_producer_drops_reported_after_deselection_stay_on_the_recorded_span(tmp_path):
+    host = selected_host(tmp_path)
+    try:
+        host.handle(declare("w", "receiver"))
+        assert host.handle(pcm("w", 48000)) == dict(type="ack")
+        host.audio_sink.select(False, False, 1000)
+        assert host.handle(dict(type="trackEnd", id="w", reason="ended", droppedFrames=777, endOffsetMs=1500)) == dict(
+            type="ack"
+        )
+        assert dropped(host) == {"w": 777}
+        stop(host)
+        saved = json.loads((host.session.directory / "session.json").read_text())
+        assert {t["id"]: t["droppedFrames"] for t in saved["tracks"]} == {"w": 777}
+    finally:
+        host.close()
+
+
+def test_producer_drops_are_added_once_to_the_latest_span_after_reselection(tmp_path):
+    host = selected_host(tmp_path)
+    try:
+        host.handle(declare("w", "receiver"))
+        host.handle(pcm("w", 48000))
+        host.audio_sink.select(False, False, 1000)
+        host.audio_sink.select(False, True, 2000)
+        host.handle(pcm("w", 48000, sequence=1, offset=2000))
+        first, second = (t["id"] for t in host.session.manifest["tracks"])
+        assert first == "w" and second.startswith("span-")
+        host.handle(dict(type="trackEnd", id="w", reason="ended", droppedFrames=777, endOffsetMs=3000))
+        stop(host)
+        # The wire count has no position: never lost, never doubled across spans.
+        assert dropped(host) == {first: None, second: 777}
+    finally:
+        host.close()
+
+
+def test_drops_of_a_source_that_was_never_recorded_touch_no_track(tmp_path):
+    host = selected_host(tmp_path, others=False)
+    try:
+        host.handle(declare("w", "receiver"))
+        host.handle(pcm("w", 48000))
+        host.handle(dict(type="trackEnd", id="w", reason="ended", droppedFrames=777, endOffsetMs=1000))
+        stop(host)
+        assert dropped(host) == {}
+    finally:
+        host.close()
+
+
+def test_track_end_adds_to_a_host_counted_loss_instead_of_replacing_it(host):
+    host.handle(declare("w", "receiver"))
+    host.handle(pcm("w", 48000))
+    stored = host.audio_sink.tracks["w"].recorded if host.audio_sink is not None else "w"
+    # Host-side counts are added in the same manifest field (writer loss).
+    next(t for t in host.session.manifest["tracks"] if t["id"] == stored)["droppedFrames"] = 100
+    host.handle(dict(type="trackEnd", id="w", reason="ended", droppedFrames=777, endOffsetMs=1000))
+    stop(host)
+    assert dropped(host) == {stored: 877}
