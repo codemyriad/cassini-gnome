@@ -481,6 +481,8 @@ def test_source_change_closes_history_before_slow_device_shutdown(tmp_path, monk
             others_source="system",
         )
         session = capture.host.session
+        now = [1000.125]
+        capture.elapsed_ms = lambda: now[0]
 
         def change():
             return capture.select(True, False)
@@ -496,6 +498,8 @@ def test_source_change_closes_history_before_slow_device_shutdown(tmp_path, monk
     with ThreadPoolExecutor(max_workers=1) as executor:
         try:
             assert applied.wait(3), "Initial mute interval was not persisted"
+            if kind == "browser":
+                now[0] = 2000.875
             future = executor.submit(change)
             if not stopping.wait(3):
                 if future.done():
@@ -505,7 +509,11 @@ def test_source_change_closes_history_before_slow_device_shutdown(tmp_path, monk
             event = next(e for e in reversed(session.manifest["events"]) if e["type"] == "othersSource")
             assert event["source"] == "none"
             rows = intervals(read_metadata(session.directory))
-            assert len(rows) == 1 and rows[0]["endMs"] == event["atMs"]
+            # The session event keeps fractional ms; the audioHealth schema
+            # stores integer ms. MuteHistory floors the committed timestamp.
+            assert len(rows) == 1 and rows[0]["endMs"] == int(event["atMs"])
+            if kind == "browser":
+                assert event["atMs"] == 2000.875 and rows[0]["startMs"] == 1000
         finally:
             release.set()
             observer.close(5000)
