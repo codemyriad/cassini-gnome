@@ -4,9 +4,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'../capture.js'),'utf8');
 async function mocked(run) {
- const saved=new Map(['AudioContext','AudioWorkletNode','performance'].map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
- const nodes=[],contexts=[];let now=1000;
- class Graph {connect(value){return value}disconnect(){}}
+ const saved=new Map(['AudioContext','AudioWorkletNode','Audio','performance'].map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
+ const nodes=[],contexts=[],renderers=[];let now=1000;
+ class Graph {connect(value){return value}disconnect(){this.disconnected=true}}
  class Context {
   sampleRate=48000;state='running';currentTime=0;destination=new Graph();listeners=new Set();audioWorklet={addModule:async()=>{}};
   constructor(){contexts.push(this)}createMediaStreamSource(){return new Graph()}createGain(){return Object.assign(new Graph(),{gain:{value:0}})}
@@ -15,10 +15,11 @@ async function mocked(run) {
   async resume(){if(this.state==='suspended'){now+=500;this.state='running';this.listeners.forEach(fn=>fn())}}
   async close(){this.state='closed'}
  }
- class Worklet extends Graph {constructor(){super();nodes.push(this);this.port={postMessage:()=>this.port.onmessage({data:{stopped:true}})}}}
+ class Worklet extends Graph {connect(target){if(!(typeof Context.deferReadiness==="function"?Context.deferReadiness(this):Context.deferReadiness))queueMicrotask(()=>this.port.onmessage?.({data:{ready:true}}));return target}constructor(){super();nodes.push(this);this.port={postMessage:message=>{if(message==="stop")this.port.onmessage({data:{stopped:true}})}}}}
  globalThis.AudioContext=Context;globalThis.AudioWorkletNode=Worklet;
+ globalThis.Audio=class {constructor(){renderers.push(this)}async play(){}pause(){this.paused=true}};
  Object.defineProperty(globalThis,'performance',{configurable:true,value:{timeOrigin:100000,now:()=>now}});
- try {const module=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));await run({...module,nodes,contexts,Context,setNow:value=>{now=value}})}
+ try {const module=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));await run({...module,nodes,contexts,renderers,Context,setNow:value=>{now=value}})}
  finally {for(const [key,descriptor] of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -208,4 +209,82 @@ test('Stop drains admitted PCM and worklet final flush before ending the span',a
  nodes[0].port.postMessage=()=>{nodes[0].port.onmessage({data:{pcm:new ArrayBuffer(256),frame:768}});nodes[0].port.onmessage({data:{stopped:true}})};
  const stopping=recorder.stop();release();await stopping;
  assert.equal(packets.filter(p=>p.type==='audio').length,7);assert.equal(packets.at(-1).type,'trackEnd');assert.equal(nodes[0].port.onmessage,null);
+}));
+
+test('source connects only after render readiness and PCM arms only after the native declaration ACK',async()=>mocked(async({capture,nodes,Context})=>{
+ Context.deferReadiness=true;
+ const context=new Context(),packets=[],commands=[];let connected=false,ack;
+ context.createMediaStreamSource=()=>({connect(){connected=true},disconnect(){}});
+ const declaration=new Promise(resolve=>{ack=resolve});
+ const pending=capture({stream:{},id:'clock-ready',kind:'local',label:'Voice',origin:100000,workletURL:'',sharedContext:context,
+  send:async packet=>{packets.push(packet);if(packet.type==='track')await declaration}});
+ await tick();
+ assert.equal(nodes.length,1);assert.equal(connected,false);assert.deepEqual(packets,[]);
+ const node=nodes[0];
+ node.port.postMessage=message=>{commands.push(message);if(message==='stop')node.port.onmessage({data:{stopped:true}})};
+ node.port.onmessage({data:{ready:true}});await tick();
+ assert.equal(connected,true);assert.equal(packets[0].type,'track');assert.deepEqual(commands,[]);
+ ack();const recorder=await pending;
+ assert.deepEqual(commands,['start']);await recorder.stop();
+}));
+
+
+for(const recover of [false,true])test(`a timed-out source stays visible through relay/status/retries (${recover?'recovered':'still failing'}) while healthy audio continues`,async()=>mocked(async({capture,nodes,contexts,renderers,Context})=>{
+ const vm=require('node:vm'),{setup,until,event}=require('./support/app-control-harness.cjs');
+ const pageFixture=require('./support/page-capture-harness.cjs'),time=clock();
+ const app=await setup(2,{},['source-outcomes-v1']);
+ const frame=app.pages[0],endpoint={onMessage:event(),onDisconnect:event(),postMessage:packet=>frame.onMessage.emit(packet)};
+ frame.postMessage=packet=>{frame.sent.push(packet);endpoint.onMessage.emit(packet)};
+ const listeners=new Map(),queued=[];let receive,pageStart;
+ const window={addEventListener:(name,fn)=>listeners.set(name,fn),postMessage:packet=>{
+  if(!receive){queued.push(packet);return;}
+  const task=receive(packet);if(packet.type==='start')pageStart=task;
+ }};
+ const deliver=packet=>listeners.get('message')({source:window,data:packet});
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../relay.js'),'utf8'),{window,chrome:{runtime:{connect:()=>endpoint,onMessage:event(),getURL:name=>name==='capture.js'?pageFixture.moduleURL:name}}});
+ Context.deferReadiness=node=>nodes.indexOf(node)!==1;
+ try{
+  await pageFixture(async f=>{
+   receive=f.receive;
+   const bad=f.remote('Waiting voice'),good=f.remote('Healthy voice');
+   await f.tick();bad.packets=good.packets=10;await f.tick();bad.packets=good.packets=20;await f.tick();
+   for(const packet of queued.splice(0))await receive(packet);
+   const started=await app.command({type:'command',requestId:'start-clock',action:'start',tabId:2,mode:'tracks',independent:true,captureLocal:true});
+   assert.equal(started.ok,true);
+   try { await until(()=>nodes.length===1); } catch(error) { throw new Error(JSON.stringify({captures:f.captures.length,page:f.messages,control:frame.sent}),{cause:error}); }
+   await tick();
+   await time.advance(4000);await pageStart;
+   assert.equal(f.captures[0].recorder.state,'retrying');assert.equal(nodes.length,2);
+   assert.equal(nodes[0].port.onmessage,null);assert.equal(nodes[0].disconnected,true);
+   assert.equal(renderers[0].paused,true);assert.equal(renderers[0].srcObject,null);
+   assert.equal(contexts[0].state,'running','the shared healthy context stays open');
+   const source=f.captures[0].sourceTrackId,other=f.captures[1].sourceTrackId;
+   const status=()=>app.api.controlStatus();
+   assert.deepEqual(Array.from(status().failedSources),[source]);
+   assert.equal(status().message,'Audio render clock did not become ready.');
+   const healthyID=app.audio[0].sent.find(p=>p.type==='track'&&p.sourceTrackId===other).id;
+   nodes[1].port.onmessage({data:{pcm:new ArrayBuffer(256),frame:128}});
+   await until(()=>app.audio[0].sent.some(p=>p.type==='audio'&&p.id===healthyID));
+   assert.deepEqual(Array.from(status().failedSources),[source]);
+   assert.equal(status().message,'Audio render clock did not become ready.','another declaration/PCM must not clear this source');
+   const retry=time.advance(1000);await tick();assert.equal(nodes.length,3);
+   await time.advance(4000);await retry;
+   assert.equal(nodes[2].disconnected,true);assert.deepEqual(Array.from(status().failedSources),[source]);
+   assert.equal(f.messages.filter(p=>p.type==='warning'&&p.sourceTrackId===source&&!p.recovered).length,1,'unchanged retries do not re-warn');
+   nodes[1].port.onmessage({data:{pcm:new ArrayBuffer(256),frame:256}});
+   await until(()=>app.audio[0].sent.filter(p=>p.type==='audio'&&p.id===healthyID).length===2);
+   assert.equal(app.audio[0].closed,false);assert.equal(status().recording,true);
+   if(recover){
+    Context.deferReadiness=false;await time.advance(5000);
+    assert.equal(nodes.length,4);assert.deepEqual(Array.from(status().failedSources),[source],'a new declaration alone is not recovery');
+    nodes[3].port.onmessage({data:{pcm:new ArrayBuffer(256),frame:48000}});
+    await until(()=>status().failedSources.length===0);
+    assert.notEqual(status().message,'Audio render clock did not become ready.');
+   }
+   assert.equal((await app.command({type:'command',requestId:'stop-clock',action:'stop',tabId:2,independent:true})).ok,true);
+   assert.equal(app.audio[0].sent.find(p=>p.type==='stop').problem,recover?null:'Audio render clock did not become ready.');
+   const failed=app.audio[0].sent.filter(p=>p.type==='sources').flatMap(p=>p.discoveredSources).filter(s=>s.failed);
+   assert.deepEqual(failed.map(s=>s.sourceTrackId),recover?[]:[source]);
+  },{Context,capture:options=>capture({...options,clock:time.now,schedule:time.schedule,cancel:time.cancel}),deliver});
+ }finally{app.close()}
 }));

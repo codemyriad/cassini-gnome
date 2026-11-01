@@ -1,26 +1,26 @@
-tree ac113cf9ef7bec18ac50792ba3c590facb21c314
-parent 6e581d66cfe897f13b05445ae4f67392619e08ff
-parent 13b3941dcc312eea2a22f606b1f527d50433a2ee
-author Silvio Tomatis <silviot@gmail.com> 1793502669 +0100
-committer GitHub <noreply@github.com> 1793502669 +0100
+tree e24fe31e33bb573affe8b3f62995a87e696a0ff7
+parent 84b0da1b948ac65e09f8bb780297c9f9bbe61de8
+parent 1c577c2c7c70c4afb6e1a922e9fd74153636be70
+author Silvio Tomatis <silviot@gmail.com> 1793512538 +0100
+committer GitHub <noreply@github.com> 1793512538 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq5q3NCRC1aQ7uu5UhlAAARt0QAEuuaJTogn20aR0ZEbeap3XY
- Bobm+zQvtv6emBHpRR0unPmDDdqpe4Un9CQ/BxoHeTI2nFF8Ymrhpv392U4LNCVh
- IvkLZ9iTmVybgOKOQhK7uIGLFt83yqNfhqTGIRb/gcAKrgj4ng7dhyV4FbdiocP0
- R6rbdaL6/PjTF53Y2eLGurTsTY8oD55et7iRo1NP3rqToS/SyBnEQ2MjBwWdPdSD
- /d5RvD8dqSftatQ5VMmlXbVnXd1B6XyZmcIjjp1v/mvHvbuNxWBHaTA0BwRhmGkT
- f/iNlLqV+DZf3FEjZKPKPZUMGXlas54NmXsb1pZvWvM1/Alq9lwMZC8Z7+WKomL8
- WId+/iEbuuOvzUBKP6VCIM3MQy7YHAJs5dOEiGfuycUFsp7h0x2OLh6hhnCVBNzm
- SouLEahig5oJo5gBVjNokfepF5RkSbjYcNubcnx6JG6643jj/j7P+PtB5rzbi3ek
- fqD68wiLPsiDg4igpYa3h8SpwqcrDDzHqKIZQqPd6IMEspkD6+ujj42fbwRKTBSc
- IfiK43SS0PHVj7JUuwzz+1RPd9fhw7bRj3k++gq4eaV6sh3TXAAL8Mt/UbJyDHdh
- zN91mVcYQHklK+EsJq1tsbQdQP7cLSaNHpqupVJljKp6/1qBgVo6hzzwwuelIKEg
- J3t6mGiRnJ7GAKUDC9q3
- =kHY7
+ wsFcBAABCAAQBQJq5tRaCRC1aQ7uu5UhlAAAq3sQAFfN7qryNFNNMwLyr67qT51R
+ +Fv6q5fDeA9orqxSgxKiZjwuHyr63ez3E7Bp0LzRy2m3ZoyJaxeP6GCnVgbgpQvU
+ Jbfw8caGSpyTD+CmqXk31ucznVxpBOro+avw/+QB9HVjrzpU/YOVaBdG5eAMKZXs
+ 7XoH52UVRI+iJMwAjqxN9oDtlT1bp7IunRo6lDKlDAWSh9JWcl3KYWuBu8EGvVH9
+ ugEvi6XPwO1VYMSHRRXlewV3e8sGo3hOUf+UnVDDhNJxYt7yUKDt/1If7NHzYgNc
+ bjv8oqtfWyjp595hvvmGqDhvopq8VH7jrha7YxswQmuTUA1dW+2jlAn3XO4IgYLK
+ YtxGkiTRk+YmyzHnRIbbo6eznB4RqT31TJ7aAi4/yFE9yjhzAQkx0SN1goXEUucz
+ nwj+GUdqveEzTGwMxBMxxoJwo3HdN39OdLmx1ZoC2yJEqrYH/jG5DgEB7IuUasa+
+ 2DrUWUboDDiryrIIuhFNaEkRMuCIHaZ0cOCPXxhWL+ZOSWcY+zPnML3X9KybJW6z
+ A0RlXd299OgxHg1on4Mm6VhGJrSUgWCBogwqPcNHun8OE6DzJJqxs6ymXFau8Ts7
+ Anhl6Cl6dyW4tJGL+UWG0zUfaoVPBtDqd3gd7Ez7rJAQe4hok5T+aqwVImta9Qpb
+ UH5O/r6g6/AqhBU4Hb4R
+ =k6+Z
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #24 from codemyriad/feat/multistream-reliability
+Merge pull request #26 from codemyriad/fix/render-quantum-size
 
-D52: account for every multi-stream capture source
+Wait for render-clock readiness before admitting source audio

@@ -26,6 +26,7 @@ function setPageState(tabId, value) {
 const sessions = new Map();
 const pendingStarts = new Map();
 const callGenerations = new Map();
+let identitiesHydrated = false;
 const callAddress = value => typeof value === "string" ? value.split("#", 1)[0] : null;
 function callInfo(tabId) {
   if (!callGenerations.has(tabId)) callGenerations.set(tabId, { generation: crypto.randomUUID(), url: null });
@@ -38,15 +39,27 @@ function callInfo(tabId) {
 function documentFor(tabId) {
   return [...frames].find(f => f.tabId === tabId && !f.obsolete && f.frameId === 0)?.documentGeneration;
 }
+async function addressFingerprint(url) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(callAddress(url)));
+  return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("");
+}
+function fenceBaseline(frame, info) {
+  if (typeof info.documentGeneration === "string" && typeof info.hookGeneration === "string")
+    frame.fencedGenerations.add(JSON.stringify([info.documentGeneration,info.hookGeneration]));
+  frame.identitySeeded = true;
+}
 function callChanged(tabId, url = null) {
   const current = sessions.get(tabId);
   const info = callInfo(tabId);
-  info.generation = crypto.randomUUID(); info.url = url;
+  info.generation = crypto.randomUUID(); info.url = url; info.boundaryPending = true;
+  delete info.addressHash;
   for (const frame of frames) if (frame.tabId === tabId) {
+    if (frame.frameId === 0) fenceBaseline(frame, info);
     if (frame.callGeneration !== undefined) frame.fencedGenerations.add(JSON.stringify([frame.documentGeneration,frame.callGeneration]));
     frame.callGeneration = undefined; frame.sourceCount = 0; frame.heard = false;
   }
   if (current && !current.callChanged) { current.callChanged = true; void stop(current, "callEnded"); }
+  void persistSessions().catch(() => {});
   notifyControl();
 }
 
@@ -91,7 +104,15 @@ async function recordSources(session, values) {
 let lastStatus = { recording: false, message: "Ready. Choose Separate tracks or Whole tab." };
 let storageTail = Promise.resolve();
 function persistSessions() {
+  if (!identitiesHydrated) return recovery.then(() => persistSessions());
   const write = async () => {
+    const identities = [];
+    for (const [tabId, snapshot] of [...callGenerations].map(([tabId, info]) => [tabId, {...info}])) {
+      const {url, ...info} = snapshot;
+      info.addressHash = url === null ? info.addressHash ?? null : await addressFingerprint(url);
+      identities.push({tabId, ...info});
+    }
+    await chrome.storage.session.set({cassiniCallGenerations: identities});
     const values = [...sessions.values()].filter(s => s.path).map(s =>
       ({ recording: true, mode: s.mode, path: s.path, tabId: s.tabId, startedAt: s.origin, captureId: s.token, pageState: pageState(s.tabId) }));
     if (values.length) await chrome.storage.session.set({ cassiniActive: values[0], cassiniSessions: values });
@@ -101,7 +122,26 @@ function persistSessions() {
   return storageTail;
 }
 const recovery = (async () => {
-  const stored = await chrome.storage.session.get(["cassiniActive", "cassiniSessions"]);
+  const stored = await chrome.storage.session.get(["cassiniActive", "cassiniSessions", "cassiniCallGenerations"]);
+  const opaque = value => typeof value === "string" && value.length > 0 && sourceEncoder.encode(value).length <= 200;
+  const identities = stored.cassiniCallGenerations;
+  if (Array.isArray(identities) && identities.length <= 200) for (const value of identities) {
+    if (!value || !Number.isSafeInteger(value.tabId) || value.tabId < 0 || !opaque(value.generation) ||
+        !(value.addressHash === null || typeof value.addressHash === "string" && /^[0-9a-f]{64}$/.test(value.addressHash))) continue;
+    const info = {generation:value.generation, url:null, addressHash:value.addressHash};
+    if (opaque(value.documentGeneration) && opaque(value.hookGeneration))
+      Object.assign(info, {documentGeneration:value.documentGeneration, hookGeneration:value.hookGeneration});
+    if (value.boundaryPending === true) info.boundaryPending = true;
+    callGenerations.set(value.tabId, info);
+    try {
+      const tab = await chrome.tabs.get(value.tabId);
+      if (typeof tab.url === "string" && /^https?:/.test(tab.url)) {
+        if (info.addressHash !== null && await addressFingerprint(tab.url) !== info.addressHash)
+          callChanged(value.tabId, callAddress(tab.url));
+        else info.url = callAddress(tab.url);
+      }
+    } catch { /* A missing lookup cannot erase a retained call identity. */ }
+  }
   const previous = Array.isArray(stored.cassiniSessions) ? stored.cassiniSessions.slice(0, 100) : stored.cassiniActive ? [stored.cassiniActive] : [];
   for (const value of previous) {
     pageStates.set(value.tabId, value.pageState === "closed" ? "closed" : "navigating");
@@ -114,9 +154,11 @@ const recovery = (async () => {
     await chrome.storage.session.remove("cassiniActive"); await chrome.storage.session.remove("cassiniSessions");
     await chrome.action.setBadgeText({ text: "" });
   }
+  identitiesHydrated = true;
 })().catch(async () => {
   lastStatus = { recording: false, message: "Cassini could not check the previous recording status. Saved audio remains on this computer." };
   await chrome.action.setBadgeText({ text: "" }).catch(() => {});
+  identitiesHydrated = true;
 });
 
 class NativeHost {
@@ -158,9 +200,27 @@ class NativeHost {
   }
 }
 
+function sourceWarning(session, message, fallback) {
+  const key = message.sourceTrackId;
+  if (typeof key === "string" && key.length > 0 && sourceEncoder.encode(key).length <= 200 &&
+      (message.recovered === true || typeof message.message === "string" && message.message.length > 0)) {
+    session.sourceWarnings ??= new Map();
+    if (message.recovered === true) session.sourceWarnings.delete(key);
+    else {
+      const error = [...message.message.replace(/[\u0000-\u001f\u007f-\u009f]/g, "")].slice(0,2000).join("");
+      session.sourceWarnings.set(key, error);
+      if (!message.transient) session.problem ??= error;
+    }
+  } else {
+    session.warning = fallback;
+    if (!message.transient) session.problem ??= fallback;
+  }
+  notifyControl();
+}
+
 function status(session = firstSession()) {
   return session ? { recording: true, captureId: session.token, documentGeneration: documentFor(session.tabId), callGeneration: session.callGeneration, stopping: session.stopping, tracks: session.tracks, tabId: session.tabId, mode: session.mode,
-    pageState: pageState(session.tabId), failedSources: [...session.discoveredSources].filter(([,s])=>s.failed).map(([id])=>id), message: session.warning || (!session.tracks ? "Waiting for audio. Join the call, or record the whole tab instead." : `${session.stopping ? "Saving" : "Recording"} ${session.mode === "tracks" ? "separate tracks" : "the whole tab"} · ${session.tracks} ${session.tracks === 1 ? "recorded track" : "recorded tracks"}`), path: session.path } : lastStatus;
+    pageState: pageState(session.tabId), failedSources: [...new Set([...session.discoveredSources].filter(([,s])=>s.failed).map(([id])=>id).concat([...(session.sourceWarnings?.keys() || [])]))], message: session.sourceWarnings?.values().next().value || session.warning || (!session.tracks ? "Waiting for audio. Join the call, or record the whole tab instead." : `${session.stopping ? "Saving" : "Recording"} ${session.mode === "tracks" ? "separate tracks" : "the whole tab"} · ${session.tracks} ${session.tracks === 1 ? "recorded track" : "recorded tracks"}`), path: session.path } : lastStatus;
 }
 function failure(message, session = firstSession()) {
   if (session) { session.problem ??= message; session.loss = true; notifyControl(); void stop(session); }
@@ -339,6 +399,9 @@ chrome.runtime.onConnect.addListener(port => {
   if (pageState(frame.tabId) === "closed") return;
   if (frame.frameId === 0) setPageState(frame.tabId, "present");
   frames.add(frame);
+  if (!identitiesHydrated && frame.frameId === 0) void recovery.then(() => {
+    if (frames.has(frame) && !frame.obsolete) setPageState(frame.tabId, "present");
+  });
   port.postMessage({ type: "discover" });
   // Newly inserted frames may carry meeting tracks; they share the original session clock.
   const current = sessions.get(frame.tabId);
@@ -347,6 +410,7 @@ chrome.runtime.onConnect.addListener(port => {
     port.postMessage({ type: "start", token: current.token, origin: current.origin, captureLocal: current.captureLocal, sourceOutcomes: current.sourceOutcomes });
   }
   port.onMessage.addListener(async message => {
+    if (!identitiesHydrated) await recovery;
     if (!frames.has(frame)) return;
     if (message.type === "pageState") {
       if (!frame.obsolete && frame.frameId === 0 && ["present", "navigating"].includes(message.state)) {
@@ -360,10 +424,22 @@ chrome.runtime.onConnect.addListener(port => {
       const document = message.documentGeneration, generation = message.callGeneration;
       if (typeof document === "string" && document.length > 0 && document.length <= 200 &&
           typeof generation === "string" && generation.length > 0 && generation.length <= 200) {
+        const info = callInfo(frame.tabId);
+        if (frame.frameId === 0 && !frame.identitySeeded) {
+          frame.identitySeeded = true;
+          if (info.boundaryPending) fenceBaseline(frame, info);
+          else if (info.documentGeneration === document) {
+            frame.documentGeneration = document; frame.callGeneration = info.hookGeneration;
+          }
+        }
         if (frame.fencedGenerations.has(JSON.stringify([document,generation]))) return;
         const changed = frame.frameId === 0 && frame.documentGeneration === document && frame.callGeneration !== undefined && frame.callGeneration !== generation;
         if (changed) callChanged(frame.tabId);
         frame.documentGeneration = document; frame.callGeneration = generation;
+        if (frame.frameId === 0 && (info.documentGeneration !== document || info.hookGeneration !== generation)) {
+          Object.assign(info, {documentGeneration:document, hookGeneration:generation, boundaryPending:false});
+          void persistSessions().catch(() => {});
+        }
       }
       if (frame.obsolete || pageState(frame.tabId) === "closed") return;
       if (Number.isInteger(message.sourceCount) && message.sourceCount >= 0 && message.sourceCount <= 64 &&
@@ -391,9 +467,8 @@ chrome.runtime.onConnect.addListener(port => {
       frame.finished?.(); return;
     }
     if (message.type === "warning") {
-      session.warning = "One track was interrupted and has a gap. The other tracks continue.";
-      if (!message.transient) session.problem ??= session.warning;
-      notifyControl(); return;
+      sourceWarning(session, message, "One track was interrupted and has a gap. The other tracks continue.");
+      return;
     }
     if (message.type === "error") { failure("The meeting page could not record separate tracks. Record the whole tab instead. Audio recorded so far was saved.", session); return; }
     if (message.type !== "packet" || !["track", "audio", ...(session.sourceOutcomes ? ["trackEnd", "sources"] : [])].includes(message.packet?.type)) return;
@@ -439,10 +514,11 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     await recovery;
     if (offscreen) {
       const active = [...sessions.values()].find(s => s.mode === "tab");
+      if (message.type === "warning" && active?.tabSourceId && typeof message.sourceTrackId === "string" && message.sourceTrackId !== active.tabSourceId) return {};
       if ((message.type === "error" || message.type === "warning" && !message.transient) && active?.sourceOutcomes && active.tabSourceId) {
         await recordSources(active, [{sourceTrackId:active.tabSourceId,kind:"tab",label:"Tab audio",failed:true}]);
       }
-      if (message.type === "warning" && active) { active.warning = "Tab audio lost samples during a recording stall."; if (!message.transient) active.problem ??= active.warning; return {}; }
+      if (message.type === "warning" && active) { sourceWarning(active, message, "Tab audio lost samples during a recording stall."); return {}; }
       if (message.type === "error") { failure(message.message, active); return {}; }
       if (message.type === "packet" && active?.mode === "tab" && ["track", "audio", ...(active.sourceOutcomes ? ["trackEnd"] : [])].includes(message.packet?.type)) {
         try { await forwardPacket(active, message.packet); }
@@ -474,7 +550,8 @@ chrome.tabs.onRemoved.addListener(id => {
   }
   notifyControl();
 });
-chrome.tabs.onUpdated.addListener((id, change) => {
+function tabUpdated(id, change) {
+  if (!identitiesHydrated) { void recovery.then(() => tabUpdated(id, change)); return; }
   if (typeof change.url === "string" && callGenerations.has(id)) {
     const info = callInfo(id);
     if (info.url !== null && info.url !== callAddress(change.url)) callChanged(id, callAddress(change.url));
@@ -485,7 +562,8 @@ chrome.tabs.onUpdated.addListener((id, change) => {
     for (const frame of frames) if (frame.tabId === id) { frame.sourceCount = 0; frame.heard = false; frame.obsolete = true; }
   }
   if (change.status || change.title !== undefined || change.url !== undefined) notifyControl();
-});
+}
+chrome.tabs.onUpdated.addListener(tabUpdated);
 
 function controlStatus(tabId = null) {
   const value = tabId === null ? status() : sessions.has(tabId) ? status(sessions.get(tabId)) : saved.get(tabId) || { recording: false, tabId, path: null, message: lastStatus.message };

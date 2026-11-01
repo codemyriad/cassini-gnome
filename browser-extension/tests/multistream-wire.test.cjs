@@ -296,3 +296,25 @@ test('B to C rotates while A Stop is draining, without a second Stop or stale B 
   assert.equal(page.sent.filter(p=>p.type==='stop').length,1);release();await until(()=>app.audio[0].closed);
  }finally{release?.();app.close()}
 });
+
+
+test('whole-tab warnings preserve a source-specific readiness error until that source recovers',async()=>{
+ const app=await setup(3,{},['source-outcomes-v1']);
+ const report=message=>new Promise(resolve=>app.chrome.runtime.onMessage.emit({target:'background',...message},{id:'extension',url:'chrome-extension://extension/offscreen.html'},resolve));
+ try{
+  app.chrome.tabCapture.getMediaStreamId=async()=>'granted';app.chrome.offscreen.createDocument=async()=>{};
+  app.chrome.runtime.sendMessage=async()=>({});
+  await app.api.start('tab',2);
+  const source=app.audio[0].sent.find(p=>p.type==='sources').discoveredSources[0].sourceTrackId;
+  await report({type:'warning',sourceTrackId:'stale-tab-source',message:'Old source error',transient:true});
+  assert.deepEqual(Array.from(app.api.controlStatus().failedSources),[]);
+  await report({type:'warning',sourceTrackId:source,message:'Audio render clock did not become ready.',transient:true});
+  assert.deepEqual(Array.from(app.api.controlStatus().failedSources),[source]);
+  await report({type:'packet',packet:{type:'track',id:'tab',sourceTrackId:source,kind:'tab',sampleRate:48000,channels:1}});
+  assert.equal(app.api.controlStatus().message,'Audio render clock did not become ready.');
+  assert.deepEqual(Array.from(app.api.controlStatus().failedSources),[source]);
+  await report({type:'warning',sourceTrackId:source,recovered:true,transient:true});
+  assert.deepEqual(Array.from(app.api.controlStatus().failedSources),[]);
+  await app.api.stop();
+ }finally{app.close()}
+});

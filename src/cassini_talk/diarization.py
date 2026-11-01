@@ -5,10 +5,13 @@ No model, NumPy or native library is imported here. Stable voice identity comes
 from first turns; display numbering comes from the resulting word order.
 """
 
+import logging
 import math
 import struct
 from collections import Counter
 from fractions import Fraction
+
+LOG = logging.getLogger(__name__)
 
 
 def turn_key(turn):
@@ -174,12 +177,21 @@ def split_segments(segments, group_id, turns):
 
 def group_tracks(tracks, *, origin="own"):
     """Input may carry the already validated D11 `speaker` from prepare_tracks."""
+    from .source_spans import separate
+
     groups, kinds = {}, {}
+    planned = []
     for track in tracks:
         kind = track.get("kind", "original" if origin == "received" else "remote")
         identity = track.get("sourceTrackId") or track["id"]
         fallback = "me" if kind in ("microphone", "local") else "others" if kind == "system" else "track-" + identity
         speaker = track.get("speaker", "track-original" if origin == "received" else fallback)
+        planned.append(dict(track, speaker=speaker, kind=kind))
+    separated, diagnostics = separate(planned)
+    for diagnostic in diagnostics:
+        LOG.warning("Diarization diagnostic: %s", diagnostic)
+    for track in separated:
+        speaker, kind = track["speaker"], track["kind"]
         group = groups.setdefault(speaker, dict(id=speaker, tracks=[], eligible=False, durationMs=0))
         group["tracks"].append(track["id"])
         kinds.setdefault(speaker, set()).add(kind)

@@ -48,6 +48,13 @@ export async function workerDeathDuringRecording({ context, meetingPage, popup, 
     await new Promise(resolve => setTimeout(resolve, 50));
   }
   assert.equal(after.path, before.path);
+  if (before.callGeneration) {
+    const restored = await popup.evaluate(async tabId => {
+      const value = await chrome.storage.session.get('cassiniCallGenerations');
+      return value.cassiniCallGenerations?.find(row => row.tabId === tabId)?.generation;
+    }, before.tabId);
+    assert.equal(restored, before.callGeneration, 'worker restart changed the retained call identity');
+  }
   assert.equal(await popup.evaluate(() => chrome.action.getBadgeText({})), '');
   assert.ok(metadata.tracks.some(track => track.frames > track.sampleRate * 4), 'audio accepted before worker death survived');
   const retained = await Promise.all(metadata.tracks.map(track => readFile(path.join(before.path, track.file))));

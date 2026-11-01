@@ -37,6 +37,10 @@ def track_pcm(track, cancel=None):
     if not source.src.link(first):
         raise RuntimeError("Could not link recording source for export")
     sink = pipeline.get_by_name("pcm")
+    from .source_ownership import FrameMask
+
+    ownership = FrameMask(getattr(track, "ownership_windows", None), RATE)
+    cursor = 0
     remaining = array.array("f")
     try:
         if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
@@ -67,10 +71,12 @@ def track_pcm(track, cancel=None):
                 block.byteswap()
             remaining.extend(block)
             while len(remaining) >= RATE:
-                yield remaining[:RATE]
+                block = remaining[:RATE]
+                yield array.array("f", ownership.pcm(block.tobytes(), cursor, 4))
+                cursor += len(block)
                 del remaining[:RATE]
         if remaining:
-            yield remaining
+            yield array.array("f", ownership.pcm(remaining.tobytes(), cursor, 4))
     finally:
         pipeline.set_state(Gst.State.NULL)
         source.close()

@@ -940,3 +940,39 @@ def test_broker_native_first_stop_keeps_a_never_opened_source_without_late_rewri
         assert (capture.directory / "session.json").read_bytes() == final
     finally:
         client.close()
+
+
+def test_initial_system_stand_in_retains_the_selected_logical_call_generation(server):
+    from test_browser_service import meeting, wait_for
+    from test_browser_sessions import Extension
+
+    from cassini_talk.browser_service import send_packet
+
+    service, path, _root = server
+    peer = Extension(path, (3,), instance="stand-in-browser")
+    try:
+        send_packet(
+            peer.stream, dict(type="hello", version=1, capabilities=["independent-sessions-v1", "multi-stream-v1"])
+        )
+        send_packet(
+            peer.stream, dict(type="meetings", meetings=[dict(meeting(), callGeneration="call-before-browser-audio")])
+        )
+        wait_for(
+            lambda: (
+                next(iter(service.browsers.values())).meetings[3].get("callGeneration") == "call-before-browser-audio"
+            )
+        )
+        with ThreadPoolExecutor(1) as pool:
+            pending = pool.submit(request, "start-all", path=path, microphone=False)
+            command = peer.receive()
+            assert command["callGeneration"] == "call-before-browser-audio"
+            peer.answer(command, ok=False)
+            result = pending.result(2)
+        assert not result["failures"]
+        (capture,) = service.captures.values()
+        assert capture.browser_lost and not capture.audio_connected
+        assert capture.call_generation == "call-before-browser-audio"
+        assert capture.microphone is None
+        capture.stop()
+    finally:
+        peer.close()

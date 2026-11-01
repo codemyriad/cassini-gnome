@@ -2,9 +2,11 @@
 import assert from 'node:assert/strict';
 import {spawn, execFileSync} from 'node:child_process';
 import {createWriteStream} from 'node:fs';
+import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 
 export async function run({context, call, join, record, recording, samples, power, poll, automatic, id, artifacts, evidence}) {
+ const {constants} = JSON.parse(await readFile(path.resolve(import.meta.dirname, '../../browser-protocol/conformance/multistream/lifecycle.json')));
  let producer;
  async function choose(directory, me, others) {
   await call({action: 'selection', path: directory, me, others});
@@ -22,14 +24,17 @@ export async function run({context, call, join, record, recording, samples, powe
   const hungUp = await join('Hang-up with tab still open', 770, 1100, id);
   await record();
   const hungUpDirectory = await recording('Hang-up with tab still open');
+  await poll(async () => (await call()).meetings.some(m => m.title === 'Hang-up with tab still open' && m.heard),
+   'remote audio evidence arms the call-end policy before hang-up');
   await hungUp.meeting.evaluate(() => meeting.pc.close());
   const savedHangup = await poll(async () => {
    const current = await samples(hungUpDirectory);
    evidence.hangup = {directory: hungUpDirectory, state: current.manifest.state,
     problem: current.manifest.problem, problemKind: current.manifest.problemKind,
     tracks: current.tracks.map(t => ({kind: t.kind, frames: t.frames, ended: t.ended}))};
+   assert.ok(!current.tracks.some(t => t.kind === 'system'), 'hang-up never falls back while waiting');
    return current.manifest.state === 'completed' && current;
-  }, 'hang-up saves while the tab remains open');
+  }, 'hang-up saves after the shared others-gone grace while the tab remains open', constants.OTHERS_GONE_GRACE + 20000);
   assert.ok(!hungUp.meeting.isClosed());
   assert.ok(!savedHangup.tracks.some(t => t.kind === 'system'), 'hang-up never falls back');
   evidence.scenarios.push({name: 'hang-up-tab-open-stops-without-fallback', directory: hungUpDirectory});

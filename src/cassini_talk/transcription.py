@@ -120,6 +120,8 @@ def prepare_tracks(meeting):
                 ),
             )
         )
+        if track.ownership_windows is not None:
+            tracks[-1]["ownershipWindows"] = [list(window) for window in track.ownership_windows]
         if track.spans:
             tracks[-1]["spans"] = [
                 dict(
@@ -135,7 +137,22 @@ def prepare_tracks(meeting):
             ]
             tracks[-1]["sessionDirectory"] = str(meeting.directory)
         speakers.setdefault(speaker, dict(id=speaker, name=name, provenance=provenance, colourIndex=index))
-    return tracks, speakers
+    from .source_spans import separate
+
+    separated, diagnostics = separate(tracks)
+    for original, track in zip(tracks, separated, strict=True):
+        if track["speaker"] != original["speaker"]:
+            speakers.setdefault(
+                track["speaker"],
+                dict(
+                    speakers[original["speaker"]],
+                    id=track["speaker"],
+                    colourIndex=max(s["colourIndex"] for s in speakers.values()) + 1,
+                ),
+            )
+    for diagnostic in diagnostics:
+        LOG.warning("Transcription diagnostic: %s", diagnostic)
+    return separated, speakers
 
 
 def update_progress_metadata(

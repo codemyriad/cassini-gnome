@@ -366,7 +366,7 @@ expectations for both apps, checked by an independent fixture oracle. It is not
 production policy code. Each app must additionally test its actual writer and
 fallback/restore device failures.
 
-## D52 multi-stream lifecycle (extension 0.2.4; draft PR)
+## D52 multi-stream lifecycle (extension 0.2.6; draft PR)
 
 The extension advertises multi-stream-v1 alongside its existing capabilities.
 The following policy supersedes the legacy two-second present-page call-end
@@ -401,3 +401,38 @@ peer and positive inbound RTP progress, not merely recvonly slots. A suspension
 that would create a gap above 60 seconds rotates the span before sending it.
 The background never forwards a 65th distinct track ID; a refusal stays per
 source and is visible in failedSources. See the schemas and new source tests.
+
+
+### Call identity across service-worker restart (D52)
+
+A browser service-worker restart is not a new call. Persist the per-tab browser
+callGeneration and a bounded SHA-256 address fingerprint in storage.session,
+with the main frame's hook
+documentGeneration/callGeneration baseline. Hydrate these before processing page
+messages or browser URL changes and before publishing the initial inventory.
+Hydration compares the current browser-owned tab address to the saved digest;
+long query strings cannot discard the identity or expand the stored record. A
+URL boundary fences the saved hook baseline before the first returning snapshot,
+so stale heard evidence cannot vote or rotate the generation a second time.
+A reconnect from the same live document and hook generation keeps the same
+browser callGeneration. A reload at the same URL also retains call identity;
+a real address or same-document hook-generation boundary still rotates exactly
+once, in either event order, including while startup hydration is pending.
+Store only bounded tab metadata, never PCM or source labels, and retain these
+identities independently of the active-recording records removed after Stop.
+
+
+### Source readiness failures during retry
+
+A source that cannot initialize its render clock keeps its specific error and
+sourceTrackId while retrying. Live status includes that source in failedSources
+and keeps the error visible when another source declares a track or sends PCM.
+Readiness has a four-second upper bound; a timeout disconnects the unsuccessful
+graph without closing a shared context or stopping healthy sources. Repeated
+identical retry errors need not generate repeated warnings.
+
+Only acknowledged PCM from that same source clears its active retry warning;
+a successful declaration alone is not recovery. Permanent/previously recorded
+source failures remain in the capture ledger. A source still retrying at Stop
+is reported failed, with its existing specific error retained. A recovered
+transient readiness error does not turn the final Stop into an interruption.

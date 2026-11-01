@@ -5,11 +5,11 @@ export function base64(buffer) {
   return btoa(text);
 }
 
-async function bounded(promise, message) {
+async function bounded(promise, message, schedule = setTimeout, cancel = clearTimeout) {
   let timer;
   try {
-    return await Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), 4000); })]);
-  } finally { clearTimeout(timer); }
+    return await Promise.race([promise, new Promise((_, reject) => { timer = schedule(() => reject(new Error(message)), 4000); })]);
+  } finally { cancel(timer); }
 }
 
 const clocks = new WeakMap();
@@ -29,9 +29,10 @@ function resumeSuspended(context) {
   return task;
 }
 
-async function captureOnce({ stream, id, label, kind, origin, workletURL, send, fail, audible = false, enabled = () => true, channels = 1, sharedContext, getSharedContext, warn = () => {}, sourceTrackId, reportOutcomes = false, onAudio = () => {} }) {
+async function captureOnce({ stream, id, label, kind, origin, workletURL, send, fail, audible = false, enabled = () => true, channels = 1, sharedContext, getSharedContext, warn = () => {}, sourceTrackId, reportOutcomes = false, onAudio = () => {}, schedule, cancel }) {
   sharedContext ||= getSharedContext?.();
   const context = sharedContext || new AudioContext({ sampleRate: 48000 });
+  const wait = (promise, message) => bounded(promise, message, schedule, cancel);
   let source, node, silent, remotePlayback, stopping = false, ending = false, failure = null;
   let pendingFrames = 0, sequence = 0, flushed, droppedFrames = 0;
   const waiting = [], inFlight = new Set();
@@ -61,14 +62,14 @@ async function captureOnce({ stream, id, label, kind, origin, workletURL, send, 
     fail(error);
   }
   try {
-    await bounded(context.audioWorklet.addModule(workletURL), "This meeting page blocks separate-track recording. Record the whole tab instead.");
+    await wait(context.audioWorklet.addModule(workletURL), "This meeting page blocks separate-track recording. Record the whole tab instead.");
     // Chromium may not decode a receiver for Web Audio until a media renderer exists.
     // Keep a silent renderer alive (crbug.com/40094084), without playing remote audio twice.
     if (kind === "remote") {
       remotePlayback = new Audio();
       remotePlayback.muted = true;
       remotePlayback.srcObject = stream;
-      await bounded(remotePlayback.play(), "A participant’s audio did not start. Record the whole tab instead.");
+      await wait(remotePlayback.play(), "A participant’s audio did not start. Record the whole tab instead.");
     }
     source = context.createMediaStreamSource(stream);
     node = new AudioWorkletNode(context, "cassini-pcm", {
@@ -77,10 +78,16 @@ async function captureOnce({ stream, id, label, kind, origin, workletURL, send, 
     });
     silent = context.createGain();
     silent.gain.value = 0;
-    source.connect(node).connect(silent).connect(context.destination);
+    // A newly constructed worklet can observe its initial global frame before
+    // the device clock catches up. Warm only the disconnected graph; no source
+    // PCM is admitted or timestamp adjusted during this readiness handshake.
+    const ready = new Promise(resolve => { node.port.onmessage = ({data}) => {if (data.ready) resolve();}; });
+    node.connect(silent).connect(context.destination);
     if (audible) source.connect(context.destination);
-    await bounded(context.resume(), "Click somewhere in the meeting page so the browser allows audio, then try again. Or record the whole tab.");
+    await wait(context.resume(), "Click somewhere in the meeting page so the browser allows audio, then try again. Or record the whole tab.");
     if (context.state !== "running") throw new Error("Audio capture is suspended. Interact with the meeting page, then try again or use Tab audio.");
+    await wait(ready, "Audio render clock did not become ready.");
+    source.connect(node);
     let clockOffset = clocks.get(context);
     await send({ type: "track", id, label, kind, sampleRate: context.sampleRate, channels,
       ...(sourceTrackId ? { sourceTrackId } : {}) });
@@ -127,6 +134,7 @@ async function captureOnce({ stream, id, label, kind, origin, workletURL, send, 
       waiting.push({ message, frames });
       pump();
     };
+    node.port.postMessage("start");
     return {
       get failed() { return !!failure; },
       get droppedFrames() { return droppedFrames; },
@@ -195,6 +203,7 @@ export async function capture(options) {
     return !tracks || tracks.some(track => track.readyState === "live");
   });
   const healthy = () => {
+    if (recovering) warn(undefined, {kind:"recovered", sourceTrackId:options.sourceTrackId || options.id});
     recovering = false;
     healthySince ??= now();
     if (now() - healthySince >= 60000) retries = 0;
@@ -217,7 +226,7 @@ export async function capture(options) {
     if (healthySince !== null && at - healthySince >= 60000) retries = 0;
     healthySince = null;
     recovering = true;
-    warn("A track was interrupted; trying to resume it.", {kind:"retry"});
+    warn(error.message, {kind:"retry", sourceTrackId:options.sourceTrackId || options.id});
     const delay = options.retryDelayMs ?? retryDelay(retries);
     retryTimer = later(async () => {
       retryTimer = null;

@@ -18,6 +18,7 @@ module.exports = async function fixture(run, settings={}) {
  const control=async data=>{for(const fn of listeners)await fn({source:window,data:{channel:'cassini-control',...data}})};
  const window={location:{href:'https://meet.test/call-A'},RTCPeerConnection:Peer,addEventListener:(_n,fn)=>listeners.push(fn),postMessage(message){
   messages.push(message);
+  if(settings.deliver){settings.deliver(message);return;}
   if(message.type==='packet')queueMicrotask(()=>control({type:'ack',token:message.token,request:message.request,...(nativeFinished?{error:'Native capture already saved',scope:'command',code:'state'}:{})}));
  }};
  globalThis.__cassiniPageCapture=async options=>{
@@ -42,7 +43,9 @@ module.exports = async function fixture(run, settings={}) {
  const tick=async()=>{now+=1000;await timers[0]();};
  const scan=async()=>{assert.ok(timers[1],'capture scan exists');await timers.at(-1)();};
  let activeToken='recording';
- try {await run({peer,window,remote,tick,scan,captures,messages,render(track){media.push({srcObject:new Stream([track])})},nativeStopFirst(){nativeFinished=true},breakContext(){contextError=true},async stop(){await control({type:'stop',token:activeToken})},async start(token='recording',options={}){activeToken=token;await control({type:'start',token,origin:0,moduleURL,workletURL:'',...options})}})}
+ try {await run({peer,window,remote,tick,scan,captures,messages,receive(data){if(data.type==="start")activeToken=data.token;return control(data)},render(track){media.push({srcObject:new Stream([track])})},nativeStopFirst(){nativeFinished=true},breakContext(){contextError=true},async stop(){await control({type:'stop',token:activeToken})},async start(token='recording',options={}){activeToken=token;await control({type:'start',token,origin:0,moduleURL,workletURL:'',...options})}})}
  finally {await control({type:'stop',token:activeToken});delete globalThis.__cassiniPageCapture;}
 }
 ;
+
+module.exports.moduleURL=moduleURL;
