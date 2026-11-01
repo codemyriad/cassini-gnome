@@ -1,26 +1,23 @@
-tree 61e7b57af97010bf10ff6eda74eae1efbd54b90c
-parent 8e160acf194fc6e21e8b132893afd612f0223557
-parent cda50d4cd88461b339ffaa93df2c21c236920036
-author Silvio Tomatis <silviot@gmail.com> 1793570168 +0100
-committer GitHub <noreply@github.com> 1793570168 +0100
-gpgsig -----BEGIN PGP SIGNATURE-----
- 
- wsFcBAABCAAQBQJq57V4CRC1aQ7uu5UhlAAAJjoQAHaos9KfkRWz8q+oxeiroT5Z
- o+y14+4SYYFF7QWQmXijGUgQTUDRSe38WqzJ6GRtaa0aGQPlff1t6bVvNBa8tKgH
- ewqXMc2M9L5x9Yz04BKeSrncd4cf3FLheqtNCm7DW0Bw+I1yORppFP8Ric5jRmU+
- NCTI3jWiO9Dbclt//gOVVT8aCOthQ+sXVdzcANvNZmYWqJH3DxlwIVL9weYF8RMk
- DrxlUai+FWCf8UIKIHi14CTKvTzAnKfiU0fCjgpGL6mH3eYMj21AYSbyBPDzxkyJ
- +1xlgBrQJ0FadgtHcH1YAkm+bM3Xze5gLgVekVIiLuhWHr1L/4NrNegrgbvZfNQ+
- tem7pfPP7wR03B+oQq8hKEZRsPgC+WNvBtOQaUtT2EX9zld2hIfmvqPPd4YLSHwA
- 7tXBOVe6pbCtyS6uLG1WxI298ZaRW73IuUu4skkEXv4Laf3RKRO5XuM2OU7CY7ML
- 1hhUdikh8f5NYi00t/0vBqNAT2no5vr6b9VCTgscE7jsMQ2eOoQ1CjRQIofCn8cn
- z47WgWhdi/38snxphv+JKvYnptt/TMlsfXr0a+1jYwUZ24pUFMQEbYsJmajp5bxZ
- qkInAKA+vIL0BaOU8wzEbm0325zRKnzbMoMPYpNe55L7PTWQqliQZM/XsuIZ9ZeL
- JoUNcgfsDE0lR+H80qyP
- =W/Fm
- -----END PGP SIGNATURE-----
- 
+tree cafb6118501708b456c8a2cd380c40261ed52323
+parent 899543ba8846ff26c26c985f8b4ea25aae95081c
+author Silvio Tomatis <silviot@gmail.com> 1793573093 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793573093 +0100
 
-Merge pull request #31 from codemyriad/feat/heartbeat-v1
+Address protocol #32 review: scope heard, pin the ask, peer-free matching, stale vectors
 
-Add heartbeat-v1 control liveness and D52.4 transport-loss rules (extension 0.2.9)
+- Ask on each new control connection is now MUST; the ask conditions
+  state the closed audio transport and a present page (not navigating).
+- lifecycle.py latches heard only for the recording's own callGeneration,
+  so another call's heard cannot arm restore, OTHERS_GONE_GRACE or the ask.
+  New case pins it; ask-waits gains a navigating row and a call-B row.
+- callGeneration is a browser-generated unguessable ID; lost recordings
+  match by (tabId, callGeneration) across all control peers. The lost call
+  is recording: Record all skips it (expect.manual false), manual Record
+  after Stop is an ordinary Start. Seeded recordings start unlatched
+  (heardSeen); new heard-earlier and earlier-peer auto-start cases.
+- The extension manual runner checks wire acceptance for seeded cases,
+  since the app registry is invisible to the extension.
+- SPEC.md makes the PCM_STALE_AFTER >= comparison normative; new
+  stale-watchdog.json with an independent oracle and mutant tests.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

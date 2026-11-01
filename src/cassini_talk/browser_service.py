@@ -1965,7 +1965,11 @@ class BrowserService:
                         others=capture.others,
                         restore_ready=capture.browser_ready,
                         multistream=capture.multistream_capable,
-                        heard=meeting.get("heard") is True,
+                        # D52.5: another call's heard never arms this recording's
+                        # restore or OTHERS_GONE grace; it latches only on rows
+                        # of the recording's own callGeneration, when it has one.
+                        heard=meeting.get("heard") is True
+                        and capture.call_generation in (None, meeting.get("callGeneration")),
                         inventory_known=peer is not None
                         and peer[2] is not None
                         and meeting.get("sourceCountKnown", True),

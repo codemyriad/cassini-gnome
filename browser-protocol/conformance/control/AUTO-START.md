@@ -20,6 +20,37 @@ check the existing no-audio guard. A false/missing heard value never prevents
 manual Record of a positive-source candidate. Unrelated capabilities do not
 activate the heard requirement.
 
+D52.5 cases add optional `recordings`: recordings the app already holds
+(captureId, tabId, callGeneration and current othersSource, always
+`{"source":"system","reason":"lost"}`), and optional `expect.resume` (absent
+means false). Two optional recording fields describe its history:
+
+- `heardSeen` (default false): whether heard:true was already seen for that
+  callGeneration during the recording. Seeded recordings start unlatched
+  unless this says otherwise; the meetings row's own heard:true also latches.
+- `controlPeer` (default `current`): `earlier` means the recording was started
+  under an earlier control peer/hello that has since closed, and the vector's
+  hello and meetings arrive on a new peer. Lost recordings match by
+  (tabId, callGeneration) across all peers, never by peer or connection.
+
+A recording on system/lost for the meeting's (tabId, callGeneration) means that
+call is recording: its row shows Stop and Record all skips it (`manual:false`),
+and the automatic Start is blocked (`automatic:false`). With a positive count
+and the heard latch set, the app instead asks once to resume that recording
+through resume-capture-v1 (`resume:true`). A lost recording of another
+callGeneration or another tab blocks nothing. Desktop adapters seed
+`recordings` into their real recording registry for every expectation
+(automatic, manual and resume) before delivering the hello and meetings
+packets, then check that no Start is sent and that exactly one resume for that
+captureId is (or is not) sent. A manual Record after the user stops that
+recording is an ordinary Start (R67); it is documented, not a vector, because
+Stop removes the recording. `auto_start.py` is the independent protocol-side
+oracle for these expectations, not a desktop runner.
+
+The extension cannot see the app's registry. For cases with `recordings`, its
+manual runner checks that an explicit Start reaching it is accepted whenever
+the tab has sources; Record all skipping the recording call is app-side.
+
 The protocol tests validate the wire inputs and exercise every manual expectation
 through the real extension control handler. Desktop adapters must test their own
 automatic policy as well; recomputing an expected boolean in a fixture runner is

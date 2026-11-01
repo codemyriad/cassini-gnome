@@ -478,16 +478,28 @@ relay that keeps the transport open but silent. Times are monotonic.
 - `PCM_FRESH = 2 s`: `pcmLive` means admitted browser/remote PCM arrived on the
   recording's audio transport within the last 2 seconds. The native microphone
   is never that evidence. Both apps use this window.
-- `PCM_STALE_AFTER = 40 s` (SHOULD): close a recording's audio transport after
-  40 seconds without any packet on it. The watchdog is armed only while that
+- `PCM_STALE_AFTER = 45 s` (SHOULD): close a recording's audio transport after
+  45 seconds without any packet on it. The watchdog is armed only while that
   transport has an open remote span (declared, not yet ended by trackEnd or
   stop) that has already delivered PCM. It is re-evaluated, not sticky: before
   the first remote PCM, and after the last such span ends, nothing can go stale.
-  Closing uses the app's existing EOF path, so the recording keeps running and
-  falls back to computer sound with `othersSource` reason lost (SPEC-CONTROL.md,
-  D52.4 Q3). Rationale: the extension's source retry backs off 1, 5, 15 and 30
-  seconds and the app cannot see that retry state; 40 = 30 + the extension's
-  10-second acknowledgement limit, and it stays below the 60-second span cut.
+  Every frame received on that audio transport counts toward this deadline:
+  PCM (`audio`), `track`, `sources` and `trackEnd` alike (D52.5); frames on
+  the control connection do not. The comparison is normative: an app that
+  runs this watchdog MUST treat the transport as stale exactly when it is
+  armed and `now - lastAudioTransportFrame >= 45 s` (so 44.999 s after the
+  last frame it is still open and at 45.000 s it is closed), never earlier,
+  and SHOULD close it within one policy tick. A frame arriving at or after
+  that deadline is too late. Literal cases with an independent oracle:
+  `conformance/multistream/stale-watchdog.json` (`stale_watchdog.py`).
+  Closing uses the app's existing EOF path, so
+  the recording keeps running and falls back to computer sound with
+  `othersSource` reason lost (SPEC-CONTROL.md, D52.4 Q3). Rationale (D52.5
+  amendment): the extension's source retry backs off 1, 5, 15 and 30 seconds
+  and the app cannot see that retry state. 30 + the extension's 10-second
+  acknowledgement limit is 40 s, and with the `>=` comparison a 40 s deadline
+  left no margin, so a healthy retry could lose the race; 45 s adds a 5-second
+  margin and stays below the 60-second span cut.
 - `WRITE_DEADLINE = 10 s` (SHOULD): bound every socket/pipe write to the browser,
   on both the audio and control connections, to 10 seconds. A peer that stops
   reading is closed, and the close must not wait behind the stuck write.

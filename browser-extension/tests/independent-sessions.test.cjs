@@ -262,7 +262,12 @@ for(const vector of autoStartCases)test('desktop manual vector: '+vector.name,as
     assert.deepEqual(vector.capabilities,expectedCapabilities,'vectors use a real compatible transport hello');
     app.pages[0].onMessage.emit({type:'discovery',sourceCount:vector.meeting.sourceCount,heard:vector.meeting.heard});
     const result=await app.command(command('vector-manual','start',vector.meeting.tabId));
-    assert.equal(result.ok,vector.expect.manual,vector.name);
+    // D52.5: `recordings` live in the app's registry, which the extension never
+    // sees. A seeded same-call system/lost recording makes the app's Record all
+    // skip the row (expect.manual false), but an explicit Start that does reach
+    // the extension is still accepted for a tab with sources (R67 after Stop).
+    const wireManual=vector.recordings?vector.meeting.sourceCount>0:vector.expect.manual;
+    assert.equal(result.ok,wireManual,vector.name);
     if(result.ok)await app.command(command('vector-stop','stop',vector.meeting.tabId));
   } finally {app.close();}
 });

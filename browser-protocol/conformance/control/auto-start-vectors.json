@@ -190,5 +190,218 @@
       "automatic": true,
       "manual": true
     }
+  },
+  {
+    "name": "lost-recording-same-call-resumes-instead-of-auto-start",
+    "capabilities": [
+      "independent-sessions-v1",
+      "call-evidence-v1",
+      "page-state-v1",
+      "multi-stream-v1",
+      "resume-capture-v1",
+      "heartbeat-v1"
+    ],
+    "recordings": [
+      {
+        "captureId": "recording-F",
+        "tabId": 2,
+        "callGeneration": "call-A",
+        "othersSource": {
+          "source": "system",
+          "reason": "lost"
+        }
+      }
+    ],
+    "meeting": {
+      "tabId": 2,
+      "title": "Synthetic meeting",
+      "url": "https://meet.example/call",
+      "sourceCount": 3,
+      "heard": true,
+      "callGeneration": "call-A"
+    },
+    "expect": {
+      "automatic": false,
+      "manual": false,
+      "resume": true
+    }
+  },
+  {
+    "name": "lost-recording-same-call-unheard-neither-starts-nor-resumes",
+    "capabilities": [
+      "independent-sessions-v1",
+      "call-evidence-v1",
+      "page-state-v1",
+      "multi-stream-v1",
+      "resume-capture-v1",
+      "heartbeat-v1"
+    ],
+    "recordings": [
+      {
+        "captureId": "recording-F",
+        "tabId": 2,
+        "callGeneration": "call-A",
+        "othersSource": {
+          "source": "system",
+          "reason": "lost"
+        },
+        "heardSeen": false
+      }
+    ],
+    "meeting": {
+      "tabId": 2,
+      "title": "Synthetic meeting",
+      "url": "https://meet.example/call",
+      "sourceCount": 3,
+      "heard": false,
+      "callGeneration": "call-A"
+    },
+    "expect": {
+      "automatic": false,
+      "manual": false,
+      "resume": false
+    }
+  },
+  {
+    "name": "lost-recording-other-call-generation-may-auto-start",
+    "capabilities": [
+      "independent-sessions-v1",
+      "call-evidence-v1",
+      "page-state-v1",
+      "multi-stream-v1",
+      "resume-capture-v1",
+      "heartbeat-v1"
+    ],
+    "recordings": [
+      {
+        "captureId": "recording-F",
+        "tabId": 2,
+        "callGeneration": "call-A",
+        "othersSource": {
+          "source": "system",
+          "reason": "lost"
+        }
+      }
+    ],
+    "meeting": {
+      "tabId": 2,
+      "title": "Synthetic meeting",
+      "url": "https://meet.example/call",
+      "sourceCount": 3,
+      "heard": true,
+      "callGeneration": "call-B"
+    },
+    "expect": {
+      "automatic": true,
+      "manual": true,
+      "resume": false
+    }
+  },
+  {
+    "name": "lost-recording-other-tab-may-auto-start",
+    "capabilities": [
+      "independent-sessions-v1",
+      "call-evidence-v1",
+      "page-state-v1",
+      "multi-stream-v1",
+      "resume-capture-v1",
+      "heartbeat-v1"
+    ],
+    "recordings": [
+      {
+        "captureId": "recording-F",
+        "tabId": 5,
+        "callGeneration": "call-A",
+        "othersSource": {
+          "source": "system",
+          "reason": "lost"
+        }
+      }
+    ],
+    "meeting": {
+      "tabId": 2,
+      "title": "Synthetic meeting",
+      "url": "https://meet.example/call",
+      "sourceCount": 3,
+      "heard": true,
+      "callGeneration": "call-A"
+    },
+    "expect": {
+      "automatic": true,
+      "manual": true,
+      "resume": false
+    }
+  },
+  {
+    "name": "lost-recording-same-call-heard-earlier-resumes",
+    "capabilities": [
+      "independent-sessions-v1",
+      "call-evidence-v1",
+      "page-state-v1",
+      "multi-stream-v1",
+      "resume-capture-v1",
+      "heartbeat-v1"
+    ],
+    "recordings": [
+      {
+        "captureId": "recording-F",
+        "tabId": 2,
+        "callGeneration": "call-A",
+        "othersSource": {
+          "source": "system",
+          "reason": "lost"
+        },
+        "heardSeen": true
+      }
+    ],
+    "meeting": {
+      "tabId": 2,
+      "title": "Synthetic meeting",
+      "url": "https://meet.example/call",
+      "sourceCount": 3,
+      "heard": false,
+      "callGeneration": "call-A"
+    },
+    "expect": {
+      "automatic": false,
+      "manual": false,
+      "resume": true
+    }
+  },
+  {
+    "name": "lost-recording-under-an-earlier-control-peer-resumes-on-a-new-hello",
+    "capabilities": [
+      "independent-sessions-v1",
+      "call-evidence-v1",
+      "page-state-v1",
+      "multi-stream-v1",
+      "resume-capture-v1",
+      "heartbeat-v1"
+    ],
+    "recordings": [
+      {
+        "captureId": "recording-F",
+        "tabId": 2,
+        "callGeneration": "call-A",
+        "othersSource": {
+          "source": "system",
+          "reason": "lost"
+        },
+        "controlPeer": "earlier"
+      }
+    ],
+    "meeting": {
+      "tabId": 2,
+      "title": "Synthetic meeting",
+      "url": "https://meet.example/call",
+      "sourceCount": 3,
+      "heard": true,
+      "callGeneration": "call-A"
+    },
+    "expect": {
+      "automatic": false,
+      "manual": false,
+      "resume": true
+    }
   }
 ]
