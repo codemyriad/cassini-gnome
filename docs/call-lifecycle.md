@@ -1,6 +1,6 @@
 # Browser call lifetime (D33)
 
-Shared protocol pin: `014c56e014f79aca0d4addbed24c40cd7ec91711` (source-isolation PR #28 review pin).
+Shared protocol pin: `c6f5fc72bfd9e31fc9db32c9f06d802f45baf168` (merged source-isolation PR #28).
 Companion 0.2.8 replaces older local installs; no Chrome Web Store packaging or upload is performed.
 
 The broker owns every independent capture and its Library folder. With the
