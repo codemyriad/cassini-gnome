@@ -218,3 +218,106 @@ def test_file_only_details_ignore_invalid_track_facts_without_opening_audio(tmp_
     assert report.spans == ()
     assert report.ended.startswith("Stopped by you")
     assert not meeting.directory.exists()  # Reporting never materializes audio/cache paths.
+
+
+def _capture_record_with_concurrent_writer(root, actor):
+    """Run the lock schedule in a subprocess so a regression cannot wedge pytest."""
+    import faulthandler
+    import os
+    import threading
+    from pathlib import Path
+
+    from cassini_talk import library_edits
+    from cassini_talk.library_v2 import journal
+    from cassini_talk.transcription import REFERENCE
+
+    root = Path(root)
+    os.environ["CASSINI_LIBRARY_DIR"] = str(root)
+    stopped = captured(root)
+    other = captured(root)
+    update_metadata(stopped.directory, recordingDetails=dict(future="kept"))
+    library_owned, recorder_waiting = threading.Event(), threading.Event()
+    editor_done, recorder_done = threading.Event(), threading.Event()
+    errors = []
+    enter = journal.LibraryLock.__enter__
+
+    def scheduled_enter(lock):
+        name = threading.current_thread().name
+        if name == "capture-facts":
+            # Old record_capture already owns meeting_store.LOCK here. The
+            # corrected one requests this Library lock before taking LOCK.
+            recorder_waiting.set()
+        value = enter(lock)
+        if name == "other-writer":
+            library_owned.set()
+            assert recorder_waiting.wait(3), "Capture writer never requested the Library lock"
+        return value
+
+    journal.LibraryLock.__enter__ = scheduled_enter
+
+    def edit():
+        try:
+            outer = library_edits.transaction if actor == "edit" else library_edits.mutation
+            with outer(other.directory):
+                if actor == "edit":
+                    update_metadata(other.directory, title="Edited while stopping", notes=[dict(atMs=0, text="Kept")])
+                else:
+                    update_metadata(
+                        other.directory, transient=True, transcript=dict(status="running", reference=REFERENCE)
+                    )
+        except BaseException as error:
+            errors.append(error)
+        finally:
+            editor_done.set()
+
+    def stop():
+        try:
+            assert record_capture(stopped.directory, stopped.manifest)
+        except BaseException as error:
+            errors.append(error)
+        finally:
+            recorder_done.set()
+
+    editor = threading.Thread(target=edit, name="other-writer", daemon=True)
+    recorder = threading.Thread(target=stop, name="capture-facts", daemon=True)
+    editor.start()
+    assert library_owned.wait(3), "Other writer never acquired the Library lock"
+    recorder.start()
+    if not editor_done.wait(3) or not recorder_done.wait(3):
+        faulthandler.dump_traceback(all_threads=True)
+        raise AssertionError("Stop capture facts deadlocked with another writer in the same Library")
+    editor.join(1)
+    recorder.join(1)
+    assert not editor.is_alive() and not recorder.is_alive(), "Metadata writers did not exit"
+    if errors:
+        raise errors[0]
+    metadata = read_metadata(stopped.directory)
+    assert metadata["recordingDetails"]["future"] == "kept"
+    assert stored(metadata) == from_session(stopped.manifest)
+    updated = read_metadata(other.directory)
+    if actor == "edit":
+        assert updated["title"] == "Edited while stopping"
+        assert updated["notes"] == [dict(atMs=0, text="Kept")]
+    else:
+        assert updated["transcript"] == dict(status="running", reference=REFERENCE)
+
+
+@pytest.mark.parametrize("actor", ["edit", "transcription"])
+def test_capture_facts_and_another_library_writer_share_one_lock_order(tmp_path, actor):
+    import multiprocessing
+
+    process = multiprocessing.get_context("spawn").Process(
+        target=_capture_record_with_concurrent_writer, args=(str(tmp_path / "Library"), actor)
+    )
+    process.start()
+    try:
+        process.join(10)  # Wait for process exit, never a fixed readiness delay.
+        assert not process.is_alive(), "Concurrent capture-facts process exceeded its completion deadline"
+        assert process.exitcode == 0, "Concurrent metadata writers failed; see child traceback"
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join(3)
+            if process.is_alive():
+                process.kill()
+                process.join(3)

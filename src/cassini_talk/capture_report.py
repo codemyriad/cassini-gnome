@@ -4,7 +4,8 @@
 import math
 from copy import deepcopy
 
-from .meeting_store import metadata_transaction, read_metadata, update_metadata
+from .library_edits import mutation
+from .meeting_store import read_metadata, update_metadata
 
 TRACK_FIELDS = (
     "id",
@@ -108,7 +109,7 @@ def record_capture(directory, session):
     record = from_session(session)
     if record is None or session.get("state") not in ("completed", "interrupted"):
         return False
-    with metadata_transaction(directory):
+    with mutation(directory):
         current = read_metadata(directory)
         details = deepcopy(current.get("recordingDetails", {}))
         previous = details.get("captureRecord", {})
