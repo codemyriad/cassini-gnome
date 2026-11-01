@@ -75,6 +75,8 @@ def stored(metadata):
             or not isinstance(row.get("label"), str)
             or len(row["label"]) > 200
             or row.get("captureOutcome") not in ("captured", "neverAudio", "lowAudio", "failed")
+            or "captureExpected" in row
+            and type(row["captureExpected"]) is not bool
             or type(duration) not in (int, float)
             or not 0 <= duration <= 9007199254740991
             or not math.isfinite(duration)
@@ -85,10 +87,16 @@ def stored(metadata):
     return deepcopy(record)
 
 
-def _rows(previous, current, key):
+def _rows(previous, current, key, *, replace_optional=()):
     previous = previous if isinstance(previous, list) else []
     old = {row.get(key): row for row in previous if isinstance(row, dict) and isinstance(row.get(key), str)}
-    return [dict(deepcopy(old.get(row.get(key), {})), **row) for row in current]
+    result = []
+    for row in current:
+        preserved = deepcopy(old.get(row.get(key), {}))
+        for field in replace_optional:
+            preserved.pop(field, None)
+        result.append(dict(preserved, **row))
+    return result
 
 
 def record_capture(directory, session):
@@ -110,7 +118,9 @@ def record_capture(directory, session):
             or previous.get("version", 1) != 1
         ):
             return False  # Preserve a future writer's record in full.
-        record["sources"] = _rows(previous.get("sources", []), record["sources"], "sourceTrackId")
+        record["sources"] = _rows(
+            previous.get("sources", []), record["sources"], "sourceTrackId", replace_optional=("captureExpected",)
+        )
         record["tracks"] = _rows(previous.get("tracks", []), record["tracks"], "id")
         record = dict(previous, **record)
         if previous == record:

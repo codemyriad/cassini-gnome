@@ -49,6 +49,22 @@ def test_live_startup_is_not_a_missing_audio_warning_but_real_failure_is():
     assert sources({}, {}, live=False) == ()
 
 
+def test_never_selected_sources_are_neutral_without_erasing_the_reported_outcome():
+    value = session()
+    for row in value["captureOutcome"]["sources"]:
+        row["captureExpected"] = False
+    rows = sources(value, {}, live=False)
+    assert [row.outcome for row in rows] == ["captured", "neverAudio", "lowAudio", "failed"]
+    assert all(not row.expected and not row.problem for row in rows)
+
+
+@pytest.mark.parametrize("flag", [None, 0, "false"])
+def test_invalid_selection_flag_is_not_coerced_to_hide_a_failure(flag):
+    value = session()
+    value["captureOutcome"]["sources"][3]["captureExpected"] = flag
+    assert sources(value, {}, live=False) == ()
+
+
 @pytest.mark.parametrize("change", ["missing-track", "duplicate-track", "bad-count", "bad-rate"])
 def test_unknown_or_conflicting_track_diagnostics_are_not_claimed_as_zero(change):
     value = session()
@@ -94,3 +110,41 @@ def test_malformed_diagnostic_tracks_do_not_hide_valid_source_outcomes(tracks):
     value["tracks"] = tracks
     rows = sources(value, {}, live=False)
     assert len(rows) == 4 and rows[0].outcome == "captured" and rows[0].padding_ms is None
+
+
+def test_unselected_source_stays_neutral_through_actual_publication_and_cache_deletion(tmp_path):
+    pytest.importorskip("numpy")
+    gi = pytest.importorskip("gi")
+    try:
+        gi.require_version("Gst", "1.0")
+    except ValueError:
+        pytest.skip("Real publication requires GStreamer")
+    from test_capture_record import declare, pcm
+
+    from cassini_talk.capture_details import read_details
+    from cassini_talk.capture_sources import BrowserStreams
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.library_publication import capture_parent, publish_stopped
+    from cassini_talk.recording_session import BrowserHost
+
+    root = tmp_path / "Library"
+    host = BrowserHost(capture_parent(root))
+    host.handle(dict(type="start", features=["source-outcomes-v1"], captureId="choice"))
+    host.audio_sink = BrowserStreams(host.session, me=False, others=False)
+    try:
+        host.session.add_track("native-mic", "Me", "microphone", 48000, 1, label_source="device")
+        host.session.append("native-mic", b"\x01\x00" * 48000, 0)
+        assert host.handle(declare("unused", "unused")) == dict(type="ack")
+        assert host.handle(pcm("unused", 48000)) == dict(type="ack")
+        host.handle(dict(type="stop", captureId="choice"))
+        assert host.session.manifest["state"] == "completed"
+        publish_stopped(host.session)
+        report = read_details(LibraryScanner(root).scan().meetings[0])
+        (row,) = report.sources
+        assert row.identity == "unused" and row.outcome == "neverAudio"
+        assert not row.expected and not row.problem
+        shutil.rmtree(host.session.directory)
+        after = read_details(LibraryScanner(root).scan().meetings[0])
+        assert after.sources == report.sources
+    finally:
+        host.close()

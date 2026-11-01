@@ -38,3 +38,13 @@ about the capture even when the playable file has compacted tracks. This does
 not recreate cache folders or open paths from the report. Known invalid track
 facts are ignored; unknown offsets remain unknown and no levels are inferred.
 The display keeps the existing shared catalog and gap formatter.
+
+R69 adds optional source-row `captureExpected: false`: the browser source was
+never selected for admission. Its factual outcome and frame counts remain,
+but it does not flag an otherwise healthy recording. Missing means true. The
+owner derives this from selection/ownership, never from a client-supplied bit;
+a later selection or recorded span permanently makes the source expected.
+The portable reader validates the bit without inventing it from timing or
+labels. Replacing known facts clears an obsolete false bit while preserving
+future fields. Source facts keep unused sources neutral after cache deletion.
+This addition remains part of the shared R65/R69 proposal awaiting review.

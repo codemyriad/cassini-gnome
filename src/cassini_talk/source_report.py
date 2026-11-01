@@ -17,12 +17,13 @@ class SourceFact:
     padding_ms: Fraction | None
     dropped_ms: Fraction | None
     final: bool
+    expected: bool = True
 
     @property
     def problem(self):
         # Normal startup cannot claim a participant was missed. An actual
         # source failure is actionable immediately, even if others continue.
-        return self.outcome == "failed" or self.final and self.outcome in ("neverAudio", "lowAudio")
+        return self.expected and (self.outcome == "failed" or self.final and self.outcome in ("neverAudio", "lowAudio"))
 
 
 def _counter(tracks, ids, field):
@@ -72,6 +73,7 @@ def sources(session, metadata, *, live):
                 _counter(tracks, row["trackIds"], "gapFrames"),
                 _counter(tracks, row["trackIds"], "droppedFrames"),
                 not live,
+                expected=row.get("captureExpected", True),
             )
         )
     # These two counters may describe the same missing interval; they are not

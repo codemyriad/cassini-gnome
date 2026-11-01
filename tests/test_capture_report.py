@@ -77,7 +77,10 @@ def test_record_is_idempotent_and_preserves_names_and_future_fields(tmp_path):
         recordingDetails=dict(
             future="kept",
             captureRecord=dict(
-                version=1, future="kept", sources=[dict(sourceTrackId="zeros", future="kept")], tracks=[]
+                version=1,
+                future="kept",
+                sources=[dict(sourceTrackId="zeros", future="kept", captureExpected=False)],
+                tracks=[],
             ),
         ),
     )
@@ -87,6 +90,7 @@ def test_record_is_idempotent_and_preserves_names_and_future_fields(tmp_path):
     record = stored(current)
     assert record["future"] == "kept"
     assert next(s for s in record["sources"] if s["sourceTrackId"] == "zeros")["future"] == "kept"
+    assert next(s for s in record["sources"] if s["sourceTrackId"] == "zeros").get("captureExpected", True) is True
     before = (path / "meeting.json").read_bytes()
     assert not record_capture(path, session.manifest)
     assert (path / "meeting.json").read_bytes() == before
