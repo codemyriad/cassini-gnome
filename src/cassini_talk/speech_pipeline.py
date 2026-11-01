@@ -349,18 +349,25 @@ def segment_ranges(path, detector, heartbeat=None, *, chunks=None):
     return ranges
 
 
-def recognise_segment(model, path, segment, offset_ms=0, *, samples=None):
+def recognise_segment(model, path, segment, offset_ms=0, *, samples=None, audio_end_ms=None):
     if samples is None:
         samples = np.concatenate(list(resampled_chunks(path, segment["startSample"], segment["endSample"])))
     input_hash = hashlib.sha256(samples.tobytes()).hexdigest()
     result = model.transcribe(samples, language=None, word_timestamps=True)
     base = math.floor(offset_ms) + segment["startSample"] * 1000 // 16000
+    last_sample = min(segment["endSample"], segment["startSample"] + len(samples))
+    end = math.floor(offset_ms) + last_sample * 1000 // RATE
+    if audio_end_ms is not None:
+        end = min(end, audio_end_ms)
     words = []
     for word in result.get("words", []):
+        # A recognizer can report its last word beyond the supplied PCM. Keep
+        # the text/count, but never assign it time outside its own source.
+        start = min(end, max(base, base + round(word["start"] * 1000)))
         words.append(
             dict(
-                startMs=base + round(word["start"] * 1000),
-                endMs=base + round(word["end"] * 1000),
+                startMs=start,
+                endMs=max(start, min(end, base + round(word["end"] * 1000))),
                 text=word.get("word", word.get("text", "")),
             )
         )
@@ -399,6 +406,15 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
     for _order, grouped in groupby(plan, key=lambda entry: entry[0]):
         entries = list(grouped)
         track = entries[0][1]
+        from .mapped_audio import end_ms, required
+
+        audio_end = None
+        if required(track):
+            audio_end = end_ms(track)
+        elif type(track.get("frames")) is int and track["frames"] > 0 and track.get("sampleRate"):
+            from .source_spans import bounds
+
+            audio_end = math.floor(bounds(track, display=True)[1])
         with closing(
             audio_segments(
                 track, [entry[2] for entry in entries], lambda track=track: notify("planning", trackId=track["id"])
@@ -407,7 +423,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
             for (order, track, segment, offset), samples in zip(entries, source, strict=True):
                 started = time.monotonic()
                 value, words, language, input_hash = recognise_segment(
-                    model, track["path"], segment, offset, samples=samples
+                    model, track["path"], segment, offset, samples=samples, audio_end_ms=audio_end
                 )
                 elapsed += time.monotonic() - started
                 seconds = (segment["endSample"] - segment["startSample"]) / RATE
