@@ -6,6 +6,7 @@ import logging
 import socket
 import threading
 import time
+from pathlib import Path
 
 import pytest
 from broker_fixture import stop_broker
@@ -560,3 +561,61 @@ def test_an_open_span_quiet_from_zero_is_closed_at_exactly_45_seconds(broker):
         assert lost.wait(5) and lost_events(capture)
     finally:
         client.close()
+
+
+STALE_VECTORS = json.loads(
+    (Path(__file__).resolve().parents[1] / "browser-protocol/conformance/multistream/stale-watchdog.json").read_text()
+)
+
+
+def test_stale_watchdog_constant_matches_the_shared_vectors():
+    assert STALE_VECTORS["constants"] == dict(PCM_STALE_AFTER=PCM_STALE_AFTER * 1000)
+
+
+@pytest.mark.parametrize("case", STALE_VECTORS["cases"], ids=lambda case: case["name"])
+def test_shared_stale_watchdog_vectors_on_the_real_transport(broker, case):
+    """Replay audio-transport and control frames; tick at every frame, probe and deadline time."""
+    service, path, clock, _lost = broker
+    client = BrowserAudioProxy(path=path)
+    peer = Extension(path, (3,))
+    try:
+        identifier = "stale-" + case["name"][:40]
+        negotiated(client, service, identifier)
+        (transport,) = service._audio_transports
+        (control,) = service.browsers.values()
+        sequences = {}
+        times = {f["atMs"] for f in case["frames"]} | {p["atMs"] for p in case["probes"]}
+        times |= {f["atMs"] + PCM_STALE_AFTER * 1000 for f in case["frames"]}
+        closed_at = None
+        for at in sorted(times):
+            clock.now = at / 1000
+            # A frame arriving exactly at the deadline is too late: tick first.
+            service.tick()
+            if closed_at is None and transport.shut_down.is_set():
+                closed_at = at
+            for frame in (f for f in case["frames"] if f["atMs"] == at and closed_at is None):
+                kind = frame["frame"]
+                if kind == "control":
+                    send_packet(peer.stream, dict(type="pong", seq=0))
+                    wait_for(lambda: control.last_inbound == clock.now)
+                    continue
+                if kind == "track":
+                    packet = declare(frame["id"], "receiver-" + frame["id"])
+                elif kind == "audio":
+                    sequence = sequences.get(frame["id"], 0)
+                    sequences[frame["id"]] = sequence + 1
+                    packet = pcm(frame["id"], 480, sequence=sequence, offset=at + 1)
+                elif kind == "sources":
+                    packet = dict(type="sources", discoveredSources=[dict(sourceTrackId="receiver-a", kind="remote")])
+                elif kind == "trackEnd":
+                    packet = end(frame["id"])
+                else:
+                    packet = dict(type="stop", captureId=identifier)
+                reply = client.handle(packet)
+                assert reply.get("type") in ("ack", "stopped"), (frame, reply)
+            for probe in (p for p in case["probes"] if p["atMs"] == at):
+                assert (closed_at is not None) is probe["closed"], (case["name"], probe)
+        assert closed_at == case["closeAtMs"], case["name"]
+    finally:
+        client.close()
+        peer.close()

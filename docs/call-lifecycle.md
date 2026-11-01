@@ -1,6 +1,6 @@
 # Browser call lifetime (D33)
 
-Shared protocol pin: `a1be3bcf2678a308d5b17c5b09b1a57c1c8d5635` (merged heartbeat-v1 PR #31).
+Shared protocol pin: `4a59e9733206112eb4cc0ec98e903e4e3609702f` (head of D52.5 protocol PR #32, to be re-vendored at its merge commit).
 Companion 0.2.9 replaces older local installs; no Chrome Web Store packaging or upload is performed.
 
 The broker owns every independent capture and its Library folder. With the
@@ -140,10 +140,19 @@ and are enforced by its periodic `tick()`, which keeps running during Stop.
   until the call ends: no missing timer and no `pageGone` deadline. A known zero
   count still ends it as `callEnded`.
 - D52.5(a): while a recording of a browser instance is on its system/lost
-  fallback, that call (same tab and callGeneration) is never started again
-  automatically. The recording stays bound to the instance and tab, and a
-  returning control connection adopts it as that tab's recording, so automatic
-  Record skips it and no second folder is created.
+  fallback, that call (same tab and callGeneration) is recording: its row shows
+  Stop, Record all skips it and it is never started again automatically. The
+  recording stays bound to the instance and tab, and a returning control
+  connection adopts it as that tab's recording, so no second folder is created.
+  A different callGeneration in that tab ends the old call's recording as
+  `callEnded` (the existing call boundary) and then follows the ordinary rules.
+- A row's heard evidence latches a recording's lifecycle only when the row's
+  callGeneration is the recording's own, so another call's heard never arms its
+  restore or the 30-second call-end grace (D52.5).
+- The shared vectors run on the real policy: `lifecycle.json`, the `recordings`
+  cases of `auto-start-vectors.json` and `stale-watchdog.json`. Expectations
+  that need the resume host side (an `askResume`, a resume, or a restore through
+  a resumed transport) are strict xfails until it lands.
 
 TODO (D52.3 host side): Cassini on GNOME does not implement the
 resume-capture-v1 host side yet, so a recording on a system/lost fallback keeps

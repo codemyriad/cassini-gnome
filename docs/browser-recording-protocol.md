@@ -3,7 +3,7 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `a1be3bcf`, ships companion 0.2.9 with authoritative page-state
+The current pin, `4a59e973`, ships companion 0.2.9 with authoritative page-state
 publication and a coherent multi-tab inventory. Call identity and the hook
 baseline survive worker restarts; persisted addresses use bounded fingerprints.
 A worklet must prove its render clock is advancing before source PCM is armed;
@@ -45,9 +45,12 @@ An active capture's ended physical span returns `state/source/retired:true`;
 its cleanup and in-flight chunks cannot mean the whole capture was saved.
 Capture finalization returns `state/command`. Failed spans are fenced locally,
 healthy sources and the microphone continue, and a live source retries a new ID.
-The pin is the exact upstream merge commit of protocol PR #31, a1be3bcf
-(heartbeat-v1 and audio transport liveness, D52.4). Companion 0.2.9 answers
-the app's control pings; see [call-lifecycle.md](call-lifecycle.md). Conformance
+The pin is the head of protocol PR #32, 4a59e973 (D52.5: ask-once resume,
+no second recording, the 45 s PCM_STALE_AFTER and its watchdog vectors), on
+top of #31's heartbeat-v1 and audio transport liveness (D52.4). It is
+re-vendored at #32's merge commit once merged; the extension is unchanged at
+companion 0.2.9, which answers the app's control pings; see
+[call-lifecycle.md](call-lifecycle.md). Conformance
 runs give every case a private CASSINI_LIBRARY_DIR, which
 tests/conformance_host.py requires.
 
