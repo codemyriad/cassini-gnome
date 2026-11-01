@@ -85,6 +85,47 @@ def should_auto_write(meeting, previous):
     )
 
 
+def track_presence(track):
+    """D52.2 present or unknown time as merged, track-relative 16 kHz [start, end) ranges.
+
+    Sample 0 is the track's offsetMs, as in the child's audio_chunks. None when
+    the track has no known offset: the child then applies no restriction.
+    """
+    from fractions import Fraction
+
+    from .source_ownership import presence, samples
+
+    if track.start_offset_ms is None:
+        return None
+
+    def row(value):
+        anchors = [list(point) for point in value.clock_anchors]
+        return dict(
+            offsetMs=value.start_offset_ms,
+            sampleRate=value.sample_rate,
+            frames=value.frames,
+            **({"clockAnchors": anchors} if anchors else {}),
+        )
+
+    logical = dict(row(track), gaps=track.gaps)
+    if track.spans:
+        logical["spans"] = [row(span) for span in track.spans]
+    found = presence(logical, track.ownership_windows)
+    if found is None:
+        return None
+    origin = Fraction(str(track.start_offset_ms))
+    ranges = []
+    for start, end in sorted(samples([(a - origin, b - origin) for a, b in (*found.present, *found.unknown)])):
+        start = max(0, start)
+        if end <= start:
+            continue
+        if ranges and start <= ranges[-1][1]:
+            ranges[-1][1] = max(ranges[-1][1], end)
+        else:
+            ranges.append([start, end])
+    return ranges
+
+
 def prepare_tracks(meeting, *, diagnostics=None):
     # Identity/kind come only from the scanner's validated or recovered model.
     from uuid import NAMESPACE_URL, uuid5
@@ -123,6 +164,9 @@ def prepare_tracks(meeting, *, diagnostics=None):
         )
         if track.ownership_windows is not None:
             tracks[-1]["ownershipWindows"] = [list(window) for window in track.ownership_windows]
+        # D52.2: the G10 fallback measures and windows only present or unknown time.
+        if (presence := track_presence(track)) is not None:
+            tracks[-1]["presence"] = presence
         if track.spans:
             tracks[-1]["spans"] = [
                 dict(
@@ -458,7 +502,7 @@ class TranscriptionQueue:
         diarization = (
             self.diarization_models.request(directory, origin=meeting.origin) if self.diarization_models else None
         )
-        from .capture_facts import separation_result, separation_unavailable, writing_details
+        from .capture_facts import recognition_fallback, separation_result, separation_unavailable, writing_details
 
         separation = separation_unavailable(self.diarization_models, tracks, meeting.origin)
         voices_options, voice_generation = None, None
@@ -652,6 +696,8 @@ class TranscriptionQueue:
             facts["speechSegments"] = segments
         if source_diagnostics:
             facts["sourceSpansSeparated"] = True
+        if (fallback := recognition_fallback(complete.get("fallback"))) is not None:
+            facts["recognitionFallback"] = fallback
         with mutation(directory):
             self._check_open()
             # End facts or other metadata may have arrived while this job ran.

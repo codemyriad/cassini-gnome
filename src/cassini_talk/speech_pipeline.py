@@ -11,6 +11,7 @@ import json
 import math
 import os
 import wave
+from bisect import bisect_right
 from collections import deque
 from contextlib import closing
 from dataclasses import dataclass
@@ -374,13 +375,36 @@ def recognise_segment(model, path, segment, offset_ms=0, *, samples=None, audio_
     return dict(segment, text=result["text"]), words, result.get("language") or "und", input_hash
 
 
+def _source_end(track):
+    from .mapped_audio import end_ms, required
+
+    if required(track):
+        return end_ms(track)
+    if (
+        track.get("codec") != "opus"
+        and type(track.get("frames")) is int
+        and track["frames"] > 0
+        and track.get("sampleRate")
+    ):
+        # Opus frames are source metadata; its decoded PCM, which is also
+        # what publication uses, already bounds each segment's words.
+        from .source_spans import bounds
+
+        return math.floor(bounds(track, display=True)[1])
+    return None
+
+
 def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
     """One complete queue job; all inference and floating PCM stay in the child."""
     import time
 
+    from . import recognition_fallback as fallback
+
     detector = SpeechDetector(vad_model)
     plan = []
+    meters = []
     diagnostics = []
+    decided = []  # R71/D52.4 provenance: one entry per track that met the G10 gate
     for order, track in enumerate(tracks):
         path = Path(track["path"])
         offset = track.get("offsetMs")
@@ -389,8 +413,13 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
             diagnostics.append(dict(code="unknown-offset-display-zero", track=track["id"]))
         if type(offset) not in (int, float) or not math.isfinite(offset) or offset < 0:
             raise ValueError("Invalid capture offset")
+        meter = fallback.ActivityMeter(track.get("presence"))
+        meters.append(meter)
         for segment in segment_ranges(
-            path, detector, lambda track=track: notify("planning", trackId=track["id"]), chunks=audio_chunks(track)
+            path,
+            detector,
+            lambda track=track: notify("planning", trackId=track["id"]),
+            chunks=meter.wrap(audio_chunks(track)),
         ):
             plan.append((order, track, segment, offset))
     remaining = sum((s["endSample"] - s["startSample"]) / RATE for _, _, s, _ in plan)
@@ -403,49 +432,143 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
     )
     elapsed = processed = 0.0
     language = "und"
-    for _order, grouped in groupby(plan, key=lambda entry: entry[0]):
-        entries = list(grouped)
-        track = entries[0][1]
-        from .mapped_audio import end_ms, required
 
-        audio_end = None
-        if required(track):
-            audio_end = end_ms(track)
-        elif (
-            track.get("codec") != "opus"
-            and type(track.get("frames")) is int
-            and track["frames"] > 0
-            and track.get("sampleRate")
-        ):
-            # Opus frames are source metadata; its decoded PCM, which is also
-            # what publication uses, already bounds each segment's words.
-            from .source_spans import bounds
+    def emit(event):
+        # Only events actually sent decide the summary language, never a
+        # discarded fallback window or a replaced VAD segment.
+        nonlocal language
+        language = event["language"]
+        notify("progress", **event)
 
-            audio_end = math.floor(bounds(track, display=True)[1])
-        with closing(
-            audio_segments(
-                track, [entry[2] for entry in entries], lambda track=track: notify("planning", trackId=track["id"])
-            )
-        ) as source:
+    def recognise(order, track, segment, offset, samples, audio_end):
+        nonlocal elapsed, processed, remaining
+        started = time.monotonic()
+        value, words, detected, input_hash = recognise_segment(
+            model, track["path"], segment, offset, samples=samples, audio_end_ms=audio_end
+        )
+        elapsed += time.monotonic() - started
+        seconds = (segment["endSample"] - segment["startSample"]) / RATE
+        processed += seconds
+        remaining = max(0, remaining - seconds)
+        factor = elapsed / processed if processed else initial_factor
+        return dict(
+            inputSha256=input_hash,
+            trackId=track["id"],
+            trackOrder=order,
+            segment=value,
+            words=words,
+            language=detected,
+            etaMinutes=math.ceil((remaining * factor + extra_seconds) / 60),
+            realtimeFactor=factor,
+        )
+
+    by_order = {order: list(entries) for order, entries in groupby(plan, key=lambda entry: entry[0])}
+    for order, track in enumerate(tracks):
+        entries = by_order.get(order, [])
+        meter = meters[order]
+        active = meter.active()
+        active_seconds = meter.active_seconds(active)
+        offset = entries[0][3] if entries else track.get("offsetMs") or 0
+        audio_end = _source_end(track)
+        # G10: a track with plenty of active audio holds its VAD events until it
+        # reaches FEW_WORDS; otherwise its events stream exactly as before.
+        held = [] if active_seconds >= fallback.MIN_ACTIVE_SECONDS else None
+        vad_words = 0
+
+        def heartbeat(track=track):
+            notify("planning", trackId=track["id"])
+
+        with closing(audio_segments(track, [entry[2] for entry in entries], heartbeat)) as source:
             for (order, track, segment, offset), samples in zip(entries, source, strict=True):
-                started = time.monotonic()
-                value, words, language, input_hash = recognise_segment(
-                    model, track["path"], segment, offset, samples=samples, audio_end_ms=audio_end
+                event = recognise(order, track, segment, offset, samples, audio_end)
+                vad_words += len(event["words"])
+                if held is None:
+                    emit(event)
+                    continue
+                held.append(event)
+                # Held events send nothing; keep the parent's reply deadline alive.
+                heartbeat()
+                if vad_words >= fallback.FEW_WORDS:
+                    for event in held:
+                        emit(event)
+                    held = None
+        if vad_words == 0 and meter.samples >= 5 * RATE:
+            floor, threshold = meter.threshold_db()
+            diagnostics.append(
+                dict(
+                    code="no-words-breakdown",
+                    track=track["id"],
+                    audioSeconds=meter.samples / RATE,
+                    activeSeconds=active_seconds,
+                    floorDb=floor,
+                    vadSegments=len(entries),
+                    vadSpeechSeconds=sum((e[2]["endSample"] - e[2]["startSample"]) / RATE for e in entries),
                 )
-                elapsed += time.monotonic() - started
-                seconds = (segment["endSample"] - segment["startSample"]) / RATE
-                processed += seconds
-                remaining = max(0, remaining - seconds)
-                factor = elapsed / processed if processed else initial_factor
-                notify(
-                    "progress",
-                    inputSha256=input_hash,
-                    trackId=track["id"],
-                    trackOrder=order,
-                    segment=value,
-                    words=words,
-                    language=language,
-                    etaMinutes=math.ceil((remaining * factor + extra_seconds) / 60),
-                    realtimeFactor=factor,
-                )
-    return dict(language=language, diagnostics=diagnostics, segments=len(plan), vad=detector.runtime)
+            )
+        if held is None:
+            continue
+        windows = fallback.active_windows(meter.samples, active, meter.presence)
+        remaining += sum(end - start for start, end in windows) / RATE
+        events, words = [], []
+        with closing(audio_chunks(track)) as chunks:
+            for (start, end), samples in zip(windows, fallback.audio_windows(chunks, windows, heartbeat), strict=True):
+                segment = dict(startSample=start, endSample=end, reason="noVadWindow")
+                event = recognise(order, track, segment, offset, samples, audio_end)
+                heartbeat()
+                base = math.floor(offset) + start * 1000 // RATE
+                kept = fallback.energetic(event["words"], samples, base)
+                previous = events[-1]["segment"]["endSample"] if events else None
+                if previous is not None and start < previous:
+                    words = fallback.merge_seam(words, kept, base, (previous - start) * 1000 // RATE)
+                else:
+                    words += kept
+                events.append(event)
+        needed = fallback.need(vad_words)
+        used = len(words) >= needed
+        floor, threshold = meter.threshold_db()
+        diagnostics.append(
+            dict(
+                code="few-words-fallback",
+                track=track["id"],
+                trackOrder=order,
+                activeSeconds=active_seconds,
+                floorDb=floor,
+                thresholdDb=threshold,
+                vadSegments=len(entries),
+                vadWords=vad_words,
+                windows=len(windows),
+                windowSeconds=sum(end - start for start, end in windows) / RATE,
+                fallbackWords=len(words),
+                need=needed,
+                used=used,
+            )
+        )
+        decided.append(
+            dict(
+                trackId=track.get("captureTrackId", track["id"]),
+                vadWords=vad_words,
+                fallbackWords=len(words),
+                activeSeconds=round(active_seconds, 3),
+                used=used,
+            )
+        )
+        if not used:
+            for event in held:
+                emit(event)
+            continue
+        # Keep words in global time order across events: each word goes to the
+        # last window starting at or before it, not to the window it came from.
+        words = sorted(words, key=lambda word: word["startMs"])
+        starts = [math.floor(offset) + event["segment"]["startSample"] * 1000 // RATE for event in events]
+        owned = [[] for _ in events]
+        for word in words:
+            owned[max(0, bisect_right(starts, word["startMs"]) - 1)].append(word)
+        for event, kept in zip(events, owned, strict=True):
+            event["words"] = kept
+            event["segment"] = dict(event["segment"], text=" ".join(word["text"] for word in kept))
+            emit(event)
+    result = dict(language=language, diagnostics=diagnostics, segments=len(plan), vad=detector.runtime)
+    if decided:
+        windows = dict(windowMs=fallback.WINDOW * 1000 // RATE, overlapMs=fallback.OVERLAP * 1000 // RATE)
+        result["fallback"] = dict(method="vadFreeWindows", **windows, tracks=decided)
+    return result
