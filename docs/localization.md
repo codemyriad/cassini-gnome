@@ -12,6 +12,8 @@ language's CLDR full-date pattern followed by the formatting locale's short
 clock, with the catalog's `export.markdown.*` headings. Decimal/grouping
 separators follow `LC_NUMERIC`. For example, French UI with US formatting gives
 `dimanche 1 novembre 2026, 9:00 AM`. No global locale is swapped to do this.
+English uses en-GB calendar data and the D50.3 comma-free pattern
+`EEEE d MMMM y` (for example, `Tuesday 27 October 2026`).
 Transcript content, saved speaker names and notes are exported as stored.
 
 The CLDR cardinal rules for these six languages live in `i18n.py`. They include
@@ -38,8 +40,9 @@ language even for a bare Portuguese system preference.
 agreement, all PO messages, CLDR boundary cases, language preference order and
 independent Search counts. Meson checks all six generated desktop descriptions,
 AppStream summaries and compiled message catalogs. The shared D50.2 Markdown
-cases are pinned in `tests/export/UPSTREAM.json`; their date placeholder is
-compared with independent date-word expectations and the native clock,
+cases are pinned byte for byte in `tests/export/UPSTREAM.json`. Original English
+dates remain literal; French and pt-PT date placeholders are compared with
+independent date-word expectations and the requested formatting-locale clock,
 keeping all stored content byte-for-byte exact. `calendar_formats.py` uses only
 the six pinned CLDR 49 calendar tables in `cldr-dates.json`, with source hashes
 in `tests/i18n/CLDR-SOURCES.json` and the unmodified Unicode-3.0 license/notice.

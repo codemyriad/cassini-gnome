@@ -3,7 +3,7 @@
   "sourceCommit": "a4b67247b446fd51b475991017a2481911210c60",
   "locales": {
     "en": {
-      "fullDate": "EEEE, MMMM d, y",
+      "fullDate": "EEEE d MMMM y",
       "months": [
         "January",
         "February",
@@ -27,7 +27,7 @@
         "Jun",
         "Jul",
         "Aug",
-        "Sep",
+        "Sept",
         "Oct",
         "Nov",
         "Dec"

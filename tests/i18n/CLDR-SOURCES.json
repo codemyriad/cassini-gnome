@@ -4,16 +4,31 @@
   "version": "49.0.0",
   "upstreamPath": "cldr-json/cldr-dates-full/main/{language}/ca-gregorian.json",
   "sourceSha256": {
-    "en.json": "af4b5ba655c60273905d86bdd45dae8c75e991ad54878add76cee0b420294f94",
     "it.json": "c64788c05c0e231ba88212591cef1f96a9e23353bc5352f520b3b0eef2cba9e7",
     "fr.json": "8abdc66eaf000f18dd4903aee02287118a05c37fd67c89a7acaa0a61dc98b66d",
     "es.json": "7c71a54a232254006ddf14a5905af158c12d01be979266805f0db54a28b3bcb3",
     "pt.json": "da4193d51c9b6624b7d2133070be96d2ee9f09bcdac6fe0a039e3dc6d5fb1fa3",
     "pt-PT.json": "869a8e2fe919f5f80725ae1c0eb1c87a0b6e53ecc397b6ca4056982262b2708c",
-    "LICENSE": "220ba0e1c43b99530d2d5bdb892a99dca0989414f51ab695ecd90163eaa1ec3b"
+    "LICENSE": "220ba0e1c43b99530d2d5bdb892a99dca0989414f51ab695ecd90163eaa1ec3b",
+    "en-GB.json": "4fe598c72479e96d52e03868a1427a3238d6295e515616c6c16a385c2ad4b2c3"
   },
   "vendoredSha256": {
-    "src/cassini_talk/cldr-dates.json": "93c3b9ff8ea7033a82a87444b7549df08795d4e93dea96b6a96670b60b186c9a",
+    "src/cassini_talk/cldr-dates.json": "85501123c2eb0e72d6eeef26c72d7b9a186e5f1cc91a8e516784db479aee5a19",
     "src/cassini_talk/CLDR-LICENSE.txt": "220ba0e1c43b99530d2d5bdb892a99dca0989414f51ab695ecd90163eaa1ec3b"
+  },
+  "languageSources": {
+    "en": "en-GB",
+    "it": "it",
+    "fr": "fr",
+    "es": "es",
+    "pt-BR": "pt",
+    "pt-PT": "pt-PT"
+  },
+  "patternOverrides": {
+    "en": {
+      "fullDate": "EEEE d MMMM y",
+      "upstreamFullDate": "EEEE, d MMMM y",
+      "decision": "D50.3 amendment: British English with the approved comma-free date lines."
+    }
   }
 }

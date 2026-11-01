@@ -23,7 +23,7 @@ from cassini_talk.capture_details import _counter
 ROOT = Path(__file__).parents[1]
 SUNDAY = int(datetime(2026, 11, 1, 9, tzinfo=ZoneInfo("Europe/Rome")).timestamp() * 1000)
 FULL = {
-    "en": "Sunday, November 1, 2026",
+    "en": "Sunday 1 November 2026",
     "it": "domenica 1 novembre 2026",
     "fr": "dimanche 1 novembre 2026",
     "es": "domingo, 1 de noviembre de 2026",
