@@ -22,7 +22,7 @@ mkdir -p dist
 # Per base image, so parallel builds do not swap names.
 name_file=.pkg-name-$(image_slug "$BASE")
 container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z "$BASE" sh -ec '
-  # The minimal image excludes non-English MO files. Preserve this package's
+  # The minimal image excludes non-English MO files. Preserve Cassini
   # catalogs for the real installed-language smoke test.
   printf "\nNoExtract = !usr/share/locale/*/LC_MESSAGES/cassini-talk.mo\n" >> /etc/pacman.conf
   pacman -Syu --noconfirm --needed base-devel
