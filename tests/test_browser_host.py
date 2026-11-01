@@ -41,7 +41,8 @@ def test_canonical_conformance(tmp_path):
     pytest.importorskip("rfc3339_validator")
     result = subprocess.run(
         [sys.executable, str(ROOT / "browser-protocol/conformance/run.py"), str(ROOT / "tests/conformance_host.py")],
-        env={**os.environ, "CASSINI_CONFORMANCE_DIR": str(tmp_path)},
+        # The runner makes each case's private Library under TMPDIR.
+        env={**os.environ, "TMPDIR": str(tmp_path)},
         capture_output=True,
         text=True,
         timeout=120,

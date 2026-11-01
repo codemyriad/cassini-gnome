@@ -1,26 +1,26 @@
-tree 7eb3951a6dfba043f749e3e22dfe4a0acde09680
-parent c6f5fc72bfd9e31fc9db32c9f06d802f45baf168
-parent 534ec9bc0ebd217639f82aa64a3672a9dcac7c1b
-author Silvio Tomatis <silviot@gmail.com> 1793552145 +0100
-committer GitHub <noreply@github.com> 1793552145 +0100
+tree 20e764ca36ebaaea9df67766cbb6a96d6e32c16b
+parent 3238aabecce29ae4f7faca57383e6b0b37faa9df
+parent e3611496dd6f0e0ca570d9e28a0e9c689fde8dde
+author Silvio Tomatis <silviot@gmail.com> 1793556180 +0100
+committer GitHub <noreply@github.com> 1793556180 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq528RCRC1aQ7uu5UhlAAASYgQAK1jGw34zFyLfMfru6rA6AO9
- KQPlWL2hpYgW2kHo0eiqkl4KC8TzGJa1pU6LFG3v2vTEgtgVe77gfzSQFYn0b2b2
- ShuXIzkFFAqtdfEheTzt5TfH1ZDnc7Rnq9WBkdLKRMbuyNM6jLtMCq5XmpOWxmTk
- LDb7W1R5HtcTe2uMIsqkC2sVU8MGKyGod5vxWm1OQYr9ueztrSm922uW4dVZb7OH
- VSYjP4gNy407cEvM36y+KbNtx9ilgA8CpsGLvwmB4ebFLPLVkUNtauOe9BQMMcGb
- dVt25luhagG0ANZgu3q7M5oJDYmteR9QNDXsEISOwJ9ctJcphfsXd2hy91trSPJf
- VlQrZRwKEKAnK2I84BrhRZBwUrw7BCpFZy6kTBkeZk/BKm8FCWc54njfv8ZmPDMC
- a1KIxXqbXaVbIfogGfefE1ofmnPC/lft6Kpfb53PP9fiqdVc7al2xpEOLcrA+gbg
- iphMhnVsCaHAR9+3wzq2A5ED++iAWYXRFOX/QFsVJYsUImtWt/gGzp3O7ii7qcb+
- LduBjkTnIeHwJHlHMS+BtzcQzmqMAiTFAdWUdefBrY52MaCgFFe8hzOpG4imQq3p
- nCdP9HGb+Oqolbz6gyqDLLWoWULOb5D7wVD+V8QuxFhN2vZujnqW8KILD5CxvzvP
- CtzI6TX5cbilo7pkOuBC
- =VCxT
+ wsFcBAABCAAQBQJq537UCRC1aQ7uu5UhlAAA7usQAFxYk/S1j8x6LsLC375chJhg
+ eUMqiR4XUk4yoHruC8YIWH4mXgZZLsFEaaptjBJCcqRemkBy79bA5gKdcMmsoxzF
+ bI3q43oku0+HNtnv+Rl+AgFNeYGsmvVwiFm0Ns5eMhk8ps5JXRyf3Dp/RdvUzEbn
+ p89ApOkArxbXM87fsYOfCW76nUk7jpDZwIKKARB6rtF2cjxdnGYJEh1j0rOlvTbf
+ SDVYNvEfoCXJuv8wHE/0QiE5qCGCqYf/4b+oS7sJXI8Esv660/sAHTpA5Baa61FN
+ mbnyegeHpK4rKR5ijDeSC/HFXMzf+sFIFFLRL4yLasoqN/S84wx4w5F5KsxF3akZ
+ 7FCoDHMHr+GWfcnbE3nDybwYedPZS3zz5q/t/wY6Yx898w7e+yDAelXEZdkT89z2
+ dui6sT5finJaMHfQC846L0K4x2/nTJjVGF1TBAI9TG96sdizvObHlAY8NyQ+IJv+
+ Bf2rExLJxbazFSYD6IMoLrQor4hfc8vrHYUEqJGNVRki7V9sxCVqn6noj8vxRkgJ
+ k/CnSXU9pe6r7TJTITicIlyVtDTn/NgQ1NeuTNHTlRTbfiYizvGKPlezvnQmeYKJ
+ 5R+4tkxQLmBg2ri6uJ8t4bVJCAQjFSbMYsZWipPUrXQSSvgzHYBwrdo0e9UBFF26
+ q+tbYiLNi+/s7FKSKmC/
+ =TmxT
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #29 from codemyriad/feat/gap-ranges
+Merge pull request #30 from codemyriad/fix/test-library-isolation
 
-Record gap ranges and define presence for every writer (D52.2, P7)
+Keep conformance runs out of the real user Library

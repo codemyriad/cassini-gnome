@@ -3,7 +3,7 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `3238aabe`, ships companion 0.2.8 with authoritative page-state
+The current pin, `8e160acf`, ships companion 0.2.8 with authoritative page-state
 publication and a coherent multi-tab inventory. Call identity and the hook
 baseline survive worker restarts; persisted addresses use bounded fingerprints.
 A worklet must prove its render clock is advancing before source PCM is armed;
@@ -45,9 +45,10 @@ An active capture's ended physical span returns `state/source/retired:true`;
 its cleanup and in-flight chunks cannot mean the whole capture was saved.
 Capture finalization returns `state/command`. Failed spans are fenced locally,
 healthy sources and the microphone continue, and a live source retries a new ID.
-The pin is the exact upstream merge commit of protocol PR #29, 3238aabe (D52.2
-gap ranges and presence). Its tree is identical to the reviewed head 534ec9b; it
-changes no extension code, so the companion version remains 0.2.8.
+The pin is the exact upstream merge commit of protocol PR #30, 8e160acf (test
+Library isolation, after #29's D52.2 gap ranges). It changes no extension code, so
+the companion version remains 0.2.8. Conformance runs give every case a private
+CASSINI_LIBRARY_DIR, which tests/conformance_host.py requires.
 
 Selecting a browser category permanently includes already discovered sources,
 even one that failed before declaring a track. Rejected selection changes roll

@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Deliberately corruptible host fixture. Implements only the happy-path test conversation."""
-import base64, datetime, json, os, pathlib, struct, sys, uuid, wave
+import base64, datetime, json, os, pathlib, pwd, struct, sys, uuid, wave
 mode=os.environ.get('CASSINI_BAD_HOST','')
-root=pathlib.Path(os.environ['CASSINI_FAKE_ROOT']);directory=None;manifest=None;audio={}
+# Like a legacy host: without the test-only override, the Library comes from the
+# user record, never HOME. 'ignore-library' models a host that ignores the override.
+user_library=pathlib.Path(pwd.getpwuid(os.getuid()).pw_dir)/'Music/Cassini'
+root=user_library if mode=='ignore-library' else pathlib.Path(os.environ.get('CASSINI_LIBRARY_DIR') or user_library);directory=None;manifest=None;audio={}
 def reply(value):
  data=json.dumps(value).encode();sys.stdout.buffer.write(struct.pack('=I',len(data))+data);sys.stdout.buffer.flush()
 def checkpoint():

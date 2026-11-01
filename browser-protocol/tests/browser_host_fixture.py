@@ -18,7 +18,10 @@ import unicodedata
 import uuid
 import wave
 
-root = pathlib.Path(sys.argv[1])
+# An explicit root wins; otherwise the test-only Library override. Never a user Library.
+# Chromium passes its own arguments to a directly launched host: they are not roots.
+arguments = [a for a in sys.argv[1:] if not a.startswith(('chrome-extension://', '--parent-window='))]
+root = pathlib.Path(arguments[0] if arguments else os.environ['CASSINI_LIBRARY_DIR'])
 manifest = None
 directory = None
 audio = {}

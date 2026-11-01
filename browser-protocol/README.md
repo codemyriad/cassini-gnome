@@ -58,8 +58,13 @@ python3 conformance/run.py /absolute/path/to/native-host
 ```
 
 The host must speak native-messaging stdio and answer `start` with the folder it created.
-The runner removes only folders it caused to exist; on failure it keeps them and prints
-their paths. The unit tests for the extension's worklet and clock calibration are plain
+Every case runs the host with a fresh private Library: the runner sets `CASSINI_LIBRARY_DIR`
+to a new temporary folder (and HOME/XDG directories beside it). Hosts MUST honour that
+test-only override when it is set, also when they normally resolve the Library from the
+system user record, where HOME cannot redirect them. Products never set it. A host that
+answers `start` with a folder outside that Library stops the whole run, and the stray
+folder is reported, not deleted. The runner removes only folders it caused to exist; on
+failure it keeps them and prints their paths. The unit tests for the extension's worklet and clock calibration are plain
 Node:
 
 ```sh

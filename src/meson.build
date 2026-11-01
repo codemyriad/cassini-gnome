@@ -299,7 +299,6 @@ if protocol_tests.found()
 test('browser-protocol-conformance', protocol_tests,
   args: [meson.project_source_root() / 'browser-protocol/conformance/run.py',
          meson.project_source_root() / 'tests/conformance_host.py'],
-  env: ['CASSINI_CONFORMANCE_DIR=' + meson.current_build_dir() / 'conformance-recordings'],
   timeout: 120,
 )
 test('browser-control-conformance', protocol_tests,

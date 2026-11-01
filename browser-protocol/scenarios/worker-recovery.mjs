@@ -18,7 +18,8 @@ export async function stopRecordingWorker(context, meetingPage, extensionId) {
 }
 
 // Shared by both app adapters; the meeting page must already have an audible generated source.
-export async function workerDeathDuringRecording({ context, meetingPage, popup, extensionId, mode = 'tracks' }) {
+// With library, the host's meeting must stay inside that private test Library.
+export async function workerDeathDuringRecording({ context, meetingPage, popup, extensionId, mode = 'tracks', library }) {
   const status = () => popup.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
   await popup.click(mode === 'tracks' ? '#tracks' : '#tab');
   const deadline = Date.now() + 20000;
@@ -26,6 +27,7 @@ export async function workerDeathDuringRecording({ context, meetingPage, popup, 
   while (true) {
     before = await status();
     if (before.path && before.recording && before.tracks) {
+      if (library) assert.ok(path.resolve(before.path).startsWith(path.resolve(library) + path.sep), `host wrote outside its test Library: ${before.path}`);
       metadata = JSON.parse(await readFile(path.join(before.path, 'session.json')));
       const track = metadata.tracks[0];
       if (track) {
