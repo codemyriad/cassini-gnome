@@ -559,6 +559,16 @@ def test_checkpoint_retires_only_the_writer_that_cannot_sync_and_keeps_healthy_p
         assert counts["receiver-A"]["audioMs"] == 3000 and counts["receiver-A"]["captureOutcome"] == "captured"
         assert counts["receiver-B"]["audioMs"] == 1000 and counts["receiver-B"]["captureOutcome"] == "failed"
         assert next(t for t in session.manifest["tracks"] if t["id"] == "native-mic")["frames"] == 96000
+        import wave
+
+        expected_pcm = {
+            "A": b"\x01\x00" * 48000 + bytes(96000 * 2),
+            "native-mic": b"\x02\x00" * 48000 + b"\x03\x00" * 48000,
+        }
+        for identifier, data in expected_pcm.items():
+            row = next(t for t in session.manifest["tracks"] if t["id"] == identifier)
+            with wave.open(str(session.directory / row["file"]), "rb") as recorded:
+                assert recorded.readframes(recorded.getnframes()) == data
     finally:
         if phase == "flush":
             writer.file = real_file
@@ -644,3 +654,37 @@ def test_native_writer_sync_failure_does_not_claim_a_completed_recording(host, m
     assert host.handle(pcm("A", 48000)) == dict(type="ack")
     stop(host)
     assert session.manifest["state"] == "interrupted" and session.manifest["problemKind"] == "io"
+
+
+def test_selection_expectations_rollback_durably_after_the_first_directory_barrier_fails(tmp_path, monkeypatch):
+    import os
+    import stat
+
+    host = BrowserHost(tmp_path)
+    host.handle(dict(type="start", features=["source-outcomes-v1"], captureId="selection-barrier"))
+    session = host.session
+    host.audio_sink = BrowserStreams(session, me=False, others=False)
+    host.handle(dict(type="sources", discoveredSources=[dict(sourceTrackId="B", kind="remote", failed=True)]))
+    original_sync, failures = os.fsync, []
+
+    def sync(fd):
+        if stat.S_ISDIR(os.fstat(fd).st_mode) and not failures:
+            failures.append(True)
+            raise OSError(errno.EIO, "First selection directory barrier failed")
+        return original_sync(fd)
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(os, "fsync", sync)
+            with (
+                pytest.raises(OSError, match="First selection directory"),
+                host.audio_sink.change(),
+                session.change([]),
+            ):
+                host.audio_sink.select(False, True, 0)
+        assert not host.audio_sink.others
+        row = json.loads((session.directory / "session.json").read_bytes())["captureOutcome"]["sources"][0]
+        assert row["captureExpected"] is False
+        assert not session.capture_record.seen["B"]["expected"]
+    finally:
+        host.close()

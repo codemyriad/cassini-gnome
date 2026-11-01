@@ -3,7 +3,7 @@
 
 import math
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
 from uuid import uuid4
 
@@ -170,6 +170,14 @@ class BrowserStreams:
                 for key, expected in expectations.items():
                     ledger.seen[key]["expected"] = expected
                 ledger.bindings = bindings
+                previous_outcome = self.session.manifest.get("captureOutcome")
+                ledger.finish(self.session.manifest)
+                if not self.session._changing and previous_outcome != self.session.manifest["captureOutcome"]:
+                    # The owner's rollback may already have repaired a renamed
+                    # manifest. Repair its expectations too, preserving the
+                    # original fatal error if this durability retry also fails.
+                    with suppress(OSError):
+                        self.session.checkpoint()
             raise
 
     def select(self, me, others, at, *, browser=True):
