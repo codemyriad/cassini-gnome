@@ -659,6 +659,97 @@ def test_unobserved_audio_disconnect_still_starts_bounded_fallback_grace(server)
         client.close()
 
 
+@pytest.mark.parametrize("reply_type", ["started", "ack", "error", "stopped"])
+def test_lost_audio_acknowledgement_keeps_native_mic_and_falls_back(server, monkeypatch, reply_type):
+    import socket
+
+    from cassini_talk import browser_service
+
+    service, _path, _root = server
+    native, peer = socket.socketpair()
+    native_stream, peer_stream = native.makefile("rwb"), peer.makefile("rwb")
+    accepted, release, done = threading.Event(), threading.Event(), threading.Event()
+    send = browser_service.send_packet
+    failures = []
+
+    def blocked_ack(stream, packet):
+        if threading.current_thread() is actor and packet.get("type") == reply_type and not accepted.is_set():
+            accepted.set()
+            assert release.wait(3), "The peer-loss barrier was not released"
+        send(stream, packet)
+
+    def audio():
+        try:
+            service._audio(native_stream)
+        except ConnectionError:
+            pass  # A vanished peer cannot receive an error reply either.
+        except Exception as error:
+            failures.append(error)
+        finally:
+            try:
+                native_stream.close()
+            except ConnectionError:
+                pass  # A buffered failed reply may fail again on close.
+            finally:
+                native.close()
+                done.set()
+
+    actor = threading.Thread(target=audio)
+    monkeypatch.setattr(browser_service, "send_packet", blocked_ack)
+    actor.start()
+    try:
+        assert browser_service.read_packet(peer_stream) == dict(ready=True, protocol=2)
+        send(
+            peer_stream,
+            dict(
+                type="start",
+                independent=True,
+                captureId="ack-loss",
+                title="ack-loss",
+                timelineOriginMs=int(time.time() * 1000),
+            ),
+        )
+        if reply_type != "started":
+            assert browser_service.read_packet(peer_stream)["type"] == "started"
+            packet = (
+                dict(type="track", id="remote", kind="remote", sampleRate=48000, channels=1)
+                if reply_type == "ack"
+                else dict(type="stop" if reply_type == "stopped" else "invalid-message")
+            )
+            send(peer_stream, packet)
+        assert accepted.wait(3), "The real audio actor did not reach its acknowledgement"
+        capture = service.captures["ack-loss"]
+        microphone = capture.microphone
+        # Retire the actual peer after acceptance but before its reply. This
+        # forces EPIPE in flush(), not the orderly EOF path already covered.
+        peer.shutdown(socket.SHUT_RDWR)
+        peer_stream.close()
+        peer.close()
+        release.set()
+        assert done.wait(5), "The vanished audio peer stranded the capture actor"
+        assert not failures
+        if reply_type in ("error", "stopped"):
+            assert capture.finished and not capture.browser_lost
+            assert capture.host.session.manifest["events"][-1]["reason"] == (
+                "error" if reply_type == "error" else "user"
+            )
+            return
+        assert not capture.finished and capture.browser_lost
+        assert capture.microphone is microphone and not microphone.stopped
+        assert capture.host.session.manifest["state"] == "recording"
+        assert capture.host.session.manifest["events"][-1]["reason"] == "lost"
+        microphone.append(b"\x01\x00" * 480, 200)
+        assert not capture.host.session.manifest.get("problemKind")
+        capture.stop(reason="user")
+        assert capture.host.session.manifest["events"][-1]["reason"] == "user"
+    finally:
+        release.set()
+        peer_stream.close()
+        peer.close()
+        actor.join(5)
+        assert not actor.is_alive(), "The audio actor did not exit after peer loss"
+
+
 def test_initial_system_fallback_expires_when_control_left_before_first_policy(server):
     from unittest.mock import patch
 
