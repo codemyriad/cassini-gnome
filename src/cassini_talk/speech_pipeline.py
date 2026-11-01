@@ -403,6 +403,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
     plan = []
     meters = []
     diagnostics = []
+    decided = []  # R71/D52.4 provenance: one entry per track that met the G10 gate
     for order, track in enumerate(tracks):
         path = Path(track["path"])
         offset = track.get("offsetMs")
@@ -536,6 +537,15 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
                 used=used,
             )
         )
+        decided.append(
+            dict(
+                trackId=track.get("captureTrackId", track["id"]),
+                vadWords=vad_words,
+                fallbackWords=len(words),
+                activeSeconds=round(active_seconds, 3),
+                used=used,
+            )
+        )
         if not used:
             for event in held:
                 notify("progress", **event)
@@ -545,4 +555,8 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
             event["words"] = kept
             event["segment"] = dict(event["segment"], text=" ".join(word["text"] for word in kept))
             notify("progress", **event)
-    return dict(language=language, diagnostics=diagnostics, segments=len(plan), vad=detector.runtime)
+    result = dict(language=language, diagnostics=diagnostics, segments=len(plan), vad=detector.runtime)
+    if decided:
+        windows = dict(windowMs=fallback.WINDOW * 1000 // RATE, overlapMs=fallback.OVERLAP * 1000 // RATE)
+        result["fallback"] = dict(method="vadFreeWindows", **windows, tracks=decided)
+    return result

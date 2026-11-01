@@ -78,12 +78,44 @@ def writing_details(previous, facts):
     separation = dict(writing.pop("speakerSeparation", {}))
     for key in ("status", "modelId", "modelRevision", "speakersFound", "reused", "reason"):
         separation.pop(key, None)
-    for key in ("wallDurationMs", "resumed", "speechSegments", "sourceSpansSeparated"):
+    for key in ("wallDurationMs", "resumed", "speechSegments", "sourceSpansSeparated", "recognitionFallback"):
         writing.pop(key, None)
     details["writingDown"] = dict(
         writing, **dict(facts, speakerSeparation=dict(separation, **facts["speakerSeparation"]))
     )
     return details
+
+
+def recognition_fallback(value):
+    """D52.4 (R71): this attempt's G10 decisions, validated child output, or None."""
+    if not isinstance(value, dict) or value.get("method") != "vadFreeWindows":
+        return None
+    windows = {key: value.get(key) for key in ("windowMs", "overlapMs")}
+    if any(type(v) is not int or not 0 < v <= 600000 for v in windows.values()):
+        return None
+    tracks = []
+    for entry in value.get("tracks", [])[:64] if isinstance(value.get("tracks"), list) else []:
+        if not isinstance(entry, dict) or not isinstance(entry.get("trackId"), str) or not entry["trackId"]:
+            continue
+        counts = [entry.get(key) for key in ("vadWords", "fallbackWords")]
+        seconds = entry.get("activeSeconds")
+        if (
+            any(type(c) is not int or not 0 <= c <= 9007199254740991 for c in counts)
+            or type(seconds) not in (int, float)
+            or not 0 <= seconds <= 86400
+            or type(entry.get("used")) is not bool
+        ):
+            continue
+        tracks.append(
+            dict(
+                trackId=entry["trackId"][:200],
+                vadWords=counts[0],
+                fallbackWords=counts[1],
+                activeSeconds=seconds,
+                used=entry["used"],
+            )
+        )
+    return dict(method="vadFreeWindows", **windows, tracks=tracks) if tracks else None
 
 
 def separation_unavailable(models, tracks, origin):

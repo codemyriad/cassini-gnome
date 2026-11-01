@@ -48,6 +48,20 @@ def test_live_capture_does_not_claim_stop_completed(tmp_path):
         session.finish()
 
 
+STALE_FALLBACK = dict(
+    method="vadFreeWindows",
+    windowMs=15000,
+    overlapMs=500,
+    tracks=[dict(trackId="old", vadWords=0, fallbackWords=9, activeSeconds=20.0, used=True)],
+)
+FALLBACK = dict(
+    method="vadFreeWindows",
+    windowMs=15000,
+    overlapMs=500,
+    tracks=[dict(trackId="mic", vadWords=3, fallbackWords=12, activeSeconds=31.5, used=True)],
+)
+
+
 @pytest.mark.parametrize("overlap", [False, True])
 @pytest.mark.parametrize(("previous", "resumed"), [("none", False), ("running", True), ("failed", False)])
 def test_successful_job_records_this_attempt_wall_time_and_skip_reason(tmp_path, previous, resumed, overlap):
@@ -69,6 +83,7 @@ def test_successful_job_records_this_attempt_wall_time_and_skip_reason(tmp_path,
                 resumed=False,
                 speechSegments=99,
                 sourceSpansSeparated=True,
+                recognitionFallback=STALE_FALLBACK,
                 futureWriting={"keep": True},
                 speakerSeparation=dict(
                     status="completed",
@@ -108,7 +123,8 @@ def test_successful_job_records_this_attempt_wall_time_and_skip_reason(tmp_path,
             )
             record_end(session.directory, "user", manifest=session.manifest)
             update_metadata(session.directory, title="Edited during writing", notes=[dict(atMs=2, text="Keep")])
-            return dict(segments=3, diagnostics=[])
+            # A real worker reports G10 decisions only when a track met the gate.
+            return dict(segments=3, diagnostics=[], **({"fallback": FALLBACK} if overlap else {}))
 
     models = SimpleNamespace(request=lambda *_args, **_kwargs: None, snapshot=lambda: dict(downloaded=False))
     queue = TranscriptionQueue(
@@ -138,7 +154,8 @@ def test_successful_job_records_this_attempt_wall_time_and_skip_reason(tmp_path,
                 futureSeparation={"keep": True},
             ),
             futureWriting={"keep": True},
-            **({"sourceSpansSeparated": True} if overlap else {}),
+            # This attempt's decisions replace, never merge with, an older attempt's.
+            **({"sourceSpansSeparated": True, "recognitionFallback": FALLBACK} if overlap else {}),
         )
         assert valid(metadata)
         from cassini_talk.capture_details import read_details
@@ -181,3 +198,22 @@ def test_optional_details_schema_rejects_false_measurements_but_accepts_absence(
     assert not valid(
         dict(metadata, recordingDetails=dict(writingDown=dict(facts, speakerSeparation=dict(status="completed"))))
     )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        dict(FALLBACK, method="mix"),
+        dict(FALLBACK, windowMs=0),
+        dict(FALLBACK, tracks=[]),
+        dict(FALLBACK, tracks=[dict(FALLBACK["tracks"][0], used="yes")]),
+        dict(FALLBACK, tracks=[dict(FALLBACK["tracks"][0], vadWords=-1)]),
+        dict(FALLBACK, tracks="not a list"),
+    ],
+)
+def test_malformed_fallback_reports_are_not_stored(value):
+    from cassini_talk.capture_facts import recognition_fallback
+
+    assert recognition_fallback(value) is None
+    assert recognition_fallback(FALLBACK) == FALLBACK

@@ -458,7 +458,7 @@ class TranscriptionQueue:
         diarization = (
             self.diarization_models.request(directory, origin=meeting.origin) if self.diarization_models else None
         )
-        from .capture_facts import separation_result, separation_unavailable, writing_details
+        from .capture_facts import recognition_fallback, separation_result, separation_unavailable, writing_details
 
         separation = separation_unavailable(self.diarization_models, tracks, meeting.origin)
         voices_options, voice_generation = None, None
@@ -652,6 +652,8 @@ class TranscriptionQueue:
             facts["speechSegments"] = segments
         if source_diagnostics:
             facts["sourceSpansSeparated"] = True
+        if (fallback := recognition_fallback(complete.get("fallback"))) is not None:
+            facts["recognitionFallback"] = fallback
         with mutation(directory):
             self._check_open()
             # End facts or other metadata may have arrived while this job ran.

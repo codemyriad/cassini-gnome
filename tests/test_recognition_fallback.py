@@ -304,3 +304,15 @@ def test_seam_does_not_trust_a_lone_match_beyond_two_hundred_ms():
 
 def test_margin():
     assert [fallback.need(n) for n in (0, 1, 5, 9, 20)] == [1, 3, 7, 11, 24]
+
+
+def test_the_summary_reports_each_gated_track_for_provenance(tmp_path, monkeypatch):
+    result, _progress, _words = run(tmp_path, monkeypatch, speech(40), RunModel(), 0.0)
+    assert result["fallback"] == dict(
+        method="vadFreeWindows",
+        windowMs=15000,
+        overlapMs=500,
+        tracks=[dict(trackId="one", vadWords=0, fallbackWords=20, activeSeconds=16.64, used=True)],
+    )
+    quiet, _progress, _words = run(tmp_path, monkeypatch, speech(10), ScriptModel([1]), 1.0)
+    assert "fallback" not in quiet
