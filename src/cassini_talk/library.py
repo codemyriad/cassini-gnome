@@ -6,7 +6,7 @@ import os
 import re
 import stat
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
@@ -118,6 +118,7 @@ class CaptureTrack:
     decoded_frames: int | None = None
     clock_anchors: tuple[tuple[int, int], ...] = ()
     spans: tuple["CaptureTrack", ...] = ()
+    ownership_windows: tuple[tuple[int | float, int | float | None], ...] | None = None
 
     @property
     def pcm_rate(self):
@@ -728,6 +729,18 @@ class LibraryScanner:
             )
             else None
         )
+        from .source_ownership import windows
+
+        events = read_events(capture.get("events")) if origin == "own" else ()
+        placed = []
+        for track in tracks:
+            ownership = windows(track.kind, events)
+            if ownership is not None and track.start_offset_ms is None:
+                diagnostics.append(Diagnostic(track.path, "ownership-start-offset-unknown"))
+            else:
+                track = replace(track, ownership_windows=ownership)
+            placed.append(track)
+        tracks = tuple(placed)
         return Meeting(
             id=identifier,
             directory=directory,
@@ -751,7 +764,7 @@ class LibraryScanner:
             tracks=tracks,
             capture_source=capture.get("source") if origin == "own" else None,
             capture_state=capture.get("state") if origin == "own" else None,
-            capture_events=read_events(capture.get("events")) if origin == "own" else (),
+            capture_events=events,
             recording_offset_minutes=(
                 capture["startedAtUtcOffsetMinutes"]
                 if type(capture.get("startedAtUtcOffsetMinutes")) is int

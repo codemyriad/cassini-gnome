@@ -120,6 +120,8 @@ def prepare_tracks(meeting):
                 ),
             )
         )
+        if track.ownership_windows is not None:
+            tracks[-1]["ownershipWindows"] = [list(window) for window in track.ownership_windows]
         if track.spans:
             tracks[-1]["spans"] = [
                 dict(
