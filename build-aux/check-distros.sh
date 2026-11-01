@@ -32,6 +32,9 @@ rm -rf _build* _install _flatpak dist obj-* .flatpak-builder debian/.debhelper d
   .git .venv tests/recording/node_modules tests/recording/artifacts
 rm -rf src/cassini_talk/__pycache__ tests/__pycache__
 
+step "align container snapshot"
+sh build-aux/ci/prepare_tumbleweed.sh
+
 step "install-deps"
 sh build-aux/install-deps.sh --all --yes
 
