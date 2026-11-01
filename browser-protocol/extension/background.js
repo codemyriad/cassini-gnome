@@ -200,9 +200,27 @@ class NativeHost {
   }
 }
 
+function sourceWarning(session, message, fallback) {
+  const key = message.sourceTrackId;
+  if (typeof key === "string" && key.length > 0 && sourceEncoder.encode(key).length <= 200 &&
+      (message.recovered === true || typeof message.message === "string" && message.message.length > 0)) {
+    session.sourceWarnings ??= new Map();
+    if (message.recovered === true) session.sourceWarnings.delete(key);
+    else {
+      const error = [...message.message.replace(/[\u0000-\u001f\u007f-\u009f]/g, "")].slice(0,2000).join("");
+      session.sourceWarnings.set(key, error);
+      if (!message.transient) session.problem ??= error;
+    }
+  } else {
+    session.warning = fallback;
+    if (!message.transient) session.problem ??= fallback;
+  }
+  notifyControl();
+}
+
 function status(session = firstSession()) {
   return session ? { recording: true, captureId: session.token, documentGeneration: documentFor(session.tabId), callGeneration: session.callGeneration, stopping: session.stopping, tracks: session.tracks, tabId: session.tabId, mode: session.mode,
-    pageState: pageState(session.tabId), failedSources: [...session.discoveredSources].filter(([,s])=>s.failed).map(([id])=>id), message: session.warning || (!session.tracks ? "Waiting for audio. Join the call, or record the whole tab instead." : `${session.stopping ? "Saving" : "Recording"} ${session.mode === "tracks" ? "separate tracks" : "the whole tab"} · ${session.tracks} ${session.tracks === 1 ? "recorded track" : "recorded tracks"}`), path: session.path } : lastStatus;
+    pageState: pageState(session.tabId), failedSources: [...new Set([...session.discoveredSources].filter(([,s])=>s.failed).map(([id])=>id).concat([...(session.sourceWarnings?.keys() || [])]))], message: session.sourceWarnings?.values().next().value || session.warning || (!session.tracks ? "Waiting for audio. Join the call, or record the whole tab instead." : `${session.stopping ? "Saving" : "Recording"} ${session.mode === "tracks" ? "separate tracks" : "the whole tab"} · ${session.tracks} ${session.tracks === 1 ? "recorded track" : "recorded tracks"}`), path: session.path } : lastStatus;
 }
 function failure(message, session = firstSession()) {
   if (session) { session.problem ??= message; session.loss = true; notifyControl(); void stop(session); }
@@ -449,9 +467,8 @@ chrome.runtime.onConnect.addListener(port => {
       frame.finished?.(); return;
     }
     if (message.type === "warning") {
-      session.warning = "One track was interrupted and has a gap. The other tracks continue.";
-      if (!message.transient) session.problem ??= session.warning;
-      notifyControl(); return;
+      sourceWarning(session, message, "One track was interrupted and has a gap. The other tracks continue.");
+      return;
     }
     if (message.type === "error") { failure("The meeting page could not record separate tracks. Record the whole tab instead. Audio recorded so far was saved.", session); return; }
     if (message.type !== "packet" || !["track", "audio", ...(session.sourceOutcomes ? ["trackEnd", "sources"] : [])].includes(message.packet?.type)) return;
@@ -497,10 +514,11 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     await recovery;
     if (offscreen) {
       const active = [...sessions.values()].find(s => s.mode === "tab");
+      if (message.type === "warning" && active?.tabSourceId && typeof message.sourceTrackId === "string" && message.sourceTrackId !== active.tabSourceId) return {};
       if ((message.type === "error" || message.type === "warning" && !message.transient) && active?.sourceOutcomes && active.tabSourceId) {
         await recordSources(active, [{sourceTrackId:active.tabSourceId,kind:"tab",label:"Tab audio",failed:true}]);
       }
-      if (message.type === "warning" && active) { active.warning = "Tab audio lost samples during a recording stall."; if (!message.transient) active.problem ??= active.warning; return {}; }
+      if (message.type === "warning" && active) { sourceWarning(active, message, "Tab audio lost samples during a recording stall."); return {}; }
       if (message.type === "error") { failure(message.message, active); return {}; }
       if (message.type === "packet" && active?.mode === "tab" && ["track", "audio", ...(active.sourceOutcomes ? ["trackEnd"] : [])].includes(message.packet?.type)) {
         try { await forwardPacket(active, message.packet); }

@@ -224,7 +224,7 @@
     }
     if (message.type === "start" && !active) {
       refreshCall();
-      const state = { token: message.token, callGeneration, sourceOutcomes: message.sourceOutcomes === true, pending: new Map(), sourceUpdates: new Set(), announcedSources: new Set(), tracks: new Map(), recordsByTrack: new WeakMap(), refusedTracks: new WeakSet(), sources: new Map(), spanIds: new Set(), localMetadata: new Map(), next: 0, stopping: false, scanning: false };
+      const state = { token: message.token, callGeneration, sourceOutcomes: message.sourceOutcomes === true, pending: new Map(), sourceUpdates: new Set(), announcedSources: new Set(), tracks: new Map(), recordsByTrack: new WeakMap(), warnings: new Map(), refusedTracks: new WeakSet(), sources: new Map(), spanIds: new Set(), localMetadata: new Map(), next: 0, stopping: false, scanning: false };
       active = state;
       const send = packet => new Promise((resolve, reject) => {
         refreshCall();
@@ -247,12 +247,25 @@
         pending.then(() => state.sourceUpdates.delete(pending), () => state.sourceUpdates.delete(pending));
         return pending;
       };
-      const warn = (transient=false) => emit(state.token, { type: "warning", transient: transient === true });
-      const sourceFailed = record => {
+      const warn = (transient=false, sourceTrackId, message) => {
+        const details = {};
+        if (sourceTrackId) {
+          const previous = state.warnings.get(sourceTrackId);
+          message ||= previous?.message || "One track was interrupted and has a gap. The other tracks continue.";
+          if (previous?.message === message && previous.transient === transient) return;
+          state.warnings.set(sourceTrackId, {message, transient});
+          Object.assign(details, {sourceTrackId, message});
+        }
+        emit(state.token, { type: "warning", transient: transient === true, ...details });
+      };
+      const recovered = sourceTrackId => {
+        if (state.warnings.delete(sourceTrackId)) emit(state.token, {type:"warning", sourceTrackId, recovered:true, transient:true});
+      };
+      const sourceFailed = (record, message) => {
         if (!record.failed) {
           record.failed = true;
           void announce(record).catch(error => { if (!intentional(error)) fail(error.message); });
-          warn();
+          warn(false, record.sourceTrackId, message);
         }
       };
       state.sourceFailed = sourceFailed;
@@ -339,8 +352,8 @@
               const recorder = await capture({ stream: new MediaStream([track]), id, sourceTrackId,
                 reportOutcomes: message.sourceOutcomes === true, nextSpanId, live: () => track.readyState === "live",
                 label: `${metadata.kind}: ${track.label || track.id}`, kind: metadata.kind, enabled,
-                origin: message.origin, workletURL: message.workletURL, send, getSharedContext: () => state.context ??= new AudioContext({ sampleRate: 48000 }), warn: (_message, details) => warn(details?.kind === "retry"),
-                fail: () => sourceFailed(record) });
+                origin: message.origin, workletURL: message.workletURL, send, getSharedContext: () => state.context ??= new AudioContext({ sampleRate: 48000 }), warn: (message, details) => details?.kind === "recovered" ? recovered(record.sourceTrackId) : warn(details?.kind === "retry", record.sourceTrackId, message),
+                fail: message => sourceFailed(record, message) });
               state.tracks.set(track, recorder);
               } catch (error) { if (!intentional(error)) { state.refusedTracks.add(track); sourceFailed(record); } }
             }

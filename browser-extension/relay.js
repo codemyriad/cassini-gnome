@@ -83,6 +83,12 @@
     } else if (["ready", "stopped", "error", "warning"].includes(type)) {
       const details = {};
       if (event.data.transient === true) details.transient = true;
+      const source = event.data.sourceTrackId;
+      if (typeof source === "string" && source.length > 0 && [...source].reduce((n,c)=>n+(c.codePointAt(0)<=127?1:c.codePointAt(0)<=2047?2:c.codePointAt(0)<=65535?3:4),0)<=200) {
+        details.sourceTrackId = source;
+        if (event.data.recovered === true) details.recovered = true;
+        if (typeof event.data.message === "string") details.message = [...event.data.message.replace(/[\u0000-\u001f\u007f-\u009f]/g, "")].slice(0, 2000).join("");
+      }
       if (Array.isArray(event.data.discoveredSources)) details.discoveredSources = event.data.discoveredSources.filter(s =>
         s && typeof s.sourceTrackId === "string" && s.sourceTrackId.length > 0 && s.sourceTrackId.length <= 200 &&
         ["local", "remote", "media", "tab"].includes(s.kind)).map(s => ({ sourceTrackId: s.sourceTrackId, kind: s.kind,

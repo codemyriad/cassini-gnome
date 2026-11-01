@@ -7,7 +7,11 @@ class CassiniPCM extends AudioWorkletProcessor {
     this.used = 0;
     this.firstFrame = 0;
     this.stopped = false;
+    this.armed = false;
+    this.warming = null;
+    this.ready = false;
     this.port.onmessage = ({ data }) => {
+      if (data === "start") this.armed = true;
       if (data === "stop") {
         this.stopped = true;
         this.flush();
@@ -23,6 +27,16 @@ class CassiniPCM extends AudioWorkletProcessor {
   }
   process(inputs) {
     if (this.stopped) return false;
+    if (!this.armed) {
+      // Establish two actual render callbacks before the caller connects its
+      // source and declares the track. No initialization frames enter PCM.
+      if (!this.ready && this.warming !== null && currentFrame > this.warming) {
+        this.ready = true;
+        this.port.postMessage({ready:true});
+      }
+      this.warming = currentFrame;
+      return true;
+    }
     const input = inputs[0];
     const frames = input[0]?.length ?? 128;
     for (let frame = 0; frame < frames; frame++) {

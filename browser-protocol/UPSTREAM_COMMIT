@@ -1,26 +1,26 @@
-tree b8bf167c57e542e85e8324313be9e1604862a8e5
-parent a6d240e83ca6242e807d9bf1140838e113817da7
-parent f601c7fed53730c9c6542a7fe5284f308e429bcc
-author Silvio Tomatis <silviot@gmail.com> 1793508354 +0100
-committer GitHub <noreply@github.com> 1793508354 +0100
+tree e24fe31e33bb573affe8b3f62995a87e696a0ff7
+parent 84b0da1b948ac65e09f8bb780297c9f9bbe61de8
+parent 1c577c2c7c70c4afb6e1a922e9fd74153636be70
+author Silvio Tomatis <silviot@gmail.com> 1793512538 +0100
+committer GitHub <noreply@github.com> 1793512538 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq5sQCCRC1aQ7uu5UhlAAAy+0QAGnaXVEEXCB7yaPSjDDKthto
- X/Qw2XchUO0ro//PzhNf+ep9bOf95q8OJ6EvbeLbMVJQXHiqYKNOlBWRaVsYMjc1
- t14uROx/Trd4AQ0buTuvDD6rOd6hxFdiUzeZvHQoJ5WjfgibaJSZq9W4zge+GZ8o
- bClSAeLEoEvM5X9K6575ZvsqyygiRkywFyWoIZjhQfoY5mFkmMB/H2fATV6xVId2
- wE3plLdrYllnlI3NuramqXQaax1M8t7JQFOlhwhgegDL0IIwF4BOItmVQ53+tJUz
- 8rL7kEhTqKvwWrZYn4GFTUPwJYDP9/5hYZ+7J5k94wL6LiT/rwhiw2C3EUQ1Iycc
- bWqF+by/PotqXJQTrdd2t4O5FqKbbo51Qe4htMuUjWX4aBtjHeJPNyMLSC1IYmKF
- 8w3NsRBXP3gse3+BGMFBIWsTPYRTvgURk5MsdJvARJi6s1L0ZeOq3XvdF2LmO4S5
- 5VMYgIYfZKYUMRXIVV/ETBAS3W+JxZ89Y8c99z7USOCAGA1mNrNHOBnHx2AJt4IA
- HIB+artbKys4WzwSHboiChtKaPo5KkmHBY5wiHnvh9gR5PFohCGbBrukxaB/z7aR
- 3zkVlt7CL68avCe0TzEGJvUqKKnCapdGT27bQflj2XrBxNOV7eV7O9L4SFZnGWX0
- UBwFv+OMgW3kiVmtYCGB
- =3+Xj
+ wsFcBAABCAAQBQJq5tRaCRC1aQ7uu5UhlAAAq3sQAFfN7qryNFNNMwLyr67qT51R
+ +Fv6q5fDeA9orqxSgxKiZjwuHyr63ez3E7Bp0LzRy2m3ZoyJaxeP6GCnVgbgpQvU
+ Jbfw8caGSpyTD+CmqXk31ucznVxpBOro+avw/+QB9HVjrzpU/YOVaBdG5eAMKZXs
+ 7XoH52UVRI+iJMwAjqxN9oDtlT1bp7IunRo6lDKlDAWSh9JWcl3KYWuBu8EGvVH9
+ ugEvi6XPwO1VYMSHRRXlewV3e8sGo3hOUf+UnVDDhNJxYt7yUKDt/1If7NHzYgNc
+ bjv8oqtfWyjp595hvvmGqDhvopq8VH7jrha7YxswQmuTUA1dW+2jlAn3XO4IgYLK
+ YtxGkiTRk+YmyzHnRIbbo6eznB4RqT31TJ7aAi4/yFE9yjhzAQkx0SN1goXEUucz
+ nwj+GUdqveEzTGwMxBMxxoJwo3HdN39OdLmx1ZoC2yJEqrYH/jG5DgEB7IuUasa+
+ 2DrUWUboDDiryrIIuhFNaEkRMuCIHaZ0cOCPXxhWL+ZOSWcY+zPnML3X9KybJW6z
+ A0RlXd299OgxHg1on4Mm6VhGJrSUgWCBogwqPcNHun8OE6DzJJqxs6ymXFau8Ts7
+ Anhl6Cl6dyW4tJGL+UWG0zUfaoVPBtDqd3gd7Ez7rJAQe4hok5T+aqwVImta9Qpb
+ UH5O/r6g6/AqhBU4Hb4R
+ =k6+Z
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #25 from codemyriad/fix/persist-call-generation
+Merge pull request #26 from codemyriad/fix/render-quantum-size
 
-Keep call identity through service-worker restart
+Wait for render-clock readiness before admitting source audio
