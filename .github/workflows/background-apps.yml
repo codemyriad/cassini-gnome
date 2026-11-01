@@ -32,7 +32,7 @@ jobs:
           path: _desktop-packages/flatpak
           github-token: ${{ github.token }}
           run-id: ${{ inputs.package_run || github.run_id }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .desktop-flatpak-cache
           key: desktop-gnome50-v1

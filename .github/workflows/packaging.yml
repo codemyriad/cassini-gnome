@@ -30,7 +30,7 @@ jobs:
           bundle: cassini-talk-devel.flatpak
           manifest-path: build-aux/flatpak/io.codemyriad.CassiniTalk.Devel.json
           cache-key: flatpak-builder-${{ github.sha }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/parakeet-models
           key: parakeet-ultra-18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
