@@ -4,6 +4,8 @@
 import base64
 import errno
 import json
+import struct
+from pathlib import Path
 
 import pytest
 from test_browser_host import invoke
@@ -41,6 +43,46 @@ def host(tmp_path, request):
 
 def stop(host, **kwargs):
     return host.handle(dict(type="stop", captureId="capture-a", **kwargs))
+
+
+OUTCOMES = json.loads(
+    (Path(__file__).parents[1] / "browser-protocol/conformance/multistream/outcomes.json").read_text()
+)["cases"]
+
+
+@pytest.mark.parametrize("case", OUTCOMES, ids=lambda case: case["name"])
+def test_shared_literal_outcomes_run_through_real_app_writers(host, case):
+    # Use the fixture's wire rate, not a local reimplementation of its oracle.
+    if sources := case.get("announcedSources"):
+        assert host.handle(dict(type="sources", discoveredSources=sources)) == dict(type="ack")
+        durable = json.loads((host.session.directory / "session.json").read_text())
+        assert {s["sourceTrackId"] for s in durable["captureOutcome"]["sources"]} == {
+            s["sourceTrackId"] for s in sources
+        }
+        assert durable["tracks"] == []
+    for track in case["tracks"]:
+        assert host.handle(dict(declare(track["id"], track["sourceTrackId"]), sampleRate=8000)) == dict(type="ack")
+    sequences = dict.fromkeys((t["id"] for t in case["tracks"]), 0)
+    for write in case["writes"]:
+        identifier = write["id"]
+        assert host.handle(
+            pcm(
+                identifier,
+                write["frames"],
+                sequence=sequences[identifier],
+                offset=write["offsetMs"],
+                value=struct.pack("<h", write["value"]),
+            )
+        ) == dict(type="ack")
+        sequences[identifier] += 1
+    assert stop(host, discoveredSources=case.get("discoveredSources", []))["type"] == "stopped"
+    manifest = json.loads((host.session.directory / "session.json").read_text())
+    assert {t["id"]: t["captureOutcome"] for t in manifest["tracks"]} == case["expected"]
+    assert {s["sourceTrackId"]: s["captureOutcome"] for s in manifest["captureOutcome"]["sources"]} == case[
+        "sourceExpected"
+    ]
+    for track in manifest["tracks"]:
+        assert track["receivedFrames"] == sum(w["frames"] for w in case["writes"] if w["id"] == track["id"])
 
 
 @pytest.mark.parametrize("b_frames,expected", [(0, "neverAudio"), (24000, "lowAudio")])
@@ -135,6 +177,58 @@ def test_failed_wav_creation_leaves_no_orphan_and_allows_a_fresh_source_span(hos
     (source,) = host.session.manifest["captureOutcome"]["sources"]
     assert source["captureOutcome"] == "failed" and source["trackIds"] == ["fresh"]
     assert host.session.manifest["problemKind"] == "io"
+
+
+@pytest.mark.parametrize("phase", ["padding", "content"])
+def test_partial_source_write_retains_exact_gap_and_received_counts(host, monkeypatch, phase):
+    import wave
+
+    host.handle(declare("healthy", "receiver-a"))
+    host.handle(declare("broken", "receiver-b"))
+    assert host.handle(pcm("broken", 48000, value=b"\x11\x11")) == dict(type="ack")
+    writer = host.session.writers["broken"]
+    append = writer.append
+    gap_frames = 8192 if phase == "padding" else 96000
+    received_frames = 0 if phase == "padding" else 12000
+
+    def partial_padding(_frames):
+        append(bytes(gap_frames * 2))
+        raise OSError(errno.ENOSPC, "Generated failure during timestamp padding")
+
+    def partial_content(data):
+        append(data[: received_frames * 2])
+        raise OSError(errno.ENOSPC, "Generated failure after partial source PCM")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            writer,
+            "silence" if phase == "padding" else "append",
+            partial_padding if phase == "padding" else partial_content,
+        )
+        # On the content path the original silence() also calls append().
+        if phase == "content":
+            patch.setattr(writer, "silence", lambda frames: append(bytes(frames * 2)))
+        refused = host.handle(pcm("broken", 48000, sequence=1, offset=3000, value=b"\x22\x22"))
+    assert refused["scope"] == "source" and refused["code"] == "io"
+    assert host.handle(pcm("healthy", 48000)) == dict(type="ack")
+    assert host.handle(declare("recovered", "receiver-b")) == dict(type="ack")
+    assert host.handle(pcm("recovered", 48000, offset=5000)) == dict(type="ack")
+    stop(host)
+    manifest = json.loads((host.session.directory / "session.json").read_text())
+    track = next(t for t in manifest["tracks"] if t["id"] == "broken")
+    assert track["gapFrames"] == gap_frames
+    assert track["receivedFrames"] == 48000 + received_frames
+    assert track["droppedFrames"] == 48000 - received_frames
+    assert track["frames"] == 48000 + gap_frames + received_frames
+    with wave.open(str(host.session.directory / track["file"]), "rb") as saved:
+        assert saved.getnframes() == track["frames"]
+        data = saved.readframes(saved.getnframes())
+    assert data == b"\x11\x11" * 48000 + bytes(gap_frames * 2) + b"\x22\x22" * received_frames
+    sources = {s["sourceTrackId"]: s for s in manifest["captureOutcome"]["sources"]}
+    assert sources["receiver-a"]["captureOutcome"] == "captured"
+    assert sources["receiver-b"]["captureOutcome"] == "failed"
+    assert sources["receiver-b"]["audioMs"] == (96000 + received_frames) / 48
+    assert manifest["problemKind"] == "io"
 
 
 def test_refused_and_discovered_sources_do_not_allocate_wavs(host):

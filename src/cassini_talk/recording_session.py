@@ -456,9 +456,16 @@ class RecordingSession:
         previous = writer.frames
         try:
             if delta:
-                writer.silence(delta)
-                if self.capture_record is not None:
-                    track["gapFrames"] = track.get("gapFrames", 0) + delta
+                before_padding = writer.frames
+                try:
+                    writer.silence(delta)
+                finally:
+                    # silence() writes bounded blocks and may fail after some
+                    # have reached the WAV. Keep that absence distinct from
+                    # received zero PCM even on a source-local disk failure.
+                    padded = writer.frames - before_padding
+                    if self.capture_record is not None and padded:
+                        track["gapFrames"] = track.get("gapFrames", 0) + padded
             writer.append(data)
         except OSError as error:
             if self.capture_record is not None:
