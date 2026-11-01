@@ -919,6 +919,7 @@ class BrowserService:
                         meetings[value["tabId"]]["pageState"] = value["pageState"]
                         browser.page_states[value["tabId"]] = value["pageState"]
                     meetings[value["tabId"]]["heard"] = value.get("heard") is True
+                    meetings[value["tabId"]]["sourceCountKnown"] = value.get("sourceCountKnown", True) is True
                     meetings[value["tabId"]]["title"] = value["title"][:200]
                     meetings[value["tabId"]]["url"] = value["url"][:2048]
                 self._expire_stopped(time.monotonic())
@@ -1615,11 +1616,13 @@ class BrowserService:
                         capture.lifecycle_capable = True
                 if peer is not None and "page-state-v1" in peer[0].capabilities:
                     capture.lifecycle_capable = True
+                if peer is not None and "multi-stream-v1" in peer[0].capabilities:
+                    capture.multistream_capable = True
                 if capture.lifecycle_capable:
                     lifecycle = self._capture_lifecycles.setdefault(key, CallLifecycle())
                     if key not in self._capture_observed and capture.browser_lost and lifecycle.missing is None:
                         lifecycle.missing = capture.browser_lost_since
-                    page, count = None, 0
+                    page, count, meeting = None, 0, {}
                     if peer is not None:
                         state = peer[0].states[peer[1]]
                         meeting = peer[2] or {}
@@ -1667,6 +1670,13 @@ class BrowserService:
                         fallback=capture.browser_lost,
                         others=capture.others,
                         restore_ready=capture.browser_ready,
+                        multistream=capture.multistream_capable,
+                        heard=meeting.get("heard") is True,
+                        inventory_known=peer is not None
+                        and peer[2] is not None
+                        and meeting.get("sourceCountKnown", True),
+                        control_alive=peer is not None,
+                        pcm_live=capture.browser_ready_since(),
                     )
                     if reconnect is not None and page == "present" and count > 0 and lifecycle.missing is None:
                         self._control_reconnects.pop(key, None)
@@ -1812,8 +1822,10 @@ class BrowserService:
 
     @staticmethod
     def _auto_start_ready(browser, meeting):
-        return meeting.get("sourceCount", 0) > 0 and (
-            "call-evidence-v1" not in browser.capabilities or meeting.get("heard") is True
+        return (
+            meeting.get("sourceCountKnown", True) is True
+            and meeting.get("sourceCount", 0) > 0
+            and ("call-evidence-v1" not in browser.capabilities or meeting.get("heard") is True)
         )
 
     def _automatic(self, identifier, action, generation=None, call_version=None):

@@ -30,6 +30,7 @@ class BrowserCapture:
         self.browser_lost_since = None
         self.audio_connected = False
         self.lifecycle_capable = False
+        self.multistream_capable = False
         self.tab_closed = False
         self.end_reason = None
         self.streams = None

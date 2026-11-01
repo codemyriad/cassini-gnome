@@ -507,6 +507,23 @@ def test_missing_browser_and_untrusted_inventory(service):
         connection.close()
 
 
+def test_unknown_source_inventory_is_preserved_and_cannot_auto_start(tmp_path):
+    from cassini_talk.browser_service import BrowserConnection
+
+    server = BrowserService(tmp_path / "settings.json", notifier=lambda *_: None)
+    peer = BrowserConnection(None)
+    peer.capabilities = {"independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1"}
+    try:
+        for known in (False, True):
+            server.update(peer, dict(type="meetings", meetings=[dict(meeting(), heard=True, sourceCountKnown=known)]))
+            row = peer.meetings[3]
+            assert row["sourceCount"] == 2 and row["heard"]
+            assert row["sourceCountKnown"] is known
+            assert server._auto_start_ready(peer, row) is known
+    finally:
+        server.workers.shutdown()
+
+
 def test_reconnect_waits_for_status_before_auto_record(service):
     server, path = service
     request("configure", path=path, autoRecord=True)
