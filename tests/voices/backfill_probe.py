@@ -45,9 +45,14 @@ def until(check):
 args.output.mkdir(parents=True, exist_ok=True)
 golden = json.loads((Path(__file__).resolve().parents[1] / "ux/diarization/golden.json").read_text())
 assert hashlib.sha256(args.audio.read_bytes()).hexdigest() == golden["input"]["sha256"]
-models = DiarizationModels(args.bundle, lambda: None, store=ModelStore(args.nemotron))
+models = DiarizationModels(
+    args.bundle, lambda: None, store=ModelStore(args.nemotron, user_agent="CassiniTalk/test (GNOME; Linux; source)")
+)
 voices = VoiceModels(
-    args.bundle, lambda: None, enabled=lambda: models.snapshot()["ready"], store=ModelStore(args.voices)
+    args.bundle,
+    lambda: None,
+    enabled=lambda: models.snapshot()["ready"],
+    store=ModelStore(args.voices, user_agent="CassiniTalk/test (GNOME; Linux; source)"),
 )
 store = VoiceStore(args.output / "private")
 foreground, completed = [], []

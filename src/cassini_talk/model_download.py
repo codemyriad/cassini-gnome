@@ -162,8 +162,32 @@ class _Redirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(request, response, code, message, headers, newurl)
 
 
+PACKAGING = ("flatpak", "deb", "rpm", "arch", "source")
+
+
+def installed_packaging(config=None):
+    """How this copy was built (meson -Dpackaging); a source run has no paths.json."""
+    try:
+        value = json.loads(Path(config or Path(__file__).with_name("paths.json")).read_text()).get("packaging")
+    except (OSError, ValueError, AttributeError):
+        return "source"
+    return value if value in PACKAGING else "source"
+
+
+def user_agent(version, packaging):
+    """D54: one app-wide User-Agent for every model request; no person or device identifiers."""
+    if not isinstance(version, str) or not version or packaging not in PACKAGING:
+        raise ValueError("Invalid model download identity")
+    return f"CassiniTalk/{version} (GNOME; Linux; {packaging})"
+
+
 class ModelStore:
-    def __init__(self, root=None, *, origin=ORIGIN, fixture=False, disk_usage=shutil.disk_usage, timeout=10):
+    def __init__(
+        self, root=None, *, user_agent, origin=ORIGIN, fixture=False, disk_usage=shutil.disk_usage, timeout=10
+    ):
+        if not isinstance(user_agent, str) or not user_agent.startswith("CassiniTalk/") or len(user_agent) > 200:
+            raise ValueError("Model requests need the app's CassiniTalk User-Agent (D54)")
+        self.user_agent = user_agent
         origin = origin.rstrip("/")
         if origin != ORIGIN:
             parsed = urlsplit(origin)
@@ -224,7 +248,7 @@ class ModelStore:
     def _open(self, url, **headers):
         origin_url(url, self.origin)
         request = urllib.request.Request(
-            url, headers={"Accept-Encoding": "identity", "User-Agent": "Cassini/0.2", **headers}
+            url, headers={"Accept-Encoding": "identity", "User-Agent": self.user_agent, **headers}
         )
         response = self.opener.open(request, timeout=self.timeout)
         if response.headers.get("Content-Encoding", "identity").lower() != "identity":

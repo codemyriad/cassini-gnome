@@ -86,7 +86,9 @@ try:
             until(lambda: not window._pending)
             if app.voice_models:
                 app.voice_models.close()
-            store = ModelStore(tmp / "models", origin=server.origin, fixture=True)
+            store = ModelStore(
+                tmp / "models", origin=server.origin, fixture=True, user_agent="CassiniTalk/test (GNOME; Linux; source)"
+            )
             app.voice_models = VoiceModels(
                 tmp / "bundle",
                 lambda: GLib.idle_add(app._models_changed),

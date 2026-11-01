@@ -36,7 +36,9 @@ assert os.environ.get("CASSINI_WHISTLE_NETWORK_NONE") == "1"
 assert {name for _, name in socket.if_nameindex()} == {"lo"}
 args.output.mkdir(parents=True, exist_ok=True)
 library = Path(tempfile.mkdtemp(prefix="Library-", dir=args.output))
-models = DiarizationModels(args.bundle, lambda: None, store=ModelStore(args.model_cache))
+models = DiarizationModels(
+    args.bundle, lambda: None, store=ModelStore(args.model_cache, user_agent="CassiniTalk/test (GNOME; Linux; source)")
+)
 
 
 def until(check, timeout=120):
@@ -67,7 +69,10 @@ if args.voices:
 
     store = VoiceStore(args.output / "private-voices")
     voices = VoiceModels(
-        args.bundle, lambda: None, enabled=lambda: models.snapshot()["ready"], store=ModelStore(args.voices)
+        args.bundle,
+        lambda: None,
+        enabled=lambda: models.snapshot()["ready"],
+        store=ModelStore(args.voices, user_agent="CassiniTalk/test (GNOME; Linux; source)"),
     )
     until(lambda: not voices.snapshot()["busy"])
     assert voices.snapshot()["ready"], voices.snapshot()

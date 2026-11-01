@@ -31,7 +31,7 @@ class DiarizationModels(SpeechModels):
     pin = nemotron_model
     invalid_notice = removed_notice = None
 
-    def __init__(self, bundle, changed, *, store=None, client_factory=DiarizationProbe):
+    def __init__(self, bundle, changed, *, store, client_factory=DiarizationProbe):
         self.bundle = bundle
         self._probe = None
         self._factor = 0.05
