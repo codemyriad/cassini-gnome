@@ -31,13 +31,13 @@ def track(proxy):
     proxy.handle(dict(type="track", id="wire", label="Other", kind="remote", sampleRate=48000, channels=1))
 
 
-def pcm(proxy, sequence=0):
+def pcm(proxy, sequence=0, *, offset_ms=None):
     proxy.handle(
         dict(
             type="audio",
             id="wire",
             sequence=sequence,
-            offsetMs=100 * sequence,
+            offsetMs=100 * sequence if offset_ms is None else offset_ms,
             pcm=base64.b64encode(tone(4800, amplitude=500)).decode(),
         )
     )
@@ -196,35 +196,66 @@ def test_a_broken_view_callback_releases_the_producer_without_stopping_audio(ser
         proxy.close()
 
 
-def test_window_mapping_controls_real_broker_feed_without_stopping_capture(server):
+@pytest.mark.parametrize("initial_ms", [0, 1000])
+def test_window_mapping_controls_real_broker_feed_without_stopping_capture(server, monkeypatch, initial_ms):
+    from recording.readiness import wait_until
     from test_spectro_views import Strip, Window
 
-    from cassini_talk.spectro_views import BrokerFeed, WindowSpectrograms, monotonic_ms
+    from cassini_talk.spectro_views import BrokerFeed, WindowSpectrograms
 
     service, path, _root = server
     proxy = BrowserAudioProxy(path=path)
     created = start(proxy, "mapped-feed", microphone=False)
     track(proxy)
     capture = service.captures["mapped-feed"]
+    clock = [initial_ms]
+    monkeypatch.setattr(capture, "elapsed_ms", lambda: clock[0])
     window, strip = Window(), Strip()
     hub = WindowSpectrograms(window)
+    meter_ready, columns_ready = threading.Event(), threading.Event()
+
+    def feed(columns):
+        def received(now, lanes):
+            columns(now, lanes)
+            meter_ready.set()
+            if lanes["others"]:
+                columns_ready.set()
+
+        return BrokerFeed(path, created["path"], received, clock=lambda: clock[0])
+
+    def diagnostics():
+        view = hub.sessions.get(created["path"])
+        return dict(
+            clockMs=clock[0],
+            meterReady=meter_ready.is_set(),
+            columnsReady=columns_ready.is_set(),
+            clientProblem=getattr(getattr(view.feed, "client", None), "problem", None) if view else None,
+            sourceProblem=capture.spectrogram.problem,
+            analysisCalls=capture.spectrogram.calls,
+            analysedColumns=capture.spectrogram.analysed,
+        )
+
     try:
-        hub.bind(strip, created["path"], lambda columns: BrokerFeed(path, created["path"], columns))
-        spin_until(lambda: capture.spectrogram.active)
-        pcm(proxy)
-
-        def displayed():
-            window.frame(monotonic_ms())
-            return strip.model is not None and any(strip.model.bands["others"])
-
-        spin_until(displayed)
+        hub.bind(strip, created["path"], feed)
+        wait_until(meter_ready.is_set, "real meter subscribed and delivered its first packet", diagnostics=diagnostics)
+        window.frame(clock[0])
+        # Keep synthetic PCM, the broker and the fake frame clock in the same
+        # time domain. Startup/IPC scheduling must not age out a single packet
+        # at offset zero before the test has observed its column-delivery event.
+        pcm(proxy, offset_ms=clock[0])
+        wait_until(
+            columns_ready.is_set, "PCM columns reached the view through the real socket", diagnostics=diagnostics
+        )
+        clock[0] += 200
+        window.frame(clock[0])
+        assert strip.model is not None and any(strip.model.bands["others"]), diagnostics()
         assert len(capture.spectrogram.subscribers) == 1
         window.mapped = False
         window.emit("unmap")
-        spin_until(lambda: not capture.spectrogram.subscribers)
+        wait_until(lambda: not capture.spectrogram.subscribers, "unmapped view released its broker subscription")
         assert not window.ticks and strip.model is None
         before = capture.spectrogram.calls
-        pcm(proxy, 1)
+        pcm(proxy, 1, offset_ms=clock[0])
         assert capture.spectrogram.calls == before and not capture.finished
     finally:
         hub.close()
