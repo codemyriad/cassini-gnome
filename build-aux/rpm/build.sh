@@ -31,6 +31,7 @@ container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z
     dnf -y install rpmlint || true
     install_rpm() { dnf -y --setopt=install_weak_deps=False install "$@"; }
   elif command -v zypper >/dev/null 2>&1; then
+    sh /in/build-aux/ci/prepare_tumbleweed.sh
     zypper -n install rpm-build tar xz
     rpmspec -q --buildrequires "$spec" | tr -d " " | xargs zypper -n install
     zypper -n install rpmlint || true
@@ -94,8 +95,9 @@ container_offline_smoke "$BASE" '
     dnf -y -q --setopt=install_weak_deps=False install "/d/$RPM"
     dnf clean all >/dev/null
   else
+    sh /ci/prepare_tumbleweed.sh
     zypper -n -q install --allow-unsigned-rpm "/d/$RPM"
     zypper -n clean -a >/dev/null
   fi
-' -v "$PWD/dist":/d:ro$Z -e RPM="$rpm_name"
+' -v "$PWD/dist":/d:ro$Z -v "$PWD/build-aux/ci":/ci:ro$Z -e RPM="$rpm_name"
 ls -l dist/*.rpm
