@@ -144,13 +144,19 @@ def search_date(at_ms, *, now_ms, tz):
 
 
 def search_context(at_ms, duration_ms, position_ms, *, now_ms, tz):
-    return text(
-        "format.searchContext",
-        day=day_group(at_ms, now_ms=now_ms, tz=tz),
-        time=row_time(at_ms, tz=tz),
-        duration=meeting_duration(duration_ms),
-        position=position(position_ms),
-    )
+    if at_ms is not None and duration_ms is not None:
+        return text(
+            "format.searchContext",
+            day=day_group(at_ms, now_ms=now_ms, tz=tz),
+            time=row_time(at_ms, tz=tz),
+            duration=meeting_duration(duration_ms),
+            position=position(position_ms),
+        )
+    # Omit an unknown start or duration as preview_subtitle() does, keeping
+    # the catalog's localized "at {position}" ending.
+    marker = "\0"
+    ending = text("format.searchContext", day="", time="", duration=marker, position=position(position_ms))
+    return preview_subtitle(at_ms, duration_ms, now_ms=now_ms, tz=tz) + " · " + ending.split(marker + " · ", 1)[1]
 
 
 def row_meta(duration_ms, names):

@@ -131,6 +131,25 @@ def test_search_counts_pluralize_places_and_meetings_independently(lang, zero, o
         assert ux_formats.search_count(2, 1) == two
 
 
+@pytest.mark.parametrize(
+    "lang,without_duration,without_start",
+    [
+        ("en", "Today, 09:00 · at 00:14:32", "Date unknown · 52 min · at 00:14:32"),
+        ("it", "Oggi, 09:00 · a 00:14:32", "Data sconosciuta · 52 min · a 00:14:32"),
+        ("fr", "Aujourd’hui, 09:00 · à 00:14:32", "Date inconnue · 52 min · à 00:14:32"),
+        ("es", "Hoy, 09:00 · en 00:14:32", "Fecha desconocida · 52 min · en 00:14:32"),
+        ("pt-BR", "Hoje, 09:00 · em 00:14:32", "Data desconhecida · 52 min · em 00:14:32"),
+        ("pt-PT", "Hoje, 09:00 · aos 00:14:32", "Data desconhecida · 52 min · aos 00:14:32"),
+    ],
+)
+def test_search_context_omits_unknown_start_or_duration(lang, without_duration, without_start):
+    at, context = 1793088000000, dict(now_ms=1793107080000, tz="Europe/Rome")
+    with i18n.using_language(lang):
+        assert ux_formats.search_context(at, None, 872000, **context) == without_duration
+        assert ux_formats.search_context(None, 3120000, 872000, **context) == without_start
+        assert ux_formats.search_context(None, None, 872000, **context) == without_start.replace(" · 52 min", "")
+
+
 def test_ui_selection_does_not_mutate_time_or_number_locale(monkeypatch, tmp_path):
     before = locale.setlocale(locale.LC_TIME), locale.setlocale(locale.LC_NUMERIC)
     domain, directory = gettext.textdomain(), gettext.bindtextdomain("cassini-talk")

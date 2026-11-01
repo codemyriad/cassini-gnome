@@ -1131,5 +1131,5 @@ def format_date(value, local=False, time=False):
         return None
     text = calendar_formats.full_date(date(dt.get_year(), dt.get_month(), dt.get_day_of_month()))
     if time:
-        text = f"{text} {fmt.row_time(dt.to_unix() * 1000, tz=dt.get_timezone().get_identifier())}"
+        text = f"{text} {fmt.row_time(dt.to_unix() * 1000, tz=fmt.local_timezone(dt.get_timezone().get_identifier()))}"
     return text

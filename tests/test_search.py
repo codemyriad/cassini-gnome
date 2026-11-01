@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Real FTS, D14 local dates/AND filters, immutable snapshot updates and cache recovery."""
 
+import shutil
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -9,6 +10,7 @@ from zoneinfo import ZoneInfo
 import pytest
 import test_library_vectors
 
+from cassini_talk import ux_formats as fmt
 from cassini_talk.library import LibraryScanner, LibrarySnapshot
 from cassini_talk.portable import Word
 from cassini_talk.search_index import SearchIndex, date_range, marked_markup
@@ -338,3 +340,24 @@ def test_d38_rejoined_interrupted_turn_never_pairs_quotes_across_speakers(index,
     assert not any("“" in v or "”" in v for v in [*map(str, shown.values()), meeting_markup])
     by_item = {id(w): v for t in reader for w, v in zip(t.words, t.items, strict=True)}
     assert [by_item[id(w)] for w in words] == expected
+
+
+def test_search_context_omits_duration_of_meeting_whose_audio_is_missing(shared_library, tmp_path):
+    root = tmp_path / "root"
+    shutil.copytree(shared_library / "main/root", root)
+    scanner = LibraryScanner(root)
+    budget = next(m for m in scanner.scan().meetings if m.title == "Budget review")
+    for audio in budget.directory.glob("*.wav"):
+        audio.unlink()
+    value = SearchIndex(root, tmp_path / "cache")
+    try:
+        value.sync(scanner.scan())
+        hit = next(h for h in search(value, speaker="Marta") if h.position_ms == 872000)
+        meeting = value.current[hit.key]
+        assert meeting.title == "Budget review" and meeting.duration_ms is None
+        context = dict(now_ms=NOW, tz="Europe/Rome")
+        assert fmt.search_context(meeting.started_at_ms, meeting.duration_ms, hit.position_ms, **context) == (
+            "Today, 09:00 · at 00:14:32"
+        )
+    finally:
+        value.close()
