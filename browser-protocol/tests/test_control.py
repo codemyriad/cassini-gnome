@@ -87,7 +87,8 @@ class ControlTests(unittest.TestCase):
     def test_audio_vectors_and_runner_are_unchanged(self):
         import hashlib
         self.assertEqual(len(json.loads((ROOT / 'conformance/vectors.json').read_text())), 88)
-        self.assertEqual(hashlib.sha256((ROOT / 'conformance/vectors.json').read_bytes()).hexdigest(), 'b3cbc8efa9decd119b3a5e7ef1e99584c488b12ba49b73824fb490b55b4eecbd')
+        # D52.2 Q7 added host-derived gapFrames/state to the two legacy gap vectors.
+        self.assertEqual(hashlib.sha256((ROOT / 'conformance/vectors.json').read_bytes()).hexdigest(), 'd79a75fcf3608ab652f11fc89d5426c9476737bc9f5f22bbb6260b397b0f35e1')
         self.assertEqual(hashlib.sha256((ROOT / 'conformance/run.py').read_bytes()).hexdigest(), '94087b8076f6a7f135fcd8b13c8fea6fd4fa08ccba5c0da94350e2b064756c62')
 
 if __name__ == '__main__':

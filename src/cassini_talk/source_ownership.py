@@ -3,6 +3,7 @@
 
 import math
 from bisect import bisect_right
+from dataclasses import dataclass
 from fractions import Fraction
 
 from .session_events import read_events
@@ -93,3 +94,104 @@ class FrameMask:
         for left, right in sections:
             output[left * width : right * width] = data[left * width : right * width]
         return bytes(output)
+
+
+@dataclass(frozen=True)
+class Presence:
+    """D52.2 half-open session-ms windows; unknown is neither present nor absent."""
+
+    present: tuple
+    unknown: tuple
+    unpositioned_frames: int
+    complete: bool
+
+
+def _subtract(windows, left, right):
+    result = []
+    for a, b in windows:
+        if right <= a or b <= left:
+            result.append((a, b))
+            continue
+        if a < left:
+            result.append((a, left))
+        if right < b:
+            result.append((right, b))
+    return result
+
+
+def _owned(windows, ownership):
+    if ownership is None:
+        return tuple((a, b) for a, b in windows if a < b)
+    result = []
+    for a, b in windows:
+        for left, right in ownership:
+            low = max(a, Fraction(str(left)))
+            high = b if right is None else min(b, Fraction(str(right)))
+            if low < high:
+                result.append((low, high))
+    return tuple(result)
+
+
+def _time(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+        return None
+    return Fraction(str(value))
+
+
+def presence(track, ownership=None):
+    """Span extents minus stored gap ranges, intersected with ownership windows.
+
+    Never reads PCM: zero samples are not absence. A droppedFrames count has
+    no position and is only reported. Without a ``gaps`` list (older writers),
+    after an overflow marker, or from a malformed entry on, the time is unknown.
+    Works on session.json tracks and on the published file's x["codemyriad.io"]
+    tracks, whose offsets live only on their spans. Returns None when no span
+    has a known start offset.
+    """
+    from .source_spans import bounds
+
+    # Span rows inherit the logical track's fields; a span offset wins. A span
+    # without an offset cannot be placed (display=False never assumes zero).
+    logical = {key: value for key, value in track.items() if key != "spans"}
+    rows = [dict(logical, **span) for span in track.get("spans") or [{}] if isinstance(span, dict)]
+    placed = sorted(extent for row in rows if (extent := bounds(row)) is not None)
+    if not placed:
+        return None
+    # A track rotated across files is one logical extent; empty spans add nothing.
+    extents = []
+    for a, b in placed:
+        if a >= b:
+            continue
+        if extents and a <= extents[-1][1]:
+            extents[-1] = (extents[-1][0], max(extents[-1][1], b))
+        else:
+            extents.append((a, b))
+    gaps = track.get("gaps")
+    dropped = track.get("droppedFrames")
+    dropped = dropped if type(dropped) is int and dropped > 0 else 0
+    if not isinstance(gaps, list):
+        return Presence((), _owned(extents, ownership), dropped, False)
+    present, unknown, complete = list(extents), [], True
+    for gap in gaps:
+        at = _time(gap.get("atMs")) if isinstance(gap, dict) else None
+        duration = _time(gap.get("durationMs")) if isinstance(gap, dict) else None
+        if at is not None and duration and gap.get("kind") != "overflow":
+            present = _subtract(present, at, at + duration)
+            continue
+        # Overflow, or an entry this reader cannot place: unknown from its
+        # start, or the whole track when even that is unusable.
+        at = min((a for a, _ in extents), default=Fraction(0)) if at is None else at
+        unknown = [(max(a, at), b) for a, b in present if b > at]
+        present = [(a, min(b, at)) for a, b in present if a < at]
+        complete = False
+        break
+    return Presence(_owned(present, ownership), _owned(unknown, ownership), dropped, complete)
+
+
+# D52.2: absorbs floating-point noise in stored times before taking the next sample.
+EPSILON = Fraction(1, 1_000_000)
+
+
+def samples(windows, rate=16000):
+    """Half-open ms windows as [ceil(a*rate/1000 - eps), ceil(b*rate/1000 - eps)) sample ranges."""
+    return [[math.ceil(Fraction(edge) * rate / 1000 - EPSILON) for edge in window] for window in windows]

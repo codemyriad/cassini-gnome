@@ -1,26 +1,26 @@
-tree 9d1fe8680aae8657a052c61e00a7aa447592c21e
-parent c173f8012ccafc6b84376700f996c3344e110f39
-parent 014c56e014f79aca0d4addbed24c40cd7ec91711
-author Silvio Tomatis <silviot@gmail.com> 1793525174 +0100
-committer GitHub <noreply@github.com> 1793525174 +0100
+tree 7eb3951a6dfba043f749e3e22dfe4a0acde09680
+parent c6f5fc72bfd9e31fc9db32c9f06d802f45baf168
+parent 534ec9bc0ebd217639f82aa64a3672a9dcac7c1b
+author Silvio Tomatis <silviot@gmail.com> 1793552145 +0100
+committer GitHub <noreply@github.com> 1793552145 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq5wW2CRC1aQ7uu5UhlAAAyBsQAJgCZ0m1YeW2sfd3CFgcEMy7
- diSbfm/mClPQIqIitJjen12lQsKYdPt0Ya9K73Tzp8VK+eL+C68xBvW18Ko15DC7
- TZ4mbcB01npet+Tg2BWoA18ZwhD8b9raC98sAuSA8xwQFdGSGIlnAnRu3BG9AOK1
- 04LldkTxJSO84KGb/vZ5dE1Wogr/Ra5Weet4xjFe3rCTCTzGtzW1vAjSIFd6xKam
- j2Rrnnxz+Clymydm/0W57nHh7brr+2hR9yNxrpvuRFmdopLzXd7kCwaskd4PqoBB
- lVbVf2wOmcLcgxdNmAbW/9IfzZfPXY5eUXISUuowsGtFixndrcDrIPmmg62c2mrm
- 2ueAnEnsFmbbwS/JSaG+EVG7BTF22TveFoH5+GTV+cyXbKZJsJCQ1joX7GWv8F8S
- AB7iqqbVzGS2OC+v2ut+yBXOhzCWyDX2ejyNlXyTabQNjrG9wzXdwO/5/VBuN6PP
- tY33fCNrMjoUXskyRYLzCV3ayn/bPso52Wq7YE4710ajuguUWykt/DfzJzcpvEkh
- 9F9FN1RoJp7Lu6m7EuTrF72DtnwG03FLbRiqdxTLJ3pQyd5N+zLVqW7cINolgSrU
- cxFxzN0wL0kvmf9TG653holKPeZ9W3wKq25kcCdbwuBwQSB+jlTMTZI833QjcJEP
- pArHK4q54ei0OKBTl8zO
- =9Vop
+ wsFcBAABCAAQBQJq528RCRC1aQ7uu5UhlAAASYgQAK1jGw34zFyLfMfru6rA6AO9
+ KQPlWL2hpYgW2kHo0eiqkl4KC8TzGJa1pU6LFG3v2vTEgtgVe77gfzSQFYn0b2b2
+ ShuXIzkFFAqtdfEheTzt5TfH1ZDnc7Rnq9WBkdLKRMbuyNM6jLtMCq5XmpOWxmTk
+ LDb7W1R5HtcTe2uMIsqkC2sVU8MGKyGod5vxWm1OQYr9ueztrSm922uW4dVZb7OH
+ VSYjP4gNy407cEvM36y+KbNtx9ilgA8CpsGLvwmB4ebFLPLVkUNtauOe9BQMMcGb
+ dVt25luhagG0ANZgu3q7M5oJDYmteR9QNDXsEISOwJ9ctJcphfsXd2hy91trSPJf
+ VlQrZRwKEKAnK2I84BrhRZBwUrw7BCpFZy6kTBkeZk/BKm8FCWc54njfv8ZmPDMC
+ a1KIxXqbXaVbIfogGfefE1ofmnPC/lft6Kpfb53PP9fiqdVc7al2xpEOLcrA+gbg
+ iphMhnVsCaHAR9+3wzq2A5ED++iAWYXRFOX/QFsVJYsUImtWt/gGzp3O7ii7qcb+
+ LduBjkTnIeHwJHlHMS+BtzcQzmqMAiTFAdWUdefBrY52MaCgFFe8hzOpG4imQq3p
+ nCdP9HGb+Oqolbz6gyqDLLWoWULOb5D7wVD+V8QuxFhN2vZujnqW8KILD5CxvzvP
+ CtzI6TX5cbilo7pkOuBC
+ =VCxT
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #28 from codemyriad/fix/source-retirement-isolation
+Merge pull request #29 from codemyriad/feat/gap-ranges
 
-Keep source I/O retries from stopping healthy capture
+Record gap ranges and define presence for every writer (D52.2, P7)

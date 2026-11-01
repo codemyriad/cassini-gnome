@@ -171,6 +171,73 @@
             "minimum": 0,
             "maximum": 2147483629
           },
+          "gaps": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "maxItems": 1001,
+            "items": {
+              "type": "object",
+              "required": [
+                "atMs",
+                "kind"
+              ],
+              "properties": {
+                "atMs": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 86460000
+                },
+                "durationMs": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 86460000
+                },
+                "frames": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483629
+                },
+                "kind": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32
+                }
+              },
+              "additionalProperties": true,
+              "if": {
+                "properties": {
+                  "kind": {
+                    "const": "overflow"
+                  }
+                }
+              },
+              "then": {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "durationMs"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "frames"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "else": {
+                "required": [
+                  "durationMs",
+                  "frames"
+                ]
+              }
+            },
+            "$comment": "D52.2/P7: half-open, sorted, never coalesced absence ranges on the session timeline. Missing or null means unknown; [] means none. Readers treat every kind as absence; overflow (atMs and kind only) means unknown to the track end."
+          },
           "captureOutcome": {
             "enum": [
               "captured",

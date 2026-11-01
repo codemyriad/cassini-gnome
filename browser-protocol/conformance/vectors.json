@@ -819,7 +819,8 @@
       "x": {
         "kind": "local",
         "sampleRate": 48000,
-        "channels": 1
+        "channels": 1,
+        "gapFrames": 4798
       }
     }
   },
@@ -1942,7 +1943,13 @@
       {
         "type": "stopped"
       }
-    ]
+    ],
+    "state": "interrupted",
+    "tracks": {
+      "x": {
+        "gapFrames": 480000
+      }
+    }
   },
   {
     "name": "delta-exactly-negative-tolerance",

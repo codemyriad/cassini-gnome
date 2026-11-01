@@ -96,11 +96,14 @@ def test_anchors_map_piecewise_linearly_and_extrapolate_with_the_nearest_valid_s
     assert mixdown.Mapping(span(anchors=anchors[:1])).knots is None
 
 
+GAPS = [dict(atMs=250, durationMs=1000, frames=48000, kind="input")]
+
+
 def test_x_tracks_keep_the_span_map_and_zero_sample_sources_are_reported(tmp_path):
     audio = track_audio(RATE, 1.0)
     tracks = [
         dict(id="mic", kind="microphone", file="track-mic.wav", sampleRate=RATE, channels=1, frames=999999,
-             startOffsetMs=0, gapFrames=48000, write={"track-mic.wav": (audio, RATE, 1)}),
+             startOffsetMs=0, gapFrames=48000, droppedFrames=7, gaps=GAPS, write={"track-mic.wav": (audio, RATE, 1)}),
         dict(id="tab", kind="tab", sourceTrackId="t1", file="track-tab.wav", sampleRate=RATE, channels=1, frames=0,
              startOffsetMs=None, write={"track-tab.wav": (np.zeros(0), RATE, 1)}),
     ]  # fmt: skip
@@ -109,11 +112,29 @@ def test_x_tracks_keep_the_span_map_and_zero_sample_sources_are_reported(tmp_pat
     assert [s.track for s in timeline.spans] == ["mic"] and timeline.empty == ["tab"]
     assert timeline.spans[0].info.frames == RATE  # frames on disk, not the stale session.json count (G25)
     assert timeline.tracks == [
-        dict(id="mic", kind="microphone", spans=[dict(file="track-mic.wav", sampleRate=RATE, channels=1, frames=RATE,
-             startOffsetMs=0, gapMaterialized=True)]),
+        # D52.2: absence facts travel with the logical track entry.
+        dict(id="mic", kind="microphone", gaps=GAPS, gapFrames=48000, droppedFrames=7, spans=[dict(file="track-mic.wav",
+             sampleRate=RATE, channels=1, frames=RATE, startOffsetMs=0, gapMaterialized=True)]),
         dict(id="tab", kind="tab", sourceTrackId="t1", spans=[dict(file="track-tab.wav", sampleRate=RATE, channels=1,
              frames=0, startOffsetMs=None)]),
     ]  # fmt: skip
+
+
+def test_presence_reads_the_published_track_entries_like_the_session(tmp_path):
+    from cassini_talk.source_ownership import presence, samples
+
+    audio = track_audio(RATE, 4.0)
+    gaps = [dict(atMs=2000, durationMs=1000, frames=48000, kind="jump")]
+    tracks = [
+        dict(id="mic", kind="microphone", file="track-mic.wav", sampleRate=RATE, channels=1, frames=4 * RATE,
+             startOffsetMs=1000, gapFrames=48000, gaps=gaps, write={"track-mic.wav": (audio, RATE, 1)}),
+    ]  # fmt: skip
+    _sid, directory = new_session(tmp_path, tracks)
+    manifest = json.loads((directory / "session.json").read_text())
+    (published,) = mixdown.session_spans(directory, manifest).tracks
+    assert "startOffsetMs" not in published and published["gaps"] == gaps
+    expected = [[16000, 32000], [48000, 80000]]
+    assert samples(presence(published).present) == samples(presence(manifest["tracks"][0]).present) == expected
 
 
 def test_stereo_spans_are_averaged_and_tracks_summed_without_normalisation(tmp_path):

@@ -149,6 +149,8 @@ class Timeline:
 
 
 SPAN_COPY = ("codec", "decodedRate", "sourceFile", "clockAnchors")
+# D52.2: the file keeps absence facts with each logical track.
+TRACK_COPY = ("kind", "sourceTrackId", "gaps", "gapFrames", "droppedFrames")
 
 
 def session_spans(directory, manifest):
@@ -198,7 +200,7 @@ def session_spans(directory, manifest):
             )
         if map_spans:
             entry = dict(id=track["id"])
-            entry.update({key: track[key] for key in ("kind", "sourceTrackId") if key in track})
+            entry.update({key: track[key] for key in TRACK_COPY if key in track})
             records.append(dict(entry, spans=map_spans))
         if found:
             spans.extend(found)

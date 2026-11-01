@@ -9,7 +9,7 @@ owns the matching schema update.
 The record is version 1. `sources` copies the protocol's complete captureOutcome
 source rows (including never-opened/refused sources); `tracks` retains id, kind,
 label, sourceTrackId, frames, sampleRate, channels, startOffsetMs, endOffsetMs,
-gapFrames, droppedFrames, problemKind, captureOutcome and receivedFrames when
+gapFrames, droppedFrames, gaps, problemKind, captureOutcome and receivedFrames when
 present. `events` copies S-6 capture events, including the terminal reason.
 Optional problemKind retains the capture-wide loss classification. No voiceprint,
 match vector, device identity, source WAV path or source URL is included.
@@ -61,3 +61,16 @@ schema permits additive fields; older apps preserve it. Failed/interrupted jobs
 never claim a new completed separation. The corresponding real FIFO queue tests
 cover overlapping and ordinary input and stale-fact removal. Mac can mirror this
 small diagnostic fact without inferring it from names.
+
+## D52.2 gap ranges (G6)
+
+Every new track writes `gaps: [{atMs, durationMs, frames, kind}]`, one entry per padding
+write, as defined in the pinned browser-protocol SPEC "Gap ranges and presence" and its
+`conformance/gaps/` vectors (replayed by tests/test_gap_ranges.py through the real writers).
+Browser padding is `jump`, native host-time gaps are `input` (at the host-clock start of
+the gap), and selection leads are `prefix`, which never count in gapFrames. Legacy browser
+sessions record them too. Only a `jump`/`input` write of one second or more sets
+problemKind `gap`; the Library reads older folders without `gaps` as before. The ranges are
+copied into captureRecord tracks and into `x["codemyriad.io"].tracks[]` with gapFrames and
+droppedFrames. `source_ownership.presence()` turns them into present/unknown windows without
+reading PCM; recognition consumers adopt it with G9/G10.

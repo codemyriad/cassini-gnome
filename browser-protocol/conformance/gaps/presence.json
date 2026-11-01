@@ -1,0 +1,305 @@
+{
+ "version": 1,
+ "decision": "D52.2",
+ "note": "Hand-written presence vectors: stored track facts in, half-open 16 kHz session sample ranges out. A window [a,b) ms covers samples [ceil(16a), ceil(16b)). See README.md.",
+ "cases": [
+  {
+   "name": "gap-is-absent-half-open",
+   "track": {
+    "startOffsetMs": 1000,
+    "sampleRate": 48000,
+    "frames": 192000,
+    "gaps": [
+     {
+      "atMs": 2000,
+      "durationMs": 1000,
+      "frames": 48000,
+      "kind": "jump"
+     }
+    ]
+   },
+   "expected": {
+    "present": [
+     [
+      16000,
+      32000
+     ],
+     [
+      48000,
+      80000
+     ]
+    ],
+    "unknown": []
+   }
+  },
+  {
+   "name": "zero-pcm-is-present",
+   "note": "The WAV may hold only zeros; presence never reads PCM.",
+   "track": {
+    "startOffsetMs": 0,
+    "sampleRate": 48000,
+    "frames": 48000,
+    "gaps": []
+   },
+   "expected": {
+    "present": [
+     [
+      0,
+      16000
+     ]
+    ],
+    "unknown": []
+   }
+  },
+  {
+   "name": "missing-gaps-key-is-unknown",
+   "track": {
+    "startOffsetMs": 0,
+    "sampleRate": 48000,
+    "frames": 48000
+   },
+   "expected": {
+    "present": [],
+    "unknown": [
+     [
+      0,
+      16000
+     ]
+    ]
+   }
+  },
+  {
+   "name": "overflow-is-unknown-to-the-end",
+   "track": {
+    "startOffsetMs": 0,
+    "sampleRate": 48000,
+    "frames": 480000,
+    "gaps": [
+     {
+      "atMs": 1000,
+      "durationMs": 500,
+      "frames": 24000,
+      "kind": "jump"
+     },
+     {
+      "atMs": 4000,
+      "kind": "overflow"
+     }
+    ]
+   },
+   "expected": {
+    "present": [
+     [
+      0,
+      16000
+     ],
+     [
+      24000,
+      64000
+     ]
+    ],
+    "unknown": [
+     [
+      64000,
+      160000
+     ]
+    ]
+   }
+  },
+  {
+   "name": "intersected-with-ownership",
+   "track": {
+    "startOffsetMs": 0,
+    "sampleRate": 48000,
+    "frames": 480000,
+    "gaps": [
+     {
+      "atMs": 2000,
+      "durationMs": 1000,
+      "frames": 48000,
+      "kind": "jump"
+     }
+    ]
+   },
+   "ownership": [
+    [
+     0,
+     6000
+    ]
+   ],
+   "expected": {
+    "present": [
+     [
+      0,
+      32000
+     ],
+     [
+      48000,
+      96000
+     ]
+    ],
+    "unknown": []
+   }
+  },
+  {
+   "name": "prefix-is-absent",
+   "track": {
+    "startOffsetMs": 2000,
+    "sampleRate": 48000,
+    "frames": 120000,
+    "gaps": [
+     {
+      "atMs": 2000,
+      "durationMs": 1500,
+      "frames": 72000,
+      "kind": "prefix"
+     }
+    ]
+   },
+   "expected": {
+    "present": [
+     [
+      56000,
+      72000
+     ]
+    ],
+    "unknown": []
+   }
+  },
+  {
+   "name": "unknown-kind-is-absence",
+   "track": {
+    "startOffsetMs": 0,
+    "sampleRate": 48000,
+    "frames": 96000,
+    "gaps": [
+     {
+      "atMs": 500,
+      "durationMs": 250,
+      "frames": 12000,
+      "kind": "suspended-v9"
+     }
+    ]
+   },
+   "expected": {
+    "present": [
+     [
+      0,
+      8000
+     ],
+     [
+      12000,
+      32000
+     ]
+    ],
+    "unknown": []
+   }
+  },
+  {
+   "name": "sub-millisecond-edges-own-the-start-sample",
+   "track": {
+    "startOffsetMs": 0,
+    "sampleRate": 48000,
+    "frames": 96000,
+    "gaps": [
+     {
+      "atMs": 1000.0625,
+      "durationMs": 100,
+      "frames": 4800,
+      "kind": "jump"
+     }
+    ]
+   },
+   "expected": {
+    "present": [
+     [
+      0,
+      16001
+     ],
+     [
+      17601,
+      32000
+     ]
+    ],
+    "unknown": []
+   }
+  },
+  {
+   "name": "non-integer-edges-take-the-next-sample",
+   "track": {
+    "startOffsetMs": 0,
+    "sampleRate": 48000,
+    "frames": 96000,
+    "gaps": [
+     {
+      "atMs": 1000.03,
+      "durationMs": 100,
+      "frames": 4800,
+      "kind": "jump"
+     }
+    ]
+   },
+   "expected": {
+    "present": [
+     [
+      0,
+      16001
+     ],
+     [
+      17601,
+      32000
+     ]
+    ],
+    "unknown": []
+   }
+  },
+  {
+   "name": "float-noise-does-not-move-a-boundary",
+   "note": "125.43750000000001 is 6021/48000*1000 in binary floating point; exactly 2007/16.",
+   "track": {
+    "startOffsetMs": 0,
+    "sampleRate": 48000,
+    "frames": 48000,
+    "gaps": [
+     {
+      "atMs": 125.43750000000001,
+      "durationMs": 20,
+      "frames": 960,
+      "kind": "jump"
+     }
+    ]
+   },
+   "expected": {
+    "present": [
+     [
+      0,
+      2007
+     ],
+     [
+      2327,
+      16000
+     ]
+    ],
+    "unknown": []
+   }
+  },
+  {
+   "name": "null-gaps-is-unknown",
+   "track": {
+    "startOffsetMs": 0,
+    "sampleRate": 48000,
+    "frames": 48000,
+    "gaps": null
+   },
+   "expected": {
+    "present": [],
+    "unknown": [
+     [
+      0,
+      16000
+     ]
+    ]
+   }
+  }
+ ]
+}

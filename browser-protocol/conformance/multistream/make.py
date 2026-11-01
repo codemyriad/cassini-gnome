@@ -3,7 +3,7 @@
 
 16 kHz originals are repeated three times per sample, attenuated by 1/2 and
 placed at 48 kHz. This is a fixture carrier, not a recognition resampler.
-Presence/gap annotations here are fixture hints for later P7 mask work.
+Gap ranges follow D52.2 (P7); presenceWindows are generator hints only.
 """
 import argparse
 from array import array
@@ -48,11 +48,16 @@ def metadata(case):
                    labelSource='browser' if 'sourceTrackId' in track else 'device',sampleRate=48000,channels=1,
                    file='track-'+track['id']+'.wav',frames=frames,startOffsetMs=track['startMs'],endOffsetMs=track['endMs'],ended=True)
         if 'sourceTrackId' in track:value['sourceTrackId']=track['sourceTrackId']
-        if 'gaps' in track:
-            value['gapFrames']=sum(g['durationMs']*48 for g in track['gaps'])
-            value['gaps']=track['gaps']
+        # D52.2: a new writer always records gaps; [] means none. Prefixes are not gapFrames.
+        value['gaps']=track.get('gaps',[])
+        value['gapFrames']=sum(g['frames'] for g in value['gaps'] if g['kind']!='prefix')
         tracks.append(value)
-    return dict(version=1,id=case['id'],createdAt=case['createdAt'],title=case['title'],source='chromium',state='completed',tracks=tracks,events=case['events'])
+    document=dict(version=1,id=case['id'],createdAt=case['createdAt'],title=case['title'],source='chromium',state='completed',tracks=tracks,events=case['events'])
+    long=[t for t in tracks if any(g['kind']!='prefix' and g['frames']>=t['sampleRate'] for g in t['gaps'])]
+    if long:
+        document.update(state='interrupted',problemKind='gap',problem=' '.join(
+            f"{t['gapFrames']*1000//t['sampleRate']} ms of {t['kind']} input time was preserved as silence." for t in long))
+    return document
 
 def make(destination):
     corpus,speech=load()

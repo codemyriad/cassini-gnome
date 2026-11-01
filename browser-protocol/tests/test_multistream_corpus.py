@@ -10,6 +10,8 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('corpus',ROOT/'conformance/multistream/make.py')
 corpus=importlib.util.module_from_spec(spec);spec.loader.exec_module(corpus)
+spec=importlib.util.spec_from_file_location('gaps',ROOT/'conformance/gaps/gaps.py')
+gaps=importlib.util.module_from_spec(spec);spec.loader.exec_module(gaps)
 spec=importlib.util.spec_from_file_location('annotations',ROOT/'conformance/check-session-events.py')
 annotations=importlib.util.module_from_spec(spec);spec.loader.exec_module(annotations)
 
@@ -20,12 +22,15 @@ def shape(case):
     spans=[t for t in tracks if t.get('sourceTrackId')=='source-a'];lengths=[t['endMs']-t['startMs'] for t in spans]
     assert len(spans)>=2 and max(lengths)>=5*min(lengths),'unequal repeated source spans missing'
     assert [e['reason'] for e in case['events'] if e['type']=='othersSource']==['missing','callConnected','lost','restored']
-    assert any(g['kind']=='dropped' and g['durationMs']>0 for t in tracks for g in t.get('gaps',[])),'counted gap missing'
+    assert any(g['kind']=='jump' and g['durationMs']>0 for t in tracks for g in t.get('gaps',[])),'counted gap missing'
     for track in tracks:
         if 'presenceWindows' in track:
             received=sum(b-a for a,b in track['presenceWindows'])
             missing=sum(g['durationMs'] for g in track.get('gaps',[]))
             assert received+missing==track['endMs']-track['startMs'],'presence and gaps disagree'
+            # The D52.2 presence rule over the stored ranges reproduces the generator's windows.
+            stored=dict(startOffsetMs=track['startMs'],sampleRate=48000,frames=(track['endMs']-track['startMs'])*48,gaps=track.get('gaps',[]))
+            assert gaps.presence(stored)['present']==[[a*16,b*16] for a,b in track['presenceWindows']],'stored gaps disagree with presence'
     assert any(t.get('bleed',{}).get('db')==-35 for t in tracks),'bleed missing'
 
 class CorpusTests(unittest.TestCase):
@@ -33,6 +38,10 @@ class CorpusTests(unittest.TestCase):
         data,speech=corpus.load();self.assertEqual(len(data['sessions']),2)
         first=data['sessions'][0];shape(first)
         for session in data['sessions']:annotations.validate(corpus.metadata(session))
+        document=corpus.metadata(first)
+        self.assertEqual((document['state'],document['problemKind']),('interrupted','gap'))
+        self.assertTrue(all(isinstance(t['gaps'],list) for t in document['tracks']))
+        self.assertEqual({t['id']:t['gapFrames'] for t in document['tracks'] if t['gapFrames']},{'a-long':336000,'b-return':96000})
         self.assertTrue(all(any(samples) for samples in speech.values()))
         mic=first['tracks'][0];remote=first['tracks'][-1]
         self.assertTrue(any(corpus.sample(mic,t/48,speech) and corpus.sample(remote,t/48,speech) for t in range(60000*48,61000*48,173)))
