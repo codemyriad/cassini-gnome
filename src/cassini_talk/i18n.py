@@ -2,6 +2,7 @@
 """UI language selection, independent of LC_TIME and LC_NUMERIC (D50)."""
 
 import gettext as _gettext
+import locale
 import os
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -76,6 +77,20 @@ def ngettext(singular, multiple, count):
     return _messages(language(), _localedir or str(Path(__file__).parents[2] / "locale")).ngettext(
         singular, multiple, count
     )
+
+
+def number(value):
+    """Keep numeric precision, using LC_NUMERIC's separators and grouping."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+        return value
+    if isinstance(value, int):
+        digits = str(value)
+    else:
+        decimal = Decimal(str(value))
+        if not decimal.is_finite():
+            return str(value)
+        digits = format(decimal, "f")
+    return locale.localize(digits, grouping=True)
 
 
 def plural_category(value, *, lang=None):

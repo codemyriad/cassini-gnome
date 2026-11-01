@@ -11,9 +11,11 @@ import math
 import os
 import sys
 from dataclasses import dataclass
+from decimal import Decimal
 from fractions import Fraction
 
 from . import ux_formats as fmt
+from .i18n import plural_category
 from .library_files import regular
 from .recording_session import strict_json
 from .session_events import read_events
@@ -169,7 +171,9 @@ def _method(tracks, session, capture_source):
     if browser:
         count = len({t.source_track_id or t.id for t in browser})
         sources.append(text("details.source.browser"))
-        method = text("details.method.stream.one" if count == 1 else "details.method.stream.other", n=count)
+        method = text(
+            "details.method.stream.one" if plural_category(count) == "one" else "details.method.stream.other", n=count
+        )
     else:
         method = ""
     if "system" in kinds:
@@ -367,12 +371,12 @@ def _counter(tracks, field):
     frames = sum(t[field] for t in rows)
     if all(type(t.get("sampleRate")) is int and 8000 <= t["sampleRate"] <= 192000 for t in rows):
         milliseconds = sum(t[field] * 1000 / t["sampleRate"] for t in rows)
-        duration = text("details.duration.seconds", n=f"{milliseconds / 1000:g}")
+        duration = text("details.duration.seconds", n=Decimal(f"{milliseconds / 1000:g}"))
     else:
         duration = text("details.health.durationUnknown")
     result = text(
-        "details.health.counter.one" if frames == 1 else "details.health.counter.other",
-        frames=f"{frames:,}",
+        "details.health.counter.one" if plural_category(frames) == "one" else "details.health.counter.other",
+        frames=frames,
         duration=duration,
     )
     return text("details.health.partialCounter", value=result) if len(rows) != len(tracks) else result
@@ -418,7 +422,7 @@ def _wall_time(value):
     parts = [text("details.duration.hours", n=hours)] if hours else []
     if minutes:
         parts.append(text("details.duration.minutes", n=minutes))
-    parts.append(text("details.duration.seconds", n=f"{remainder / 1000:g}"))
+    parts.append(text("details.duration.seconds", n=Decimal(f"{remainder / 1000:g}")))
     return " ".join(parts)
 
 
@@ -451,7 +455,9 @@ def _separation(value):
         return UNKNOWN
     name = text("details.model.nemotron") if model == "nemotron-3-diarization-int8" else model
     result = text(
-        "details.separation.voices.one" if count == 1 else "details.separation.voices.other", model=name, n=count
+        "details.separation.voices.one" if plural_category(count) == "one" else "details.separation.voices.other",
+        model=name,
+        n=count,
     )
     result += f"\n{model}@{revision}"
     if value.get("reused") is True:

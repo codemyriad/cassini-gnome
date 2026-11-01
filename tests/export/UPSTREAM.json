@@ -3,7 +3,7 @@
   "format": "867f68c56292ada9464b8516dc2797003d5af9eb",
   "sha256": {
     "MARKDOWN.md": "15d0ab1b00a94ecb4b81eccec48a370fe9cdb3e2a332d98a35770817092545c7",
-    "markdown-cases.json": "3e4bfb01771e3f82a5d289026915454a8e17dc75095cfe4f9bbf6a16b06d7d3e",
+    "markdown-cases.json": "043029af4afaa0654915ed62ed133c1d766b734af92703c3e7e39ae24808ed32",
     "export-vectors.json": "698e445c11c1c81c333f54074efd6770a06bbb353559db6527d5c115b8cc30ba",
     "budget-review.md": "a25e0ee9bd9f49d2184b8a6705aaa80aa9550a79e5f5d80099d5dcfcab289f67",
     "cassini-read-pure.py": "b4a4c94b9ec9682bc1cffb2fb200ce28c9730f12d4f7a71a45ece2abe08b37ce",
@@ -13,7 +13,11 @@
   "additionalSources": {
     "markdown-cases.json": {
       "source": "roy:/mnt/ai/cassini/i18n/pending/markdown-cases.json",
-      "decision": "D50.2"
+      "publishedSha256": "3e4bfb01771e3f82a5d289026915454a8e17dc75095cfe4f9bbf6a16b06d7d3e",
+      "decision": "D50.3",
+      "amendment": "Older English cases explicitly use uiLanguage=en and the same DATE_LINE placeholder as fr/pt-PT. Only date lines/notes change; transcript/names/notes remain exact. Proposed for coordinator publication with PR145.",
+      "amendmentSource": "roy:/mnt/ai/cassini/i18n/pending/markdown-cases.D50.3.candidate.json",
+      "pendingPublication": true
     }
   }
 }

@@ -4,7 +4,7 @@
 import json
 from pathlib import Path
 
-from .i18n import language, plural_category
+from .i18n import language, number, plural_category
 
 ENTRIES = {entry["id"]: entry for entry in json.loads(Path(__file__).with_name("strings.json").read_text())["entries"]}
 CATALOG = {identifier: entry["en"] for identifier, entry in ENTRIES.items()}
@@ -13,7 +13,7 @@ CATALOG = {identifier: entry["en"] for identifier, entry in ENTRIES.items()}
 def text(identifier, **values):
     entry = ENTRIES[identifier]
     localized = entry.get("l10n", {}).get(language(), {})
-    return localized.get("text", entry["en"]).format(**values)
+    return localized.get("text", entry["en"]).format(**{key: number(value) for key, value in values.items()})
 
 
 PLURALS = {identifier: entry["plural"] for identifier, entry in ENTRIES.items() if "plural" in entry}
@@ -22,4 +22,6 @@ PLURALS = {identifier: entry["plural"] for identifier, entry in ENTRIES.items() 
 def plural(identifier, n, **values):
     entry = ENTRIES[identifier]
     forms = entry.get("l10n", {}).get(language(), {}).get("plural", entry["plural"])
-    return forms.get(plural_category(n), forms["other"]).format(n=n, **values)
+    return forms.get(plural_category(n), forms["other"]).format(
+        n=number(n), **{key: number(value) for key, value in values.items()}
+    )

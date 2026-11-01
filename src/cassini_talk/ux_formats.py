@@ -8,23 +8,9 @@ from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
+from . import calendar_formats
+from .i18n import number
 from .strings import plural, text
-
-MONTHS = (
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-)
-WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
 def _seconds(ms):
@@ -113,7 +99,12 @@ def day_group(at_ms, *, now_ms, tz):
     if relative:
         return relative
     year = f" {at.year}" if at.year != now.year else ""
-    return text("format.dayGroup", weekday=at.strftime("%A"), dayOfMonth=at.day, month=at.strftime("%B")) + year
+    return (
+        text(
+            "format.dayGroup", weekday=calendar_formats.weekday(at), dayOfMonth=at.day, month=calendar_formats.month(at)
+        )
+        + year
+    )
 
 
 def row_time(at_ms, *, tz):
@@ -149,7 +140,7 @@ def search_date(at_ms, *, now_ms, tz):
     if relative:
         return relative
     year = f" {at.year}" if at.year != now.year else ""
-    return text("format.searchDate", dayOfMonth=at.day, month=at.strftime("%B")) + year
+    return text("format.searchDate", dayOfMonth=at.day, month=calendar_formats.month(at)) + year
 
 
 def search_context(at_ms, duration_ms, position_ms, *, now_ms, tz):
@@ -206,11 +197,11 @@ def size(byte_count, *, approx=False):
         count = (Decimal(byte_count) / 1073741824).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
         from .i18n import gettext as _
 
-        value = _("{n} GB").format(n=format(count, "n"))
+        value = _("{n} GB").format(n=number(count))
     return text("format.size.approx", size=value) if approx else value
 
 
 def full_date_time(at_ms, *, tz):
-    """Platform LC_TIME calendar names and short clock, never UI-language guesses."""
+    """UI-language CLDR full date, with the formatting locale's short clock."""
     at = _local(at_ms, tz)
-    return at.strftime("%A %-d %B %Y") + ", " + row_time(at_ms, tz=tz)
+    return calendar_formats.full_date(at) + ", " + row_time(at_ms, tz=tz)

@@ -10,7 +10,9 @@ import sys
 import threading
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -26,6 +28,7 @@ from cassini_talk.recording_session import RecordingSession
 HERE = Path(__file__).parent / "export"
 ASSETS = Path(__file__).parents[1] / "ux/library-vectors/assets"
 MARKDOWN = json.loads((HERE / "markdown-cases.json").read_text())["cases"]
+DATE_WORDS = json.loads((Path(__file__).parent / "i18n/date-lines.json").read_text())
 ENCODES = json.loads((HERE / "export-vectors.json").read_text())["vectors"]
 
 
@@ -42,23 +45,23 @@ def test_shared_markdown_golden(case):
         from cassini_talk.ux_formats import meeting_duration
 
         value = case["input"]
+        local = datetime.fromtimestamp(value["startMs"] / 1000, ZoneInfo(value["tz"]))
         try:
             from gi.repository import GLib
         except ImportError:
-            from datetime import datetime
-            from zoneinfo import ZoneInfo
-
             # The core profile deliberately has no GI; libc is a platform
             # formatter too. The golden labels/content still run in full.
-            date = datetime.fromtimestamp(value["startMs"] / 1000, ZoneInfo(value["tz"]))
-            formatted = date.strftime("%A %-d %B %Y, %H:%M")
+            clock = local.strftime("%H:%M")
         else:
             date = GLib.DateTime.new_from_unix_utc(value["startMs"] // 1000).to_timezone(
                 GLib.TimeZone.new_identifier(value["tz"])
             )
-            formatted = date.format("%A %-d %B %Y, %H:%M")
+            clock = date.format("%H:%M")
         with using_language(value["uiLanguage"]):
-            expected = expected.replace("{DATE_LINE}", formatted + " · " + meeting_duration(value["durationMs"]))
+            formatted = DATE_WORDS[local.date().isoformat()][value["uiLanguage"]] + ", " + clock
+            if value.get("durationMs") is not None:
+                formatted += " · " + meeting_duration(value["durationMs"])
+            expected = expected.replace("{DATE_LINE}", formatted)
     assert markdown(case["input"]).encode() == expected.encode()
 
 

@@ -3,7 +3,7 @@
 <component type="desktop-application">
   <id>@APP_ID@</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>GPL-3.0-or-later AND Apache-2.0 AND MIT</project_license>
+  <project_license>GPL-3.0-or-later AND Apache-2.0 AND MIT AND Unicode-3.0</project_license>
 
   <name translate="no">@APP_NAME@</name>
   <summary>Read along with meeting recordings</summary>
