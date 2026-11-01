@@ -71,3 +71,19 @@ another tab, and verifies explicit terminal reasons through the fixture writer.
 The fake-control driver does not prove desktop fallback or2s/120s real app timers;
 those require the desktop's own adoption tests. Unit cases keep legacy loss behavior,
 late old-document events, subframe bounds and invalid Stop side effects covered.
+
+## D52 multi-stream wave 1
+
+`python3 -m unittest discover -s tests -p "test_*.py"` checks the hand-written
+lifecycle, outcome and half-open ownership vectors, actual generated public-speech
+WAVs, per-source refusals, UTF-8 identity bounds and schema/pinning integrity.
+The corpus test mutates presence/gaps and source ownership to prove the guards
+fail; overlap bleed is checked against the independently pinned speech carrier.
+
+`npm test` includes injected-clock retry/long-suspension cases and real Chromium
+pre-join, source-switch, call-generation, worker-recovery and independent-session
+cases. A receiver switch waits for the actual replacement waveform with unchanged
+sample, power and bleed thresholds. Call-generation tests reuse a receiver,
+exclude late old peers, and preserve intentional `callChanged` retirement.
+Run only with a private audio server. Network-isolated containers need a private
+bridge with a route for ICE, not a desktop audio/bus/home mount.

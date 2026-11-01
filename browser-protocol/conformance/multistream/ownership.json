@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "note": "Hand-written half-open othersSource ownership. Apply to audio placement before recognition/mixdown/export, never as a display-time transcript rule.",
+  "cases": [
+    {
+      "name": "D49-call-connected-with-two-seconds-of-physical-overlap",
+      "events": [{"atMs":0,"type":"selection","me":true,"others":true,"reason":"start"},{"atMs":0,"type":"othersSource","source":"system","reason":"missing"},{"atMs":6000,"type":"othersSource","source":"browser","reason":"callConnected"}],
+      "tracks": [{"id":"system","kind":"system","startMs":0,"endMs":7000},{"id":"browser","kind":"remote","startMs":5000,"endMs":10000}],
+      "expected": {"system":[[0,6000]],"browser":[[6000,10000]]},
+      "ownershipAt": [{"atMs":0,"ids":["system"]},{"atMs":5000,"ids":["system"]},{"atMs":5999.999,"ids":["system"]},{"atMs":6000,"ids":["browser"]},{"atMs":7000,"ids":["browser"]},{"atMs":10000,"ids":[]}]
+    },
+    {
+      "name": "lost-then-restored-seams",
+      "events": [{"atMs":0,"type":"selection","me":true,"others":true,"reason":"start"},{"atMs":0,"type":"othersSource","source":"browser","reason":"start"},{"atMs":3000,"type":"othersSource","source":"system","reason":"lost"},{"atMs":6000,"type":"othersSource","source":"browser","reason":"restored"}],
+      "tracks": [{"id":"before","kind":"remote","startMs":0,"endMs":4000},{"id":"system","kind":"system","startMs":2000,"endMs":7000},{"id":"after","kind":"application","startMs":5000,"endMs":10000}],
+      "expected": {"before":[[0,3000]],"system":[[3000,6000]],"after":[[6000,10000]]},
+      "ownershipAt": [{"atMs":2999.999,"ids":["before"]},{"atMs":3000,"ids":["system"]},{"atMs":5999.999,"ids":["system"]},{"atMs":6000,"ids":["after"]}]
+    }
+  ]
+}

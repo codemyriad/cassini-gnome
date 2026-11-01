@@ -11,6 +11,7 @@ export class AppControl {
     this.stopped = false;
     this.requests = new Map();
     this.completed = new Set();
+    this.resumeIntents = new Map();
     this.tail = Promise.resolve();
     this.tabTails = new Map();
     this.alarm = alarm => { if (alarm.name === 'cassini-app-control') this.connect(); };
@@ -21,6 +22,7 @@ export class AppControl {
   }
   close() {
     this.stopped = true;
+    this.resumeIntents.clear();
     this.cancel(this.retry);
     this.alarms.onAlarm.removeListener(this.alarm);
     this.alarms.clear('cassini-app-control').catch(() => {});
@@ -46,6 +48,7 @@ export class AppControl {
     if (Date.now() - this.connectedAt >= 30000) this.delay = 1000;
     try { port.disconnect(); } catch {}
     this.requests.clear(); this.completed.clear();
+    this.resumeIntents.clear();
     this.reconnect();
   }
   connect() {
@@ -108,12 +111,31 @@ export class AppControl {
         this.send(port, { type: 'result', requestId: id, ok: false, error: 'Cassini has received too many commands. Reconnect and try again.' });
         return;
       }
-      const validOptions = ['independent', 'captureLocal', 'microphone', 'keepOnNavigation'].every(key => message[key] === undefined || typeof message[key] === 'boolean')
+      const resume = message.resumeCapture;
+      const validResume = resume === undefined || this.capabilities.includes('resume-capture-v1') &&
+        message.action === 'start' && message.independent === true && resume !== null && typeof resume === 'object' &&
+        typeof resume.captureId === 'string' && resume.captureId.length > 0 &&
+        Array.from(resume.captureId).reduce((n,c)=>n+(c.codePointAt(0)<=127?1:c.codePointAt(0)<=2047?2:c.codePointAt(0)<=65535?3:4),0)<=128 &&
+        Number.isSafeInteger(resume.timelineOriginMs) && resume.timelineOriginMs >= 0 && resume.timelineOriginMs <= 253402300799000 &&
+        typeof message.callGeneration === 'string' && message.callGeneration.length > 0;
+      const validOptions = validResume && ['independent', 'captureLocal', 'microphone', 'keepOnNavigation'].every(key => message[key] === undefined || typeof message[key] === 'boolean')
         && (message.keepOnNavigation !== true || (message.action === 'start' && message.independent === true))
+        && (message.callGeneration === undefined || (message.action === 'start' && typeof message.callGeneration === 'string' && message.callGeneration.length > 0 && message.callGeneration.length <= 200))
+        && (message.captureId === undefined || (message.action === 'stop' && typeof message.captureId === 'string' && message.captureId.length > 0 &&
+            Array.from(message.captureId).reduce((n,c)=>n+(c.codePointAt(0)<=127?1:c.codePointAt(0)<=2047?2:c.codePointAt(0)<=65535?3:4),0)<=200))
         && (message.reason === undefined || (message.action === 'stop' &&
             ['user', 'callEnded', 'tabClosed', 'pageGone', 'disk', 'error', 'appQuit'].includes(message.reason)));
-      if (message.independent === true && message.action === 'stop' && Number.isSafeInteger(message.tabId) && message.tabId >= 0 && validOptions)
+      const intent = { message, cancelled: false, cancelledResume: false };
+      if (validOptions && resume !== undefined) this.resumeIntents.set(key, intent);
+      if (message.independent === true && message.action === 'stop' && Number.isSafeInteger(message.tabId) && message.tabId >= 0 && validOptions) {
+        for (const pending of this.resumeIntents.values()) {
+          if (pending.message.tabId === message.tabId && (message.captureId === undefined || message.captureId === pending.message.resumeCapture.captureId)) {
+            pending.cancelled = true;
+            intent.cancelledResume = true;
+          }
+        }
         this.cancelPending(message);
+      }
       const execute = async () => {
         if (port !== this.port) return null;
         try {
@@ -126,7 +148,8 @@ export class AppControl {
               throw new Error('Choose a meeting to record.');
           }
           if (!validOptions) throw new Error('Choose a meeting to record.');
-          const status = await this.command(message);
+          if (intent.cancelled) throw new Error('Recording could not start.');
+          const status = await this.command(message, intent);
           return { type: 'result', requestId: id, ok: true, status };
         } catch (error) {
           return { type: 'result', requestId: id, ok: false, error: String(error.message || error).slice(0, 2000) };
@@ -147,6 +170,7 @@ export class AppControl {
         tail.then(() => { if (this.tabTails.get(message.tabId) === tail) this.tabTails.delete(message.tabId); });
       } else this.tail = tail;
       this.requests.set(key, result);
+      result.finally(() => { if (this.resumeIntents.get(key) === intent) this.resumeIntents.delete(key); });
       result.then(() => { if (port === this.port && this.requests.get(key) === result) this.completed.add(key); });
     }
     result.then(value => { if (value) this.send(port, value); });

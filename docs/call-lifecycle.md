@@ -1,7 +1,7 @@
 # Browser call lifetime (D33)
 
-Shared protocol pin: `6e581d66cfe897f13b05445ae4f67392619e08ff` (merged PR #23).
-Companion 0.2.3 replaces older local installs; no Chrome Web Store packaging or upload is performed.
+Shared protocol pin: `c6f5fc72bfd9e31fc9db32c9f06d802f45baf168` (merged source-isolation PR #28).
+Companion 0.2.8 replaces older local installs; no Chrome Web Store packaging or upload is performed.
 
 The broker owns every independent capture and its Library folder. With the
 `page-state-v1` capability it starts the extension with `keepOnNavigation: true`.
@@ -17,8 +17,10 @@ without a browser instance. Every shared wire case runs both as published and
 with tab-scoped status deltas, checking retained folder/microphone ownership and
 the actual saved end reason.
 
-Each capture has its own monotonic timers. A present page with no sources stops
-after 2 seconds (`callEnded`). A browser-confirmed closed tab stops after 2 seconds
+Each capture has its own monotonic timers. With D52 multistream capability, a
+present page with no sources stops after 30 seconds (`callEnded`), only after
+remote audio was heard; a missing inventory row is unknown. Legacy companions
+retain their two-second call-ended policy. A browser-confirmed closed tab stops after 2 seconds
 (`tabClosed`) without starting computer-sound capture. Navigation or an absent
 page allows 120 seconds for return; after the initial 2 seconds Cassini uses
 computer sound if The others is selected. The stored deadline is checked before
@@ -43,7 +45,8 @@ A replacement worker may report status before its tab inventory; it adopts only
 the tabs it actually reports. Another profile or browser cannot extend the window,
 and retiring an overlapping old worker cannot detach the replacement. A stalled
 or closed audio connection still triggers the ordinary fallback, and an explicit
-closed tab or ended call keeps its 2-second policy. The 120-second return deadline
+closed tab keeps its two-second policy. A confirmed ended call follows the
+capability-specific grace above. The 120-second return deadline
 starts at the original control loss and is never reset by a half-reconnect.
 Recent PCM remains fresh across the instant of control disconnect; the next
 buffer need not have arrived yet. A reported navigation invalidates the old

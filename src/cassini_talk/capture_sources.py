@@ -3,11 +3,11 @@
 
 import math
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
 from uuid import uuid4
 
-from .recording_session import ProtocolError, chunk_plan, source_parameters
+from .recording_session import ProtocolError, chunk_plan, source_parameters, source_track_identity
 
 ME_KINDS = {"microphone", "local"}
 
@@ -39,12 +39,15 @@ class WireTrack:
     kind: str
     rate: int
     channels: int
+    source_track_id: str | None = None
+    ended: bool = False
     start: float | None = None
     frames: int = 0
     recorded: str | None = None
     boundary: float = 0
     available: bool = True
     received_at: float | None = None
+    recorded_at: float | None = None
 
 
 class BrowserStreams:
@@ -57,35 +60,64 @@ class BrowserStreams:
         self.picture = None
 
     def enabled(self, track):
-        return self.browser and track.available and (self.me if track.kind in ME_KINDS else self.others)
+        return (
+            self.browser
+            and track.available
+            and not track.ended
+            and (self.me if track.kind in ME_KINDS else self.others)
+        )
 
     def additions(self, me, others, *, browser=True):
         return sum(
-            t.recorded is None and browser and t.available and (me if t.kind in ME_KINDS else others)
+            t.recorded is None and browser and t.available and not t.ended and (me if t.kind in ME_KINDS else others)
             for t in self.tracks.values()
         )
 
     def _record(self, identifier, track, boundary=None):
         stored = identifier if identifier not in self.session.writers else "span-" + str(uuid4())
-        self.session.add_track(stored, track.label, track.kind, track.rate, track.channels, label_source="browser")
+        source_track_id = track.source_track_id
+        if source_track_id is None and track.kind not in ME_KINDS and track.kind != "system":
+            source_track_id = identifier
+        self.session.add_track(
+            stored,
+            track.label,
+            track.kind,
+            track.rate,
+            track.channels,
+            label_source="browser",
+            source_track_id=source_track_id,
+        )
         track.recorded, track.boundary = stored, boundary or 0
-        if track.kind not in ME_KINDS and track.kind != "system":
-            self.session.manifest["tracks"][-1]["sourceTrackId"] = identifier
+        track.recorded_at = None
         if boundary is not None:
             self.session.manifest["tracks"][-1]["startOffsetMs"] = boundary
         self.session.checkpoint()
 
-    def add_track(self, identifier, label, kind, rate, channels):
+    def add_track(self, identifier, label, kind, rate, channels, *, source_track_id=None):
         label = source_parameters(identifier, label, kind, rate, channels, self.tracks)
-        track = WireTrack(label, kind, rate, channels, available=self.browser)
+        source_track_id = source_track_identity(source_track_id)
+        track = WireTrack(label, kind, rate, channels, source_track_id=source_track_id, available=self.browser)
         if self.enabled(track):
             with self.session.change([]):
                 self._record(identifier, track)
         self.tracks[identifier] = track
 
+    def end_track(self, identifier):
+        track = self.tracks[identifier]
+        try:
+            if track.recorded is not None:
+                self.session.end_track(track.recorded)
+        finally:
+            track.recorded = None
+            track.recorded_at = None
+            track.ended = True
+            track.available = False
+
     def append(self, identifier, data, offset):
         self.picture = None
         track = self.tracks[identifier]
+        if track.ended:
+            raise ProtocolError("source", "Audio source has ended")
         start, padding = chunk_plan(track.rate, track.channels, track.frames, track.start, data, offset)
         frames = track.frames + padding + len(data) // (track.channels * 2)
         if frames * track.channels * 2 > 0xFFFFFFFF - 36:
@@ -100,6 +132,7 @@ class BrowserStreams:
             selected, selected_offset = selected_pcm(data, offset, track.rate, track.channels, track.boundary)
             if selected:
                 self.session.append(track.recorded, selected, selected_offset)
+                track.recorded_at = time.monotonic()
                 if self.picture_enabled is not None and self.picture_enabled():
                     record = next(t for t in self.session.manifest["tracks"] if t["id"] == track.recorded)
                     spans = record.get("spans") or [record]
@@ -119,6 +152,9 @@ class BrowserStreams:
     @contextmanager
     def change(self):
         """Roll back wire selection with the owner's event/track transaction."""
+        ledger = self.session.capture_record
+        expectations = {key: row.get("expected", True) for key, row in ledger.seen.items()} if ledger else {}
+        bindings = dict(ledger.bindings) if ledger else {}
         previous = (
             self.me,
             self.others,
@@ -130,6 +166,18 @@ class BrowserStreams:
             yield
         except BaseException:
             self.me, self.others, self.browser, self.selection_at, self.tracks = previous
+            if ledger:
+                for key, expected in expectations.items():
+                    ledger.seen[key]["expected"] = expected
+                ledger.bindings = bindings
+                previous_outcome = self.session.manifest.get("captureOutcome")
+                ledger.finish(self.session.manifest)
+                if not self.session._changing and previous_outcome != self.session.manifest["captureOutcome"]:
+                    # The owner's rollback may already have repaired a renamed
+                    # manifest. Repair its expectations too, preserving the
+                    # original fatal error if this durability retry also fails.
+                    with suppress(OSError):
+                        self.session.checkpoint()
             raise
 
     def select(self, me, others, at, *, browser=True):
@@ -149,3 +197,5 @@ class BrowserStreams:
                     track.recorded = None
                 elif track.recorded is None and self.enabled(track):
                     self._record(identifier, track, at)
+            if self.session.capture_record is not None:
+                self.session.capture_record.select(me=me, others=others, browser=browser)

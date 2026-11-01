@@ -11,7 +11,7 @@ async function until(check) {
   const deadline = Date.now() + 3000;
   while (!check()) { assert.ok(Date.now() < deadline, 'control fixture timed out'); await new Promise(resolve => setImmediate(resolve)); }
 }
-async function setup(sourceCount = 3, previous = {}) {
+async function setup(sourceCount = 3, previous = {}, hostFeatures = [], nativeFactory = null, uuidPrefix = "token-", beforeReady = null) {
   const ports = [], audio = [], alarms = new Map(), timers = new Map(), pages = [];
   const stored = { ...previous }; let timerID = 0, uuid = 0;
   const tabs = new Map([[2, { id: 2, title: 'Meeting B', url: 'https://meet.example/call' }], [99, { id: 99, title: 'Active unrelated page', url: 'https://other.example/' }]]);
@@ -19,10 +19,11 @@ async function setup(sourceCount = 3, previous = {}) {
   const chrome = {
     runtime: { id: 'extension', onConnect: event(), onMessage: event(), getURL: name => 'chrome-extension://extension/' + name,
       getContexts: async () => [], connectNative(name) {
+        if (name === 'io.codemyriad.cassini' && nativeFactory) { const port = nativeFactory(); audio.push(port); return port; }
         const port = { name, sent: [], closed: false, onMessage: event(), onDisconnect: event(),
           postMessage(packet) {
             this.sent.push(JSON.parse(JSON.stringify(packet)));
-            if (name === 'io.codemyriad.cassini') queueMicrotask(() => this.onMessage.emit(packet.type === 'start' ? { type: 'started', path: '/test/Recording-example' } : packet.type === 'stop' ? { type: 'stopped', path: '/test/Recording-example' } : { type: 'ack' }));
+            if (name === 'io.codemyriad.cassini') queueMicrotask(() => this.onMessage.emit(packet.type === 'start' ? { type: 'started', path: '/test/Recording-example', features: hostFeatures.filter(x=>packet.features?.includes(x)) } : packet.type === 'stop' ? { type: 'stopped', path: '/test/Recording-example' } : { type: 'ack' }));
           }, disconnect() { if (!this.closed) { this.closed = true; this.onDisconnect.emit(); } }
         };
         (name === 'io.codemyriad.cassini.control' ? ports : audio).push(port); return port;
@@ -39,12 +40,13 @@ async function setup(sourceCount = 3, previous = {}) {
   };
   const later = (fn, ms) => { const id = ++timerID; timers.set(id, { fn, ms }); return id; };
   const cancel = id => timers.delete(id);
-  const context = vm.createContext({ chrome, URL, crypto: { randomUUID: () => 'token-' + (++uuid) }, queueMicrotask, setTimeout, clearTimeout });
+  const context = vm.createContext({ chrome, URL, TextEncoder, crypto: { randomUUID: () => uuidPrefix + (++uuid), subtle: require("node:crypto").webcrypto.subtle }, queueMicrotask, setTimeout, clearTimeout });
   const extension = path.resolve(__dirname, '../..');
   vm.runInContext(fs.readFileSync(path.join(extension, 'app-control.js'), 'utf8').replace('export class AppControl', 'class AppControl'), context);
   context.controlLater = later; context.controlCancel = cancel;
   const background = fs.readFileSync(path.join(extension, 'background.js'), 'utf8').replace(/^import .*\n/, '').replace('runtime: chrome.runtime, alarms: chrome.alarms,', 'runtime: chrome.runtime, alarms: chrome.alarms, later: controlLater, cancel: controlCancel,');
-  vm.runInContext(background + '\nglobalThis.api={status,controlStatus,appControl,frames,start,stop,meetings};', context);
+  vm.runInContext(background + '\nglobalThis.api={status,controlStatus,appControl,frames,start,stop,meetings,callInfo};', context);
+  beforeReady?.({chrome, api:context.api, frame, tabs});
   await until(() => ports.length && ports[0].sent.some(m => m.type === 'status'));
   function frame(tabId = 2, count = sourceCount, frameId = 0) {
     const port = { name: 'cassini-frame', sender: { id: 'extension', tab: { id: tabId }, frameId }, onMessage: event(), onDisconnect: event(), sent: [],

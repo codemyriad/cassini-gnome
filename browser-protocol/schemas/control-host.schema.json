@@ -51,6 +51,38 @@
         "error",
         "appQuit"
       ]
+    },
+    "captureId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+    },
+    "callGeneration": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "resumeCapture": {
+      "type": "object",
+      "required": [
+        "captureId",
+        "timelineOriginMs"
+      ],
+      "properties": {
+        "captureId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "$comment": "At most128 UTF-8 bytes; opaque active native capture identity."
+        },
+        "timelineOriginMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 253402300799000
+        }
+      },
+      "additionalProperties": true
     }
   },
   "required": [
@@ -115,6 +147,27 @@
         "properties": {
           "action": {
             "const": "stop"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "resumeCapture"
+        ]
+      },
+      "then": {
+        "required": [
+          "independent",
+          "callGeneration"
+        ],
+        "properties": {
+          "independent": {
+            "const": true
+          },
+          "action": {
+            "const": "start"
           }
         }
       }

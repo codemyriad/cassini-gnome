@@ -26,6 +26,8 @@ class BrowserAudioProxy:
         if result is None:
             raise OSError("The browser capture broker disconnected")
         if result.get("type") == "error":
+            if result.get("scope") in ("source", "command"):
+                return result
             raise ProtocolError(result.get("code", "state"), result.get("message", "Browser capture failed"))
         return result
 

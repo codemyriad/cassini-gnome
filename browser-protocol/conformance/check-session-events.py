@@ -35,6 +35,9 @@ def validate(document):
             if event['reason'] == 'restored' and (not others or source is None or
                     source['source'] != 'system' or source['reason'] not in ('missing', 'lost')):
                 raise ValueError('restored needs an enabled others side and a preceding fallback')
+            if event['reason'] == 'callConnected' and (not others or source is None or
+                    source['source'] != 'system' or source['reason'] != 'missing' or event['source'] != 'browser'):
+                raise ValueError('callConnected needs an enabled others side and a preceding missing-browser system stand-in')
             source = event
         elif event['type'] == 'end':
             ended = True

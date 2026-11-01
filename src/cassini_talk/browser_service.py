@@ -22,6 +22,7 @@ from pathlib import Path
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from .call_lifecycle import BROWSER_RETURN_GRACE, CALL_END_GRACE, CONTROL_RECONNECT_GRACE, CallLifecycle
+from .session_events import source_state
 
 MAX_PACKET = 512 * 1024
 # A call the user stopped stays stopped beyond the control link that carried
@@ -202,6 +203,7 @@ class BrowserService:
         self._scheduled_calls = set()
         self._call_lineage = {}
         self._call_versions = {}
+        self._retired_generations = {}
         self._pending_calls = {}
         self._cancelled_captures = {}
         self._cancel_capture_pending = set()
@@ -712,7 +714,6 @@ class BrowserService:
                         result = capture.start(packet)
                     else:
                         result = capture.handle(packet)
-                    send_packet(stream, result)
                 except Exception as error:
                     problem = str(error)
                     code = (
@@ -722,7 +723,16 @@ class BrowserService:
                         if isinstance(error, OSError)
                         else "state"
                     )
-                    send_packet(stream, dict(type="error", code=code, message=str(error)))
+                    # Keep the original failure if its error reply is lost.
+                    with contextlib.suppress(ConnectionError):
+                        send_packet(stream, dict(type="error", code=code, message=str(error)))
+                    break
+                try:
+                    send_packet(stream, result)
+                except ConnectionError:
+                    # PCM/metadata was accepted; losing its acknowledgement
+                    # is transport loss, just like EOF. Preserve the native
+                    # microphone and invoke Q4 rather than ending the meeting.
                     break
         finally:
             if capture is not None:
@@ -766,7 +776,18 @@ class BrowserService:
         received_pages = {}
         browser.status = {
             key: value[key]
-            for key in ("recording", "tabId", "path", "message", "tracks", "stopping", "captureId", "pageState")
+            for key in (
+                "recording",
+                "tabId",
+                "path",
+                "message",
+                "tracks",
+                "stopping",
+                "captureId",
+                "pageState",
+                "callGeneration",
+                "documentGeneration",
+            )
             if key in value
         }
         if "sessions" in value:
@@ -782,17 +803,34 @@ class BrowserService:
                 ):
                     raise ValueError("Invalid recording status")
                 tab = item["tabId"]
+                if self._stale_call_generation(browser, tab, item):
+                    if tab in previous:
+                        states[tab] = dict(previous[tab])
+                    continue
                 if item.get("pageState") in ("present", "navigating", "closed"):
                     received_pages[tab] = item["pageState"]
                 if tab in states or not 0 <= tab <= 9007199254740991:
                     raise ValueError("Invalid or duplicate recording tab")
                 states[tab] = {
                     key: item[key]
-                    for key in ("recording", "tabId", "path", "message", "tracks", "stopping", "captureId", "pageState")
+                    for key in (
+                        "recording",
+                        "tabId",
+                        "path",
+                        "message",
+                        "tracks",
+                        "stopping",
+                        "captureId",
+                        "pageState",
+                        "callGeneration",
+                        "documentGeneration",
+                    )
                     if key in item
                 }
         else:
             tab = value.get("tabId")
+            if type(tab) is int and self._stale_call_generation(browser, tab, value):
+                return
             if type(tab) is int and value.get("pageState") in ("present", "navigating", "closed"):
                 received_pages[tab] = value["pageState"]
             if type(tab) is int and "independent-sessions-v1" in browser.capabilities:
@@ -872,6 +910,8 @@ class BrowserService:
                 # A fast returning status can precede its asynchronous inventory.
                 # The departing document's positive count cannot prove return.
                 browser.meetings[tab] = dict(browser.meetings[tab], sourceCount=0, heard=False)
+                if "multi-stream-v1" in browser.capabilities:
+                    browser.meetings[tab]["sourceCountKnown"] = False
         browser.stop_attempted = {
             (tab, capture_id)
             for tab, capture_id in browser.stop_attempted
@@ -895,6 +935,58 @@ class BrowserService:
                         path, browser.meetings.get(tab, {}).get("title", "Recorded meeting"), value.get("message")
                     )
 
+    def _stale_call_generation(self, browser, tab, value):
+        generation = value.get("callGeneration")
+        capture_id = value.get("captureId")
+        binding = self.call_captures.get((browser.browser_instance or browser.id, tab))
+        if (
+            isinstance(capture_id, str)
+            and capture_id in self._cancelled_captures
+            and binding
+            and binding[0] != capture_id
+        ):
+            return True
+        return (
+            isinstance(generation, str)
+            and (browser.browser_instance or browser.id, tab, generation) in self._retired_generations
+        )
+
+    def _retire_changed_call(self, browser, tab, previous, current):
+        """Fence old PCM now; the worker finalizes without the inventory lock."""
+        instance = browser.browser_instance or browser.id
+        if self._owners().get((instance, tab)) is not browser:
+            return
+        binding = self.call_captures.get((instance, tab))
+        capture_id = binding[0] if binding else browser.states.get(tab, {}).get("captureId")
+        capture = self.captures.get(capture_id)
+        active = (
+            capture_id is not None
+            and capture_id not in self._cancelled_captures
+            and (capture is None or not capture.finished and not capture.stop_requested.is_set())
+        )
+        old_generation = (getattr(capture, "call_generation", None) if active else None) or previous.get(
+            "callGeneration"
+        )
+        new_generation = current.get("callGeneration")
+        old_url = binding[1] if active and binding and binding[1] is not None else previous.get("url")
+        changed = (
+            old_url is not None
+            and old_url != current["url"]
+            or (old_generation is not None and new_generation is not None and old_generation != new_generation)
+        )
+        if not changed:
+            return
+        if old_generation is not None:
+            self._retired_generations[(instance, tab, old_generation)] = None
+            while len(self._retired_generations) > 1024:
+                self._retired_generations.pop(next(iter(self._retired_generations)))
+        identity = (instance, tab, old_url)
+        logical = self._logical_id(identity) if browser.browser_instance is not None else f"{browser.id}:{tab}"
+        self._cancel_call(logical)
+        self._clear_attempt(browser, tab)
+        if active:
+            self._cancel_capture(capture_id, identity, "callEnded")
+
     def update(self, browser, packet):
         with self.lock:
             kind = packet.get("type")
@@ -914,11 +1006,21 @@ class BrowserService:
                         or not value["url"].startswith(("http://", "https://"))
                     ):
                         continue
-                    meetings[value["tabId"]] = {key: value[key] for key in ("tabId", "title", "url", "sourceCount")}
+                    tab = value["tabId"]
+                    if self._stale_call_generation(browser, tab, value):
+                        if tab in browser.meetings:
+                            meetings[tab] = dict(browser.meetings[tab])
+                        continue
+                    meetings[tab] = {key: value[key] for key in ("tabId", "title", "url", "sourceCount")}
+                    for key in ("callGeneration", "documentGeneration"):
+                        generation = value.get(key)
+                        if isinstance(generation, str) and 0 < len(generation.encode("utf-8")) <= 200:
+                            meetings[tab][key] = generation
                     if value.get("pageState") in ("present", "navigating", "closed"):
                         meetings[value["tabId"]]["pageState"] = value["pageState"]
                         browser.page_states[value["tabId"]] = value["pageState"]
                     meetings[value["tabId"]]["heard"] = value.get("heard") is True
+                    meetings[value["tabId"]]["sourceCountKnown"] = value.get("sourceCountKnown", True) is True
                     meetings[value["tabId"]]["title"] = value["title"][:200]
                     meetings[value["tabId"]]["url"] = value["url"][:2048]
                 self._expire_stopped(time.monotonic())
@@ -933,9 +1035,8 @@ class BrowserService:
                         lineage = self._call_lineage.get(key)
                         if lineage is None or browser.connected_at >= lineage[1]:
                             self._call_lineage[key] = (None, browser.connected_at)
-                for tab in browser.meetings.keys() & meetings.keys():
-                    if browser.meetings[tab]["url"] != meetings[tab]["url"]:
-                        self._clear_attempt(browser, tab)
+                for tab, meeting in meetings.items():
+                    self._retire_changed_call(browser, tab, browser.meetings.get(tab, {}), meeting)
                 previous, browser.meetings = browser.meetings, meetings
                 for tab in previous.keys() - meetings.keys():
                     if tab not in browser.status_pages and browser.page_states.get(tab) != "closed":
@@ -1154,6 +1255,8 @@ class BrowserService:
                     reason=reason,
                     preserve_capture=preserve_capture,
                     captures=set(),
+                    captureId=browser.states.get(tab, {}).get("captureId"),
+                    callGeneration=browser.meetings.get(tab, {}).get("callGeneration"),
                     event=threading.Event(),
                     result=None,
                     action=action,
@@ -1200,6 +1303,11 @@ class BrowserService:
             packet = dict(type="command", requestId=request_id, action=action, tabId=tab, mode="tracks")
             if independent:
                 packet.update(independent=True, captureLocal=False, microphone=microphone)
+                if "multi-stream-v1" in browser.capabilities:
+                    if action == "start" and pending.get("callGeneration") is not None:
+                        packet["callGeneration"] = pending["callGeneration"]
+                    elif action == "stop" and pending.get("captureId") is not None:
+                        packet["captureId"] = pending["captureId"]
                 if "page-state-v1" in browser.capabilities:
                     if action == "start":
                         packet["keepOnNavigation"] = True
@@ -1424,6 +1532,7 @@ class BrowserService:
                 )
                 capture.browser_lost = True
                 capture.browser_lost_since = time.monotonic()
+                capture_generation = browser.meetings.get(tab, {}).get("callGeneration")
                 self.captures[capture_id] = capture
                 browser.states[tab] = dict(recording=True, captureId=capture_id, tabId=tab)
                 if browser.browser_instance is not None:
@@ -1441,6 +1550,7 @@ class BrowserService:
                     timelineOriginMs=int(time.time() * 1000),
                     microphone=microphone,
                     title=meeting["title"],
+                    callGeneration=capture_generation,
                 ),
                 others_source="system",
                 reason="missing",
@@ -1615,11 +1725,13 @@ class BrowserService:
                         capture.lifecycle_capable = True
                 if peer is not None and "page-state-v1" in peer[0].capabilities:
                     capture.lifecycle_capable = True
+                if peer is not None and "multi-stream-v1" in peer[0].capabilities:
+                    capture.multistream_capable = True
                 if capture.lifecycle_capable:
                     lifecycle = self._capture_lifecycles.setdefault(key, CallLifecycle())
                     if key not in self._capture_observed and capture.browser_lost and lifecycle.missing is None:
                         lifecycle.missing = capture.browser_lost_since
-                    page, count = None, 0
+                    page, count, meeting = None, 0, {}
                     if peer is not None:
                         state = peer[0].states[peer[1]]
                         meeting = peer[2] or {}
@@ -1667,6 +1779,14 @@ class BrowserService:
                         fallback=capture.browser_lost,
                         others=capture.others,
                         restore_ready=capture.browser_ready,
+                        multistream=capture.multistream_capable,
+                        heard=meeting.get("heard") is True,
+                        inventory_known=peer is not None
+                        and peer[2] is not None
+                        and meeting.get("sourceCountKnown", True),
+                        control_alive=peer is not None,
+                        pcm_live=capture.multistream_capable and capture.browser_ready_since(recorded=True),
+                        initial_missing=source_state(capture.host.session.manifest.get("events")).reason == "missing",
                     )
                     if reconnect is not None and page == "present" and count > 0 and lifecycle.missing is None:
                         self._control_reconnects.pop(key, None)
@@ -1783,7 +1903,7 @@ class BrowserService:
                     self._fallback(identifier, capture)
                 else:
                     capture.fallback()
-            elif action == "restore":
+            elif action in ("restore", "switch:browser:callConnected"):
                 capture.restore()
             else:
                 # Save before waiting for a potentially unreachable extension.
@@ -1812,8 +1932,10 @@ class BrowserService:
 
     @staticmethod
     def _auto_start_ready(browser, meeting):
-        return meeting.get("sourceCount", 0) > 0 and (
-            "call-evidence-v1" not in browser.capabilities or meeting.get("heard") is True
+        return (
+            meeting.get("sourceCountKnown", True) is True
+            and meeting.get("sourceCount", 0) > 0
+            and ("call-evidence-v1" not in browser.capabilities or meeting.get("heard") is True)
         )
 
     def _automatic(self, identifier, action, generation=None, call_version=None):
@@ -2098,6 +2220,9 @@ class BrowserService:
         if browser.browser_instance is None:
             return
         key = (browser.browser_instance, tab)
+        owner = self.captures.get(capture_id)
+        if owner is not None and (owner.finished or capture_id in self._cancelled_captures):
+            return
         previous = self.call_captures.get(key)
         url = (
             previous[1]

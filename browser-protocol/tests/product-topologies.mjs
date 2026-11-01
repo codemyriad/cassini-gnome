@@ -47,7 +47,8 @@ async function start(page, packets, errors) {
       else if (message.type === 'ready') window.fixtureReady = true;
       else if (['error', 'warning'].includes(message.type)) window.recordFailure(message.type);
     });
-    window.postMessage({ channel: 'cassini-control', type: 'start', token: 'fixture', origin: Date.now(),
+    window.fixtureOrigin = Date.now();
+    window.postMessage({ channel: 'cassini-control', type: 'start', token: 'fixture', captureLocal: false, origin: fixtureOrigin,
       moduleURL: location.origin + '/capture.js', workletURL: location.origin + '/pcm-worklet.js' }, '*');
   });
   await page.waitForFunction(() => fixtureReady);
@@ -85,16 +86,25 @@ try {
     });
     await page.goto(address); await remote.goto(address);
     await connectReceiveSlots(page, remote, [[440], [660], [880]], { prejoin: true });
+    const prejoinPackets = [], prejoinErrors = [];
+    await start(page, prejoinPackets, prejoinErrors);
     const before = await observePrejoin(page);
+    assert.equal(prejoinPackets.length, 0, 'connected empty receive slots open no native track');
     assert.ok(before.samples.every(sample => sample.length === 0), 'pre-join receives no inbound audio RTP');
     assert.equal(before.evidence.sourceCount, 3, 'only three receivers; preview sender excluded');
     assert.equal(before.evidence.heard, false);
+    const joinedAt = await page.evaluate(() => Date.now() - fixtureOrigin);
     await switchReceiveSlot(remote, 0, [440]);
     await page.waitForFunction(() => discoveryEvidence.at(-1)?.heard === true);
     const joined = await page.evaluate(() => discoveryEvidence.at(-1));
     assert.equal(joined.sourceCount, 3);
     results.push({ model: 'Pre-join receive slots then inbound RTP', status: 'passed',
       chromium: browser.version(), prejoin: before, joined, liveProductTest: false });
+    await waitFor(() => prejoinPackets.some(packet => packet.type === 'track') &&
+      prejoinPackets.filter(packet => packet.type === 'track').every(track => pcm(prejoinPackets, track.id).length >= 24000));
+    assert.equal(prejoinPackets.filter(packet => packet.type === 'track').length, 1, 'only the packet-proven receiver opens');
+    assert.ok(prejoinPackets.find(packet => packet.type === 'audio').offsetMs >= joinedAt,
+      'first audio starts after joining');
     console.log('PASS pre-join has no heard evidence; inbound audio sets the latch');
     // Same document, new pre-join peers after leaving: old evidence must not
     // auto-record the next lobby. No navigation/reload can reset the page hook.
@@ -116,6 +126,9 @@ try {
     results.push({model:'Same-document leave and new pre-join',status:'passed',
       chromium:browser.version(),prejoin:rejoin,sameDocument,joined:await page.evaluate(()=>discoveryEvidence.at(-1)),liveProductTest:false});
     console.log('PASS same-document rejoin stays unheard until fresh inbound evidence');
+    await page.evaluate(() => window.postMessage({ channel:'cassini-control', type:'stop', token:'fixture' }, '*'));
+    await page.waitForFunction(() => fixtureStopped);
+    assert.deepEqual(prejoinErrors, []);
 
     await context.close();
   }
@@ -128,7 +141,16 @@ try {
     else await installZoomLikeAudio(page);
     await start(page, packets, errors);
     if (frequencies) {
-      await waitFor(() => packets.filter(p => p.type === 'track').length === frequencies.length && packets.filter(p => p.type === 'track').every(track => pcm(packets, track.id).length >= 96000));
+      // Admitted bytes can initially contain receiver/AGC startup silence or
+      // attenuation. Wait for the actual expected tone in the same analysis
+      // window used below; neither the power/bleed limits nor timeout change.
+      await waitFor(() => {
+        const tracks = packets.filter(p => p.type === 'track');
+        return tracks.length === frequencies.length && tracks.every((track, index) => {
+          const audio = pcm(packets, track.id);
+          return audio.length >= 96000 && frequencies[index].every(tone => power(audio, tone) > 0.001);
+        });
+      });
       const tracks = packets.filter(p => p.type === 'track');
       assert.ok(tracks.every(track => track.kind === 'remote'));
       tracks.forEach((track, index) => {
@@ -142,7 +164,12 @@ try {
         const before = pcm(packets, tracks[0].id).length;
         const receiver = await page.evaluate(() => topologyPeer.getReceivers()[0].track.id);
         await switchReceiveSlot(remote, 0, [990]);
-        await waitFor(() => pcm(packets, tracks[0].id).length >= before + 96000);
+        // Decoder/jitter buffering can deliver old audio after replaceTrack.
+        // Observe the replacement waveform, not just another second of bytes.
+        await waitFor(() => {
+          const audio = pcm(packets, tracks[0].id);
+          return audio.length >= before + 96000 && power(audio, 990) > 0.001 && power(audio, 440) < power(audio, 990) * 0.01;
+        });
         assert.equal(await page.evaluate(() => topologyPeer.getReceivers()[0].track.id), receiver);
         assert.equal(packets.filter(p => p.type === 'track').length, 3, 'speaker switch preserves receiver-source identity');
         const audio = pcm(packets, tracks[0].id);

@@ -36,6 +36,27 @@ class SchemaTests(unittest.TestCase):
         self.assertFalse(session.is_valid(dict(fixture,problem='failed but reported complete')))
         self.assertFalse(session.is_valid(dict(fixture,state='interrupted')))
 
+    def test_multistream_status_bounds_and_call_connected_source(self):
+        control = schema('control-extension')
+        value = dict(type='status', recording=True, tabId=2, path='/recording', message='Recording', captureId='x'*200, failedSources=['source'])
+        control.validate(value)
+        control.validate(dict(type='result',requestId='status',ok=True,status=value))
+        self.assertFalse(control.is_valid(dict(value,captureId='x'*201)))
+        self.assertFalse(control.is_valid(dict(type='result',requestId='status',ok=True,status=dict(value,captureId='x'*201))))
+        session = schema('session')
+        meeting = json.loads((ROOT/'conformance/examples/session.json').read_text())
+        for source in ('browser','system','none'):
+            meeting['events'] = [dict(type='othersSource',source=source,reason='callConnected',atMs=0)]
+            self.assertEqual(session.is_valid(meeting), source == 'browser')
+
+    def test_retired_span_marker_cannot_mean_a_finalized_capture(self):
+        response = schema('response')
+        source = dict(type='error', code='state', scope='source', id='B', retired=True, message='B ended')
+        response.validate(source)
+        self.assertFalse(response.is_valid(dict(source, scope='command')))
+        self.assertFalse(response.is_valid(dict(source, code='io')))
+        response.validate(dict(type='error',code='state',scope='command',message='Capture saved'))
+
     def test_shared_extension_is_platform_neutral(self):
         for path in (ROOT/'extension').rglob('*'):
             if path.is_file(): self.assertIsNone(re.search(rb'\bmac\b|macos',path.read_bytes(),re.I),str(path))

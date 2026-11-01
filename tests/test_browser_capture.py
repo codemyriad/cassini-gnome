@@ -73,6 +73,108 @@ def remote(client, identifier):
     )
 
 
+def test_broker_preserves_receiver_identity_across_new_wire_spans(server):
+    _service, path, _root = server
+    client = BrowserAudioProxy(path=path)
+    try:
+        started = start(client, "receiver-spans", microphone=False)
+        for index, source in enumerate(("receiver-a", "receiver-a", "receiver-b")):
+            identifier = f"span-{index}"
+            client.handle(
+                dict(
+                    type="track",
+                    id=identifier,
+                    label="Guest",
+                    kind="remote",
+                    sampleRate=48000,
+                    channels=1,
+                    sourceTrackId=source,
+                )
+            )
+            client.handle(dict(type="audio", id=identifier, sequence=0, offsetMs=index * 100, pcm="AQACAA=="))
+        client.handle(dict(type="stop"))
+        from pathlib import Path
+
+        manifest = json.loads((Path(started["path"]) / "session.json").read_text())
+        assert [t["id"] for t in manifest["tracks"]] == ["span-0", "span-1", "span-2"]
+        assert [t["sourceTrackId"] for t in manifest["tracks"]] == ["receiver-a", "receiver-a", "receiver-b"]
+        assert [t["frames"] for t in manifest["tracks"]] == [2, 2, 2]
+    finally:
+        client.close()
+
+
+def test_broker_keeps_negotiated_source_io_errors_scoped_and_retries_a_fresh_span(server, monkeypatch):
+    from test_capture_record import declare, pcm
+
+    service, path, _root = server
+    client = BrowserAudioProxy(path=path)
+    try:
+        reply = client.handle(
+            dict(
+                type="start",
+                independent=True,
+                captureId="source-error",
+                timelineOriginMs=int(time.time() * 1000),
+                microphone=False,
+                features=["source-outcomes-v1"],
+            )
+        )
+        assert reply["features"] == ["source-outcomes-v1"]
+        client.handle(declare("broken", "receiver-a"))
+        capture = service.captures["source-error"]
+
+        def no_space(_data):
+            raise OSError(28, "Generated ENOSPC")
+
+        monkeypatch.setattr(capture.host.session.writers["broken"], "append", no_space)
+        failed = client.handle(pcm("broken", 48000))
+        assert failed["scope"] == "source" and failed["code"] == "io"
+        assert not capture.finished and not capture.stopping
+        assert client.handle(declare("healthy", "receiver-b")) == dict(type="ack")
+        assert client.handle(pcm("healthy", 48000)) == dict(type="ack")
+        assert client.handle(declare("retry", "receiver-a")) == dict(type="ack")
+        assert client.handle(pcm("retry", 48000, offset=1000)) == dict(type="ack")
+        refused = client.handle(dict(type="stop", captureId="stale-capture"))
+        assert refused["scope"] == "command" and not capture.finished
+        client.handle(dict(type="stop", captureId="source-error"))
+        assert capture.finished and capture.host.session.manifest["problemKind"] == "io"
+        before = (capture.directory / "session.json").read_bytes()
+        assert client.handle(pcm("healthy", 1, sequence=1, offset=1000))["scope"] == "source"
+        assert (capture.directory / "session.json").read_bytes() == before
+    finally:
+        client.close()
+
+
+def test_only_pcm_written_to_a_browser_span_proves_liveness(tmp_path, monkeypatch):
+    from test_capture_record import declare, pcm
+
+    from cassini_talk.browser_capture import BrowserCapture
+
+    now = [0.0]
+    monkeypatch.setattr(time, "monotonic", lambda: now[0])
+    capture = BrowserCapture(lambda *_: None, parent=tmp_path, tap_factory=Tap)
+    capture.start(dict(type="start", captureId="live", timelineOriginMs=int(time.time() * 1000), microphone=True))
+    try:
+        assert not capture.browser_ready_since(recorded=True), "Native microphone is not browser evidence"
+        capture.handle(declare("remote"))
+        capture.handle(pcm("remote", 480))
+        assert capture.browser_ready_since(recorded=True)
+        capture.select(True, False)
+        capture.handle(pcm("remote", 480, sequence=1, offset=10))
+        assert capture.browser_ready_since() and not capture.browser_ready_since(recorded=True)
+        capture.select(True, True)
+        # Reopening a span must not inherit the discarded packet's freshness.
+        assert not capture.browser_ready_since(recorded=True)
+        at = capture.host.session.manifest["events"][-1]["atMs"]
+        capture.handle(pcm("remote", 480, sequence=2, offset=at))
+        assert capture.browser_ready_since(recorded=True)
+        capture.fallback()
+        capture.handle(pcm("remote", 480, sequence=3, offset=at + 10))
+        assert capture.browser_ready_since() and not capture.browser_ready_since(recorded=True)
+    finally:
+        capture.stop()
+
+
 def test_independent_native_host_writers_copy_only_the_selected_microphone(server):
     service, path, root = server
     one, two = BrowserAudioProxy(path=path), BrowserAudioProxy(path=path)
@@ -190,6 +292,7 @@ def test_two_stop_requests_join_one_native_finalization(server):
 
 
 def test_rejected_browser_start_uses_its_own_system_fallback_without_forcing_microphone(server):
+    from test_browser_service import wait_for
     from test_browser_sessions import Extension
 
     service, path, _ = server
@@ -211,6 +314,12 @@ def test_rejected_browser_start_uses_its_own_system_fallback_without_forcing_mic
         ]
         assert [t["kind"] for t in value["tracks"]] == ["system"]
         assert value["tracks"][0]["startOffsetMs"] == 0
+        # The rejected fake browser never services a later Stop. Retire that
+        # transport explicitly instead of racing its final status and waiting
+        # for the production 25 s batch deadline. The native fallback survives.
+        peer.close()
+        wait_for(lambda: not service.browsers)
+        assert not capture.finished
         request("stop-all", path=path)
         assert capture.finished
     finally:
@@ -557,6 +666,97 @@ def test_unobserved_audio_disconnect_still_starts_bounded_fallback_grace(server)
         client.close()
 
 
+@pytest.mark.parametrize("reply_type", ["started", "ack", "error", "stopped"])
+def test_lost_audio_acknowledgement_keeps_native_mic_and_falls_back(server, monkeypatch, reply_type):
+    import socket
+
+    from cassini_talk import browser_service
+
+    service, _path, _root = server
+    native, peer = socket.socketpair()
+    native_stream, peer_stream = native.makefile("rwb"), peer.makefile("rwb")
+    accepted, release, done = threading.Event(), threading.Event(), threading.Event()
+    send = browser_service.send_packet
+    failures = []
+
+    def blocked_ack(stream, packet):
+        if threading.current_thread() is actor and packet.get("type") == reply_type and not accepted.is_set():
+            accepted.set()
+            assert release.wait(3), "The peer-loss barrier was not released"
+        send(stream, packet)
+
+    def audio():
+        try:
+            service._audio(native_stream)
+        except ConnectionError:
+            pass  # A vanished peer cannot receive an error reply either.
+        except Exception as error:
+            failures.append(error)
+        finally:
+            try:
+                native_stream.close()
+            except ConnectionError:
+                pass  # A buffered failed reply may fail again on close.
+            finally:
+                native.close()
+                done.set()
+
+    actor = threading.Thread(target=audio)
+    monkeypatch.setattr(browser_service, "send_packet", blocked_ack)
+    actor.start()
+    try:
+        assert browser_service.read_packet(peer_stream) == dict(ready=True, protocol=2)
+        send(
+            peer_stream,
+            dict(
+                type="start",
+                independent=True,
+                captureId="ack-loss",
+                title="ack-loss",
+                timelineOriginMs=int(time.time() * 1000),
+            ),
+        )
+        if reply_type != "started":
+            assert browser_service.read_packet(peer_stream)["type"] == "started"
+            packet = (
+                dict(type="track", id="remote", kind="remote", sampleRate=48000, channels=1)
+                if reply_type == "ack"
+                else dict(type="stop" if reply_type == "stopped" else "invalid-message")
+            )
+            send(peer_stream, packet)
+        assert accepted.wait(3), "The real audio actor did not reach its acknowledgement"
+        capture = service.captures["ack-loss"]
+        microphone = capture.microphone
+        # Retire the actual peer after acceptance but before its reply. This
+        # forces EPIPE in flush(), not the orderly EOF path already covered.
+        peer.shutdown(socket.SHUT_RDWR)
+        peer_stream.close()
+        peer.close()
+        release.set()
+        assert done.wait(5), "The vanished audio peer stranded the capture actor"
+        assert not failures
+        if reply_type in ("error", "stopped"):
+            assert capture.finished and not capture.browser_lost
+            assert capture.host.session.manifest["events"][-1]["reason"] == (
+                "error" if reply_type == "error" else "user"
+            )
+            return
+        assert not capture.finished and capture.browser_lost
+        assert capture.microphone is microphone and not microphone.stopped
+        assert capture.host.session.manifest["state"] == "recording"
+        assert capture.host.session.manifest["events"][-1]["reason"] == "lost"
+        microphone.append(b"\x01\x00" * 480, 200)
+        assert not capture.host.session.manifest.get("problemKind")
+        capture.stop(reason="user")
+        assert capture.host.session.manifest["events"][-1]["reason"] == "user"
+    finally:
+        release.set()
+        peer_stream.close()
+        peer.close()
+        actor.join(5)
+        assert not actor.is_alive(), "The audio actor did not exit after peer loss"
+
+
 def test_initial_system_fallback_expires_when_control_left_before_first_policy(server):
     from unittest.mock import patch
 
@@ -807,4 +1007,114 @@ def test_fresh_stop_can_be_reported_late_on_an_old_control_link(server):
         assert 3 in connection.attempted
     finally:
         peer.close()
+        client.close()
+
+
+def test_broker_native_first_stop_keeps_a_never_opened_source_without_late_rewrites(server):
+    service, path, _root = server
+    client = BrowserAudioProxy(path=path)
+    try:
+        client.handle(
+            dict(
+                type="start",
+                independent=True,
+                captureId="native-first",
+                microphone=False,
+                timelineOriginMs=int(time.time() * 1000),
+                features=["source-outcomes-v1"],
+            )
+        )
+        source = dict(sourceTrackId="never-opened", kind="remote", failed=True)
+        assert client.handle(dict(type="sources", discoveredSources=[source])) == dict(type="ack")
+        capture = service.captures["native-first"]
+        capture.stop(reason="user")
+        saved = json.loads((capture.directory / "session.json").read_text())
+        assert saved["tracks"] == []
+        assert saved["captureOutcome"]["sources"][0]["captureOutcome"] == "failed"
+        final = (capture.directory / "session.json").read_bytes()
+        assert client.handle(dict(type="stop", captureId="native-first"))["type"] == "stopped"
+        late = client.handle(dict(type="sources", discoveredSources=[dict(source, sourceTrackId="too-late")]))
+        assert late["scope"] == "command" and late["code"] == "state"
+        assert (capture.directory / "session.json").read_bytes() == final
+    finally:
+        client.close()
+
+
+def test_initial_system_stand_in_retains_the_selected_logical_call_generation(server):
+    from test_browser_service import meeting, wait_for
+    from test_browser_sessions import Extension
+
+    from cassini_talk.browser_service import send_packet
+
+    service, path, _root = server
+    peer = Extension(path, (3,), instance="stand-in-browser")
+    try:
+        send_packet(
+            peer.stream, dict(type="hello", version=1, capabilities=["independent-sessions-v1", "multi-stream-v1"])
+        )
+        send_packet(
+            peer.stream, dict(type="meetings", meetings=[dict(meeting(), callGeneration="call-before-browser-audio")])
+        )
+        wait_for(
+            lambda: (
+                next(iter(service.browsers.values())).meetings[3].get("callGeneration") == "call-before-browser-audio"
+            )
+        )
+        with ThreadPoolExecutor(1) as pool:
+            pending = pool.submit(request, "start-all", path=path, microphone=False)
+            command = peer.receive()
+            assert command["callGeneration"] == "call-before-browser-audio"
+            peer.answer(command, ok=False)
+            result = pending.result(2)
+        assert not result["failures"]
+        (capture,) = service.captures.values()
+        assert capture.browser_lost and not capture.audio_connected
+        assert capture.call_generation == "call-before-browser-audio"
+        assert capture.microphone is None
+        capture.stop()
+    finally:
+        peer.close()
+
+
+def test_native_mic_checkpoint_failure_keeps_browser_pcm_and_does_not_raise_global_capture_error(server, monkeypatch):
+    import errno
+
+    from test_capture_record import declare, pcm
+
+    service, path, _root = server
+    client = BrowserAudioProxy(path=path)
+    try:
+        client.handle(
+            dict(
+                type="start",
+                version=1,
+                independent=True,
+                captureId="mic-sync",
+                timelineOriginMs=int(time.time() * 1000),
+                microphone=True,
+                features=["source-outcomes-v1"],
+            )
+        )
+        capture = service.captures["mic-sync"]
+        tap = capture.microphone
+        session = capture.host.session
+        identifier = capture.native_taps["microphone"][0]
+        tap.append(b"\x01\x00" * 48000, 200)
+        writer = session.writers[identifier]
+
+        def broken():
+            if not writer.file.closed:
+                raise OSError(errno.ENOSPC, "Generated mic fsync failure")
+
+        monkeypatch.setattr(writer, "sync", broken)
+        assert client.handle(declare("A")) == dict(type="ack")
+        assert client.handle(pcm("A", 48000, offset=2000)) == dict(type="ack")
+        before = next(t["frames"] for t in session.manifest["tracks"] if t["id"] == identifier)
+        tap.append(b"\x02\x00" * 48000, 3000)
+        assert next(t["frames"] for t in session.manifest["tracks"] if t["id"] == identifier) == before
+        assert not capture.finished and capture.error is None
+        assert client.handle(pcm("A", 48000, sequence=1, offset=3000)) == dict(type="ack")
+        client.handle(dict(type="stop", captureId="mic-sync"))
+        assert capture.finished and session.manifest["problemKind"] == "io"
+    finally:
         client.close()

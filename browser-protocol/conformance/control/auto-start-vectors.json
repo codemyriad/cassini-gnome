@@ -4,7 +4,9 @@
     "capabilities": [
       "independent-sessions-v1",
       "call-evidence-v1",
-      "page-state-v1"
+      "page-state-v1",
+      "multi-stream-v1",
+      "resume-capture-v1"
     ],
     "meeting": {
       "tabId": 2,
@@ -22,7 +24,9 @@
     "capabilities": [
       "independent-sessions-v1",
       "call-evidence-v1",
-      "page-state-v1"
+      "page-state-v1",
+      "multi-stream-v1",
+      "resume-capture-v1"
     ],
     "meeting": {
       "tabId": 2,
@@ -41,7 +45,9 @@
     "capabilities": [
       "independent-sessions-v1",
       "call-evidence-v1",
-      "page-state-v1"
+      "page-state-v1",
+      "multi-stream-v1",
+      "resume-capture-v1"
     ],
     "meeting": {
       "tabId": 2,
@@ -60,7 +66,9 @@
     "capabilities": [
       "independent-sessions-v1",
       "call-evidence-v1",
-      "page-state-v1"
+      "page-state-v1",
+      "multi-stream-v1",
+      "resume-capture-v1"
     ],
     "meeting": {
       "tabId": 2,
@@ -162,7 +170,9 @@
     "capabilities": [
       "independent-sessions-v1",
       "call-evidence-v1",
-      "page-state-v1"
+      "page-state-v1",
+      "multi-stream-v1",
+      "resume-capture-v1"
     ],
     "meeting": {
       "tabId": 2,

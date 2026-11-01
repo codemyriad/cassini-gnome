@@ -1,0 +1,286 @@
+{
+  "version": 1,
+  "rate": 48000,
+  "speech": {
+    "A": {
+      "file": "speech/a.wav",
+      "sha256": "0b1785dba56f22af426ccb25d318f7e103558fd40e1c3ab064b455dba2afae12"
+    },
+    "B": {
+      "file": "speech/b.wav",
+      "sha256": "b705182467706b101089465062b82f3086ba99dc77d52ae7aabd6c58b8ba6bcb"
+    }
+  },
+  "sessions": [
+    {
+      "id": "05200000-0000-4000-8000-000000000001",
+      "createdAt": "2026-10-31T12:00:00Z",
+      "title": "Production-shaped call A",
+      "durationMs": 90000,
+      "events": [
+        {
+          "type": "selection",
+          "atMs": 0,
+          "me": true,
+          "others": true,
+          "reason": "start"
+        },
+        {
+          "type": "othersSource",
+          "atMs": 0,
+          "source": "system",
+          "reason": "missing"
+        },
+        {
+          "type": "othersSource",
+          "atMs": 20000,
+          "source": "browser",
+          "reason": "callConnected"
+        },
+        {
+          "type": "othersSource",
+          "atMs": 50000,
+          "source": "system",
+          "reason": "lost"
+        },
+        {
+          "type": "othersSource",
+          "atMs": 60000,
+          "source": "browser",
+          "reason": "restored"
+        },
+        {
+          "type": "end",
+          "atMs": 90000,
+          "reason": "user"
+        }
+      ],
+      "tracks": [
+        {
+          "id": "mic",
+          "kind": "microphone",
+          "startMs": 0,
+          "endMs": 90000,
+          "speech": "A",
+          "speechWindows": [
+            [
+              0,
+              8000
+            ],
+            [
+              12000,
+              20000
+            ],
+            [
+              60000,
+              68000
+            ]
+          ],
+          "bleed": {
+            "speech": "B",
+            "db": -35,
+            "windows": [
+              [
+                20000,
+                28000
+              ],
+              [
+                60000,
+                68000
+              ]
+            ],
+            "startMs": 20000,
+            "sourceTrackId": "source-b"
+          }
+        },
+        {
+          "id": "system",
+          "kind": "system",
+          "startMs": 0,
+          "endMs": 20000,
+          "speech": "B",
+          "speechWindows": [
+            [
+              0,
+              8000
+            ]
+          ]
+        },
+        {
+          "id": "a-short",
+          "kind": "remote",
+          "sourceTrackId": "source-a",
+          "startMs": 30000,
+          "endMs": 32000,
+          "speech": "B",
+          "speechWindows": [
+            [
+              30000,
+              32000
+            ]
+          ]
+        },
+        {
+          "id": "a-long",
+          "kind": "remote",
+          "sourceTrackId": "source-a",
+          "startMs": 40000,
+          "endMs": 50000,
+          "speech": "B",
+          "speechWindows": [
+            [
+              40000,
+              41000
+            ],
+            [
+              48000,
+              50000
+            ]
+          ],
+          "presenceWindows": [
+            [
+              40000,
+              41000
+            ],
+            [
+              48000,
+              50000
+            ]
+          ],
+          "gaps": [
+            {
+              "atMs": 41000,
+              "durationMs": 7000,
+              "kind": "dropped"
+            }
+          ]
+        },
+        {
+          "id": "a-return",
+          "kind": "remote",
+          "sourceTrackId": "source-a",
+          "startMs": 60000,
+          "endMs": 62000,
+          "speech": "B",
+          "speechWindows": [
+            [
+              60000,
+              62000
+            ]
+          ]
+        },
+        {
+          "id": "b",
+          "kind": "application",
+          "sourceTrackId": "source-b",
+          "startMs": 20000,
+          "endMs": 50000,
+          "speech": "B",
+          "speechWindows": [
+            [
+              20000,
+              28000
+            ]
+          ],
+          "presenceWindows": [
+            [
+              20000,
+              50000
+            ]
+          ]
+        },
+        {
+          "id": "system-fallback",
+          "kind": "system",
+          "startMs": 50000,
+          "endMs": 60000,
+          "speech": "B",
+          "speechWindows": [
+            [
+              50000,
+              58000
+            ]
+          ]
+        },
+        {
+          "id": "b-return",
+          "kind": "application",
+          "sourceTrackId": "source-b",
+          "startMs": 60000,
+          "endMs": 90000,
+          "speech": "B",
+          "speechWindows": [
+            [
+              60000,
+              68000
+            ]
+          ],
+          "presenceWindows": [
+            [
+              60000,
+              70000
+            ],
+            [
+              72000,
+              90000
+            ]
+          ],
+          "gaps": [
+            {
+              "atMs": 70000,
+              "durationMs": 2000,
+              "kind": "dropped"
+            }
+          ],
+          "speechStartMs": 20000
+        }
+      ]
+    },
+    {
+      "id": "05200000-0000-4000-8000-000000000002",
+      "createdAt": "2026-10-31T12:00:20Z",
+      "title": "Concurrent call B",
+      "durationMs": 40000,
+      "events": [
+        {
+          "type": "selection",
+          "atMs": 0,
+          "me": true,
+          "others": true,
+          "reason": "start"
+        },
+        {
+          "type": "othersSource",
+          "atMs": 0,
+          "source": "browser",
+          "reason": "start"
+        },
+        {
+          "type": "end",
+          "atMs": 40000,
+          "reason": "user"
+        }
+      ],
+      "tracks": [
+        {
+          "id": "independent",
+          "kind": "remote",
+          "sourceTrackId": "other-call-source",
+          "startMs": 0,
+          "endMs": 40000,
+          "speech": "A",
+          "speechWindows": [
+            [
+              0,
+              8000
+            ],
+            [
+              12000,
+              20000
+            ]
+          ]
+        }
+      ]
+    }
+  ]
+}

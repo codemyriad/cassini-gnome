@@ -58,6 +58,9 @@ class PCMSource:
                 decoded_frames=track.pcm_frames if track.codec == "opus" else None,
             )
             self.end_frame = max(0, round(end * self.rate / 48000))
+        from .source_ownership import FrameMask
+
+        self.ownership = FrameMask(getattr(track, "ownership_windows", None), self.rate)
         self.cursor = 0
         self.lock = threading.Lock()
         self.src = Gst.ElementFactory.make("appsrc", None)
@@ -127,6 +130,7 @@ class PCMSource:
                         )
                         if len(data) != frames * self.channels * 2:
                             raise ValueError("Incomplete recording source")
+                data = self.ownership.pcm(data, cursor, self.channels * (4 if self.mapped else 2))
                 self.cursor += frames
         except (OSError, ValueError, TimeoutError, GLib.Error) as error:
             message = GLib.Error.new_literal(Gst.ResourceError.quark(), str(error), Gst.ResourceError.READ)

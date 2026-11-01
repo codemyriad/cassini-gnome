@@ -38,15 +38,22 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
     service.workers.shutdown()
     service.workers = Inline()
     capture = BrowserCapture(service._capture_changed, parent=tmp_path / "Library", tap_factory=Tap)
-    capture.start(dict(type="start", captureId="call", timelineOriginMs=int(time.time() * 1000), microphone=True))
+    capture.start(
+        dict(type="start", captureId="call", timelineOriginMs=int(time.time() * 1000), microphone=True),
+        others_source=case.get("source", "browser"),
+        reason=case.get("sourceReason", "start"),
+    )
     capture.elapsed_ms = lambda: now[0] * 1000
-    capture.host.handle(dict(type="track", id="original", kind="remote", sampleRate=48000, channels=1))
-    capture.host.handle(dict(type="audio", id="original", sequence=0, offsetMs=0, pcm="AQACAA=="))
+    if case.get("source", "browser") == "browser" and not case.get("multistream"):
+        capture.host.handle(dict(type="track", id="original", kind="remote", sampleRate=48000, channels=1))
+        capture.host.handle(dict(type="audio", id="original", sequence=0, offsetMs=0, pcm="AQACAA=="))
     if not case.get("others", True):
         capture.select(True, False)
     service.captures["call"] = capture
     browser = BrowserConnection(None)
     browser.capabilities = {"independent-sessions-v1", "page-state-v1"}
+    if case.get("multistream"):
+        browser.capabilities.add("multi-stream-v1")
     if case.get("callEvidence"):
         browser.capabilities.add("call-evidence-v1")
     browser.status_seen = True
@@ -67,9 +74,22 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
             now[0] = step["atMs"] / 1000
             same = step.get("sameTab", True)
             page = step["pageState"] if same else None
-            count = step["sourceCount"] if same else 0
+            count = step.get("sourceCount", 0) if same else 0
             browser.states[3]["pageState"] = page
-            browser.meetings = {3: dict(pageState=page, sourceCount=count, heard=step.get("heard", True))}
+            browser.meetings = {
+                3: dict(pageState=page, sourceCount=count, heard=step.get("heard", not case.get("multistream", False)))
+            }
+            browser.meetings[3]["sourceCountKnown"] = step.get("sourceCountKnown", True)
+            if not step.get("rowPresent", True):
+                browser.meetings = {}
+            if step.get("controlAlive", True):
+                service.browsers[browser.id] = browser
+            else:
+                service.browsers.pop(browser.id, None)
+            if step.get("pcmLive"):
+                wire = "live-" + str(index)
+                capture.handle(dict(type="track", id=wire, kind="remote", sampleRate=48000, channels=1))
+                capture.handle(dict(type="audio", id=wire, sequence=0, offsetMs=step["atMs"], pcm="AQACAA=="))
             # Only real PCM on the retained transport makes restore ready.
             if not capture.finished and count and capture.browser_lost and step.get("restoreReady", True):
                 wire = "return-" + str(index)
@@ -96,6 +116,129 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
         assert all(args[1] == "stop" for args, _kwargs in commands)
     finally:
         capture.stop()
+
+
+@pytest.mark.parametrize("known", ["row", "unknown-count", "missing-row"])
+def test_multistream_only_known_zero_counts_start_the_thirty_second_timer(tmp_path, monkeypatch, known):
+    unknown = dict(sourceCountKnown=False) if known == "unknown-count" else dict(rowPresent=False)
+    steps = [dict(atMs=0, sourceCount=1, heard=True)]
+    if known != "row":
+        steps.extend(
+            [
+                dict(atMs=1000, sourceCount=0),
+                dict(atMs=2000, sourceCount=0, **unknown),
+                dict(atMs=50000, sourceCount=0, **unknown),
+            ]
+        )
+        start = 51000
+    else:
+        start = 1000
+    steps.extend(
+        [
+            dict(atMs=start, sourceCount=0),
+            dict(atMs=start + 29999, sourceCount=0),
+            dict(atMs=start + 30000, sourceCount=0, expect=["stop:callEnded"]),
+        ]
+    )
+    test_shared_actions_use_actual_capture_devices_spans_and_end(
+        tmp_path,
+        monkeypatch,
+        dict(
+            name=known,
+            multistream=True,
+            steps=[
+                dict(pageState="present", expect=[], **step)
+                if "expect" not in step
+                else dict(pageState="present", **step)
+                for step in steps
+            ],
+        ),
+    )
+
+
+@pytest.mark.parametrize("heard", [False, True])
+def test_multistream_rejoin_and_never_heard_calls_survive(tmp_path, monkeypatch, heard):
+    test_shared_actions_use_actual_capture_devices_spans_and_end(
+        tmp_path,
+        monkeypatch,
+        dict(
+            name="rejoin" if heard else "never-heard",
+            multistream=True,
+            steps=[
+                dict(atMs=0, pageState="present", sourceCount=1, heard=heard, expect=[]),
+                dict(atMs=1000, pageState="present", sourceCount=0, heard=False, expect=[]),
+                dict(atMs=15999, pageState="present", sourceCount=0, heard=False, expect=[]),
+                dict(atMs=16000, pageState="present", sourceCount=1, heard=heard, expect=[]),
+                dict(atMs=60000, pageState="present", sourceCount=1 if heard else 0, heard=False, expect=[]),
+            ],
+        ),
+    )
+
+
+def test_multistream_control_loss_with_remote_pcm_does_not_fall_back():
+    from cassini_talk.call_lifecycle import CallLifecycle
+
+    lifecycle = CallLifecycle()
+    for now in (0, 10, 150):
+        assert (
+            lifecycle.decide(
+                now,
+                None,
+                0,
+                multistream=True,
+                heard=now == 0,
+                inventory_known=False,
+                control_alive=False,
+                pcm_live=True,
+                fallback=False,
+                others=True,
+                restore_ready=False,
+            )
+            is None
+        )
+        assert lifecycle.missing is lifecycle.ended is None
+
+
+def test_multistream_actual_browser_pcm_keeps_control_loss_from_recording_system_audio(tmp_path, monkeypatch):
+    test_shared_actions_use_actual_capture_devices_spans_and_end(
+        tmp_path,
+        monkeypatch,
+        dict(
+            name="control-only-loss-with-real-pcm",
+            multistream=True,
+            steps=[
+                dict(atMs=0, pageState="present", sourceCount=1, heard=True, expect=[]),
+                dict(atMs=1000, pageState="unknown", sourceCount=0, controlAlive=False, pcmLive=True, expect=[]),
+                dict(atMs=150000, pageState="unknown", sourceCount=0, controlAlive=False, pcmLive=True, expect=[]),
+            ],
+        ),
+    )
+
+
+def test_multistream_fallback_expires_despite_discarded_browser_packets(tmp_path, monkeypatch):
+    test_shared_actions_use_actual_capture_devices_spans_and_end(
+        tmp_path,
+        monkeypatch,
+        dict(
+            name="discarded-wire-pcm-cannot-extend-fallback",
+            multistream=True,
+            steps=[
+                dict(atMs=0, pageState="present", sourceCount=1, heard=True, expect=[]),
+                dict(atMs=3000, pageState="unknown", sourceCount=0, controlAlive=False, expect=[]),
+                dict(atMs=4999, pageState="unknown", sourceCount=0, controlAlive=False, expect=[]),
+                dict(atMs=5000, pageState="unknown", sourceCount=0, controlAlive=False, expect=["fallback"]),
+                dict(atMs=122999, pageState="unknown", sourceCount=0, controlAlive=False, pcmLive=True, expect=[]),
+                dict(
+                    atMs=123000,
+                    pageState="unknown",
+                    sourceCount=0,
+                    controlAlive=False,
+                    pcmLive=True,
+                    expect=["stop:pageGone"],
+                ),
+            ],
+        ),
+    )
 
 
 def test_returning_prejoin_receive_slots_do_not_reset_the_deadline(tmp_path, monkeypatch):
@@ -137,3 +280,34 @@ def test_hangup_after_failed_restore_keeps_the_normal_call_end_grace(tmp_path, m
             ],
         ),
     )
+
+
+def test_multistream_reload_through_present_zero_keeps_the_two_minute_return_deadline(tmp_path, monkeypatch):
+    test_shared_actions_use_actual_capture_devices_spans_and_end(
+        tmp_path,
+        monkeypatch,
+        dict(
+            name="reload-present-zero",
+            multistream=True,
+            steps=[
+                dict(atMs=0, pageState="present", sourceCount=1, heard=True, expect=[]),
+                dict(atMs=1000, pageState="navigating", sourceCount=0, expect=[]),
+                dict(atMs=2000, pageState="present", sourceCount=0, expect=[]),
+                dict(atMs=3000, pageState="present", sourceCount=0, expect=["fallback"]),
+                dict(atMs=32000, pageState="present", sourceCount=0, expect=[]),
+                dict(atMs=120999, pageState="present", sourceCount=0, expect=[]),
+                dict(atMs=121000, pageState="present", sourceCount=0, expect=["stop:pageGone"]),
+            ],
+        ),
+    )
+
+
+D52_VECTORS = VECTORS.parents[1] / "multistream/lifecycle.json"
+
+
+@pytest.mark.parametrize("case", json.loads(D52_VECTORS.read_text())["cases"], ids=lambda case: case["name"])
+def test_d52_shared_lifecycle_on_actual_capture(tmp_path, monkeypatch, case):
+    case = dict(
+        case, multistream=True, steps=[dict(step, pageState=step.get("pageState", "present")) for step in case["steps"]]
+    )
+    test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monkeypatch, case)

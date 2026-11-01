@@ -36,6 +36,51 @@
         "io",
         "framing"
       ]
+    },
+    "features": {
+      "type": "array",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 64
+      }
+    },
+    "scope": {
+      "enum": [
+        "source",
+        "command",
+        "session"
+      ]
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+    },
+    "resumed": {
+      "type": "boolean"
+    },
+    "captureId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "$comment": "At most128 UTF-8 bytes; opaque active native capture identity."
+    },
+    "timelineOriginMs": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 253402300799000
+    },
+    "callGeneration": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "retired": {
+      "type": "boolean",
+      "description": "True only for code=state, scope=source: this physical span is retired while its capture remains active. Cleanup/late packets are harmless and a live source can retry a fresh span."
     }
   },
   "additionalProperties": true,
@@ -69,6 +114,65 @@
         "required": [
           "message"
         ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "resumed"
+        ],
+        "properties": {
+          "resumed": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "captureId",
+          "timelineOriginMs",
+          "callGeneration",
+          "features"
+        ],
+        "properties": {
+          "type": {
+            "const": "started"
+          },
+          "features": {
+            "contains": {
+              "const": "resume-capture-v1"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "retired"
+        ],
+        "properties": {
+          "retired": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "code",
+          "scope"
+        ],
+        "properties": {
+          "type": {
+            "const": "error"
+          },
+          "code": {
+            "const": "state"
+          },
+          "scope": {
+            "const": "source"
+          }
+        }
       }
     }
   ]

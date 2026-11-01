@@ -90,10 +90,29 @@ def streamed(track):
     """Received Opus files and compacted capture spans (S-12 §5) decode sequentially."""
     from .mapped_audio import required
 
-    return track.get("format") == "opus" or track.get("codec") == "opus" or required(track)
+    return (
+        "ownershipWindows" in track or track.get("format") == "opus" or track.get("codec") == "opus" or required(track)
+    )
 
 
 def audio_chunks(track):
+    from .source_ownership import FrameMask
+
+    mask = FrameMask(track.get("ownershipWindows"), RATE, track.get("offsetMs") or 0)
+    cursor = 0
+    with closing(_unmasked_chunks(track)) as source:
+        for block in source:
+            sections = mask.sections(cursor, len(block))
+            if sections != [(0, len(block))]:
+                selected = np.zeros_like(block)
+                for left, right in sections:
+                    selected[left:right] = block[left:right]
+                block = selected
+            yield block
+            cursor += len(block)
+
+
+def _unmasked_chunks(track):
     from .mapped_audio import chunks, required
 
     if required(track):

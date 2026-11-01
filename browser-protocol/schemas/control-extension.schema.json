@@ -66,6 +66,19 @@
                   "closed",
                   "navigating"
                 ]
+              },
+              "sourceCountKnown": {
+                "type": "boolean"
+              },
+              "documentGeneration": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "callGeneration": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
               }
             },
             "required": [
@@ -163,7 +176,8 @@
               "captureId": {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 128
+                "maxLength": 200,
+                "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
               },
               "pageState": {
                 "enum": [
@@ -171,6 +185,30 @@
                   "closed",
                   "navigating"
                 ]
+              },
+              "failedSources": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              },
+              "documentGeneration": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "callGeneration": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "timelineOriginMs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 253402300799000
               }
             },
             "required": [
@@ -188,6 +226,36 @@
             "closed",
             "navigating"
           ]
+        },
+        "failedSources": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "documentGeneration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "callGeneration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "captureId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+        },
+        "timelineOriginMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 253402300799000
         }
       },
       "required": [
@@ -313,6 +381,36 @@
             "closed",
             "navigating"
           ]
+        },
+        "failedSources": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "documentGeneration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "callGeneration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "captureId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+        },
+        "timelineOriginMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 253402300799000
         }
       },
       "required": [

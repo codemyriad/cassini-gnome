@@ -507,6 +507,42 @@ def test_missing_browser_and_untrusted_inventory(service):
         connection.close()
 
 
+def test_unknown_source_inventory_is_preserved_and_cannot_auto_start(tmp_path):
+    from cassini_talk.browser_service import BrowserConnection
+
+    server = BrowserService(tmp_path / "settings.json", notifier=lambda *_: None)
+    peer = BrowserConnection(None)
+    peer.capabilities = {"independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1"}
+    try:
+        for known in (False, True):
+            server.update(peer, dict(type="meetings", meetings=[dict(meeting(), heard=True, sourceCountKnown=known)]))
+            row = peer.meetings[3]
+            assert row["sourceCount"] == 2 and row["heard"]
+            assert row["sourceCountKnown"] is known
+            assert server._auto_start_ready(peer, row) is known
+    finally:
+        server.workers.shutdown()
+
+
+def test_multistream_returning_status_cannot_make_invalidated_inventory_known(tmp_path):
+    from cassini_talk.browser_service import BrowserConnection
+
+    server = BrowserService(tmp_path / "settings.json", notifier=lambda *_: None)
+    peer = BrowserConnection(None)
+    peer.capabilities = {"independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1"}
+    try:
+        server.update(peer, dict(type="meetings", meetings=[dict(meeting(), heard=True, sourceCountKnown=True)]))
+        for page in ("navigating", "present"):
+            server.update(peer, dict(type="status", recording=False, tabId=3, pageState=page))
+            assert peer.meetings[3]["sourceCount"] == 0
+            assert peer.meetings[3]["sourceCountKnown"] is False
+        server.update(peer, dict(type="meetings", meetings=[dict(meeting(), heard=True, sourceCountKnown=True)]))
+        assert peer.meetings[3]["sourceCountKnown"] is True
+        assert peer.meetings[3]["sourceCount"] == 2
+    finally:
+        server.workers.shutdown()
+
+
 def test_reconnect_waits_for_status_before_auto_record(service):
     server, path = service
     request("configure", path=path, autoRecord=True)

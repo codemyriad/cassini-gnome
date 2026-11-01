@@ -18,7 +18,7 @@ def valid_event(event):
     if event.get("type") == "othersSource":
         return event.get("source") in ("browser", "system", "none") and (
             event.get("reason") in ("start", "missing", "lost", "user")
-            or event.get("reason") == "restored"
+            or event.get("reason") in ("restored", "callConnected")
             and event.get("source") == "browser"
         )
     if event.get("type") == "selection":
@@ -102,6 +102,10 @@ def append_events(manifest, events):
             ):
                 raise ValueError("An end event cannot precede a finalized known track end")
             ended = True
+        elif event.get("reason") == "callConnected" and not (
+            state.source == "system" and state.reason == "missing" and state.others
+        ):
+            raise ValueError("A connected call requires the enabled missing-browser stand-in")
         elif event.get("reason") == "restored" and not (state.fallback and state.others):
             raise ValueError("Browser restoration requires an active system fallback")
         previous = event["atMs"]

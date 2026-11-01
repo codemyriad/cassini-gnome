@@ -283,3 +283,141 @@ writer-queue overflow. Report only-gap loss with session problemKind=`gap`; writ
 problemKind=`io` if both occurred. Both preserve available audio and explicit silence.
 The complete `conformance/native-session-gap/` fixture contains continuous mic audio and a
 one-second system gap, with both macos/gnome manifest variants.
+
+## Multi-stream capture (D52, extension 0.2.4; draft PR)
+
+This additive mode keeps version 1 and every legacy conversation. Start requests
+`features:["source-outcomes-v1"]`; `started.features` acknowledges support. Only
+then may the extension send `sources`, `trackEnd` and `stop.discoveredSources`. An older
+host continues to receive its original packet types.
+
+`track.sourceTrackId` is an optional opaque ID, bounded to 200 UTF-8 bytes. It
+comes from a document's receiver/transceiver root (sender root for local browser
+tracks), never from a label. Replacement/resume spans use fresh `id` values and
+the same source key and label. Native microphone/system tracks omit it. Live or
+stored overlapping spans with one key must be refused rather than summed.
+
+A negotiated `trackEnd` carries id, reason (ended/replaced/retry/stopped/failed/
+callChanged), droppedFrames and endOffsetMs (nullable before an audio anchor).
+The host derives the authoritative stored end from admitted samples. An error
+with `scope:source` and id refuses only that source request: other tracks and
+this native connection remain usable. Framing/version/connection failures stay
+session failures. Repeated identical track declarations are idempotent.
+
+Stop carries its captureId; a mismatched negotiated stop is refused without
+ending the current capture. The discoveredSources summary retains sources that
+failed before opening a WAV. Each source has sourceTrackId, kind, label and a
+sticky failed flag. Recorded samples, including zeros/DC, count as received;
+inserted gap padding does not. The draft's hand-written outcome vectors propose
+neverAudio for zero received frames, lowAudio below 1000 ms, captured otherwise,
+and failed for a sticky source error. R63 requests coordinator review of that
+cutoff/shape. Per-track captureOutcome/receivedFrames and the top-level
+captureOutcome.sources reconcile the result; io takes precedence over capture.
+Diagnostic source lists include refused/never-opened sources and are not capped
+at the 64 audio-track allocation limit. Their serialized requests remain bounded
+by the existing native-message framing limit; identities/labels retain their
+per-field bounds. No diagnostic entry allocates a WAV.
+
+`sources` carries a nonempty `discoveredSources` array with the same record shape
+as Stop. Each discovery is sent and durably ACKed before attempting its first
+audio attachment; a source failure sends a sticky update immediately. Readers
+merge records by sourceTrackId and never clear an earlier failed flag. Reject a
+malformed batch with scope=command, without closing the connection or allocating
+WAVs. The whole batch is validated before its records are changed. Native request
+framing remains the size bound; writers stream bounded UTF-8 batches rather than
+pruning at 64 or 256 sources. ACK means the capture record is checkpointed, even
+when no WAV exists yet. The extension drains outstanding source updates before
+its terminal Stop. Its final summary may be empty when all updates were ACKed.
+
+Desktop Stop may finish native capture before an unreachable extension responds;
+it must not wait indefinitely for that final summary or depend on it to discover
+sources that already failed. A source packet after native finalization is refused
+with scope=command and code=state; it cannot rewrite a published meeting. Announced
+sources stay in the durable capture record across EOF or a native-first Stop.
+A matching Stop with an empty summary may still ACK as stopped without changing
+the saved files. A scoped state error retires the producer without retries or a
+false failed-source update; native-first Stop is an intentional end.
+Unchanged, already-ACKed discoveries do not generate periodic source writes.
+The producer's span budget counts successful track ACKs, not IDs generated for
+attachments that failed before a WAV was opened; retries cannot spend that budget.
+
+Source ownership is half-open at each othersSource.atMs. Outgoing source audio
+is masked at the boundary before recognition, mixing and export. This is not a
+transcript display rule. `callConnected` moves an enabled others side from the
+initial system/missing stand-in to browser tracks (D49). Existing lost/restored
+semantics stay intact. See conformance/multistream/ownership.json.
+
+The 64-span limit counts accepted declarations plus declarations currently in
+flight across every frame. The worker reserves a slot synchronously before
+forwarding a new track, commits it on ACK, and releases it on refusal. Failed
+worklet/context initialization consumes no slot. A limit refusal retires that
+live track until a new capture; it never schedules endless allocation retries or
+repeats the same warning on discovery ticks.
+
+Receiver roots and all their clones remain receiver sources even when rendered
+in audio/video elements. They cannot enter through the media-element path:
+connected-peer, receiver direction, generation and inbound-RTP proof govern
+admission. A main-frame address boundary is fenced once whether browser URL
+notification or page discovery arrives first. Old-generation discoveries cannot
+vote in the new call; a child-frame generation change cannot end its parent call.
+
+A transient attach/recovery warning does not mark a source failed. Replacement
+spans after recovery close the previous span with reason=retry. Successful PCM
+ACKs clear the retrying state; merely opening a worklet does not. If Stop arrives
+while a source is still retrying, the producer checkpoints its failed discovery
+before Stop. Terminal source refusals and durable native I/O failures remain
+sticky; recovery never erases recorded loss. The optional internal relay warning
+flag transient distinguishes a pending retry from such terminal loss.
+
+During a page reload, present with zero sources is not proof of return: keep the
+original 120-second return deadline, start the fallback after two seconds, and
+end with pageGone at that deadline unless a fresh positive inventory restores
+browser tracks. See the executable lifecycle vectors.
+
+A span closes at its trackEnd admission barrier. The worker remembers closed IDs
+and refuses late audio, repeated declarations and repeated endings locally,
+without failing that source's healthy replacement or forwarding to legacy hosts.
+Undeclared/refused IDs cannot send audio. A producer drains its admitted PCM and
+final worklet flush before trackEnd, then detaches and fences the worklet callback.
+Late ACKs from a failed old span do not mark a replacement attempt healthy.
+
+A scope=command, code=state refusal from a finalized native capture retires
+both separate-track and whole-tab sessions, including their badge and offscreen
+document. A locally fenced closed span only retires that producer; it cannot end
+unrelated sources. Source-update refusals do not skip the terminal native Stop.
+Test writers refuse track, audio and trackEnd after finalization and cannot
+reopen an ended span or rewrite published metadata with its repeated ending.
+
+## Optional native resume (D52.1 / R67)
+
+The opt-in management `resume-capture-v1` operation uses a first native packet
+with `type:"resume"`, version1, independent:true, the active captureId, original
+timelineOriginMs, selected callGeneration and requested features. It must attach
+only to that exact active native stand-in. It must not create a folder, reset
+its clock or alter its selection/microphone. Unknown/refused resume requests
+fail before any file is created. A stopped/changed target is an error, never a
+fresh Start. The handler's target validation and Stop share one transaction.
+Explicit successful proof is a `started` response with resumed:true, the exact
+captureId/timelineOriginMs/callGeneration, path and resume-capture-v1 feature.
+See SPEC-CONTROL.md and conformance/control/RESUME-CAPTURE.md for cancellation,
+interleavings and the shared seam fixture. Existing ordinary Start is unchanged.
+
+
+### Source retirement during an active capture (extension0.2.8)
+
+An ended/failed physical span in a still-active capture returns error with
+code:state, scope:source, id and retired:true. It does not mean the whole capture
+was saved. Producers retire only that span and may retry its live source with a
+fresh span ID. Native-first capture finalization returns scope:command,
+code:state, without retired:true, and stops the capture transport intentionally.
+Older source/command state errors without the marker keep their historical
+finalized-capture meaning, except for a span the extension already fenced after
+a prior source refusal. Its already-in-flight state replies and retry cleanup
+are local retirement, not evidence that healthy sources or the microphone ended.
+
+Propagate retired:true through native errors, relay ACKs, page and offscreen
+capture. TrackEnd cleanup for an already retired span is harmless. A source I/O
+error fences its span before later chunks are forwarded. Late ACKs/errors from
+that span cannot mark its replacement healthy or stop another source. The live
+root keeps its ordinary retry schedule; capture-wide and manifest/directory
+failures retain their existing fatal policy.

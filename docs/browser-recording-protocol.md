@@ -3,8 +3,12 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `6e581d66`, ships companion 0.2.3 with authoritative page-state
-publication and a coherent multi-tab inventory. D33 records explicit end causes
+The current pin, `c6f5fc72`, ships companion 0.2.8 with authoritative page-state
+publication and a coherent multi-tab inventory. Call identity and the hook
+baseline survive worker restarts; persisted addresses use bounded fingerprints.
+A worklet must prove its render clock is advancing before source PCM is armed;
+per-source readiness failures remain visible while healthy sources keep running.
+D33 records explicit end causes
 and permits `othersSource.reason: restored` only for a retained browser connection
 returning with fresh PCM after fallback; older recordings remain readable.
 
@@ -16,15 +20,36 @@ to run the request-derived stdio conformance suite.
 
 ## Browser call lifetime
 
-For independent captures, a reachable page reporting zero call sources ends the
-meeting after a two-second grace; it does not select system sound. Losing the
-page or companion invokes Q4. A fallback keeps its existing folder and sources
-when an active call returns, without switching back to browser audio. If no
-active call returns within 30 seconds, Cassini stops and saves it, including when
-the browser connection itself is gone. The broker advances these deadlines on
-busy accept traffic as well as idle timeouts.
+With D52 multistream capability, a present page with no sources gets a 30-second
+others-gone grace only after remote audio has been heard. A missing inventory row
+means unknown, and a control reconnect with fresh retained PCM does not select
+system sound. A browser-confirmed closed tab keeps the two-second grace.
+Navigation or missing page evidence retains D33's 120-second return deadline;
+its system fallback begins after two seconds when The others is selected. A
+retained browser connection can restore on fresh validated PCM. Call-generation
+changes fence the old recording before admitting another call's samples.
+
+See [call-lifecycle.md](call-lifecycle.md) for legacy capability behavior and the
+per-capture reconnect, stop and fallback rules.
 
 The private recording harness proves hang-up with a tab left open, reload,
 worker reconnection, expiry without an active call, and unaffected simultaneous
 meetings. Unit tests advance only the recorded missing timestamp to exercise the
 same deadline branches without wall-clock sleeps.
+
+
+## Source I/O retirement
+
+Merged protocol PR #28 supplies the source-isolation fix pinned by this branch.
+An active capture's ended physical span returns `state/source/retired:true`;
+its cleanup and in-flight chunks cannot mean the whole capture was saved.
+Capture finalization returns `state/command`. Failed spans are fenced locally,
+healthy sources and the microphone continue, and a live source retries a new ID.
+The pin is the exact upstream merge commit, c6f5fc72. Its tree is identical
+to the reviewed source-fix head; companion version remains 0.2.8.
+
+Selecting a browser category permanently includes already discovered sources,
+even one that failed before declaring a track. Rejected selection changes roll
+back that expectation. Periodic WAV flush/fsync failures retire only that writer
+and checkpoint every healthy writer. Manifest and directory durability errors
+remain fatal; they are never downgraded into a per-source response.
