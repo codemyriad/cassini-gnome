@@ -63,7 +63,18 @@ class SourceFact:
 
 
 def live_problem(session, metadata=None):
-    return any(row.problem for row in sources(session, metadata or {}, live=True))
+    if any(row.problem for row in sources(session, metadata or {}, live=True)):
+        return True
+    # Native microphone/system inputs have no browser discovery row. A failed
+    # physical WAV proves the source was selected, even with no received PCM.
+    tracks = session.get("tracks")
+    return isinstance(tracks, list) and any(
+        isinstance(track, dict)
+        and track.get("kind") in ("microphone", "system")
+        and track.get("ended") is True
+        and track.get("problemKind") == "io"
+        for track in tracks
+    )
 
 
 def _counter(tracks, ids, field):

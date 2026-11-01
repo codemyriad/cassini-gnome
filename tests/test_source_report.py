@@ -245,3 +245,36 @@ def test_real_host_source_failure_without_a_wav_reaches_live_worker_and_details(
         assert len(host.session.manifest["tracks"]) == 1, "Failure without a WAV must remain visible"
     finally:
         host.close()
+
+
+@pytest.mark.parametrize("kind", ["microphone", "system"])
+def test_isolated_native_writer_failure_warns_while_healthy_browser_audio_continues(tmp_path, monkeypatch, kind):
+    import errno
+
+    from test_capture_record import declare, pcm
+
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.recording_details import recording_observation
+    from cassini_talk.recording_session import BrowserHost
+
+    host = BrowserHost(tmp_path)
+    host.handle(dict(type="start", features=["source-outcomes-v1"], captureId="native-failure"))
+    session = host.session
+    try:
+        session.add_track("native", "Native input", kind, 48000, 1, label_source="device")
+        session.append_native("native", b"\x01\x00" * 48000, 0)
+        writer = session.writers["native"]
+
+        def broken():
+            if not writer.file.closed:
+                raise OSError(errno.ENOSPC, "Generated native WAV sync failure")
+
+        monkeypatch.setattr(writer, "sync", broken)
+        session.checkpoint()
+        assert host.handle(declare("healthy")) == dict(type="ack")
+        assert host.handle(pcm("healthy", 48000)) == dict(type="ack")
+        meeting = LibraryScanner(tmp_path).scan(capture_activity={session.manifest["id"]: "recording"}).meetings[0]
+        assert recording_observation(meeting)["source_problem"]
+        assert not session.finished
+    finally:
+        host.close()
