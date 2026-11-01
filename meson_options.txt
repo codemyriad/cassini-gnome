@@ -21,3 +21,6 @@ option('sherpa_cache', type: 'string', value: '.sherpa-cache',
 
 option('store_listing_public', type: 'boolean', value: false,
   description: 'Offer the public browser store as primary; keep Add from Cassini available')
+
+option('packaging', type: 'combo', choices: ['source', 'deb', 'rpm', 'arch', 'flatpak'], value: 'source',
+  description: 'How this build is shipped; named in the model download User-Agent (D54)')

@@ -53,7 +53,8 @@
             "name": "cassini-talk",
             "buildsystem": "meson",
             "config-opts": [
-                "-Dprofile=default"
+                "-Dprofile=default",
+                "-Dpackaging=flatpak"
             ],
             "run-tests": true,
             "build-options": {

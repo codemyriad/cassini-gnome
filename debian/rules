@@ -9,7 +9,7 @@ include /usr/share/dpkg/architecture.mk
 # build-aux/deb/build.sh fills (build-aux/whistle-cache.sh) before building;
 # the build itself never downloads.
 override_dh_auto_configure:
-	dh_auto_configure -- -Dwhistle=enabled -Dwhistle_cache=.whistle-cache -Dsherpa=enabled -Dsherpa_cache=.sherpa-cache
+	dh_auto_configure -- -Dpackaging=deb -Dwhistle=enabled -Dwhistle_cache=.whistle-cache -Dsherpa=enabled -Dsherpa_cache=.sherpa-cache
 
 # The app checks every file of the bundle against its pinned sha256 before it
 # loads anything, so nothing may rewrite it: not strip-nondeterminism (which

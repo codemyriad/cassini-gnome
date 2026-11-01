@@ -232,7 +232,7 @@ install_data(
 runtime_paths = configure_file(
   input: 'cassini_talk/paths.json.in',
   output: 'paths.json',
-  configuration: {'SPECTRO_PATH': spectro_dir / 'libcassini-spectro.so', 'ONNXRUNTIME_DIR': onnxruntime_dir, 'SHERPA_DIR': sherpa_dir, 'BINDIR': get_option('prefix') / get_option('bindir'), 'STORE_LISTING_PUBLIC': get_option('store_listing_public').to_string('true', 'false'), 'PROFILE': get_option('profile')},
+  configuration: {'SPECTRO_PATH': spectro_dir / 'libcassini-spectro.so', 'ONNXRUNTIME_DIR': onnxruntime_dir, 'SHERPA_DIR': sherpa_dir, 'BINDIR': get_option('prefix') / get_option('bindir'), 'STORE_LISTING_PUBLIC': get_option('store_listing_public').to_string('true', 'false'), 'PROFILE': get_option('profile'), 'PACKAGING': get_option('packaging')},
   install: true,
   install_dir: moduledir,
 )

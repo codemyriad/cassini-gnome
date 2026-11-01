@@ -48,7 +48,9 @@ def fixture(remote, tmp_path, monkeypatch):
     monkeypatch.setattr(nemotron_model, "FILES", {"weights.onnx": (pin["size"], pin["sha256"], pin["downloadBytes"])})
     monkeypatch.setattr(nemotron_model, "PIN", dict(license="OpenMDW-1.1", files={"weights.onnx": pin}))
     monkeypatch.setattr(diarization_models, "verify_runtime", lambda path: path)
-    store = ModelStore(tmp_path / "models", origin=remote.origin, fixture=True)
+    store = ModelStore(
+        tmp_path / "models", origin=remote.origin, fixture=True, user_agent="CassiniTalk/test (GNOME; Linux; source)"
+    )
     models = DiarizationModels(tmp_path / "bundle", lambda: None, store=store, client_factory=Probe)
     until(lambda: not models.snapshot()["busy"])
     yield models, store, remote

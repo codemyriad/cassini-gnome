@@ -170,7 +170,7 @@ cp -p %{SOURCE7} .sherpa-cache/libsherpa-onnx-c-api.so
 cp -p %{SOURCE8} .sherpa-cache/CASSINI-SHA256SUMS
 
 %build
-%meson -Dwhistle=enabled -Dwhistle_cache=.whistle-cache -Dsherpa=enabled -Dsherpa_cache=.sherpa-cache
+%meson -Dpackaging=rpm -Dwhistle=enabled -Dwhistle_cache=.whistle-cache -Dsherpa=enabled -Dsherpa_cache=.sherpa-cache
 %meson_build
 
 %install

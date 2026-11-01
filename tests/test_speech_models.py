@@ -38,7 +38,9 @@ def model_fixture(remote, tmp_path, monkeypatch):
         "FILES",
         {"weights.onnx": (len(remote.data), hashlib.sha256(remote.data).hexdigest(), len(remote.compressed))},
     )
-    store = ModelStore(tmp_path / "models", origin=remote.origin, fixture=True)
+    store = ModelStore(
+        tmp_path / "models", origin=remote.origin, fixture=True, user_agent="CassiniTalk/test (GNOME; Linux; source)"
+    )
     persisted, notifications = [], []
     models = SpeechModels("whistle", persisted.append, lambda: notifications.append(True), store=store)
     until(lambda: not models.snapshot()["busy"])
