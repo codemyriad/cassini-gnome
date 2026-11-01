@@ -128,15 +128,19 @@ def test_conflict_ids_do_not_look_like_d24_subvoices():
     assert selected == [words[1]] and labels == {}
 
 
-def test_clock_mapped_fractional_end_is_not_floored_before_overlap_check(tmp_path):
-    import wave
+def test_clock_mapped_fractional_end_is_not_floored_before_overlap_check(tmp_path, monkeypatch):
+    import builtins
 
     from cassini_talk.source_spans import bounds
 
     path = tmp_path / "track-mapped.wav"
-    with wave.open(str(path), "wb") as audio:
-        audio.setparams((1, 2, 48000, 0, "NONE", ""))
-        audio.writeframes(bytes(96000))
+    real_import = builtins.__import__
+
+    def without_numpy(name, *args, **kwargs):
+        assert name != "numpy", "The metadata preparer must not import NumPy"
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", without_numpy)
     mapped = track(
         "mapped",
         0,
@@ -147,3 +151,5 @@ def test_clock_mapped_fractional_end_is_not_floored_before_overlap_check(tmp_pat
     assert bounds(mapped)[1] > 1000
     separated, _ = separate([mapped, track("following", 1000)])
     assert separated[1]["speaker"] == "track-receiver:overlap:1"
+    assert not path.exists(), "Grouping metadata must not need to open the audio"
+    assert group_tracks([mapped])[0]["durationMs"] == 1000
