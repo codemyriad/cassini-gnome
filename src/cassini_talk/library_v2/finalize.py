@@ -28,11 +28,11 @@ from .. import library_schema, meeting_store, portable
 from ..library_files import regular
 from ..portable_writer import WORDS_MIME, chunk_set, file_tags, rewrite_tags
 from ..recording_details import disk_reserve
-from ..recording_session import strict_json
+from ..recording_session import METADATA_LIMIT, strict_json
 from ..strings import text
 from . import edit, journal, mixdown, names, publish, xschema
 
-SESSION_LIMIT = 16 << 20
+SESSION_LIMIT = METADATA_LIMIT
 HEADER_ALLOWANCE = 1 << 20
 EMPTY_WORDS = dict(format=portable.WORDS_FORMAT, wordCount=0, items=[])
 

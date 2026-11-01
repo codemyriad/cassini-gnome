@@ -120,6 +120,23 @@ def test_x_tracks_keep_the_span_map_and_zero_sample_sources_are_reported(tmp_pat
     ]  # fmt: skip
 
 
+def test_presence_reads_the_published_track_entries_like_the_session(tmp_path):
+    from cassini_talk.source_ownership import presence, samples
+
+    audio = track_audio(RATE, 4.0)
+    gaps = [dict(atMs=2000, durationMs=1000, frames=48000, kind="jump")]
+    tracks = [
+        dict(id="mic", kind="microphone", file="track-mic.wav", sampleRate=RATE, channels=1, frames=4 * RATE,
+             startOffsetMs=1000, gapFrames=48000, gaps=gaps, write={"track-mic.wav": (audio, RATE, 1)}),
+    ]  # fmt: skip
+    _sid, directory = new_session(tmp_path, tracks)
+    manifest = json.loads((directory / "session.json").read_text())
+    (published,) = mixdown.session_spans(directory, manifest).tracks
+    assert "startOffsetMs" not in published and published["gaps"] == gaps
+    expected = [[16000, 32000], [48000, 80000]]
+    assert samples(presence(published).present) == samples(presence(manifest["tracks"][0]).present) == expected
+
+
 def test_stereo_spans_are_averaged_and_tracks_summed_without_normalisation(tmp_path):
     left = np.full(RATE, 0.3)
     right = np.full(RATE, 0.1)

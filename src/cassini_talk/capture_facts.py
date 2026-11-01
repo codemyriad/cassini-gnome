@@ -8,7 +8,7 @@ from pathlib import Path
 from .library_edits import mutation as transaction
 from .library_files import regular
 from .meeting_store import read_metadata, update_metadata
-from .recording_session import strict_json
+from .recording_session import METADATA_LIMIT, strict_json
 
 MAX_INTEGER = 9007199254740991
 
@@ -28,9 +28,9 @@ def record_end(directory, reason, *, manifest=None):
         descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
             with regular(descriptor, "session.json") as (stream, info):
-                if info.st_size > 1024 * 1024:
+                if info.st_size > METADATA_LIMIT:
                     raise ValueError("Capture metadata exceeds limit")
-                manifest = strict_json(stream.read(1024 * 1024 + 1))
+                manifest = strict_json(stream.read(METADATA_LIMIT + 1))
         finally:
             os.close(descriptor)
     if not isinstance(manifest, dict) or manifest.get("state") not in ("completed", "interrupted"):

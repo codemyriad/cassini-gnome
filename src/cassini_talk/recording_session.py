@@ -24,6 +24,9 @@ from .i18n import gettext as _
 MAX_MESSAGE = 512 * 1024
 # D52.2: absence ranges kept per track before one overflow marker.
 GAP_BUDGET = 1000
+# Readers of session.json and meeting.json (captureRecord): 64 tracks with a
+# full gap budget are about 6 MB compact, so 1 MiB would turn them into salvage.
+METADATA_LIMIT = 16 << 20
 KINDS = {"microphone", "system", "application", "local", "remote", "media", "tab"}
 
 
@@ -355,7 +358,8 @@ class RecordingSession:
             self.capture_record.finish(self.manifest)
         with temporary.open("w", encoding="utf-8") as output:
             os.chmod(temporary, 0o600)
-            output.write(json.dumps(self.manifest, indent=2, allow_nan=False) + "\n")
+            # Compact: this runs about once a second under the capture lock.
+            output.write(json.dumps(self.manifest, separators=(",", ":"), allow_nan=False) + "\n")
             output.flush()
             os.fsync(output.fileno())
         temporary.replace(path)
@@ -494,23 +498,41 @@ class RecordingSession:
         end = track["startOffsetMs"] + (host_ns - clock.origin_ns - first_ns) / 1_000_000 + first_index * 1000 / rate
         return end - frames * 1000 / rate
 
-    def _record_gap(self, identifier, track, before, frames, kind, *, at_ms=None):
-        """D52.2: one half-open session-time range per padding write, never coalesced."""
+    @staticmethod
+    def _ms(value):
+        return int(value) if float(value).is_integer() else value
+
+    def _begin_gap(self, track, before, frames, kind, *, at_ms=None):
+        """D52.2: one half-open session-time range per padding write, never coalesced.
+
+        The range is recorded before the padding is written, so a checkpoint
+        during the write (WAV rotation) never persists zeros without it.
+        """
         rate = track["sampleRate"]
-        if kind != "prefix":
-            track["gapFrames"] = track.get("gapFrames", 0) + frames
-            if frames >= rate:
-                self._long_gaps.add(identifier)
-        if at_ms is None:
-            at_ms = track["startOffsetMs"] + before * 1000 / rate
-        at_ms, duration = (int(v) if float(v).is_integer() else v for v in (at_ms, frames * 1000 / rate))
+        at_ms = self._ms(track["startOffsetMs"] + before * 1000 / rate if at_ms is None else at_ms)
         gaps = track.setdefault("gaps", [])
         if gaps and gaps[-1]["kind"] == "overflow":
-            return
+            return None
         if len(gaps) >= GAP_BUDGET:
-            gaps.append(dict(atMs=at_ms, kind="overflow"))
+            entry = dict(atMs=at_ms, kind="overflow")
         else:
-            gaps.append(dict(atMs=at_ms, durationMs=duration, frames=frames, kind=kind))
+            entry = dict(atMs=at_ms, durationMs=self._ms(frames * 1000 / rate), frames=frames, kind=kind)
+        gaps.append(entry)
+        return entry
+
+    def _end_gap(self, identifier, track, entry, kind, written):
+        """Keep the range to the frames actually written, after a partial I/O failure too."""
+        rate = track["sampleRate"]
+        if kind != "prefix":
+            track["gapFrames"] = track.get("gapFrames", 0) + written
+            if written >= rate:
+                self._long_gaps.add(identifier)
+        if entry is None:
+            return
+        if not written:
+            track["gaps"].remove(entry)
+        elif entry["kind"] != "overflow":
+            entry.update(durationMs=self._ms(written * 1000 / rate), frames=written)
 
     def append(self, identifier, data, offset):
         if self.finished or not isinstance(identifier, str) or identifier not in self.writers:
@@ -530,15 +552,15 @@ class RecordingSession:
         try:
             if delta:
                 before_padding = writer.frames
+                kind = "prefix" if prefix else "jump"
+                gap = self._begin_gap(track, before_padding, delta, kind)
                 try:
                     writer.silence(delta)
                 finally:
                     # silence() writes bounded blocks and may fail after some
                     # have reached the WAV. Keep that absence distinct from
                     # received zero PCM even on a source-local disk failure.
-                    padded = writer.frames - before_padding
-                    if padded:
-                        self._record_gap(identifier, track, before_padding, padded, "prefix" if prefix else "jump")
+                    self._end_gap(identifier, track, gap, kind, writer.frames - before_padding)
             writer.append(data)
         except OSError as error:
             if self.capture_record is not None:
@@ -575,22 +597,22 @@ class RecordingSession:
             if not writer.frames and not gap_frames and track.get("startOffsetMs") is not None:
                 prefix = max(0, round((offset - track["startOffsetMs"]) * writer.rate / 1000))
                 if prefix:
+                    gap = self._begin_gap(track, 0, prefix, "prefix")
                     try:
                         writer.silence(prefix)
                     finally:
-                        if writer.frames:
-                            self._record_gap(identifier, track, 0, writer.frames, "prefix")
+                        self._end_gap(identifier, track, gap, "prefix", writer.frames)
                         track["frames"] = writer.frames
             if gap_frames:
                 before = writer.frames
+                # The gap began gap_frames before this buffer, however much of it is written.
+                at = self._native_gap_ms(identifier, host_ns, gap_frames)
+                gap = self._begin_gap(track, before, gap_frames, "input", at_ms=at)
                 try:
                     silence = getattr(writer, "silence_gap", writer.silence)
                     silence(gap_frames)
                 finally:
-                    written = writer.frames - before
-                    if written:
-                        at = self._native_gap_ms(identifier, host_ns, written)
-                        self._record_gap(identifier, track, before, written, "input", at_ms=at)
+                    self._end_gap(identifier, track, gap, "input", writer.frames - before)
                     track["frames"] = writer.frames
             if self.library_root is not None and host_ns is not None:
                 from .capture_clock import ClockAnchors
@@ -1072,7 +1094,7 @@ def load_session(path):
 def _load_session(path, fd, regular, track_source):
     try:
         with regular(fd, path.name) as (stream, info):
-            if info.st_size > 1024 * 1024:
+            if info.st_size > METADATA_LIMIT:
                 raise ValueError("Recording manifest is too large")
             manifest = strict_json(stream.read())
         if not isinstance(manifest, dict) or not isinstance(manifest.get("tracks"), list):

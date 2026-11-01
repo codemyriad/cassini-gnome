@@ -17,7 +17,7 @@ from fractions import Fraction
 from . import ux_formats as fmt
 from .i18n import plural_category
 from .library_files import regular
-from .recording_session import strict_json
+from .recording_session import METADATA_LIMIT, strict_json
 from .session_events import read_events
 from .source_report import SourceFact
 from .source_report import sources as source_facts
@@ -55,7 +55,7 @@ LANGUAGES = {
     "sv": text("details.language.sv"),
     "uk": text("details.language.uk"),
 }
-JSON_LIMIT = 1024 * 1024
+JSON_LIMIT = METADATA_LIMIT
 MIC_BUDGET = 512 * 1024
 REASONS = {
     "start": text("details.reason.start"),

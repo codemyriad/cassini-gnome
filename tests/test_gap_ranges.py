@@ -181,3 +181,167 @@ def test_native_gap_position_follows_the_host_clock_under_drift(tmp_path):
     assert abs(stored["atMs"] - mapped) <= 3, (stored["atMs"], mapped)
     assert stored["atMs"] - nominal > 150, "a nominal position would lag the drifted host clock"
     session.finish()
+
+
+def jump(at, duration, frames):
+    return dict(atMs=at, durationMs=duration, frames=frames, kind="jump")
+
+
+def test_published_track_presence_takes_its_start_from_the_spans():
+    gaps = [jump(2000, 1000, 48000)]
+    session = dict(startOffsetMs=1000, sampleRate=48000, frames=192000, gaps=gaps)
+    # x["codemyriad.io"].tracks[] carries gaps on the logical track and offsets only on spans.
+    published = dict(
+        id="a",
+        kind="remote",
+        gaps=gaps,
+        gapFrames=48000,
+        spans=[dict(file="track-a.wav", sampleRate=48000, channels=1, frames=192000, startOffsetMs=1000)],
+    )
+    rotated = dict(
+        published,
+        spans=[
+            dict(file="track-a.wav", sampleRate=48000, channels=1, frames=96000, startOffsetMs=1000),
+            dict(file="tracks/track-a-2.wav", sampleRate=48000, channels=1, frames=96000, startOffsetMs=3000),
+        ],
+    )
+    expected = [[16000, 32000], [48000, 80000]]
+    for track in (session, published, rotated):
+        assert samples(presence(track).present) == expected, track
+    unplaced = dict(published, spans=[dict(published["spans"][0], startOffsetMs=None)])
+    assert presence(unplaced) is None
+
+
+def test_spans_are_one_logical_extent_and_unplaced_or_empty_spans_add_nothing():
+    span = dict(file="track-a.wav", sampleRate=48000, channels=1)
+    rotated = dict(
+        gaps=[],
+        spans=[dict(span, frames=96000, startOffsetMs=1000), dict(span, frames=96000, startOffsetMs=3000)],
+    )
+    assert samples(presence(rotated).present) == [[16000, 80000]], "no split at the rotation boundary"
+    mixed = dict(rotated, spans=rotated["spans"] + [dict(span, frames=48000, startOffsetMs=None)])
+    assert samples(presence(mixed).present) == [[16000, 80000]], "an unplaced span is not assumed at 0"
+    empty = dict(gaps=[], spans=[dict(span, frames=0, startOffsetMs=2000)])
+    assert presence(empty).present == () and presence(empty).unknown == ()
+    assert presence(dict(empty, gaps=[dict(atMs=None, kind="jump")])).present == ()
+
+
+@pytest.mark.parametrize(
+    "gaps,present,unknown",
+    [
+        ([dict(atMs=1000, kind="jump")], [[0, 16000]], [[16000, 32000]]),
+        ([dict(atMs=None, durationMs=5, frames=240, kind="jump")], [], [[0, 32000]]),
+        (["not a gap"], [], [[0, 32000]]),
+        ([jump(500, 250, 12000), dict(atMs=1000, kind="jump")], [[0, 8000], [12000, 16000]], [[16000, 32000]]),
+        ([jump(500, 250, 12000), dict(atMs="1000", durationMs=10, kind="jump")], [], [[0, 8000], [12000, 32000]]),
+    ],
+    ids=["no-duration", "no-position", "not-an-object", "after-a-valid-range", "unusable-position-after-a-range"],
+)
+def test_a_malformed_gap_entry_makes_the_rest_unknown(gaps, present, unknown):
+    result = presence(dict(startOffsetMs=0, sampleRate=48000, frames=96000, gaps=gaps))
+    assert (samples(result.present), samples(result.unknown), result.complete) == (present, unknown, False)
+
+
+def test_null_gaps_read_as_an_older_writer_in_the_library(tmp_path):
+    from test_library import capture
+
+    from cassini_talk.library import scan_library
+
+    session = capture(tmp_path)
+    session.manifest["tracks"][0].update(gapFrames=480, gaps=None)
+    (session.directory / "session.json").write_text(json.dumps(session.manifest))
+    (meeting,) = scan_library(tmp_path).meetings
+    assert meeting.interrupted_at_ms is not None
+
+
+def test_full_gap_budgets_on_sixty_four_tracks_stay_readable(tmp_path):
+    from cassini_talk.capture_facts import record_end
+    from cassini_talk.capture_report import record_capture
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.library_publication import capture_parent
+    from cassini_talk.meeting_store import read_metadata
+    from cassini_talk.recording_session import GAP_BUDGET, METADATA_LIMIT
+
+    root = tmp_path / "Library"
+    host = BrowserHost(capture_parent(root))
+    try:
+        host.handle(dict(type="start", features=[NEGOTIATED], captureId="budget"))
+        for index in range(64):
+            identifier = f"t{index}"
+            declaration = dict(type="track", id=identifier, sourceTrackId="root-" + identifier, kind="remote")
+            assert host.handle(dict(declaration, label="Guest", sampleRate=48000, channels=1)) == dict(type="ack")
+            pcm = base64.b64encode(b"\x01\x00" * 48000).decode()
+            assert host.handle(dict(type="audio", id=identifier, sequence=0, offsetMs=0, pcm=pcm)) == dict(type="ack")
+        # Worst-case float times on every track, at the full budget plus its marker.
+        full = [jump(123456.78901234567 + n, 20.833333333333332, 1000) for n in range(GAP_BUDGET)]
+        full.append(dict(atMs=999999.123456789, kind="overflow"))
+        for track in host.session.manifest["tracks"]:
+            track["gaps"] = [dict(gap) for gap in full]
+        assert host.handle(dict(type="stop", captureId="budget"))["type"] == "stopped"
+    finally:
+        host.close()
+    directory = host.session.directory
+    raw = (directory / "session.json").read_bytes()
+    assert 1 << 20 < len(raw) <= METADATA_LIMIT and b"\n  " not in raw, "a compact checkpoint past the old 1 MiB"
+    saved = json.loads(raw)
+    (meeting,) = LibraryScanner(root).scan().meetings
+    assert meeting.interrupted_at_ms is None, "the Library read it, it did not salvage it"
+    assert record_capture(directory, saved)
+    assert (directory / "meeting.json").stat().st_size > 1 << 20
+    record = read_metadata(directory)["recordingDetails"]["captureRecord"]
+    assert len(record["tracks"]) == 64 and all(len(t["gaps"]) == GAP_BUDGET + 1 for t in record["tracks"])
+    record_end(directory, "user")
+    assert read_metadata(directory)["recordingDetails"]["end"]["reason"] == "user"
+
+
+def test_a_checkpoint_during_padding_already_holds_its_range(tmp_path, monkeypatch):
+    from cassini_talk.recording_session import RecordingSession
+
+    session = RecordingSession(tmp_path, "Rotation")
+    session.add_track("a", "Guest", "remote", 48000, 1, label_source="browser")
+    session.append("a", b"\x01\x00" * 48000, 0)
+    writer, seen = session.writers["a"], []
+    silence = writer.silence
+
+    def rotating(frames):
+        # A WAV rotation checkpoints the manifest between padding blocks.
+        silence(frames // 2)
+        session.checkpoint()
+        seen.append(json.loads((session.directory / "session.json").read_text())["tracks"][0]["gaps"])
+        silence(frames - frames // 2)
+
+    monkeypatch.setattr(writer, "silence", rotating)
+    session.append("a", b"\x01\x00" * 48000, 3000)
+    assert seen == [[jump(1000, 2000, 96000)]]
+    assert session.manifest["tracks"][0]["gaps"] == [jump(1000, 2000, 96000)]
+    session.finish()
+
+
+def test_a_partly_written_native_gap_keeps_its_host_position(tmp_path, monkeypatch):
+    from cassini_talk.recording_session import RecordingSession
+
+    session = RecordingSession(tmp_path, "Partial")
+    session.add_track("microphone", "Microphone", "microphone", 48000, 1, label_source="device")
+    session.library_root = tmp_path  # enable host-clock anchors on this plain WAV writer
+    timeline, origin = NativeTimeline(48000), session._native_clock_origin_ns
+    host_ns = origin
+    for _ in range(3):
+        offset, gap = timeline.map(host_ns, 48000, 0)
+        session.append_native("microphone", b"\x01\x00" * 48000, offset, gap_frames=gap, host_ns=host_ns)
+        host_ns += 1_000_000_000
+    host_ns += 2_000_000_000
+    writer = session.writers["microphone"]
+    silence = writer.silence
+
+    def failing(frames):
+        silence(frames // 4)
+        raise OSError(28, "Generated ENOSPC")
+
+    monkeypatch.setattr(writer, "silence", failing)
+    offset, gap = timeline.map(host_ns, 48000, 0)
+    with pytest.raises(OSError):
+        session.append_native("microphone", b"\x01\x00" * 48000, offset, gap_frames=gap, host_ns=host_ns)
+    (stored,) = session.manifest["tracks"][0]["gaps"]
+    # The gap began 2 s before this buffer, however little of it reached the WAV.
+    assert stored == dict(atMs=3000, durationMs=500, frames=24000, kind="input")
+    assert session.manifest["tracks"][0]["gapFrames"] == 24000

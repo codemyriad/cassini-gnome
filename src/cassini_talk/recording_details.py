@@ -11,6 +11,7 @@ from .library import LibraryScanner, meeting_id
 from .library_edits import mutation as transaction
 from .library_files import regular
 from .meeting_store import update_metadata
+from .recording_session import METADATA_LIMIT
 
 
 def ac_rms(samples, channels=1):
@@ -106,8 +107,8 @@ def recording_observation(meeting, *, freshness_seconds=1):
 
         try:
             with regular(descriptor, "session.json") as (stream, info):
-                if info.st_size <= 1024 * 1024:
-                    session = json.loads(stream.read(1024 * 1024 + 1))
+                if info.st_size <= METADATA_LIMIT:
+                    session = json.loads(stream.read(METADATA_LIMIT + 1))
                     if isinstance(session, dict):
                         source_problem = live_problem(session)
         except (OSError, ValueError):

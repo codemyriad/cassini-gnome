@@ -13,7 +13,7 @@ from pathlib import Path
 from .library import meeting_id
 from .library_files import regular
 from .library_schema import valid
-from .recording_session import strict_json
+from .recording_session import METADATA_LIMIT, strict_json
 
 LOCK = threading.RLock()
 _TRANSACTIONS = threading.local()
@@ -111,13 +111,13 @@ def read_metadata(directory):
     try:
         try:
             with regular(descriptor, "meeting.json") as (stream, _info):
-                raw = stream.read(1024 * 1024 + 1)
+                raw = stream.read(METADATA_LIMIT + 1)
         except FileNotFoundError:
             raw = None
     finally:
         os.close(descriptor)
     if raw is not None:
-        if len(raw) > 1024 * 1024:
+        if len(raw) > METADATA_LIMIT:
             raise ValueError("Meeting metadata exceeds limit")
         value = strict_json(raw)
         if not valid(value) or value["id"] != identifier:

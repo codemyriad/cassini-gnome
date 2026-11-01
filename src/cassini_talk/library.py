@@ -17,12 +17,12 @@ from .library_files import FileCache, basename, key
 from .library_schema import valid
 from .meeting_state import MeetingError, MeetingState
 from .meeting_text import reading_turns
-from .recording_session import KINDS, strict_json
+from .recording_session import KINDS, METADATA_LIMIT, strict_json
 from .session_events import meeting_sources, read_events
 from .strings import text
 from .transcript import build_turns, visible_turns
 
-MAX_JSON = 1024 * 1024
+MAX_JSON = METADATA_LIMIT
 
 
 def library_root(root=None):
@@ -676,7 +676,7 @@ class LibraryScanner:
             # D52.2: writers that record gap ranges flag long gaps in problemKind.
             # Older folders without ranges keep the any-gapFrames reading.
             gap = capture.get("problemKind") == "gap" or any(
-                isinstance(t, dict) and "gaps" not in t and _integer(t.get("gapFrames")) and t["gapFrames"] > 0
+                isinstance(t, dict) and t.get("gaps") is None and _integer(t.get("gapFrames")) and t["gapFrames"] > 0
                 for t in capture.get("tracks", [])
             )
             if (
