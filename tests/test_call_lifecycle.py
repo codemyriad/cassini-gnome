@@ -273,3 +273,23 @@ def test_hangup_after_failed_restore_keeps_the_normal_call_end_grace(tmp_path, m
             ],
         ),
     )
+
+
+def test_multistream_reload_through_present_zero_keeps_the_two_minute_return_deadline(tmp_path, monkeypatch):
+    test_shared_actions_use_actual_capture_devices_spans_and_end(
+        tmp_path,
+        monkeypatch,
+        dict(
+            name="reload-present-zero",
+            multistream=True,
+            steps=[
+                dict(atMs=0, pageState="present", sourceCount=1, heard=True, expect=[]),
+                dict(atMs=1000, pageState="navigating", sourceCount=0, expect=[]),
+                dict(atMs=2000, pageState="present", sourceCount=0, expect=[]),
+                dict(atMs=3000, pageState="present", sourceCount=0, expect=["fallback"]),
+                dict(atMs=32000, pageState="present", sourceCount=0, expect=[]),
+                dict(atMs=120999, pageState="present", sourceCount=0, expect=[]),
+                dict(atMs=121000, pageState="present", sourceCount=0, expect=["stop:pageGone"]),
+            ],
+        ),
+    )

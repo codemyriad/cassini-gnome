@@ -69,7 +69,10 @@ class CallLifecycle:
         return "stop:callEnded" if now - self.ended >= CALL_END_GRACE else None
 
     def _multistream(self, now, page, count, *, fallback, others, restore_ready, inventory_known, control_alive):
-        if page != "present" or not control_alive:
+        if page == "present" and control_alive and inventory_known and count > 0:
+            self.missing = self.ended = None
+            return "restore" if self.heard and fallback and others and restore_ready else None
+        if page != "present" or not control_alive or self.missing is not None:
             self.ended = None
             if self.missing is None:
                 self.missing = now
@@ -78,10 +81,6 @@ class CallLifecycle:
             # Neither a missing row nor a failed lookup is a zero-source vote.
             self.ended = None
             return None
-        self.missing = None
-        if count > 0:
-            self.ended = None
-            return "restore" if self.heard and fallback and others and restore_ready else None
         if self.heard:
             if self.ended is None:
                 self.ended = now
