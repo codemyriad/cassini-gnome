@@ -53,8 +53,10 @@ class WireTrack:
 
 
 class BrowserStreams:
-    def __init__(self, session, *, me=True, others=True, picture_enabled=None):
+    def __init__(self, session, *, me=True, others=True, picture_enabled=None, native_me=False):
         self.session = session
+        if session.capture_record is not None:
+            session.capture_record.native_me = native_me
         self.me, self.others, self.browser = me, others, True
         self.tracks = {}
         self.selection_at = 0

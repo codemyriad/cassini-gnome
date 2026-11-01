@@ -116,8 +116,9 @@ class BrowserCapture:
                 self.me = microphone
                 self.browser_lost = others_source == "system"
                 self.browser_lost_since = time.monotonic() if self.browser_lost else None
+                # Independent capture records Me natively (captureLocal: false).
                 self.streams = self.host.audio_sink = BrowserStreams(
-                    self.host.session, me=microphone, picture_enabled=lambda: self.spectrogram.active
+                    self.host.session, me=microphone, picture_enabled=lambda: self.spectrogram.active, native_me=True
                 )
                 self.streams.browser = not self.browser_lost
                 with self.host.session.change(
