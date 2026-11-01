@@ -175,6 +175,7 @@ def test_recording_details_keep_gaps_and_end_after_session_cache_is_deleted(tmp_
     after = read_details(meeting)
     assert dict(after.health)[text("details.health.gaps")] == gaps
     assert after.ended == report.ended and after.spans == report.spans
+    assert after.folder == report.folder == str(root)
     assert not any("session.json" in note for note in after.notes)
 
 

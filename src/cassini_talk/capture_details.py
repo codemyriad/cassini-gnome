@@ -456,6 +456,7 @@ def read_details(meeting):
     from .capture_report import stored as stored_capture
 
     capture_record = stored_capture(meeting.metadata)
+    folder = str(meeting.audio_file.parent if meeting.audio_file else meeting.directory)
     notes = []
     try:
         fd = os.open(meeting.directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -463,7 +464,7 @@ def read_details(meeting):
         if capture_record is None:
             return Report(
                 meeting.title,
-                str(meeting.directory),
+                folder,
                 meeting.lifecycle == "recording",
                 (),
                 _end(meeting, {}),
@@ -539,7 +540,7 @@ def read_details(meeting):
         writing = tuple((name, text("details.writing.after")) for name, _value in writing)
     return Report(
         clean(meeting.title, 500),
-        str(meeting.directory),
+        folder,
         meeting.lifecycle == "recording",
         timeline(
             meeting, session, tracks=_captured_spans(capture_record) if not meeting.tracks and capture_record else None
