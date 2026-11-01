@@ -101,6 +101,7 @@ def prepare_tracks(meeting):
         tracks.append(
             dict(
                 id=track.path.name,
+                **({"captureTrackId": track.id} if track.id is not None else {}),
                 path=str(track.path),
                 offsetMs=track.start_offset_ms,
                 speaker=speaker,

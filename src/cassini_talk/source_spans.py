@@ -44,12 +44,19 @@ def separate(tracks):
         if track.get("kind") not in ("microphone", "local", "system", "original"):
             grouped.setdefault(track["speaker"], []).append(track)
     diagnostics = []
-    for speaker in sorted(grouped):
+    for speaker in sorted(grouped, key=lambda value: value.encode("utf-8")):
         rows = grouped[speaker]
         if len(rows) < 2:
             continue
         extents = {track["id"]: bounds(track) for track in rows}
-        rows.sort(key=lambda t: (extents[t["id"]] is None, extents[t["id"]] or (), t["id"]))
+        rows.sort(
+            key=lambda t: (
+                extents[t["id"]] is None,
+                extents[t["id"]] or (),
+                t.get("captureTrackId", t["id"]).encode("utf-8"),
+                t["id"].encode("utf-8"),
+            )
+        )
         ends, ids = [], []
         suffix = 1
         for track in rows:
@@ -79,7 +86,7 @@ def separate(tracks):
                 dict(
                     code="source-spans-separated",
                     speaker=speaker,
-                    tracks=[track["id"] for track in rows],
+                    tracks=[track.get("captureTrackId", track["id"]) for track in rows],
                     speakers=ids,
                     unknownOffset=any(interval is None for interval in extents.values()),
                 )
