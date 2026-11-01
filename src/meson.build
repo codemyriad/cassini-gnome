@@ -271,7 +271,9 @@ if pytest.found()
     # Meson's own conformance tests: 11-21 s in a package build container,
     # over Meson's 30 s default on a loaded builder. Library v2 adds a 60 min
     # alignment golden, a scaled long meeting and a SIGKILL crash matrix.
-    timeout: 240,
+    # Distro builders already took 210-237 s of a 240 s deadline (openSUSE
+    # Tumbleweed, 2026-11-01), so any new test tripped it. D52.4: 360 s.
+    timeout: 360,
   )
 endif
 
