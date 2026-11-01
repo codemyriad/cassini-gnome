@@ -3,7 +3,7 @@
 # distribution's own package manager (apt, dnf, zypper, pacman or apk).
 #   build-aux/install-deps.sh [--all|--build|--runtime] [--yes] [--dry-run]
 #     --all       build and runtime dependencies (default)
-#     --build     meson, ninja, gettext, glib tools, validators, pytest
+#     --build     C compiler, meson, ninja, gettext, glib tools, validators, pytest
 #     --runtime   python3, PyGObject, GTK 4, libadwaita, GStreamer plugins,
 #                 and NumPy for writing meetings down
 #     --yes       do not ask for confirmation
@@ -34,7 +34,7 @@ unknown() {
   cat >&2 <<EOF
 $1
 Install these with your package manager (names vary between distributions):
-  build:   meson (>= 1.0), ninja, python3, gettext (msgfmt),
+  build:   C compiler and libc headers, meson (>= 1.0), ninja, python3, gettext (msgfmt),
            glib-compile-resources and glib-compile-schemas (glib dev tools),
            optional: desktop-file-validate, appstreamcli,
            gtk4-update-icon-cache, python3 pytest, jsonschema and
@@ -72,21 +72,21 @@ fi
 
 case $family in
   apt)
-    build="meson ninja-build python3 gettext libglib2.0-bin libglib2.0-dev-bin
+    build="gcc libc6-dev meson ninja-build python3 gettext libglib2.0-bin libglib2.0-dev-bin
            desktop-file-utils appstream libgtk-4-bin python3-pytest
            python3-jsonschema python3-rfc3339-validator"
     runtime="python3 python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0
              gstreamer1.0-plugins-base gstreamer1.0-plugins-good
              python3-numpy" ;;
   dnf)
-    build="meson ninja-build python3 gettext glib2 glib2-devel
+    build="gcc glibc-devel meson ninja-build python3 gettext glib2 glib2-devel
            desktop-file-utils appstream gtk4-devel-tools python3-pytest
            python3-jsonschema python3-rfc3339-validator"
     runtime="python3 python3-gobject gobject-introspection gtk4 libadwaita gstreamer1
              gstreamer1-plugins-base gstreamer1-plugins-good
              python3-numpy" ;;
   zypper)
-    build="meson ninja python3 gettext-tools glib2-tools glib2-devel
+    build="gcc glibc-devel meson ninja python3 gettext-tools glib2-tools glib2-devel
            desktop-file-utils AppStream gtk4-tools python3-pytest
            python3-jsonschema python3-rfc3339-validator"
     # Resolves to the primary Python flavour.
@@ -94,13 +94,13 @@ case $family in
              typelib-1_0-Gst-1_0 gstreamer-plugins-base gstreamer-plugins-good
              python3dist(numpy)" ;;
   pacman)
-    build="meson ninja python gettext glib2 glib2-devel desktop-file-utils
+    build="gcc glibc meson ninja python gettext glib2 glib2-devel desktop-file-utils
            appstream gtk4 python-pytest pkgconf
            python-jsonschema python-rfc3339-validator"
     runtime="python python-gobject gtk4 libadwaita gstreamer
              gst-plugins-base gst-plugins-good python-numpy" ;;
   apk)
-    build="meson samurai python3 gettext glib glib-dev desktop-file-utils
+    build="build-base meson samurai python3 gettext glib glib-dev desktop-file-utils
            appstream gtk4.0 py3-pytest
            py3-jsonschema py3-rfc3339-validator"
     # No NumPy: the pinned engine cannot run on musl, so

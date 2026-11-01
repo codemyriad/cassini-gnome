@@ -12,6 +12,7 @@ from uuid import uuid4
 from .capture_sources import BrowserStreams, change_time, selected_pcm
 from .recording_session import BrowserHost, ProtocolError, stop_reason
 from .session_events import source_state
+from .spectro_source import SpectroSource
 
 
 class BrowserCapture:
@@ -48,6 +49,8 @@ class BrowserCapture:
         self.publication = None
         self._mute_observer = None
         self.output_muted = False
+        self.spectrogram = SpectroSource()
+        self._spectro_starts = {}
 
     @property
     def directory(self):
@@ -107,7 +110,9 @@ class BrowserCapture:
                 self.me = microphone
                 self.browser_lost = others_source == "system"
                 self.browser_lost_since = time.monotonic() if self.browser_lost else None
-                self.streams = self.host.audio_sink = BrowserStreams(self.host.session, me=microphone)
+                self.streams = self.host.audio_sink = BrowserStreams(
+                    self.host.session, me=microphone, picture_enabled=lambda: self.spectrogram.active
+                )
                 self.streams.browser = not self.browser_lost
                 with self.host.session.change(
                     [
@@ -117,6 +122,7 @@ class BrowserCapture:
                 ):
                     mic = self._add_native("microphone") if microphone else None
                     system = self._add_native("system", 0) if self.browser_lost else None
+                self._sync_spectrogram()
             if mic is not None:
                 self._start_native("microphone", mic)
             if system is not None:
@@ -205,6 +211,7 @@ class BrowserCapture:
         state = dict(active=active, at=at, error=None, timeline=NativeTimeline(48000))
 
         def append(data, offset, *, host_ns=None):
+            picture = None
             with self.lock:
                 if not state["active"]:
                     return  # Readiness PCM is not a committed recording span.
@@ -223,6 +230,26 @@ class BrowserCapture:
                             gap_frames=gap,
                             host_ns=host_ns + skipped * NS // 48000 if host_ns is not None else None,
                         )
+                        start = self._spectro_starts.get(identifier)
+                        if start is None:
+                            start = (track.get("spans") or [track])[0].get("startOffsetMs")
+                            self._spectro_starts[identifier] = start
+                        if self.spectrogram.active:
+                            picture = dict(
+                                identifier=identifier,
+                                data=selected,
+                                offset_ms=offset,
+                                rate=48000,
+                                channels=1,
+                                kind=kind,
+                                start_ms=start,
+                                gap_frames=gap,
+                                level=self.levels[0 if kind == "microphone" else 1],
+                            )
+            if picture is not None:
+                self.spectrogram.observe(**picture, now_ms=self.elapsed_ms())
+            else:
+                self.spectrogram.release_if_idle()
 
         def level(value):
             with self.lock:
@@ -364,6 +391,7 @@ class BrowserCapture:
                             self.host.session.end_track(identifier)
                         for kind, (identifier, _tap, _state) in prepared.items():
                             self._add_native(kind, at, identifier=identifier)
+                    self._sync_spectrogram()
                     if lost and not self.browser_lost:
                         self.browser_lost_since = time.monotonic()
                     self.me, self.others, self.browser_lost = me, others, lost
@@ -394,6 +422,19 @@ class BrowserCapture:
                         with contextlib.suppress(Exception):
                             tap.stop()
 
+    def _sync_spectrogram(self):
+        """Declare committed spans before accepting their PCM; no DSP here."""
+        for track in self.host.session.manifest["tracks"]:
+            identifier = track["id"]
+            if track.get("ended"):
+                self.spectrogram.retire(identifier)
+                self._spectro_starts.pop(identifier, None)
+            elif identifier not in self.spectrogram.known:
+                writer = self.host.session.writers[identifier]
+                self.spectrogram.declare(identifier, kind=track["kind"], rate=writer.rate, now_ms=self.elapsed_ms())
+                spans = track.get("spans") or [track]
+                self._spectro_starts[identifier] = spans[0].get("startOffsetMs")
+
     def handle(self, message):
         if message.get("type") == "stop":
             reason = stop_reason(message)
@@ -406,7 +447,18 @@ class BrowserCapture:
         with self.lock:
             if self.finished or self.stopping:
                 raise ProtocolError("state", "No active recording")
-            return self.host.handle(message)
+            self.streams.picture = None
+            result = self.host.handle(message)
+            picture, self.streams.picture = self.streams.picture, None
+            if message.get("type") == "track" or (
+                picture is not None and picture["identifier"] not in self.spectrogram.known
+            ):
+                self._sync_spectrogram()
+        if picture is not None:
+            self.spectrogram.observe(**picture, now_ms=self.elapsed_ms())
+        else:
+            self.spectrogram.release_if_idle()
+        return result
 
     def stop(self, problem=None, *, reason=None):
         from .session_events import END_REASONS
@@ -452,6 +504,7 @@ class BrowserCapture:
                         problem, reason=self.end_reason, at_ms=self.elapsed_ms(), retain_lease=True
                     )
                     self.host.stopped = True
+                self.spectrogram.finish()
             from .library_publication import root_for, submit_stopped
 
             if root_for(self.directory) is not None:

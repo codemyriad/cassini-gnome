@@ -14,6 +14,7 @@ from .native_timing import NS, NativeTimeline
 from .recorder import request_eos
 from .recording_details import ACMeter, space_left
 from .recording_session import RecordingSession
+from .spectro_source import SpectroSource
 
 RATE = 48000
 
@@ -52,6 +53,8 @@ class NativeRecorder(GObject.Object):
         self._retired_branches = set()
         self._timelines = {}
         self._ac_meters = {}
+        self.spectrogram = SpectroSource()
+        self._spectro_starts = {}
         self._publication_cancel = threading.Event()
         self._publication_future = None
         self.publication = None
@@ -82,6 +85,8 @@ class NativeRecorder(GObject.Object):
         self._retired_branches = set()
         self._timelines = {}
         self._ac_meters = {}
+        self.spectrogram = SpectroSource()
+        self._spectro_starts = {}
         self._publication_cancel.clear()
         self._publication_future = None
         self.publication = None
@@ -117,6 +122,9 @@ class NativeRecorder(GObject.Object):
         self.starting = False
         try:
             self.session, (self.minutes_left, reserve) = future.result()
+            for track in self.session.manifest["tracks"]:
+                self.spectrogram.declare(track["id"], kind=track["kind"])
+                self._spectro_starts[track["id"]] = track.get("startOffsetMs")
             if self._stop_requested:
                 self._begin_finish()
                 return False
@@ -267,6 +275,7 @@ class NativeRecorder(GObject.Object):
                 elif "system" in added:
                     events.append(dict(atMs=at, type="othersSource", source="system", reason="user"))
                 identifiers = dict(self._track_ids)
+                retired_ids = [identifiers[kind] for kind in removed]
                 retired_system = identifiers.get("system") if "system" in removed else None
                 with self.session.change(events):
                     for kind in removed:
@@ -278,6 +287,9 @@ class NativeRecorder(GObject.Object):
                         )
                         self.session.manifest["tracks"][-1]["startOffsetMs"] = at
                         identifiers[kind] = identifier
+                for kind in added:
+                    self.spectrogram.declare(identifiers[kind], kind=kind, now_ms=at)
+                    self._spectro_starts[identifiers[kind]] = at
                 self._track_ids = identifiers
                 retired = [self._branches.pop(kind) for kind in removed]
                 self._retired_branches.update(retired)
@@ -286,6 +298,9 @@ class NativeRecorder(GObject.Object):
                     self._branches[kind] = attempt["branch"]
                     self._pending_sources.pop(kind)
                 committed = True
+            for identifier in retired_ids:
+                self.spectrogram.retire(identifier)
+                self._spectro_starts.pop(identifier, None)
             if retired_system is not None and self._mute_observer:
                 self._mute_observer.retire(retired_system, at)
             for kind in removed:
@@ -328,6 +343,7 @@ class NativeRecorder(GObject.Object):
             if buffer.pts == Gst.CLOCK_TIME_NONE:
                 raise ValueError("Audio source has no clock timestamp")
             data = buffer.extract_dup(0, buffer.get_size())
+            picture = None
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
                 if attempt is not None:
@@ -352,6 +368,30 @@ class NativeRecorder(GObject.Object):
                         offset, gap = timeline.map(host_ns, frames, offset)
                         absolute = self.pipeline.get_base_time() + host_ns if self.pipeline is not None else None
                         self.session.append_native(stored, data, offset, gap_frames=gap, host_ns=absolute)
+                        start = self._spectro_starts.get(stored)
+                        if start is None:
+                            record = next(t for t in self.session.manifest["tracks"] if t["id"] == stored)
+                            start = (record.get("spans") or [record])[0].get("startOffsetMs")
+                            self._spectro_starts[stored] = start
+                        source = self.spectrogram
+                        if source.active:
+                            picture = (source, stored, data, offset, rate, channels, start, gap)
+            if picture is not None:
+                source, stored, data, offset, rate, channels, start, gap = picture
+                source.observe(
+                    stored,
+                    data,
+                    offset,
+                    rate=rate,
+                    channels=channels,
+                    kind=identifier,
+                    start_ms=start,
+                    gap_frames=gap,
+                    now_ms=(GLib.get_monotonic_time() - self._start_us) / 1000,
+                    level=self.levels[0 if identifier == "microphone" else 1],
+                )
+            else:
+                self.spectrogram.release_if_idle()
         except Exception as error:
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
@@ -460,8 +500,11 @@ class NativeRecorder(GObject.Object):
             if pipeline is not None:
                 pipeline.set_state(Gst.State.NULL)
             try:
-                with self._lock:
-                    session.finish(problem, reason=reason, at_ms=at_ms, retain_lease=True)
+                try:
+                    with self._lock:
+                        session.finish(problem, reason=reason, at_ms=at_ms, retain_lease=True)
+                finally:
+                    self.spectrogram.finish()
                 # Encoding never holds the PCM lock or GTK main context.
                 if root_for(session.directory) is not None:
                     self._publication_future = submit_stopped(session, cancel=self._publication_cancel)

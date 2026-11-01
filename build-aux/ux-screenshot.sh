@@ -43,5 +43,12 @@ export FONTCONFIG_FILE="$runtime/fonts.conf"
 fc-match -f '%{family}: %{file}\n' Cantarell
 export CASSINI_SCREENSHOT_ISOLATED=1 CASSINI_SCREENSHOT_OUT="$output"
 unset WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY DBUS_SESSION_BUS_ADDRESS
+scale=${CASSINI_SCREENSHOT_SCALE:-1}
+case "$scale" in
+  1) screen=1280x900x24 ;;
+  2) screen=2560x1800x24 ;;
+  *) echo "Screenshot scale must be 1 or 2" >&2; exit 1 ;;
+esac
+export GDK_SCALE="$scale"
 exec_args=("$app")
-dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' "${exec_args[@]}"
+dbus-run-session -- xvfb-run -a -s "-screen 0 $screen -nolisten tcp" "${exec_args[@]}"

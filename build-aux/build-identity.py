@@ -18,9 +18,9 @@ def extension_files(root):
     )
 
 
-def generate(source, build, inputs, version, profile, application):
+def generate(source, build, inputs, version, profile, application, native_dir=None):
     source, build = Path(source).resolve(), Path(build).resolve()
-    files = {}
+    files, native = {}, {}
     launcher = None
     for path in map(Path, inputs):
         path = path.resolve()
@@ -31,6 +31,8 @@ def generate(source, build, inputs, version, profile, application):
             files["cassini_talk/paths.json"] = digest
         elif path == build / "src/cassini-talk.gresource":
             files[path.name] = digest
+        elif path == build / "src/libcassini-spectro.so" and native_dir is not None:
+            native[(Path(native_dir) / path.name).as_posix()] = digest
         elif path.is_relative_to(source / "src"):
             files[path.relative_to(source / "src").as_posix()] = digest
         elif path.is_relative_to(source / "browser-extension"):
@@ -44,6 +46,8 @@ def generate(source, build, inputs, version, profile, application):
     if not files or launcher is None:
         raise ValueError("Incomplete application identity inputs")
     value = dict(schema=1, version=version, profile=profile, applicationId=application, launcher=launcher, files=files)
+    if native:
+        value["nativeFiles"] = native
     value["buildId"] = hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return value
 
@@ -57,10 +61,11 @@ if __name__ == "__main__":
     parser.add_argument("--profile")
     parser.add_argument("--application")
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--native-dir")
     parser.add_argument("inputs", nargs="*")
     args = parser.parse_args()
     if args.list_extension:
         print("\n".join(str(p) for p in extension_files(args.list_extension)))
     else:
-        result = generate(args.source, args.build, args.inputs, args.version, args.profile, args.application)
+        result = generate(args.source, args.build, args.inputs, args.version, args.profile, args.application, args.native_dir)
         args.output.write_text(json.dumps(result, sort_keys=True, indent=2) + "\n")

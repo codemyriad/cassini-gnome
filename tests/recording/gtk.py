@@ -169,7 +169,18 @@ try:
             diagnostics=diagnostics,
         )
         assert window.live_stop.get_sensitive() and window.capture_header.get_visible_child_name() == "live"
-        assert all(bar.get_fraction() > 0.1 for bar in window.live_levels)
+        header = window.recording_page.capture if window.recording_page else window.capture_header
+        picture = header._controls["picture"]
+        wait_until(
+            lambda: (
+                picture.texture is not None
+                and picture.model is not None
+                and all(any(picture.model.bands[side]) for side in ("me", "others"))
+            ),
+            "both actual PulseAudio tracks reach the spectrogram",
+            diagnostics=diagnostics,
+        )
+        assert len(recorder.spectrogram.subscribers) == 1
         painted(window)
         subprocess.run(["import", "-window", "root", str(artifacts / "recording.png")], check=True)
         before = min(w.frames for w in recorder.session.writers.values())

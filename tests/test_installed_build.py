@@ -260,6 +260,17 @@ def test_flatpak_checks_current_host_deployment_instead_of_running_app_mount(tmp
     value, new_root, new_launcher = payload(tmp_path / "new", "new")
     location = tmp_path / "deployment"
     root = location / "files/share/cassini-talk"
+    value["nativeFiles"] = {"lib/cassini-talk/libcassini-spectro.so": "0" * 64}
+    native = location / "files/lib/cassini-talk/libcassini-spectro.so"
+    native.parent.mkdir(parents=True)
+    native.write_bytes(b"native-v2")
+    import hashlib
+
+    value["nativeFiles"]["lib/cassini-talk/libcassini-spectro.so"] = hashlib.sha256(native.read_bytes()).hexdigest()
+    value["buildId"] = hashlib.sha256(
+        json.dumps({k: v for k, v in value.items() if k != "buildId"}, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    (new_root / "build-info.json").write_text(json.dumps(value))
     shutil.copytree(new_root, root)
     launcher = location / "files/bin/cassini-talk"
     launcher.parent.mkdir(parents=True)
@@ -275,6 +286,10 @@ def test_flatpak_checks_current_host_deployment_instead_of_running_app_mount(tmp
     assert running.changed()
     assert read(old_root / "build-info.json") == running.running
     assert value["buildId"] != running.running["buildId"]
+    native.write_bytes(b"partial-native-install")
+    with pytest.raises(subprocess.CalledProcessError):
+        running.changed()
+    native.write_bytes(b"native-v2")
     (root / "cassini_talk/example.py").write_text("incomplete deployment")
     with pytest.raises(subprocess.CalledProcessError):
         running.changed()
@@ -536,3 +551,40 @@ def test_visible_reexec_preserves_automatic_recording_hold(tmp_path, monkeypatch
     monkeypatch.setattr(os, "execv", lambda program, args: calls.append(args))
     running.reexec(show=True, automatic=True, files=["file:///meeting.opus"], record=True)
     assert calls == [[str(launcher), "file:///meeting.opus", "--cassini-resume-record", "--cassini-resume-automatic"]]
+
+
+def test_native_only_patch_changes_identity_and_waits_for_complete_install(tmp_path):
+    from cassini_talk.installed_build import verified
+
+    _, root, launcher = payload(tmp_path)
+    source, build = tmp_path / "source", tmp_path / "build"
+    binary = build / "src/libcassini-spectro.so"
+    binary.write_bytes(b"native-old")
+    inputs = [source / "src/cassini_talk/example.py", launcher, binary]
+    native_dir = "lib/cassini-talk"
+    installed = launcher.parent.parent / native_dir / binary.name
+    installed.parent.mkdir(parents=True)
+    installed.write_bytes(binary.read_bytes())
+    first = identity.generate(source, build, inputs, "0.3.0", "default", "io.codemyriad.CassiniTalk", native_dir)
+    (root / "build-info.json").write_text(json.dumps(first))
+    assert verified(first, root, launcher)
+    running = InstalledBuild(root, launcher, "0.3.0")
+    binary.write_bytes(b"native-new")
+    second = identity.generate(source, build, inputs, "0.3.0", "default", "io.codemyriad.CassiniTalk", native_dir)
+    assert first["buildId"] != second["buildId"] and first["files"] == second["files"]
+    (root / "build-info.json").write_text(json.dumps(second))
+    with pytest.raises(OSError, match="still being installed"):
+        running.changed()
+    installed.write_bytes(binary.read_bytes())
+    assert running.changed()
+
+
+def test_native_identity_rejects_traversal_even_with_matching_manifest_digest(tmp_path):
+    import hashlib
+
+    value, _, _ = payload(tmp_path)
+    value["nativeFiles"] = {"../outside": "0" * 64}
+    fields = {k: v for k, v in value.items() if k != "buildId"}
+    value["buildId"] = hashlib.sha256(json.dumps(fields, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    with pytest.raises(ValueError, match="path"):
+        decode(json.dumps(value).encode())

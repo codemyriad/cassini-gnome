@@ -41,10 +41,13 @@ def decode(raw):
         or not 1 <= len(value["files"]) <= 512
     ):
         raise ValueError("Invalid application identity")
-    for digest in [value.get("buildId"), value.get("launcher"), *value["files"].values()]:
+    native = value.get("nativeFiles", {})
+    if not isinstance(native, dict) or len(native) > 8:
+        raise ValueError("Invalid native application identity")
+    for digest in [value.get("buildId"), value.get("launcher"), *value["files"].values(), *native.values()]:
         if not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest):
             raise ValueError("Invalid application identity hash")
-    for name in value["files"]:
+    for name in [*value["files"], *native]:
         path = PurePosixPath(name)
         if (
             not name
@@ -93,6 +96,10 @@ def verified(value, root, launcher):
             os.access(launcher, os.X_OK)
             and file_digest(launcher) == value["launcher"]
             and all(file_digest(Path(root) / name) == digest for name, digest in value["files"].items())
+            and all(
+                file_digest(Path(launcher).parent.parent / name) == digest
+                for name, digest in value.get("nativeFiles", {}).items()
+            )
         )
     except OSError:
         return False
@@ -148,6 +155,9 @@ class InstalledBuild:
         if (value["version"], value["buildId"]) == (self.running_version, self.running["buildId"]):
             return False
         pairs = [(str(root / name), digest) for name, digest in value["files"].items()]
+        pairs.extend(
+            (str(Path(location) / "files" / name), digest) for name, digest in value.get("nativeFiles", {}).items()
+        )
         pairs.append((str(Path(location) / "files/bin/cassini-talk"), value["launcher"]))
         checks = "".join(f"{digest}  {name}\n" for name, digest in pairs).encode()
         subprocess.run(

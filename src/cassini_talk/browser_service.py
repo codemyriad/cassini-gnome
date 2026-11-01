@@ -1976,6 +1976,10 @@ class BrowserService:
                         self.update(browser, packet)
                 elif packet.get("role") == "application":
                     self._application(connection, stream, packet.get("active", True), packet.get("generation", 0))
+                elif packet.get("role") == "meter":
+                    from .spectro_transport import serve_meter
+
+                    serve_meter(self, connection, stream, packet.get("path"))
                 elif packet.get("role") == "audio":
                     self._audio(stream)
                 elif packet.get("role") == "app":

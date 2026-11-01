@@ -1,1 +1,1 @@
-{"onnxruntime": "@ONNXRUNTIME_DIR@", "sherpa": "@SHERPA_DIR@", "bindir": "@BINDIR@", "storeListingPublic": @STORE_LISTING_PUBLIC@, "profile": "@PROFILE@"}
+{"spectro": "@SPECTRO_PATH@", "onnxruntime": "@ONNXRUNTIME_DIR@", "sherpa": "@SHERPA_DIR@", "bindir": "@BINDIR@", "storeListingPublic": @STORE_LISTING_PUBLIC@, "profile": "@PROFILE@"}

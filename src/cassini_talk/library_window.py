@@ -3,6 +3,7 @@
 
 import os
 import time
+from functools import partial
 from gettext import gettext as _
 from pathlib import Path
 
@@ -14,6 +15,8 @@ from .folder_player import FolderPlayer
 from .library import meeting_id
 from .library_monitor import LibraryMonitor
 from .player import Player
+from .spectro_views import BrokerFeed, NativeFeed, WindowSpectrograms
+from .spectrogram_strip import SpectrogramStrip
 from .strings import text
 
 
@@ -52,6 +55,17 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._preview_signature_value = None
         self._live_badges = {}
         self._capture_headers = []
+        self.spectrograms = WindowSpectrograms(self)
+        self._spectro_style = Adw.StyleManager.get_default()
+        self._spectro_settings = Gtk.Settings.get_default()
+        self._spectro_handlers = [
+            (self._spectro_style, self._spectro_style.connect("notify::dark", self._spectrogram_style)),
+            (
+                self._spectro_settings,
+                self._spectro_settings.connect("notify::gtk-enable-animations", self._spectrogram_style),
+            ),
+        ]
+        self._spectrogram_style()
         self._focused_editors = set()
         self._activity_source = None
         self._activity_timer = 0
@@ -473,11 +487,43 @@ class LibraryWindow(Adw.ApplicationWindow):
         offline_view.add_top_bar(self._header(record=True))
         self.root_box.add_named(offline_view, "offline")
 
+    def _spectrogram_style(self, *_):
+        dark = self._spectro_style.get_dark()
+        (self.add_css_class if dark else self.remove_css_class)("spectro-dark")
+        self.spectrograms.configure(
+            dark=dark, reduced_motion=not self._spectro_settings.get_property("gtk-enable-animations")
+        )
+
+    def bind_spectrogram(self, widget, meeting, *, silent=False):
+        if meeting is None:
+            self.spectrograms.remove(widget)
+            return
+        # Both paths come from controller/scanner ownership. Avoid another
+        # realpath traversal on every level callback merely to draw decoration.
+        native = self.get_application().comfort._native_for(meeting)
+        events = native.session.manifest.get("events", ()) if native and native.session else meeting.capture_events
+        if native is not None and hasattr(native, "spectrogram"):
+            factory = partial(NativeFeed, native)
+        else:
+            from .browser_service import service_path
+
+            path = self._activity_source.path if self._activity_source else None
+            factory = partial(BrokerFeed, path or service_path(), meeting.directory)
+        self.spectrograms.bind(
+            widget,
+            meeting.key,
+            factory,
+            events=events,
+            silent=silent,
+            active=meeting.lifecycle in ("recording", "saving"),
+            stopping=meeting.lifecycle != "recording",
+        )
+
     def capture_controls(self, meeting=None):
         stack = Gtk.Stack(hhomogeneous=False, vhomogeneous=False)
         stack.add_named(self._record(), "record")
         live = Gtk.Box(
-            spacing=8, css_classes=["live-pill"], valign=Gtk.Align.CENTER, tooltip_text=text("recording.pill.noSleep")
+            spacing=10, css_classes=["live-pill"], valign=Gtk.Align.CENTER, tooltip_text=text("recording.pill.noSleep")
         )
         live.append(
             Gtk.Box(
@@ -492,14 +538,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         show = Gtk.Button(child=timer, css_classes=["flat"], tooltip_text=text("recording.pill.noSleep"))
         show.connect("clicked", lambda *_: self.open_live_recording())
         live.append(show)
-        bars = vertical(3, valign=Gtk.Align.CENTER, css_classes=["live-levels"])
-        levels = [
-            Gtk.ProgressBar(fraction=fraction, width_request=30, accessible_role=Gtk.AccessibleRole.PRESENTATION)
-            for fraction in (0.64, 0.38)
-        ]
-        for bar in levels:
-            bars.append(bar)
-        live.append(bars)
+        picture = SpectrogramStrip(kind="pill", lanes=("me", "others"))
+        live.append(picture)
         muted = Gtk.Image(
             icon_name="dialog-warning-symbolic", visible=False, tooltip_text=text("recording.systemMuted")
         )
@@ -511,7 +551,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         live.append(stop)
         stack.add_named(live, "live")
         stack._controls = dict(
-            stack=stack, timer=timer, levels=levels, stop=stop, muted=muted, meeting=meeting.key if meeting else None
+            stack=stack, timer=timer, picture=picture, stop=stop, muted=muted, meeting=meeting.key if meeting else None
         )
         self._capture_headers.append(stack._controls)
         return stack
@@ -528,7 +568,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         header.set_title_widget(Gtk.Box())
         self.capture_header = self.capture_controls()
         controls = self.capture_header._controls
-        self.live_timer, self.live_levels, self.live_stop = controls["timer"], controls["levels"], controls["stop"]
+        self.live_timer, self.live_stop = controls["timer"], controls["stop"]
         header.pack_start(self.capture_header)
         header.pack_end(self.search_button())
         sidebar.add_top_bar(header)
@@ -623,7 +663,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                 if controls["meeting"]
                 else live
             )
-            local_native = self.get_application().native_recorder_for(target.directory) if target else native
+            local_native = self.get_application().comfort._native_for(target) if target else native
             own_native = local_native is not None and local_native.pipeline is not None
             browser = bool(target and self._activity_source and target.id in self._activity_source.snapshot)
             ms = self.get_application().comfort.elapsed(target) if target else elapsed
@@ -632,12 +672,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             controls["stop"].set_sensitive((own_native and not local_native.stopping) or browser)
             state = self.get_application().comfort.status(target) if target else {}
             controls["muted"].set_visible(bool(state.get("output_muted")))
-            if self._fixed_now is None or self.recording_page:
-                levels = local_native.levels if own_native else state.get("levels", (0.0, 0.0))
-                for bar, fraction in zip(controls["levels"], levels, strict=True):
-                    bar.set_fraction(fraction)
-            bar = controls["levels"][0]
-            (bar.add_css_class if state.get("silent") else bar.remove_css_class)("mic-silent-meter")
+            self.bind_spectrogram(controls["picture"], target, silent=bool(state.get("silent")))
         self._recording_line(native)
         if self.recording_page:
             self.recording_page.update_status()
@@ -1337,6 +1372,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         if self.search_page:
             self.search_page.close()
             self.search_page = None
+        self.spectrograms.close()
+        for owner, handler in self._spectro_handlers:
+            owner.disconnect(handler)
+        self._spectro_handlers.clear()
         self.player.shutdown()
         self.monitor.close()
         return False

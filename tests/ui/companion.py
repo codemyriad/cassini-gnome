@@ -209,7 +209,7 @@ with tempfile.TemporaryDirectory() as temporary:
     settings.render_browser()
     assert dialog.local_add.get_visible() and settings.browser_add_local.get_visible()
     dialog.add_button.emit("clicked")
-    until(lambda: len(launches) == 1)
+    until(lambda: len(launches) == 1 and dialog.future is None)
     assert not dialog.done.get_sensitive() and dialog.add_caption.get_label() == "Not added yet"
     opener = companion.open_add
 
