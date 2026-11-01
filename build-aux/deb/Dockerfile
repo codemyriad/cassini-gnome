@@ -3,6 +3,9 @@
 ARG BASE=ubuntu:26.04
 FROM ${BASE}
 ENV DEBIAN_FRONTEND=noninteractive
+# Ubuntu's minimal image discards MO files at package-install time. Retain our
+# catalogs so the installed-package smoke can validate all six languages.
+RUN printf 'path-include=/usr/share/locale/*/LC_MESSAGES/cassini-talk.mo\n' > /etc/dpkg/dpkg.cfg.d/zz-cassini-locales
 # Mirrors occasionally time out, in CI especially.
 # A stalled connection fails after 15 s and is retried instead of hanging.
 RUN printf 'Acquire::Retries "3";\nAcquire::http::Timeout "15";\n' > /etc/apt/apt.conf.d/80retries

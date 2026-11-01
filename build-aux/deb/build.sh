@@ -57,6 +57,7 @@ container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" -e DEB="$DEB" -e OUT="
 # missing Depends; install the package in a fresh container, then check it
 # there with no network, writing the D11 goldens down offline.
 container_offline_smoke "$BASE" '
+  printf "path-include=/usr/share/locale/*/LC_MESSAGES/cassini-talk.mo\n" > /etc/dpkg/dpkg.cfg.d/zz-cassini-locales
   printf "Acquire::Retries \"3\";\nAcquire::http::Timeout \"15\";\n" > /etc/apt/apt.conf.d/80retries
   apt-get update -qq
   apt-get install -y -qq --no-install-recommends "/d/$OUT" >/dev/null
