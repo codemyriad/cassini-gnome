@@ -52,6 +52,15 @@ def label_text(value):
     return "".join(c for c in value if unicodedata.category(c) not in ("Cc", "Cf"))[:200]
 
 
+def source_track_identity(value):
+    """Validate the opaque browser identity independently of its wire span ID."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value or len(value.encode()) > 200:
+        raise ProtocolError("source", "Invalid source track identity")
+    return value
+
+
 def source_parameters(identifier, label, kind, rate, channels, identifiers):
     if (
         not isinstance(identifier, str)
@@ -373,10 +382,13 @@ class RecordingSession:
             track["endOffsetMs"] = track["startOffsetMs"] + track["frames"] * 1000 / track["sampleRate"]
         self.checkpoint()
 
-    def add_track(self, identifier, label, kind, rate, channels, *, filename=None, label_source=None):
+    def add_track(
+        self, identifier, label, kind, rate, channels, *, filename=None, label_source=None, source_track_id=None
+    ):
         if self.finished:
             raise ProtocolError("source", "Invalid or duplicate audio source")
         label = source_parameters(identifier, label, kind, rate, channels, self.writers)
+        source_track_id = source_track_identity(source_track_id)
         if label_source is not None and label_source not in ("browser", "device"):
             raise ProtocolError("source", "Invalid audio source label provenance")
         if filename is not None and filename not in ("track-microphone.wav", "track-system.wav"):
@@ -400,6 +412,8 @@ class RecordingSession:
                 "labelSource": label_source or ("browser" if self.manifest["source"] == "chromium" else "device"),
             }
         )
+        if source_track_id is not None:
+            self.manifest["tracks"][-1]["sourceTrackId"] = source_track_id
         self.checkpoint()
 
     def append(self, identifier, data, offset):
@@ -561,6 +575,7 @@ class BrowserHost:
                 message.get("kind"),
                 message.get("sampleRate"),
                 message.get("channels"),
+                source_track_id=message.get("sourceTrackId"),
             )
             self.sequences[identifier] = 0
         elif kind == "audio":

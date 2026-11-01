@@ -73,6 +73,36 @@ def remote(client, identifier):
     )
 
 
+def test_broker_preserves_receiver_identity_across_new_wire_spans(server):
+    _service, path, _root = server
+    client = BrowserAudioProxy(path=path)
+    try:
+        started = start(client, "receiver-spans", microphone=False)
+        for index, source in enumerate(("receiver-a", "receiver-a", "receiver-b")):
+            identifier = f"span-{index}"
+            client.handle(
+                dict(
+                    type="track",
+                    id=identifier,
+                    label="Guest",
+                    kind="remote",
+                    sampleRate=48000,
+                    channels=1,
+                    sourceTrackId=source,
+                )
+            )
+            client.handle(dict(type="audio", id=identifier, sequence=0, offsetMs=index * 100, pcm="AQACAA=="))
+        client.handle(dict(type="stop"))
+        from pathlib import Path
+
+        manifest = json.loads((Path(started["path"]) / "session.json").read_text())
+        assert [t["id"] for t in manifest["tracks"]] == ["span-0", "span-1", "span-2"]
+        assert [t["sourceTrackId"] for t in manifest["tracks"]] == ["receiver-a", "receiver-a", "receiver-b"]
+        assert [t["frames"] for t in manifest["tracks"]] == [2, 2, 2]
+    finally:
+        client.close()
+
+
 def test_independent_native_host_writers_copy_only_the_selected_microphone(server):
     service, path, root = server
     one, two = BrowserAudioProxy(path=path), BrowserAudioProxy(path=path)

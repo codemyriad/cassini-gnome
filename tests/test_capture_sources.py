@@ -79,3 +79,93 @@ def test_fallback_never_switches_a_browser_source_back_or_reuses_its_wav(tmp_pat
     assert host.session.manifest["tracks"][0]["frames"] == 4800
     host.session.append("system", b"\x03\x00" * 4800, 200)
     host.handle(dict(type="stop"))
+
+
+@pytest.mark.parametrize("use_selection", [False, True])
+def test_browser_root_identity_survives_wire_spans_and_selection(tmp_path, use_selection):
+    """Receiver identity, not a transient span or a label, defines the speaker."""
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.transcription import prepare_tracks
+
+    host = BrowserHost(tmp_path)
+    host.handle(dict(type="start"))
+    session = host.session
+    if use_selection:
+        host.audio_sink = BrowserStreams(session)
+    for index, identity in enumerate(("receiver-a", "receiver-a", "receiver-b")):
+        identifier = f"wire-span-{index}"
+        host.handle(
+            dict(
+                type="track",
+                id=identifier,
+                label="Same label",
+                kind="remote",
+                sampleRate=48000,
+                channels=1,
+                sourceTrackId=identity,
+            )
+        )
+        host.handle(
+            dict(
+                type="audio",
+                id=identifier,
+                sequence=0,
+                offsetMs=index * 1000,
+                pcm=base64.b64encode(b"\x01\x00" * 4800).decode(),
+            )
+        )
+    if use_selection:
+        with session.change([]):
+            host.audio_sink.select(True, False, 3000)
+        with session.change([]):
+            host.audio_sink.select(True, True, 4000)
+        host.handle(
+            dict(
+                type="audio",
+                id="wire-span-0",
+                sequence=1,
+                offsetMs=4000,
+                pcm=base64.b64encode(b"\x02\x00" * 4800).decode(),
+            )
+        )
+    host.handle(dict(type="stop"))
+    saved = json.loads((session.directory / "session.json").read_text())
+    assert [t["sourceTrackId"] for t in saved["tracks"][:3]] == ["receiver-a", "receiver-a", "receiver-b"]
+    if use_selection:
+        resumed = saved["tracks"][3]
+        assert resumed["id"] != "wire-span-0" and resumed["sourceTrackId"] == "receiver-a"
+        assert resumed["startOffsetMs"] == 4000 and resumed["frames"] == 4800
+    (meeting,) = LibraryScanner(tmp_path).scan().meetings
+    tracks, speakers = prepare_tracks(meeting)
+    assert len(speakers) == 2
+    assert tracks[0]["speaker"] == tracks[1]["speaker"] != tracks[2]["speaker"]
+    assert all(s["name"] is None for s in speakers.values())
+
+
+@pytest.mark.parametrize("identity", [None, "receiver", "é" * 100])
+@pytest.mark.parametrize("use_selection", [False, True])
+def test_browser_source_identity_accepts_null_or_utf8_bound(tmp_path, identity, use_selection):
+    host = BrowserHost(tmp_path)
+    host.handle(dict(type="start"))
+    if use_selection:
+        host.audio_sink = BrowserStreams(host.session)
+    host.handle(dict(type="track", id="span", kind="remote", sampleRate=48000, channels=1, sourceTrackId=identity))
+    track = host.session.manifest["tracks"][0]
+    assert track.get("sourceTrackId") == (identity or ("span" if use_selection else None))
+    host.handle(dict(type="stop"))
+
+
+@pytest.mark.parametrize("identity", ["", "é" * 101, 7, [], {}])
+@pytest.mark.parametrize("use_selection", [False, True])
+def test_invalid_browser_identity_allocates_no_track(tmp_path, identity, use_selection):
+    host = BrowserHost(tmp_path)
+    host.handle(dict(type="start"))
+    if use_selection:
+        host.audio_sink = BrowserStreams(host.session)
+    before = (host.session.directory / "session.json").read_bytes()
+    with pytest.raises(ProtocolError, match="source track identity"):
+        host.handle(dict(type="track", id="span", kind="remote", sampleRate=48000, channels=1, sourceTrackId=identity))
+    assert not host.session.manifest["tracks"] and not host.session.writers
+    assert not host.sequences and not list(host.session.directory.glob("*.wav"))
+    assert (host.session.directory / "session.json").read_bytes() == before
+    host.handle(dict(type="stop"))

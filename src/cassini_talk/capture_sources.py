@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from uuid import uuid4
 
-from .recording_session import ProtocolError, chunk_plan, source_parameters
+from .recording_session import ProtocolError, chunk_plan, source_parameters, source_track_identity
 
 ME_KINDS = {"microphone", "local"}
 
@@ -39,6 +39,7 @@ class WireTrack:
     kind: str
     rate: int
     channels: int
+    source_track_id: str | None = None
     start: float | None = None
     frames: int = 0
     recorded: str | None = None
@@ -67,17 +68,27 @@ class BrowserStreams:
 
     def _record(self, identifier, track, boundary=None):
         stored = identifier if identifier not in self.session.writers else "span-" + str(uuid4())
-        self.session.add_track(stored, track.label, track.kind, track.rate, track.channels, label_source="browser")
+        source_track_id = track.source_track_id
+        if source_track_id is None and track.kind not in ME_KINDS and track.kind != "system":
+            source_track_id = identifier
+        self.session.add_track(
+            stored,
+            track.label,
+            track.kind,
+            track.rate,
+            track.channels,
+            label_source="browser",
+            source_track_id=source_track_id,
+        )
         track.recorded, track.boundary = stored, boundary or 0
-        if track.kind not in ME_KINDS and track.kind != "system":
-            self.session.manifest["tracks"][-1]["sourceTrackId"] = identifier
         if boundary is not None:
             self.session.manifest["tracks"][-1]["startOffsetMs"] = boundary
         self.session.checkpoint()
 
-    def add_track(self, identifier, label, kind, rate, channels):
+    def add_track(self, identifier, label, kind, rate, channels, *, source_track_id=None):
         label = source_parameters(identifier, label, kind, rate, channels, self.tracks)
-        track = WireTrack(label, kind, rate, channels, available=self.browser)
+        source_track_id = source_track_identity(source_track_id)
+        track = WireTrack(label, kind, rate, channels, source_track_id=source_track_id, available=self.browser)
         if self.enabled(track):
             with self.session.change([]):
                 self._record(identifier, track)
