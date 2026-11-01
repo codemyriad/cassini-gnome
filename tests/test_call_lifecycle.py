@@ -208,6 +208,32 @@ def test_multistream_actual_browser_pcm_keeps_control_loss_from_recording_system
     )
 
 
+def test_multistream_fallback_expires_despite_discarded_browser_packets(tmp_path, monkeypatch):
+    test_shared_actions_use_actual_capture_devices_spans_and_end(
+        tmp_path,
+        monkeypatch,
+        dict(
+            name="discarded-wire-pcm-cannot-extend-fallback",
+            multistream=True,
+            steps=[
+                dict(atMs=0, pageState="present", sourceCount=1, heard=True, expect=[]),
+                dict(atMs=3000, pageState="unknown", sourceCount=0, controlAlive=False, expect=[]),
+                dict(atMs=4999, pageState="unknown", sourceCount=0, controlAlive=False, expect=[]),
+                dict(atMs=5000, pageState="unknown", sourceCount=0, controlAlive=False, expect=["fallback"]),
+                dict(atMs=122999, pageState="unknown", sourceCount=0, controlAlive=False, pcmLive=True, expect=[]),
+                dict(
+                    atMs=123000,
+                    pageState="unknown",
+                    sourceCount=0,
+                    controlAlive=False,
+                    pcmLive=True,
+                    expect=["stop:pageGone"],
+                ),
+            ],
+        ),
+    )
+
+
 def test_returning_prejoin_receive_slots_do_not_reset_the_deadline(tmp_path, monkeypatch):
     test_shared_actions_use_actual_capture_devices_spans_and_end(
         tmp_path,

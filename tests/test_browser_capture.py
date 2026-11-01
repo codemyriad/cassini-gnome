@@ -145,6 +145,36 @@ def test_broker_keeps_negotiated_source_io_errors_scoped_and_retries_a_fresh_spa
         client.close()
 
 
+def test_only_pcm_written_to_a_browser_span_proves_liveness(tmp_path, monkeypatch):
+    from test_capture_record import declare, pcm
+
+    from cassini_talk.browser_capture import BrowserCapture
+
+    now = [0.0]
+    monkeypatch.setattr(time, "monotonic", lambda: now[0])
+    capture = BrowserCapture(lambda *_: None, parent=tmp_path, tap_factory=Tap)
+    capture.start(dict(type="start", captureId="live", timelineOriginMs=int(time.time() * 1000), microphone=True))
+    try:
+        assert not capture.browser_ready_since(recorded=True), "Native microphone is not browser evidence"
+        capture.handle(declare("remote"))
+        capture.handle(pcm("remote", 480))
+        assert capture.browser_ready_since(recorded=True)
+        capture.select(True, False)
+        capture.handle(pcm("remote", 480, sequence=1, offset=10))
+        assert capture.browser_ready_since() and not capture.browser_ready_since(recorded=True)
+        capture.select(True, True)
+        # Reopening a span must not inherit the discarded packet's freshness.
+        assert not capture.browser_ready_since(recorded=True)
+        at = capture.host.session.manifest["events"][-1]["atMs"]
+        capture.handle(pcm("remote", 480, sequence=2, offset=at))
+        assert capture.browser_ready_since(recorded=True)
+        capture.fallback()
+        capture.handle(pcm("remote", 480, sequence=3, offset=at + 10))
+        assert capture.browser_ready_since() and not capture.browser_ready_since(recorded=True)
+    finally:
+        capture.stop()
+
+
 def test_independent_native_host_writers_copy_only_the_selected_microphone(server):
     service, path, root = server
     one, two = BrowserAudioProxy(path=path), BrowserAudioProxy(path=path)

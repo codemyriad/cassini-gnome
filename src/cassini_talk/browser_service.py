@@ -1678,7 +1678,7 @@ class BrowserService:
                         and peer[2] is not None
                         and meeting.get("sourceCountKnown", True),
                         control_alive=peer is not None,
-                        pcm_live=capture.browser_ready_since(),
+                        pcm_live=capture.multistream_capable and capture.browser_ready_since(recorded=True),
                     )
                     if reconnect is not None and page == "present" and count > 0 and lifecycle.missing is None:
                         self._control_reconnects.pop(key, None)

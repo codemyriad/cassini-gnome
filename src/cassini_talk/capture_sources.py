@@ -47,6 +47,7 @@ class WireTrack:
     boundary: float = 0
     available: bool = True
     received_at: float | None = None
+    recorded_at: float | None = None
 
 
 class BrowserStreams:
@@ -87,6 +88,7 @@ class BrowserStreams:
             source_track_id=source_track_id,
         )
         track.recorded, track.boundary = stored, boundary or 0
+        track.recorded_at = None
         if boundary is not None:
             self.session.manifest["tracks"][-1]["startOffsetMs"] = boundary
         self.session.checkpoint()
@@ -107,6 +109,7 @@ class BrowserStreams:
                 self.session.end_track(track.recorded)
         finally:
             track.recorded = None
+            track.recorded_at = None
             track.ended = True
             track.available = False
 
@@ -129,6 +132,7 @@ class BrowserStreams:
             selected, selected_offset = selected_pcm(data, offset, track.rate, track.channels, track.boundary)
             if selected:
                 self.session.append(track.recorded, selected, selected_offset)
+                track.recorded_at = time.monotonic()
                 if self.picture_enabled is not None and self.picture_enabled():
                     record = next(t for t in self.session.manifest["tracks"] if t["id"] == track.recorded)
                     spans = record.get("spans") or [record]

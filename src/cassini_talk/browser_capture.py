@@ -301,15 +301,18 @@ class BrowserCapture:
     def browser_ready(self):
         return self.others and self.browser_ready_since()
 
-    def browser_ready_since(self, since=None):
+    def browser_ready_since(self, since=None, *, recorded=False):
         with self.lock:
+            if recorded and (self.browser_lost or not self.others):
+                return False
             now = time.monotonic()
             return self.audio_connected and any(
                 track.kind not in ("microphone", "local")
                 and track.available
-                and track.received_at is not None
-                and (since is None or track.received_at >= since)
-                and now - track.received_at <= 2
+                and (not recorded or track.recorded is not None)
+                and (received := track.recorded_at if recorded else track.received_at) is not None
+                and (since is None or received >= since)
+                and now - received <= 2
                 for track in self.streams.tracks.values()
             )
 
