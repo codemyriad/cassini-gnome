@@ -1,6 +1,6 @@
 # Browser call lifetime (D33)
 
-Shared protocol pin: `4a59e9733206112eb4cc0ec98e903e4e3609702f` (head of D52.5 protocol PR #32, to be re-vendored at its merge commit).
+Shared protocol pin: `57365bdfce4604d8445d63950ff84f67a634ff1c` (merged D52.5 protocol PR #32).
 Companion 0.2.9 replaces older local installs; no Chrome Web Store packaging or upload is performed.
 
 The broker owns every independent capture and its Library folder. With the

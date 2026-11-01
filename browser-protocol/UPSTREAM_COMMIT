@@ -1,23 +1,26 @@
 tree cafb6118501708b456c8a2cd380c40261ed52323
-parent 899543ba8846ff26c26c985f8b4ea25aae95081c
-author Silvio Tomatis <silviot@gmail.com> 1793573093 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793573093 +0100
+parent a1be3bcf2678a308d5b17c5b09b1a57c1c8d5635
+parent 4a59e9733206112eb4cc0ec98e903e4e3609702f
+author Silvio Tomatis <silviot@gmail.com> 1793575325 +0100
+committer GitHub <noreply@github.com> 1793575325 +0100
+gpgsig -----BEGIN PGP SIGNATURE-----
+ 
+ wsFcBAABCAAQBQJq58mdCRC1aQ7uu5UhlAAAGrEQAJTHlNIXGHfoJylBwY5/LAgQ
+ yqu8m1Onl8b01i7CvdLEdf0o8wusOd0GTrYLZxPQAA1kzXuhPUSsZONaDCq1QRVL
+ pIW34ydUhUCe96Qhdz+HI1klMqViV0zcCEAPIqjkDzU+EO57ZJkrJpsybe6+Qxgi
+ vh1LyeArBFOG9hK2CcNfN9HwE7g4I24tUXVkQLk3TjwlCyBjvV1y72W/QNo3H65q
+ DWr/LhviRw4+0W+OKkmnWCCLQaQu7ODJA2js7SiEx3cERtCvsW2DLMl9SnTj3zK5
+ W5IyOQbbd6SVo0Lo9oTBGeNR/NHN/JKLFTV6fp85fKguMgZZNdwBK6U+dckLf067
+ guE6Ongvc8QHVvwlBQ2KStDMw4CyYkrO1avX9rEbJCZ2406VEWLN7tipTJdWcIt5
+ zqR9uFOD/IXvyXHD0hyQctOGQzKHc6urv2C/g8F0SojyDZSuVzhpYo25a11h+1l1
+ 2q68NlSguiNgCJsqILjEOawg2uDBcJ7YcfUeh6p4lJTBZhdX7E0+OwLJhl/7fLe7
+ //8O+Dokz7dDvDmyCddwboFupv5dnCu7P0E973dtdSRrX4N2tyiPEgel+Ld6t1Gq
+ jBkLT4vv+y49hQg4JtIqGSnFQZT2hoPR6JaRGiXicPpoVn+pMcH5GUhaUvPp+mpG
+ 3pb28IPiOqt2Tr/DPQxZ
+ =3F85
+ -----END PGP SIGNATURE-----
+ 
 
-Address protocol #32 review: scope heard, pin the ask, peer-free matching, stale vectors
+Merge pull request #32 from codemyriad/feat/resume-once
 
-- Ask on each new control connection is now MUST; the ask conditions
-  state the closed audio transport and a present page (not navigating).
-- lifecycle.py latches heard only for the recording's own callGeneration,
-  so another call's heard cannot arm restore, OTHERS_GONE_GRACE or the ask.
-  New case pins it; ask-waits gains a navigating row and a call-B row.
-- callGeneration is a browser-generated unguessable ID; lost recordings
-  match by (tabId, callGeneration) across all control peers. The lost call
-  is recording: Record all skips it (expect.manual false), manual Record
-  after Stop is an ordinary Start. Seeded recordings start unlatched
-  (heardSeen); new heard-earlier and earlier-peer auto-start cases.
-- The extension manual runner checks wire acceptance for seeded cases,
-  since the app registry is invisible to the extension.
-- SPEC.md makes the PCM_STALE_AFTER >= comparison normative; new
-  stale-watchdog.json with an independent oracle and mutant tests.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Ask once to resume a lost recording, never start a second one; PCM_STALE_AFTER 45 s (D52.5)
