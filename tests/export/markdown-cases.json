@@ -119,6 +119,85 @@
     ]
    },
    "expected": "# Sprint #12 \\*planning\\*\n\nMonday 3 March 2025, 15:30\n\nSpeakers: Me, Speaker 1\n\n## Transcript\n\n**Me** · 00:00:01\nOkay, let's look at \\[the board\\] \\<now\\>.\n\n**Speaker 1** · 00:00:03\n\\- first, the \\_login\\_ bug\n\n**Me** · 00:00:06\n1\\. agreed \\\\ done\n\n## Notes\n\n- 00:00:01 Started late\n- 00:00:05 Login bug is \\*urgent\\*\n"
+  },
+  {
+   "name": "D50.2 fr: localized labels, stored content kept",
+   "input": {
+    "title": "Revue du budget",
+    "startMs": 1793088000000,
+    "tz": "Europe/Rome",
+    "durationMs": 3120000,
+    "speakers": [
+     {
+      "id": "marta",
+      "name": "Marta"
+     },
+     {
+      "id": "guest",
+      "name": "Intervenant 2"
+     }
+    ],
+    "items": [
+     {
+      "speaker": "marta",
+      "startMs": 4000,
+      "endMs": 9000,
+      "text": "On commence par le budget."
+     },
+     {
+      "speaker": "guest",
+      "startMs": 10000,
+      "endMs": 15000,
+      "text": "D’accord, je note la décision."
+     }
+    ],
+    "notes": [
+     {
+      "atMs": 12000,
+      "text": "Budget validé"
+     }
+    ],
+    "uiLanguage": "fr"
+   },
+   "expected": "# Revue du budget\n\n{DATE_LINE}\n\nIntervenants : Marta, Intervenant 2\n\n## Transcription\n\n**Marta** · 00:00:04\nOn commence par le budget.\n\n**Intervenant 2** · 00:00:10\nD’accord, je note la décision.\n\n## Notes\n\n- 00:00:12 Budget validé\n",
+   "dateLine": "{DATE_LINE} is the platform's full date (weekday d month yyyy) and short time for uiLanguage in input.tz, then ' · ' and the localized meetingDuration; compare against the platform formatter, not a literal."
+  },
+  {
+   "name": "D50.2 pt-PT: localized labels, stored content kept",
+   "input": {
+    "title": "Revisão do orçamento",
+    "startMs": 1793088000000,
+    "tz": "Europe/Rome",
+    "durationMs": 3120000,
+    "speakers": [
+     {
+      "id": "marta",
+      "name": "Marta"
+     },
+     {
+      "id": "guest",
+      "name": "Speaker 3"
+     }
+    ],
+    "items": [
+     {
+      "speaker": "marta",
+      "startMs": 4000,
+      "endMs": 9000,
+      "text": "Começamos pelo orçamento."
+     },
+     {
+      "speaker": "guest",
+      "startMs": 10000,
+      "endMs": 15000,
+      "text": "Combinado."
+     }
+    ],
+    "notes": [],
+    "uiLanguage": "pt-PT"
+   },
+   "expected": "# Revisão do orçamento\n\n{DATE_LINE}\n\nOradores: Marta, Speaker 3\n\n## Transcrição\n\n**Marta** · 00:00:04\nComeçamos pelo orçamento.\n\n**Speaker 3** · 00:00:10\nCombinado.\n",
+   "dateLine": "{DATE_LINE} is the platform's full date (weekday d month yyyy) and short time for uiLanguage in input.tz, then ' · ' and the localized meetingDuration; compare against the platform formatter, not a literal."
   }
  ]
 }

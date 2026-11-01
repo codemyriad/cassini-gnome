@@ -4,9 +4,10 @@
 import os
 import tempfile
 import threading
-from gettext import gettext as _
 
 from gi.repository import GLib, GObject, Gst
+
+from .i18n import gettext as _
 
 
 def capture_pipeline(microphone=True, desktop=True, test=False):

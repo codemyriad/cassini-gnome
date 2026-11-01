@@ -6,11 +6,10 @@
 
 """Audio playback with GStreamer playbin, exposed as GObject properties."""
 
-from gettext import gettext as _
-
 from gi.repository import GLib, GObject, Gst
 
 from . import runtime
+from .i18n import gettext as _
 
 TICK_MS = 40
 

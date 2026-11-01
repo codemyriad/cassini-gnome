@@ -1,24 +1,25 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Coordinator-owned English copy, preserved byte for byte in strings.json."""
+"""Coordinator-owned copy, localized with the D50 catalog and CLDR rules."""
 
 import json
 from pathlib import Path
 
-CATALOG = {
-    entry["id"]: entry["en"] for entry in json.loads(Path(__file__).with_name("strings.json").read_text())["entries"]
-}
+from .i18n import language, plural_category
+
+ENTRIES = {entry["id"]: entry for entry in json.loads(Path(__file__).with_name("strings.json").read_text())["entries"]}
+CATALOG = {identifier: entry["en"] for identifier, entry in ENTRIES.items()}
 
 
 def text(identifier, **values):
-    return CATALOG[identifier].format(**values)
+    entry = ENTRIES[identifier]
+    localized = entry.get("l10n", {}).get(language(), {})
+    return localized.get("text", entry["en"]).format(**values)
 
 
-PLURALS = {
-    entry["id"]: entry["plural"]
-    for entry in json.loads(Path(__file__).with_name("strings.json").read_text())["entries"]
-    if "plural" in entry
-}
+PLURALS = {identifier: entry["plural"] for identifier, entry in ENTRIES.items() if "plural" in entry}
 
 
 def plural(identifier, n, **values):
-    return PLURALS[identifier]["one" if n == 1 else "other"].format(n=n, **values)
+    entry = ENTRIES[identifier]
+    forms = entry.get("l10n", {}).get(language(), {}).get("plural", entry["plural"])
+    return forms.get(plural_category(n), forms["other"]).format(n=n, **values)

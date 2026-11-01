@@ -137,6 +137,7 @@ talk_sources = files(
   'cassini_talk/session_events.py',
   'cassini_talk/what_is_recorded.py',
   'cassini_talk/strings.py',
+  'cassini_talk/i18n.py',
   'cassini_talk/strings.json',
   'cassini_talk/library.py',
   'cassini_talk/library_v2_index.py',

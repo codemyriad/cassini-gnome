@@ -19,6 +19,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from .i18n import gettext as _
+
 MAX_MESSAGE = 512 * 1024
 KINDS = {"microphone", "system", "application", "local", "remote", "media", "tab"}
 
@@ -938,7 +940,7 @@ def recover_session(directory, pairs=None, *, directory_fd=None):
                 dict(
                     id=Path(name).stem,
                     file=name,
-                    label="Recovered audio",
+                    label=_("Recovered audio"),
                     kind="media",
                     labelSource="recovered",
                     **info,
@@ -954,7 +956,7 @@ def recover_session(directory, pairs=None, *, directory_fd=None):
         version=1,
         id=str(uuid4()),
         createdAt=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        title="Recovered recording",
+        title=_("Recovered recording"),
         source="recovered",
         state="interrupted",
         problemKind="recovery",
@@ -990,7 +992,7 @@ def recover_compacted(directory_fd, wavs, pairs=None):
             dict(
                 value,
                 id=Path(name).stem,
-                label="Recovered audio",
+                label=_("Recovered audio"),
                 kind="media",
                 labelSource="recovered",
                 sampleRate=info.sample_rate,

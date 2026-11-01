@@ -18,13 +18,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import threading
-from gettext import gettext as _
-from gettext import ngettext
 
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Graphene, Gtk, Pango
 
 from . import portable, summary, transcript
 from .colors import SpeakerPalette, hex_color
+from .i18n import gettext as _
+from .i18n import ngettext
 from .player import Player
 from .portable import State
 from .strings import text

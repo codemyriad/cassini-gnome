@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
+from .strings import plural, text
+
 MONTHS = (
     "January",
     "February",
@@ -51,9 +53,13 @@ live_big = position
 def meeting_duration(ms):
     minutes = _seconds(ms) // 60
     if minutes < 1:
-        return "under 1 min"
+        return text("format.meetingDuration.underMinute")
     hours, minutes = divmod(minutes, 60)
-    return f"{hours} h {minutes:02d} min" if hours else f"{minutes} min"
+    return (
+        text("format.meetingDuration.hours", h=hours, mm=f"{minutes:02d}")
+        if hours
+        else text("format.meetingDuration.minutes", m=minutes)
+    )
 
 
 def talk_time(ms):
@@ -61,12 +67,12 @@ def talk_time(ms):
     hours, remainder = divmod(seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     if hours:
-        return f"{hours} h {minutes:02d} min"
-    return f"{minutes} min {seconds} s" if minutes else f"{seconds} s"
+        return text("format.meetingDuration.hours", h=hours, mm=f"{minutes:02d}")
+    return text("format.talkTime", m=minutes, s=seconds) if minutes else f"{seconds} s"
 
 
 def confirmed_speech(ms):
-    return meeting_duration(ms) + " confirmed speech"
+    return text("format.confirmedSpeech", duration=meeting_duration(ms))
 
 
 def local_timezone(identifier):
@@ -92,9 +98,9 @@ def _local(at_ms, tz):
 def _relative_date(at_ms, now_ms, tz):
     at, now = _local(at_ms, tz), _local(now_ms, tz)
     if at.date() == now.date():
-        relative = "Today"
+        relative = text("format.today")
     elif at.date() == now.date() - timedelta(days=1):
-        relative = "Yesterday"
+        relative = text("format.yesterday")
     else:
         relative = None
     return at, now, relative
@@ -102,12 +108,12 @@ def _relative_date(at_ms, now_ms, tz):
 
 def day_group(at_ms, *, now_ms, tz):
     if at_ms is None:
-        return "Date unknown"
+        return text("library.group.unknownDate")
     at, now, relative = _relative_date(at_ms, now_ms, tz)
     if relative:
         return relative
     year = f" {at.year}" if at.year != now.year else ""
-    return f"{WEEKDAYS[at.weekday()]} {at.day} {MONTHS[at.month - 1]}{year}"
+    return text("format.dayGroup", weekday=at.strftime("%A"), dayOfMonth=at.day, month=at.strftime("%B")) + year
 
 
 def row_time(at_ms, *, tz):
@@ -133,7 +139,7 @@ def preview_subtitle(at_ms, duration_ms, *, now_ms, tz, received=False):
         value += f", {row_time(at_ms, tz=tz)}"
     if duration_ms is not None:
         value += f" · {meeting_duration(duration_ms)}"
-    return value + (" · Received" if received else "")
+    return value + (" · " + text("states.badge.received") if received else "")
 
 
 def search_date(at_ms, *, now_ms, tz):
@@ -143,11 +149,17 @@ def search_date(at_ms, *, now_ms, tz):
     if relative:
         return relative
     year = f" {at.year}" if at.year != now.year else ""
-    return f"{at.day} {MONTHS[at.month - 1]}{year}"
+    return text("format.searchDate", dayOfMonth=at.day, month=at.strftime("%B")) + year
 
 
 def search_context(at_ms, duration_ms, position_ms, *, now_ms, tz):
-    return preview_subtitle(at_ms, duration_ms, now_ms=now_ms, tz=tz) + f" · at {position(position_ms)}"
+    return text(
+        "format.searchContext",
+        day=day_group(at_ms, now_ms=now_ms, tz=tz),
+        time=row_time(at_ms, tz=tz),
+        duration=meeting_duration(duration_ms),
+        position=position(position_ms),
+    )
 
 
 def row_meta(duration_ms, names):
@@ -162,20 +174,19 @@ def row_meta(duration_ms, names):
 
 def eta(minutes):
     if minutes is None:
-        return "Transcribing…"
+        return text("states.badge.transcribing.noEta")
     if type(minutes) is not int or minutes < 0:
         raise ValueError("Expected nonnegative integer minutes")
     if minutes == 0:
-        return "Transcribing, less than a minute left"
-    return f"Transcribing, about {minutes} " + ("minute left" if minutes == 1 else "minutes left")
+        return text("states.badge.transcribing.underMinute")
+    return plural("states.badge.transcribing", minutes)
 
 
 def search_count(places, meetings):
-    return (
-        f"{places} "
-        + ("place" if places == 1 else "places")
-        + f" in {meetings} "
-        + ("meeting" if meetings == 1 else "meetings")
+    return text(
+        "format.searchCount.join",
+        places=plural("format.searchCount.places", places),
+        meetings=plural("format.searchCount.meetings", meetings),
     )
 
 
@@ -183,16 +194,23 @@ def size(byte_count, *, approx=False):
     if type(byte_count) is not int or byte_count < 0:
         raise ValueError("Expected nonnegative integer bytes")
     if byte_count < 1048576:
-        from .strings import text
-
         count = (Decimal(byte_count) / 1024).quantize(Decimal(1), rounding=ROUND_HALF_UP)
         if count < 1000:
             count = max(count, 1) if byte_count else count
-            return ("about " if approx else "") + text("format.size.kb", n=count)
+            value = text("format.size.kb", n=count)
+            return text("format.size.approx", size=value) if approx else value
     count = (Decimal(byte_count) / 1048576).quantize(Decimal(1), rounding=ROUND_HALF_UP)
     if count < 1000:
-        value = f"{count} MB"
+        value = text("format.size", n=count)
     else:
         count = (Decimal(byte_count) / 1073741824).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
-        value = f"{count} GB"
-    return ("about " if approx else "") + value
+        from .i18n import gettext as _
+
+        value = _("{n} GB").format(n=format(count, "n"))
+    return text("format.size.approx", size=value) if approx else value
+
+
+def full_date_time(at_ms, *, tz):
+    """Platform LC_TIME calendar names and short clock, never UI-language guesses."""
+    at = _local(at_ms, tz)
+    return at.strftime("%A %-d %B %Y") + ", " + row_time(at_ms, tz=tz)

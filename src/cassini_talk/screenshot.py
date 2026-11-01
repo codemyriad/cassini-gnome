@@ -194,10 +194,32 @@ def capture(application_id, version, profile):
         raise RuntimeError(f"Expected 1120x720, got {texture.get_width()}x{texture.get_height()}")
     if not texture.save_to_png(str(target)):
         raise RuntimeError("GDK could not write screenshot PNG")
+    from .i18n import language
+
+    labels, menu_labels = [], []
+
+    def visible_copy(widget):
+        if not widget.get_mapped():
+            return
+        if isinstance(widget, Gtk.Label):
+            labels.append(widget.get_text())
+        if isinstance(widget, Gtk.MenuButton) and (model := widget.get_menu_model()):
+            for index in range(model.get_n_items()):
+                if value := model.get_item_attribute_value(index, "label", None):
+                    menu_labels.append(value.unpack())
+        child = widget.get_first_child()
+        while child:
+            visible_copy(child)
+            child = child.get_next_sibling()
+
+    visible_copy(window)
     target.with_suffix(".json").write_text(
         json.dumps(
             dict(
                 surface=os.environ.get("CASSINI_SCREENSHOT_BOARD", "current-main"),
+                uiLanguage=language(),
+                visibleLabels=labels,
+                menuLabels=menu_labels,
                 defaultSize=[1130, 730],
                 allocation=[window.get_width(), window.get_height()],
                 width=texture.get_width(),

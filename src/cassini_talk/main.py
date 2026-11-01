@@ -22,11 +22,12 @@ import os
 import sys
 import time
 from concurrent.futures import CancelledError, ThreadPoolExecutor
-from gettext import gettext as _
 from pathlib import Path
 from uuid import uuid4
 
 import gi
+
+from .i18n import gettext as _
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")

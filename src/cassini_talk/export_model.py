@@ -3,8 +3,11 @@
 
 import re
 import unicodedata
+from contextlib import nullcontext
 
 from . import ux_formats as fmt
+from .i18n import using_language
+from .strings import text
 from .transcript import turn_text
 
 BANDS = ((4000, 12000, 16000), (6000, 12000, 20000), (8000, 16000, 32000), (12000, 20000, 48000), (20000, 24000, 64000))
@@ -53,6 +56,11 @@ def escaped(value):
 
 def markdown(value):
     """S-5: value is the shared, already-resolved Library model projection."""
+    with using_language(value["uiLanguage"]) if "uiLanguage" in value else nullcontext():
+        return _markdown(value)
+
+
+def _markdown(value):
     items = sorted(value["items"], key=lambda item: item["startMs"])
     names = {s["id"]: s["name"] for s in value["speakers"]}
     order = list(dict.fromkeys(item["speaker"] for item in items))
@@ -60,19 +68,23 @@ def markdown(value):
     stamp = value.get("startMs")
     date_line = ""
     if stamp is not None:
-        date = fmt._local(stamp, value.get("tz"))
-        date_line = f"{fmt.WEEKDAYS[date.weekday()]} {date.day} {fmt.MONTHS[date.month - 1]} {date.year}, {date:%H:%M}"
+        date_line = fmt.full_date_time(stamp, tz=value.get("tz"))
     if value.get("durationMs") is not None:
         date_line += (" · " if date_line else "") + fmt.meeting_duration(value["durationMs"])
     if date_line:
         lines += [date_line, ""]
     if order:
         lines += [
-            "Speakers: "
-            + ", ".join(escaped(names.get(identifier, "Speaker " + str(i + 1))) for i, identifier in enumerate(order)),
+            text(
+                "export.markdown.speakersLine",
+                names=", ".join(
+                    escaped(names.get(identifier, text("common.speaker.unnamed", n=i + 1)))
+                    for i, identifier in enumerate(order)
+                ),
+            ),
             "",
         ]
-    lines += ["## Transcript", ""]
+    lines += ["## " + text("export.markdown.transcriptHeading"), ""]
     turns = []
     for item in items:
         if turns and turns[-1][0] == item["speaker"]:
@@ -80,14 +92,14 @@ def markdown(value):
         else:
             turns.append([item["speaker"], item["startMs"], [item["text"]]])
     for identifier, start, texts in turns:
-        name = names.get(identifier, "Speaker " + str(order.index(identifier) + 1))
+        name = names.get(identifier, text("common.speaker.unnamed", n=order.index(identifier) + 1))
         lines += [
             f"**{escaped(name)}** · {fmt.position(start)}",
             escaped(" ".join(texts) if value.get("verbatim") else turn_text(texts)),
             "",
         ]
     if value.get("notes"):
-        lines += ["## Notes", ""]
+        lines += ["## " + text("export.markdown.notesHeading"), ""]
         lines += [
             f"- {fmt.position(note['atMs'])} {escaped(note['text'])}"
             for note in sorted(value["notes"], key=lambda n: n["atMs"])
