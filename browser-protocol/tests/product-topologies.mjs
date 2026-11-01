@@ -141,7 +141,16 @@ try {
     else await installZoomLikeAudio(page);
     await start(page, packets, errors);
     if (frequencies) {
-      await waitFor(() => packets.filter(p => p.type === 'track').length === frequencies.length && packets.filter(p => p.type === 'track').every(track => pcm(packets, track.id).length >= 96000));
+      // Admitted bytes can initially contain receiver/AGC startup silence or
+      // attenuation. Wait for the actual expected tone in the same analysis
+      // window used below; neither the power/bleed limits nor timeout change.
+      await waitFor(() => {
+        const tracks = packets.filter(p => p.type === 'track');
+        return tracks.length === frequencies.length && tracks.every((track, index) => {
+          const audio = pcm(packets, track.id);
+          return audio.length >= 96000 && frequencies[index].every(tone => power(audio, tone) > 0.001);
+        });
+      });
       const tracks = packets.filter(p => p.type === 'track');
       assert.ok(tracks.every(track => track.kind === 'remote'));
       tracks.forEach((track, index) => {

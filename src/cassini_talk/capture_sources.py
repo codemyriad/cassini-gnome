@@ -152,6 +152,9 @@ class BrowserStreams:
     @contextmanager
     def change(self):
         """Roll back wire selection with the owner's event/track transaction."""
+        ledger = self.session.capture_record
+        expectations = {key: row.get("expected", True) for key, row in ledger.seen.items()} if ledger else {}
+        bindings = dict(ledger.bindings) if ledger else {}
         previous = (
             self.me,
             self.others,
@@ -163,6 +166,10 @@ class BrowserStreams:
             yield
         except BaseException:
             self.me, self.others, self.browser, self.selection_at, self.tracks = previous
+            if ledger:
+                for key, expected in expectations.items():
+                    ledger.seen[key]["expected"] = expected
+                ledger.bindings = bindings
             raise
 
     def select(self, me, others, at, *, browser=True):
@@ -182,3 +189,5 @@ class BrowserStreams:
                     track.recorded = None
                 elif track.recorded is None and self.enabled(track):
                     self._record(identifier, track, at)
+            if self.session.capture_record is not None:
+                self.session.capture_record.select(me=me, others=others, browser=browser)

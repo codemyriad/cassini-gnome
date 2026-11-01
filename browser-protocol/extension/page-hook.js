@@ -219,7 +219,7 @@
     if (message.type === "discover") { discover(true); return; }
     if (message.type === "ack" && active?.token === message.token) {
       const pending = active.pending.get(message.request);
-      if (pending) { clearTimeout(pending.timer); active.pending.delete(message.request); message.error ? pending.reject(Object.assign(new Error(message.error), {code: message.code, scope: message.scope})) : pending.resolve(); }
+      if (pending) { clearTimeout(pending.timer); active.pending.delete(message.request); message.error ? pending.reject(Object.assign(new Error(message.error), {code: message.code, scope: message.scope, ...(message.retired === true ? {retired:true} : {})})) : pending.resolve(); }
       return;
     }
     if (message.type === "start" && !active) {

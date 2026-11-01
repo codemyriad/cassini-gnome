@@ -1,26 +1,6 @@
-tree e24fe31e33bb573affe8b3f62995a87e696a0ff7
-parent 84b0da1b948ac65e09f8bb780297c9f9bbe61de8
-parent 1c577c2c7c70c4afb6e1a922e9fd74153636be70
-author Silvio Tomatis <silviot@gmail.com> 1793512538 +0100
-committer GitHub <noreply@github.com> 1793512538 +0100
-gpgsig -----BEGIN PGP SIGNATURE-----
- 
- wsFcBAABCAAQBQJq5tRaCRC1aQ7uu5UhlAAAq3sQAFfN7qryNFNNMwLyr67qT51R
- +Fv6q5fDeA9orqxSgxKiZjwuHyr63ez3E7Bp0LzRy2m3ZoyJaxeP6GCnVgbgpQvU
- Jbfw8caGSpyTD+CmqXk31ucznVxpBOro+avw/+QB9HVjrzpU/YOVaBdG5eAMKZXs
- 7XoH52UVRI+iJMwAjqxN9oDtlT1bp7IunRo6lDKlDAWSh9JWcl3KYWuBu8EGvVH9
- ugEvi6XPwO1VYMSHRRXlewV3e8sGo3hOUf+UnVDDhNJxYt7yUKDt/1If7NHzYgNc
- bjv8oqtfWyjp595hvvmGqDhvopq8VH7jrha7YxswQmuTUA1dW+2jlAn3XO4IgYLK
- YtxGkiTRk+YmyzHnRIbbo6eznB4RqT31TJ7aAi4/yFE9yjhzAQkx0SN1goXEUucz
- nwj+GUdqveEzTGwMxBMxxoJwo3HdN39OdLmx1ZoC2yJEqrYH/jG5DgEB7IuUasa+
- 2DrUWUboDDiryrIIuhFNaEkRMuCIHaZ0cOCPXxhWL+ZOSWcY+zPnML3X9KybJW6z
- A0RlXd299OgxHg1on4Mm6VhGJrSUgWCBogwqPcNHun8OE6DzJJqxs6ymXFau8Ts7
- Anhl6Cl6dyW4tJGL+UWG0zUfaoVPBtDqd3gd7Ez7rJAQe4hok5T+aqwVImta9Qpb
- UH5O/r6g6/AqhBU4Hb4R
- =k6+Z
- -----END PGP SIGNATURE-----
- 
+tree cbb67705ae46d3dfda513607e7c39f0c92e32e74
+parent 76b36a5ec7d028706de83e631db98072822e0e71
+author Silvio Tomatis <silviot@gmail.com> 1793523475 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793523475 +0100
 
-Merge pull request #26 from codemyriad/fix/render-quantum-size
-
-Wait for render-clock readiness before admitting source audio
+Observe receiver tone readiness before topology assertions

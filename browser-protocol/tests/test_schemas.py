@@ -49,6 +49,14 @@ class SchemaTests(unittest.TestCase):
             meeting['events'] = [dict(type='othersSource',source=source,reason='callConnected',atMs=0)]
             self.assertEqual(session.is_valid(meeting), source == 'browser')
 
+    def test_retired_span_marker_cannot_mean_a_finalized_capture(self):
+        response = schema('response')
+        source = dict(type='error', code='state', scope='source', id='B', retired=True, message='B ended')
+        response.validate(source)
+        self.assertFalse(response.is_valid(dict(source, scope='command')))
+        self.assertFalse(response.is_valid(dict(source, code='io')))
+        response.validate(dict(type='error',code='state',scope='command',message='Capture saved'))
+
     def test_shared_extension_is_platform_neutral(self):
         for path in (ROOT/'extension').rglob('*'):
             if path.is_file(): self.assertIsNone(re.search(rb'\bmac\b|macos',path.read_bytes(),re.I),str(path))

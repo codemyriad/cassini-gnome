@@ -1074,3 +1074,47 @@ def test_initial_system_stand_in_retains_the_selected_logical_call_generation(se
         capture.stop()
     finally:
         peer.close()
+
+
+def test_native_mic_checkpoint_failure_keeps_browser_pcm_and_does_not_raise_global_capture_error(server, monkeypatch):
+    import errno
+
+    from test_capture_record import declare, pcm
+
+    service, path, _root = server
+    client = BrowserAudioProxy(path=path)
+    try:
+        client.handle(
+            dict(
+                type="start",
+                version=1,
+                independent=True,
+                captureId="mic-sync",
+                timelineOriginMs=int(time.time() * 1000),
+                microphone=True,
+                features=["source-outcomes-v1"],
+            )
+        )
+        capture = service.captures["mic-sync"]
+        tap = capture.microphone
+        session = capture.host.session
+        identifier = capture.native_taps["microphone"][0]
+        tap.append(b"\x01\x00" * 48000, 200)
+        writer = session.writers[identifier]
+
+        def broken():
+            if not writer.file.closed:
+                raise OSError(errno.ENOSPC, "Generated mic fsync failure")
+
+        monkeypatch.setattr(writer, "sync", broken)
+        assert client.handle(declare("A")) == dict(type="ack")
+        assert client.handle(pcm("A", 48000, offset=2000)) == dict(type="ack")
+        before = next(t["frames"] for t in session.manifest["tracks"] if t["id"] == identifier)
+        tap.append(b"\x02\x00" * 48000, 3000)
+        assert next(t["frames"] for t in session.manifest["tracks"] if t["id"] == identifier) == before
+        assert not capture.finished and capture.error is None
+        assert client.handle(pcm("A", 48000, sequence=1, offset=3000)) == dict(type="ack")
+        client.handle(dict(type="stop", captureId="mic-sync"))
+        assert capture.finished and session.manifest["problemKind"] == "io"
+    finally:
+        client.close()

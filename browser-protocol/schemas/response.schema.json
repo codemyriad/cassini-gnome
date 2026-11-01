@@ -58,6 +58,10 @@
       "minLength": 1,
       "maxLength": 200,
       "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+    },
+    "retired": {
+      "type": "boolean",
+      "description": "True only for code=state, scope=source: this physical span is retired while its capture remains active. Cleanup/late packets are harmless and a live source can retry a fresh span."
     }
   },
   "additionalProperties": true,
@@ -91,6 +95,35 @@
         "required": [
           "message"
         ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "retired"
+        ],
+        "properties": {
+          "retired": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "code",
+          "scope"
+        ],
+        "properties": {
+          "type": {
+            "const": "error"
+          },
+          "code": {
+            "const": "state"
+          },
+          "scope": {
+            "const": "source"
+          }
+        }
       }
     }
   ]
