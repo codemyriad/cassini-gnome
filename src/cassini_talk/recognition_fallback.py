@@ -43,7 +43,11 @@ SHIFT_MS = 100
 class ActivityMeter:
     """Per-frame mean-removed level codes for one track, measured while planning."""
 
-    def __init__(self):
+    def __init__(self, presence=None):
+        # D52.2: track-relative 16 kHz [start, end) ranges that are present or
+        # unknown; None means the whole track. Only frames wholly inside one
+        # count, for the floor and for active runs.
+        self.presence = presence
         self.codes = bytearray()
         self.samples = 0
         self._tail = np.empty(0, dtype="<f4")
@@ -63,6 +67,17 @@ class ActivityMeter:
             level = math.sqrt(float(np.dot(centred, centred)) / FRAME)
             self.codes.append(SILENT if level <= 0 else int(min(120, max(0, round(120 + 20 * math.log10(level))))))
 
+    def inside(self):
+        """Per frame: whether the frame lies wholly inside one presence range."""
+        if self.presence is None:
+            return [True] * len(self.codes)
+        inside = [False] * len(self.codes)
+        for start, end in self.presence:
+            first, last = -(-max(0, start) // FRAME), min(len(self.codes), end // FRAME)
+            if first < last:
+                inside[first:last] = [True] * (last - first)
+        return inside
+
     def threshold_db(self):
         """max(-50 dBFS, floor + 12 dB), the floor taken over audible frames only.
 
@@ -71,7 +86,11 @@ class ActivityMeter:
         between words, so a sparse speech track still finds a low floor. With
         too few audible frames to estimate a floor, -50 dBFS applies alone.
         """
-        levels = sorted(code for code in self.codes if code != SILENT and code - 120 > -90)
+        levels = sorted(
+            code
+            for code, inside in zip(self.codes, self.inside(), strict=True)
+            if inside and code != SILENT and code - 120 > -90
+        )
         if len(levels) < FLOOR_FRAMES:
             return None, ACTIVE_DBFS
         floor = levels[int(FLOOR_PERCENTILE * (len(levels) - 1))] - 120.0
@@ -79,7 +98,11 @@ class ActivityMeter:
 
     def active(self):
         _floor, threshold = self.threshold_db()
-        loud = [code != SILENT and code - 120 >= threshold for code in self.codes]
+        # Frames outside presence are never loud, so they also break runs.
+        loud = [
+            inside and code != SILENT and code - 120 >= threshold
+            for code, inside in zip(self.codes, self.inside(), strict=True)
+        ]
         # Keep only runs of at least MIN_RUN_FRAMES consecutive loud frames.
         active, run = [False] * len(loud), 0
         for index, value in enumerate(loud + [False]):
@@ -112,14 +135,21 @@ def window_bounds(total):
     return bounds
 
 
-def active_windows(total, active):
-    """Windows holding at least half a second of active frames."""
+def active_windows(total, active, presence=None):
+    """Windows holding at least half a second of active frames.
+
+    D52.2: windows are laid separately inside each presence range, so neither
+    a window nor the G11 clamp to its end ever crosses a gap range.
+    """
     needed = math.ceil(MIN_WINDOW_ACTIVE_SECONDS * RATE / FRAME)
-    return [
-        (start, end)
-        for start, end in window_bounds(total)
-        if sum(active[start // FRAME : math.ceil(end / FRAME)]) >= needed
-    ]
+    intervals = [(0, total)] if presence is None else [(max(0, a), min(total, b)) for a, b in presence]
+    windows = []
+    for left, right in intervals:
+        for start, end in window_bounds(right - left):
+            start, end = left + start, left + end
+            if sum(active[start // FRAME : math.ceil(end / FRAME)]) >= needed:
+                windows.append((start, end))
+    return windows
 
 
 def audio_windows(chunks, windows, heartbeat=None, *, clock=None):
@@ -283,10 +313,9 @@ def merge_seam(previous, following, window_start_ms, overlap_ms):
     if not matches and _in_overlap(previous, window_start_ms, right) and _in_overlap(following, window_start_ms, right):
         # Two populated readings that cannot be aligned: one owner each side of the midpoint.
         cut = window_start_ms + overlap_ms // 2
-        kept = list(previous)
-        while kept and kept[-1]["startMs"] >= cut:
-            kept.pop()
-        return kept + [word for word in following if word["startMs"] >= cut]
+        kept = [word for word in previous if word["startMs"] < cut]
+        kept += [word for word in following if word["startMs"] >= cut]
+        return sorted(kept, key=lambda word: word["startMs"])
     dropped_previous, dropped_following = set(), set()
     for old, new in matches:
         a, b = previous[old], following[new]

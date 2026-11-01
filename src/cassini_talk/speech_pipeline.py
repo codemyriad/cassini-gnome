@@ -11,6 +11,7 @@ import json
 import math
 import os
 import wave
+from bisect import bisect_right
 from collections import deque
 from contextlib import closing
 from dataclasses import dataclass
@@ -412,7 +413,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
             diagnostics.append(dict(code="unknown-offset-display-zero", track=track["id"]))
         if type(offset) not in (int, float) or not math.isfinite(offset) or offset < 0:
             raise ValueError("Invalid capture offset")
-        meter = fallback.ActivityMeter()
+        meter = fallback.ActivityMeter(track.get("presence"))
         meters.append(meter)
         for segment in segment_ranges(
             path,
@@ -432,10 +433,17 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
     elapsed = processed = 0.0
     language = "und"
 
+    def emit(event):
+        # Only events actually sent decide the summary language, never a
+        # discarded fallback window or a replaced VAD segment.
+        nonlocal language
+        language = event["language"]
+        notify("progress", **event)
+
     def recognise(order, track, segment, offset, samples, audio_end):
-        nonlocal elapsed, processed, remaining, language
+        nonlocal elapsed, processed, remaining
         started = time.monotonic()
-        value, words, language, input_hash = recognise_segment(
+        value, words, detected, input_hash = recognise_segment(
             model, track["path"], segment, offset, samples=samples, audio_end_ms=audio_end
         )
         elapsed += time.monotonic() - started
@@ -449,7 +457,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
             trackOrder=order,
             segment=value,
             words=words,
-            language=language,
+            language=detected,
             etaMinutes=math.ceil((remaining * factor + extra_seconds) / 60),
             realtimeFactor=factor,
         )
@@ -475,14 +483,14 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
                 event = recognise(order, track, segment, offset, samples, audio_end)
                 vad_words += len(event["words"])
                 if held is None:
-                    notify("progress", **event)
+                    emit(event)
                     continue
                 held.append(event)
                 # Held events send nothing; keep the parent's reply deadline alive.
                 heartbeat()
                 if vad_words >= fallback.FEW_WORDS:
                     for event in held:
-                        notify("progress", **event)
+                        emit(event)
                     held = None
         if vad_words == 0 and meter.samples >= 5 * RATE:
             floor, threshold = meter.threshold_db()
@@ -499,7 +507,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
             )
         if held is None:
             continue
-        windows = fallback.active_windows(meter.samples, active)
+        windows = fallback.active_windows(meter.samples, active, meter.presence)
         remaining += sum(end - start for start, end in windows) / RATE
         events, words = [], []
         with closing(audio_chunks(track)) as chunks:
@@ -509,8 +517,6 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
                 heartbeat()
                 base = math.floor(offset) + start * 1000 // RATE
                 kept = fallback.energetic(event["words"], samples, base)
-                for word in kept:
-                    word["window"] = len(events)
                 previous = events[-1]["segment"]["endSample"] if events else None
                 if previous is not None and start < previous:
                     words = fallback.merge_seam(words, kept, base, (previous - start) * 1000 // RATE)
@@ -548,13 +554,19 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
         )
         if not used:
             for event in held:
-                notify("progress", **event)
+                emit(event)
             continue
-        for index, event in enumerate(events):
-            kept = [{k: v for k, v in word.items() if k != "window"} for word in words if word["window"] == index]
+        # Keep words in global time order across events: each word goes to the
+        # last window starting at or before it, not to the window it came from.
+        words = sorted(words, key=lambda word: word["startMs"])
+        starts = [math.floor(offset) + event["segment"]["startSample"] * 1000 // RATE for event in events]
+        owned = [[] for _ in events]
+        for word in words:
+            owned[max(0, bisect_right(starts, word["startMs"]) - 1)].append(word)
+        for event, kept in zip(events, owned, strict=True):
             event["words"] = kept
             event["segment"] = dict(event["segment"], text=" ".join(word["text"] for word in kept))
-            notify("progress", **event)
+            emit(event)
     result = dict(language=language, diagnostics=diagnostics, segments=len(plan), vad=detector.runtime)
     if decided:
         windows = dict(windowMs=fallback.WINDOW * 1000 // RATE, overlapMs=fallback.OVERLAP * 1000 // RATE)

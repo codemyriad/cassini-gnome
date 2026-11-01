@@ -119,6 +119,9 @@ class CaptureTrack:
     clock_anchors: tuple[tuple[int, int], ...] = ()
     spans: tuple["CaptureTrack", ...] = ()
     ownership_windows: tuple[tuple[int | float, int | float | None], ...] | None = None
+    # D52.2: session.json half-open gap ranges as stored; None (absent or not a
+    # list) means unknown. Lists are not hashable, so the hash leaves them out.
+    gaps: list | None = field(default=None, hash=False)
 
     @property
     def pcm_rate(self):
@@ -632,6 +635,7 @@ class LibraryScanner:
                             )
                             if isinstance(value.get("clockAnchors", ()), (list, tuple))
                             else (),
+                            gaps=value.get("gaps") if isinstance(value.get("gaps"), list) else None,
                         )
                     )
                 except (OSError, ValueError, TypeError):
@@ -653,6 +657,7 @@ class LibraryScanner:
                         clock_anchors=(),
                         ended=logical.get("ended"),
                         spans=spans,
+                        gaps=logical.get("gaps") if isinstance(logical.get("gaps"), list) else None,
                     )
                 ]
         return capture, tuple(tracks), salvaged

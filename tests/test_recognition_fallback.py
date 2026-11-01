@@ -79,23 +79,40 @@ class RunModel:
 class ScriptModel:
     """Returns a scripted number of distinct words per call, one second apart."""
 
-    def __init__(self, counts):
-        self.counts, self.calls = list(counts), 0
+    def __init__(self, counts, languages=()):
+        self.counts, self.languages, self.calls = list(counts), list(languages), 0
 
     def transcribe(self, samples, language, word_timestamps):
         count = self.counts[self.calls] if self.calls < len(self.counts) else 0
+        detected = self.languages[self.calls] if self.calls < len(self.languages) else "en"
         self.calls += 1
         words = [dict(word=f"w{self.calls}-{n}", start=1.0 + n, end=1.4 + n) for n in range(count)]
+        return dict(text=" ".join(w["word"] for w in words), language=detected, words=words)
+
+
+class TimedModel:
+    """Returns scripted (text, start, end) words per call, in window-relative seconds."""
+
+    def __init__(self, calls):
+        self.script, self.calls = list(calls), 0
+
+    def transcribe(self, samples, language, word_timestamps):
+        script = self.script[self.calls] if self.calls < len(self.script) else []
+        self.calls += 1
+        words = [dict(word=text, start=start, end=end) for text, start, end in script]
         return dict(text=" ".join(w["word"] for w in words), language="en", words=words)
 
 
-def run(tmp_path, monkeypatch, samples, model, probability, offset=0):
+def run(tmp_path, monkeypatch, samples, model, probability, offset=0, presence=None):
     monkeypatch.setattr(pipeline, "SpeechDetector", detector(probability))
     path = write(tmp_path / "track.wav", samples)
     events = []
+    job = dict(id="one", path=str(path), offsetMs=offset, frames=len(samples), sampleRate=RATE)
+    if presence is not None:
+        job["presence"] = presence
     result = pipeline.process_tracks(
         model,
-        [dict(id="one", path=str(path), offsetMs=offset, frames=len(samples), sampleRate=RATE)],
+        [job],
         None,
         lambda kind, **values: events.append(dict(type=kind, **values)),
     )
@@ -316,3 +333,106 @@ def test_the_summary_reports_each_gated_track_for_provenance(tmp_path, monkeypat
     )
     quiet, _progress, _words = run(tmp_path, monkeypatch, speech(10), ScriptModel([1]), 1.0)
     assert "fallback" not in quiet
+
+
+def test_presence_that_excludes_the_bursts_prevents_the_fallback(tmp_path, monkeypatch):
+    # D52.2: only the first second is present or unknown; the rest is a gap range.
+    model = RunModel()
+    result, progress, _words = run(tmp_path, monkeypatch, speech(40), model, 0.0, presence=[[0, RATE]])
+    assert not model.calls and not progress
+    assert diagnostic(result, "few-words-fallback") is None
+
+
+def test_fallback_windows_and_words_never_cross_a_gap_range(tmp_path, monkeypatch):
+    presence = [[0, 20 * RATE], [30 * RATE, 64 * RATE]]
+    result, progress, words = run(tmp_path, monkeypatch, speech(64), RunModel(), 0.0, presence=presence)
+    assert diagnostic(result, "few-words-fallback")["used"]
+    for event in progress:
+        start, end = event["segment"]["startSample"], event["segment"]["endSample"]
+        assert any(a <= start and end <= b for a, b in presence), (start, end)
+    assert words
+    assert not [w for w in words if 20000 <= w["startMs"] < 30000 or 20000 < w["endMs"] <= 30000]
+    # Bursts each side of the gap are still found, including the one at 30 s.
+    assert {18000, 30000} <= {w["startMs"] for w in words}
+
+
+def test_presence_restricts_the_activity_floor_and_runs():
+    samples = speech(40)
+    meter = fallback.ActivityMeter([[0, 10 * RATE + 100]])
+    list(meter.wrap([np.asarray(samples, dtype="<f4")]))
+    whole = meter_of(samples)
+    # A frame only partly inside presence is neither audible nor active.
+    assert sum(meter.inside()) == (10 * RATE + 100) // fallback.FRAME
+    assert 4.9 <= meter.active_seconds() <= 5.2 and whole.active_seconds() > 16
+    assert fallback.active_windows(meter.samples, meter.active(), meter.presence) == [(0, 10 * RATE + 100)]
+
+
+def test_only_emitted_events_set_the_summary_language(tmp_path, monkeypatch):
+    # Five VAD words need seven; six fallback words keep the VAD events.
+    model = ScriptModel([2, 2, 1, 3, 2, 1], languages=["en"] * 3 + ["it"] * 3)
+    result, progress, _words = run(tmp_path, monkeypatch, speech(40), model, 1.0)
+    assert model.calls == 6 and diagnostic(result, "few-words-fallback")["used"] is False
+    assert {e["language"] for e in progress} == {"en"}
+    assert result["language"] == "en"
+
+
+def test_seam_midpoint_cut_does_not_assume_sorted_previous_words():
+    previous = [word("late", 14800, 14900), word("before", 14000, 14300)]
+    following = [word("dog", 14550, 14700), word("hat", 14800, 14950), word("after", 15100, 15300)]
+    merged = fallback.merge_seam(previous, following, 14500, 500)
+    assert [w["text"] for w in merged] == ["before", "hat", "after"]
+
+
+def test_emitted_fallback_words_stay_in_time_order_across_events(tmp_path, monkeypatch):
+    # The first window keeps "alpha" at 14.8 s; the second adds "beta" at 14.7 s.
+    model = TimedModel(
+        [
+            [("x", 14.55, 14.65), ("alpha", 14.80, 14.90)],
+            [("x", 0.06, 0.16), ("beta", 0.20, 0.25)],
+        ]
+    )
+    result, progress, words = run(tmp_path, monkeypatch, speech(40), model, 0.0)
+    assert diagnostic(result, "few-words-fallback")["used"]
+    assert [w["text"] for w in words] == ["x", "beta", "alpha"]
+    starts = [w["startMs"] for w in words]
+    assert starts == sorted(starts)
+    for event in progress:
+        assert event["segment"]["text"] == " ".join(w["text"] for w in event["words"])
+        assert all(w["startMs"] >= event["segment"]["startSample"] * 1000 // RATE for w in event["words"])
+
+
+def test_prepare_tracks_sends_presence_as_track_relative_sample_ranges(tmp_path):
+    import json
+    from dataclasses import replace
+
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.recording_session import RecordingSession
+    from cassini_talk.transcription import prepare_tracks
+
+    session = RecordingSession(tmp_path)
+    session.add_track("a", "Guest", "remote", 48000, 1)
+    session.append("a", b"\x01\x00" * 48000, 1000)
+    session.finish()
+    manifest = session.directory / "session.json"
+    stored = json.loads(manifest.read_text())
+    gaps = [dict(atMs=1250, durationMs=250, frames=12000, kind="jump")]
+    stored["tracks"][0]["gaps"] = gaps
+    manifest.write_text(json.dumps(stored))
+    (meeting,) = LibraryScanner(tmp_path).scan().meetings
+    assert meeting.tracks[0].gaps == gaps
+    (job,), _speakers = prepare_tracks(meeting)
+    # Sample 0 is the track's offset (1000 ms); the gap is [1250 ms, 1500 ms).
+    assert job["offsetMs"] == 1000 and job["presence"] == [[0, 4000], [8000, 16000]]
+
+    # Without stored ranges the whole extent is unknown, so all of it counts.
+    del stored["tracks"][0]["gaps"]
+    manifest.write_text(json.dumps(stored))
+    (meeting,) = LibraryScanner(tmp_path).scan().meetings
+    assert meeting.tracks[0].gaps is None
+    (job,), _speakers = prepare_tracks(meeting)
+    assert job["presence"] == [[0, 16000]]
+
+    # Without a known offset nothing can be placed: no restriction is sent.
+    unplaced = replace(meeting, tracks=tuple(replace(t, start_offset_ms=None) for t in meeting.tracks))
+    (job,), _speakers = prepare_tracks(unplaced)
+    assert "presence" not in job
