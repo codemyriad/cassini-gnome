@@ -154,3 +154,49 @@ def test_real_folder_seek_obeys_the_same_half_open_source_ownership(tmp_path):
 def test_worker_masks_reject_malformed_or_unordered_windows(bad):
     with pytest.raises(ValueError, match="ownership"):
         FrameMask(bad, 16000)
+
+
+def test_compacted_opus_ownership_is_exact_after_decoding_and_resampling(tmp_path):
+    np = pytest.importorskip("numpy")
+    gi = pytest.importorskip("gi")
+    gi.require_version("Gst", "1.0")
+    from cassini_talk.export_audio import encode_blocks, track_pcm
+    from cassini_talk.library import CaptureTrack
+    from cassini_talk.speech_pipeline import audio_chunks
+
+    (tmp_path / "tracks").mkdir()
+    path = tmp_path / "tracks" / "voice.opus"
+    signal = np.sin(np.arange(48000 * 2) * (2 * np.pi * 440 / 48000)).astype("<f4") * 0.25
+    encode_blocks(
+        (array.array("f", block) for block in (signal[:48000], signal[48000:])),
+        path,
+        dict(bitrateBps=64000, cutoffHz=20000),
+    )
+    track = CaptureTrack(
+        path,
+        96000,
+        48000,
+        1000,
+        True,
+        kind="remote",
+        codec="opus",
+        decoded_frames=96000,
+        ownership_windows=((1500.01, 2000.01),),
+    )
+    before = path.read_bytes()
+    exported = np.concatenate(list(track_pcm(track)))
+    assert np.all(exported[:72001] == 0) and np.all(exported[96001:] == 0)
+    assert np.max(np.abs(exported[75000:90000])) > 0.1
+    job = dict(
+        id="voice",
+        path=str(path),
+        codec="opus",
+        frames=96000,
+        sampleRate=48000,
+        offsetMs=1000,
+        ownershipWindows=[[1500.01, 2000.01]],
+    )
+    speech = np.concatenate(list(audio_chunks(job)))
+    assert np.all(speech[:8001] == 0) and np.all(speech[16001:] == 0)
+    assert np.max(np.abs(speech[9000:15000])) > 0.1
+    assert path.read_bytes() == before
