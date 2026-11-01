@@ -46,12 +46,12 @@ jobs:
           path: core.tar
           compression-level: 0
           if-no-files-found: error
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         if: inputs.boards || inputs.offline
         with:
           path: .whistle-cache
           key: whistle-${{ hashFiles('whistle/pins.json') }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         if: inputs.boards || inputs.offline
         with:
           path: .sherpa-cache

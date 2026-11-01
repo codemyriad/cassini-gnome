@@ -22,12 +22,12 @@ jobs:
             libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream xvfb xauth xdotool dbus-x11 \
             locales fontconfig python3-pil python3-pytest at-spi2-core gir1.2-atspi-2.0 libzstd1 fonts-cantarell=0.303.1-4 fonts-inter=4.1+ds-1
           sudo locale-gen en_GB.UTF-8 en_US.UTF-8
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         if: inputs.product == ''
         with:
           path: .whistle-cache
           key: whistle-${{ hashFiles('whistle/pins.json') }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         if: inputs.product == ''
         with:
           path: .sherpa-cache
