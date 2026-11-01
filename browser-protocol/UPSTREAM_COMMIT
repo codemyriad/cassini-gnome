@@ -1,26 +1,26 @@
-tree ac113cf9ef7bec18ac50792ba3c590facb21c314
-parent 6e581d66cfe897f13b05445ae4f67392619e08ff
-parent 13b3941dcc312eea2a22f606b1f527d50433a2ee
-author Silvio Tomatis <silviot@gmail.com> 1793502669 +0100
-committer GitHub <noreply@github.com> 1793502669 +0100
+tree b8bf167c57e542e85e8324313be9e1604862a8e5
+parent a6d240e83ca6242e807d9bf1140838e113817da7
+parent f601c7fed53730c9c6542a7fe5284f308e429bcc
+author Silvio Tomatis <silviot@gmail.com> 1793508354 +0100
+committer GitHub <noreply@github.com> 1793508354 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq5q3NCRC1aQ7uu5UhlAAARt0QAEuuaJTogn20aR0ZEbeap3XY
- Bobm+zQvtv6emBHpRR0unPmDDdqpe4Un9CQ/BxoHeTI2nFF8Ymrhpv392U4LNCVh
- IvkLZ9iTmVybgOKOQhK7uIGLFt83yqNfhqTGIRb/gcAKrgj4ng7dhyV4FbdiocP0
- R6rbdaL6/PjTF53Y2eLGurTsTY8oD55et7iRo1NP3rqToS/SyBnEQ2MjBwWdPdSD
- /d5RvD8dqSftatQ5VMmlXbVnXd1B6XyZmcIjjp1v/mvHvbuNxWBHaTA0BwRhmGkT
- f/iNlLqV+DZf3FEjZKPKPZUMGXlas54NmXsb1pZvWvM1/Alq9lwMZC8Z7+WKomL8
- WId+/iEbuuOvzUBKP6VCIM3MQy7YHAJs5dOEiGfuycUFsp7h0x2OLh6hhnCVBNzm
- SouLEahig5oJo5gBVjNokfepF5RkSbjYcNubcnx6JG6643jj/j7P+PtB5rzbi3ek
- fqD68wiLPsiDg4igpYa3h8SpwqcrDDzHqKIZQqPd6IMEspkD6+ujj42fbwRKTBSc
- IfiK43SS0PHVj7JUuwzz+1RPd9fhw7bRj3k++gq4eaV6sh3TXAAL8Mt/UbJyDHdh
- zN91mVcYQHklK+EsJq1tsbQdQP7cLSaNHpqupVJljKp6/1qBgVo6hzzwwuelIKEg
- J3t6mGiRnJ7GAKUDC9q3
- =kHY7
+ wsFcBAABCAAQBQJq5sQCCRC1aQ7uu5UhlAAAy+0QAGnaXVEEXCB7yaPSjDDKthto
+ X/Qw2XchUO0ro//PzhNf+ep9bOf95q8OJ6EvbeLbMVJQXHiqYKNOlBWRaVsYMjc1
+ t14uROx/Trd4AQ0buTuvDD6rOd6hxFdiUzeZvHQoJ5WjfgibaJSZq9W4zge+GZ8o
+ bClSAeLEoEvM5X9K6575ZvsqyygiRkywFyWoIZjhQfoY5mFkmMB/H2fATV6xVId2
+ wE3plLdrYllnlI3NuramqXQaax1M8t7JQFOlhwhgegDL0IIwF4BOItmVQ53+tJUz
+ 8rL7kEhTqKvwWrZYn4GFTUPwJYDP9/5hYZ+7J5k94wL6LiT/rwhiw2C3EUQ1Iycc
+ bWqF+by/PotqXJQTrdd2t4O5FqKbbo51Qe4htMuUjWX4aBtjHeJPNyMLSC1IYmKF
+ 8w3NsRBXP3gse3+BGMFBIWsTPYRTvgURk5MsdJvARJi6s1L0ZeOq3XvdF2LmO4S5
+ 5VMYgIYfZKYUMRXIVV/ETBAS3W+JxZ89Y8c99z7USOCAGA1mNrNHOBnHx2AJt4IA
+ HIB+artbKys4WzwSHboiChtKaPo5KkmHBY5wiHnvh9gR5PFohCGbBrukxaB/z7aR
+ 3zkVlt7CL68avCe0TzEGJvUqKKnCapdGT27bQflj2XrBxNOV7eV7O9L4SFZnGWX0
+ UBwFv+OMgW3kiVmtYCGB
+ =3+Xj
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #24 from codemyriad/feat/multistream-reliability
+Merge pull request #25 from codemyriad/fix/persist-call-generation
 
-D52: account for every multi-stream capture source
+Keep call identity through service-worker restart

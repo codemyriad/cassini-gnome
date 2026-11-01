@@ -1524,6 +1524,7 @@ class BrowserService:
                 )
                 capture.browser_lost = True
                 capture.browser_lost_since = time.monotonic()
+                capture_generation = browser.meetings.get(tab, {}).get("callGeneration")
                 self.captures[capture_id] = capture
                 browser.states[tab] = dict(recording=True, captureId=capture_id, tabId=tab)
                 if browser.browser_instance is not None:
@@ -1541,6 +1542,7 @@ class BrowserService:
                     timelineOriginMs=int(time.time() * 1000),
                     microphone=microphone,
                     title=meeting["title"],
+                    callGeneration=capture_generation,
                 ),
                 others_source="system",
                 reason="missing",
