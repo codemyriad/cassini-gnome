@@ -714,7 +714,6 @@ class BrowserService:
                         result = capture.start(packet)
                     else:
                         result = capture.handle(packet)
-                    send_packet(stream, result)
                 except Exception as error:
                     problem = str(error)
                     code = (
@@ -724,7 +723,16 @@ class BrowserService:
                         if isinstance(error, OSError)
                         else "state"
                     )
-                    send_packet(stream, dict(type="error", code=code, message=str(error)))
+                    # Keep the original failure if its error reply is lost.
+                    with contextlib.suppress(ConnectionError):
+                        send_packet(stream, dict(type="error", code=code, message=str(error)))
+                    break
+                try:
+                    send_packet(stream, result)
+                except ConnectionError:
+                    # PCM/metadata was accepted; losing its acknowledgement
+                    # is transport loss, just like EOF. Preserve the native
+                    # microphone and invoke Q4 rather than ending the meeting.
                     break
         finally:
             if capture is not None:
