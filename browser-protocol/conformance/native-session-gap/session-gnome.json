@@ -19,7 +19,8 @@
       "startOffsetMs": 0,
       "endOffsetMs": 3000,
       "ended": true,
-      "labelSource": "device"
+      "labelSource": "device",
+      "gaps": []
     },
     {
       "id": "system",
@@ -33,7 +34,15 @@
       "endOffsetMs": 3000,
       "ended": true,
       "labelSource": "device",
-      "gapFrames": 8000
+      "gapFrames": 8000,
+      "gaps": [
+        {
+          "atMs": 1000,
+          "durationMs": 1000,
+          "frames": 8000,
+          "kind": "input"
+        }
+      ]
     }
   ]
 }

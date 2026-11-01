@@ -3,6 +3,7 @@
 
 import math
 from bisect import bisect_right
+from dataclasses import dataclass
 from fractions import Fraction
 
 from .session_events import read_events
@@ -93,3 +94,80 @@ class FrameMask:
         for left, right in sections:
             output[left * width : right * width] = data[left * width : right * width]
         return bytes(output)
+
+
+@dataclass(frozen=True)
+class Presence:
+    """D52.2 half-open session-ms windows; unknown is neither present nor absent."""
+
+    present: tuple
+    unknown: tuple
+    unpositioned_frames: int
+    complete: bool
+
+
+def _subtract(windows, left, right):
+    result = []
+    for a, b in windows:
+        if right <= a or b <= left:
+            result.append((a, b))
+            continue
+        if a < left:
+            result.append((a, left))
+        if right < b:
+            result.append((right, b))
+    return result
+
+
+def _owned(windows, ownership):
+    if ownership is None:
+        return tuple(windows)
+    result = []
+    for a, b in windows:
+        for left, right in ownership:
+            low = max(a, Fraction(str(left)))
+            high = b if right is None else min(b, Fraction(str(right)))
+            if low < high:
+                result.append((low, high))
+    return tuple(result)
+
+
+def presence(track, ownership=None):
+    """Span extents minus stored gap ranges, intersected with ownership windows.
+
+    Never reads PCM: zero samples are not absence. A droppedFrames count has
+    no position and is only reported. Without a ``gaps`` list (older writers)
+    or after an overflow marker, the time is unknown. Returns None when the
+    track has no known start offset.
+    """
+    from .source_spans import bounds
+
+    if track.get("startOffsetMs", track.get("offsetMs")) is None:
+        return None
+    # Rotated/compacted span rows inherit the logical track's fields.
+    logical = {key: value for key, value in track.items() if key != "spans"}
+    extents = sorted(bounds(dict(logical, **span), display=True) for span in track.get("spans") or [{}])
+    gaps = track.get("gaps")
+    dropped = track.get("droppedFrames")
+    dropped = dropped if type(dropped) is int and dropped > 0 else 0
+    if not isinstance(gaps, list):
+        return Presence((), _owned(extents, ownership), dropped, False)
+    present, unknown, overflow = list(extents), [], False
+    for gap in gaps:
+        at = Fraction(str(gap["atMs"]))
+        if gap["kind"] == "overflow":
+            unknown = [(max(a, at), b) for a, b in present if b > at]
+            present = [(a, min(b, at)) for a, b in present if a < at]
+            overflow = True
+            break
+        present = _subtract(present, at, at + Fraction(str(gap["durationMs"])))
+    return Presence(_owned(present, ownership), _owned(unknown, ownership), dropped, not overflow)
+
+
+# D52.2: absorbs floating-point noise in stored times before taking the next sample.
+EPSILON = Fraction(1, 1_000_000)
+
+
+def samples(windows, rate=16000):
+    """Half-open ms windows as [ceil(a*rate/1000 - eps), ceil(b*rate/1000 - eps)) sample ranges."""
+    return [[math.ceil(Fraction(edge) * rate / 1000 - EPSILON) for edge in window] for window in windows]

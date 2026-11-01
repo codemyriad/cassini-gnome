@@ -673,8 +673,10 @@ class LibraryScanner:
             capture, tracks, salvaged = self._capture(fd, directory, identifier, names, diagnostics)
             duration = max((t.display_end_ms for t in tracks), default=None)
             started = _date(capture.get("createdAt"))
+            # D52.2: writers that record gap ranges flag long gaps in problemKind.
+            # Older folders without ranges keep the any-gapFrames reading.
             gap = capture.get("problemKind") == "gap" or any(
-                isinstance(t, dict) and _integer(t.get("gapFrames")) and t["gapFrames"] > 0
+                isinstance(t, dict) and "gaps" not in t and _integer(t.get("gapFrames")) and t["gapFrames"] > 0
                 for t in capture.get("tracks", [])
             )
             if (

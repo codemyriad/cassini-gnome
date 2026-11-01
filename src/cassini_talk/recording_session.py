@@ -22,6 +22,8 @@ from uuid import uuid4
 from .i18n import gettext as _
 
 MAX_MESSAGE = 512 * 1024
+# D52.2: absence ranges kept per track before one overflow marker.
+GAP_BUDGET = 1000
 KINDS = {"microphone", "system", "application", "local", "remote", "media", "tab"}
 
 
@@ -296,6 +298,7 @@ class RecordingSession:
                 fsync_dir(self.directory.parent)
             self._native_clock_origin_ns = time.monotonic_ns()
             self._native_clocks = {}
+            self._long_gaps = set()
             self.manifest = {
                 "version": 1,
                 "id": identifier,
@@ -467,6 +470,7 @@ class RecordingSession:
                 "channels": channels,
                 "frames": 0,
                 "labelSource": label_source or ("browser" if self.manifest["source"] == "chromium" else "device"),
+                "gaps": [],
             }
         )
         if source_track_id is not None:
@@ -475,6 +479,39 @@ class RecordingSession:
             self.capture_record.bind(identifier, source_track_id or identifier)
         self.checkpoint()
 
+    def _native_gap_ms(self, identifier, host_ns, frames):
+        """Mapped session time of a native gap ending at this buffer's host stamp.
+
+        Mapping places index i at startOffsetMs + host(i) - host(0); the gap
+        ends where this buffer starts. Without a clock, the nominal position is used.
+        """
+        clock = self._native_clocks.get(identifier)
+        if clock is None or not clock.fixed or host_ns is None:
+            return None
+        rate = self.writers[identifier].rate
+        first_index, first_ns = clock.fixed[0]
+        track = next(t for t in self.manifest["tracks"] if t["id"] == identifier)
+        end = track["startOffsetMs"] + (host_ns - clock.origin_ns - first_ns) / 1_000_000 + first_index * 1000 / rate
+        return end - frames * 1000 / rate
+
+    def _record_gap(self, identifier, track, before, frames, kind, *, at_ms=None):
+        """D52.2: one half-open session-time range per padding write, never coalesced."""
+        rate = track["sampleRate"]
+        if kind != "prefix":
+            track["gapFrames"] = track.get("gapFrames", 0) + frames
+            if frames >= rate:
+                self._long_gaps.add(identifier)
+        if at_ms is None:
+            at_ms = track["startOffsetMs"] + before * 1000 / rate
+        at_ms, duration = (int(v) if float(v).is_integer() else v for v in (at_ms, frames * 1000 / rate))
+        gaps = track.setdefault("gaps", [])
+        if gaps and gaps[-1]["kind"] == "overflow":
+            return
+        if len(gaps) >= GAP_BUDGET:
+            gaps.append(dict(atMs=at_ms, kind="overflow"))
+        else:
+            gaps.append(dict(atMs=at_ms, durationMs=duration, frames=frames, kind=kind))
+
     def append(self, identifier, data, offset):
         if self.finished or not isinstance(identifier, str) or identifier not in self.writers:
             raise ProtocolError("chunk", "Invalid audio chunk or timestamp")
@@ -482,6 +519,8 @@ class RecordingSession:
         track = next(t for t in self.manifest["tracks"] if t["id"] == identifier)
         if track.get("ended"):
             raise ProtocolError("chunk", "Audio source has ended")
+        # A span opened at a selection boundary pads its lead before the first frame.
+        prefix = not writer.frames and track.get("startOffsetMs") is not None
         start, delta = chunk_plan(writer.rate, writer.channels, writer.frames, track.get("startOffsetMs"), data, offset)
         track["startOffsetMs"] = start
         input_frames = len(data) // (writer.channels * 2)
@@ -498,8 +537,8 @@ class RecordingSession:
                     # have reached the WAV. Keep that absence distinct from
                     # received zero PCM even on a source-local disk failure.
                     padded = writer.frames - before_padding
-                    if self.capture_record is not None and padded:
-                        track["gapFrames"] = track.get("gapFrames", 0) + padded
+                    if padded:
+                        self._record_gap(identifier, track, before_padding, padded, "prefix" if prefix else "jump")
             writer.append(data)
         except OSError as error:
             if self.capture_record is not None:
@@ -536,8 +575,12 @@ class RecordingSession:
             if not writer.frames and not gap_frames and track.get("startOffsetMs") is not None:
                 prefix = max(0, round((offset - track["startOffsetMs"]) * writer.rate / 1000))
                 if prefix:
-                    writer.silence(prefix)
-                    track["frames"] = writer.frames
+                    try:
+                        writer.silence(prefix)
+                    finally:
+                        if writer.frames:
+                            self._record_gap(identifier, track, 0, writer.frames, "prefix")
+                        track["frames"] = writer.frames
             if gap_frames:
                 before = writer.frames
                 try:
@@ -546,7 +589,8 @@ class RecordingSession:
                 finally:
                     written = writer.frames - before
                     if written:
-                        track["gapFrames"] = track.get("gapFrames", 0) + written
+                        at = self._native_gap_ms(identifier, host_ns, written)
+                        self._record_gap(identifier, track, before, written, "input", at_ms=at)
                     track["frames"] = writer.frames
             if self.library_root is not None and host_ns is not None:
                 from .capture_clock import ClockAnchors
@@ -588,7 +632,7 @@ class RecordingSession:
             track["ended"] = True
             if track.get("startOffsetMs") is not None:
                 track["endOffsetMs"] = track["startOffsetMs"] + track["frames"] * 1000 / track["sampleRate"]
-        gaps = [t for t in self.manifest["tracks"] if t.get("gapFrames", 0)]
+        gaps = [t for t in self.manifest["tracks"] if t["id"] in self._long_gaps]
         if self.capture_record is not None and self.capture_record.finish(self.manifest):
             problem = problem or "Some announced audio was not fully captured."
             if problem_kind != "io":

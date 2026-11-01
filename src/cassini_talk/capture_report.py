@@ -19,6 +19,7 @@ TRACK_FIELDS = (
     "endOffsetMs",
     "gapFrames",
     "droppedFrames",
+    "gaps",
     "problemKind",
     "captureOutcome",
     "receivedFrames",

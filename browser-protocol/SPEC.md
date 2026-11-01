@@ -48,20 +48,23 @@ Omitted/null version means 1. Unsupported version and unknown request type are e
 Start is accepted once per connection. Track/audio/stop require an active session.
 Kinds: local, remote, media, tab, microphone, application, system. IDs are unique for the
 session including ended sources; source formats are immutable. No participant identity is
-inferred. There is no track-end wire message in v1. A replaced source may use a new ID;
+inferred. Legacy v1 has no track-end message (negotiated multi-stream adds trackEnd). A replaced source may use a new ID;
 reversible sender muting should retain its ID and send silence.
 
 An omitted/null title defaults to a host title. An omitted/null label defaults to kind.
 Titles are bounded to 500 Unicode characters; labels strip Unicode categories Cc and Cf (including U+200B, preserving private-use Co) and
 are bounded to 200 characters. Empty/null/absent stop problem means no interruption unless
-IO failure or an empty session independently requires one. Empty sessions are interrupted.
+IO failure, an empty session or a one-second gap (see Gap ranges) independently requires one.
+Empty sessions are interrupted.
 
 PCM is nonempty standard base64 of interleaved signed PCM16 little-endian samples. Acks
 follow acceptance/writing, not receipt alone. Sequence starts at 0 per ID and increments
 by one per accepted chunk. Offset is the chunk start relative to the session origin.
-The first chunk establishes startOffsetMs; there is no leading silence. Compare following
-start offsets to written frames: round((offset-start)*rate/1000), tolerance floor(rate/50).
-Positive gaps greater than tolerance become silence. Negative deltas below -tolerance
+The first chunk establishes startOffsetMs; there is no leading silence, except that a span opened
+at a selection boundary (S-6) starts there and is padded to its first chunk under the same rule.
+Compare following start offsets to written frames: round((offset-start)*rate/1000), rounding
+half up, tolerance floor(rate/50).
+Positive gaps greater than tolerance become silence and a gap range (see Gap ranges). Negative deltas below -tolerance
 are errors. A positive gap over 60 seconds is an error. Smaller jitter is tolerated.
 
 `error` responses contain type="error", message string, and optional code string. New
@@ -112,7 +115,7 @@ sample-accurate conference clocks. Local sender mute/suspension produces silence
 
 `session.json` has version=1, UUID id, createdAt, title, source, state, tracks. Source is
 chromium, macos, gnome, or recovered. State is recording, completed, or interrupted. Optional
-problem and problemKind explain an interruption (empty, capture, io, recovery). Unknown
+problem and problemKind explain an interruption (empty, capture, io, recovery, gap). Unknown
 additional properties are allowed. Writers omit absent optional fields; readers also accept
 null. Key order and whitespace are insignificant. New writers use whole-second UTC Z dates;
 readers accept fractional seconds and numeric UTC offsets from earlier writers.
@@ -277,12 +280,52 @@ protects smooth device drift: comparing absolute session-start lag would incorre
 10 hours at +50 ppm (1.8 seconds) as missing audio. Smaller/negative divergence is diagnostic;
 it must not reorder samples or silently compress a forward discontinuity.
 
-`gapFrames` and `droppedFrames` are optional per-track nonnegative integer counts, included
-in the final WAV/manifest frames. Gaps indicate missing input time; dropped frames indicate
-writer-queue overflow. Report only-gap loss with session problemKind=`gap`; writer loss takes
-problemKind=`io` if both occurred. Both preserve available audio and explicit silence.
+`gapFrames` and `droppedFrames` are optional per-track nonnegative integer counts.
+`gapFrames` counts padding written for missing input time, excluding selection prefixes, and is
+included in the WAV/manifest frames. `droppedFrames` counts frames that existed but were not
+written, by the host writer or the producer, with no position. A producer drop inside a span
+also appears as padding, so the two counts are never added together. Report gap loss with
+session problemKind=`gap` only when one non-prefix padding write lasts at least one second (see
+Gap ranges); writer loss takes problemKind=`io`. Both preserve available audio and silence.
 The complete `conformance/native-session-gap/` fixture contains continuous mic audio and a
 one-second system gap, with both macos/gnome manifest variants.
+
+## Gap ranges and presence (D52.2, P7)
+
+Every writer records where it wrote padding: per track, `gaps: [{atMs, durationMs, frames, kind}]`.
+New writers always write the key, so `gaps: []` means no gaps and a missing key means unknown.
+- `atMs` is on the session timeline (same as offsetMs/startOffsetMs/events): the position of the
+  first padded frame in the file, startOffsetMs + framesBefore/rate*1000. Absorbed jitter means
+  this can differ from the wire offset by up to the tolerance. Native tracks with host-clock
+  anchors use the host time at which the gap began (the next buffer's stamp minus the gap), which
+  the anchor mapping approximates. `frames` is the exact integer padding at the track rate.
+- Ranges are half-open, sorted and never coalesced: one entry per padding write, even when
+  only a little received audio separates two of them.
+- `kind` is diagnostic and open. Host-derived kinds: `jump` (browser offset jump; overflow,
+  suspension and stalls look the same on the wire), `input` (native host-time gap), `prefix`
+  (selection boundary to the first frame, browser or native, never in gapFrames), `writer` (below). `dropped` and `suspended` are
+  reserved for a later producer tag. Readers treat every kind as absence.
+- Budget: at most 1000 ranges per track, then one `{atMs, kind:"overflow"}` at the next gap,
+  meaning presence is unknown from there to the track end. `gapFrames` keeps counting. Never
+  truncate silently, evict earlier ranges or merge ranges to stay within the budget.
+- A droppedFrames count never becomes a range. Mid-span producer drops already appear as a
+  `jump`; drops after the last written frame or between spans are outside every extent.
+  Producer drop counts appear only in recording details: they never change state or problemKind.
+- A host writer that pads its own lost frames in place (instead of failing the source) records
+  that padding as a `writer` range. It counts in droppedFrames, not gapFrames, and never sets the
+  gap flag; host write loss is reported as io.
+- Writers record ranges whether or not multi-stream was negotiated: these are host facts.
+- Gap flag: only a `jump` or `input` padding write of at least one second (frames >= rate),
+  including one written after the overflow marker, makes the session interrupted with
+  problemKind `gap`; io and capture take precedence. Folders without `gaps` (or with null) keep
+  the older reading, any gapFrames > 0.
+
+Presence comes only from span extents minus `gaps`, intersected with othersSource ownership.
+Zero samples are not evidence of absence: a muted sender's zeros are present audio. Presence
+never reads PCM. An `overflow` marker or a missing/null `gaps` makes the affected time unknown,
+neither present nor absent. On a 16 kHz session grid a window [a,b) ms covers samples
+[ceil(16a - 1e-6), ceil(16b - 1e-6)); the epsilon absorbs floating-point noise in stored times. The same `gaps` are carried into recordingDetails.captureRecord.tracks[]
+and the Cassini file's x["codemyriad.io"].tracks[]. See conformance/gaps/.
 
 ## Multi-stream capture (D52, extension 0.2.4; draft PR)
 
@@ -299,7 +342,9 @@ stored overlapping spans with one key must be refused rather than summed.
 
 A negotiated `trackEnd` carries id, reason (ended/replaced/retry/stopped/failed/
 callChanged), droppedFrames and endOffsetMs (nullable before an audio anchor).
-The host derives the authoritative stored end from admitted samples. An error
+The host derives the authoritative stored end from admitted samples. It adds droppedFrames
+to the latest span that recorded that wire ID, even after deselection, never replacing an
+earlier count; a source that was never recorded stores none. An error
 with `scope:source` and id refuses only that source request: other tracks and
 this native connection remain usable. Framing/version/connection failures stay
 session failures. Repeated identical track declarations are idempotent.

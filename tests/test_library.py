@@ -301,7 +301,9 @@ def test_unknown_metadata_version_is_retained_read_only_not_interpreted(tmp_path
 
 def test_gap_history_and_damaged_sidecar_override_done_status(tmp_path):
     session = capture(tmp_path)
+    # An older writer: gapFrames without D52.2 ranges still means a gap.
     session.manifest["tracks"][0]["gapFrames"] = 480
+    del session.manifest["tracks"][0]["gaps"]
     (session.directory / "session.json").write_text(json.dumps(session.manifest))
     write_metadata(
         session.directory,

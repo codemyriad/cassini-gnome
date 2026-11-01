@@ -12,7 +12,8 @@
   using pinned public LibriSpeech. Includes a late source, sparse presence,
   unequal source-key spans, D49/fallback/restoration, dropped gaps, -35 dB bleed
   and real overlapping speech. Run `python3 make.py DESTINATION` to materialize.
-  Gap/presence fields here are fixture hints; P7 production masks remain wave 2.
+  Track `gaps` follow D52.2 (P7, see ../gaps/); `presenceWindows` only drive the
+  generator. Sessions with a one-second gap are interrupted with problemKind gap.
 
 The materialized-WAV regression checks exact half-open browser/system ownership,
 actual lengths, zero-filled gaps, independent files, overlapping voices and the

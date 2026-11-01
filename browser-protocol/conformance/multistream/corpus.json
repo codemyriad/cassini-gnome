@@ -151,7 +151,8 @@
             {
               "atMs": 41000,
               "durationMs": 7000,
-              "kind": "dropped"
+              "frames": 336000,
+              "kind": "jump"
             }
           ]
         },
@@ -229,7 +230,8 @@
             {
               "atMs": 70000,
               "durationMs": 2000,
-              "kind": "dropped"
+              "frames": 96000,
+              "kind": "jump"
             }
           ],
           "speechStartMs": 20000
