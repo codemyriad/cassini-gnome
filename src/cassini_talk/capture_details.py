@@ -17,6 +17,8 @@ from . import ux_formats as fmt
 from .library_files import regular
 from .recording_session import strict_json
 from .session_events import read_events
+from .source_report import SourceFact
+from .source_report import sources as source_facts
 from .strings import text
 
 UNKNOWN = text("details.unknown")
@@ -109,6 +111,7 @@ class Report:
     health: tuple[tuple[str, str], ...]
     writing: tuple[tuple[str, str], ...]
     notes: tuple[str, ...] = ()
+    sources: tuple[SourceFact, ...] = ()
 
     def plain_text(self):
         lines = [text("details.copy.heading"), self.title, "", text("details.capture.title")]
@@ -549,4 +552,5 @@ def read_details(meeting):
         health,
         writing,
         tuple(notes),
+        source_facts(session, meeting.metadata, live=meeting.lifecycle in ("recording", "saving")),
     )
