@@ -35,9 +35,12 @@ STOPPED_CALL_REPORT_WINDOW = 30
 # A peer that stops reading must not hold a writer, or the commands behind it.
 WRITE_DEADLINE = 10
 OUTBOUND_LIMIT = 64
-# A frozen companion keeps its audio socket open. Above the extension's own 10 s
-# acknowledgement and backlog limits, well under the 60 s source gap.
-PCM_STALE_AFTER = 15
+# A frozen companion keeps its audio socket open. A healthy one can leave an
+# open remote span silent while a failed recorder waits to reattach: capture.js
+# retryDelay() backs off 1, 5, 15, then 30 s, and the broker cannot see that
+# state. So: the longest retry wait plus the extension's 10 s acknowledgement
+# limit, still under the 60 s span cut that would end the source anyway.
+PCM_STALE_AFTER = 40
 
 
 @dataclass(frozen=True)
@@ -172,20 +175,21 @@ class AudioTransport(Transport):
     def __init__(self, connection, clock):
         super().__init__(connection, clock)
         self.capture = None
+        # Any packet counts, so declaring a new span restarts the wait.
         self.last_inbound = clock()
-        self.heard = False  # A remote track recorded PCM from this transport.
 
     def expired(self, now):
         capture = self.capture
         if (
-            self.heard
-            and capture is not None
+            capture is not None
             and capture.multistream_capable
-            and not (capture.finished or capture.stopping or capture.stop_requested.is_set() or capture.browser_lost)
             and now - self.last_inbound >= PCM_STALE_AFTER
+            and not (capture.finished or capture.stopping or capture.stop_requested.is_set() or capture.browser_lost)
+            and capture.remote_open()
         ):
-            # Before the first remote PCM nothing can go stale: a pre-join or
-            # silent call must not fall back on an idle transport.
+            # Only a running remote recorder must keep sending. Before the first
+            # PCM, or after every span ended (a guest left, the receiver dropped
+            # out during a network blip), a quiet transport is still healthy.
             return "stopped sending audio"
         return super().expired(now)
 
@@ -829,8 +833,6 @@ class BrowserService:
                         result = capture.start(packet)
                     else:
                         result = capture.handle(packet)
-                        if packet.get("type") == "audio" and not transport.heard:
-                            transport.heard = capture.remote_recorded()
                 except Exception as error:
                     problem = str(error)
                     code = (

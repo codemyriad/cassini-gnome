@@ -322,11 +322,14 @@ class BrowserCapture:
                 for track in self.streams.tracks.values()
             )
 
-    def remote_recorded(self):
-        """Whether an admitted browser track currently has PCM in this file."""
+    def remote_open(self):
+        """Whether a browser track that has delivered PCM is still open.
+
+        Its recorder posts frames, silent ones included, until it ends.
+        """
         with self.lock:
             return any(
-                track.kind not in ("microphone", "local") and track.recorded_at is not None
+                track.kind not in ("microphone", "local") and not track.ended and track.received_at is not None
                 for track in self.streams.tracks.values()
             )
 

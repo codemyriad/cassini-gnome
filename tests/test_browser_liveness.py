@@ -2,6 +2,7 @@
 """G7: a frozen companion keeps its sockets open; deadlines on an injected clock close them."""
 
 import json
+import logging
 import socket
 import threading
 import time
@@ -90,9 +91,32 @@ def me_frames(capture):
 def jam(browser):
     """Leave the broker's writer genuinely blocked on a peer that never reads."""
     browser.connection.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
-    for _ in range(4):
-        browser.send(dict(type="flood", pad="x" * 400_000))
+
+    def flood():
+        for _ in range(4):
+            browser.send(dict(type="flood", pad="x" * 400_000))
+
+    # A synchronous send() would block here forever; fail fast instead.
+    sender = threading.Thread(target=flood, daemon=True)
+    sender.start()
+    sender.join(2)
+    assert not sender.is_alive(), "send() blocked on a peer that never reads"
+    # The first 400 KB write cannot fit a 4 KiB buffer, so it stays blocked.
     wait_for(lambda: browser.write_started is not None)
+
+
+def test_the_serve_loop_enforces_deadlines_without_an_explicit_tick(broker):
+    service, path, clock, _lost = broker
+    peer = Extension(path, (3,))
+    (browser,) = service.browsers.values()
+    try:
+        jam(browser)
+        clock.now = browser.write_started + WRITE_DEADLINE
+        # No tick() here: the serve loop's periodic pass must close the peer.
+        assert browser.shut_down.wait(5)
+        wait_for(lambda: browser.id not in service.browsers)
+    finally:
+        peer.close()
 
 
 def test_write_deadline_closes_a_peer_that_never_reads(broker):
@@ -208,21 +232,31 @@ def test_frozen_audio_transport_falls_back_and_keeps_me(broker):
         client.close()
 
 
-def test_stuck_audio_reply_is_bounded_by_the_write_deadline(broker):
+def test_stuck_audio_reply_is_bounded_by_the_write_deadline(broker, caplog):
     service, path, clock, lost = broker
     client = BrowserAudioProxy(path=path)
     try:
         capture = negotiated(client, service, "unread-replies")
+        # Disarm staleness, so only the write deadline can close this transport.
+        capture.multistream_capable = False
         assert client.handle(declare("guest", "receiver")) == ACK
         (transport,) = service._audio_transports
         transport.connection.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
         # Keep sending and never read an acknowledgement, until replies block.
         sender = threading.Thread(target=flood_audio, args=(client, transport), daemon=True)
         sender.start()
-        wait_for(lambda: transport.write_started is not None)
-        clock.now = transport.write_started + WRITE_DEADLINE
-        service.tick()
-        assert transport.shut_down.is_set()
+
+        def overdue():
+            # A reply finishing between steps is restamped at the later time;
+            # the one blocked on the full buffer stays overdue and is closed.
+            clock.now += WRITE_DEADLINE
+            service.tick()
+            return transport.shut_down.is_set()
+
+        with caplog.at_level(logging.WARNING, logger="cassini_talk.browser_service"):
+            wait_for(overdue)
+        assert "Closing a browser peer that stopped reading" in caplog.text
+        assert "stopped sending audio" not in caplog.text
         assert lost.wait(5)
         assert lost_events(capture)
         sender.join(5)
@@ -274,6 +308,123 @@ def test_no_fallback_while_pcm_keeps_arriving(broker):
         assert client.handle(pcm("guest", 480, sequence=8, offset=80)) == ACK
         assert not capture.browser_lost and not lost.is_set()
         assert not lost_events(capture)
+        capture.stop()
+    finally:
+        client.close()
+
+
+def end(identifier):
+    return dict(type="trackEnd", id=identifier, reason="ended", droppedFrames=0, endOffsetMs=10)
+
+
+def test_an_ended_remote_span_leaves_its_quiet_transport_open(broker):
+    service, path, clock, lost = broker
+    client = BrowserAudioProxy(path=path)
+    try:
+        capture = negotiated(client, service, "guest-left")
+        assert client.handle(declare("guest", "receiver")) == ACK
+        assert client.handle(pcm("guest", 480)) == ACK
+        # The guest left, or the receiver dropped out during a network blip:
+        # the extension ends the span and correctly stops sending.
+        assert client.handle(end("guest")) == ACK
+        clock.now = PCM_STALE_AFTER * 10
+        service.tick()
+        (transport,) = service._audio_transports
+        assert not transport.shut_down.is_set()
+        assert client.handle(declare("guest-back", "receiver")) == ACK
+        assert not capture.browser_lost and not lost.is_set() and not lost_events(capture)
+        capture.stop()
+    finally:
+        client.close()
+
+
+def test_a_rejoined_span_is_recorded_and_watched_again(broker):
+    service, path, clock, lost = broker
+    client = BrowserAudioProxy(path=path)
+    try:
+        capture = negotiated(client, service, "rejoin")
+        assert client.handle(declare("guest", "receiver")) == ACK
+        assert client.handle(pcm("guest", 480)) == ACK
+        assert client.handle(end("guest")) == ACK
+        clock.now = PCM_STALE_AFTER + 5
+        service.tick()
+        # The guest rejoins: a new span on the same transport, recorded.
+        assert client.handle(declare("guest-again", "receiver")) == ACK
+        assert client.handle(pcm("guest-again", 480, offset=PCM_STALE_AFTER * 1000)) == ACK
+        tracks = {t["id"]: t for t in capture.host.session.manifest["tracks"]}
+        assert tracks["guest-again"]["frames"] == 480
+        (transport,) = service._audio_transports
+        clock.now += PCM_STALE_AFTER - 0.5
+        service.tick()
+        assert not transport.shut_down.is_set() and not lost_events(capture)
+        # The new open span re-arms the watchdog: freezing now still falls back.
+        clock.now += 0.5
+        service.tick()
+        assert lost.wait(5)
+        assert len(lost_events(capture)) == 1
+        capture.stop()
+    finally:
+        client.close()
+
+
+def test_a_recorder_waiting_out_its_longest_retry_is_not_cut_over(broker):
+    service, path, clock, lost = broker
+    client = BrowserAudioProxy(path=path)
+    try:
+        capture = negotiated(client, service, "retrying")
+        assert client.handle(declare("guest", "receiver")) == ACK
+        assert client.handle(pcm("guest", 480)) == ACK
+        # capture.js retryDelay() waits up to 30 s before reattaching a failed
+        # recorder, sending nothing meanwhile, not even trackEnd.
+        clock.now = 30 + 5
+        service.tick()
+        (transport,) = service._audio_transports
+        assert not transport.shut_down.is_set()
+        assert client.handle(end("guest")) == ACK
+        assert client.handle(declare("guest-retry", "receiver")) == ACK
+        assert not capture.browser_lost and not lost.is_set()
+        capture.stop()
+    finally:
+        client.close()
+
+
+def test_a_capture_without_multistream_control_is_never_cut_over(broker):
+    service, path, clock, lost = broker
+    client = BrowserAudioProxy(path=path)
+    try:
+        capture = negotiated(client, service, "legacy-control")
+        capture.multistream_capable = False
+        assert client.handle(declare("guest", "receiver")) == ACK
+        assert client.handle(pcm("guest", 480)) == ACK
+        clock.now = PCM_STALE_AFTER * 10
+        service.tick()
+        (transport,) = service._audio_transports
+        assert not transport.shut_down.is_set()
+        assert client.handle(pcm("guest", 480, sequence=1, offset=10)) == ACK
+        assert not capture.browser_lost and not lost.is_set()
+        capture.stop()
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize("ending", ["requested", "finished"])
+def test_a_stopping_capture_is_never_cut_over(broker, ending):
+    service, path, clock, lost = broker
+    client = BrowserAudioProxy(path=path)
+    try:
+        capture = negotiated(client, service, "stopping")
+        assert client.handle(declare("guest", "receiver")) == ACK
+        assert client.handle(pcm("guest", 480)) == ACK
+        if ending == "requested":
+            # Taps may take a while to finalize; a quiet transport is expected.
+            capture.stop_requested.set()
+        else:
+            capture.stop()
+        clock.now = PCM_STALE_AFTER * 10
+        service.tick()
+        (transport,) = service._audio_transports
+        assert not transport.shut_down.is_set()
+        assert not capture.browser_lost and not lost.is_set() and not lost_events(capture)
         capture.stop()
     finally:
         client.close()
