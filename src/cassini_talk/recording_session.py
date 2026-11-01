@@ -657,6 +657,10 @@ class BrowserHost:
             result["id"] = identifier
         return result
 
+    def _source_selected(self, kind):
+        sink = self.audio_sink
+        return sink is None or sink.browser and (sink.me if kind in ("microphone", "local") else sink.others)
+
     def prepare_stop(self, message):
         if not self.source_outcomes:
             return None
@@ -667,7 +671,7 @@ class BrowserHost:
                 return dict(type="error", code="state", message="Capture already saved", scope="command")
             return dict(type="stopped", path=str(self.session.directory))
         try:
-            self.session.capture_record.discover(message.get("discoveredSources", []))
+            self.session.capture_record.discover(message.get("discoveredSources", []), expected=self._source_selected)
         except ProtocolError as error:
             return dict(type="error", code=error.code, message=str(error), scope="command")
         return None
@@ -712,7 +716,7 @@ class BrowserHost:
             sources = message.get("discoveredSources")
             if not isinstance(sources, list) or not sources:
                 raise ProtocolError("source", "Invalid discovered audio sources")
-            self.session.capture_record.discover(sources)
+            self.session.capture_record.discover(sources, expected=self._source_selected)
             self.session.checkpoint()
         elif kind == "track":
             identifier = message.get("id")
@@ -735,7 +739,9 @@ class BrowserHost:
                     if identifier not in self.sequences:
                         raise ProtocolError("source", "Source declaration was refused")
                     return dict(type="ack")
-                self.session.capture_record.observe(root or identifier, message["kind"], label)
+                self.session.capture_record.observe(
+                    root or identifier, message["kind"], label, expected=self._source_selected(message["kind"])
+                )
                 self.declarations[identifier] = declaration
                 if any(
                     other != identifier and (value[3] or other) == (root or identifier) and other not in self.ended

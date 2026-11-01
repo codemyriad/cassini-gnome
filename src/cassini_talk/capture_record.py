@@ -13,17 +13,18 @@ class CaptureRecord:
         self.bindings = {}
         self.io_failed = False
 
-    def observe(self, identity, kind, label, *, failed=False):
+    def observe(self, identity, kind, label, *, failed=False, expected=True):
         identity = source_track_identity(identity)
         if identity is None or not isinstance(kind, str) or kind not in KINDS or type(failed) is not bool:
             raise ProtocolError("source", "Invalid discovered audio source")
         label = label_text(optional_string(label, kind, "source"))
-        source = self.seen.setdefault(identity, dict(kind=kind, label=label, failed=False))
+        source = self.seen.setdefault(identity, dict(kind=kind, label=label, failed=False, expected=False))
         if source["kind"] != kind:
             raise ProtocolError("source", "Conflicting source kind")
         source["failed"] |= failed
+        source["expected"] = source.get("expected", True) or expected
 
-    def discover(self, sources):
+    def discover(self, sources, *, expected=lambda _kind: True):
         if not isinstance(sources, list):
             raise ProtocolError("source", "Invalid discovered audio sources")
         # Validate the entire request before changing the durable accounting.
@@ -37,7 +38,11 @@ class CaptureRecord:
             if "label" in source and (not isinstance(source["label"], str) or len(source["label"]) > 200):
                 raise ProtocolError("source", "Invalid discovered audio source label")
             proposed.observe(
-                source.get("sourceTrackId"), source.get("kind"), source.get("label"), failed=source.get("failed", False)
+                source.get("sourceTrackId"),
+                source.get("kind"),
+                source.get("label"),
+                failed=source.get("failed", False),
+                expected=expected(source["kind"]),
             )
         self.seen = proposed.seen
 
@@ -47,6 +52,7 @@ class CaptureRecord:
     def bind(self, identifier, identity):
         if identity in self.seen:
             self.bindings[identifier] = identity
+            self.seen[identity]["expected"] = True
 
     def fail(self, manifest, identifier, *, io=False):
         self.io_failed |= io
@@ -102,7 +108,8 @@ class CaptureRecord:
                     captureOutcome=self.outcome(duration, failed),
                     audioMs=float(duration),
                     trackIds=[t["id"] for t in tracks],
+                    **({"captureExpected": False} if not source.get("expected", True) else {}),
                 )
             )
         manifest["captureOutcome"] = dict(sources=sources)
-        return any(source["captureOutcome"] != "captured" for source in sources)
+        return any(source.get("captureExpected", True) and source["captureOutcome"] != "captured" for source in sources)
