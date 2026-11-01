@@ -66,7 +66,7 @@ jobs:
             ${{ runner.temp }}/build-refresh/*.json
             ${{ runner.temp }}/build-refresh/*.log
             ${{ runner.temp }}/build-refresh/*.png
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: matrix.base == 'ubuntu:26.04'
         with:
           node-version: '24'
