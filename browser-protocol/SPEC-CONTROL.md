@@ -85,7 +85,10 @@ recording continues. No management message supplies a filesystem destination.
 | action / mode | start or stop; start requires tracks |
 | error | string ≤2000 code points |
 
-Unknown fields are ignored. Unknown host message types are ignored. A missing host uses
+Unknown fields are ignored. Unknown host message types are ignored. Apps ignore unknown
+extension message types. The extension sends no unsolicited message types beyond those
+listed; new types are replies to app-initiated, capability-gated requests (for example
+`pong`, see heartbeat-v1). A missing host uses
 bounded 1–30 second retry plus a one-minute alarm that survives MV3 worker idling; do not use
 Chrome-150-only alarm persistence options. Permissions added: tabs (background metadata),
 alarms (reconnect). The minimum remains Chrome 116.
@@ -207,7 +210,7 @@ installed (unpacked, self-hosted or from a store):
 
 This additive capability preserves all v1 messages and legacy vectors. Without
 `independent: true`, the popup/app start retains the v1 single-slot refusal.
-The extension's hello now advertises `capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1"]`.
+The extension's hello now advertises `capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1", "heartbeat-v1"]`.
 Only apps that see that capability may request concurrent capture.
 
 An app may send `start` with `independent: true` for each active-call tab. Each
@@ -352,7 +355,9 @@ The app owns these monotonic per-session timers (seconds):
 - Check a stored120s deadline **before** accepting a returned page, including a
   return after expiry before the next policy tick. Expiry stops as pageGone.
 - Same browser instance and tab returning with positive sourceCount and a live
-  original PCM transport before expiry can restore the browser path. Do not use
+  original PCM transport before expiry can restore the browser path. Under
+  D52.4 this means a live PCM transport, original or resumed through
+  resume-capture-v1 after the original closed. Do not use
   a different tab, title or URL as identity. Respect the current per-session mic
   and The others choices; The others off stays off. Keep the computer source if
   a staged restoration fails; do not checkpoint a restored event without its track.
@@ -378,7 +383,8 @@ unknown, never zero. Active rows retain their last browser-owned title/URL when
 lookup fails and mark sourceCountKnown:false; the cached count is not evidence.
 Healthy admitted browser PCM prevents fallback for absent control. The native
 microphone alone is not that evidence. Shared literal cases are in
-conformance/multistream/lifecycle.json; P11 heartbeat transport remains wave 2.
+conformance/multistream/lifecycle.json. How apps derive controlAlive and
+transportAlive from the wire is in "Control heartbeat" below (D52.4).
 
 Rows/status include optional documentGeneration and callGeneration; capture
 statuses retain captureId. Adopting starts echo callGeneration and are checked
@@ -463,7 +469,9 @@ including resume-capture-v1. It otherwise uses the same transport as Start.
 Older hosts must reject this unknown type before creating any folder. This is
 safer than adding an ignored optional field to Start. The app atomically verifies
 that the target is active, not stopping/stopped, the exact origin/generation
-matches and the current others source is an eligible system-sound stand-in. It
+matches and the current others source is an eligible system-sound stand-in:
+either the initial system/missing stand-in (D49) or a system/lost fallback
+after the recording's audio transport closed (D52.4). It
 attaches the new transport to that recording. It never creates another folder,
 resets its clock or replaces its microphone/selection. Title/microphone defaults
 from a fresh Start do not modify the target. A refused resume has no side effect.
@@ -486,11 +494,86 @@ including when Start/Stop cross between the independent control/audio pipes.
 This cancellation does not prohibit a subsequent fresh manual Record for the
 same call. Changed-call signals from A must not bind or stop B.
 
-On successful attachment, transition othersSource from system to browser with
-reason callConnected at the committed seam, retaining microphone and selection.
+On successful attachment, transition othersSource from system to browser at the
+committed seam, retaining microphone and selection. The seam reason is
+callConnected when resuming the initial system/missing stand-in (D49), and
+restored when resuming a system/lost fallback (D52.4). Literal seams for both
+are in resume-capture-vectors.json (`seam`, `lostSeam`).
 S-6 ownership is half-open: system audio before the seam and browser audio from
 the seam, with no overlap or dropped sample. Stored audio is not filtered.
 
 Early status carries timelineOriginMs (also on each sessions[] entry). A pending
 status is an intent, not native acceptance: apps switch sources only after their
 own native attachment has committed, regardless of control/status delivery order.
+
+## Control heartbeat (heartbeat-v1, D52.4 / P11; extension 0.2.9)
+
+A frozen browser or companion can keep both native connections open, so "the
+connection is still open" is not liveness. Opt-in control capability
+`heartbeat-v1` lets the app detect a silent control link. The direction is
+fixed: **the app pings, the extension only answers.**
+
+```json
+{"type":"ping","seq":17}
+{"type":"pong","seq":17}
+```
+
+- The app sends `ping` only when the connection's hello lists `heartbeat-v1`,
+  and only after it has received that connection's first `status` (this keeps
+  the hello → meetings → status order). `seq` is an integer JSON number in
+  0..9007199254740991 (an integral value such as `3.0` is the integer 3, as in
+  JavaScript and JSON Schema), starting at 0 on each connection and increasing
+  by one per ping. The pong echoes its numeric value.
+- The extension answers `{"type":"pong","seq":N}` immediately, echoing seq
+  exactly, from its control receive handler: never through the command queues,
+  which may legitimately hold a command for longer than the loss deadline
+  (tab lookup, Stop flush, PCM acknowledgement). The pong does not wait for the
+  extension's own initial snapshot. A ping with a missing or invalid seq (not a
+  nonnegative safe integer) gets no reply, like an uncorrelatable requestId.
+  Unknown fields are ignored. A ping has no audio or command side effect and
+  takes no request slot; it resets the extension's reconnect backoff as a
+  command does.
+- The extension never sends `pong`, or any other new type, unprompted: an older
+  broker may close the link on an unknown extension message type.
+
+The app owns these monotonic timers for each connection (milliseconds in the vectors):
+
+| Constant | Value | Rule |
+| --- | --- | --- |
+| `HEARTBEAT_INTERVAL` | 10 s | Send a ping when `now - lastPingSent >= 10 s`, measured from the first status and then from each ping. Pings are unconditional, not idle-only. |
+| `CONTROL_LOSS_AFTER` | 25 s | Declare control lost when `now - lastInboundFrame >= 25 s`, where every inbound frame counts (pong, meetings, status, result, hello, or any other). Never earlier; SHOULD be within one policy tick. |
+
+The loss deadline runs only while heartbeat is active, i.e. after a negotiated
+hello and its first status. A hello without `heartbeat-v1` is never pinged and
+never timed out; an open connection remains its only liveness signal. Apps gate
+on the capability, never on the extension version number.
+
+On loss the app closes that control connection without waiting behind a stuck
+write, and proceeds exactly as for EOF: `controlAlive` becomes false for every
+recording of that browser and in-flight commands are discarded. Losing control
+still never stops or deletes a recording; with healthy browser PCM (`pcmLive`,
+see SPEC.md "Audio transport liveness") nothing changes. The extension notices
+the closed relay through its ordinary disconnect handling and reconnects with
+a fresh hello and snapshot; seq restarts at 0. There is no extension-side
+heartbeat timer. Apps bound writes to the browser at `WRITE_DEADLINE` = 10 s
+and close a peer that stops reading (SPEC.md).
+
+**Audio transport lost while the call is visibly ongoing (D52.4 Q3).** When a
+recording's audio transport closes (EOF, error, or the app's
+`PCM_STALE_AFTER` watchdog) the app falls back to computer sound at once. If the
+page is present with a known positive sourceCount and control alive, the app
+stays on that fallback until the call ends: it arms no missing timer and no
+`pageGone` deadline. A later known zero count after heard still stops as
+callEnded after OTHERS_GONE_GRACE. Restoring the browser source needs a live
+audio transport: a system/lost fallback is an eligible resume-capture-v1
+target, and that seam writes othersSource browser with reason `restored`
+(`callConnected` is only for resuming the initial system/missing stand-in,
+D49). If control is lost too, the ordinary
+missing/BROWSER_RETURN_GRACE rules apply from the moment of control loss.
+
+Shared literal cases: `conformance/control/heartbeat-vectors.json` (ping/loss
+timing and the exact wire replies, independent oracle `heartbeat.py`) and the
+`transportAlive` cases in `conformance/multistream/lifecycle.json`. Frozen
+companion example: control lost at 25 s and computer-sound fallback at 27 s;
+the audio transport closed at 40 s; `pageGone` at 145 s if the browser never
+returns, or restoration once it returns with a new audio transport.

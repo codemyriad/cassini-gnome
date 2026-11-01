@@ -390,7 +390,8 @@ Source ownership is half-open at each othersSource.atMs. Outgoing source audio
 is masked at the boundary before recognition, mixing and export. This is not a
 transcript display rule. `callConnected` moves an enabled others side from the
 initial system/missing stand-in to browser tracks (D49). Existing lost/restored
-semantics stay intact. See conformance/multistream/ownership.json.
+semantics stay intact: a resume-capture-v1 attach onto a system/lost fallback
+(its audio transport closed, D52.4) writes browser/restored. See conformance/multistream/ownership.json.
 
 The 64-span limit counts accepted declarations plus declarations currently in
 flight across every frame. The worker reserves a slot synchronously before
@@ -466,3 +467,27 @@ error fences its span before later chunks are forwarded. Late ACKs/errors from
 that span cannot mark its replacement healthy or stop another source. The live
 root keeps its ordinary retry schedule; capture-wide and manifest/directory
 failures retain their existing fatal policy.
+
+
+## Audio transport liveness (D52.4, app side)
+
+The extension already closes a PCM port whose packet is not acknowledged within
+10 seconds. These app-side rules let the app notice a frozen browser or audio
+relay that keeps the transport open but silent. Times are monotonic.
+
+- `PCM_FRESH = 2 s`: `pcmLive` means admitted browser/remote PCM arrived on the
+  recording's audio transport within the last 2 seconds. The native microphone
+  is never that evidence. Both apps use this window.
+- `PCM_STALE_AFTER = 40 s` (SHOULD): close a recording's audio transport after
+  40 seconds without any packet on it. The watchdog is armed only while that
+  transport has an open remote span (declared, not yet ended by trackEnd or
+  stop) that has already delivered PCM. It is re-evaluated, not sticky: before
+  the first remote PCM, and after the last such span ends, nothing can go stale.
+  Closing uses the app's existing EOF path, so the recording keeps running and
+  falls back to computer sound with `othersSource` reason lost (SPEC-CONTROL.md,
+  D52.4 Q3). Rationale: the extension's source retry backs off 1, 5, 15 and 30
+  seconds and the app cannot see that retry state; 40 = 30 + the extension's
+  10-second acknowledgement limit, and it stays below the 60-second span cut.
+- `WRITE_DEADLINE = 10 s` (SHOULD): bound every socket/pipe write to the browser,
+  on both the audio and control connections, to 10 seconds. A peer that stops
+  reading is closed, and the close must not wait behind the stuck write.

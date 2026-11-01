@@ -23,5 +23,10 @@ real retained microphone/system capture (private generated audio):
   and both recognition inputs retain the microphone, use system before6000ms
   and browser from6000ms, without mixing both or dropping the seam sample.
 
+- D52.4: `targets` lists eligible current sources. A system/lost fallback (its
+  audio transport closed) is eligible like the D49 system/missing stand-in; its
+  seam writes browser/restored instead of browser/callConnected. Run `lostSeam`
+  through the same placement path as `seam`.
+
 Adoption is opt-in. Neither desktop should send this operation before it owns
 the native `resume` handler. Extension0.2.7 is not a store upload instruction.

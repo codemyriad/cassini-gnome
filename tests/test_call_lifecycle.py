@@ -14,6 +14,7 @@ from cassini_talk.browser_service import BrowserConnection, BrowserService
 from cassini_talk.call_lifecycle import BROWSER_RETURN_GRACE, CALL_END_GRACE
 
 VECTORS = Path(__file__).resolve().parents[1] / "browser-protocol/conformance/control/call-lifecycle-vectors.json"
+PCM_FRESH = 2  # browser_capture.browser_ready_since's window (SPEC.md)
 
 
 class Inline:
@@ -86,16 +87,29 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
                 service.browsers[browser.id] = browser
             else:
                 service.browsers.pop(browser.id, None)
+            actions.clear()
+            transport = step.get("transportAlive", True)
+            if not transport and capture.audio_connected and not capture.finished:
+                # D52.4: the real closed-transport path (EOF, error or the
+                # PCM_STALE_AFTER watchdog) is _audio's capture.close().
+                lost = capture.browser_lost
+                capture.close()
+                if capture.browser_lost and not lost:
+                    actions.append("fallback")
             if step.get("pcmLive"):
+                # pcmLive is a point sample of the 2 s PCM_FRESH window. Take
+                # the latest packet time a not-live row 1 ms later still allows.
+                now[0] = step["atMs"] / 1000 - PCM_FRESH + 0.0005
                 wire = "live-" + str(index)
                 capture.handle(dict(type="track", id=wire, kind="remote", sampleRate=48000, channels=1))
                 capture.handle(dict(type="audio", id=wire, sequence=0, offsetMs=step["atMs"], pcm="AQACAA=="))
-            # Only real PCM on the retained transport makes restore ready.
-            if not capture.finished and count and capture.browser_lost and step.get("restoreReady", True):
+                now[0] = step["atMs"] / 1000
+            # Only real PCM on a live transport makes restore ready; a closed
+            # one carries none.
+            if not capture.finished and count and capture.browser_lost and transport and step.get("restoreReady", True):
                 wire = "return-" + str(index)
                 capture.handle(dict(type="track", id=wire, kind="remote", sampleRate=48000, channels=1))
                 capture.handle(dict(type="audio", id=wire, sequence=0, offsetMs=step["atMs"], pcm="AQACAA=="))
-            actions.clear()
             service.policy()
             assert actions == step["expect"], (case["name"], step, capture.error)
             assert capture.directory == folder and capture.microphone is microphone

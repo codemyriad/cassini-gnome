@@ -666,7 +666,7 @@ function cancelPendingStart(command) {
 }
 function notifyControl() { appControl.publish(); }
 const appControl = new AppControl({
-  runtime: chrome.runtime, alarms: chrome.alarms, capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1"], cancelPending: cancelPendingStart,
+  runtime: chrome.runtime, alarms: chrome.alarms, capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1", "heartbeat-v1"], cancelPending: cancelPendingStart,
   connected: async () => {
     await recovery;
     const tabs = await chrome.tabs.query({});

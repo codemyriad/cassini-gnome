@@ -4,7 +4,8 @@
   never-opened failures and sparse padding. `test_multistream.py` exercises the
   real framed browser fixture, per-source IO/limit/chunk refusals, duplicate
   declarations, overlap rejection, stale Stop and seventy source cycles.
-- `lifecycle.json`: literal long-grace/rejoin/unknown-row/healthy-PCM/D49 cases.
+- `lifecycle.json`: literal long-grace/rejoin/unknown-row/healthy-PCM/D49 cases,
+  plus D52.4 control-loss and `transportAlive` (audio transport closed) cases.
   The Python policy is an independent oracle, not production code for either app.
 - `ownership.json`: literal half-open D49 and lost/restored seams. Desktop
   adoption must exercise its actual mix/recognition/export path against them.

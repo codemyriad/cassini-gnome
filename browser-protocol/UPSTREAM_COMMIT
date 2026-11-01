@@ -1,26 +1,26 @@
-tree 20e764ca36ebaaea9df67766cbb6a96d6e32c16b
-parent 3238aabecce29ae4f7faca57383e6b0b37faa9df
-parent e3611496dd6f0e0ca570d9e28a0e9c689fde8dde
-author Silvio Tomatis <silviot@gmail.com> 1793556180 +0100
-committer GitHub <noreply@github.com> 1793556180 +0100
+tree 61e7b57af97010bf10ff6eda74eae1efbd54b90c
+parent 8e160acf194fc6e21e8b132893afd612f0223557
+parent cda50d4cd88461b339ffaa93df2c21c236920036
+author Silvio Tomatis <silviot@gmail.com> 1793570168 +0100
+committer GitHub <noreply@github.com> 1793570168 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq537UCRC1aQ7uu5UhlAAA7usQAFxYk/S1j8x6LsLC375chJhg
- eUMqiR4XUk4yoHruC8YIWH4mXgZZLsFEaaptjBJCcqRemkBy79bA5gKdcMmsoxzF
- bI3q43oku0+HNtnv+Rl+AgFNeYGsmvVwiFm0Ns5eMhk8ps5JXRyf3Dp/RdvUzEbn
- p89ApOkArxbXM87fsYOfCW76nUk7jpDZwIKKARB6rtF2cjxdnGYJEh1j0rOlvTbf
- SDVYNvEfoCXJuv8wHE/0QiE5qCGCqYf/4b+oS7sJXI8Esv660/sAHTpA5Baa61FN
- mbnyegeHpK4rKR5ijDeSC/HFXMzf+sFIFFLRL4yLasoqN/S84wx4w5F5KsxF3akZ
- 7FCoDHMHr+GWfcnbE3nDybwYedPZS3zz5q/t/wY6Yx898w7e+yDAelXEZdkT89z2
- dui6sT5finJaMHfQC846L0K4x2/nTJjVGF1TBAI9TG96sdizvObHlAY8NyQ+IJv+
- Bf2rExLJxbazFSYD6IMoLrQor4hfc8vrHYUEqJGNVRki7V9sxCVqn6noj8vxRkgJ
- k/CnSXU9pe6r7TJTITicIlyVtDTn/NgQ1NeuTNHTlRTbfiYizvGKPlezvnQmeYKJ
- 5R+4tkxQLmBg2ri6uJ8t4bVJCAQjFSbMYsZWipPUrXQSSvgzHYBwrdo0e9UBFF26
- q+tbYiLNi+/s7FKSKmC/
- =TmxT
+ wsFcBAABCAAQBQJq57V4CRC1aQ7uu5UhlAAAJjoQAHaos9KfkRWz8q+oxeiroT5Z
+ o+y14+4SYYFF7QWQmXijGUgQTUDRSe38WqzJ6GRtaa0aGQPlff1t6bVvNBa8tKgH
+ ewqXMc2M9L5x9Yz04BKeSrncd4cf3FLheqtNCm7DW0Bw+I1yORppFP8Ric5jRmU+
+ NCTI3jWiO9Dbclt//gOVVT8aCOthQ+sXVdzcANvNZmYWqJH3DxlwIVL9weYF8RMk
+ DrxlUai+FWCf8UIKIHi14CTKvTzAnKfiU0fCjgpGL6mH3eYMj21AYSbyBPDzxkyJ
+ +1xlgBrQJ0FadgtHcH1YAkm+bM3Xze5gLgVekVIiLuhWHr1L/4NrNegrgbvZfNQ+
+ tem7pfPP7wR03B+oQq8hKEZRsPgC+WNvBtOQaUtT2EX9zld2hIfmvqPPd4YLSHwA
+ 7tXBOVe6pbCtyS6uLG1WxI298ZaRW73IuUu4skkEXv4Laf3RKRO5XuM2OU7CY7ML
+ 1hhUdikh8f5NYi00t/0vBqNAT2no5vr6b9VCTgscE7jsMQ2eOoQ1CjRQIofCn8cn
+ z47WgWhdi/38snxphv+JKvYnptt/TMlsfXr0a+1jYwUZ24pUFMQEbYsJmajp5bxZ
+ qkInAKA+vIL0BaOU8wzEbm0325zRKnzbMoMPYpNe55L7PTWQqliQZM/XsuIZ9ZeL
+ JoUNcgfsDE0lR+H80qyP
+ =W/Fm
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #30 from codemyriad/fix/test-library-isolation
+Merge pull request #31 from codemyriad/feat/heartbeat-v1
 
-Keep conformance runs out of the real user Library
+Add heartbeat-v1 control liveness and D52.4 transport-loss rules (extension 0.2.9)
