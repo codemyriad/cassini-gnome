@@ -102,7 +102,7 @@ def _rows(previous, current, key, *, replace_optional=()):
 def record_capture(directory, session):
     """Owner's stopped-session facts, before publication and outside PCM locks.
 
-    Proposed R65 placement: recordingDetails.captureRecord. This follows the
+    Approved D52.1 / R65 placement: recordingDetails.captureRecord. This follows the
     existing x-schema mapping; no extra sidecar or private voice/match data.
     """
     record = from_session(session)

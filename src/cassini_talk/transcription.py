@@ -85,7 +85,7 @@ def should_auto_write(meeting, previous):
     )
 
 
-def prepare_tracks(meeting):
+def prepare_tracks(meeting, *, diagnostics=None):
     # Identity/kind come only from the scanner's validated or recovered model.
     from uuid import NAMESPACE_URL, uuid5
 
@@ -140,7 +140,9 @@ def prepare_tracks(meeting):
         speakers.setdefault(speaker, dict(id=speaker, name=name, provenance=provenance, colourIndex=index))
     from .source_spans import separate
 
-    separated, diagnostics = separate(tracks)
+    separated, separation_diagnostics = separate(tracks)
+    if diagnostics is not None:
+        diagnostics.extend(separation_diagnostics)
     for original, track in zip(tracks, separated, strict=True):
         if track["speaker"] != original["speaker"]:
             speakers.setdefault(
@@ -151,7 +153,7 @@ def prepare_tracks(meeting):
                     colourIndex=max(s["colourIndex"] for s in speakers.values()) + 1,
                 ),
             )
-    for diagnostic in diagnostics:
+    for diagnostic in separation_diagnostics:
         LOG.warning("Transcription diagnostic: %s", diagnostic)
     return separated, speakers
 
@@ -432,6 +434,7 @@ class TranscriptionQueue:
                 before_commit=self._check_open,
             )
             self.changed(directory)
+        source_diagnostics = []
         if meeting.origin == "received" or meeting.audio_file is not None and not meeting.tracks:
             tracks = [
                 dict(
@@ -447,7 +450,7 @@ class TranscriptionQueue:
             ]
             speakers = {"track-original": dict(id="track-original", name=None, provenance="unnamed", colourIndex=0)}
         else:
-            tracks, speakers = prepare_tracks(meeting)
+            tracks, speakers = prepare_tracks(meeting, diagnostics=source_diagnostics)
         if not tracks:
             raise ValueError("Meeting has no complete audio frames")
         by_track = {track["id"]: track for track in tracks}
@@ -647,6 +650,8 @@ class TranscriptionQueue:
         segments = complete.get("segments")
         if type(segments) is int and 0 <= segments <= 9007199254740991:
             facts["speechSegments"] = segments
+        if source_diagnostics:
+            facts["sourceSpansSeparated"] = True
         with mutation(directory):
             self._check_open()
             # End facts or other metadata may have arrived while this job ran.

@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Validated source facts for D52 details; presentation copy awaits R63."""
+"""Validated D52 source facts; levels and labels never establish identity."""
 
 from dataclasses import dataclass
 from fractions import Fraction
 
 from .capture_report import from_session, stored
+from .strings import text
+from .ux_formats import meeting_duration
 
 
 @dataclass(frozen=True)
@@ -24,6 +26,44 @@ class SourceFact:
         # Normal startup cannot claim a participant was missed. An actual
         # source failure is actionable immediately, even if others continue.
         return self.expected and (self.outcome == "failed" or self.final and self.outcome in ("neverAudio", "lowAudio"))
+
+    @property
+    def name(self):
+        if self.kind in ("microphone", "local"):
+            return text("common.yourMicrophone")
+        if self.kind == "system":
+            return text("recordFirst.sound.title")
+        return self.label or text("details.source.unknown")
+
+    @property
+    def line(self):
+        outcome = "notSelected" if not self.expected else self.outcome
+        # During startup only actual failures warn. Partial live receipt is a
+        # factual count, not a claim that this source has finished too short.
+        if not self.final and outcome == "neverAudio":
+            return self.name  # Announced, not yet received: make no success claim.
+        if not self.final and outcome == "lowAudio":
+            outcome = "captured"
+        return text("details.sources." + outcome, source=self.name, duration=meeting_duration(self.audio_ms))
+
+    @property
+    def gap_lines(self):
+        if not self.expected:
+            return ()
+        rows = []
+        # Padding proves a hole in the saved timeline. Dropped packets can
+        # describe that same hole: show unequal counters separately, never sum.
+        if self.padding_ms:
+            rows.append(
+                text("details.sources.gap", source=self.name, duration=meeting_duration(float(self.padding_ms)))
+            )
+        if self.dropped_ms and self.dropped_ms != self.padding_ms:
+            rows.append(text("details.health.dropped") + ": " + meeting_duration(float(self.dropped_ms)))
+        return tuple(rows)
+
+
+def live_problem(session, metadata=None):
+    return any(row.problem for row in sources(session, metadata or {}, live=True))
 
 
 def _counter(tracks, ids, field):

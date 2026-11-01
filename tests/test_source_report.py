@@ -148,3 +148,100 @@ def test_unselected_source_stays_neutral_through_actual_publication_and_cache_de
         assert after.sources == report.sources
     finally:
         host.close()
+
+
+def test_approved_source_copy_keeps_outcomes_and_unequal_loss_counters_separate():
+    rows = sources(session(), {}, live=False)
+    assert [row.line for row in rows] == [
+        "Guest: under 1 min recorded.",
+        "Guest: no audio was received.",
+        "Guest: only under 1 min of audio was received.",
+        "Guest: audio couldn’t be recorded.",
+    ]
+    assert rows[0].gap_lines == ("Guest: under 1 min of audio is missing.", "Dropped audio: under 1 min")
+    live = sources(session(), {}, live=True)
+    assert live[1].line == "Guest"
+    assert live[2].line == "Guest: under 1 min recorded."
+    value = session()
+    value["captureOutcome"]["sources"][3]["captureExpected"] = False
+    unused = sources(value, {}, live=False)[3]
+    assert unused.line == "Guest: not selected for recording." and not unused.gap_lines
+
+
+def test_d52_catalog_entries_are_the_exact_approved_six_language_objects():
+    import hashlib
+    import json
+    from pathlib import Path
+
+    from cassini_talk import strings
+
+    shared = Path(__file__).parent / "ux" / "d52" / "strings.json"
+    assert (
+        hashlib.sha256(shared.read_bytes()).hexdigest()
+        == "6284099c78168ed210983748f628d60ac800ad4ea0bb58b17d2f7bd2d75ff738"
+    )
+    catalog = json.loads(Path(strings.__file__).with_name("strings.json").read_bytes())
+    actual = {entry["id"]: entry for entry in catalog["entries"]}
+    approved = json.loads(shared.read_bytes())
+    assert len(approved) == 11
+    for entry in approved:
+        assert actual[entry["id"]] == entry
+        assert set(entry["l10n"]) == {"it", "fr", "es", "pt-BR", "pt-PT"}
+        assert strings.text(entry["id"], source="Guest", duration="1 min") == entry["en"].format(
+            source="Guest", duration="1 min"
+        )
+
+
+def test_source_rows_and_copy_text_survive_publication_and_cache_deletion(tmp_path):
+    pytest.importorskip("numpy")
+    gi = pytest.importorskip("gi")
+    try:
+        gi.require_version("Gst", "1.0")
+    except ValueError:
+        pytest.skip("Real publication requires GStreamer")
+    from test_capture_report import captured
+
+    from cassini_talk.capture_details import read_details
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.library_publication import publish_stopped
+
+    root = tmp_path / "Library"
+    capture = captured(root)
+    publish_stopped(capture)
+    before = read_details(LibraryScanner(root).scan().meetings[0])
+    assert "Audio sources\n" in before.plain_text()
+    assert all(source.line in before.plain_text() for source in before.sources)
+    shutil.rmtree(capture.directory)
+    after = read_details(LibraryScanner(root).scan().meetings[0])
+    assert [s.line for s in after.sources] == [s.line for s in before.sources]
+    assert [s.gap_lines for s in after.sources] == [s.gap_lines for s in before.sources]
+
+
+@pytest.mark.parametrize("selected", [False, True])
+def test_real_host_source_failure_without_a_wav_reaches_live_worker_and_details(tmp_path, selected):
+    from cassini_talk.capture_details import read_details
+    from cassini_talk.capture_sources import BrowserStreams
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.recording_details import recording_observation
+    from cassini_talk.recording_session import BrowserHost
+
+    host = BrowserHost(tmp_path)
+    host.handle(dict(type="start", features=["source-outcomes-v1"], captureId="live-report"))
+    host.audio_sink = BrowserStreams(host.session, others=selected)
+    try:
+        host.session.add_track("mic", "Me", "microphone", 48000, 1)
+        host.session.append("mic", bytes(9600), 0)
+        assert host.handle(
+            dict(
+                type="sources",
+                discoveredSources=[dict(sourceTrackId="missing-person", kind="remote", label="Guest", failed=True)],
+            )
+        ) == dict(type="ack")
+        meeting = LibraryScanner(tmp_path).scan(capture_activity={host.session.manifest["id"]: "recording"}).meetings[0]
+        assert recording_observation(meeting)["source_problem"] == selected
+        report = read_details(meeting)
+        assert len(report.sources) == 1 and report.sources[0].problem == selected
+        assert report.sources[0].line in report.plain_text()
+        assert len(host.session.manifest["tracks"]) == 1, "Failure without a WAV must remain visible"
+    finally:
+        host.close()

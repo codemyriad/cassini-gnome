@@ -61,6 +61,7 @@ REASONS = {
     "lost": text("details.reason.lost"),
     "user": text("details.reason.user"),
     "restored": text("details.reason.restored"),
+    "callConnected": text("details.reason.callConnected"),
 }
 ENDS = {
     "user": text("details.end.user"),
@@ -123,6 +124,11 @@ class Report:
                 lines.append("  " + text("details.copy.sideEmpty"))
         lines.extend(["", text("details.end.title"), self.ended, "", text("details.health.title")])
         lines.extend(f"{key}: {value}" for key, value in self.health)
+        lines.extend(["", text("details.sources.title")])
+        if not self.sources:
+            lines.append(text("details.sources.empty"))
+        for source in self.sources:
+            lines.extend((source.line, *source.gap_lines))
         lines.extend(["", text("details.writing.title")])
         lines.extend(f"{key}: {value}" for key, value in self.writing)
         lines.extend(["", text("details.files.title"), self.folder])
@@ -524,6 +530,8 @@ def read_details(meeting):
     details = meeting.metadata.get("recordingDetails") or {}
     writing_facts = details.get("writingDown") if isinstance(details, dict) else None
     writing_facts = writing_facts if isinstance(writing_facts, dict) and meeting.transcript == "done" else {}
+    if writing_facts.get("sourceSpansSeparated") is True:
+        notes.append(text("details.sources.overlap"))
     wall_time = _wall_time(writing_facts.get("wallDurationMs"))
     if wall_time != UNKNOWN and writing_facts.get("resumed") is True:
         wall_time = text("details.writing.resumed", duration=wall_time)

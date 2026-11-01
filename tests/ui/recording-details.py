@@ -152,6 +152,26 @@ with tempfile.TemporaryDirectory() as temporary:
     paths = build_library(private / "Library")
     live = json.loads((paths["fallback"] / "session.json").read_text())
     live["state"] = "recording"
+    live["captureOutcome"] = dict(
+        sources=[
+            dict(
+                sourceTrackId=key,
+                kind="remote",
+                label="Guest",
+                captureOutcome=outcome,
+                audioMs=duration,
+                trackIds=[],
+                **flags,
+            )
+            for key, outcome, duration, flags in (
+                ("zero-pcm", "captured", 2000, {}),
+                ("pending", "neverAudio", 0, {}),
+                ("short", "lowAudio", 500, {}),
+                ("failed", "failed", 0, {}),
+                ("unused", "failed", 0, {"captureExpected": False}),
+            )
+        ]
+    )
     for track in live["tracks"]:
         if track["kind"] in ("microphone", "system"):
             track["ended"] = False
@@ -219,6 +239,43 @@ with tempfile.TemporaryDirectory() as temporary:
         body = dialog.report.plain_text()
         if key == "fallback":
             assert dialog.report.live and "3 audio streams" in body
+            assert len(dialog.report.sources) == 5
+            source_lines = [row.line for row in dialog.report.sources]
+            assert source_lines == [
+                "Guest: under 1 min recorded.",
+                "Guest",
+                "Guest: under 1 min recorded.",
+                "Guest: audio couldn’t be recorded.",
+                "Guest: not selected for recording.",
+            ]
+            assert [dialog._bindings[("source", i)].get_label() for i in range(5)] == source_lines
+            assert dialog._bindings[("source", 3)].has_css_class("warning")
+            assert not dialog._bindings[("source", 4)].has_css_class("warning")
+            assert all(line in body for line in source_lines)
+            page = window.recording_page
+            state = app.comfort.states.setdefault(
+                page.meeting.key, dict(levels=[0, 0], voices=0, silent=False, line=None, minutes=0)
+            )
+            state["source_problem"] = True
+            page.update_status()
+
+            def source_warning_visible(page=page):
+                child = page.lines.get_first_child()
+                while child:
+                    content = child.get_first_child()
+                    while content:
+                        if isinstance(content, Gtk.Label) and content.get_label() == (
+                            "Some audio couldn’t be recorded. Cassini keeps recording the rest."
+                        ):
+                            return page.lines.get_visible()
+                        content = content.get_next_sibling()
+                    child = child.get_next_sibling()
+                return False
+
+            assert source_warning_visible()
+            state["source_problem"] = False
+            page.update_status()
+            assert not source_warning_visible()
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
             shot(window, "browser-fallback-dark")
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)

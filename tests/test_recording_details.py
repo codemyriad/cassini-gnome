@@ -182,3 +182,25 @@ def test_default_capture_directory_is_canonical_under_symlinked_library(tmp_path
     assert session.directory.parent == real / ".cassini/sessions"
     assert session.directory == session.directory.resolve()
     session.finish()
+
+
+@pytest.mark.parametrize("expected", [False, True])
+def test_live_source_failure_reaches_recording_observation_only_when_selected(tmp_path, expected):
+    session = RecordingSession(tmp_path, source="chromium")
+    session.add_track("mic", "Mic", "microphone", 48000, 1)
+    session.append("mic", bytes(9600), 0)
+    row = dict(sourceTrackId="guest", kind="remote", label="Guest", captureOutcome="failed", audioMs=0, trackIds=[])
+    if not expected:
+        row["captureExpected"] = False
+    session.manifest["captureOutcome"] = dict(sources=[row])
+    session.checkpoint()
+    try:
+        meeting = LibraryScanner(tmp_path).scan(capture_activity={session.manifest["id"]: "recording"}).meetings[0]
+        before = {p.name: p.read_bytes() for p in session.directory.iterdir()}
+        assert recording_observation(meeting)["source_problem"] == expected
+        assert {p.name: p.read_bytes() for p in session.directory.iterdir()} == before
+        row["captureOutcome"] = "neverAudio"
+        session.checkpoint()
+        assert not recording_observation(meeting)["source_problem"], "Live startup is not a failure"
+    finally:
+        session.finish()

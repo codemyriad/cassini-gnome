@@ -8,6 +8,7 @@ from test_library import capture, fingerprint, write_metadata
 from test_transcription import until
 
 from cassini_talk.capture_facts import record_end, separation_result, separation_unavailable
+from cassini_talk.library import LibraryScanner
 from cassini_talk.library_schema import valid
 from cassini_talk.meeting_store import read_metadata, update_metadata
 from cassini_talk.nemotron_model import MODEL_ID, MODEL_TAG, REVISION
@@ -47,10 +48,14 @@ def test_live_capture_does_not_claim_stop_completed(tmp_path):
         session.finish()
 
 
+@pytest.mark.parametrize("overlap", [False, True])
 @pytest.mark.parametrize(("previous", "resumed"), [("none", False), ("running", True), ("failed", False)])
-def test_successful_job_records_this_attempt_wall_time_and_skip_reason(tmp_path, previous, resumed):
+def test_successful_job_records_this_attempt_wall_time_and_skip_reason(tmp_path, previous, resumed, overlap):
     session = capture(tmp_path)
     session.manifest["tracks"][1]["kind"] = "system"
+    if overlap:
+        for track in session.manifest["tracks"]:
+            track.update(kind="remote", sourceTrackId="same-remote", startOffsetMs=0)
     session.checkpoint()
     write_metadata(
         session.directory, transcript=dict(status=previous, reference=REFERENCE if previous != "none" else None)
@@ -63,6 +68,7 @@ def test_successful_job_records_this_attempt_wall_time_and_skip_reason(tmp_path,
                 wallDurationMs=9000,
                 resumed=False,
                 speechSegments=99,
+                sourceSpansSeparated=True,
                 futureWriting={"keep": True},
                 speakerSeparation=dict(
                     status="completed",
@@ -121,15 +127,24 @@ def test_successful_job_records_this_attempt_wall_time_and_skip_reason(tmp_path,
         assert metadata["transcript"]["status"] == "done"
         assert metadata["title"] == "Edited during writing" and metadata["notes"] == [dict(atMs=2, text="Keep")]
         details = metadata["recordingDetails"]
-        assert details["end"] == dict(reason="user", atMs=700) and details["futureDetail"] is True
+        assert details["end"] == dict(reason="user", atMs=200 if overlap else 700) and details["futureDetail"] is True
         assert details["writingDown"] == dict(
             wallDurationMs=4250,
             resumed=resumed,
             speechSegments=3,
-            speakerSeparation=dict(status="skipped", reason="modelsNotInstalled", futureSeparation={"keep": True}),
+            speakerSeparation=dict(
+                status="skipped",
+                reason="notApplicable" if overlap else "modelsNotInstalled",
+                futureSeparation={"keep": True},
+            ),
             futureWriting={"keep": True},
+            **({"sourceSpansSeparated": True} if overlap else {}),
         )
         assert valid(metadata)
+        from cassini_talk.capture_details import read_details
+
+        report = read_details(LibraryScanner(tmp_path).scan().meetings[0])
+        assert ("Overlapping audio was kept as separate speakers." in report.plain_text()) == overlap
         assert all((session.directory / name).read_bytes() == value for name, value in before.items())
     finally:
         queue.close()

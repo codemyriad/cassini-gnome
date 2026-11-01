@@ -303,6 +303,7 @@ class RecordingComfort:
             voices=value["voices"],
             minutes=value["minutes"],
             output_muted=value.get("output_muted", False),
+            source_problem=value.get("source_problem", False),
         )
         if value["recent_sound"]:
             now = GLib.get_monotonic_time() / 1e6

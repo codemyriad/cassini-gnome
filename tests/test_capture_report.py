@@ -153,6 +153,15 @@ def test_seventy_announced_sources_are_not_pruned_by_portable_publication(tmp_pa
     assert len(record["sources"]) == 70 and len(record["tracks"]) == 1
     assert sum(row["captureOutcome"] == "neverAudio" for row in record["sources"]) == 69
     assert len(list(host.session.directory.glob("*.wav"))) == 1
+    from cassini_talk.capture_details import read_details
+
+    before = read_details(meeting)
+    assert len(before.sources) == 70
+    assert all(row.line in before.plain_text() for row in before.sources)
+    shutil.rmtree(host.session.directory)
+    after = read_details(LibraryScanner(root).scan().meetings[0])
+    assert after.sources == before.sources
+    assert all(row.line in after.plain_text() for row in after.sources)
 
 
 def test_recording_details_keep_gaps_and_end_after_session_cache_is_deleted(tmp_path):

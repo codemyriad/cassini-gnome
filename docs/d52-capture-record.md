@@ -1,10 +1,10 @@
-# D52 source diagnostics — proposed R65 placement
+# D52 source diagnostics — D52.1 / R65
 
-This draft preserves an optional `recordingDetails.captureRecord` in meeting.json
+Cassini preserves an optional `recordingDetails.captureRecord` in meeting.json
 before finalization. The existing S-12 mapping carries it verbatim inside
 `x["codemyriad.io"].meeting.recordingDetails`. No library_v2 core or shared schema
-has been edited. The coordinator/Mac must approve the exact shared placement
-before this draft is merged. Report copy is proposed separately in R63.
+has been edited. D52.1 approves this shared placement and source-report copy; the coordinator
+owns the matching schema update.
 
 The record is version 1. `sources` copies the protocol's complete captureOutcome
 source rows (including never-opened/refused sources); `tracks` retains id, kind,
@@ -27,10 +27,12 @@ not advance metadata revision. Cache-free file reading must retain the report;
 the regression publishes through the real encoder/journal, deletes the session
 cache and checks the file-derived record and unchanged original WAV bytes.
 
-Pending: catalog publication and report/Recording UI, shared overlap-lane IDs
-(R64), private-data export policy for a shared copy, D49 ownership masking and
-initial stand-in transport adoption. These are held in the draft, with evidence
-and copy proposals in the pending REPLIES-GNOME append on roy.
+The Recording page warns only for a confirmed failure of an expected source.
+Startup neverAudio/lowAudio and intentionally unselected sources do not warn.
+Recording details and Copy details list every announced source, its outcome and
+separate gap/drop facts, using the approved catalog and meetingDuration formatter.
+The six-language entry objects and D52.1 decision are pinned in tests/ux/d52/.
+Language selection remains the separate D50 item.
 
 Recording details uses the embedded record when the stopped session cache is
 absent. Its original capture counters, source spans and end event remain facts
@@ -47,4 +49,15 @@ a later selection or recorded span permanently makes the source expected.
 The portable reader validates the bit without inventing it from timing or
 labels. Replacing known facts clears an obsolete false bit while preserving
 future fields. Source facts keep unused sources neutral after cache deletion.
-This addition remains part of the shared R65/R69 proposal awaiting review.
+D52.1 approves this additive R65/R69 field.
+
+A successful write-down additionally stores optional
+`recordingDetails.writingDown.sourceSpansSeparated: true` when the actual track
+planner separated conflicting spans. Details shows details.sources.overlap only
+from that stored fact, never from an opaque ID suffix, an audio level or a reader
+regrouping content. The next successful attempt replaces this known fact (and
+removes it if no separation ran), retaining unknown future fields. The existing
+schema permits additive fields; older apps preserve it. Failed/interrupted jobs
+never claim a new completed separation. The corresponding real FIFO queue tests
+cover overlapping and ordinary input and stale-fact removal. Mac can mirror this
+small diagnostic fact without inferring it from names.

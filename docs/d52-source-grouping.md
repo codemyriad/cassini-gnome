@@ -1,4 +1,4 @@
-# D52 conflicting source spans — R64 candidate
+# D52 conflicting source spans — R64 / D52.1
 
 This draft proposes concrete write-time speaker IDs for shared review. It does
 not change a shared schema or vector. The PR remains draft until the coordinator
@@ -27,7 +27,7 @@ whose human-readable spelling is canonically equivalent.
 The colon suffix replaces the earlier proposed `~overlap-n`: D24/D25 use `~`
 to identify diarized children. A conflicting source must not be mistaken for a
 child voice and excluded during merged-voice extraction. Opaque source IDs can
-contain the candidate suffix, hence the reservation rule.
+contain the approved suffix, hence the reservation rule.
 
 Literal expected review cases (`tests/test_source_spans.py`):
 
