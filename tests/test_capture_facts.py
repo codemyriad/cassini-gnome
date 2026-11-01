@@ -62,14 +62,19 @@ FALLBACK = dict(
 )
 
 
-@pytest.mark.parametrize("overlap", [False, True])
+@pytest.mark.parametrize(("overlap", "unknown_offset"), [(False, False), (True, False), (False, True)])
 @pytest.mark.parametrize(("previous", "resumed"), [("none", False), ("running", True), ("failed", False)])
-def test_successful_job_records_this_attempt_wall_time_and_skip_reason(tmp_path, previous, resumed, overlap):
+def test_successful_job_records_this_attempt_wall_time_and_skip_reason(
+    tmp_path, previous, resumed, overlap, unknown_offset
+):
     session = capture(tmp_path)
     session.manifest["tracks"][1]["kind"] = "system"
     if overlap:
         for track in session.manifest["tracks"]:
             track.update(kind="remote", sourceTrackId="same-remote", startOffsetMs=0)
+    if unknown_offset:
+        # D55: the write-down places a track with no known start at 0 and says so.
+        del session.manifest["tracks"][0]["startOffsetMs"]
     session.checkpoint()
     write_metadata(
         session.directory, transcript=dict(status=previous, reference=REFERENCE if previous != "none" else None)
@@ -84,6 +89,7 @@ def test_successful_job_records_this_attempt_wall_time_and_skip_reason(tmp_path,
                 speechSegments=99,
                 sourceSpansSeparated=True,
                 recognitionFallback=STALE_FALLBACK,
+                offsetsAssumedZero=True,
                 futureWriting={"keep": True},
                 speakerSeparation=dict(
                     status="completed",
@@ -156,6 +162,8 @@ def test_successful_job_records_this_attempt_wall_time_and_skip_reason(tmp_path,
             futureWriting={"keep": True},
             # This attempt's decisions replace, never merge with, an older attempt's.
             **({"sourceSpansSeparated": True, "recognitionFallback": FALLBACK} if overlap else {}),
+            # Replaced each attempt: an older attempt's flag never survives.
+            **({"offsetsAssumedZero": True} if unknown_offset else {}),
         )
         assert valid(metadata)
         from cassini_talk.capture_details import read_details
