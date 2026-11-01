@@ -534,3 +534,29 @@ def test_unknown_extension_message_types_are_ignored(broker):
         assert browser.ignored == {"from-a-newer-companion", "list"}
     finally:
         peer.close()
+
+
+def test_pcm_stale_after_is_pinned_by_d52_5():
+    # Above the extension's longest retry wait plus its acknowledgement limit
+    # (30 + 10 s) and below the 60 s span cut; D52.5 sets 45 s.
+    assert 30 + 10 < PCM_STALE_AFTER < 60
+    assert PCM_STALE_AFTER == 45
+
+
+def test_an_open_span_quiet_from_zero_is_closed_at_exactly_45_seconds(broker):
+    service, path, clock, lost = broker
+    client = BrowserAudioProxy(path=path)
+    try:
+        capture = negotiated(client, service, "boundary")
+        assert client.handle(declare("guest", "receiver")) == ACK
+        assert client.handle(pcm("guest", 480)) == ACK
+        (transport,) = service._audio_transports
+        clock.now = 44.999
+        service.tick()
+        assert not transport.shut_down.is_set()
+        clock.now = 45
+        service.tick()
+        assert transport.shut_down.is_set()
+        assert lost.wait(5) and lost_events(capture)
+    finally:
+        client.close()
