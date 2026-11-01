@@ -120,7 +120,11 @@ class GapTests(unittest.TestCase):
                 with self.subTest(case=case['name'], wire=wanted['wire']):
                     validator.validate(document)
         document = copy.deepcopy(base)
-        document['tracks'][0]['gaps'] = [dict(atMs=0, kind='jump')] * 1002
+        # Valid items, so only the budget can reject the longer list.
+        item = dict(atMs=0, durationMs=1, frames=48, kind='jump')
+        document['tracks'][0]['gaps'] = [item] * 1001
+        self.assertTrue(validator.is_valid(document))
+        document['tracks'][0]['gaps'] = [item] * 1002
         self.assertFalse(validator.is_valid(document))
         document['tracks'][0]['gaps'] = [dict(atMs=-1, durationMs=1, frames=48, kind='jump')]
         self.assertFalse(validator.is_valid(document))

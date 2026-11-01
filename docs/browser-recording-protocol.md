@@ -3,7 +3,7 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `c6f5fc72`, ships companion 0.2.8 with authoritative page-state
+The current pin, `3238aabe`, ships companion 0.2.8 with authoritative page-state
 publication and a coherent multi-tab inventory. Call identity and the hook
 baseline survive worker restarts; persisted addresses use bounded fingerprints.
 A worklet must prove its render clock is advancing before source PCM is armed;
@@ -45,8 +45,9 @@ An active capture's ended physical span returns `state/source/retired:true`;
 its cleanup and in-flight chunks cannot mean the whole capture was saved.
 Capture finalization returns `state/command`. Failed spans are fenced locally,
 healthy sources and the microphone continue, and a live source retries a new ID.
-The pin is the exact upstream merge commit, c6f5fc72. Its tree is identical
-to the reviewed source-fix head; companion version remains 0.2.8.
+The pin is the exact upstream merge commit of protocol PR #29, 3238aabe (D52.2
+gap ranges and presence). Its tree is identical to the reviewed head 534ec9b; it
+changes no extension code, so the companion version remains 0.2.8.
 
 Selecting a browser category permanently includes already discovered sources,
 even one that failed before declaring a track. Rejected selection changes roll
