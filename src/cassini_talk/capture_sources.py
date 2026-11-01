@@ -102,11 +102,13 @@ class BrowserStreams:
 
     def end_track(self, identifier):
         track = self.tracks[identifier]
-        if track.recorded is not None:
-            self.session.end_track(track.recorded)
+        try:
+            if track.recorded is not None:
+                self.session.end_track(track.recorded)
+        finally:
             track.recorded = None
-        track.ended = True
-        track.available = False
+            track.ended = True
+            track.available = False
 
     def append(self, identifier, data, offset):
         self.picture = None

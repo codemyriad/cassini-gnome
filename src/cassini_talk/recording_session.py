@@ -437,6 +437,8 @@ class RecordingSession:
         )
         if source_track_id is not None:
             self.manifest["tracks"][-1]["sourceTrackId"] = source_track_id
+        if self.capture_record is not None and self.manifest["tracks"][-1]["labelSource"] == "browser":
+            self.capture_record.bind(identifier, source_track_id or identifier)
         self.checkpoint()
 
     def append(self, identifier, data, offset):
@@ -625,7 +627,10 @@ class BrowserHost:
                 if self.audio_sink is not None:
                     wire = self.audio_sink.tracks.get(identifier)
                     stored = wire.recorded if wire is not None else None
-                ledger.fail(self.session.manifest, stored, io=code == "io")
+                if stored in ledger.bindings:
+                    ledger.fail(self.session.manifest, stored, io=code == "io")
+                else:
+                    ledger.io_failed |= code == "io"
                 # A failed WAV is retired; the extension retries with a fresh
                 # wire span. Other sources and this connection stay usable.
                 if message.get("type") == "audio" or identifier not in self.sequences:
@@ -633,7 +638,7 @@ class BrowserHost:
                     if self.audio_sink is not None and identifier in self.audio_sink.tracks:
                         with suppress(OSError):
                             self.audio_sink.end_track(identifier)
-                    elif stored in self.session.writers:
+                    elif stored in ledger.bindings and stored in self.session.writers:
                         with suppress(OSError):
                             self.session.end_track(stored)
             with suppress(OSError):
@@ -667,7 +672,12 @@ class BrowserHost:
                 raise ProtocolError("version", "Unsupported browser recording protocol version")
             title = optional_string(message.get("title"), "Browser recording", "state")
             features = message.get("features", [])
-            if not isinstance(features, list) or len(features) > 16 or any(not isinstance(f, str) for f in features):
+            if (
+                not isinstance(features, list)
+                or len(features) > 8
+                or any(not isinstance(f, str) or len(f) > 64 for f in features)
+                or len(set(features)) != len(features)
+            ):
                 raise ProtocolError("version", "Invalid recording features")
             self.session = RecordingSession(self.directory, title, started_at=started_at)
             self.source_outcomes = "source-outcomes-v1" in features
@@ -702,8 +712,8 @@ class BrowserHost:
                     return dict(type="ack")
                 self.session.capture_record.observe(root or identifier, message["kind"], label)
                 self.declarations[identifier] = declaration
-                if root is not None and any(
-                    other != identifier and value[3] == root and other not in self.ended
+                if any(
+                    other != identifier and (value[3] or other) == (root or identifier) and other not in self.ended
                     for other, value in self.declarations.items()
                 ):
                     raise ProtocolError("source", "Overlapping live source spans")
@@ -759,6 +769,8 @@ class BrowserHost:
                     self.session.capture_record.seen[root]["failed"] = True
                 (self.audio_sink or self.session).end_track(identifier)
                 self.ended.add(identifier)
+                if stored is None:
+                    self.session.checkpoint()
         elif kind == "stop":
             refused = self.prepare_stop(message)
             if refused is not None:

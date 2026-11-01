@@ -10,6 +10,7 @@ class CaptureRecord:
     def __init__(self):
         self.seen = {}
         self.received = {}
+        self.bindings = {}
         self.io_failed = False
 
     def observe(self, identity, kind, label, *, failed=False):
@@ -39,19 +40,22 @@ class CaptureRecord:
     def admit(self, identifier, frames):
         self.received[identifier] = self.received.get(identifier, 0) + frames
 
+    def bind(self, identifier, identity):
+        if identity in self.seen:
+            self.bindings[identifier] = identity
+
     def fail(self, manifest, identifier, *, io=False):
         self.io_failed |= io
         for track in manifest["tracks"]:
             if track["id"] == identifier:
                 track["problemKind"] = "io" if io or track.get("problemKind") == "io" else "capture"
-                identity = track.get("sourceTrackId") or identifier
+                identity = self.bindings.get(identifier)
                 if identity in self.seen:
                     self.seen[identity]["failed"] = True
 
-    @staticmethod
-    def check_overlap(manifest, identifier, first_frame, frames):
+    def check_overlap(self, manifest, identifier, first_frame, frames):
         track = next(t for t in manifest["tracks"] if t["id"] == identifier)
-        identity = track.get("sourceTrackId")
+        identity = self.bindings.get(identifier)
         if identity is None:
             return
         start = Fraction(str(track["startOffsetMs"])) + Fraction(first_frame * 1000, track["sampleRate"])
@@ -59,7 +63,7 @@ class CaptureRecord:
         for other in manifest["tracks"]:
             if (
                 other is track
-                or other.get("sourceTrackId") != identity
+                or self.bindings.get(other["id"]) != identity
                 or not other["frames"]
                 or other.get("startOffsetMs") is None
             ):
@@ -76,7 +80,7 @@ class CaptureRecord:
     def finish(self, manifest):
         sources = []
         for identity, source in self.seen.items():
-            tracks = [t for t in manifest["tracks"] if (t.get("sourceTrackId") or t["id"]) == identity]
+            tracks = [t for t in manifest["tracks"] if self.bindings.get(t["id"]) == identity]
             duration = Fraction(0)
             failed = source["failed"]
             for track in tracks:

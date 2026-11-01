@@ -9,7 +9,7 @@ import pytest
 from test_browser_host import invoke
 
 from cassini_talk.capture_sources import BrowserStreams
-from cassini_talk.recording_session import BrowserHost, WAVWriter
+from cassini_talk.recording_session import BrowserHost, ProtocolError, WAVWriter
 
 
 def declare(identifier, root=None):
@@ -151,6 +151,49 @@ def test_refused_and_discovered_sources_do_not_allocate_wavs(host):
     assert stop(host, discoveredSources=discovered)["type"] == "stopped"
     assert len(session.manifest["captureOutcome"]["sources"]) == 322
     assert len(session.writers) == 64
+
+
+def test_browser_wire_id_cannot_retire_or_claim_native_microphone_pcm(host):
+    session = host.session
+    session.add_track("native-mic", "Me", "microphone", 48000, 1, label_source="device")
+    refused = host.handle(declare("native-mic"))
+    if host.audio_sink is None:
+        assert refused["type"] == "error" and refused["scope"] == "source"
+    else:
+        # Selected capture renames the WAV span instead of refusing a wire ID
+        # already owned by the native microphone. Its accounting stays separate.
+        assert refused["type"] == "ack"
+        assert host.handle(pcm("native-mic", 4800)) == dict(type="ack")
+    native = session.manifest["tracks"][0]
+    assert not native.get("ended") and "problemKind" not in native
+    session.append_native("native-mic", b"\x01\x00" * 48000, 0)
+    stop(host)
+    (source,) = session.manifest["captureOutcome"]["sources"]
+    assert "native-mic" not in source["trackIds"]
+    assert source["audioMs"] == (100 if host.audio_sink is not None else 0)
+    assert native["frames"] == 48000
+
+
+def test_failed_source_with_others_off_is_checkpointed_without_a_wav(tmp_path):
+    host = BrowserHost(tmp_path)
+    host.handle(dict(type="start", features=["source-outcomes-v1"]))
+    host.audio_sink = BrowserStreams(host.session, others=False)
+    host.handle(declare("off", "receiver"))
+    host.handle(dict(type="trackEnd", id="off", reason="failed", droppedFrames=0))
+    saved = json.loads((host.session.directory / "session.json").read_text())
+    assert saved["tracks"] == []
+    assert saved["captureOutcome"]["sources"][0]["captureOutcome"] == "failed"
+    host.handle(dict(type="stop"))
+
+
+@pytest.mark.parametrize(
+    "features", [None, "source-outcomes-v1", ["duplicate"] * 2, list("123456789"), ["x" * 65], [{}]]
+)
+def test_invalid_negotiation_allocates_no_session(tmp_path, features):
+    host = BrowserHost(tmp_path)
+    with pytest.raises(ProtocolError, match="Invalid recording features"):
+        host.handle(dict(type="start", features=features))
+    assert host.session is None and not list(tmp_path.iterdir())
 
 
 def test_wrong_capture_stop_and_retired_audio_do_not_end_or_damage_the_session(host):
