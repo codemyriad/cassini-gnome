@@ -38,8 +38,8 @@ endif
 # GTK >= 4.18, libadwaita >= 1.8, GStreamer >= 1.20 with the Opus plugin.
 
 subdir('data')
-subdir('src')
 subdir('po')
+subdir('src')
 if get_option('whistle').enabled()
   subdir('whistle')
 endif

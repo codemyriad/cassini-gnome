@@ -259,7 +259,7 @@ pytest = python.find_installation('python3', modules: ['pytest'], required: fals
 if pytest.found()
   test('pytest',
     pytest,
-    depends: spectro_helper,
+    depends: [spectro_helper] + gettext_targets[0],
     args: ['-m', 'pytest', '-q', '--durations=20', meson.project_source_root() / 'tests'],
     env: ['PYTHONPATH=' + meson.current_source_dir(), 'CASSINI_TEST_TIMINGS=1', 'CASSINI_TEST_BUILD=' + meson.project_build_root()],
     workdir: meson.project_source_root(),

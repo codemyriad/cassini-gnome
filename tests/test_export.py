@@ -38,19 +38,27 @@ def test_export_contract_bytes_are_pinned():
 def test_shared_markdown_golden(case):
     expected = case["expected"]
     if "{DATE_LINE}" in expected:
-        from gi.repository import GLib
-
         from cassini_talk.i18n import using_language
         from cassini_talk.ux_formats import meeting_duration
 
         value = case["input"]
-        date = GLib.DateTime.new_from_unix_utc(value["startMs"] // 1000).to_timezone(
-            GLib.TimeZone.new_identifier(value["tz"])
-        )
-        with using_language(value["uiLanguage"]):
-            expected = expected.replace(
-                "{DATE_LINE}", date.format("%A %-d %B %Y, %H:%M") + " · " + meeting_duration(value["durationMs"])
+        try:
+            from gi.repository import GLib
+        except ImportError:
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+
+            # The core profile deliberately has no GI; libc is a platform
+            # formatter too. The golden labels/content still run in full.
+            date = datetime.fromtimestamp(value["startMs"] / 1000, ZoneInfo(value["tz"]))
+            formatted = date.strftime("%A %-d %B %Y, %H:%M")
+        else:
+            date = GLib.DateTime.new_from_unix_utc(value["startMs"] // 1000).to_timezone(
+                GLib.TimeZone.new_identifier(value["tz"])
             )
+            formatted = date.format("%A %-d %B %Y, %H:%M")
+        with using_language(value["uiLanguage"]):
+            expected = expected.replace("{DATE_LINE}", formatted + " · " + meeting_duration(value["durationMs"]))
     assert markdown(case["input"]).encode() == expected.encode()
 
 
