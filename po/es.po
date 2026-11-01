@@ -1,0 +1,539 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Cassini talk GNOME translations; terminology: docs/i18n-glossary.md.
+msgid ""
+msgstr "Project-Id-Version: cassini-talk 0.3.0\nReport-Msgid-Bugs-To: https://github.com/codemyriad/cassini-gnome/issues\nPO-Revision-Date: 2026-11-01 11:00+0000\nLast-Translator: Cassini contributors\nLanguage-Team: es\nLanguage: es\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "@APP_NAME@"
+msgstr "@APP_NAME@"
+
+msgid "Meeting Player"
+msgstr "Reproductor de reuniones"
+
+msgid "Play meeting recordings and read along with their transcripts"
+msgstr "Escucha las grabaciones de reuniones y sigue sus transcripciones"
+
+msgid "meeting;transcript;recording;opus;captions;speech;"
+msgstr "reunión;transcripción;grabación;opus;subtítulos;voz;"
+
+msgid "Read along with meeting recordings"
+msgstr "Sigue las transcripciones de las reuniones"
+
+msgid "Cassini plays meeting recordings in the Cassini portable meeting format: ordinary Ogg Opus files that carry their own word-by-word transcript, speaker names and summary."
+msgstr "Cassini reproduce grabaciones de reuniones en el formato portátil Cassini: archivos Ogg Opus normales que contienen su transcripción palabra por palabra, los nombres de los hablantes y el resumen."
+
+msgid "Follow the transcript as it plays, with the spoken word highlighted"
+msgstr "Sigue la transcripción durante la reproducción, con la palabra pronunciada resaltada"
+
+msgid "Click any word to play from there"
+msgstr "Haz clic en cualquier palabra para reproducir desde ahí"
+
+msgid "See participants and who is speaking, and switch between transcripts"
+msgstr "Consulta los participantes y quién habla, y cambia de transcripción"
+
+msgid "Search the transcript"
+msgstr "Busca en la transcripción"
+
+msgid "Read the meeting summary and jump to its topics"
+msgstr "Lee el resumen de la reunión y ve a sus temas"
+
+msgid "Check that the audio still matches the transcript recorded with it"
+msgstr "Comprueba que el audio siga coincidiendo con la transcripción asociada"
+
+msgid "Export the transcript as text or WebVTT subtitles"
+msgstr "Exporta la transcripción como texto o subtítulos WebVTT"
+
+msgid "Files without a transcript play like in any other audio player."
+msgstr "Los archivos sin transcripción se reproducen como en cualquier otro reproductor de audio."
+
+msgid "Codemyriad"
+msgstr "Codemyriad"
+
+msgid "A meeting transcript following playback"
+msgstr "Una transcripción de reunión que sigue la reproducción"
+
+msgid "Keep recordings and received meetings in the Library, follow their transcripts, search across meetings, and import or export audio and transcripts."
+msgstr "Conserva las grabaciones y las reuniones recibidas en la Biblioteca, sigue sus transcripciones, busca en todas las reuniones e importa o exporta audio y transcripciones."
+
+msgid "Record browser meetings independently, choose what is recorded, and set up the companion in native packages or Flatpak"
+msgstr "Graba reuniones del navegador de forma independiente, elige qué se graba y configura la extensión con los paquetes nativos o Flatpak"
+
+msgid "Write meetings down locally with bundled Whistle or optional Parakeet Ultra"
+msgstr "Transcribe reuniones en este equipo con Whistle incluido o Parakeet Ultra opcional"
+
+msgid "Tell speakers apart, name and merge speakers, and remember saved voices locally"
+msgstr "Distingue hablantes, nómbralos y combínalos, y recuerda las voces guardadas en este equipo"
+
+msgid "Keep audio aligned through input interruptions without adding silence for gradual clock drift"
+msgstr "Mantén el audio alineado durante las interrupciones de entrada sin añadir silencio por la deriva gradual del reloj"
+
+msgid "Record meetings: the microphone and desktop audio, and browser meetings source by source through the Cassini companion extension. Cassini now names missing libraries and plugins at startup instead of failing."
+msgstr "Graba reuniones: el micrófono y el audio del equipo, y las reuniones del navegador fuente por fuente con la extensión de Cassini. Al iniciar, Cassini indica las bibliotecas y los complementos que faltan."
+
+msgid "Fix transcript-click crashes and label sizing warnings. Keep participants visible, rejoin interrupted speech with inline interjections, and preserve interjections in exports."
+msgstr "Corrige cierres al hacer clic en la transcripción y avisos de tamaño de etiquetas. Mantiene visibles los participantes, reúne el habla interrumpida por interjecciones y conserva estas en las exportaciones."
+
+msgid "First release."
+msgstr "Primera versión."
+
+msgid "Speech model for new jobs"
+msgstr "Modelo de voz para nuevas transcripciones"
+
+msgid "Global recording shortcut explicitly enabled"
+msgstr "Atajo global de grabación activado explícitamente"
+
+msgid "Desktop recording shortcut description"
+msgstr "Descripción del atajo de grabación del escritorio"
+
+msgid "Browser companion has connected before"
+msgstr "La extensión del navegador ya se ha conectado"
+
+msgid "Windowless automatic recording notification shown"
+msgstr "Notificación de grabación automática sin ventana mostrada"
+
+msgid "Skip recording introduction"
+msgstr "Omitir la introducción a la grabación"
+
+msgid "Last folder selected for export"
+msgstr "Última carpeta elegida para exportar"
+
+msgid "Companion card dismissed"
+msgstr "Tarjeta de la extensión cerrada"
+
+msgid "Window width"
+msgstr "Ancho de la ventana"
+
+msgid "Window height"
+msgstr "Alto de la ventana"
+
+msgid "Window maximized"
+msgstr "Ventana maximizada"
+
+msgid "Show the speakers sidebar"
+msgstr "Mostrar la barra lateral de hablantes"
+
+msgid "Show the properties pane"
+msgstr "Mostrar el panel de propiedades"
+
+msgid "Follow along"
+msgstr "Seguir la lectura"
+
+msgid "Keep the word being spoken in view while playing."
+msgstr "Mantén visible la palabra pronunciada durante la reproducción."
+
+msgid "_Record Meeting…"
+msgstr "_Grabar reunión…"
+
+msgid "_Open…"
+msgstr "_Abrir…"
+
+msgid "Show in _Files"
+msgstr "Mostrar en _Archivos"
+
+msgid "_Keyboard Shortcuts"
+msgstr "_Atajos de teclado"
+
+msgid "_About Cassini"
+msgstr "_Acerca de Cassini"
+
+msgid "Normal"
+msgstr "Normal"
+
+msgid "Main Menu"
+msgstr "Menú principal"
+
+msgid "Open a Meeting"
+msgstr "Abrir una reunión"
+
+msgid "Play a meeting recording and read along with the transcript stored inside it. Drop an .opus file here or choose one."
+msgstr "Escucha la grabación de una reunión y sigue la transcripción que contiene. Suelta aquí un archivo .opus o elige uno."
+
+msgid "Properties"
+msgstr "Propiedades"
+
+msgid "Cassini"
+msgstr "Cassini"
+
+msgid "Transcript"
+msgstr "Transcripción"
+
+msgid "Speakers"
+msgstr "Hablantes"
+
+msgid "Toggle Sidebar"
+msgstr "Mostrar u ocultar la barra lateral"
+
+msgid "Search Transcript"
+msgstr "Buscar en la transcripción"
+
+msgid "Search transcript"
+msgstr "Buscar en la transcripción"
+
+msgid "Previous Match"
+msgstr "Coincidencia anterior"
+
+msgid "Next Match"
+msgstr "Coincidencia siguiente"
+
+msgid "_Transcript"
+msgstr "_Transcripción"
+
+msgid "_Summary"
+msgstr "_Resumen"
+
+msgid "Playback Position"
+msgstr "Posición de reproducción"
+
+msgid "Back 15 Seconds"
+msgstr "Retroceder 15 segundos"
+
+msgid "Play"
+msgstr "Reproducir"
+
+msgid "Forward 15 Seconds"
+msgstr "Avanzar 15 segundos"
+
+msgid "Playback Speed"
+msgstr "Velocidad de reproducción"
+
+msgid "Keep the Spoken Word in View"
+msgstr "Mantener visible la palabra pronunciada"
+
+msgid "_Follow Along"
+msgstr "_Seguir la lectura"
+
+msgid "General"
+msgstr "General"
+
+msgid "Record Meeting"
+msgstr "Grabar reunión"
+
+msgid "Export Transcript"
+msgstr "Exportar transcripción"
+
+msgid "Move to Trash"
+msgstr "Mover a la papelera"
+
+msgid "Show Shortcuts"
+msgstr "Mostrar atajos"
+
+msgid "Close Window"
+msgstr "Cerrar ventana"
+
+msgid "Quit"
+msgstr "Salir"
+
+msgid "Playback"
+msgstr "Reproducción"
+
+msgid "Play or Pause"
+msgstr "Reproducir o pausar"
+
+msgid "Search"
+msgstr "Buscar"
+
+msgid "[FILE…]"
+msgstr "[ARCHIVO…]"
+
+msgid "Open Meeting"
+msgstr "Abrir reunión"
+
+msgid "Opus Audio"
+msgstr "Audio Opus"
+
+msgid "Recording Session"
+msgstr "Sesión de grabación"
+
+msgid "Recording a meeting"
+msgstr "Grabando una reunión"
+
+msgid "Play meeting recordings and read along with the transcript stored inside them."
+msgstr "Escucha las grabaciones de reuniones y sigue la transcripción que contienen."
+
+msgid "translator-credits"
+msgstr "Colaboradores de Cassini"
+
+msgid "Cassini Portable Meeting Format"
+msgstr "Formato portátil de reuniones Cassini"
+
+msgid "No recording is loaded."
+msgstr "No hay ninguna grabación cargada."
+
+#, python-brace-format
+msgid "Missing GStreamer elements: {elements}. Install {plugins}."
+msgstr "Faltan elementos de GStreamer: {elements}. Instala {plugins}."
+
+msgid "The audio could not be played."
+msgstr "No se pudo reproducir el audio."
+
+#, python-brace-format
+msgid "Play from {time}"
+msgstr "Reproducir desde {time}"
+
+#, python-brace-format
+msgid "(over {names})"
+msgstr "(a la vez que {names})"
+
+msgid "Simultaneous speech"
+msgstr "Habla simultánea"
+
+msgid "Speaking now"
+msgstr "Hablando ahora"
+
+#, python-brace-format
+msgid "Playback failed: {error}"
+msgstr "No se pudo reproducir: {error}"
+
+msgid "Only local files can be opened"
+msgstr "Solo se pueden abrir archivos locales"
+
+#, python-brace-format
+msgid "“{name}” is not an Opus audio file"
+msgstr "“{name}” no es un archivo de audio Opus"
+
+msgid "Unknown Speaker"
+msgstr "Hablante desconocido"
+
+msgid "No Transcript"
+msgstr "Sin transcripción"
+
+msgid "This is an ordinary audio file without a Cassini transcript. It can still be played."
+msgstr "Este es un archivo de audio normal sin transcripción de Cassini. Se puede reproducir."
+
+msgid "Newer Format"
+msgstr "Formato más reciente"
+
+msgid "This file was made with a newer version of the Cassini format. Its audio can be played, but its transcript can’t be shown."
+msgstr "Este archivo usa una versión más reciente del formato Cassini. Se puede reproducir el audio, pero no mostrar la transcripción."
+
+msgid "Transcript Can’t Be Read"
+msgstr "No se puede leer la transcripción"
+
+#, python-brace-format
+msgid "The transcript data in this file is damaged: {reason}. The audio can still be played."
+msgstr "Los datos de transcripción de este archivo están dañados: {reason}. El audio se puede reproducir."
+
+msgid "Transcript Unavailable"
+msgstr "Transcripción no disponible"
+
+#, python-brace-format
+msgid "The transcript “{id}” can’t be loaded: {reason}"
+msgstr "No se puede cargar la transcripción “{id}”: {reason}"
+
+msgid "Empty Transcript"
+msgstr "Transcripción vacía"
+
+msgid "Nobody said anything in this transcript."
+msgstr "Nadie dijo nada en esta transcripción."
+
+msgid "Pause"
+msgstr "Pausar"
+
+msgid "Playing a meeting"
+msgstr "Reproduciendo una reunión"
+
+msgid "No matches"
+msgstr "Sin coincidencias"
+
+#, python-brace-format
+msgid "{current} of {total}"
+msgstr "{current} de {total}"
+
+#, python-brace-format
+msgid "{n} match"
+msgid_plural "{n} matches"
+msgstr[0] "{n} coincidencia"
+msgstr[1] "{n} coincidencias"
+
+msgid "Done"
+msgstr "Listo"
+
+msgid "Not done"
+msgstr "Sin completar"
+
+#, python-brace-format
+msgid "{n} speaker"
+msgid_plural "{n} speakers"
+msgstr[0] "{n} hablante"
+msgstr[1] "{n} hablantes"
+
+msgid "The audio in this file does not match the transcript recorded with it. The transcript may describe a different recording."
+msgstr "El audio de este archivo no coincide con la transcripción asociada. La transcripción podría describir otra grabación."
+
+msgid "The transcript data in this file is damaged. Only the audio can be played."
+msgstr "Los datos de transcripción de este archivo están dañados. Solo se puede reproducir el audio."
+
+msgid "This file uses a newer Cassini format. Only the audio can be played."
+msgstr "Este archivo usa un formato Cassini más reciente. Solo se puede reproducir el audio."
+
+msgid "Recording"
+msgstr "Grabación"
+
+msgid "Duration"
+msgstr "Duración"
+
+msgid "Recorded"
+msgstr "Grabado"
+
+msgid "Processed"
+msgstr "Procesado"
+
+msgid "Ogg Opus, 48 kHz, mono"
+msgstr "Ogg Opus, 48 kHz, mono"
+
+msgid "Ogg Opus, 48 kHz, stereo"
+msgstr "Ogg Opus, 48 kHz, estéreo"
+
+msgid "Ogg Opus, 48 kHz"
+msgstr "Ogg Opus, 48 kHz"
+
+msgid "Format"
+msgstr "Formato"
+
+msgid "Size"
+msgstr "Tamaño"
+
+msgid "Name"
+msgstr "Nombre"
+
+msgid "Schema"
+msgstr "Esquema"
+
+msgid "Language"
+msgstr "Idioma"
+
+msgid "Words"
+msgstr "Palabras"
+
+msgid "Timing"
+msgstr "Tiempos"
+
+msgid "Per word, in milliseconds"
+msgstr "Por palabra, en milisegundos"
+
+msgid "Produced By"
+msgstr "Producido por"
+
+msgid "The transcript and speakers live inside this .opus file, so any audio player can still play it."
+msgstr "La transcripción y los hablantes están dentro de este archivo .opus, que se puede reproducir en cualquier reproductor de audio."
+
+msgid "Show in Files"
+msgstr "Mostrar en Archivos"
+
+msgid "Checking Audio…"
+msgstr "Verificando el audio…"
+
+msgid "Comparing the audio with the fingerprint recorded in the transcript."
+msgstr "Comparando el audio con la huella registrada en la transcripción."
+
+msgid "Audio Matches Transcript"
+msgstr "El audio coincide con la transcripción"
+
+msgid "The audio’s SHA-256 fingerprint matches the one recorded with the transcript."
+msgstr "La huella SHA-256 del audio coincide con la registrada en la transcripción."
+
+msgid "Audio Does Not Match"
+msgstr "El audio no coincide"
+
+msgid "The file was probably re-encoded or edited after it was transcribed."
+msgstr "Probablemente se haya recodificado o editado el archivo después de transcribirlo."
+
+msgid "Not Verified"
+msgstr "Sin verificar"
+
+msgid "The audio was not checked."
+msgstr "El audio no se ha verificado."
+
+msgid "Damaged Transcript Data"
+msgstr "Datos de transcripción dañados"
+
+msgid "Unsupported Version"
+msgstr "Versión no compatible"
+
+msgid "Plain Audio"
+msgstr "Audio sin transcripción"
+
+msgid "This file carries no Cassini metadata."
+msgstr "Este archivo no contiene metadatos de Cassini."
+
+msgid "Could not open the folder"
+msgstr "No se pudo abrir la carpeta"
+
+msgid "%e %b %Y"
+msgstr "%e %b %Y"
+
+msgid "%H:%M"
+msgstr "%H:%M"
+
+msgid "Could not start audio capture. Check your audio devices and GStreamer plugins."
+msgstr "No se pudo iniciar la captura de audio. Comprueba los dispositivos de audio y los complementos de GStreamer."
+
+msgid "Could not finish the recording."
+msgstr "No se pudo finalizar la grabación."
+
+msgid "Timed out while saving the recording."
+msgstr "Se agotó el tiempo al guardar la grabación."
+
+#, python-brace-format
+msgid "Incomplete audio was kept at {path}."
+msgstr "El audio incompleto se ha guardado en {path}."
+
+msgid "Microphone"
+msgstr "Micrófono"
+
+msgid "Desktop audio"
+msgstr "Sonido del equipo"
+
+msgid "Desktop audio includes all sounds on your default output. The microphone records even when you are muted in the meeting. Use headphones to avoid echo."
+msgstr "El audio del equipo incluye todos los sonidos de la salida predeterminada. El micrófono graba aunque lo silencies en la reunión. Usa auriculares para evitar el eco."
+
+msgid "With both sources enabled, microphone is on the left and desktop audio on the right. No transcript is generated."
+msgstr "Con ambas fuentes activadas, el micrófono está a la izquierda y el audio del equipo a la derecha. No se genera ninguna transcripción."
+
+msgid "Ready to record"
+msgstr "Listo para grabar"
+
+msgid "Record…"
+msgstr "Grabar…"
+
+msgid "Saving recording…"
+msgstr "Guardando grabación…"
+
+msgid "Select at least one audio source."
+msgstr "Selecciona al menos una fuente de audio."
+
+msgid "Save Recording"
+msgstr "Guardar grabación"
+
+msgid "Choose a local file for the recording."
+msgstr "Elige un archivo local para la grabación."
+
+msgid "Stop and Save"
+msgstr "Detener y guardar"
+
+#, python-brace-format
+msgid "Recording — {minutes:02d}:{seconds:02d}"
+msgstr "Grabando — {minutes:02d}:{seconds:02d}"
+
+msgid "Recording browser meeting"
+msgstr "Grabando una reunión en el navegador"
+
+msgid "Stop"
+msgstr "Detener"
+
+#, python-brace-format
+msgid "Could not export: {error}"
+msgstr "No se pudo exportar: {error}"
+
+msgid "Open…"
+msgstr "Abrir…"
+
+#, python-brace-format
+msgid "{n} GB"
+msgstr "{n} GB"
+
+msgid "Recovered audio"
+msgstr "Audio recuperado"
+
+msgid "Recovered recording"
+msgstr "Grabación recuperada"
+

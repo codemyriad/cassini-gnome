@@ -18,13 +18,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import threading
-from gettext import gettext as _
-from gettext import ngettext
+from datetime import date
 
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Graphene, Gtk, Pango
 
-from . import portable, summary, transcript
+from . import calendar_formats, portable, summary, transcript
+from . import ux_formats as fmt
 from .colors import SpeakerPalette, hex_color
+from .i18n import gettext as _
+from .i18n import ngettext, number
 from .player import Player
 from .portable import State
 from .strings import text
@@ -835,7 +837,7 @@ class CassiniWindow(Adw.ApplicationWindow):
             )
         else:
             count = len(self.matches)
-            self.match_label.set_label(ngettext("{n} match", "{n} matches", count).format(n=count))
+            self.match_label.set_label(ngettext("{n} match", "{n} matches", count).format(n=number(count)))
 
     def _step_match(self, delta, from_position=False):
         if not self.matches:
@@ -933,7 +935,7 @@ class CassiniWindow(Adw.ApplicationWindow):
             if date:
                 parts.append(date)
             count = len(self._speaker_ids())
-            parts.append(ngettext("{n} speaker", "{n} speakers", count).format(n=count))
+            parts.append(ngettext("{n} speaker", "{n} speakers", count).format(n=number(count)))
         elif self.player.duration:
             parts.append(format_time(self.player.duration))
         self.subtitle_label.set_label(" · ".join(parts))
@@ -1127,9 +1129,7 @@ def format_date(value, local=False, time=False):
         dt = dt.to_local() if dt else None
     if dt is None:
         return None
-    # Translators: date format, see https://docs.gtk.org/glib/method.DateTime.format.html
-    text = dt.format(_("%e %b %Y")).strip()
+    text = calendar_formats.full_date(date(dt.get_year(), dt.get_month(), dt.get_day_of_month()))
     if time:
-        # Translators: time format, see https://docs.gtk.org/glib/method.DateTime.format.html
-        text = f"{text} {dt.format(_('%H:%M'))}"
+        text = f"{text} {fmt.row_time(dt.to_unix() * 1000, tz=fmt.local_timezone(dt.get_timezone().get_identifier()))}"
     return text

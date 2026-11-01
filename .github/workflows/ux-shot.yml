@@ -59,6 +59,10 @@ jobs:
           python3 -m pytest tests/test_ux_vectors.py -k locale_clock_style -q
           mkdir -p ux-artifacts
           build-aux/ux-boards.sh "$BOARD_APP" ux-artifacts
+          CASSINI_SCREENSHOT_LANGUAGE=fr build-aux/ux-screenshot.sh "$BOARD_APP" ux-artifacts/first-run-fr.png 2>ux-artifacts/first-run-fr.log
+          python3 tests/ui/check-localization.py ux-artifacts/first-run-fr.png fr
+          CASSINI_SCREENSHOT_LANGUAGE=pt_BR build-aux/ux-screenshot.sh "$BOARD_APP" ux-artifacts/first-run-pt-BR.png 2>ux-artifacts/first-run-pt-BR.log
+          python3 tests/ui/check-localization.py ux-artifacts/first-run-pt-BR.png pt-BR
           CASSINI_SCREENSHOT_SCHEME=dark build-aux/ux-boards.sh "$BOARD_APP" ux-artifacts/dark
           python3 tests/ui/check-dark.py ux-artifacts/dark
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/library.py ux-artifacts/gui.png

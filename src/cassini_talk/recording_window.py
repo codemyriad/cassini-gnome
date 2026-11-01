@@ -2,11 +2,11 @@
 """Recording controls kept alive until the encoder has flushed its output."""
 
 from datetime import datetime
-from gettext import gettext as _
 
 from gi.repository import Adw, Gio, GLib, Gst, Gtk
 
 from . import runtime
+from .i18n import gettext as _
 from .recorder import Recorder
 
 

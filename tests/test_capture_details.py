@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import json
+import locale
 import os
 from dataclasses import replace
 
@@ -31,7 +32,7 @@ def test_fallback_streams_are_audio_not_people_and_do_not_invent_page_reasons(me
     assert report.ended == UNKNOWN
     copied = report.plain_text()
     assert "participants" not in copied and "reloaded" not in copied and "tab was closed" not in copied
-    assert "4,000 frames · 0.5 s" in copied
+    assert locale.localize("4000", grouping=True) + " frames · 0.5 s" in copied
     assert dict(report.writing)["Time taken"] == UNKNOWN
 
 
@@ -194,7 +195,10 @@ def test_gap_frames_without_a_saved_rate_never_claim_zero_seconds(meetings):
     session["tracks"][0]["gapFrames"] = 4000
     session["tracks"][0].pop("sampleRate")
     write_json(path, session)
-    assert dict(read_details(meeting).health)["Gaps"] == "4,000 frames · duration not recorded"
+    assert (
+        dict(read_details(meeting).health)["Gaps"]
+        == locale.localize("4000", grouping=True) + " frames · duration not recorded"
+    )
 
 
 def test_live_writing_facts_wait_for_the_recording_to_finish(meetings):

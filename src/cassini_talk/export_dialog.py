@@ -5,7 +5,6 @@ import errno
 import os
 import threading
 from concurrent.futures import CancelledError, ThreadPoolExecutor
-from gettext import gettext as _
 from pathlib import Path
 
 from gi.repository import Adw, Gio, GLib, Gtk
@@ -13,6 +12,7 @@ from gi.repository import Adw, Gio, GLib, Gtk
 from . import ux_formats as fmt
 from .export_model import encode_choice
 from .exporting import export_meeting
+from .i18n import gettext as _
 from .library_window import label, vertical
 from .strings import text
 

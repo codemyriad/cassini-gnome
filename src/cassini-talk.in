@@ -34,6 +34,9 @@ except locale.Error:
     pass  # An unavailable desktop locale keeps the existing C-locale fallback.
 locale.bindtextdomain("cassini-talk", localedir)
 locale.textdomain("cassini-talk")
+from cassini_talk.i18n import configure as configure_language
+
+configure_language(localedir)
 gettext.install("cassini-talk", localedir)
 
 if __name__ == "__main__":

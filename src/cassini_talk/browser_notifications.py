@@ -2,7 +2,8 @@
 """Desktop notification with a Stop action for each automatic recording."""
 
 import threading
-from gettext import gettext as _
+
+from .i18n import gettext as _
 
 _loop = None
 _lock = threading.Lock()

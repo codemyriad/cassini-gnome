@@ -57,6 +57,25 @@ identity = read(args.datadir / "build-info.json")
 if not verified(identity, args.datadir, args.datadir.parents[1] / "bin/cassini-talk"):
     sys.exit("installed build identity does not match the package payload")
 print("installed build identity verified: " + identity["buildId"])
+
+# Single-file Flatpak bundles must carry these too: a separate .Locale ref
+# is not part of the bundle. Exercise real installed MO lookup in every
+# package, including a worker that never ran the GUI launcher's setup.
+from cassini_talk.i18n import gettext as ui_text, using_language  # noqa: E402
+from cassini_talk.strings import text as catalog_text  # noqa: E402
+
+for tag, ui_language, expected in [
+    ("en", "en", "Open…"), ("it", "it", "Apri…"), ("fr", "fr", "Ouvrir…"),
+    ("es", "es", "Abrir…"), ("pt_BR", "pt-BR", "Abrir…"), ("pt_PT", "pt-PT", "Abrir…"),
+]:
+    if not (args.datadir.parent / "locale" / tag / "LC_MESSAGES/cassini-talk.mo").is_file():
+        sys.exit("installed UI catalog is missing: " + tag)
+    with using_language(ui_language):
+        if ui_text("Open…") != expected or not catalog_text("common.record"):
+            sys.exit("installed UI catalog lookup failed: " + tag)
+if not (args.datadir / "cassini_talk/CLDR-LICENSE.txt").is_file():
+    sys.exit("installed CLDR license is missing")
+print("all six installed UI languages and CLDR notice verified")
 from gi.repository import Adw, Gst, Gtk  # noqa: E402
 
 gtk = f"{Gtk.get_major_version()}.{Gtk.get_minor_version()}.{Gtk.get_micro_version()}"

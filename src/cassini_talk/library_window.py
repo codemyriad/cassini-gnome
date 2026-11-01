@@ -4,7 +4,6 @@
 import os
 import time
 from functools import partial
-from gettext import gettext as _
 from pathlib import Path
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
@@ -12,6 +11,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 from . import ux_formats as fmt
 from .capture_activity import BrowserActivity, application_activity
 from .folder_player import FolderPlayer
+from .i18n import gettext as _
 from .library import meeting_id
 from .library_monitor import LibraryMonitor
 from .player import Player

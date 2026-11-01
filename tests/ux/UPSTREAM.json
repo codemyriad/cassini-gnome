@@ -99,7 +99,7 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "8d74828e2d4f12f9643aa8d5303eeaeb581bf81e8898591ecd0d7432b7e4d65d",
+    "strings.json": "2803cc55e04ef7faea56984ace606e1e3e4af90cf03867494e6c4e28d68983a8",
     "LIBRARY.md": "6cd4063cdd58567c75a4733c8862e9fe0983863df890b86a91e9a9bb17749751",
     "session-events/session.json": "6bcec60cf4024421b57683d86a44d7ffd92efdc84a3e5b67e24cb09fcfb55723",
     "session-events/expected.json": "905ad1966fa3cac23aa348109d4f694a5606ea685f3a5689cc052cf092a8a920",
@@ -133,16 +133,20 @@
   },
   "additionalSources": {
     "strings.json": {
-      "commit": "2e7777c66f42e9476f67ec436bc1ebcd4010dfd7",
-      "note": "D48: approved publication copy and optional original speaker label, verbatim",
-      "additions": [
-        {
-          "source": "roy:/mnt/ai/cassini/i18n/pending/d52-strings.json",
-          "decision": "D52.1",
-          "sha256": "6284099c78168ed210983748f628d60ac800ad4ea0bb58b17d2f7bd2d75ff738",
-          "note": "Coordinator-published exact entries in six languages, retained verbatim; drmeyers unavailable"
-        }
-      ]
+      "source": "roy:/mnt/ai/cassini/i18n",
+      "decision": "D50/D50.1/D50.2",
+      "note": "Coordinator fallback catalog merged with merge.py and out/<lang>.json, followed by exact pending d52 and d50 entries; resync when drmeyers returns",
+      "inputs": {
+        "strings.json": "6c88e1096f555fb93f83c85b62077f1c621a6dbc030a5f1018cc9e2b4bebcb38",
+        "merge.py": "ce3b6e253def546a977055c3a12c8462b883b4796f6a89052dc9e8168740a3e1",
+        "out/es.json": "4b793988e4a0b04308aaba1a575c829b65bf03b699ea71744148628e2e2ca589",
+        "out/fr.json": "583fc416109c0f1d43e0d7f83d6560638e56c5b87dd8962eab74968cdbabbda4",
+        "out/it.json": "fe670b4092e197dfe51adacc3ec57fed4cfcc5e9ec86034278124b8f441f5167",
+        "out/pt-BR.json": "e7a19abb7b648147f5cf44e97647f608942dcc9ca1be541422862019904c72da",
+        "out/pt-PT.json": "9ff9ecaa5c81af94f19116c45fcf26f9fa77bc35b2e57d72c21909176397f070",
+        "pending/d52-strings.json": "6284099c78168ed210983748f628d60ac800ad4ea0bb58b17d2f7bd2d75ff738",
+        "pending/d50-strings.json": "88c7dd4818fba24757b662696e8e4a5da1d21080dd30de915a937d5764605597"
+      }
     },
     "LIBRARY-RULES.md": {
       "commit": "c74460bc61ea498dcf821e628190266348486345",

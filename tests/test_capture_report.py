@@ -4,6 +4,7 @@
 import base64
 import hashlib
 import json
+import locale
 import shutil
 
 import pytest
@@ -180,7 +181,7 @@ def test_recording_details_keep_gaps_and_end_after_session_cache_is_deleted(tmp_
     (meeting,) = LibraryScanner(root).scan().meetings
     report = read_details(meeting)
     gaps = dict(report.health)[text("details.health.gaps")]
-    assert "24,000 frames" in gaps and "0.5 s" in gaps
+    assert locale.localize("24000", grouping=True) + " frames" in gaps and "0.5 s" in gaps
     assert report.ended.startswith("Stopped by you")
     shutil.rmtree(session.directory)
     (meeting,) = LibraryScanner(root).scan().meetings

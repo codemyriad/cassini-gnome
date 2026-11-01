@@ -5,12 +5,12 @@ import logging
 import time
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from dataclasses import replace
-from gettext import gettext as _
 
 from gi.repository import Gio, GLib, Gtk
 
 from . import ux_formats as fmt
 from .capture_guard import browser_capture_busy, capture_targets, native_recorders, recorder_busy
+from .i18n import gettext as _
 from .recording_details import SilenceClock, edit_recording, live_meeting, live_observation
 from .session_events import meeting_sources, source_state
 from .strings import text

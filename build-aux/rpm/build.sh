@@ -26,6 +26,9 @@ container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z
   spec=$top/SPECS/cassini-talk.spec
   install -m 644 /in/build-aux/rpm/cassini-talk.spec "$spec"
   if command -v dnf >/dev/null 2>&1; then
+    # The minimal Fedora image otherwise installs only en_US translations.
+    mkdir -p /etc/rpm
+    printf "%%_install_langs en:it:fr:es:pt_BR:pt_PT\n" > /etc/rpm/macros.zz-cassini-languages
     dnf -y install rpm-build tar xz "dnf-command(builddep)"
     dnf -y --setopt=install_weak_deps=False builddep "$spec"
     dnf -y install rpmlint || true
@@ -91,6 +94,8 @@ rpm_name=$(cat "dist/$name_file") && rm -f "dist/$name_file"
 # there with no network, writing the D11 goldens down offline.
 container_offline_smoke "$BASE" '
   if command -v dnf >/dev/null 2>&1; then
+    mkdir -p /etc/rpm
+    printf "%%_install_langs en:it:fr:es:pt_BR:pt_PT\n" > /etc/rpm/macros.zz-cassini-languages
     # Without weak deps: this checks that Requires alone are enough.
     dnf -y -q --setopt=install_weak_deps=False install "/d/$RPM"
     dnf clean all >/dev/null

@@ -5,7 +5,7 @@ Name:           cassini-talk
 Version:        0.3.0
 Release:        2%{?dist}
 Summary:        Record meetings and read along with their transcripts
-License:        GPL-3.0-or-later AND Apache-2.0 AND MIT
+License:        GPL-3.0-or-later AND Apache-2.0 AND MIT AND Unicode-3.0
 URL:            https://github.com/codemyriad/cassini-gnome
 Source0:        %{name}-%{version}.tar.xz
 # The offline writing-down bundle, pinned with its sha256 in whistle/pins.json
@@ -202,6 +202,7 @@ python3 sherpa/fetch.py --cache .sherpa-cache --verify %{buildroot}%{_libdir}/ca
 
 %files -f %{name}.lang
 %license COPYING
+%license src/cassini_talk/CLDR-LICENSE.txt
 %license whistle/NOTICE.md whistle/LICENSE-Apache-2.0.txt whistle/LICENSE-Silero-MIT.txt
 %license whistle/LICENSE-ONNXRuntime-MIT.txt
 %license %{_datadir}/licenses/%{name}/sherpa

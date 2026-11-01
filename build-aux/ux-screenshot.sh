@@ -26,7 +26,8 @@ export XDG_CONFIG_HOME="$runtime/config" XDG_CACHE_HOME="$runtime/cache" XDG_DAT
 export GSK_RENDERER=cairo GDK_BACKEND=x11 GSETTINGS_BACKEND=memory
 export ADW_DISABLE_PORTAL=1 ADW_DEBUG_ACCENT_COLOR=blue
 export GIO_USE_VFS=local GTK_USE_PORTAL=0
-export TZ=Europe/Rome LANG=en_GB.UTF-8 LC_ALL=en_GB.UTF-8 LANGUAGE=en_GB
+export TZ=Europe/Rome LANG=en_GB.UTF-8 LC_ALL=en_GB.UTF-8
+export LANGUAGE="${CASSINI_SCREENSHOT_LANGUAGE:-en_GB}"
 export PULSE_SERVER="unix:$runtime/no-audio.sock" PIPEWIRE_REMOTE=cassini-ux-no-audio
 fonts=${CASSINI_SCREENSHOT_FONT_DIR:-/usr/share/fonts/opentype}
 [ -f "$fonts/cantarell/Cantarell-VF.otf" ] || { echo "Install pinned Cantarell or set CASSINI_SCREENSHOT_FONT_DIR" >&2; exit 1; }

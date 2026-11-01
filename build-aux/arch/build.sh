@@ -22,6 +22,9 @@ mkdir -p dist
 # Per base image, so parallel builds do not swap names.
 name_file=.pkg-name-$(image_slug "$BASE")
 container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z "$BASE" sh -ec '
+  # The minimal image excludes non-English MO files. Preserve Cassini
+  # catalogs for the real installed-language smoke test.
+  printf "\nNoExtract = !usr/share/locale/*/LC_MESSAGES/cassini-talk.mo\n" >> /etc/pacman.conf
   pacman -Syu --noconfirm --needed base-devel
   useradd -m builder
   echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
@@ -70,6 +73,7 @@ pkg_name=$(cat "dist/$name_file") && rm -f "dist/$name_file"
 # hide a missing dependency; install the package in a fresh container, then
 # check it there with no network, writing the D11 goldens down offline.
 container_offline_smoke "$BASE" '
+  printf "\nNoExtract = !usr/share/locale/*/LC_MESSAGES/cassini-talk.mo\n" >> /etc/pacman.conf
   pacman -Syu --noconfirm --noprogressbar -q >/dev/null
   pacman -U --noconfirm --noprogressbar "/d/$PKG" >/dev/null
   pacman -Scc --noconfirm >/dev/null

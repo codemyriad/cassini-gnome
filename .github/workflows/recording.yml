@@ -45,7 +45,11 @@ jobs:
       - run: python3 browser-protocol/verify.py --pinned browser-extension
       - run: npm ci --prefix tests/recording
       - run: tests/recording/node_modules/.bin/playwright install --with-deps chromium
-      - run: /usr/bin/python3 -m pytest -q
+      - name: Python tests with private data on the temporary-file filesystem
+        run: |
+          # GIO's home Trash must share a filesystem with the test Library.
+          pytest_root=$(mktemp -d "$HOME/cassini-pytest.XXXXXX")
+          XDG_DATA_HOME="$pytest_root/data" /usr/bin/python3 -m pytest -q --basetemp="$pytest_root/tmp"
       # The canonical test tree includes its adjacent conformance vectors.
       # verify.py above proves the installed extension is byte-identical.
       - run: node --test browser-protocol/extension/tests/*.test.cjs

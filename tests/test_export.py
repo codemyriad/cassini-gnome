@@ -4,13 +4,16 @@
 import array
 import hashlib
 import json
+import locale
 import math
 import runpy
 import sys
 import threading
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -26,6 +29,7 @@ from cassini_talk.recording_session import RecordingSession
 HERE = Path(__file__).parent / "export"
 ASSETS = Path(__file__).parents[1] / "ux/library-vectors/assets"
 MARKDOWN = json.loads((HERE / "markdown-cases.json").read_text())["cases"]
+DATE_WORDS = json.loads((Path(__file__).parent / "i18n/date-lines.json").read_text())
 ENCODES = json.loads((HERE / "export-vectors.json").read_text())["vectors"]
 
 
@@ -35,8 +39,33 @@ def test_export_contract_bytes_are_pinned():
 
 
 @pytest.mark.parametrize("case", MARKDOWN, ids=lambda c: c["name"])
-def test_shared_markdown_golden(case):
-    assert markdown(case["input"]).encode() == case["expected"].encode()
+def test_shared_markdown_golden(case, monkeypatch):
+    # Inject the fixture's formatting preferences without mutating the global
+    # locale or requiring optional libc locale tables in the core profile.
+    us = case["input"]["formattingLocale"] == "en_US"
+    monkeypatch.setattr(locale, "nl_langinfo", lambda _field: "%r" if us else "%H:%M:%S")
+    monkeypatch.setattr(locale, "getlocale", lambda _category: ("en_US" if us else "en_GB", "UTF-8"))
+    expected = case["expected"]
+    if "{DATE_LINE}" in expected:
+        from cassini_talk.i18n import using_language
+        from cassini_talk.ux_formats import meeting_duration
+
+        value = case["input"]
+        local = datetime.fromtimestamp(value["startMs"] / 1000, ZoneInfo(value["tz"]))
+        # These fixtures explicitly request English regional clock conventions.
+        # Keep the reference independent of the application's clock formatter,
+        # including when the test process itself has a non-English LC_TIME.
+        clock = (
+            f"{local.hour % 12 or 12}:{local.minute:02d} {'AM' if local.hour < 12 else 'PM'}"
+            if us
+            else local.strftime("%H:%M")
+        )
+        with using_language(value["uiLanguage"]):
+            formatted = DATE_WORDS[local.date().isoformat()][value["uiLanguage"]] + ", " + clock
+            if value.get("durationMs") is not None:
+                formatted += " · " + meeting_duration(value["durationMs"])
+            expected = expected.replace("{DATE_LINE}", formatted)
+    assert markdown(case["input"]).encode() == expected.encode()
 
 
 @pytest.mark.parametrize("case", ENCODES, ids=lambda c: c["name"])

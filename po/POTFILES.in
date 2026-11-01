@@ -12,3 +12,6 @@ src/cassini_talk/recording_window.py
 src/cassini_talk/browser_notifications.py
 src/cassini_talk/export_dialog.py
 src/cassini_talk/library_window.py
+src/cassini_talk/ux_formats.py
+src/cassini_talk/recording_comfort.py
+src/cassini_talk/recording_session.py

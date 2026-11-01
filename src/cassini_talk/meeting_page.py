@@ -2,6 +2,7 @@
 """Pushed Meeting page, with virtualised timed transcript items and transport."""
 
 from bisect import bisect_right
+from decimal import Decimal
 
 from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
 
@@ -212,7 +213,7 @@ class MeetingPage(Adw.NavigationPage):
         bar.append(self.total)
         rates = Gio.Menu()
         for rate in ("0.75", "1", "1.25", "1.5", "1.75", "2"):
-            item = Gio.MenuItem.new(text("format.playbackRate", rate=rate), None)
+            item = Gio.MenuItem.new(text("format.playbackRate", rate=Decimal(rate)), None)
             item.set_action_and_target_value("win.rate", GLib.Variant("s", rate))
             rates.append_item(item)
         # The internal toggle owns GTK's AT-SPI action. Name that real
@@ -230,7 +231,7 @@ class MeetingPage(Adw.NavigationPage):
         # their text. Use the displayed label from our fixed menu model.
         if widget.find_property("text"):
             caption = widget.get_property("text")
-            if caption in {text("format.playbackRate", rate=rate) for rate in self.window.RATES}:
+            if caption in {text("format.playbackRate", rate=Decimal(rate)) for rate in self.window.RATES}:
                 if not getattr(widget, "_cassini_rate_name", False):
                     widget._cassini_rate_name = True
                     widget.connect("notify::active", self._name_rate_items)
@@ -242,7 +243,7 @@ class MeetingPage(Adw.NavigationPage):
             child = child.get_next_sibling()
 
     def rate_changed(self, rate):
-        value = text("format.playbackRate", rate=f"{rate:g}")
+        value = text("format.playbackRate", rate=Decimal(f"{rate:g}"))
         self.rate_button.set_label(value)
         name = text("player.speed.a11y", rate=value)
         self.rate_button.update_property([Gtk.AccessibleProperty.LABEL], [name])
