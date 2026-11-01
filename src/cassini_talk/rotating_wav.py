@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Physical WAV rotation inside one logical capture source; original PCM is retained."""
 
+import errno
 from uuid import uuid4
 
 from .capture_clock import ClockAnchors, mapped_end_sample
+from .recording_session import SourceIOError
 
 
 class RotatingWAV:
@@ -86,6 +88,11 @@ class RotatingWAV:
         # Publish the reference and fsync the empty WAV before accepting any
         # new PCM. A crash can never strand an unreferenced later span.
         self.session.checkpoint()
+        if self.identifier in self.session._failed_writers:
+            # A negotiated checkpoint can retire/close this new WAV while
+            # successfully persisting the rest of the capture. Do not resume
+            # the pending PCM (or silence) append on that closed writer.
+            raise SourceIOError(self.identifier, OSError(errno.EIO, "Audio source retired during WAV rotation"))
 
     def append(self, data):
         if len(data) > self.max_bytes:

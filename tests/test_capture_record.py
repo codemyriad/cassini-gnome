@@ -575,6 +575,90 @@ def test_checkpoint_retires_only_the_writer_that_cannot_sync_and_keeps_healthy_p
         host.close()
 
 
+@pytest.mark.parametrize("selected", [False, True], ids=["direct", "selected"])
+@pytest.mark.parametrize("offset", [100, 1100], ids=["pcm", "gap-padding"])
+def test_rotation_checkpoint_refuses_retired_source_before_pending_pcm(tmp_path, monkeypatch, selected, offset):
+    import os
+    import wave
+
+    from cassini_talk.rotating_wav import RotatingWAV
+
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path / "Library"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    host = BrowserHost()
+    host.handle(dict(type="start", features=["source-outcomes-v1"], captureId="capture-a"))
+    session = host.session
+    session.writer_factory = lambda p, r, c: WAVWriter(p, r, c, max_bytes=1600)
+    if selected:
+        host.audio_sink = BrowserStreams(session)
+    for identifier in ("A", "B"):
+        assert host.handle(dict(declare(identifier, "receiver-" + identifier), sampleRate=8000)) == dict(type="ack")
+        assert host.handle(pcm(identifier, 800, value=b"\x01\x00")) == dict(type="ack")
+        assert isinstance(session.writers[identifier], RotatingWAV)
+    session.add_track("native-mic", "Me", "microphone", 8000, 1, label_source="device")
+    session.append_native("native-mic", b"\x02\x00" * 800, 0)
+    factory, fsync = session.writer_factory, os.fsync
+    failed_span, pending_appends, sync_failures = [], [], []
+
+    def new_span(path, rate, channels):
+        writer = factory(path, rate, channels)
+        if not failed_span:
+            failed_span.append(path)
+            append = writer.append
+
+            def checked(data):
+                pending_appends.append(data)
+                return append(data)
+
+            writer.append = checked
+        return writer
+
+    def sync(fd):
+        if failed_span and os.readlink(f"/proc/self/fd/{fd}") == str(failed_span[0]):
+            sync_failures.append(True)
+            raise OSError(errno.ENOSPC, "Generated new-span fsync failure")
+        return fsync(fd)
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(session, "writer_factory", new_span)
+            patch.setattr(os, "fsync", sync)
+            # B is full, so this real wire packet rotates it automatically.
+            # Its empty new WAV is retired by checkpoint() before append.
+            refusal = host.handle(pcm("B", 800, sequence=1, offset=offset))
+            assert refusal["type"] == "error" and refusal["code"] == "io"
+            assert refusal["scope"] == "source" and refusal["id"] == "B"
+            assert sync_failures and not pending_appends
+            assert not session.finished and not host.stopped
+            assert session.writers["B"].file.closed and session.writers["B"].frames == 800
+            assert host.handle(pcm("A", 800, sequence=1, offset=100, value=b"\x03\x00")) == dict(type="ack")
+            session.append_native("native-mic", b"\x04\x00" * 800, 100)
+            retired = host.handle(dict(type="trackEnd", id="B", reason="retry", droppedFrames=0, endOffsetMs=None))
+            assert retired["scope"] == "source" and retired["retired"]
+            assert stop(host)["type"] == "stopped"
+        saved = json.loads((session.directory / "session.json").read_text())
+        assert saved["state"] == "interrupted" and saved["problemKind"] == "io"
+        tracks = {track["id"]: track for track in saved["tracks"]}
+        assert tracks["B"]["frames"] == 800 and tracks["B"]["droppedFrames"] == 800
+        assert [span["frames"] for span in tracks["B"]["spans"]] == [800, 0]
+        outcomes = {row["sourceTrackId"]: row for row in saved["captureOutcome"]["sources"]}
+        assert outcomes["receiver-B"]["captureOutcome"] == "failed"
+        assert outcomes["receiver-A"]["audioMs"] == 200
+        for identifier, expected in {
+            "A": b"\x01\x00" * 800 + b"\x03\x00" * 800,
+            "B": b"\x01\x00" * 800,
+            "native-mic": b"\x02\x00" * 800 + b"\x04\x00" * 800,
+        }.items():
+            actual = bytearray()
+            for span in tracks[identifier]["spans"]:
+                with wave.open(str(session.directory / span["file"]), "rb") as audio:
+                    assert audio.getnframes() == span["frames"]
+                    actual.extend(audio.readframes(audio.getnframes()))
+            assert actual == expected
+    finally:
+        host.close()
+
+
 @pytest.mark.parametrize("stage", ["manifest-flush", "manifest-fsync", "directory-fsync"])
 def test_manifest_and_directory_durability_errors_remain_fatal_after_writer_isolation(host, monkeypatch, stage):
     import os
