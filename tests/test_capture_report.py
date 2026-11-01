@@ -15,7 +15,7 @@ from cassini_talk.meeting_store import read_metadata, update_metadata
 from cassini_talk.recording_session import BrowserHost
 
 
-def captured(root):
+def captured(root, *, gap=False):
     host = BrowserHost(capture_parent(root))
     host.handle(dict(type="start", features=["source-outcomes-v1"], captureId="synthetic"))
     host.handle(
@@ -33,6 +33,10 @@ def captured(root):
         )
     )
     host.handle(dict(type="audio", id="zeros", sequence=0, offsetMs=0, pcm=base64.b64encode(bytes(96000)).decode()))
+    if gap:
+        host.handle(
+            dict(type="audio", id="zeros", sequence=1, offsetMs=1500, pcm=base64.b64encode(bytes(9600)).decode())
+        )
     host.handle(dict(type="stop", captureId="synthetic", reason="user"))
     return host.session
 
@@ -145,3 +149,58 @@ def test_seventy_announced_sources_are_not_pruned_by_portable_publication(tmp_pa
     assert len(record["sources"]) == 70 and len(record["tracks"]) == 1
     assert sum(row["captureOutcome"] == "neverAudio" for row in record["sources"]) == 69
     assert len(list(host.session.directory.glob("*.wav"))) == 1
+
+
+def test_recording_details_keep_gaps_and_end_after_session_cache_is_deleted(tmp_path):
+    pytest.importorskip("numpy")
+    gi = pytest.importorskip("gi")
+    try:
+        gi.require_version("Gst", "1.0")
+    except ValueError:
+        pytest.skip("Real publication requires GStreamer")
+    from cassini_talk.capture_details import read_details
+    from cassini_talk.strings import text
+
+    root = tmp_path / "Library"
+    session = captured(root, gap=True)
+    publish_stopped(session)
+    (meeting,) = LibraryScanner(root).scan().meetings
+    report = read_details(meeting)
+    gaps = dict(report.health)[text("details.health.gaps")]
+    assert "24,000 frames" in gaps and "0.5 s" in gaps
+    assert report.ended.startswith("Stopped by you")
+    shutil.rmtree(session.directory)
+    (meeting,) = LibraryScanner(root).scan().meetings
+    assert not (meeting.directory / "session.json").exists()
+    after = read_details(meeting)
+    assert dict(after.health)[text("details.health.gaps")] == gaps
+    assert after.ended == report.ended and after.spans == report.spans
+    assert not any("session.json" in note for note in after.notes)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("frames", True),
+        ("frames", -1),
+        ("sampleRate", 0),
+        ("startOffsetMs", float("nan")),
+        ("kind", []),
+        ("id", None),
+    ],
+)
+def test_file_only_details_ignore_invalid_track_facts_without_opening_audio(tmp_path, field, value):
+    from dataclasses import replace
+
+    from cassini_talk.capture_details import read_details
+
+    session = captured(tmp_path / "Library")
+    (meeting,) = LibraryScanner(tmp_path / "Library").scan().meetings
+    record = from_session(session.manifest)
+    record["tracks"][0][field] = value
+    meeting = replace(meeting, tracks=(), metadata=dict(meeting.metadata, recordingDetails=dict(captureRecord=record)))
+    shutil.rmtree(session.directory)
+    report = read_details(meeting)
+    assert report.spans == ()
+    assert report.ended.startswith("Stopped by you")
+    assert not meeting.directory.exists()  # Reporting never materializes audio/cache paths.

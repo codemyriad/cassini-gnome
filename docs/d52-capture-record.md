@@ -31,3 +31,10 @@ Pending: catalog publication and report/Recording UI, shared overlap-lane IDs
 (R64), private-data export policy for a shared copy, D49 ownership masking and
 initial stand-in transport adoption. These are held in the draft, with evidence
 and copy proposals in the pending REPLIES-GNOME append on roy.
+
+Recording details uses the embedded record when the stopped session cache is
+absent. Its original capture counters, source spans and end event remain facts
+about the capture even when the playable file has compacted tracks. This does
+not recreate cache folders or open paths from the report. Known invalid track
+facts are ignored; unknown offsets remain unknown and no levels are inferred.
+The display keeps the existing shared catalog and gap formatter.
