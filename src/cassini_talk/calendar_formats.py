@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .i18n import language
 
-CALENDARS = json.loads(Path(__file__).with_name("cldr-dates.json").read_text())["locales"]
+CALENDARS = json.loads(Path(__file__).with_name("cldr-dates.json").read_text(encoding="utf-8"))["locales"]
 
 
 def month(date, *, abbreviated=False):

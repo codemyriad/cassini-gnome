@@ -6,7 +6,10 @@ from pathlib import Path
 
 from .i18n import language, number, plural_category
 
-ENTRIES = {entry["id"]: entry for entry in json.loads(Path(__file__).with_name("strings.json").read_text())["entries"]}
+ENTRIES = {
+    entry["id"]: entry
+    for entry in json.loads(Path(__file__).with_name("strings.json").read_text(encoding="utf-8"))["entries"]
+}
 CATALOG = {identifier: entry["en"] for identifier, entry in ENTRIES.items()}
 
 

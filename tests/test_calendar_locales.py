@@ -4,6 +4,9 @@
 import hashlib
 import json
 import locale
+import os
+import subprocess
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -114,3 +117,23 @@ def test_vendored_cldr_bytes_and_license_are_pinned():
         assert hashlib.sha256((ROOT / name).read_bytes()).hexdigest() == expected
     assert set(calendar_formats.CALENDARS) == set(i18n.LANGUAGES)
     assert "UNICODE LICENSE V3" in (ROOT / "src/cassini_talk/CLDR-LICENSE.txt").read_text()
+
+
+def test_ui_words_decode_as_utf8_even_with_an_ascii_formatting_environment():
+    code = r"""
+from datetime import date
+from cassini_talk.calendar_formats import full_date
+from cassini_talk.strings import text
+assert '\u00e9' in full_date(date(2026, 12, 1))
+assert '\u00e9' in text('firstRun.body')
+print('ok')
+"""
+    result = subprocess.run(
+        [sys.executable, "-X", "utf8=0", "-c", code],
+        env=dict(os.environ, LANGUAGE="fr", LC_ALL="C", PYTHONCOERCECLOCALE="0", PYTHONPATH=str(ROOT / "src")),
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
+    assert result.stdout.strip() == "ok"
