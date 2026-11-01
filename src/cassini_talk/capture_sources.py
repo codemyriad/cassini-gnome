@@ -44,6 +44,8 @@ class WireTrack:
     start: float | None = None
     frames: int = 0
     recorded: str | None = None
+    # The latest stored span, kept after deselection for late wire facts.
+    last_recorded: str | None = None
     boundary: float = 0
     available: bool = True
     received_at: float | None = None
@@ -87,7 +89,8 @@ class BrowserStreams:
             label_source="browser",
             source_track_id=source_track_id,
         )
-        track.recorded, track.boundary = stored, boundary or 0
+        track.recorded = track.last_recorded = stored
+        track.boundary = boundary or 0
         track.recorded_at = None
         if boundary is not None:
             self.session.manifest["tracks"][-1]["startOffsetMs"] = boundary

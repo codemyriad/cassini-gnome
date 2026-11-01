@@ -849,11 +849,16 @@ class BrowserHost:
                 raise ProtocolError("source", "Invalid source end time")
             if identifier not in self.ended:
                 stored = self.audio_sink.tracks[identifier].recorded if self.audio_sink is not None else identifier
-                track = next((t for t in self.session.manifest["tracks"] if t["id"] == stored), None)
+                # The extension counts drops per wire track, with no position. Add
+                # them to the latest span that recorded it, even after deselection,
+                # without replacing the host's own write-loss count. A source that
+                # was never recorded lost nothing from the file.
+                counted = stored if self.audio_sink is None else self.audio_sink.tracks[identifier].last_recorded
+                track = next((t for t in self.session.manifest["tracks"] if t["id"] == counted), None)
                 if track is not None:
-                    track["droppedFrames"] = dropped
-                    if message["reason"] == "failed":
-                        self.session.capture_record.fail(self.session.manifest, stored)
+                    track["droppedFrames"] = track.get("droppedFrames", 0) + dropped
+                if message["reason"] == "failed" and any(t["id"] == stored for t in self.session.manifest["tracks"]):
+                    self.session.capture_record.fail(self.session.manifest, stored)
                 if message["reason"] == "failed":
                     root = self.declarations[identifier][3] or identifier
                     self.session.capture_record.seen[root]["failed"] = True
