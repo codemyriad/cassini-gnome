@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""D52 draft R64: do not sum conflicting spans of one browser source."""
+"""D52.1 / R64: do not sum conflicting spans of one browser source."""
 
 from fractions import Fraction
 
@@ -33,7 +33,7 @@ def bounds(track, *, display=False):
 def separate(tracks):
     """Keep input order; assign sorted spans to the lowest disjoint speaker lane.
 
-    Lane IDs are the R64 proposal, pending shared review. Reserve every ordinary
+    Lane IDs follow the approved R64 rule. Reserve every ordinary
     speaker ID first, since an opaque source ID can itself contain our suffix.
     Unknown offsets get their own lane; no timing or PCM is changed.
     """

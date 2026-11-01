@@ -11,11 +11,14 @@ import math
 import os
 import sys
 from dataclasses import dataclass
+from fractions import Fraction
 
 from . import ux_formats as fmt
 from .library_files import regular
 from .recording_session import strict_json
 from .session_events import read_events
+from .source_report import SourceFact
+from .source_report import sources as source_facts
 from .strings import text
 
 UNKNOWN = text("details.unknown")
@@ -58,6 +61,7 @@ REASONS = {
     "lost": text("details.reason.lost"),
     "user": text("details.reason.user"),
     "restored": text("details.reason.restored"),
+    "callConnected": text("details.reason.callConnected"),
 }
 ENDS = {
     "user": text("details.end.user"),
@@ -108,6 +112,7 @@ class Report:
     health: tuple[tuple[str, str], ...]
     writing: tuple[tuple[str, str], ...]
     notes: tuple[str, ...] = ()
+    sources: tuple[SourceFact, ...] = ()
 
     def plain_text(self):
         lines = [text("details.copy.heading"), self.title, "", text("details.capture.title")]
@@ -119,6 +124,11 @@ class Report:
                 lines.append("  " + text("details.copy.sideEmpty"))
         lines.extend(["", text("details.end.title"), self.ended, "", text("details.health.title")])
         lines.extend(f"{key}: {value}" for key, value in self.health)
+        lines.extend(["", text("details.sources.title")])
+        if not self.sources:
+            lines.append(text("details.sources.empty"))
+        for source in self.sources:
+            lines.extend((source.line, *source.gap_lines))
         lines.extend(["", text("details.writing.title")])
         lines.extend(f"{key}: {value}" for key, value in self.writing)
         lines.extend(["", text("details.files.title"), self.folder])
@@ -216,13 +226,60 @@ def _language(fd, notes):
     return ""
 
 
-def timeline(meeting, session):
+@dataclass(frozen=True)
+class _CapturedSpan:
+    id: str
+    kind: str
+    frames: int
+    sample_rate: int
+    start_offset_ms: int | float | None
+    source_track_id: str | None
+
+    @property
+    def display_end_ms(self):
+        return math.floor(Fraction(str(self.start_offset_ms or 0)) + Fraction(self.frames * 1000, self.sample_rate))
+
+
+def _captured_spans(record):
+    """Display-only facts, never audio paths or an invitation to open a file."""
+    from .recording_session import KINDS
+
+    rows = record.get("tracks", [])
+    if not isinstance(rows, list):
+        return ()
+    spans = []
+    for row in rows[:64]:
+        if not isinstance(row, dict):
+            continue
+        identifier, kind, frames, rate, offset = (
+            row.get(key) for key in ("id", "kind", "frames", "sampleRate", "startOffsetMs")
+        )
+        if (
+            not isinstance(identifier, str)
+            or not 0 < len(identifier) <= 200
+            or not isinstance(kind, str)
+            or kind not in KINDS
+            or type(frames) is not int
+            or not 0 < frames <= 9007199254740991
+            or type(rate) is not int
+            or not 8000 <= rate <= 192000
+            or offset is not None
+            and not number(offset)
+        ):
+            continue
+        identity = row.get("sourceTrackId")
+        identity = identity if isinstance(identity, str) else None
+        spans.append(_CapturedSpan(identifier, kind, frames, rate, offset, identity))
+    return tuple(spans)
+
+
+def timeline(meeting, session, *, tracks=None):
     """Track evidence sets intervals; known events explain source/selection changes."""
     events = read_events(session.get("events"))
     raw_tracks = session.get("tracks", [])
     raw_tracks = raw_tracks[:64] if isinstance(raw_tracks, list) else []
     raw = {t.get("id"): t for t in raw_tracks if isinstance(t, dict) and isinstance(t.get("id"), str)}
-    tracks = [t for t in meeting.tracks if t.frames > 0]
+    tracks = [t for t in (meeting.tracks if tracks is None else tracks) if t.frames > 0]
     duration = max([meeting.duration_ms or 0, *(t.display_end_ms for t in tracks)])
     points = {0, duration}
     for track in tracks:
@@ -405,23 +462,37 @@ def _separation(value):
 
 
 def read_details(meeting):
+    from .capture_report import stored as stored_capture
+
+    capture_record = stored_capture(meeting.metadata)
+    folder = str(meeting.audio_file.parent if meeting.audio_file else meeting.directory)
     notes = []
     try:
         fd = os.open(meeting.directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     except OSError:
-        return Report(
-            meeting.title,
-            str(meeting.directory),
-            meeting.lifecycle == "recording",
-            (),
-            _end(meeting, {}),
-            (),
-            (),
-            (text("details.folderUnavailable"),),
-        )
+        if capture_record is None:
+            return Report(
+                meeting.title,
+                folder,
+                meeting.lifecycle == "recording",
+                (),
+                _end(meeting, {}),
+                (),
+                (),
+                (text("details.folderUnavailable"),),
+            )
+        fd = None  # A committed file is readable without rebuilding its cache.
     try:
-        session = _json(fd, "session.json", notes, optional=meeting.origin == "received")
-        language = _language(fd, notes)
+        session = (
+            _json(fd, "session.json", notes, optional=meeting.origin == "received" or capture_record is not None)
+            if fd is not None
+            else {}
+        )
+        # The committed file carries these facts after the WAV/session cache is
+        # removed. Live session facts remain authoritative when they exist.
+        if not session and capture_record is not None:
+            session = {key: capture_record[key] for key in ("tracks", "events", "problemKind") if key in capture_record}
+        language = _language(fd, notes) if fd is not None else ""
         raw_tracks = session.get("tracks", [])
         raw_tracks = [t for t in raw_tracks[:64] if isinstance(t, dict)] if isinstance(raw_tracks, list) else []
         if not any(event["type"] in ("othersSource", "selection") for event in read_events(session.get("events"))):
@@ -436,14 +507,15 @@ def read_details(meeting):
         problem = clean(session.get("problemKind"))
         if problem or meeting.capture_source != "gnome":
             health.append((text("details.health.problem"), problem or UNKNOWN))
-        health.append((text("details.health.offset"), _offset(fd, meeting)))
+        health.append((text("details.health.offset"), _offset(fd, meeting) if fd is not None else UNKNOWN))
         from .output_mute import intervals
 
         if intervals(meeting.metadata):
             health.append((text("recordFirst.sound.title"), text("details.health.outputMuted")))
         health = tuple(health)
     finally:
-        os.close(fd)
+        if fd is not None:
+            os.close(fd)
     stored = meeting.metadata.get("transcript") or {}
     stored = stored if isinstance(stored, dict) else {}
     tag = clean(stored.get("model"))
@@ -458,6 +530,8 @@ def read_details(meeting):
     details = meeting.metadata.get("recordingDetails") or {}
     writing_facts = details.get("writingDown") if isinstance(details, dict) else None
     writing_facts = writing_facts if isinstance(writing_facts, dict) and meeting.transcript == "done" else {}
+    if writing_facts.get("sourceSpansSeparated") is True:
+        notes.append(text("details.sources.overlap"))
     wall_time = _wall_time(writing_facts.get("wallDurationMs"))
     if wall_time != UNKNOWN and writing_facts.get("resumed") is True:
         wall_time = text("details.writing.resumed", duration=wall_time)
@@ -477,11 +551,14 @@ def read_details(meeting):
         writing = tuple((name, text("details.writing.after")) for name, _value in writing)
     return Report(
         clean(meeting.title, 500),
-        str(meeting.directory),
+        folder,
         meeting.lifecycle == "recording",
-        timeline(meeting, session),
+        timeline(
+            meeting, session, tracks=_captured_spans(capture_record) if not meeting.tracks and capture_record else None
+        ),
         _end(meeting, session),
         health,
         writing,
         tuple(notes),
+        source_facts(session, meeting.metadata, live=meeting.lifecycle in ("recording", "saving")),
     )

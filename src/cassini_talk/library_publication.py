@@ -72,6 +72,10 @@ def publish_stopped(session, *, cancel=None):
     if root is None:
         return None
     check_cancel(cancel)
+    from .capture_report import record_capture
+
+    record_capture(session.directory, session.manifest)
+    check_cancel(cancel)
     return finalize.finalize(root, session.manifest["id"], cancel=cancel)
 
 
@@ -135,6 +139,9 @@ def recover_completed(
                 check_cancel(cancel)
                 started(directory)
                 began = True
+                from .capture_report import record_capture
+
+                record_capture(directory, session)
                 job = _ENCODER.submit(finalize.finalize, root, identifier, cancel=cancel)
                 while True:
                     try:

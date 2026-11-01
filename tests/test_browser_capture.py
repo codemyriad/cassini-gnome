@@ -998,7 +998,16 @@ def test_fresh_stop_can_be_reported_late_on_an_old_control_link(server):
         capture.fallback()
         peer.inventory(())
         wait_for(lambda: not request(path=path)["meetings"])
-        request("stop-all", path=path)
+        # This peer is alive: answer its real Stop instead of accidentally
+        # consuming the broker's 25 s dead-peer deadline during cleanup.
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(1) as pool:
+            stopped = pool.submit(request, "stop-all", path=path)
+            command = peer.receive()
+            assert command["action"] == "stop" and command["tabId"] == 3
+            peer.answer(command)
+            stopped.result(2)
         peer.inventory((7,))
         wait_for(lambda: len(request(path=path)["meetings"]) == 1)
         peer.inventory((3, 7))

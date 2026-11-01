@@ -26,6 +26,6 @@ sample at the seam. Microphone/local and application kinds are covered.
 
 This is the reader portion of G8. Initial native-only stand-in adoption still
 needs the R67 transport binding, and the portable source report/provenance is in
-the stacked #144 proposal. G1 conflict-lane IDs (R64) and R63 UI copy remain
-pending shared publication. No shared schema/catalog or library_v2 core is
-modified by this step.
+stacked #144. D52.1 approves the conflict-lane IDs, portable record and exact
+source-report copy. The resume transport remains a separate protocol PR.
+No library_v2 core is modified by this step.

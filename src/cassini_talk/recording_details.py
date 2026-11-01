@@ -2,6 +2,7 @@
 """Bounded recording observations and app-owned edits, independent of GTK."""
 
 import array
+import json
 import math
 import os
 import time
@@ -99,7 +100,18 @@ def recording_observation(meeting, *, freshness_seconds=1):
     voices = sum(t.kind == "remote" and t.ended is not True for t in meeting.tracks)
     recent_sound = False
     descriptor = os.open(meeting.directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    source_problem = False
     try:
+        from .source_report import live_problem
+
+        try:
+            with regular(descriptor, "session.json") as (stream, info):
+                if info.st_size <= 1024 * 1024:
+                    session = json.loads(stream.read(1024 * 1024 + 1))
+                    if isinstance(session, dict):
+                        source_problem = live_problem(session)
+        except (OSError, ValueError):
+            pass  # Unreadable facts are unknown; do not fabricate capture loss.
         for track in (span for logical in meeting.tracks for span in (logical.spans or (logical,))):
             # Live meters read growing WAVs only; compacted spans are never live.
             if track.ended is True or track.codec != "pcm":
@@ -135,6 +147,7 @@ def recording_observation(meeting, *, freshness_seconds=1):
         reserve=reserve,
         recent_sound=recent_sound,
         output_muted=currently_muted(meeting.metadata),
+        source_problem=source_problem,
     )
 
 

@@ -78,7 +78,7 @@ def writing_details(previous, facts):
     separation = dict(writing.pop("speakerSeparation", {}))
     for key in ("status", "modelId", "modelRevision", "speakersFound", "reused", "reason"):
         separation.pop(key, None)
-    for key in ("wallDurationMs", "resumed", "speechSegments"):
+    for key in ("wallDurationMs", "resumed", "speechSegments", "sourceSpansSeparated"):
         writing.pop(key, None)
     details["writingDown"] = dict(
         writing, **dict(facts, speakerSeparation=dict(separation, **facts["speakerSeparation"]))

@@ -8145,6 +8145,357 @@
    "milestone": "D44",
    "status": "harmony",
    "note": "Coordinator (D48, R56). The Library row's published file is gone from disk. Action: show the Library folder. Never call it interrupted and never silently re-publish it."
+  },
+  {
+   "id": "details.sources.title",
+   "en": "Audio sources",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "D52",
+   "note": "Coordinator (D52.1, GNOME R63/R69). Recording details section: source accounting, including a source that never opened a WAV.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Sorgenti audio"
+    },
+    "fr": {
+     "text": "Sources audio"
+    },
+    "es": {
+     "text": "Fuentes de audio"
+    },
+    "pt-BR": {
+     "text": "Fontes de áudio"
+    },
+    "pt-PT": {
+     "text": "Fontes de áudio"
+    }
+   }
+  },
+  {
+   "id": "details.sources.captured",
+   "en": "{source}: {duration} recorded.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D52",
+   "placeholders": {
+    "source": "source display name (person, This computer, Microphone)",
+    "duration": "localized meetingDuration"
+   },
+   "note": "Coordinator (D52.1, GNOME R63/R69). Received audio includes zero/DC samples; padding is excluded.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{source}: registrato per {duration}."
+    },
+    "fr": {
+     "text": "{source} : {duration} d’enregistrement."
+    },
+    "es": {
+     "text": "{source}: {duration} de grabación."
+    },
+    "pt-BR": {
+     "text": "{source}: {duration} de gravação."
+    },
+    "pt-PT": {
+     "text": "{source}: {duration} de gravação."
+    }
+   }
+  },
+  {
+   "id": "details.sources.neverAudio",
+   "en": "{source}: no audio was received.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D52",
+   "placeholders": {
+    "source": "source display name (person, This computer, Microphone)"
+   },
+   "note": "Coordinator (D52.1, GNOME R63/R69). Finished capture only. Announced but no admitted PCM.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{source}: nessun audio ricevuto."
+    },
+    "fr": {
+     "text": "{source} : aucun son reçu."
+    },
+    "es": {
+     "text": "{source}: no se recibió audio."
+    },
+    "pt-BR": {
+     "text": "{source}: nenhum áudio recebido."
+    },
+    "pt-PT": {
+     "text": "{source}: não foi recebido áudio."
+    }
+   }
+  },
+  {
+   "id": "details.sources.lowAudio",
+   "en": "{source}: only {duration} of audio was received.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D52",
+   "placeholders": {
+    "source": "source display name (person, This computer, Microphone)",
+    "duration": "localized meetingDuration"
+   },
+   "note": "Coordinator (D52.1, GNOME R63/R69). Finished capture only. More than zero and less than the shared 1000 ms threshold.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{source}: ricevuti solo {duration} di audio."
+    },
+    "fr": {
+     "text": "{source} : seulement {duration} de son."
+    },
+    "es": {
+     "text": "{source}: solo se recibieron {duration} de audio."
+    },
+    "pt-BR": {
+     "text": "{source}: só {duration} de áudio recebidos."
+    },
+    "pt-PT": {
+     "text": "{source}: só foram recebidos {duration} de áudio."
+    }
+   }
+  },
+  {
+   "id": "details.sources.failed",
+   "en": "{source}: audio couldn’t be recorded.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D52",
+   "placeholders": {
+    "source": "source display name (person, This computer, Microphone)"
+   },
+   "note": "Coordinator (D52.1, GNOME R63/R69). Sticky source-local failure, including before any WAV opened; other sources may be healthy.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{source}: non è stato possibile registrare l’audio."
+    },
+    "fr": {
+     "text": "{source} : impossible d’enregistrer le son."
+    },
+    "es": {
+     "text": "{source}: no se pudo grabar el audio."
+    },
+    "pt-BR": {
+     "text": "{source}: não foi possível gravar o áudio."
+    },
+    "pt-PT": {
+     "text": "{source}: não foi possível gravar o áudio."
+    }
+   }
+  },
+  {
+   "id": "details.sources.gap",
+   "en": "{source}: {duration} of audio is missing.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D52",
+   "placeholders": {
+    "source": "source display name (person, This computer, Microphone)",
+    "duration": "localized meetingDuration"
+   },
+   "note": "Coordinator (D52.1, GNOME R63/R69). From explicit dropped/padded frame counters, never from quiet audio.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{source}: mancano {duration} di audio."
+    },
+    "fr": {
+     "text": "{source} : il manque {duration} de son."
+    },
+    "es": {
+     "text": "{source}: faltan {duration} de audio."
+    },
+    "pt-BR": {
+     "text": "{source}: faltam {duration} de áudio."
+    },
+    "pt-PT": {
+     "text": "{source}: faltam {duration} de áudio."
+    }
+   }
+  },
+  {
+   "id": "details.sources.empty",
+   "en": "No audio sources were reported.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D52",
+   "note": "Coordinator (D52.1, GNOME R63/R69). Unknown inventory, never a claim that everybody was recorded.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Nessuna sorgente audio segnalata."
+    },
+    "fr": {
+     "text": "Aucune source audio signalée."
+    },
+    "es": {
+     "text": "No se informó ninguna fuente de audio."
+    },
+    "pt-BR": {
+     "text": "Nenhuma fonte de áudio informada."
+    },
+    "pt-PT": {
+     "text": "Nenhuma fonte de áudio comunicada."
+    }
+   }
+  },
+  {
+   "id": "details.sources.notSelected",
+   "en": "{source}: not selected for recording.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D52",
+   "placeholders": {
+    "source": "source display name (person, This computer, Microphone)"
+   },
+   "note": "Coordinator (D52.1, GNOME R63/R69). Neutral status (R69): the source was never selected, so its absence is intentional.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{source}: non fa parte della registrazione."
+    },
+    "fr": {
+     "text": "{source} : ne fait pas partie de l’enregistrement."
+    },
+    "es": {
+     "text": "{source}: no forma parte de la grabación."
+    },
+    "pt-BR": {
+     "text": "{source}: não faz parte da gravação."
+    },
+    "pt-PT": {
+     "text": "{source}: não faz parte da gravação."
+    }
+   }
+  },
+  {
+   "id": "details.sources.overlap",
+   "en": "Overlapping audio was kept as separate speakers.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D52",
+   "note": "Coordinator (D52.1, GNOME R63/R69). G1/R64: conflicting spans of one source identity are not summed.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "L’audio sovrapposto è stato tenuto come voci separate."
+    },
+    "fr": {
+     "text": "Les sons qui se chevauchaient ont été conservés comme intervenants distincts."
+    },
+    "es": {
+     "text": "El audio superpuesto se conservó como hablantes distintos."
+    },
+    "pt-BR": {
+     "text": "O áudio sobreposto foi mantido como locutores distintos."
+    },
+    "pt-PT": {
+     "text": "O áudio sobreposto foi mantido como oradores distintos."
+    }
+   }
+  },
+  {
+   "id": "details.reason.callConnected",
+   "en": "The call connected, so Cassini started recording each person separately.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D52",
+   "note": "Coordinator (D52.1, GNOME R63/R69). D49: the others switched from system sound (or missing) to per-person browser tracks; distinct from restoring a lost source.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "La chiamata si è connessa, quindi Cassini ha iniziato a registrare ogni persona separatamente."
+    },
+    "fr": {
+     "text": "L’appel s’est connecté : Cassini a commencé à enregistrer chaque personne séparément."
+    },
+    "es": {
+     "text": "La llamada se conectó, así que Cassini empezó a grabar a cada persona por separado."
+    },
+    "pt-BR": {
+     "text": "A chamada foi conectada, então o Cassini começou a gravar cada pessoa separadamente."
+    },
+    "pt-PT": {
+     "text": "A chamada ligou-se, por isso o Cassini começou a gravar cada pessoa em separado."
+    }
+   }
+  },
+  {
+   "id": "recording.sourceProblem",
+   "en": "Some audio couldn’t be recorded. Cassini keeps recording the rest.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D52",
+   "note": "Coordinator (D52.1, GNOME R63/R69). Live Recording page only after a source-local terminal or IO failure, not normal startup.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Non è stato possibile registrare una parte dell’audio. Cassini continua a registrare il resto."
+    },
+    "fr": {
+     "text": "Une partie du son n’a pas pu être enregistrée. Cassini continue d’enregistrer le reste."
+    },
+    "es": {
+     "text": "No se pudo grabar parte del audio. Cassini sigue grabando el resto."
+    },
+    "pt-BR": {
+     "text": "Não foi possível gravar parte do áudio. O Cassini continua gravando o resto."
+    },
+    "pt-PT": {
+     "text": "Não foi possível gravar parte do áudio. O Cassini continua a gravar o resto."
+    }
+   }
   }
  ]
 }
