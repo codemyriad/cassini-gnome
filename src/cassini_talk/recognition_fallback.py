@@ -22,6 +22,8 @@ MIN_WINDOW_ACTIVE_SECONDS = 0.5
 ACTIVE_DBFS = -50.0
 FLOOR_MARGIN_DB = 12.0
 FLOOR_PERCENTILE = 0.10
+FLOOR_FRAMES = 10 * RATE // FRAME  # non-silent frames needed to estimate a noise floor
+MIN_RUN_FRAMES = 5  # active runs shorter than 160 ms (clicks, taps) are not speech
 SILENT = 255  # frame code for digital silence (zero after mean removal)
 
 # gocassini stt.go word energy gate.
@@ -62,23 +64,32 @@ class ActivityMeter:
             self.codes.append(SILENT if level <= 0 else int(min(120, max(0, round(120 + 20 * math.log10(level))))))
 
     def threshold_db(self):
-        """max(-50 dBFS, floor + 12 dB).
+        """max(-50 dBFS, floor + 12 dB), the floor taken over audible frames only.
 
-        Digital silence counts at the bottom of the floor percentile: a sparse
-        per-person track is mostly silence, and a floor taken over its speech
-        alone would rise above that speech.
+        Digital silence and near-silence never lower the floor, so adding them
+        cannot make steady noise count as active. Speech keeps quiet frames
+        between words, so a sparse speech track still finds a low floor. With
+        too few audible frames to estimate a floor, -50 dBFS applies alone.
         """
-        if not self.codes:
-            return None, None
-        levels = sorted(0 if code == SILENT else code for code in self.codes)
-        floor = max(-90.0, levels[int(FLOOR_PERCENTILE * (len(levels) - 1))] - 120.0)
+        levels = sorted(code for code in self.codes if code != SILENT and code - 120 > -90)
+        if len(levels) < FLOOR_FRAMES:
+            return None, ACTIVE_DBFS
+        floor = levels[int(FLOOR_PERCENTILE * (len(levels) - 1))] - 120.0
         return floor, max(ACTIVE_DBFS, floor + FLOOR_MARGIN_DB)
 
     def active(self):
         _floor, threshold = self.threshold_db()
-        if threshold is None:
-            return [False] * len(self.codes)
-        return [code != SILENT and code - 120 >= threshold for code in self.codes]
+        loud = [code != SILENT and code - 120 >= threshold for code in self.codes]
+        # Keep only runs of at least MIN_RUN_FRAMES consecutive loud frames.
+        active, run = [False] * len(loud), 0
+        for index, value in enumerate(loud + [False]):
+            if value:
+                run += 1
+                continue
+            if run >= MIN_RUN_FRAMES:
+                active[index - run : index] = [True] * run
+            run = 0
+        return active
 
     def active_seconds(self, active=None):
         active = self.active() if active is None else active
@@ -112,24 +123,35 @@ def active_windows(total, active):
 
 
 def audio_windows(chunks, windows, heartbeat=None, *, clock=None):
-    """Sequential, possibly overlapping windows; at most one window plus one block resident."""
+    """Sorted, possibly overlapping windows with gaps between them.
+
+    Samples before each window are discarded as they are read, so at most one
+    window plus one block is resident however late or sparse the windows are.
+    """
     import time
 
     clock = clock or time.monotonic
     last_notice = clock()
-    data, data_start = np.empty(0, dtype="<f4"), 0
-    for index, (start, end) in enumerate(windows):
-        while data_start + len(data) < end:
+    data, data_start, cursor = np.empty(0, dtype="<f4"), 0, 0
+    for start, end in windows:
+        drop = min(max(0, start - data_start), len(data))
+        data, data_start = data[drop:], data_start + drop
+        while cursor < end:
             block = next(chunks, None)
             if block is None:
                 raise ValueError("Audio ended before its fallback window")
-            data = np.concatenate((data, block))
+            first, cursor = cursor, cursor + len(block)
             if heartbeat is not None and clock() - last_notice >= 1:
                 heartbeat()
                 last_notice = clock()
+            if cursor <= start:
+                continue
+            if first < start:
+                block, first = block[start - first :], start
+            if not len(data):
+                data_start = first
+            data = np.concatenate((data, block))
         yield data[start - data_start : end - data_start].copy()
-        keep = windows[index + 1][0] if index + 1 < len(windows) else end
-        data, data_start = data[max(0, keep - data_start) :], max(data_start, keep)
 
 
 def energetic(words, samples, base_ms):

@@ -477,6 +477,8 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
                     notify("progress", **event)
                     continue
                 held.append(event)
+                # Held events send nothing; keep the parent's reply deadline alive.
+                heartbeat()
                 if vad_words >= fallback.FEW_WORDS:
                     for event in held:
                         notify("progress", **event)
@@ -503,6 +505,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
             for (start, end), samples in zip(windows, fallback.audio_windows(chunks, windows, heartbeat), strict=True):
                 segment = dict(startSample=start, endSample=end, reason="noVadWindow")
                 event = recognise(order, track, segment, offset, samples, audio_end)
+                heartbeat()
                 base = math.floor(offset) + start * 1000 // RATE
                 kept = fallback.energetic(event["words"], samples, base)
                 for word in kept:

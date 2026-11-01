@@ -41,12 +41,19 @@ def tone(seconds, level=0.25):
     return level * np.sin(2 * np.pi * 300 * t)
 
 
-def bursts(seconds):
-    """Alternating one-second 300 Hz bursts and one-second digital silence."""
+def speech(seconds, *, silent=(), dc=0.0):
+    """Speech-like bursts on even seconds: 0.2 s quiet onset, then 0.8 s loud.
+
+    Odd seconds, and the half-open second ranges in silent, are digital silence.
+    """
     samples = tone(seconds)
-    for second in range(1, seconds, 2):
-        samples[second * RATE : (second + 1) * RATE] = 0
-    return samples
+    for second in range(seconds):
+        a, b = second * RATE, (second + 1) * RATE
+        if second % 2 or any(left <= second < right for left, right in silent):
+            samples[a:b] = 0
+        else:
+            samples[a : a + RATE // 5] *= 0.02 / 0.25
+    return samples + dc
 
 
 class RunModel:
@@ -102,27 +109,38 @@ def diagnostic(result, code):
 
 def test_vad_rejecting_everything_falls_back_to_windows_without_duplicating_the_seam(tmp_path, monkeypatch):
     model = RunModel()
-    result, progress, words = run(tmp_path, monkeypatch, bursts(32), model, 0.0, offset=1000)
+    result, progress, words = run(tmp_path, monkeypatch, speech(40), model, 0.0, offset=1000)
     assert result["segments"] == 0
     assert [(e["segment"]["startSample"], e["segment"]["endSample"]) for e in progress] == [
         (0, 240000),
         (232000, 472000),
-        (464000, 512000),
+        (464000, 640000),
     ]
     assert all(e["segment"]["reason"] == "noVadWindow" for e in progress)
     # One word per burst, including the burst at 14-15 s inside the first seam.
     starts = [w["startMs"] for w in words]
-    assert starts == [1000 + 2000 * n for n in range(16)], starts
-    assert all(w["endMs"] <= 1000 + 32000 for w in words)
+    assert starts == [1000 + 2000 * n for n in range(20)], starts
+    assert all(w["endMs"] <= 1000 + 40000 for w in words)
     used = diagnostic(result, "few-words-fallback")
-    assert used["used"] and used["vadWords"] == 0 and used["fallbackWords"] == 16 and used["windows"] == 3
+    assert used["used"] and used["vadWords"] == 0 and used["fallbackWords"] == 20 and used["windows"] == 3
+    assert used["floorDb"] == -37 and used["thresholdDb"] == -25
     assert diagnostic(result, "no-words-breakdown")["vadSegments"] == 0
 
 
 def test_mutation_disabling_the_fallback_loses_every_word(tmp_path, monkeypatch):
     monkeypatch.setattr(fallback, "MIN_ACTIVE_SECONDS", float("inf"))
-    _result, progress, words = run(tmp_path, monkeypatch, bursts(32), RunModel(), 0.0)
+    _result, progress, words = run(tmp_path, monkeypatch, speech(40), RunModel(), 0.0)
     assert not progress and not words
+
+
+def test_skipped_quiet_windows_keep_later_windows_on_their_own_audio(tmp_path, monkeypatch):
+    model = RunModel()
+    samples = speech(64, silent=[(24, 50)])
+    result, progress, words = run(tmp_path, monkeypatch, samples, model, 0.0)
+    # [29 s, 44 s) is silent and skipped; the reader must still find 43.5 s and 58 s.
+    assert [e["segment"]["startSample"] for e in progress] == [0, 232000, 696000, 928000]
+    assert [w["startMs"] for w in words] == [2000 * n for n in range(12)] + [2000 * n for n in range(25, 32)]
+    assert diagnostic(result, "few-words-fallback")["windows"] == 4
 
 
 @pytest.mark.parametrize("name", ["zeros", "dc"])
@@ -137,7 +155,7 @@ def test_inactive_audio_never_runs_the_fallback(tmp_path, monkeypatch, name):
 
 def test_short_active_audio_streams_vad_events_unheld(tmp_path, monkeypatch):
     model = ScriptModel([1])
-    result, progress, words = run(tmp_path, monkeypatch, bursts(10), model, 1.0)
+    result, progress, words = run(tmp_path, monkeypatch, speech(10), model, 1.0)
     assert model.calls == 1 and len(words) == 1 and diagnostic(result, "few-words-fallback") is None
 
 
@@ -151,7 +169,7 @@ def test_short_active_audio_streams_vad_events_unheld(tmp_path, monkeypatch):
 )
 def test_fallback_replaces_only_past_the_margin_and_never_adds(tmp_path, monkeypatch, vad, fallback_counts, replaced):
     model = ScriptModel(vad + fallback_counts)
-    result, progress, words = run(tmp_path, monkeypatch, bursts(32), model, 1.0)
+    result, progress, words = run(tmp_path, monkeypatch, speech(40), model, 1.0)
     assert model.calls == 6
     reasons = {e["segment"]["reason"] for e in progress}
     assert (reasons == {"noVadWindow"}) is replaced
@@ -161,32 +179,85 @@ def test_fallback_replaces_only_past_the_margin_and_never_adds(tmp_path, monkeyp
 
 def test_ten_vad_words_never_fire_and_keep_the_event_sequence(tmp_path, monkeypatch):
     model = ScriptModel([4, 4, 2])
-    result, held, _words = run(tmp_path, monkeypatch, bursts(32), model, 1.0)
+    result, held, _words = run(tmp_path, monkeypatch, speech(40), model, 1.0)
     assert model.calls == 3 and diagnostic(result, "few-words-fallback") is None
     monkeypatch.setattr(fallback, "MIN_ACTIVE_SECONDS", float("inf"))
-    _result, streamed, _words = run(tmp_path, monkeypatch, bursts(32), ScriptModel([4, 4, 2]), 1.0)
+    _result, streamed, _words = run(tmp_path, monkeypatch, speech(40), ScriptModel([4, 4, 2]), 1.0)
     strip = [{k: v for k, v in e.items() if k not in ("etaMinutes", "realtimeFactor")} for e in held]
     assert strip == [{k: v for k, v in e.items() if k not in ("etaMinutes", "realtimeFactor")} for e in streamed]
 
 
-def test_window_reader_matches_slices_of_the_whole_track():
+@pytest.mark.parametrize(
+    "windows",
+    [
+        fallback.window_bounds(40 * RATE),
+        [(0, 240000), (464000, 640000)],
+        [(400000, 640000)],
+        [(232000, 472000), (600000, 640000)],
+    ],
+    ids=["contiguous", "gap", "late-first", "late-and-gap"],
+)
+def test_window_reader_matches_slices_of_the_whole_track(windows):
     samples = np.arange(40 * RATE, dtype="<f4")
     blocks = iter(np.array_split(samples, 97))
-    windows = fallback.window_bounds(len(samples))
     for (start, end), value in zip(windows, fallback.audio_windows(blocks, windows), strict=True):
         assert np.array_equal(value, samples[start:end])
 
 
-def test_activity_counts_silence_in_the_floor_and_skips_quiet_windows():
+def meter_of(samples):
     meter = fallback.ActivityMeter()
-    list(meter.wrap([np.asarray(bursts(32), dtype="<f4")]))
-    floor, threshold = meter.threshold_db()
-    assert floor == -90.0 and threshold == -50.0
-    assert 15.5 <= meter.active_seconds() <= 16.5
-    quiet = np.concatenate((np.asarray(tone(2), dtype="<f4"), np.zeros(30 * RATE, dtype="<f4")))
-    meter = fallback.ActivityMeter()
-    list(meter.wrap([quiet]))
-    assert fallback.active_windows(meter.samples, meter.active()) == [(0, 240000)]
+    list(meter.wrap([np.asarray(samples, dtype="<f4")]))
+    return meter
+
+
+def test_activity_floor_comes_from_audible_frames_only():
+    meter = meter_of(speech(40))
+    assert meter.threshold_db() == (-37.0, -25.0)
+    assert 16 <= meter.active_seconds() <= 17
+    # Too few audible frames for a floor: -50 dBFS applies alone.
+    sparse = meter_of(speech(32, silent=[(4, 32)]))
+    assert sparse.threshold_db() == (None, -50.0)
+    assert fallback.active_windows(sparse.samples, sparse.active()) == [(0, 240000)]
+
+
+@pytest.mark.parametrize("zeros", [0, 12], ids=["continuous", "with-silence"])
+def test_steady_noise_never_runs_the_fallback_however_much_silence_it_has(tmp_path, monkeypatch, zeros):
+    noise = np.random.default_rng(1).standard_normal(40 * RATE) * 0.0056  # about -45 dBFS
+    noise[: zeros * RATE] = 0
+    model = RunModel()
+    result, _progress, _words = run(tmp_path, monkeypatch, noise, model, 0.0)
+    assert not model.calls and diagnostic(result, "few-words-fallback") is None
+    assert meter_of(noise).threshold_db() == (-45.0, -33.0)
+
+
+def test_a_dc_offset_is_removed_before_measuring_activity(tmp_path, monkeypatch):
+    result, _progress, _words = run(tmp_path, monkeypatch, speech(40, dc=0.1), RunModel(), 0.0)
+    decided = diagnostic(result, "few-words-fallback")
+    assert decided["activeSeconds"] == meter_of(speech(40)).active_seconds()
+    assert (decided["floorDb"], decided["thresholdDb"]) == (-37, -25)
+
+
+def test_isolated_clicks_are_not_speech(tmp_path, monkeypatch):
+    clicks = np.random.default_rng(2).standard_normal(40 * RATE) * 0.001
+    for start in range(0, 40 * RATE, 1024):
+        clicks[start : start + 80] = 0.5
+    model = RunModel()
+    result, _progress, _words = run(tmp_path, monkeypatch, clicks, model, 0.0)
+    assert not model.calls and diagnostic(result, "few-words-fallback") is None
+
+
+def test_held_decodes_keep_sending_heartbeats(tmp_path, monkeypatch):
+    monkeypatch.setattr(pipeline, "SpeechDetector", detector(1.0))
+    path = write(tmp_path / "track.wav", speech(40))
+    events = []
+    pipeline.process_tracks(
+        ScriptModel([1, 1, 1, 1, 1, 1]),
+        [dict(id="one", path=str(path), offsetMs=0, frames=40 * RATE, sampleRate=RATE)],
+        None,
+        lambda kind, **values: events.append(kind),
+    )
+    after = events[events.index("planned") + 1 :]
+    assert after.count("planning") >= 6, "one per held VAD decode and per fallback window"
 
 
 def test_energy_gate_drops_words_over_silence_and_a_dc_only_window():
