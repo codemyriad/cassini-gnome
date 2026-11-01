@@ -20,7 +20,7 @@ chrome.runtime.onMessage.addListener((message, _sender, respond) => {
         },
         send: async packet => {
           const result = await chrome.runtime.sendMessage({ target: "background", type: "packet", packet });
-          if (result?.error) throw Object.assign(new Error(result.error), {code: result.code, scope: result.scope});
+          if (result?.error) throw Object.assign(new Error(result.error), {code: result.code, scope: result.scope, ...(result.retired === true ? {retired:true} : {})});
         } });
     } else if (message.type === "stop") {
       if (recording?.state === "retrying") await chrome.runtime.sendMessage({ target: "background", type: "warning", ...lastWarning, transient:false });

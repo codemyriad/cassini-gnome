@@ -309,6 +309,7 @@ class RecordingSession:
             self.finished = False
             self._native_io_error = None
             self.capture_record = None
+            self._failed_writers = set()
             self._changing = False
             self._last_checkpoint = 0
             self._checkpoint_generation = 0
@@ -322,10 +323,22 @@ class RecordingSession:
             self.capture_record.finish(self.manifest)
         if self._changing:
             return
-        for writer in self.writers.values():
-            snapshot = getattr(writer, "snapshot", None)
-            if snapshot:
-                snapshot()
+        identifiers = {track["id"] for track in self.manifest["tracks"]}
+        for identifier, writer in self.writers.items():
+            if identifier not in identifiers:
+                continue  # A rollback can still be closing its unreferenced additions.
+            if identifier in self._failed_writers:
+                self._writer_failed(identifier)
+                continue
+            try:
+                snapshot = getattr(writer, "snapshot", None)
+                if snapshot:
+                    snapshot()
+                writer.sync()
+            except OSError:
+                if self.capture_record is None:
+                    raise  # Legacy sessions retain their existing fatal policy.
+                self._writer_failed(identifier)
         for track in self.manifest["tracks"]:
             if track.get("spans"):
                 continue
@@ -333,8 +346,8 @@ class RecordingSession:
                 track["clockAnchors"] = anchors
         path = self.directory / "session.json"
         temporary = path.with_suffix(".tmp")
-        for writer in self.writers.values():
-            writer.sync()
+        if self.capture_record is not None:
+            self.capture_record.finish(self.manifest)
         with temporary.open("w", encoding="utf-8") as output:
             os.chmod(temporary, 0o600)
             output.write(json.dumps(self.manifest, indent=2, allow_nan=False) + "\n")
@@ -348,6 +361,24 @@ class RecordingSession:
         finally:
             os.close(descriptor)
         self._last_checkpoint = self.clock()
+
+    def _writer_failed(self, identifier):
+        """Retire one known WAV; manifest/directory durability is never caught."""
+        first = identifier not in self._failed_writers
+        self._failed_writers.add(identifier)
+        self.capture_record.fail(self.manifest, identifier, io=True)
+        writer = self.writers[identifier]
+        track = next(t for t in self.manifest["tracks"] if t["id"] == identifier)
+        track.update(frames=writer.frames, ended=True)
+        if track.get("startOffsetMs") is not None:
+            track["endOffsetMs"] = track["startOffsetMs"] + track["frames"] * 1000 / track["sampleRate"]
+        if first:
+            with suppress(OSError):
+                writer.close()
+        snapshot = getattr(writer, "snapshot", None)
+        if snapshot:
+            with suppress(OSError):
+                snapshot()
 
     @contextmanager
     def change(self, events):
@@ -383,6 +414,7 @@ class RecordingSession:
                     self.checkpoint()
             for track in added:
                 writer = self.writers.pop(track["id"])
+                self._failed_writers.discard(track["id"])
                 with suppress(OSError):
                     writer.close()
                 if not published:
@@ -474,6 +506,7 @@ class RecordingSession:
                 self.capture_record.fail(self.manifest, identifier, io=True)
                 track["frames"] = writer.frames
                 track["droppedFrames"] = track.get("droppedFrames", 0) + input_frames - received
+                self._writer_failed(identifier)
                 raise SourceIOError(identifier, error) from error
             raise
         track["frames"] = writer.frames
@@ -558,6 +591,8 @@ class RecordingSession:
             problem = problem or "Some announced audio was not fully captured."
             if problem_kind != "io":
                 problem_kind = "io" if self.capture_record.io_failed else "capture"
+        if self._failed_writers:
+            problem, problem_kind = problem or "Some audio could not be saved.", "io"
         if self._native_io_error:
             problem, problem_kind = problem or self._native_io_error, "io"
         elif not problem and gaps:
@@ -615,6 +650,13 @@ class BrowserHost:
         try:
             return self._handle(message, started_at=started_at)
         except (ProtocolError, SourceIOError) as error:
+            if (
+                self.source_outcomes
+                and isinstance(error, ProtocolError)
+                and error.code == "state"
+                and (self.stopped or self.session is not None and self.session.finished)
+            ):
+                return dict(type="error", code="state", message=str(error), scope="command")
             if self.source_outcomes and message.get("type") == "sources" and isinstance(error, ProtocolError):
                 return dict(type="error", code=error.code, message=str(error), scope="command")
             if not self.source_outcomes or message.get("type") not in ("track", "audio", "trackEnd"):
@@ -645,14 +687,13 @@ class BrowserHost:
                 if message.get("type") == "audio" or identifier not in self.sequences:
                     self.ended.add(identifier)
                     if self.audio_sink is not None and identifier in self.audio_sink.tracks:
-                        with suppress(OSError):
-                            self.audio_sink.end_track(identifier)
+                        self.audio_sink.end_track(identifier)
                     elif stored in ledger.bindings and stored in self.session.writers:
-                        with suppress(OSError):
-                            self.session.end_track(stored)
-            with suppress(OSError):
-                self.session.checkpoint()
+                        self.session.end_track(stored)
+            self.session.checkpoint()
         result = dict(type="error", code=code, message=str(error), scope="source")
+        if code == "state" and not record and self.session is not None and not self.session.finished:
+            result["retired"] = True  # This span ended; the capture is still live.
         if isinstance(identifier, str):
             result["id"] = identifier
         return result
@@ -712,6 +753,13 @@ class BrowserHost:
             return self.prepare_stop(message)
         if self.session is None or self.stopped or self.session.finished:
             raise ProtocolError("state", "No active recording")
+        identifier = message.get("id")
+        if self.source_outcomes and kind in ("track", "audio", "trackEnd") and isinstance(identifier, str):
+            wire = self.audio_sink.tracks.get(identifier) if self.audio_sink is not None else None
+            stored = wire.recorded if wire is not None else identifier
+            if identifier in self.ended or (identifier in self.declarations and stored in self.session._failed_writers):
+                self.ended.add(identifier)
+                raise ProtocolError("state", "Audio source has ended")
         if kind == "sources":
             sources = message.get("discoveredSources")
             if not isinstance(sources, list) or not sources:

@@ -49,6 +49,14 @@ class CaptureRecord:
     def admit(self, identifier, frames):
         self.received[identifier] = self.received.get(identifier, 0) + frames
 
+    def select(self, *, me, others, browser):
+        """Selection includes discovered sources with no declaration or WAV."""
+        if browser:
+            for source in self.seen.values():
+                selected = me if source["kind"] in ("microphone", "local") else others
+                if selected:
+                    source["expected"] = True
+
     def bind(self, identifier, identity):
         if identity in self.seen:
             self.bindings[identifier] = identity

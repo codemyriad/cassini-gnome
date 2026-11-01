@@ -170,7 +170,7 @@ class NativeHost {
       const request = this.pending.shift();
       if (request) {
         clearTimeout(request.timer);
-        message.type === "error" ? request.reject(Object.assign(new Error(message.message), { code: message.code, scope: message.scope, id: message.id })) : request.resolve(message);
+        message.type === "error" ? request.reject(Object.assign(new Error(message.message), { code: message.code, scope: message.scope, id: message.id, ...(message.retired === true ? {retired:true} : {}) })) : request.resolve(message);
       }
       if (message.type === "error" && !["source", "command"].includes(message.scope)) onFailure(message.message);
     });
@@ -390,6 +390,15 @@ async function forwardPacket(session, packet) {
       session.trackIds.add(packet.id);
       session.trackSources.set(packet.id, packet.sourceTrackId || packet.id); session.tracks++; session.warning = null; notifyControl();
     }
+  } catch (error) {
+    if (error.scope === "source" && error.code === "state" && session.endedTrackIds.has(packet.id))
+      error.retired = true; // Also fence in-flight replies from older hosts.
+    // A refused physical span cannot accept more queued PCM. Keep its source
+    // eligible for a fresh-span retry; the session and other sources stay live.
+    if (error.scope === "source" && error.code !== "callChanged" &&
+        (error.code !== "state" || error.retired) && ["track", "audio", "trackEnd"].includes(packet.type))
+      session.endedTrackIds.add(packet.id);
+    throw error;
   } finally { if (reserve) session.trackReservations.delete(packet.id); }
 }
 
@@ -489,7 +498,7 @@ chrome.runtime.onConnect.addListener(port => {
         }
         session.warning = "One track was interrupted and has a gap. The other tracks continue."; session.problem ??= session.warning; notifyControl(); }
       else if (!["command", "source"].includes(error.scope)) failure(error.message, session);
-      try { port.postMessage({ type: "ack", token: session.token, request: message.request, error: error.message, code: error.code, scope: error.scope }); } catch {}
+      try { port.postMessage({ type: "ack", token: session.token, request: message.request, error: error.message, code: error.code, scope: error.scope, ...(error.retired === true ? {retired:true} : {}) }); } catch {}
     }
   });
   port.onDisconnect.addListener(() => {
@@ -536,7 +545,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     else if (message.type === "stop") await stop();
     else if (message.type !== "status") throw new Error("Unknown control message.");
     return status();
-  })().then(respond, error => respond({ error: error.message, code: error.code, scope: error.scope }));
+  })().then(respond, error => respond({ error: error.message, code: error.code, scope: error.scope, ...(error.retired === true ? {retired:true} : {}) }));
   return true;
 });
 chrome.tabs.onRemoved.addListener(id => {

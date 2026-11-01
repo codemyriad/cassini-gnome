@@ -14,6 +14,7 @@ async function bounded(promise, message, schedule = setTimeout, cancel = clearTi
 
 const clocks = new WeakMap();
 const retirementReason = error => error?.code === "callChanged" ? "callChanged" :
+  error?.code === "state" && error.scope === "source" && error.retired === true ? "ended" :
   error?.code === "state" && ["source", "command"].includes(error.scope) ? "stopped" : null;
 const resuming = new WeakMap();
 function resumeSuspended(context) {
@@ -212,7 +213,7 @@ export async function capture(options) {
   const schedule = value => {
     if (ending || retiring || terminal || retryTimer !== null) return;
     const error = value instanceof Error ? value : new Error(String(value));
-    if (retirementReason(error)) {
+    if (retirementReason(error) && retirementReason(error) !== "ended") {
       // The token is deliberately fenced or already saved by the native app.
       retiring = true;
       if (retryTimer !== null) cancel(retryTimer);

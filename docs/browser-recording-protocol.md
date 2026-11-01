@@ -3,7 +3,7 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `5c3d033c`, ships companion 0.2.6 with authoritative page-state
+The current pin, `4aef818b`, ships companion 0.2.7 with authoritative page-state
 publication and a coherent multi-tab inventory. Call identity and the hook
 baseline survive worker restarts; persisted addresses use bounded fingerprints.
 A worklet must prove its render clock is advancing before source PCM is armed;
@@ -36,3 +36,20 @@ The private recording harness proves hang-up with a tab left open, reload,
 worker reconnection, expiry without an active call, and unaffected simultaneous
 meetings. Unit tests advance only the recorded missing timestamp to exercise the
 same deadline branches without wall-clock sleeps.
+
+
+## Source I/O retirement
+
+Protocol PR #28 supplies the source-isolation review fix pinned by this branch.
+An active capture's ended physical span returns `state/source/retired:true`;
+its cleanup and in-flight chunks cannot mean the whole capture was saved.
+Capture finalization returns `state/command`. Failed spans are fenced locally,
+healthy sources and the microphone continue, and a live source retries a new ID.
+The shared protocol must be reviewed/merged by the coordinator before this app
+PR lands; this review pin is the exact tested source-fix commit, not R67.
+
+Selecting a browser category permanently includes already discovered sources,
+even one that failed before declaring a track. Rejected selection changes roll
+back that expectation. Periodic WAV flush/fsync failures retire only that writer
+and checkpoint every healthy writer. Manifest and directory durability errors
+remain fatal; they are never downgraded into a per-source response.

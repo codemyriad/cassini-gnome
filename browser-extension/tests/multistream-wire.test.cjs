@@ -318,3 +318,59 @@ test('whole-tab warnings preserve a source-specific readiness error until that s
   await app.api.stop();
  }finally{app.close()}
 });
+
+test('I/O refusal fences retry cleanup and in-flight chunks without stopping healthy PCM or microphone',async()=>{
+ const app=await setup(3,{},['source-outcomes-v1']);
+ try{
+  await app.command(command('start','start',{microphone:true}));
+  const port=app.audio[0];
+  assert.equal(port.sent[0].microphone,true);
+  for(const id of ['A','B'])await packet(app,{type:'track',id,sourceTrackId:'root-'+id,kind:'remote',sampleRate:48000,channels:1},'track-'+id);
+  let paused=true,draining=false;
+  const queue=[];
+  const drain=async()=>{
+   if(draining||paused)return;draining=true;
+   try{while(queue.length&&!paused){const value=queue.shift();
+    port.onMessage.emit(value.id==='B'&&value.type==='audio'
+     ?{type:'error',code:value.sequence===0?'io':'state',scope:'source',id:'B',message:'Generated B write/retired failure'}
+     :{type:'ack'});
+    await Promise.resolve();
+   }}finally{draining=false;}
+  };
+  port.postMessage=function(value){this.sent.push(value);queue.push(value);void drain();};
+  const inFlight=[0,1,2,3].map(sequence=>packet(app,{type:'audio',id:'B',sequence,offsetMs:sequence*10,pcm:'AAA='},'B-'+sequence));
+  await until(()=>queue.length===4);paused=false;await drain();
+  const replies=await Promise.all(inFlight);
+  assert.equal(replies[0].code,'io');assert.ok(replies.slice(1).every(p=>p.retired===true));
+  const before=port.sent.length;
+  const cleanup=await packet(app,{type:'trackEnd',id:'B',reason:'retry',droppedFrames:0,endOffsetMs:null},'cleanup');
+  assert.equal(cleanup.retired,true);assert.equal(port.sent.length,before,'retired cleanup is local');
+  assert.equal((await packet(app,{type:'audio',id:'A',sequence:0,offsetMs:0,pcm:'AAA='},'A-healthy')).error,undefined);
+  await packet(app,{type:'track',id:'B-retry',sourceTrackId:'root-B',kind:'remote',sampleRate:48000,channels:1},'B-track-retry');
+  assert.equal((await packet(app,{type:'audio',id:'B-retry',sequence:0,offsetMs:1000,pcm:'AAA='},'B-recovered')).error,undefined);
+  assert.equal(app.api.controlStatus().sessions.length,1);assert.equal(port.closed,false);
+  assert.equal(port.sent.some(p=>p.type==='stop'),false);
+  await app.command(command('stop','stop'));
+ }finally{app.close();}
+});
+
+for(const mode of ['tracks','tab'])test(`native retired-span marker crosses ${mode} transport without retiring the capture`,async()=>{
+ const app=await setup(3,{},['source-outcomes-v1']);let opened=false;
+ const offscreen=value=>new Promise(resolve=>app.chrome.runtime.onMessage.emit({target:'background',type:'packet',packet:value},{id:'extension',url:'chrome-extension://extension/offscreen.html'},resolve));
+ const send=(p,id)=>mode==='tab'?offscreen(p):packet(app,p,id);
+ try{
+  if(mode==='tab'){
+   app.chrome.tabCapture.getMediaStreamId=async()=>'granted';app.chrome.offscreen.createDocument=async()=>{opened=true};
+   app.chrome.offscreen.closeDocument=async()=>{opened=false};app.chrome.runtime.getContexts=async()=>opened?[{}]:[];
+   app.chrome.runtime.sendMessage=async()=>({});await app.api.start('tab',2);
+  }else await app.command(command('start','start'));
+  const port=app.audio[0],post=port.postMessage;
+  await send({type:'track',id:'B',kind:mode==='tab'?'tab':'remote',sampleRate:48000,channels:1},'track-B');
+  port.postMessage=function(p){if(p.type==='audio'&&p.id==='B'){this.sent.push(p);queueMicrotask(()=>this.onMessage.emit({type:'error',code:'state',scope:'source',retired:true,id:'B',message:'Only this WAV was retired'}));}else post.call(this,p);};
+  const refused=await send({type:'audio',id:'B',sequence:0,offsetMs:0,pcm:'AAA='},'retired-B');
+  assert.equal(refused.retired,true);assert.equal(port.closed,false);assert.equal(app.api.controlStatus().sessions.length,1);
+  assert.equal(port.sent.some(p=>p.type==='stop'),false);
+  if(mode==='tab')assert.equal(opened,true);
+  await app.api.stop();
+ }finally{app.close();}
+});

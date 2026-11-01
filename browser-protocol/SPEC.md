@@ -381,9 +381,29 @@ Undeclared/refused IDs cannot send audio. A producer drains its admitted PCM and
 final worklet flush before trackEnd, then detaches and fences the worklet callback.
 Late ACKs from a failed old span do not mark a replacement attempt healthy.
 
-A scope=source/command, code=state refusal from a finalized native capture retires
+A scope=command, code=state refusal from a finalized native capture retires
 both separate-track and whole-tab sessions, including their badge and offscreen
 document. A locally fenced closed span only retires that producer; it cannot end
 unrelated sources. Source-update refusals do not skip the terminal native Stop.
 Test writers refuse track, audio and trackEnd after finalization and cannot
 reopen an ended span or rewrite published metadata with its repeated ending.
+
+
+### Source retirement during an active capture (extension0.2.7)
+
+An ended/failed physical span in a still-active capture returns error with
+code:state, scope:source, id and retired:true. It does not mean the whole capture
+was saved. Producers retire only that span and may retry its live source with a
+fresh span ID. Native-first capture finalization returns scope:command,
+code:state, without retired:true, and stops the capture transport intentionally.
+Older source/command state errors without the marker keep their historical
+finalized-capture meaning, except for a span the extension already fenced after
+a prior source refusal. Its already-in-flight state replies and retry cleanup
+are local retirement, not evidence that healthy sources or the microphone ended.
+
+Propagate retired:true through native errors, relay ACKs, page and offscreen
+capture. TrackEnd cleanup for an already retired span is harmless. A source I/O
+error fences its span before later chunks are forwarded. Late ACKs/errors from
+that span cannot mark its replacement healthy or stop another source. The live
+root keeps its ordinary retry schedule; capture-wide and manifest/directory
+failures retain their existing fatal policy.

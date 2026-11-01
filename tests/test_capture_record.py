@@ -349,7 +349,7 @@ def test_wrong_capture_stop_and_retired_audio_do_not_end_or_damage_the_session(h
     stop(host)
     assert host.session.manifest["state"] == "completed"
     before = (host.session.directory / "session.json").read_bytes()
-    assert host.handle(pcm("one", 1, sequence=1, offset=1000))["scope"] == "source"
+    assert host.handle(pcm("one", 1, sequence=1, offset=1000))["scope"] == "command"
     assert (host.session.directory / "session.json").read_bytes() == before
     assert not host.session.capture_record.io_failed
 
@@ -462,3 +462,185 @@ def test_late_span_packets_are_refused_without_failing_the_replacement(host):
         assert (host.session.directory / "session.json").read_bytes() == before
     assert stop(host)["type"] == "stopped"
     assert host.session.manifest["captureOutcome"]["sources"][0]["captureOutcome"] == "captured"
+
+
+@pytest.mark.parametrize("kind", ["local", "remote", "application", "media", "tab"])
+def test_enabling_a_category_promotes_failed_sources_without_a_track_or_new_discovery(tmp_path, kind):
+    host = BrowserHost(tmp_path)
+    host.handle(dict(type="start", features=["source-outcomes-v1"], captureId="selected-after-failure"))
+    host.audio_sink = BrowserStreams(host.session, me=False, others=False)
+    try:
+        # Keep real selected audio alongside a ledger-only source that failed
+        # before the user chose its category. No track/declaration follows it.
+        host.session.add_track("native-mic", "Me", "microphone", 48000, 1, label_source="device")
+        host.session.append("native-mic", b"\x01\x00" * 48000, 0)
+        assert host.handle(
+            dict(type="sources", discoveredSources=[dict(sourceTrackId="B", kind=kind, failed=True)])
+        ) == dict(type="ack")
+        assert host.session.manifest["captureOutcome"]["sources"][0]["captureExpected"] is False
+        with host.audio_sink.change(), host.session.change([]):
+            host.audio_sink.select(kind == "local", kind != "local", 1000)
+        row = json.loads((host.session.directory / "session.json").read_text())["captureOutcome"]["sources"][0]
+        assert row.get("captureExpected", True), "Selected category must include a source with no WAV"
+        # Turning the category off cannot erase that unmet expectation.
+        with host.audio_sink.change(), host.session.change([]):
+            host.audio_sink.select(False, False, 1000)
+        host.handle(dict(type="stop", captureId="selected-after-failure"))
+        row = host.session.manifest["captureOutcome"]["sources"][0]
+        assert row.get("captureExpected", True) and row["captureOutcome"] == "failed"
+        assert not row["trackIds"] and host.session.manifest["state"] == "interrupted"
+    finally:
+        host.close()
+
+
+def test_rejected_selection_does_not_promote_ledger_only_sources(tmp_path):
+    host = BrowserHost(tmp_path)
+    host.handle(dict(type="start", features=["source-outcomes-v1"], captureId="rejected-selection"))
+    host.audio_sink = BrowserStreams(host.session, me=False, others=False)
+    try:
+        host.handle(dict(type="sources", discoveredSources=[dict(sourceTrackId="B", kind="remote", failed=True)]))
+        with pytest.raises(OSError, match="Rejected selection"), host.audio_sink.change(), host.session.change([]):
+            host.audio_sink.select(False, True, 0)
+            raise OSError("Rejected selection")
+        assert host.session.capture_record.seen["B"]["expected"] is False
+        assert not host.audio_sink.others
+    finally:
+        host.close()
+
+
+@pytest.mark.parametrize("phase", ["flush", "fsync"])
+def test_checkpoint_retires_only_the_writer_that_cannot_sync_and_keeps_healthy_pcm(host, monkeypatch, phase):
+    import os
+
+    for identifier in ("A", "B"):
+        assert host.handle(declare(identifier, "receiver-" + identifier)) == dict(type="ack")
+        assert host.handle(pcm(identifier, 48000, value=b"\x01\x00")) == dict(type="ack")
+    session = host.session
+    session.add_track("native-mic", "Me", "microphone", 48000, 1, label_source="device")
+    session.append_native("native-mic", b"\x02\x00" * 48000, 0)
+    writer = session.writers["B"]
+    if phase == "flush":
+        real_file = writer.file
+
+        class FailedFlush:
+            @property
+            def closed(self):
+                return real_file.closed
+
+            def flush(self):
+                raise OSError(errno.ENOSPC, "Generated B flush failure")
+
+            def __getattr__(self, name):
+                return getattr(real_file, name)
+
+        writer.file = FailedFlush()
+    else:
+        fsync, failed_fd = os.fsync, writer.file.fileno()
+
+        def fail_b(fd):
+            if fd == failed_fd and not writer.file.closed:
+                raise OSError(errno.ENOSPC, "Generated B fsync failure")
+            return fsync(fd)
+
+        monkeypatch.setattr(os, "fsync", fail_b)
+    try:
+        session._last_checkpoint = -1000
+        assert host.handle(pcm("A", 48000, sequence=1, offset=1000)) == dict(type="ack")
+        assert not session.finished
+        saved = json.loads((session.directory / "session.json").read_text())
+        failed = next(t for t in saved["tracks"] if t["id"] == "B")
+        assert failed["ended"] and failed["problemKind"] == "io" and failed["frames"] == 48000
+        assert next(t for t in saved["tracks"] if t["id"] == "A")["frames"] == 96000
+        assert host.handle(pcm("A", 48000, sequence=2, offset=2000)) == dict(type="ack")
+        session.append_native("native-mic", b"\x03\x00" * 48000, 1000)
+        stop(host)
+        assert session.manifest["problemKind"] == "io"
+        counts = {s["sourceTrackId"]: s for s in session.manifest["captureOutcome"]["sources"]}
+        assert counts["receiver-A"]["audioMs"] == 3000 and counts["receiver-A"]["captureOutcome"] == "captured"
+        assert counts["receiver-B"]["audioMs"] == 1000 and counts["receiver-B"]["captureOutcome"] == "failed"
+        assert next(t for t in session.manifest["tracks"] if t["id"] == "native-mic")["frames"] == 96000
+    finally:
+        if phase == "flush":
+            writer.file = real_file
+        host.close()
+
+
+@pytest.mark.parametrize("stage", ["manifest-flush", "manifest-fsync", "directory-fsync"])
+def test_manifest_and_directory_durability_errors_remain_fatal_after_writer_isolation(host, monkeypatch, stage):
+    import os
+    import stat
+
+    assert host.handle(declare("A")) == dict(type="ack")
+    assert host.handle(pcm("A", 48000)) == dict(type="ack")
+    session = host.session
+
+    def failure():
+        return OSError(errno.EIO, "Generated shared " + stage + " failure")
+
+    with monkeypatch.context() as patch:
+        if stage == "manifest-flush":
+            real_open = Path.open
+
+            class Manifest:
+                def __init__(self, stream):
+                    self.stream = stream
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    return self.stream.__exit__(*args)
+
+                def flush(self):
+                    raise failure()
+
+                def __getattr__(self, name):
+                    return getattr(self.stream, name)
+
+            def open_file(path, *args, **kwargs):
+                stream = real_open(path, *args, **kwargs)
+                return Manifest(stream) if path == session.directory / "session.tmp" else stream
+
+            patch.setattr(Path, "open", open_file)
+        else:
+            fsync = os.fsync
+
+            def sync(fd):
+                is_directory = stat.S_ISDIR(os.fstat(fd).st_mode)
+                is_manifest = not is_directory and os.readlink("/proc/self/fd/" + str(fd)) == str(
+                    session.directory / "session.tmp"
+                )
+                if (stage == "directory-fsync" and is_directory) or (stage == "manifest-fsync" and is_manifest):
+                    raise failure()
+                return fsync(fd)
+
+            patch.setattr(os, "fsync", sync)
+        session._last_checkpoint = -1000
+        with pytest.raises(OSError, match="Generated shared"):
+            host.handle(pcm("A", 48000, sequence=1, offset=1000))
+        assert not session._failed_writers
+        assert not session.manifest["tracks"][0].get("ended")
+        assert not session.capture_record.io_failed
+    host.close("Shared checkpoint failed", problem_kind="io")
+    assert session.manifest["state"] == "interrupted"
+
+
+def test_native_writer_sync_failure_does_not_claim_a_completed_recording(host, monkeypatch):
+    session = host.session
+    session.add_track("native", "Mic", "microphone", 48000, 1, label_source="device")
+    session.append_native("native", b"\x01\x00" * 48000, 0)
+    writer = session.writers["native"]
+    sync = writer.sync
+
+    def broken():
+        if not writer.file.closed:
+            raise OSError(errno.ENOSPC, "Native WAV fsync failed")
+        sync()
+
+    monkeypatch.setattr(writer, "sync", broken)
+    session.checkpoint()
+    assert not session.finished and session.manifest["tracks"][0]["ended"]
+    assert host.handle(declare("A")) == dict(type="ack")
+    assert host.handle(pcm("A", 48000)) == dict(type="ack")
+    stop(host)
+    assert session.manifest["state"] == "interrupted" and session.manifest["problemKind"] == "io"
