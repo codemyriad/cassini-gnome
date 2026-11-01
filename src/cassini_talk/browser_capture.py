@@ -453,7 +453,11 @@ class BrowserCapture:
 
     def handle(self, message):
         if message.get("type") == "stop":
-            refused = self.host.prepare_stop(message)
+            # Source-summary admission reads the current selection and merges
+            # accounting. Serialize it with PCM/source changes; device shutdown
+            # below still happens outside the writer lock.
+            with self.lock:
+                refused = self.host.prepare_stop(message)
             if refused is not None:
                 return refused
             reason = stop_reason(message)
