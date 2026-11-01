@@ -9,7 +9,6 @@ import logging
 import math
 import struct
 from collections import Counter
-from fractions import Fraction
 
 LOG = logging.getLogger(__name__)
 
@@ -177,7 +176,7 @@ def split_segments(segments, group_id, turns):
 
 def group_tracks(tracks, *, origin="own"):
     """Input may carry the already validated D11 `speaker` from prepare_tracks."""
-    from .source_spans import separate
+    from .source_spans import bounds, separate
 
     groups, kinds = {}, {}
     planned = []
@@ -196,13 +195,7 @@ def group_tracks(tracks, *, origin="own"):
         group["tracks"].append(track["id"])
         kinds.setdefault(speaker, set()).add(kind)
         if "frames" in track:
-            from .mapped_audio import end_ms, required
-
-            if required(track):
-                end = end_ms(track)
-            else:
-                end = Fraction(str(track.get("startOffsetMs", track.get("offsetMs")) or 0))
-                end += Fraction(track["frames"] * 1000, track["sampleRate"])
+            _start, end = bounds(track, display=True)
             group["durationMs"] = max(group["durationMs"], math.floor(end))
     for speaker, group in groups.items():
         group["eligible"] = (

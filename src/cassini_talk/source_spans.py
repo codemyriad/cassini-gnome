@@ -4,24 +4,30 @@
 from fractions import Fraction
 
 
-def bounds(track):
+def bounds(track, *, display=False):
     """Exact half-open physical extent; display's unknown-as-zero is not alignment."""
     offset = track.get("offsetMs", track.get("startOffsetMs"))
-    if offset is None:
+    if offset is None and not display:
         return None
-    start = Fraction(str(offset))
-    from .mapped_audio import required
+    from .capture_clock import mapped_end_sample
+    from .library_v2.mixdown import valid_anchors
 
-    if required(track):
-        from .library_v2.mixdown import RATE, total_samples
-        from .mapped_audio import timeline
-
-        mapped, _offset = timeline(track)
-        # Do not floor to integer milliseconds before testing for overlap.
-        end = Fraction(total_samples(mapped.spans) * 1000, RATE)
-    else:
-        end = start + Fraction(track["frames"] * 1000, track["sampleRate"])
-    return start, end
+    result = []
+    # Scanner/worker metadata already contains inspected frame counts. Do not
+    # open the audio again or import NumPy in the app's metadata preparer.
+    for span in track.get("spans") or [track]:
+        at = span.get("offsetMs", span.get("startOffsetMs"))
+        if at is None and not display:
+            return None
+        start = Fraction(str(at or 0))
+        rate, frames = span["sampleRate"], span["frames"]
+        anchors = span.get("clockAnchors")
+        if len(valid_anchors(anchors, rate)) >= 2:
+            end = Fraction(mapped_end_sample(frames, rate, at, anchors), 48)
+        else:
+            end = start + Fraction(frames * 1000, rate)
+        result.append((start, end))
+    return min(start for start, _ in result), max(end for _, end in result)
 
 
 def separate(tracks):

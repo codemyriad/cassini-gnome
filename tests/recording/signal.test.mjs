@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {energy} from './signal.mjs';
+import {savedCapture} from './source-changes.mjs';
 
 function tone(jump = 0) {
   const bytes = Buffer.alloc(48000 * 2 * 2);
@@ -26,4 +27,28 @@ test('silence and exact measurement bounds stay silent', () => {
   source.bytes.fill(0, 48000 * 2, 48000 * 2 * 2);
   assert.deepEqual(energy(source, 1, 2, 440), {rms: 0, tone: 0});
   assert.ok(energy(source, .5, .6, 440).tone > .19);
+});
+
+test('lifecycle waits for a terminal event and accepts an explicitly recorded gap warning', () => {
+  const capture = {manifest: {state: 'recording', events: []}, tracks: [{kind: 'microphone', frames: 48000}]};
+  assert.equal(savedCapture(capture, 'callEnded'), false);
+  capture.manifest = {state: 'completed', events: [{type: 'end', reason: 'callEnded'}]};
+  capture.tracks[0].ended = true;
+  assert.equal(savedCapture(capture, 'callEnded'), capture);
+  capture.manifest.state = 'interrupted'; capture.manifest.problemKind = 'gap';
+  capture.tracks[0].gapFrames = 48000;
+  assert.equal(savedCapture(capture, 'callEnded'), capture);
+});
+
+test('lifecycle refuses IO, failed source, wrong end cause, unfinished tracks and unreported gaps', () => {
+  const valid = {manifest: {state: 'interrupted', problemKind: 'gap', events: [{type: 'end', reason: 'callEnded'}]},
+    tracks: [{kind: 'microphone', frames: 48000, ended: true, gapFrames: 48000}]};
+  for (const change of [capture => {capture.manifest.problemKind = 'io';},
+    capture => {capture.manifest.problemKind = 'capture';},
+    capture => {capture.manifest.events[0].reason = 'error';},
+    capture => {capture.tracks[0].ended = false;},
+    capture => {delete capture.tracks[0].gapFrames;}]) {
+    const capture = structuredClone(valid); change(capture);
+    assert.throws(() => savedCapture(capture, 'callEnded'), assert.AssertionError);
+  }
 });

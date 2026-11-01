@@ -5,6 +5,24 @@ import {createWriteStream} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 
+export function savedCapture(current, reason) {
+ if (current.manifest.state === 'recording') return false;
+ const diagnostic = JSON.stringify({state: current.manifest.state, problem: current.manifest.problem,
+  problemKind: current.manifest.problemKind, events: current.manifest.events,
+  tracks: current.tracks.map(({kind, frames, ended, gapFrames, captureOutcome}) => ({kind, frames, ended, gapFrames, captureOutcome}))});
+ assert.ok(['completed', 'interrupted'].includes(current.manifest.state), diagnostic);
+ assert.equal(current.manifest.events.at(-1)?.reason, reason, diagnostic);
+ assert.ok(current.tracks.every(track => track.ended === true), diagnostic);
+ if (current.manifest.state === 'interrupted') {
+  // D33 keeps the explicit stop cause after a recorded input-gap warning.
+  // Do not mistake a saved warning for an active call, or accept IO/capture
+  // failures. Sample, tone and bleed assertions stay in their existing gates.
+  assert.equal(current.manifest.problemKind, 'gap', diagnostic);
+  assert.ok(current.tracks.some(track => Number.isSafeInteger(track.gapFrames) && track.gapFrames > 0), diagnostic);
+ }
+ return current;
+}
+
 export async function run({context, call, join, record, recording, samples, power, poll, automatic, id, artifacts, evidence}) {
  const {constants} = JSON.parse(await readFile(path.resolve(import.meta.dirname, '../../browser-protocol/conformance/multistream/lifecycle.json')));
  let producer;
@@ -33,7 +51,7 @@ export async function run({context, call, join, record, recording, samples, powe
     problem: current.manifest.problem, problemKind: current.manifest.problemKind,
     tracks: current.tracks.map(t => ({kind: t.kind, frames: t.frames, ended: t.ended}))};
    assert.ok(!current.tracks.some(t => t.kind === 'system'), 'hang-up never falls back while waiting');
-   return current.manifest.state === 'completed' && current;
+   return savedCapture(current, 'callEnded');
   }, 'hang-up saves after the shared others-gone grace while the tab remains open', constants.OTHERS_GONE_GRACE + 20000);
   assert.ok(!hungUp.meeting.isClosed());
   assert.ok(!savedHangup.tracks.some(t => t.kind === 'system'), 'hang-up never falls back');
@@ -45,7 +63,7 @@ export async function run({context, call, join, record, recording, samples, powe
   await closed.meeting.close();
   const savedClosed = await poll(async () => {
    const current = await samples(closedDirectory);
-   return current.manifest.state === 'completed' && current;
+   return savedCapture(current, 'tabClosed');
   }, 'confirmed closed tab saves after call-end grace');
   assert.equal(savedClosed.manifest.events.at(-1).reason, 'tabClosed');
   assert.ok(!savedClosed.tracks.some(t => t.kind === 'system'), 'closed tab never starts fallback');
@@ -154,15 +172,15 @@ export async function run({context, call, join, record, recording, samples, powe
   const afterRestart = await samples(directory);
   assert.equal(afterRestart.manifest.events.filter(e => e.type === 'othersSource').at(-1).source, 'system');
   assert.equal(afterRestart.tracks.filter(t => t.kind === 'system').length, 2);
-  await poll(async () => (await samples(directory)).manifest.state === 'completed',
+  await poll(async () => savedCapture(await samples(directory), 'pageGone'),
    'fallback saves when no active call returns within two minutes', 135000);
   assert.equal((await samples(directory)).manifest.events.at(-1).reason, 'pageGone');
   assert.equal((await samples(otherDirectory)).manifest.state, 'recording');
   evidence.scenarios.push({name: 'reload-fallback-without-return-stops-at-bounded-grace', directory});
   await call({action: 'notification-stop'});
   await poll(async () => !(await call()).statuses.some(s => s.recording), 'hidden Stop saves all fallbacks');
-  assert.equal((await samples(directory)).manifest.state, 'completed');
-  assert.equal((await samples(otherDirectory)).manifest.state, 'completed');
+  assert.ok(savedCapture(await samples(directory), 'pageGone'));
+  assert.ok(savedCapture(await samples(otherDirectory), 'user'));
   await call({action: 'reopen'});
   await automatic(false);
   evidence.scenarios.push({name: 'source-dialog-off-on-tab-loss-native-fallback-hidden-worker-recovery-no-duplicates', directory, otherDirectory, wanted, bleed, systemWanted, microphoneBleed});
