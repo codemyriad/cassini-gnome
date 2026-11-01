@@ -841,3 +841,41 @@ def test_track_end_adds_to_a_host_counted_loss_instead_of_replacing_it(host):
     host.handle(dict(type="trackEnd", id="w", reason="ended", droppedFrames=777, endOffsetMs=1000))
     stop(host)
     assert dropped(host) == {stored: 877}
+
+
+@pytest.mark.parametrize("native_me", [True, False])
+def test_page_microphone_is_unexpected_when_the_app_records_me_natively(tmp_path, native_me):
+    host = BrowserHost(tmp_path)
+    host.handle(dict(type="start", features=["source-outcomes-v1"], captureId="capture-a"))
+    host.audio_sink = BrowserStreams(host.session, native_me=native_me)
+    session = host.session
+    try:
+        if native_me:
+            session.add_track("native-mic", "Me", "microphone", 48000, 1, label_source="device")
+            session.append("native-mic", b"\x01\x00" * 96000, 0)
+        page_mic = dict(sourceTrackId="page-mic", kind="local", label="Microphone")
+        guest = dict(sourceTrackId="guest", kind="remote", label="Guest")
+        assert host.handle(dict(type="sources", discoveredSources=[page_mic, guest])) == dict(type="ack")
+        assert host.handle(declare("guest-span", "guest")) == dict(type="ack")
+        assert host.handle(pcm("guest-span", 48000)) == dict(type="ack")
+        # A legacy page sender may still send a short local span: it is kept, not expected.
+        local = dict(declare("page-span", "page-mic"), kind="local")
+        assert host.handle(local) == dict(type="ack")
+        assert host.handle(pcm("page-span", 9600)) == dict(type="ack")
+        # Turning Me off and on again re-applies the selection to every discovered source.
+        host.audio_sink.select(False, True, 500)
+        host.audio_sink.select(True, True, 600)
+        assert host.handle(pcm("guest-span", 48000, sequence=1, offset=1000)) == dict(type="ack")
+        stop(host)
+        rows = {row["sourceTrackId"]: row for row in session.manifest["captureOutcome"]["sources"]}
+        assert rows["guest"]["captureOutcome"] == "captured"
+        assert rows["page-mic"]["captureOutcome"] == "lowAudio" and rows["page-mic"]["trackIds"]
+        if native_me:
+            assert rows["page-mic"]["captureExpected"] is False
+            assert session.manifest["state"] == "completed" and "problemKind" not in session.manifest
+        else:
+            # A page-microphone recording (no native Me) still expects its local source.
+            assert rows["page-mic"].get("captureExpected", True)
+            assert session.manifest["state"] == "interrupted"
+    finally:
+        host.close()

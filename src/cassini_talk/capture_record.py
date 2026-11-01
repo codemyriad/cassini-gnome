@@ -12,6 +12,12 @@ class CaptureRecord:
         self.received = {}
         self.bindings = {}
         self.io_failed = False
+        # The app records Me natively: an announced page microphone (local)
+        # source is never expected, so it cannot mark the capture interrupted.
+        self.native_me = False
+
+    def _expectable(self, kind):
+        return not (self.native_me and kind == "local")
 
     def observe(self, identity, kind, label, *, failed=False, expected=True):
         identity = source_track_identity(identity)
@@ -22,13 +28,14 @@ class CaptureRecord:
         if source["kind"] != kind:
             raise ProtocolError("source", "Conflicting source kind")
         source["failed"] |= failed
-        source["expected"] = source.get("expected", True) or expected
+        source["expected"] = source.get("expected", True) or expected and self._expectable(kind)
 
     def discover(self, sources, *, expected=lambda _kind: True):
         if not isinstance(sources, list):
             raise ProtocolError("source", "Invalid discovered audio sources")
         # Validate the entire request before changing the durable accounting.
         proposed = CaptureRecord()
+        proposed.native_me = self.native_me
         proposed.seen = {key: dict(value) for key, value in self.seen.items()}
         for source in sources:
             if not isinstance(source, dict):
@@ -54,13 +61,14 @@ class CaptureRecord:
         if browser:
             for source in self.seen.values():
                 selected = me if source["kind"] in ("microphone", "local") else others
-                if selected:
+                if selected and self._expectable(source["kind"]):
                     source["expected"] = True
 
     def bind(self, identifier, identity):
         if identity in self.seen:
             self.bindings[identifier] = identity
-            self.seen[identity]["expected"] = True
+            if self._expectable(self.seen[identity]["kind"]):
+                self.seen[identity]["expected"] = True
 
     def fail(self, manifest, identifier, *, io=False):
         self.io_failed |= io

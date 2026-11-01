@@ -1127,3 +1127,38 @@ def test_native_mic_checkpoint_failure_keeps_browser_pcm_and_does_not_raise_glob
         assert capture.finished and session.manifest["problemKind"] == "io"
     finally:
         client.close()
+
+
+def test_announced_page_microphone_never_interrupts_a_native_me_recording(server):
+    from test_capture_record import declare, pcm
+
+    service, path, _root = server
+    client = BrowserAudioProxy(path=path)
+    try:
+        reply = client.handle(
+            dict(
+                type="start",
+                independent=True,
+                captureId="native-me",
+                microphone=True,
+                timelineOriginMs=int(time.time() * 1000),
+                features=["source-outcomes-v1"],
+            )
+        )
+        assert reply["features"] == ["source-outcomes-v1"]
+        sources = [
+            dict(sourceTrackId="page-mic", kind="local", label="Microphone"),
+            dict(sourceTrackId="guest", kind="remote", label="Guest"),
+        ]
+        assert client.handle(dict(type="sources", discoveredSources=sources)) == dict(type="ack")
+        assert client.handle(declare("guest-span", "guest")) == dict(type="ack")
+        assert client.handle(pcm("guest-span", 48000)) == dict(type="ack")
+        capture = service.captures["native-me"]
+        assert client.handle(dict(type="stop", captureId="native-me"))["type"] == "stopped"
+        saved = json.loads((capture.directory / "session.json").read_text())
+        rows = {row["sourceTrackId"]: row for row in saved["captureOutcome"]["sources"]}
+        assert rows["page-mic"]["captureExpected"] is False and rows["page-mic"]["captureOutcome"] == "neverAudio"
+        assert any(t["kind"] == "microphone" for t in saved["tracks"]), "Me is the native microphone copy"
+        assert saved["state"] == "completed" and "problemKind" not in saved
+    finally:
+        client.close()
