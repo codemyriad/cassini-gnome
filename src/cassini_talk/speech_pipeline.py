@@ -411,7 +411,14 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
         audio_end = None
         if required(track):
             audio_end = end_ms(track)
-        elif type(track.get("frames")) is int and track["frames"] > 0 and track.get("sampleRate"):
+        elif (
+            track.get("codec") != "opus"
+            and type(track.get("frames")) is int
+            and track["frames"] > 0
+            and track.get("sampleRate")
+        ):
+            # Opus frames are source metadata; its decoded PCM, which is also
+            # what publication uses, already bounds each segment's words.
             from .source_spans import bounds
 
             audio_end = math.floor(bounds(track, display=True)[1])

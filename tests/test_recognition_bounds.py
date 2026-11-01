@@ -23,6 +23,42 @@ class OverrunModel:
         )
 
 
+class Detector:
+    frame_size = 512
+    runtime = {}
+
+    def __init__(self, *_):
+        pass
+
+    def probability(self, _):
+        return 1.0
+
+    def reset(self):
+        pass
+
+
+def spy_audio_end(monkeypatch):
+    from cassini_talk import speech_pipeline as pipeline
+
+    supplied = []
+    original = pipeline.recognise_segment
+
+    def recognise(*args, audio_end_ms=None, **kwargs):
+        supplied.append(audio_end_ms)
+        return original(*args, audio_end_ms=audio_end_ms, **kwargs)
+
+    monkeypatch.setattr(pipeline, "recognise_segment", recognise)
+    return supplied
+
+
+def write_wav(path, frames):
+    import wave
+
+    with wave.open(str(path), "wb") as stream:
+        stream.setparams((1, 2, 16000, 0, "NONE", ""))
+        stream.writeframes(np.full(frames, 1234, dtype="<i2").tobytes())
+
+
 @pytest.mark.parametrize(
     "count,expected_end",
     [(12000, 9000), (16000, 9250), (20000, 9250)],
@@ -64,30 +100,14 @@ def test_clamp_uses_absolute_sample_endpoint_without_accumulating_rounding():
 
 
 def test_process_tracks_uses_the_clock_mapped_source_end(tmp_path, monkeypatch):
-    import wave
-
     from cassini_talk import speech_pipeline as pipeline
 
     path = tmp_path / "track-clocked.wav"
-    with wave.open(str(path), "wb") as stream:
-        stream.setparams((1, 2, 16000, 0, "NONE", ""))
-        stream.writeframes(np.full(16000, 1234, dtype="<i2").tobytes())
+    write_wav(path, 16000)
     before = path.read_bytes()
 
-    class Detector:
-        frame_size = 512
-        runtime = {}
-
-        def __init__(self, *_):
-            pass
-
-        def probability(self, _):
-            return 1.0
-
-        def reset(self):
-            pass
-
     monkeypatch.setattr(pipeline, "SpeechDetector", Detector)
+    supplied = spy_audio_end(monkeypatch)
     events = []
     pipeline.process_tracks(
         OverrunModel(),
@@ -109,3 +129,50 @@ def test_process_tracks_uses_the_clock_mapped_source_end(tmp_path, monkeypatch):
     assert progress and max(word["endMs"] for event in progress for word in event["words"]) == 8255
     assert all(7250 <= word["startMs"] <= word["endMs"] <= 8255 for event in progress for word in event["words"])
     assert path.read_bytes() == before
+    # The mapped end is what bounds the words, not only the segment extent.
+    assert supplied and set(supplied) == {8255}
+
+
+def run_nominal(monkeypatch, track):
+    from cassini_talk import speech_pipeline as pipeline
+
+    monkeypatch.setattr(pipeline, "SpeechDetector", Detector)
+    supplied = spy_audio_end(monkeypatch)
+    events = []
+    pipeline.process_tracks(
+        OverrunModel(), [track], None, lambda kind, **values: events.append(dict(type=kind, **values))
+    )
+    words = [word for event in events if event["type"] == "progress" for word in event["words"]]
+    return supplied, words
+
+
+def test_nominal_wav_is_bounded_by_its_inspected_frames(tmp_path, monkeypatch):
+    path = tmp_path / "track-nominal.wav"
+    write_wav(path, 16000)
+    supplied, words = run_nominal(
+        monkeypatch, dict(id="nominal", path=str(path), offsetMs=7250, sampleRate=16000, frames=12000)
+    )
+    assert supplied and set(supplied) == {8000}
+    assert words and max(word["endMs"] for word in words) == 8000
+    assert all(7250 <= word["startMs"] <= word["endMs"] <= 8000 for word in words)
+
+
+def test_nominal_opus_is_bounded_by_decoded_pcm_not_source_metadata(tmp_path, monkeypatch):
+    from cassini_talk import speech_pipeline as pipeline
+
+    # One extra decoded Opus frame (20 ms) past the 1 s of source metadata;
+    # publication also uses the decoded length.
+    decoded = np.full(16320, 0.1, dtype="<f4")
+    monkeypatch.setattr(pipeline, "audio_chunks", lambda track: iter([decoded]))
+    monkeypatch.setattr(
+        pipeline,
+        "audio_segments",
+        lambda track, segments, heartbeat=None: (decoded[s["startSample"] : s["endSample"]] for s in segments),
+    )
+    supplied, words = run_nominal(
+        monkeypatch,
+        dict(id="opus", path=str(tmp_path / "track.opus"), offsetMs=7250, sampleRate=48000, frames=48000, codec="opus"),
+    )
+    assert supplied and set(supplied) == {None}
+    end = max(word["endMs"] for word in words)
+    assert 8250 < end <= 7250 + 16320 * 1000 // 16000
