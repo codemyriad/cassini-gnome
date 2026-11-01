@@ -292,6 +292,7 @@ def test_two_stop_requests_join_one_native_finalization(server):
 
 
 def test_rejected_browser_start_uses_its_own_system_fallback_without_forcing_microphone(server):
+    from test_browser_service import wait_for
     from test_browser_sessions import Extension
 
     service, path, _ = server
@@ -313,6 +314,12 @@ def test_rejected_browser_start_uses_its_own_system_fallback_without_forcing_mic
         ]
         assert [t["kind"] for t in value["tracks"]] == ["system"]
         assert value["tracks"][0]["startOffsetMs"] == 0
+        # The rejected fake browser never services a later Stop. Retire that
+        # transport explicitly instead of racing its final status and waiting
+        # for the production 25 s batch deadline. The native fallback survives.
+        peer.close()
+        wait_for(lambda: not service.browsers)
+        assert not capture.finished
         request("stop-all", path=path)
         assert capture.finished
     finally:
