@@ -126,6 +126,10 @@ try:
         kind = request['type']
         if kind in ('track', 'audio', 'trackEnd') and (manifest is None or manifest['state'] != 'recording'):
             refused('state', 'Capture already saved', request.get('id'), scope='command'); continue
+        if kind == 'resume':
+            # This per-process fixture owns no app-native stand-in registry.
+            # Refusing a fresh resume must never manufacture another folder.
+            refused('state', 'No active stand-in is available', scope='command'); continue
         if kind == 'start':
             started_at = time.monotonic()
             features = set(request.get('features', [])) & {'source-outcomes-v1'}

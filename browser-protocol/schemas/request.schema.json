@@ -244,6 +244,58 @@
         }
       },
       "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "version",
+        "independent",
+        "captureId",
+        "timelineOriginMs",
+        "callGeneration",
+        "features"
+      ],
+      "properties": {
+        "type": {
+          "const": "resume"
+        },
+        "version": {
+          "const": 1
+        },
+        "independent": {
+          "const": true
+        },
+        "captureId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "$comment": "At most128 UTF-8 bytes; opaque active native capture identity."
+        },
+        "timelineOriginMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 253402300799000
+        },
+        "callGeneration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "features": {
+          "type": "array",
+          "contains": {
+            "const": "resume-capture-v1"
+          },
+          "items": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "maxItems": 8,
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": true
     }
   ],
   "$defs": {

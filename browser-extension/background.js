@@ -219,7 +219,7 @@ function sourceWarning(session, message, fallback) {
 }
 
 function status(session = firstSession()) {
-  return session ? { recording: true, captureId: session.token, documentGeneration: documentFor(session.tabId), callGeneration: session.callGeneration, stopping: session.stopping, tracks: session.tracks, tabId: session.tabId, mode: session.mode,
+  return session ? { recording: true, captureId: session.token, timelineOriginMs: session.origin, documentGeneration: documentFor(session.tabId), callGeneration: session.callGeneration, stopping: session.stopping, tracks: session.tracks, tabId: session.tabId, mode: session.mode,
     pageState: pageState(session.tabId), failedSources: [...new Set([...session.discoveredSources].filter(([,s])=>s.failed).map(([id])=>id).concat([...(session.sourceWarnings?.keys() || [])]))], message: session.sourceWarnings?.values().next().value || session.warning || (!session.tracks ? "Waiting for audio. Join the call, or record the whole tab instead." : `${session.stopping ? "Saving" : "Recording"} ${session.mode === "tracks" ? "separate tracks" : "the whole tab"} · ${session.tracks} ${session.tracks === 1 ? "recorded track" : "recorded tracks"}`), path: session.path } : lastStatus;
 }
 function failure(message, session = firstSession()) {
@@ -252,7 +252,9 @@ async function stop(session = firstSession(), reason = "user") {
       }
       if ((session.keepOnNavigation || session.sourceOutcomes) && !session.loss) packet.reason = reason;
       if (session.independent && session.loss) packet.failureReason = "lost";
-      const result = session.host ? await session.host.send(packet) : {};
+      // A refused/unsupported resume never owns the target. Closing this
+      // transport must not turn an attempted attachment into a Stop of it.
+      const result = session.host && (!session.resumeTarget || session.resumed) ? await session.host.send(packet) : {};
       lastStatus = { recording: false, tabId: session.tabId, pageState: pageState(session.tabId), path: result.path, message: session.problem || result.problem || "Saved on this computer." };
     } catch (error) {
       lastStatus = { recording: false, tabId: session.tabId, pageState: pageState(session.tabId), path: session.path, message: session.problem || error.message };
@@ -272,9 +274,10 @@ async function stop(session = firstSession(), reason = "user") {
 
 async function start(mode, tabId = null, options = {}) {
   await recovery;
+  if (options.resumeIntent?.cancelled) throw new Error("Recording could not start.");
   if ((!options.independent && (sessions.size || pendingStarts.size)) || sessions.has(tabId) || pendingStarts.has(tabId)) throw new Error("A recording is already running. Stop it before starting another.");
   if (!["tracks", "tab"].includes(mode)) throw new Error("Unknown recording mode.");
-  const request = { cancelled: false };
+  const request = { cancelled: false, resumeCapture: options.resumeCapture };
   const key = tabId ?? Symbol();
   if (sessions.size + pendingStarts.size >= 100) throw new Error("Cassini has received too many commands. Reconnect and try again.");
   pendingStarts.set(key, request);
@@ -285,19 +288,22 @@ async function start(mode, tabId = null, options = {}) {
       try { tab = await chrome.tabs.get(tabId); }
       catch { throw new Error("That meeting is no longer available."); }
     } else [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (request.cancelled) throw new Error("Recording could not start.");
+    if (request.cancelled || options.resumeIntent?.cancelled) throw new Error("Recording could not start.");
     if (!Number.isSafeInteger(tab?.id) || tab.id < 0 || !/^https?:/.test(tab.url || "")) throw new Error("Open the meeting tab first. Recording works on web pages only.");
     if (sessions.has(tab.id)) throw new Error("A recording is already running. Stop it before starting another.");
     const identity = callInfo(tab.id);
     if (options.expectedCallGeneration !== undefined && options.expectedCallGeneration !== identity.generation)
       throw new Error("That call is no longer active.");
     identity.url = callAddress(tab.url);
-    const session = { callGeneration: identity.generation, mode, tabId: tab.id, independent: options.independent === true, captureLocal: options.captureLocal !== false, keepOnNavigation: options.keepOnNavigation === true, token: crypto.randomUUID(), origin: Date.now(),
+    const target = options.resumeCapture;
+    const session = { callGeneration: identity.generation, mode, tabId: tab.id, independent: options.independent === true, captureLocal: options.captureLocal !== false, keepOnNavigation: options.keepOnNavigation === true, token: target?.captureId ?? crypto.randomUUID(), origin: target?.timelineOriginMs ?? Date.now(), resumeTarget: target,
       frames: new Set(), tracks: 0, trackIds: new Set(), trackReservations: new Set(), endedTrackIds: new Set(), trackSources: new Map(), discoveredSources: new Map(), sourceUpdates: new Set(), lastTab: tab, lastSourceCount: 0, stopping: false, problem: null };
     sessions.set(tab.id, session);
     notifyControl();
     const checkStarting = () => {
       if (session.stopping || sessions.get(session.tabId) !== session) throw new Error("Recording could not start.");
+      if (options.expectedCallGeneration !== undefined && callInfo(session.tabId).generation !== session.callGeneration)
+        throw new Error("That call is no longer active.");
     };
     session.starting = (async () => {
       let streamId;
@@ -317,7 +323,22 @@ async function start(mode, tabId = null, options = {}) {
       const start = { type: "start", version: 1, title: tab.title || "Browser meeting", features: ["source-outcomes-v1"],
         callGeneration: session.callGeneration, documentGeneration: documentFor(tab.id) };
       if (session.independent) Object.assign(start, { independent: true, microphone: options.microphone !== false, captureId: session.token, timelineOriginMs: session.origin });
+      if (target) {
+        // A new native packet type fails closed on older hosts: an unknown
+        // optional field on ordinary Start could create a second folder.
+        start.type = "resume";
+        start.features.push("resume-capture-v1");
+        delete start.microphone; // The app retains its actual per-session selection.
+      }
       const result = await session.host.send(start);
+      if (target) {
+        if (result.type !== "started" || typeof result.path !== "string" || !result.path.startsWith("/") ||
+            result.resumed !== true || result.captureId !== session.token ||
+            result.timelineOriginMs !== session.origin || result.callGeneration !== session.callGeneration ||
+            !Array.isArray(result.features) || !result.features.includes("resume-capture-v1"))
+          throw new Error("That recording could not be resumed.");
+        session.resumed = true;
+      }
       session.path = result.path;
       session.sourceOutcomes = Array.isArray(result.features) && result.features.includes("source-outcomes-v1");
       notifyControl();
@@ -577,12 +598,12 @@ chrome.tabs.onUpdated.addListener(tabUpdated);
 function controlStatus(tabId = null) {
   const value = tabId === null ? status() : sessions.has(tabId) ? status(sessions.get(tabId)) : saved.get(tabId) || { recording: false, tabId, path: null, message: lastStatus.message };
   const packet = { type: "status", recording: value.recording, tabId: value.tabId ?? null,
-    path: value.path ?? null, message: value.message, captureId: value.captureId, failedSources: value.failedSources, documentGeneration: value.documentGeneration,
+    path: value.path ?? null, message: value.message, captureId: value.captureId, timelineOriginMs: value.timelineOriginMs, failedSources: value.failedSources, documentGeneration: value.documentGeneration,
     callGeneration: value.callGeneration, pageState: value.tabId == null ? undefined : value.pageState || pageState(value.tabId), tracks: value.tracks ?? 0, stopping: !!value.stopping };
   if (interrupted.length) packet.interrupted = interrupted;
   packet.sessions = [...sessions.values()].map(session => {
     const value = status(session);
-    return { recording: true, tabId: session.tabId, path: session.path ?? null, captureId: session.token, tracks: session.tracks,
+    return { recording: true, tabId: session.tabId, path: session.path ?? null, captureId: session.token, timelineOriginMs: session.origin, tracks: session.tracks,
       stopping: session.stopping, message: value.message, pageState: pageState(session.tabId), failedSources: value.failedSources,
       documentGeneration: value.documentGeneration, callGeneration: session.callGeneration };
   });
@@ -616,18 +637,19 @@ async function meetings() {
   });
   return { type: "meetings", meetings: found.filter(Boolean) };
 }
-async function controlCommand(command) {
+async function controlCommand(command, intent = {}) {
   await recovery;
+  if (intent.cancelled) throw new Error("Recording could not start.");
   if (command.action === "start") {
     if (!command.independent && (sessions.size || pendingStarts.size)) throw new Error("A recording is already running. Stop it before starting another.");
     if (![...frames].some(frame => frame.tabId === command.tabId && frame.sourceCount > 0))
       throw new Error("No audio is available from that meeting yet.");
     await start("tracks", command.tabId, { independent: command.independent === true,
-      captureLocal: command.captureLocal, microphone: command.microphone, keepOnNavigation: command.keepOnNavigation, expectedCallGeneration: command.callGeneration });
+      captureLocal: command.captureLocal, microphone: command.microphone, keepOnNavigation: command.keepOnNavigation, expectedCallGeneration: command.callGeneration, resumeCapture: command.resumeCapture, resumeIntent: intent });
   } else {
     if (!command.independent && firstSession() && firstSession().tabId !== command.tabId) throw new Error("A recording is already running. Stop it before starting another.");
     const session = sessions.get(command.tabId);
-    if (command.captureId !== undefined && session?.token !== command.captureId)
+    if (command.captureId !== undefined && session?.token !== command.captureId && !(intent.cancelledResume && !session))
       throw new Error("That recording is no longer active.");
     if (session) await stop(session, command.reason);
     else if (pendingStarts.has(command.tabId)) pendingStarts.get(command.tabId).cancelled = true;
@@ -635,15 +657,16 @@ async function controlCommand(command) {
   return controlStatus(command.independent ? command.tabId : null);
 }
 function cancelPendingStart(command) {
-  if (command.captureId !== undefined && sessions.get(command.tabId)?.token !== command.captureId) return;
   const request = pendingStarts.get(command.tabId);
+  if (command.captureId !== undefined && sessions.get(command.tabId)?.token !== command.captureId &&
+      request?.resumeCapture?.captureId !== command.captureId) return;
   if (request) request.cancelled = true;
   const session = sessions.get(command.tabId);
   if (session && !session.ready) session.stopping = true;
 }
 function notifyControl() { appControl.publish(); }
 const appControl = new AppControl({
-  runtime: chrome.runtime, alarms: chrome.alarms, capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1"], cancelPending: cancelPendingStart,
+  runtime: chrome.runtime, alarms: chrome.alarms, capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1"], cancelPending: cancelPendingStart,
   connected: async () => {
     await recovery;
     const tabs = await chrome.tabs.query({});

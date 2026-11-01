@@ -207,7 +207,7 @@ installed (unpacked, self-hosted or from a store):
 
 This additive capability preserves all v1 messages and legacy vectors. Without
 `independent: true`, the popup/app start retains the v1 single-slot refusal.
-The extension's hello now advertises `capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1"]`.
+The extension's hello now advertises `capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1"]`.
 Only apps that see that capability may request concurrent capture.
 
 An app may send `start` with `independent: true` for each active-call tab. Each
@@ -366,7 +366,7 @@ expectations for both apps, checked by an independent fixture oracle. It is not
 production policy code. Each app must additionally test its actual writer and
 fallback/restore device failures.
 
-## D52 multi-stream lifecycle (extension 0.2.6; draft PR)
+## D52 multi-stream lifecycle (extension 0.2.6)
 
 The extension advertises multi-stream-v1 alongside its existing capabilities.
 The following policy supersedes the legacy two-second present-page call-end
@@ -436,3 +436,61 @@ a successful declaration alone is not recovery. Permanent/previously recorded
 source failures remain in the capture ledger. A source still retrying at Stop
 is reported failed, with its existing specific error retained. A recovered
 transient readiness error does not turn the final Stop into an interruption.
+
+## Resume an app's active stand-in (D52.1 / R67; extension 0.2.7)
+
+Opt-in capability `resume-capture-v1` joins an already recording native system-
+sound stand-in. Apps MUST see this hello capability before sending the command;
+an unknown optional field on an ordinary Start is not safe feature negotiation.
+Fresh manual Record remains an ordinary independent Start with a new identity.
+A failed resume MUST NOT be retried as a fresh Start automatically.
+
+```json
+{"type":"command","requestId":"join-stand-in","action":"start","mode":"tracks","tabId":2,"independent":true,"callGeneration":"call-A","captureLocal":false,"resumeCapture":{"captureId":"stand-in-F","timelineOriginMs":1793500000000}}
+```
+
+`resumeCapture` requires independent Start, a selected callGeneration, a nonempty
+captureId of at most128 UTF-8 bytes and an integer original timelineOriginMs in
+0..253402300799000. Unknown members are ignored; no path is supplied. The target
+is this recording operation, not merely a call address/generation. The extension
+uses its captureId and exact origin from session construction, including status
+before the native ACK and every scoped Stop. It does not invent an alias token
+or shift timestamps. After asynchronous lookup it checks the selected generation.
+
+The first native packet is deliberately a distinct `type:"resume"`, version1,
+with independent:true, captureId, timelineOriginMs, callGeneration and features
+including resume-capture-v1. It otherwise uses the same transport as Start.
+Older hosts must reject this unknown type before creating any folder. This is
+safer than adding an ignored optional field to Start. The app atomically verifies
+that the target is active, not stopping/stopped, the exact origin/generation
+matches and the current others source is an eligible system-sound stand-in. It
+attaches the new transport to that recording. It never creates another folder,
+resets its clock or replaces its microphone/selection. Title/microphone defaults
+from a fresh Start do not modify the target. A refused resume has no side effect.
+
+```json
+{"type":"started","path":"/Library/.sessions/Recording-example","features":["source-outcomes-v1","resume-capture-v1"],"resumed":true,"captureId":"stand-in-F","timelineOriginMs":1793500000000,"callGeneration":"call-A"}
+```
+
+The extension requires this explicit proof, including the exact identity/origin/
+generation, before admitting tracks. A missing/mismatched proof closes only the
+attempted transport; it never sends Stop to an unaccepted target. A native host
+must not let that failed transport's EOF/Stop finalize an unrelated active job.
+Once attached, unexpected EOF keeps native recording/fallback under D33; an
+ordinary user Stop finalizes normally.
+
+Stop is fenced at receipt, not only when its queued handler runs: it cancels a
+matching queued resume, a pending tab lookup and a session awaiting native ACK.
+The app must also reject a resume arriving after it stopped the native target,
+including when Start/Stop cross between the independent control/audio pipes.
+This cancellation does not prohibit a subsequent fresh manual Record for the
+same call. Changed-call signals from A must not bind or stop B.
+
+On successful attachment, transition othersSource from system to browser with
+reason callConnected at the committed seam, retaining microphone and selection.
+S-6 ownership is half-open: system audio before the seam and browser audio from
+the seam, with no overlap or dropped sample. Stored audio is not filtered.
+
+Early status carries timelineOriginMs (also on each sessions[] entry). A pending
+status is an intent, not native acceptance: apps switch sources only after their
+own native attachment has committed, regardless of control/status delivery order.

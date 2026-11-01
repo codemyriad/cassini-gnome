@@ -1,6 +1,6 @@
-tree cbb67705ae46d3dfda513607e7c39f0c92e32e74
-parent 76b36a5ec7d028706de83e631db98072822e0e71
-author Silvio Tomatis <silviot@gmail.com> 1793523475 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793523475 +0100
+tree 9d1fe8680aae8657a052c61e00a7aa447592c21e
+parent 635745dde68c84497beb413971dc912cbec3b4b0
+author Silvio Tomatis <silviot@gmail.com> 1793524967 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793524967 +0100
 
-Observe receiver tone readiness before topology assertions
+Base the source fix on merged resume support at companion 0.2.8
