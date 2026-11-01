@@ -41,6 +41,10 @@ OUTBOUND_LIMIT = 64
 # state. So: the longest retry wait plus the extension's 10 s acknowledgement
 # limit, still under the 60 s span cut that would end the source anyway.
 PCM_STALE_AFTER = 40
+# heartbeat-v1 (D52.4): the app pings a negotiated control link, and any
+# inbound frame proves it alive. Two missed pings plus 5 s of slack.
+HEARTBEAT_INTERVAL = 10
+CONTROL_LOSS_AFTER = 25
 
 
 @dataclass(frozen=True)
@@ -210,6 +214,10 @@ class BrowserConnection(Transport):
         self.outbound_ready = threading.Condition(threading.RLock())
         self.writer = None
         self.ignored = set()
+        self.last_inbound = clock()
+        # Set by the first status after a heartbeat-v1 hello; None never pings.
+        self.last_ping = None
+        self.ping_seq = 0
         self.meetings = {}
         self.status = {"recording": False}
         self.status_seen = self.hello_seen = False
@@ -229,6 +237,11 @@ class BrowserConnection(Transport):
         self.status_pages = {}
         self.capabilities = set()
         self.closed = False
+
+    def expired(self, now):
+        if self.last_ping is not None and now - self.last_inbound >= CONTROL_LOSS_AFTER:
+            return "stopped answering pings"
+        return super().expired(now)
 
     def send(self, packet):
         data = encode_packet(packet)
@@ -1110,6 +1123,7 @@ class BrowserService:
 
     def update(self, browser, packet):
         with self.lock:
+            browser.last_inbound = self.clock()  # Every frame type proves liveness.
             kind = packet.get("type")
             if kind == "meetings":
                 values = packet.get("meetings")
@@ -1189,9 +1203,14 @@ class BrowserService:
                             browser.attempted.add(tab)
                 browser.attempted.intersection_update(meetings)
             elif kind == "status":
+                if "heartbeat-v1" in browser.capabilities and browser.last_ping is None:
+                    # Pings wait for the first status: hello, meetings, status.
+                    browser.last_ping = browser.last_inbound
                 self._status(browser, packet)
             elif kind == "result":
                 self._command_result(browser, packet)
+            elif kind == "pong":
+                pass  # Liveness only, recorded above; seq needs no correlation.
             elif kind == "hello":
                 if type(packet.get("version")) is not int or packet["version"] != 1:
                     raise ValueError("Unsupported browser control version")
@@ -1202,6 +1221,7 @@ class BrowserService:
                     if isinstance(capabilities, list) and len(capabilities) <= 16
                     else set()
                 )
+                browser.last_ping, browser.ping_seq = None, 0
             else:
                 # Forward compatible: a newer companion's message is not a
                 # broken link. Log each new type once per connection.
@@ -1822,6 +1842,20 @@ class BrowserService:
             if reason is not None and not transport.shut_down.is_set():
                 logging.getLogger(__name__).warning("Closing a browser peer that %s", reason)
                 transport.shutdown()
+        with self.lock:
+            # Loss is checked first. Pings are unconditional, not idle-only, and
+            # only queue: no socket I/O under the inventory lock.
+            for browser in self.browsers.values():
+                if (
+                    browser.last_ping is not None
+                    and not browser.shut_down.is_set()
+                    and now - browser.last_ping >= HEARTBEAT_INTERVAL
+                ):
+                    browser.last_ping = now
+                    ping = dict(type="ping", seq=browser.ping_seq)
+                    browser.ping_seq += 1
+                    with contextlib.suppress(OSError):
+                        browser.send(ping)  # An overflow already shut the peer down.
         self.policy()
 
     def policy(self):

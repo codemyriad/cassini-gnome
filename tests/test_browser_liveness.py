@@ -441,6 +441,6 @@ def test_unknown_extension_message_types_are_ignored(broker):
         peer.inventory((3, 4))
         wait_for(lambda: len(service.snapshot()["meetings"]) == 2)
         assert service.browsers.get(browser.id) is browser and not browser.closed
-        assert browser.ignored == {"pong", "from-a-newer-companion", "list"}
+        assert browser.ignored == {"from-a-newer-companion", "list"}
     finally:
         peer.close()
