@@ -6,6 +6,8 @@ import hashlib
 import json
 import shutil
 
+import pytest
+
 from cassini_talk.capture_report import from_session, record_capture, stored
 from cassini_talk.library import LibraryScanner
 from cassini_talk.library_publication import capture_parent, publish_stopped
@@ -36,6 +38,12 @@ def captured(root):
 
 
 def test_capture_record_survives_portable_publication_and_cache_removal(tmp_path):
+    pytest.importorskip("numpy")
+    gi = pytest.importorskip("gi")
+    try:
+        gi.require_version("Gst", "1.0")
+    except ValueError:
+        pytest.skip("Real publication requires GStreamer")
     root = tmp_path / "Library"
     session = captured(root)
     pcm = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in session.directory.glob("*.wav")}
@@ -114,3 +122,26 @@ def test_untrusted_record_shape_is_unknown_without_inventing_success(tmp_path):
         else:
             value["sources"][0]["label"] = None
         assert stored(dict(recordingDetails=dict(captureRecord=value))) is None
+
+
+def test_seventy_announced_sources_are_not_pruned_by_portable_publication(tmp_path):
+    pytest.importorskip("numpy")
+    gi = pytest.importorskip("gi")
+    try:
+        gi.require_version("Gst", "1.0")
+    except ValueError:
+        pytest.skip("Real publication requires GStreamer")
+    root = tmp_path / "Library"
+    host = BrowserHost(capture_parent(root))
+    host.handle(dict(type="start", features=["source-outcomes-v1"], captureId="synthetic"))
+    sources = [dict(sourceTrackId=f"root-{i}", kind="remote", label=f"Voice {i}") for i in range(70)]
+    host.handle(dict(type="sources", discoveredSources=sources))
+    host.handle(dict(type="track", id="only-wav", sourceTrackId="root-0", kind="remote", sampleRate=48000, channels=1))
+    host.handle(dict(type="audio", id="only-wav", sequence=0, offsetMs=0, pcm=base64.b64encode(bytes(96000)).decode()))
+    host.handle(dict(type="stop", captureId="synthetic"))
+    publish_stopped(host.session)
+    (meeting,) = LibraryScanner(root).scan().meetings
+    record = stored(meeting.metadata)
+    assert len(record["sources"]) == 70 and len(record["tracks"]) == 1
+    assert sum(row["captureOutcome"] == "neverAudio" for row in record["sources"]) == 69
+    assert len(list(host.session.directory.glob("*.wav"))) == 1
