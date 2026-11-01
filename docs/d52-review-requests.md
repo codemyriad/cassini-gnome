@@ -62,3 +62,23 @@ Shared tests should cover both status/native delivery orders, Stop before Start
 or session construction, a fresh manual Record after Stop, stale A/B signals,
 retained microphone/selection and a half-open D49 seam. Full reproduction:
 [stand-in spike notes](https://github.com/codemyriad/cassini-gnome/blob/wip/stand-in-transport-adoption/docs/d52-stand-in-spike.md).
+
+## R69 — deliberately unselected sources must not flag a capture failure
+
+A newly discovered remote while The others is off currently becomes neverAudio
+and marks the otherwise healthy microphone meeting interrupted. The real writer
+receives that PCM but intentionally discards it. This is a G2 accounting bug.
+Proposed optional source-row `captureExpected: false` means that source was
+never selected for admission. Missing means true for older records. Outcomes
+and admitted frame counts stay factual; only expected missing/short/failed
+sources flag the recording. The flag turns true permanently if that source is
+ever selected or a recording span opens; switching off cannot forgive an
+earlier capture failure. A failed unused source must not stop healthy audio.
+
+The existing session v1 schema permits this additive property; no protocol
+snapshot/schema is edited. R65's proposed portable record carries the same bit,
+and the immutable source model suppresses failure styling for an unused source.
+This still needs shared agreement before landing. Proposed R63 additional copy:
+`details.sources.notSelected` — “{source}: not selected for recording.”
+Role: neutral source status; note: final/live source was never selected, so its
+absence is intentional. No speculative selection timing is inferred by a reader.

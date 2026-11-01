@@ -17,6 +17,12 @@ or before its start. An unknown span always takes a new, non-reusable lane.
 Lane zero retains the base ID. Further lanes use `base:overlap:n`, starting at 1.
 Every ordinary base ID is reserved first, and suffixes skip an occupied ID.
 Input order does not affect the assignments. Reapplying the operation is a no-op.
+The tie-break is the validated capture track ID, never the storage basename;
+compaction may rename the WAV/Opus file while that identity stays unchanged.
+The recognition job carries it as `captureTrackId`, separately from its local
+progress/file key. This is an internal job field, not a shared format change.
+Opaque IDs compare by UTF-8 bytes without Unicode normalization, including IDs
+whose human-readable spelling is canonically equivalent.
 
 The colon suffix replaces the earlier proposed `~overlap-n`: D24/D25 use `~`
 to identify diarized children. A conflicting source must not be mistaken for a

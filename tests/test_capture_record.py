@@ -247,6 +247,54 @@ def test_refused_and_discovered_sources_do_not_allocate_wavs(host):
     assert len(session.writers) == 64
 
 
+@pytest.mark.parametrize("mode", ["off", "off-failed", "previously-on", "later-on"])
+def test_intentionally_unselected_source_is_not_a_capture_problem(tmp_path, mode):
+    host = BrowserHost(tmp_path)
+    host.handle(dict(type="start", features=["source-outcomes-v1"], captureId="capture-a"))
+    host.audio_sink = BrowserStreams(host.session, me=False, others=mode == "previously-on")
+    session = host.session
+    try:
+        session.add_track("native-mic", "Me", "microphone", 48000, 1, label_source="device")
+        session.append("native-mic", b"\x01\x00" * 48000, 0)
+        host.handle(
+            dict(
+                type="sources",
+                discoveredSources=[dict(sourceTrackId="unselected", kind="remote", failed=mode == "off-failed")],
+            )
+        )
+        assert host.handle(declare("browser", "unselected")) == dict(type="ack")
+        host.audio_sink.select(False, False, 0)
+        assert host.handle(pcm("browser", 48000)) == dict(type="ack")
+        if mode == "later-on":
+            host.audio_sink.select(False, True, 1000)
+            assert host.handle(pcm("browser", 48000, sequence=1, offset=1000)) == dict(type="ack")
+        stop(host)
+        (row,) = session.manifest["captureOutcome"]["sources"]
+        if mode == "previously-on":
+            assert row.get("captureExpected", True) and row["captureOutcome"] == "neverAudio"
+            assert session.manifest["state"] == "interrupted"
+        elif mode == "later-on":
+            assert row.get("captureExpected", True) and row["captureOutcome"] == "captured"
+            assert row["audioMs"] == 1000 and session.manifest["state"] == "completed"
+        else:
+            assert row["captureExpected"] is False
+            assert row["captureOutcome"] == ("failed" if mode == "off-failed" else "neverAudio")
+            assert row["trackIds"] == [] and row["audioMs"] == 0
+            assert session.manifest["state"] == "completed" and "problemKind" not in session.manifest
+    finally:
+        host.close()
+
+
+def test_browser_cannot_suppress_an_expected_source_warning(host):
+    assert host.handle(
+        dict(type="sources", discoveredSources=[dict(sourceTrackId="expected", kind="remote", captureExpected=False)])
+    ) == dict(type="ack")
+    stop(host)
+    (row,) = host.session.manifest["captureOutcome"]["sources"]
+    assert row.get("captureExpected", True) is True and row["captureOutcome"] == "neverAudio"
+    assert host.session.manifest["state"] == "interrupted" and host.session.manifest["problemKind"] == "capture"
+
+
 def test_browser_wire_id_cannot_retire_or_claim_native_microphone_pcm(host):
     session = host.session
     session.add_track("native-mic", "Me", "microphone", 48000, 1, label_source="device")

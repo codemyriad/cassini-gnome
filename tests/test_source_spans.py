@@ -57,6 +57,15 @@ def test_long_utf8_source_and_speaker_limits_do_not_require_platform_hashing():
     assert max(len(t["speaker"]) for t in separated) < 256
 
 
+def test_opaque_capture_ids_sort_by_utf8_without_normalization():
+    rows = [track("first.wav", 0, captureTrackId="é"), track("second.wav", 0, captureTrackId="e\u0301")]
+    result, _ = separate(rows)
+    assert {t["captureTrackId"]: t["speaker"] for t in result} == {
+        "e\u0301": "track-receiver",
+        "é": "track-receiver:overlap:1",
+    }
+
+
 def test_worker_grouping_also_refuses_to_sum_raw_overlapping_spans():
     rows = [track("a", 0, 96000), track("b", 1000, 96000), track("c", 2000)]
     assert group_tracks(rows) == [
@@ -126,6 +135,41 @@ def test_conflict_ids_do_not_look_like_d24_subvoices():
         excluded_groups=("track-receiver",),
     )
     assert selected == [words[1]] and labels == {}
+
+
+def test_conflict_attribution_uses_capture_ids_not_changed_compaction_filenames(tmp_path):
+    from types import SimpleNamespace
+
+    from cassini_talk.library import CaptureTrack
+    from cassini_talk.transcription import prepare_tracks
+
+    tracks = (
+        CaptureTrack(
+            tmp_path / "track-z.wav", 48000, 48000, 0, True, id="a", kind="remote", source_track_id="receiver"
+        ),
+        CaptureTrack(
+            tmp_path / "track-a.wav", 48000, 48000, 0, True, id="b", kind="remote", source_track_id="receiver"
+        ),
+    )
+
+    def attribution(values):
+        jobs, _ = prepare_tracks(SimpleNamespace(tracks=values, directory=tmp_path))
+        return {track.id: job["speaker"] for track, job in zip(values, jobs, strict=True)}
+
+    compacted = tuple(
+        replace(track, path=tmp_path / name, codec="opus", decoded_frames=48000)
+        for track, name in zip(tracks, ("a.opus", "z.opus"), strict=True)
+    )
+    # The validated capture identities survive a WAV -> Opus representation
+    # change even when the new storage basenames sort in the opposite order.
+    assert (
+        attribution(tracks)
+        == attribution(compacted)
+        == {
+            "a": "track-receiver",
+            "b": "track-receiver:overlap:1",
+        }
+    )
 
 
 def test_clock_mapped_fractional_end_is_not_floored_before_overlap_check(tmp_path, monkeypatch):
