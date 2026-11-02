@@ -27,6 +27,7 @@ OPEN_TIMEOUT_S = 3
 START_FAILURE = "Could not start audio capture. Check your audio devices and GStreamer plugins."
 # A failed state change reports no cause of its own (no bus error came with it).
 STATE_FAILURE = "Could not start native audio capture"
+NO_SAMPLE = "Native audio capture did not produce a sample"
 SIDES = {"microphone": "me", "system": "others"}
 LOG = logging.getLogger(__name__)
 
@@ -196,60 +197,94 @@ class NativeRecorder(GObject.Object):
     def _open(self, kinds):
         """Open each requested side on its own and in parallel (R79 §1).
 
-        This is _select's open-then-commit for every side at start. A side
-        opens when its first buffer is admitted within OPEN_TIMEOUT_S, and
-        then commits its track, WAV and boundary at once. Before that, a
-        failed state change, a bus error or no sample refuses only that side.
-        All sides share one deadline, so the worst-case start delay is one
-        bound. Returns the committed kinds and the refused sides' errors.
+        This is _select's open-then-commit for every side at start. Each side
+        changes state on its own thread and has its own deadline, taken before
+        its state change. It opens when its first buffer is admitted before
+        that deadline: _sample then commits its track, WAV and boundary at
+        once and records that buffer, whatever the other side is doing.
+        Before that, a failed state change, a bus error or no sample refuses
+        only that side. Returns the committed kinds and the refused sides'
+        errors; a Stop returns at once, without waiting on a state change.
         """
         pipeline, wake = self.pipeline, self._open_wake
         attempts, committed, refused = {}, [], {}
         try:
             for kind in kinds:
                 branch = self._branch(kind)
-                attempt = dict(branch=branch, ready=threading.Event(), error=None, wake=wake)
+                attempt = dict(
+                    branch=branch,
+                    ready=threading.Event(),
+                    error=None,
+                    wake=wake,
+                    pipeline=pipeline,
+                    committed=False,
+                    settled=False,
+                    retired=False,
+                )
                 attempts[kind] = attempt
                 sink = branch.get_by_name(kind)
                 if sink is not None:
                     pad = sink.get_static_pad("sink")
                     attempt["hold"] = pad, pad.add_probe(Gst.PadProbeType.EVENT_DOWNSTREAM, self._hold_eos)
+                attempt["deadline"] = self._open_clock() + OPEN_TIMEOUT_S
                 with self._lock:
                     self._pending_sources[kind] = attempt
                 pipeline.add(branch)
-                if not branch.sync_state_with_parent():
-                    attempt["error"] = attempt["error"] or STATE_FAILURE
-            deadline = self._open_clock() + OPEN_TIMEOUT_S
-            undecided = dict(attempts)
+                threading.Thread(
+                    target=self._change_side_state, args=(kind, attempt), name=f"cassini-open-{kind}", daemon=True
+                ).start()
+            undecided = set(attempts)
             while undecided and not self._start_cancelled(pipeline):
                 wake.clear()
-                for kind, attempt in tuple(undecided.items()):
-                    if attempt["error"] or attempt["ready"].is_set():
-                        del undecided[kind]
-                        if self._commit_side(pipeline, kind, attempt):
+                with self._lock:
+                    now = self._open_clock()
+                    for kind in tuple(undecided):
+                        attempt = attempts[kind]
+                        if attempt["committed"]:
                             committed.append(kind)
                         elif attempt["error"]:
                             refused[kind] = attempt["error"]
-                remaining = deadline - self._open_clock()
-                if undecided and remaining <= 0:
-                    refused.update((kind, "Native audio capture did not produce a sample") for kind in undecided)
-                    break
+                        elif now >= attempt["deadline"]:
+                            refused[kind] = attempt["error"] = NO_SAMPLE
+                        else:
+                            continue
+                        undecided.discard(kind)
                 if undecided and not self._start_cancelled(pipeline):
-                    self._open_wait(wake, remaining)
+                    self._open_wait(wake, min(attempts[kind]["deadline"] for kind in undecided) - now)
         finally:
             for kind, attempt in attempts.items():
-                if kind in committed:
-                    continue
                 branch = attempt["branch"]
                 with self._lock:
+                    if attempt["committed"]:
+                        continue
+                    attempt["retired"] = True
+                    settled = attempt["settled"]
                     self._retired_branches.add(branch)
                     self._pending_sources.pop(kind, None)
-                branch.set_state(Gst.State.NULL)
+                # A state change still under way keeps its branch's state lock:
+                # detach the branch now, and its own thread stops it (below).
+                if settled:
+                    branch.set_state(Gst.State.NULL)
                 if branch.get_parent() == pipeline:
                     pipeline.remove(branch)
         for kind, error in refused.items():
             LOG.warning("Native %s side (%s) did not open at start: %s", SIDES[kind], kind, error)
         return committed, refused
+
+    def _change_side_state(self, kind, attempt):
+        """One side's state change, off the start's wait and the other side's."""
+        ok = attempt["branch"].sync_state_with_parent()
+        with self._lock:
+            attempt["settled"] = True
+            retired = attempt["retired"]
+            if not ok and not attempt["committed"] and not attempt["error"]:
+                attempt["error"] = STATE_FAILURE
+            failed_committed = not ok and attempt["committed"]
+            self._signal(attempt)
+        if retired:
+            attempt["branch"].set_state(Gst.State.NULL)
+        elif failed_committed:
+            GLib.idle_add(self._begin_finish, STATE_FAILURE)
 
     @staticmethod
     def _hold_eos(_pad, info):
@@ -261,31 +296,48 @@ class NativeRecorder(GObject.Object):
     def _start_cancelled(self, pipeline):
         return self._stop_requested or self._finishing or self.pipeline is not pipeline
 
-    def _commit_side(self, pipeline, kind, attempt):
+    def _admit(self, kind, attempt, pts_ms):
+        """A pending side's buffer, under the lock: True when it is recorded.
+
+        A start side commits on its first buffer stamped before its deadline;
+        the stamp is taken here, when the buffer is admitted. A buffer at or
+        after the deadline refuses the side. A turn-on (_select) only signals.
+        """
+        if "deadline" not in attempt:
+            self._signal(attempt)
+            return False
+        if attempt["error"] or attempt["retired"] or self._start_cancelled(attempt["pipeline"]):
+            return False
+        if self._open_clock() >= attempt["deadline"]:
+            attempt["error"] = NO_SAMPLE
+        else:
+            self._commit_side(kind, attempt, pts_ms)
+        self._signal(attempt)
+        return attempt["committed"]
+
+    def _commit_side(self, kind, attempt, at_ms):
+        """Commit a start side at its first admitted buffer (lock held)."""
         from .strings import text
 
-        clock = pipeline.get_clock()
-        elapsed = (clock.get_time() - pipeline.get_base_time()) / Gst.MSECOND
-        with self._lock:
-            if attempt["error"] or self._start_cancelled(pipeline):
-                return False
-            at = change_time(self.session, elapsed)
-            label = text("common.me" if kind == "microphone" else "common.theOthers")
-            # One checkpoint holds the track with its start.
-            with self.session.change([]):
-                self.session.add_track(kind, label, kind, RATE, 1, filename=f"track-{kind}.wav")
-                self.session.manifest["tracks"][-1]["startOffsetMs"] = at
-                canonical_order(self.session.manifest["tracks"])
-            self.spectrogram.declare(kind, kind=kind, now_ms=at)
-            self._spectro_starts[kind] = at
-            self._track_ids[kind] = kind
-            self._boundaries[kind] = at
-            self._branches[kind] = attempt["branch"]
-            self._pending_sources.pop(kind)
-            if "hold" in attempt:
-                pad, probe = attempt["hold"]
-                pad.remove_probe(probe)
-        return True
+        # The track starts at its first buffer. The other side's frames do
+        # not move it: change_time's overlap rule is for spans of one source.
+        at = max(at_ms, *(e["atMs"] for e in self.session.manifest.get("events", [])))
+        label = text("common.me" if kind == "microphone" else "common.theOthers")
+        # One checkpoint holds the track with its start.
+        with self.session.change([]):
+            self.session.add_track(kind, label, kind, RATE, 1, filename=f"track-{kind}.wav")
+            self.session.manifest["tracks"][-1]["startOffsetMs"] = at
+            canonical_order(self.session.manifest["tracks"])
+        self.spectrogram.declare(kind, kind=kind, now_ms=at)
+        self._spectro_starts[kind] = at
+        self._track_ids[kind] = kind
+        self._boundaries[kind] = at
+        self._branches[kind] = attempt["branch"]
+        self._pending_sources.pop(kind)
+        attempt["committed"] = True
+        if "hold" in attempt:
+            pad, probe = attempt["hold"]
+            pad.remove_probe(probe)
 
     def _opened(self, future, test, reserve):
         self.starting = False
@@ -560,8 +612,7 @@ class NativeRecorder(GObject.Object):
             picture = None
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
-                if attempt is not None:
-                    self._signal(attempt)
+                if attempt is not None and not self._admit(identifier, attempt, pts / Gst.MSECOND):
                     return Gst.FlowReturn.OK  # Uncommitted readiness PCM is discarded.
                 stored = self._track_ids.get(identifier)
                 if stored is not None:

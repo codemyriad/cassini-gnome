@@ -40,15 +40,34 @@ class RefusingBin(Gst.Bin):
         return Gst.Bin.do_change_state(self, transition)
 
 
+class BlockingBin(Gst.Bin):
+    """A device whose state change blocks until the test releases it.
+
+    Like a Pulse source that cannot reach its server: its state lock is held
+    the whole time, so anything that changes its state waits too.
+    """
+
+    __gtype_name__ = "CassiniTestBlockingBin"
+
+    def do_change_state(self, transition):
+        if transition == Gst.StateChange.NULL_TO_READY:
+            self.entered.set()
+            self.release.wait(60)  # Bound only: the test releases it.
+        return Gst.Bin.do_change_state(self, transition)
+
+
 class Sides:
     """Scripted native sides on a fake open clock.
 
     plan maps a kind to (behaviour, seconds after its branch was built):
     "ok" admits a first buffer then, "error" posts a bus error and ends its
-    stream then, "fail" fails its state change, "never" stays silent. The
-    recorder's bounded open wait advances the fake clock to the next scripted
-    event, fires it, and then waits for the recorder to signal that it saw it.
-    causes names an "error" side's cause, by kind.
+    stream then, "fail" fails its state change, "never" stays silent, and
+    "block" holds its state change until release is set. The recorder's
+    bounded open wait first waits for every other side's state change to
+    return, then advances the fake clock to the next scripted event, fires
+    it, and waits for the recorder to signal that it saw it. causes names an
+    "error" side's cause, by kind. With frozen set, the clock never advances
+    without a scripted event; overshoot lets the wait wake that much late.
     """
 
     def __init__(self, recorder, plan, causes=None):
@@ -56,6 +75,8 @@ class Sides:
         self.now = 0.0
         self.built, self.sources, self.fired = {}, {}, set()
         self.started_at = None
+        self.frozen, self.overshoot = False, 0.0
+        self.release, self.blocked = threading.Event(), {}
         self.real_branch = recorder._branch
         recorder._open_clock = lambda: self.now
         recorder._open_wait = self.wait
@@ -68,6 +89,11 @@ class Sides:
         self.built[kind] = self.now
         if self.plan[kind][0] == "fail":
             return RefusingBin()
+        if self.plan[kind][0] == "block":
+            branch = BlockingBin()
+            branch.entered, branch.release = threading.Event(), self.release
+            self.blocked[kind] = branch
+            return branch
         branch = Gst.parse_bin_from_description(
             f'appsrc name=device is-live=true format=time do-timestamp=true caps="{CAPS}" ! '
             f"appsink name={kind} emit-signals=true sync=false async=false max-buffers=8 drop=false",
@@ -92,8 +118,12 @@ class Sides:
             assert self.sources[kind].emit("push-buffer", Gst.Buffer.new_wrapped(FRAME)) == Gst.FlowReturn.OK
 
     def _inflight(self):
-        pending = self.recorder._pending_sources
-        return any(kind in pending and not pending[kind]["ready"].is_set() for kind in self.fired)
+        pending = dict(self.recorder._pending_sources)
+        changing = any(
+            not attempt.get("settled", True) and self.plan.get(kind, ("",))[0] != "block"
+            for kind, attempt in pending.items()
+        )
+        return changing or any(kind in pending and not pending[kind]["ready"].is_set() for kind in self.fired)
 
     def wait(self, event, timeout):
         if event.is_set():
@@ -105,8 +135,10 @@ class Sides:
             for kind, (behaviour, delay) in self.plan.items()
             if kind in self.built and kind not in self.fired and behaviour in ("ok", "error")
         }
-        due = min((at for at in scripted.values() if at <= self.now + timeout), default=None)
+        due = min((at for at in scripted.values() if at <= self.now + timeout + self.overshoot), default=None)
         if due is None:
+            if self.frozen:
+                return event.wait(5)  # Bound only: a Stop or a state change wakes it.
             self.now += timeout
             return event.is_set()
         self.now = due
@@ -272,6 +304,69 @@ def test_a_first_buffer_after_the_bound_is_refused_and_never_becomes_a_track(tmp
         assert refusals(caplog) == ["Native me side (microphone) did not open at start: " + REASONS["never"]]
     finally:
         close(recorder)
+
+
+@pytest.mark.parametrize(("delay", "opens"), [(BOUND - 0.001, True), (BOUND, False), (BOUND + 0.1, False)])
+def test_a_first_buffer_is_judged_by_its_admission_time_against_the_bound(tmp_path, caplog, delay, opens):
+    caplog.set_level(logging.WARNING, logger="cassini_talk.native_recorder")
+    recorder = NativeRecorder()
+    sides = Sides(recorder, {"microphone": ("ok", delay), "system": ("ok", 0.1)})
+    # The open wait wakes late: the microphone's first buffer is admitted at
+    # its scripted time even when that is past the deadline. R79 §1: a side
+    # opens only when its first buffer arrives within 3 s, the bound excluded.
+    sides.overshoot = 0.2
+    recorder.start(tmp_path, test=True)
+    spin_until(lambda: not recorder.starting)
+    try:
+        session = recorder.session
+        assert "microphone" in sides.fired and sides.now == pytest.approx(delay)
+        if opens:
+            assert kinds_of(session) == ["microphone", "system"] and not refusals(caplog)
+            spin_until(lambda: session.writers["microphone"].frames == 480)  # Its first buffer.
+        else:
+            assert kinds_of(session) == ["system"] and set(recorder._track_ids) == {"system"}
+            assert not (session.directory / "track-microphone.wav").exists()
+            assert refusals(caplog) == ["Native me side (microphone) did not open at start: " + REASONS["never"]]
+    finally:
+        close(recorder)
+
+
+@pytest.mark.parametrize("blocked", ["microphone", "system"])
+def test_a_side_stuck_in_its_state_change_blocks_neither_the_other_side_nor_stop(tmp_path, blocked):
+    healthy = OTHER[blocked]
+    recorder = NativeRecorder()
+    sides = Sides(recorder, {blocked: ("block", 0), healthy: ("ok", 0.1)})
+    sides.frozen = True  # The start stays open: no deadline passes.
+    signals = []
+    recorder.connect("started", lambda _r, path: signals.append("started"))
+    recorder.connect("finished", lambda _r, path: signals.append("finished"))
+    recorder.start(tmp_path, test=True)
+    try:
+        spin_until(lambda: blocked in sides.blocked and sides.blocked[blocked].entered.is_set())
+        # The healthy side commits at its first buffer and records it, while
+        # the other side's state change still holds its state lock.
+        spin_until(lambda: healthy in recorder._track_ids)
+        session = recorder.session
+        spin_until(lambda: session.writers[healthy].frames == 480)
+        assert recorder.starting and not sides.release.is_set()
+        sides.feed(healthy, 9)
+        spin_until(lambda: session.writers[healthy].frames == 4800)
+        # Stop does not wait on the stuck state change either.
+        recorder.stop()
+        spin_until(lambda: "finished" in signals and recorder.pipeline is None and not recorder._finishing, timeout=5)
+        assert not sides.release.is_set()
+        assert signals == ["started", "finished"]
+        assert session.manifest["state"] == "completed"
+        saved = json.loads((session.directory / "session.json").read_text())
+        assert [t["kind"] for t in saved["tracks"]] == [healthy]
+        assert not (session.directory / f"track-{blocked}.wav").exists()
+    finally:
+        sides.release.set()
+        branch = sides.blocked.get(blocked)
+        # Released, the stuck side's own thread stops its detached branch.
+        spin_until(lambda: not any(t.name == f"cassini-open-{blocked}" for t in threading.enumerate()))
+        recorder._executor.shutdown(wait=True)
+    assert branch.get_parent() is None and branch.get_state(0)[1] == Gst.State.NULL
 
 
 def test_an_opening_side_keeps_the_error_that_names_its_cause():
