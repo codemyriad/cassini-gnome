@@ -428,6 +428,13 @@ CHANGES = {
     "present-zero-count": lambda service, browser, capture: service.update(
         browser, dict(type="meetings", meetings=[row(sourceCount=0)])
     ),
+    # One condition at a time: the page alone, then the count's knowledge alone.
+    "navigating-only": lambda service, browser, capture: service.update(
+        browser, dict(type="meetings", meetings=[row(pageState="navigating")])
+    ),
+    "cached-count-marked-unknown": lambda service, browser, capture: service.update(
+        browser, dict(type="meetings", meetings=[row(sourceCountKnown=False)])
+    ),
     "tab-reported-again": lambda service, browser, capture: service.update(
         browser, dict(type="status", recording=True, sessions=[session(stopping=True)])
     ),
@@ -439,6 +446,10 @@ EASED = {
         browser, dict(type="meetings", meetings=[row()])
     ),
     "present-zero-count": lambda service, browser: service.update(browser, dict(type="meetings", meetings=[row()])),
+    "navigating-only": lambda service, browser: service.update(browser, dict(type="meetings", meetings=[row()])),
+    "cached-count-marked-unknown": lambda service, browser: service.update(
+        browser, dict(type="meetings", meetings=[row()])
+    ),
     "tab-reported-again": released,
     "a-new-loss": lambda service, browser: service.policy(),
 }
