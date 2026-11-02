@@ -18,6 +18,7 @@ from . import ux_formats as fmt
 from .i18n import plural_category
 from .library_files import regular
 from .recording_session import METADATA_LIMIT, strict_json
+from .refusals import read as read_refusals
 from .session_events import read_events
 from .source_report import SourceFact
 from .source_report import sources as source_facts
@@ -105,6 +106,43 @@ class Span:
 
 
 @dataclass(frozen=True)
+class AudioLine:
+    """One Audio sources line. `id` and `source` are catalog ids (D58 reader rules)."""
+
+    id: str
+    source: str
+    text: str
+    warning: bool = False
+    gap_lines: tuple[str, ...] = ()
+
+
+def audio_lines(sources, refusals):
+    """Audio sources, in the protocol's reader order (conformance/refusals readers).
+
+    Expected source rows first, as today. Then one line per distinct refusal
+    line. Then each not-selected row, unless its role (Me, or The others, which
+    a browser refusal also covers) has a refusal line. `empty` only when no
+    other line is shown.
+    """
+    from .refusals import SOURCES, lines
+
+    shown, roles = lines(refusals)
+    result = [
+        AudioLine("details.sources." + source.outcome, "", source.line, source.problem, source.gap_lines)
+        for source in sources
+        if source.expected
+    ]
+    result += [AudioLine(key, origin, text(key, source=text(origin)), True) for key, origin in shown]
+    for source in sources:
+        role = "me" if source.kind in ("microphone", "local") else "others"
+        if not source.expected and role not in roles:
+            result.append(AudioLine("details.sources.notSelected", SOURCES[role], source.line))
+    if not result:
+        result.append(AudioLine("details.sources.empty", "", text("details.sources.empty")))
+    return tuple(result)
+
+
+@dataclass(frozen=True)
 class Report:
     title: str
     folder: str
@@ -115,6 +153,12 @@ class Report:
     writing: tuple[tuple[str, str], ...]
     notes: tuple[str, ...] = ()
     sources: tuple[SourceFact, ...] = ()
+    # D58: every well-formed stored refusal, exactly as stored, for Copy details.
+    refusals: tuple[dict, ...] = ()
+
+    @property
+    def audio(self):
+        return audio_lines(self.sources, list(self.refusals))
 
     def plain_text(self):
         lines = [text("details.copy.heading"), self.title, "", text("details.capture.title")]
@@ -127,10 +171,10 @@ class Report:
         lines.extend(["", text("details.end.title"), self.ended, "", text("details.health.title")])
         lines.extend(f"{key}: {value}" for key, value in self.health)
         lines.extend(["", text("details.sources.title")])
-        if not self.sources:
-            lines.append(text("details.sources.empty"))
-        for source in self.sources:
-            lines.extend((source.line, *source.gap_lines))
+        for line in self.audio:
+            lines.extend((line.text, *line.gap_lines))
+        # Copy details keeps every entry as stored: no merging, re-cut or normalizing.
+        lines.extend("  " + json.dumps(item, ensure_ascii=False, separators=(",", ":")) for item in self.refusals)
         lines.extend(["", text("details.writing.title")])
         lines.extend(f"{key}: {value}" for key, value in self.writing)
         lines.extend(["", text("details.files.title"), self.folder])
@@ -498,7 +542,11 @@ def read_details(meeting):
         # The committed file carries these facts after the WAV/session cache is
         # removed. Live session facts remain authoritative when they exist.
         if not session and capture_record is not None:
-            session = {key: capture_record[key] for key in ("tracks", "events", "problemKind") if key in capture_record}
+            session = {
+                key: capture_record[key]
+                for key in ("tracks", "events", "problemKind", "refusals")
+                if key in capture_record
+            }
         language = _language(fd, notes) if fd is not None else ""
         raw_tracks = session.get("tracks", [])
         raw_tracks = [t for t in raw_tracks[:64] if isinstance(t, dict)] if isinstance(raw_tracks, list) else []
@@ -568,4 +616,5 @@ def read_details(meeting):
         writing,
         tuple(notes),
         source_facts(session, meeting.metadata, live=meeting.lifecycle in ("recording", "saving")),
+        tuple(read_refusals(session.get("refusals"))),
     )

@@ -18,6 +18,7 @@ from .library_schema import valid
 from .meeting_state import MeetingError, MeetingState
 from .meeting_text import reading_turns
 from .recording_session import KINDS, METADATA_LIMIT, strict_json
+from .refusals import read as read_refusals
 from .session_events import meeting_sources, read_events
 from .strings import text
 from .transcript import build_turns, visible_turns
@@ -188,6 +189,8 @@ class Meeting(MeetingState):
     capture_source: str | None = None
     capture_state: str | None = None
     capture_events: tuple[dict, ...] = ()
+    # D58: readable session refusals, for the live Recording page lines.
+    capture_refusals: tuple[dict, ...] = ()
     audio_file: Path | None = None
     published_file: Path | None = None
     published_missing: bool = False
@@ -772,6 +775,7 @@ class LibraryScanner:
             capture_source=capture.get("source") if origin == "own" else None,
             capture_state=capture.get("state") if origin == "own" else None,
             capture_events=events,
+            capture_refusals=tuple(read_refusals(capture.get("refusals"))) if origin == "own" else (),
             recording_offset_minutes=(
                 capture["startedAtUtcOffsetMinutes"]
                 if type(capture.get("startedAtUtcOffsetMinutes")) is int

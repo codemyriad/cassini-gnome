@@ -104,6 +104,8 @@ class CassiniApplication(Adw.Application):
         self._native_held = False
         self._recording_cookie = 0
         self.recording_error = None
+        # D58: the start banner when nothing opened; catalog copy, never raw text.
+        self.recording_failure = None
         self.record_first = None
         self.settings_dialog = None
         self.shortcuts_dialog = None
@@ -606,6 +608,19 @@ class CassiniApplication(Adw.Application):
             for window in self.get_windows()
         )
 
+    def retry_recording(self):
+        """The start banner's Try again: Record again, unless something records."""
+        from .capture_guard import recorder_busy
+
+        self.recording_failure = None
+        if not (
+            self._record_start_future
+            or self.browser_capture_active()
+            or any(recorder_busy(r) for r in self.native_captures.values())
+        ):
+            self.on_record()
+        self._native_changed()
+
     def on_record(self, *_args):
         from .capture_guard import recorder_busy
 
@@ -669,6 +684,7 @@ class CassiniApplication(Adw.Application):
 
         if self._record_start_future is not None or self._quitting:
             return
+        self.recording_failure = None
         if not self.browser_companion_available:
             self.start_native()
             return
@@ -707,8 +723,14 @@ class CassiniApplication(Adw.Application):
             calls = [m for m in snapshot.get("meetings", []) if m.get("sourceCount", 0) > 0]
             if not calls and not active:
                 self.start_native()
+            elif snapshot.get("failures") and active:
+                self.recording_error = snapshot["failures"][0]["error"]  # D17 partial start, unchanged.
             elif snapshot.get("failures"):
-                self.recording_error = snapshot["failures"][0]["error"]
+                from .refusals import banner
+
+                # Nothing opened (D58): the start banner, with the first failure's refusals.
+                refusals = snapshot["failures"][0].get("refusals")
+                self.recording_failure = banner(refusals if isinstance(refusals, list) else [])
             elif active and any(w.get_visible() for w in self.get_windows()):
                 self._pending_recording = active[0]["path"]
             self._native_changed()
@@ -717,7 +739,10 @@ class CassiniApplication(Adw.Application):
             pass
         except (OSError, ValueError, TimeoutError) as error:
             if generation == self._record_start_generation and not self._quitting:
-                self.recording_error = str(error)
+                from .refusals import banner
+
+                logging.getLogger(__name__).warning("Could not start recording: %s", error)
+                self.recording_failure = banner([])
                 self._native_changed()
         finally:
             self.release()
@@ -734,6 +759,7 @@ class CassiniApplication(Adw.Application):
         recorder.connect("error", self._native_error)
         recorder.connect("changed", self._native_changed)
         self.recording_error = None
+        self.recording_failure = None
         for window in self.get_windows():
             player = getattr(window, "player", None)
             if player is not None and player.playing:
@@ -866,6 +892,11 @@ class CassiniApplication(Adw.Application):
         recovery = getattr(self, "library_recovery", None)
         if publication_error is not None and recovery is not None:
             recovery.report(_recorder.session.directory, publication_error)
+        elif getattr(_recorder, "_discard", False):
+            from .refusals import banner
+
+            # Nothing opened (D58): the start banner, with the refusals.
+            self.recording_failure = banner(_recorder.refusals)
         else:
             self.recording_error = message
         if not _recorder.pipeline and not _recorder.starting:

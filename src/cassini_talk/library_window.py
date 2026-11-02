@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The Library shell. Filesystem reads and transcript decoding stay in the monitor worker."""
 
+import contextlib
 import os
 import time
 from functools import partial
@@ -730,52 +731,103 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.get_application().on_stop_recording()
 
     def _recording_line(self, recorder):
-        from .inline_line import InlineLine
-
         app = self.get_application()
         message = getattr(app, "recording_error", None)
+        failure = getattr(app, "recording_failure", None)
+        banner = (failure["id"], failure["caption"], failure["action"]) if failure else None
         selected = app.comfort.status(self.selected) if self.selected else {}
-        fallback = bool(
-            self.selected
-            and self.selected.lifecycle in ("recording", "saving")
-            and app.comfort.sources(self.selected).fallback
-        )
-        signature = selected.get("line"), selected.get("minutes", 0), message, fallback
+        live = bool(self.selected and self.selected.lifecycle in ("recording", "saving"))
+        fallback = bool(live and app.comfort.sources(self.selected).fallback)
+        refused = tuple(tuple(sorted(line.items())) for line in self._refusal_lines(self.selected)) if live else ()
+        signature = selected.get("line"), selected.get("minutes", 0), message, fallback, banner, refused
         if signature != getattr(self, "_recording_line_signature", None):
             self._recording_line_signature = signature
             lines = getattr(self, "recording_lines", None)
             if lines is not None:
-                lines.set_visible(bool(signature[0] or message or fallback))
+                lines.set_visible(bool(signature[0] or message or fallback or banner or refused))
                 while child := lines.get_first_child():
                     lines.remove(child)
-                if signature[0]:
-                    lines.append(InlineLine(signature[0], n=signature[1]))
-                if message:
-                    lines.append(label(message, wrap=True, xalign=0))
-                if fallback:
-                    from .what_is_recorded import explain_fallback
-
-                    lines.append(
-                        InlineLine(
-                            "errors.othersFallback.line",
-                            action="errors.othersFallback.action",
-                            callback=lambda: explain_fallback(self),
-                            info=True,
-                        )
-                    )
-        first = (recorder.line, recorder.minutes_left, message) if recorder else (None, 0, message)
+                self._fill_recording_lines(lines, signature[0], signature[1], message, banner, fallback, refused)
+        first = (recorder.line, recorder.minutes_left, message, banner) if recorder else (None, 0, message, banner)
         if first != getattr(self, "_first_recording_line_signature", None):
             self._first_recording_line_signature = first
-            self.first_recording_lines.set_visible(bool(first[0] or message))
+            self.first_recording_lines.set_visible(bool(first[0] or message or banner))
             while child := self.first_recording_lines.get_first_child():
                 self.first_recording_lines.remove(child)
-            if first[0]:
-                self.first_recording_lines.append(InlineLine(first[0], n=first[1]))
-            if message:
-                self.first_recording_lines.append(label(message, wrap=True, xalign=0))
+            self._fill_recording_lines(self.first_recording_lines, first[0], first[1], message, banner)
         if self.meeting_page:
             state = app.comfort.status(self.meeting_page.meeting)
             self.meeting_page.set_recording_notice(state["line"], state["minutes"])
+
+    def _refusal_lines(self, meeting):
+        """D58: the selected live recording's refused sides, from its live session."""
+        from .refusals import live_lines
+
+        native = self.get_application().comfort._native_for(meeting)
+        if native is not None and native.session is not None:
+            manifest = native.session.manifest
+            tracks = [(t.get("kind"), t.get("ended")) for t in manifest.get("tracks", ())]
+            return live_lines(manifest.get("refusals"), tracks, manifest.get("events") or ())
+        tracks = [(t.kind, t.ended) for t in meeting.tracks]
+        return live_lines(list(meeting.capture_refusals), tracks, meeting.capture_events)
+
+    def _fill_recording_lines(self, box, line, minutes, message, banner, fallback=False, refused=()):
+        from .inline_line import InlineLine
+
+        app = self.get_application()
+        if line:
+            box.append(InlineLine(line, n=minutes))
+        if banner:
+            # Nothing opened (D58): catalog copy and Try again, never raw error text.
+            identifier, caption, action = banner
+            box.append(InlineLine(identifier, action=action, callback=app.retry_recording))
+            if caption:
+                box.append(label(text(caption), "caption", "dim-label", wrap=True, xalign=0))
+        if message:
+            box.append(label(message, wrap=True, xalign=0))
+        self.append_refusal_lines(box, refused, fallback)
+
+    def append_refusal_lines(self, box, refused, fallback=False, meeting=None):
+        """D58 live lines: one per refused side; a browser refusal replaces Why?."""
+        from .inline_line import InlineLine
+
+        refused = [dict(item) for item in refused]
+        browser = next((item for item in refused if item["side"] == "browser"), None)
+        for item in refused:
+            if item["side"] == "browser":
+                continue
+            retry = self._turn_on(item["side"], meeting or self.selected)
+            box.append(InlineLine(item["id"], action="common.tryAgain" if retry else None, callback=retry))
+        if browser is not None:
+            # A browser refusal: its caption, if any, instead of Why? (R79 §3).
+            box.append(InlineLine("errors.othersFallback.line", info=True))
+            if browser["caption"]:
+                box.append(label(text(browser["caption"]), "caption", "dim-label", wrap=True, xalign=0))
+        elif fallback:
+            from .what_is_recorded import explain_fallback
+
+            box.append(
+                InlineLine(
+                    "errors.othersFallback.line",
+                    action="errors.othersFallback.action",
+                    callback=lambda: explain_fallback(self),
+                    info=True,
+                )
+            )
+
+    def _turn_on(self, side, meeting):
+        """Try again for a refused native side: a turn-on, where the recorder can retry it."""
+        app = self.get_application()
+        if meeting is None or app.comfort._native_for(meeting) is None:
+            return None
+        current = app.comfort.sources(meeting)
+
+        def retry():
+            # A change already in progress raises ValueError; the line stays.
+            with contextlib.suppress(ValueError):
+                app.change_recording_sources(meeting, current.me or side == "me", current.others or side == "others")
+
+        return retry
 
     def _preview_signature(self, meeting):
         return (

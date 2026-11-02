@@ -232,8 +232,6 @@ class RecordingPage(Adw.NavigationPage):
         self.update_status()
 
     def update_status(self):
-        from .what_is_recorded import explain_fallback
-
         status = self.app.comfort.status(self.meeting)
         sources = self.app.comfort.sources(self.meeting)
         self.timer.set_label(fmt.live_big(self.elapsed()))
@@ -261,33 +259,28 @@ class RecordingPage(Adw.NavigationPage):
         self.others_caption.set_label(
             text("recording.others.browserVoices", n=status["voices"]) if browser else text("recordFirst.sound.title")
         )
+        refused = tuple(tuple(sorted(line.items())) for line in self.window._refusal_lines(self.meeting))
         signature = (
             status["line"],
             status["minutes"],
             sources.fallback,
             status.get("output_muted", False),
             status.get("source_problem", False),
+            refused,
         )
         if signature != self._line_signature:
             self._line_signature = signature
             while child := self.lines.get_first_child():
                 self.lines.remove(child)
-            self.lines.set_visible(bool(signature[0] or signature[2] or signature[3] or signature[4]))
+            self.lines.set_visible(bool(signature[0] or signature[2] or signature[3] or signature[4] or refused))
             if signature[0]:
                 self.lines.append(InlineLine(signature[0], n=signature[1]))
             if signature[3]:
                 self.lines.append(InlineLine("recording.systemMuted"))
             if signature[4]:
                 self.lines.append(InlineLine("recording.sourceProblem"))
-            if signature[2]:
-                self.lines.append(
-                    InlineLine(
-                        "errors.othersFallback.line",
-                        action="errors.othersFallback.action",
-                        callback=lambda: explain_fallback(self.window),
-                        info=True,
-                    )
-                )
+            # One line per refused side (R79 §3); the fallback line as before.
+            self.window.append_refusal_lines(self.lines, refused, signature[2], self.meeting)
 
     def flush_edits(self):
         if self._save_timer:
