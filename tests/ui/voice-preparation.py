@@ -136,6 +136,19 @@ with tempfile.TemporaryDirectory() as temporary:
     future.result()
     app._transcription_changed()
     until(lambda: dialog.voice_data is not None and dialog.remember.get_sensitive())
+    # G12: while a transcription job may re-diarize and restamp this id,
+    # Remember waits instead of silently not remembering.
+    real_transcriber = app.transcriber
+    app.transcriber = SimpleNamespace(transcribing=lambda directory: directory == meeting.directory)
+    dialog._validate()
+    assert not dialog.remember.get_sensitive()
+    assert (
+        dialog.remember_description.get_label()
+        == "Cassini hasn’t prepared this meeting’s voices yet. You can still save the name."
+    )
+    app.transcriber = real_transcriber
+    dialog._validate()
+    assert dialog.remember.get_sensitive()
     assert page.speakers_dialog is dialog and dialog.entry.get_text() == entered
     assert not dialog.voice_settings.get_visible()
     assert "Future meetings" in dialog.remember_description.get_label()
