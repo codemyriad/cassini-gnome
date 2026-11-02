@@ -144,9 +144,9 @@ def test_result_lines_use_the_catalog():
         assert result_line("microphone", Outcome(WORKING)) == "Your microphone: working"
         assert result_line("system", Outcome(SILENT)) == "This computer’s sound: no sound heard"
         refused = Outcome(REFUSED, entry(0, "me", "deviceUnavailable"))
-        assert result_line("microphone", refused) == "Microphone: couldn’t be started."
+        assert result_line("microphone", refused) == "Your microphone: couldn’t be started."
         denied = Outcome(REFUSED, entry(0, "others", "permissionDenied"))
-        assert result_line("system", denied) == "Computer sound: access wasn’t allowed."
+        assert result_line("system", denied) == "This computer’s sound: access wasn’t allowed."
 
 
 # The private folder.
@@ -601,6 +601,7 @@ def test_an_automatic_browser_start_discards_a_running_test(application_class, t
         _last_native=None,
         _permission_sources=set(),
         record_first=None,
+        settings_dialog=None,
         comfort=None,
         build_refresh=None,
         windowless_background=SimpleNamespace(refresh=lambda: None),

@@ -150,8 +150,8 @@ def result_line(kind, outcome):
     from .strings import text
 
     if outcome.state == REFUSED:
-        key, origin = line(outcome.refusal)
-        return text(key, source=text(origin))
+        key, _origin = line(outcome.refusal)
+        return text(key, source=text(STREAMS[kind]))  # Named as on the other lines.
     identifier = "test.result.working" if outcome.state == WORKING else "test.result.silent"
     return text(identifier, stream=text(STREAMS[kind]))
 

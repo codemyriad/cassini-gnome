@@ -112,6 +112,7 @@ class CassiniApplication(Adw.Application):
         self.settings_dialog = None
         # D60: the test recording; a real Start always discards it.
         self.sound_check = None
+        self.sound_check_dialog = None
         self.shortcuts_dialog = None
         self.library_relocator = None
         self.comfort = None
@@ -694,6 +695,15 @@ class CassiniApplication(Adw.Application):
         self.sound_check.start(test=test)
         return True
 
+    def open_test_recording(self, parent):
+        """D60: start a test and show it over parent (Settings or the first-run step)."""
+        from .sound_check_dialog import SoundCheckDialog
+
+        if not self.start_test_recording():
+            return None
+        self.sound_check_dialog = SoundCheckDialog(self, parent)
+        return self.sound_check_dialog
+
     def discard_test_recording(self):
         """A real Start wins (D60 point 2): the test stops, is deleted and shows no result."""
         if self.sound_check and self.sound_check.state != "idle":
@@ -951,6 +961,9 @@ class CassiniApplication(Adw.Application):
                 )
         if self.record_first:
             self.record_first.refresh_permissions()
+            self.record_first.refresh_test()
+        if self.settings_dialog and not self.settings_dialog.closed:
+            self.settings_dialog.refresh_test()
         if self.comfort:
             self.comfort.native_level()
         self.windowless_background.refresh()
