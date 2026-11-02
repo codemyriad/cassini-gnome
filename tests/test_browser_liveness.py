@@ -624,6 +624,67 @@ def test_stale_watchdog_constant_matches_the_shared_vectors():
 
 @pytest.mark.parametrize("case", STALE_VECTORS["cases"], ids=lambda case: case["name"])
 def test_shared_stale_watchdog_vectors_on_the_real_transport(broker, case):
+    replay(broker, case)
+
+
+# Shapes the shared vectors do not have yet, replayed by the same runner.
+LOCAL_STALE_CASES = [
+    # From the protocol follow-up (19b22e0): an ended id is refused with
+    # `state`, open ids are acked, and no repeat changes a span.
+    dict(
+        name="a-reused-span-id-keeps-its-first-declaration",
+        frames=[
+            dict(atMs=0, frame="track", id="a", documentGeneration="doc-1"),
+            dict(atMs=0, frame="audio", id="a"),
+            dict(atMs=0, frame="track", id="b", documentGeneration="doc-1"),
+            dict(atMs=0, frame="audio", id="b"),
+            dict(atMs=0, frame="track", id="c", documentGeneration="doc-1"),
+            dict(atMs=0, frame="audio", id="c"),
+            dict(atMs=500, frame="trackEnd", id="c"),
+            dict(atMs=1000, frame="documentChanged", pageState="navigating", documentGeneration="doc-1"),
+            dict(atMs=2000, frame="documentChanged", pageState="present", documentGeneration="doc-2"),
+            dict(atMs=3000, frame="track", id="a"),
+            dict(atMs=3000, frame="audio", id="a"),
+            dict(atMs=3000, frame="track", id="b", documentGeneration="doc-2"),
+            dict(atMs=3000, frame="audio", id="b"),
+            dict(atMs=3000, frame="track", id="c", documentGeneration="doc-2"),
+            dict(atMs=3000, frame="audio", id="c"),
+        ],
+        closeAtMs=None,
+        probes=[dict(atMs=47999, closed=False), dict(atMs=48000, closed=False), dict(atMs=200000, closed=False)],
+    ),
+    # Statuses at one time: the last must be applied before the span after
+    # it is declared, or b lands in the departing window and never arms.
+    dict(
+        name="statuses-at-one-time-apply-in-order",
+        frames=[
+            dict(atMs=0, frame="track", id="a"),
+            dict(atMs=0, frame="audio", id="a"),
+            *(
+                dict(
+                    atMs=1000,
+                    frame="documentChanged",
+                    pageState=page,
+                    documentGeneration=f"doc-{n + (page == 'present')}",
+                )
+                for n in range(1, 5)
+                for page in ("navigating", "present")
+            ),
+            dict(atMs=1000, frame="track", id="b"),
+            dict(atMs=1000, frame="audio", id="b"),
+        ],
+        closeAtMs=46000,
+        probes=[dict(atMs=45999, closed=False), dict(atMs=46000, closed=True)],
+    ),
+]
+
+
+@pytest.mark.parametrize("case", LOCAL_STALE_CASES, ids=lambda case: case["name"])
+def test_local_stale_watchdog_cases_on_the_real_transport(broker, case):
+    replay(broker, case)
+
+
+def replay(broker, case):
     """Replay audio-transport and control frames; tick at every frame, probe and deadline time."""
     service, path, clock, _lost = broker
     client = Settled(BrowserAudioProxy(path=path), service)
@@ -633,7 +694,7 @@ def test_shared_stale_watchdog_vectors_on_the_real_transport(broker, case):
         negotiated(client, service, identifier)
         (transport,) = service._audio_transports
         (control,) = service.browsers.values()
-        sequences = {}
+        sequences, ended = {}, set()
         times = {f["atMs"] for f in case["frames"]} | {p["atMs"] for p in case["probes"]}
         times |= {f["atMs"] + PCM_STALE_AFTER * 1000 for f in case["frames"]}
         closed_at = None
@@ -656,12 +717,19 @@ def test_shared_stale_watchdog_vectors_on_the_real_transport(broker, case):
                     for key in ("pageState", "documentGeneration"):  # either may be absent
                         if key in frame:
                             entry[key] = frame[key]
+                    # Each status and inventory replaces its dict: wait for that,
+                    # since last_inbound already matches when two share a time.
+                    pages = control.status_pages
                     send_packet(peer.stream, dict(type="status", recording=True, sessions=[entry]))
-                    wait_for(lambda: control.last_inbound == clock.now)
+                    wait_for(lambda before=pages: control.status_pages is not before)
                     with service.lock:
                         pass  # update() holds the lock until the status is applied.
                     # navigating zeroes the row's count; the page keeps its call.
+                    meetings = control.meetings
                     peer.inventory((3,))
+                    wait_for(lambda before=meetings: control.meetings is not before)
+                    with service.lock:
+                        pass
                     continue
                 if kind == "track":
                     packet = declare(frame["id"], "receiver-" + frame["id"])
@@ -678,7 +746,13 @@ def test_shared_stale_watchdog_vectors_on_the_real_transport(broker, case):
                 else:
                     packet = dict(type="stop", captureId=identifier)
                 reply = client.handle(packet)
-                assert reply.get("type") in ("ack", "stopped"), (frame, reply)
+                if kind in ("track", "audio") and frame["id"] in ended:
+                    # An ended id stays ended: its repeat and audio are refused.
+                    assert (reply.get("type"), reply.get("code")) == ("error", "state"), (frame, reply)
+                else:
+                    assert reply.get("type") in ("ack", "stopped"), (frame, reply)
+                if kind == "trackEnd":
+                    ended.add(frame["id"])
             for probe in (p for p in case["probes"] if p["atMs"] == at):
                 assert (closed_at is not None) is probe["closed"], (case["name"], probe)
         assert closed_at == case["closeAtMs"], case["name"]
