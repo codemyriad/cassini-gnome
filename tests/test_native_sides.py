@@ -274,6 +274,23 @@ def test_an_opening_side_keeps_the_error_that_names_its_cause():
         recorder._executor.shutdown(wait=True)
 
 
+def test_a_selection_of_only_a_refused_side_reopens_it_or_is_rejected(tmp_path):
+    recorder, _sides, _signals = start(tmp_path, {"microphone": ("fail", 0), "system": ("ok", 0.1)})
+    try:
+        session = recorder.session
+        events = list(session.manifest["events"])
+        # Others off would leave only the refused microphone: it is opened
+        # again as a turn-on, still refuses, and the change is rejected.
+        future = recorder.select(True, False)
+        spin_until(lambda: future.done() and not recorder._changing_sources)
+        with pytest.raises(OSError):
+            future.result()
+        assert session.manifest["events"] == events and kinds_of(session) == ["system"]
+        assert set(recorder._track_ids) == {"system"} and session.manifest["state"] == "recording"
+    finally:
+        close(recorder)
+
+
 def test_slow_sides_open_in_parallel_within_one_bound(tmp_path):
     recorder, sides, signals = start(tmp_path, {"microphone": ("ok", 2.5), "system": ("ok", 2.5)})
     try:
@@ -438,6 +455,62 @@ def test_a_refused_system_tap_leaves_the_microphone_recording(tmp_path, caplog):
         # The discarded readiness PCM is not a recording span.
         assert session.writers[capture.native_taps["microphone"][0]].frames == 0
         assert native_pcm(capture, "microphone")["frames"] == 480
+    finally:
+        capture.stop()
+    assert session.manifest["state"] == "completed"
+
+
+@pytest.mark.parametrize("reopens", [False, True])
+def test_turning_others_off_reopens_a_refused_microphone_or_is_rejected(tmp_path, reopens):
+    from test_capture_record import declare, pcm
+
+    # Repro A: the microphone was refused at start while browser audio records.
+    taps = Taps(refuse={"microphone": 1 if reopens else 99})
+    capture, _result, _changes = browser_start(tmp_path, taps)
+    try:
+        session = capture.host.session
+        capture.handle(declare("remote"))
+        capture.handle(pcm("remote", 480, offset=capture.elapsed_ms()))
+        events = list(session.manifest["events"])
+        if not reopens:
+            # Recording nothing is never committed.
+            with pytest.raises(OSError, match="Fake microphone refused"):
+                capture.select(True, False)
+            assert session.manifest["events"] == events and (capture.me, capture.others) == (True, True)
+            assert not any(t.get("ended") for t in session.manifest["tracks"])
+            assert capture.refused_sides == {"microphone"}
+        else:
+            capture.select(True, False)
+            selection = [e for e in session.manifest["events"] if e["type"] == "selection"][-1]
+            assert (selection["me"], selection["others"], selection["reason"]) == (True, False, "user")
+            assert native_pcm(capture, "microphone")["frames"] == 480
+            assert capture.refused_sides == set()
+        assert len(taps.of("microphone")) == 2 and not capture.finished
+    finally:
+        capture.stop()
+    assert session.manifest["state"] == "completed"
+
+
+@pytest.mark.parametrize("reopens", [False, True])
+def test_turning_me_off_reopens_a_refused_stand_in_system_tap_or_is_rejected(tmp_path, reopens):
+    # Repro B: the D49/StartRejected stand-in, its system tap refused.
+    taps = Taps(refuse={"system": 1 if reopens else 99})
+    capture, _result, _changes = browser_start(tmp_path, taps, others_source="system")
+    try:
+        session = capture.host.session
+        events = list(session.manifest["events"])
+        if not reopens:
+            with pytest.raises(OSError, match="Fake system refused"):
+                capture.select(False, True)
+            assert session.manifest["events"] == events and (capture.me, capture.others) == (True, True)
+            assert kinds_of(session) == ["microphone"] and "microphone" in capture.native_taps
+            assert native_pcm(capture, "microphone")["frames"] == 480
+        else:
+            capture.select(False, True)
+            assert set(capture.native_taps) == {"system"}
+            assert native_pcm(capture, "system")["frames"] == 480
+            assert capture.refused_sides == set()
+        assert len(taps.of("system")) == 2 and not capture.finished
     finally:
         capture.stop()
     assert session.manifest["state"] == "completed"

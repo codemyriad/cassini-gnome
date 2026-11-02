@@ -632,6 +632,11 @@ class BrowserCapture:
                     return self.snapshot()
                 desired = {kind for kind, enabled in (("microphone", me), ("system", others and lost)) if enabled}
                 kinds = desired - self.native_taps.keys() - self.refused_sides
+                if not (kinds or desired & self.native_taps.keys() or others and not lost):
+                    # Every side this change keeps was refused at start. Recording
+                    # nothing is never committed: the change asks for them again,
+                    # as a turn-on, and fails like one if they still refuse.
+                    kinds = desired - self.native_taps.keys()
                 needed = self.streams.additions(me, others, browser=not lost) + len(kinds)
                 if len(self.host.session.writers) + needed > 64:
                     raise ProtocolError("limit", "A session supports at most 64 sources")
@@ -682,7 +687,7 @@ class BrowserCapture:
                         state.update(active=True, at=at)
                         self.native_taps[kind] = identifier, tap
                     self.microphone = self.native_taps.get("microphone", (None, None))[1]
-                    self.refused_sides &= desired
+                    self.refused_sides = (self.refused_sides & desired) - prepared.keys()
                     committed = True
                 if "system" in removed and self._mute_observer:
                     self._mute_observer.retire(removed["system"][0], at)
