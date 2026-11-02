@@ -386,19 +386,36 @@ class VoiceStore:
             return (value if prepared else empty), prepared
 
     def commit_job(
-        self, directory, prints, generation, *, check_active=lambda: None, apply_names=None, auto_eligible=None
+        self,
+        directory,
+        prints,
+        generation,
+        *,
+        check_active=lambda: None,
+        apply_names=None,
+        auto_eligible=None,
+        voice_sources=None,
     ):
         key = _key(directory)
+        sources = voice_sources or {}
         with self._locked(), transaction(directory):
             people = self._people()
             if people["generation"] != generation:
                 return {}
             previous = self._meeting(key, generation)
+            # G12: a confirmed match, its embedding and rejections belong to the
+            # voice they were made on. Carry them only while its stamp is equal.
+            previous["speakers"] = {
+                s: item for s, item in previous["speakers"].items() if item.get("voiceSource") == sources.get(s)
+            }
             excluded = {s: item.get("rejected", []) for s, item in previous["speakers"].items()}
             for speaker, item in previous["speakers"].items():
                 if item.get("match", {}).get("state") == "rejected":
                     excluded.setdefault(speaker, []).append(item["match"]["voiceId"])
             value = dict(version=1, model=REVISION, generation=generation, speakers=copy.deepcopy(prints))
+            for speaker, item in value["speakers"].items():
+                if speaker in sources:
+                    item["voiceSource"] = dict(sources[speaker])
             self._validate_meeting(value)
             current_voices = {v["id"]: v for v in people["voices"] if not stale(v)}
             confirmed = {

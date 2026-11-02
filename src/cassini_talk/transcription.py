@@ -202,26 +202,76 @@ def prepare_tracks(meeting, *, diagnostics=None):
     return separated, speakers
 
 
+def voice_group(identifier):
+    """The D11 group of a D24 `<group>~n` voice id, or None for any other id."""
+    group, separator, ordinal = identifier.rpartition("~")
+    return group if separator and group and ordinal.isdigit() else None
+
+
+def unassigned_voice(identifier, colour_index, source):
+    return dict(id=identifier, name=None, provenance="unnamed", colourIndex=colour_index, voiceSource=dict(source))
+
+
 def update_progress_metadata(
-    directory, speakers, *, check_active=None, transient=False, transcript_body=None, **changes
+    directory, speakers, *, check_active=None, transient=False, transcript_body=None, voice_sources=None, **changes
 ):
+    """Write planned speakers; G12 keeps a voice's name only while its source matches.
+
+    A planned `<group>~n` entry carries `voiceSource`. A previous entry for the
+    same id keeps its name only when its stamp is equal; otherwise it becomes
+    unassigned, as does any other `<group>~*` entry of a re-diarized group whose
+    stamp differs. `voice_sources` adds groups that produced no voice this run.
+    """
     with mutation(directory):
         if check_active is not None:
             check_active()
         current = read_metadata(directory)
         existing = {speaker["id"]: speaker for speaker in current["speakers"]}
         merged = dict(existing)
+        sources = dict(voice_sources or {})
+        for identifier, planned in speakers.items():
+            if "voiceSource" in planned and (group := voice_group(identifier)) is not None:
+                sources.setdefault(group, planned["voiceSource"])
+        reset = {}
         for identifier, planned in speakers.items():
             previous = existing.get(identifier, {})
+            if "voiceSource" in planned and previous and previous.get("voiceSource") != planned["voiceSource"]:
+                merged[identifier] = unassigned_voice(identifier, planned["colourIndex"], planned["voiceSource"])
+                reset[identifier] = previous
+                continue
             merged[identifier] = dict(previous, **planned)
             if previous.get("provenance") in ("user", "recognised", "unnamed"):
                 merged[identifier] = previous
+        for identifier, previous in existing.items():
+            group = voice_group(identifier)
+            if identifier in speakers or group not in sources or previous.get("voiceSource") == sources[group]:
+                continue
+            merged[identifier] = unassigned_voice(identifier, previous.get("colourIndex", 0), sources[group])
+            reset[identifier] = previous
         changes["speakers"] = list(merged.values())
+        history = current.get("speakerMerges")
+        if reset and isinstance(history, list):
+            kept = [
+                entry
+                for entry in history
+                if not isinstance(entry, dict)
+                or not any(isinstance(end, str) and end in reset for end in (entry.get("from"), entry.get("into")))
+            ]
+            if kept != history:
+                changes["speakerMerges"] = kept
         if transcript_body is None and all(current.get(key) == value for key, value in changes.items()):
             return False
         update_metadata(
             directory, before_commit=check_active, transient=transient, transcript_body=transcript_body, **changes
         )
+        for identifier, previous in reset.items():
+            # No file field: the dropped name is only diagnosed (D51).
+            LOG.warning(
+                "voiceNameReset id=%s old=%s named=%s",
+                identifier,
+                previous.get("provenance", "unknown"),
+                previous.get("name") is not None,
+            )
         return True
 
 
@@ -591,7 +641,7 @@ class TranscriptionQueue:
         if self.closed:
             raise CancelledError()
         if diarization is not None and complete.get("diarization"):
-            from .diarization import apply_transcript
+            from .diarization import apply_transcript, voice_source
             from .worker_diarization import FORMAT, valid_group
 
             result = complete["diarization"]
@@ -612,9 +662,13 @@ class TranscriptionQueue:
                         dict(format=FORMAT, model=result["model"], params=result["params"], groups=groups),
                         before_commit=self._check_open,
                     )
+                    # G12: every re-diarized group, conclusive or not, rebinds its old voice names.
+                    sources = {g["id"]: voice_source(g["inputSHA256"], g["turns"]) for g in groups}
+                    speakers.update(voices)
+                    update_progress_metadata(
+                        directory, speakers, check_active=self._check_open, transient=True, voice_sources=sources
+                    )
                     if voices:
-                        speakers.update(voices)
-                        update_progress_metadata(directory, speakers, check_active=self._check_open, transient=True)
                         publisher.reassign(words)
             if separation["reason"] != "notApplicable":
                 separation = separation_result(result, groups, reused_groups)
@@ -679,6 +733,7 @@ class TranscriptionQueue:
                     check_active=voice_active,
                     apply_names=apply_names,
                     auto_eligible=auto_eligible,
+                    voice_sources={s: e["voiceSource"] for s, e in speakers.items() if "voiceSource" in e},
                 )
             except CancelledError:
                 raise
