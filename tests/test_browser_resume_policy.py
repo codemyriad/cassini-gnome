@@ -62,6 +62,11 @@ def session(**changes):
     return dict(dict(recording=True, tabId=3, captureId="F", pageState="present", callGeneration="call-A"), **changes)
 
 
+def scheduled_asks(tasks):
+    """Lifecycle work policy queued to ask: a decision, sent or not."""
+    return [arguments for _function, arguments in tasks if arguments[-1] == "askResume"]
+
+
 def asks(sent):
     return [packet for _peer, packet in sent if "resumeCapture" in packet]
 
@@ -99,6 +104,7 @@ def test_ask_waits_until_the_extension_releases_the_tab(policy):
         for _ in range(3):
             service.update(browser, dict(type="meetings", meetings=[row()]))
             service.policy()
+            assert not scheduled_asks(tasks), "no ask is even decided while the tab is held"
             run(tasks)
         assert not asks(sent)
         released(service, browser)
@@ -140,6 +146,7 @@ def test_no_ask_while_the_transport_is_alive_on_a_control_loss_fallback(policy):
         for _ in range(3):
             service.update(browser, dict(type="meetings", meetings=[row()]))
             service.policy()
+            assert not scheduled_asks(tasks), "an attached transport is never asked about"
             run(tasks)
         assert not asks(sent)
         assert not service._capture_lifecycles["F"].asked_on, "the loss's only ask is still unspent"
