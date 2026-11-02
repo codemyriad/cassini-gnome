@@ -367,6 +367,18 @@ def test_presence_restricts_the_activity_floor_and_runs():
     assert fallback.active_windows(meter.samples, meter.active(), meter.presence) == [(0, 10 * RATE + 100)]
 
 
+def test_inside_is_computed_once_per_frame_count():
+    meter = fallback.ActivityMeter([[0, 2 * RATE]])
+    list(meter.wrap([np.zeros(RATE, dtype="<f4")]))
+    first = meter.inside()
+    assert meter.inside() is first and sum(first) == RATE // fallback.FRAME
+    # Frames metered later still get their own presence answer.
+    list(meter.wrap([np.zeros(2 * RATE, dtype="<f4")]))
+    assert meter.inside() is not first
+    assert sum(meter.inside()) == 2 * RATE // fallback.FRAME
+    assert len(meter.inside()) == 3 * RATE // fallback.FRAME
+
+
 def test_only_emitted_events_set_the_summary_language(tmp_path, monkeypatch):
     # Five VAD words need seven; six fallback words keep the VAD events.
     model = ScriptModel([2, 2, 1, 3, 2, 1], languages=["en"] * 3 + ["it"] * 3)
