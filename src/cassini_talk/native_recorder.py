@@ -105,6 +105,7 @@ class NativeRecorder(GObject.Object):
         self._mute_observer = None
         self.output_muted = False
         self._open_wake = threading.Event()
+        self._observe_output = True
         # D58: the start's refusals, for the start banner when nothing opened.
         self.refusals = []
         self._discard = self.discarded = False
@@ -118,7 +119,9 @@ class NativeRecorder(GObject.Object):
             return {}
         return {self.session.manifest["id"]: "saving" if self.stopping else "recording"}
 
-    def start(self, parent=None, *, test=False):
+    def start(self, parent=None, *, test=False, observe_output=True):
+        """test: tone sources instead of Pulse; observe_output=False: no mute
+        observer, so nothing but session.json and the WAVs is written."""
         if self.pipeline is not None or self.starting or self.stopping or self._changing_sources or self._finishing:
             raise RuntimeError("Already recording")
         self.starting = True
@@ -148,6 +151,7 @@ class NativeRecorder(GObject.Object):
         self._open_wake = threading.Event()
         self.refusals = []
         self._discard = self.discarded = False
+        self._observe_output = observe_output
         future = self._executor.submit(self._prepare, Path(parent) if parent is not None else None)
         future.add_done_callback(lambda f: GLib.idle_add(self._prepared, f, test))
 
@@ -191,7 +195,8 @@ class NativeRecorder(GObject.Object):
                 raise RuntimeError(START_FAILURE)
             self._start_us = GLib.get_monotonic_time()
             opening = self._executor.submit(self._open, ("microphone", "system"))
-            opening.add_done_callback(lambda f: GLib.idle_add(self._opened, f, test, reserve))
+            observe = self._observe_output and not test
+            opening.add_done_callback(lambda f: GLib.idle_add(self._opened, f, observe, reserve))
         except Exception as error:
             self.starting = False
             if self.session is not None:
@@ -375,7 +380,7 @@ class NativeRecorder(GObject.Object):
             pad, probe = attempt["hold"]
             pad.remove_probe(probe)
 
-    def _opened(self, future, test, reserve):
+    def _opened(self, future, observe, reserve):
         self.starting = False
         if self._finishing:
             return False  # A committed side already failed; its finish reports it.
@@ -399,7 +404,7 @@ class NativeRecorder(GObject.Object):
                 return False
             if self.minutes_left < 10:
                 self.line = "errors.diskLow.line"
-            if not test:
+            if observe:
                 from .output_mute import OutputMuteObserver
 
                 self._mute_observer = OutputMuteObserver(

@@ -21,6 +21,7 @@ def closing_app(monkeypatch, *, held=True, quitting=False):
         _capture_background_active=lambda: False,
         get_windows=lambda: [window],
         begin_exit=lambda: exits.append(True),
+        discard_test_recording=lambda: None,
         windowless_background=SimpleNamespace(refresh=lambda: refreshes.append(True)),
     )
     return app, window, idle, refreshes, exits
