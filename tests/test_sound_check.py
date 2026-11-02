@@ -5,15 +5,18 @@ A scripted recorder stands in for the devices; every wait is on a GLib
 event (a signal or an idle callback), with a timeout only as a bound.
 """
 
+import math
 import os
+import random
 import stat
+import sys
 import types
 import wave
+from array import array
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
-import numpy as np
 import pytest
 
 gi = pytest.importorskip("gi")
@@ -64,17 +67,21 @@ def write_wav(path, samples):
         output.setnchannels(1)
         output.setsampwidth(2)
         output.setframerate(RATE)
-        output.writeframes(np.clip(np.round(samples * 32767), -32768, 32767).astype("<i2").tobytes())
+        pcm = array("h", (max(-32768, min(32767, round(x * 32767))) for x in samples))
+        if sys.byteorder == "big":
+            pcm.byteswap()
+        output.writeframes(pcm.tobytes())
     return len(samples)
 
 
 def tone(dbfs, seconds=2.0, frequency=440):
-    t = np.arange(int(seconds * RATE)) / RATE
-    return 10 ** (dbfs / 20) * np.sqrt(2) * np.sin(2 * np.pi * frequency * t)  # RMS at dbfs
+    peak = 10 ** (dbfs / 20) * math.sqrt(2)  # RMS at dbfs
+    return [peak * math.sin(2 * math.pi * frequency * n / RATE) for n in range(int(seconds * RATE))]
 
 
 def noise(dbfs, seconds=2.0):
-    return 10 ** (dbfs / 20) * np.random.default_rng(7).standard_normal(int(seconds * RATE))
+    rng = random.Random(7)
+    return [10 ** (dbfs / 20) * rng.gauss(0, 1) for _ in range(int(seconds * RATE))]
 
 
 # The judge: D52.4/G10's activity floor (-50 dBFS alone below 10 s of audio).
@@ -91,7 +98,7 @@ def test_a_quiet_tone_above_the_floor_is_working(tmp_path):
 
 
 def test_digital_silence_is_no_sound_heard(tmp_path):
-    write_wav(tmp_path / "a.wav", np.zeros(2 * RATE))
+    write_wav(tmp_path / "a.wav", [0.0] * (2 * RATE))
     assert judge(tmp_path / "a.wav") == SILENT
 
 
@@ -101,7 +108,7 @@ def test_noise_below_the_floor_is_no_sound_heard(tmp_path):
 
 
 def test_a_click_shorter_than_an_active_run_is_no_sound_heard(tmp_path):
-    samples = np.zeros(2 * RATE)
+    samples = [0.0] * (2 * RATE)
     samples[RATE : RATE + RATE // 20] = tone(-10, 0.05)  # 50 ms: under the 160 ms run
     write_wav(tmp_path / "a.wav", samples)
     assert judge(tmp_path / "a.wav") == SILENT
@@ -114,6 +121,30 @@ def test_a_steady_sound_over_10_s_is_still_working(tmp_path, signal):
     assert judge(tmp_path / "a.wav") == WORKING
 
 
+@pytest.mark.parametrize(
+    "signal",
+    [tone(-20), tone(-49), tone(-51), noise(-40), noise(-62), [0.0] * RATE],
+    ids=["tone-20", "tone-49", "tone-51", "noise-40", "noise-62", "silence"],
+)
+def test_the_judge_agrees_with_the_activity_meter(tmp_path, signal):
+    """sound_check repeats ActivityMeter's rule without numpy; both give the same answer."""
+    pytest.importorskip("numpy")
+    from cassini_talk import recognition_fallback
+    from cassini_talk.speech_pipeline import resampled_chunks
+
+    assert (sound_check.ACTIVE_DBFS, sound_check.MIN_RUN_FRAMES) == (
+        recognition_fallback.ACTIVE_DBFS,
+        recognition_fallback.MIN_RUN_FRAMES,
+    )
+    assert sound_check.FRAME_MS == recognition_fallback.FRAME * 1000 // recognition_fallback.RATE
+    write_wav(tmp_path / "a.wav", signal)
+    meter = recognition_fallback.ActivityMeter()
+    meter.threshold_db = lambda: (None, recognition_fallback.ACTIVE_DBFS)
+    for _block in meter.wrap(resampled_chunks(tmp_path / "a.wav")):
+        pass
+    assert judge(tmp_path / "a.wav") == (WORKING if any(meter.active()) else SILENT)
+
+
 def test_quiet_noise_over_10_s_is_still_no_sound_heard(tmp_path):
     write_wav(tmp_path / "a.wav", noise(-62, 11))
     assert judge(tmp_path / "a.wav") == SILENT
@@ -121,7 +152,7 @@ def test_quiet_noise_over_10_s_is_still_no_sound_heard(tmp_path):
 
 def test_each_stream_is_judged_on_its_own_track(tmp_path):
     write_wav(tmp_path / "track-microphone.wav", tone(-20))
-    write_wav(tmp_path / "track-system.wav", np.zeros(RATE))
+    write_wav(tmp_path / "track-system.wav", [0.0] * RATE)
     tracks = [
         dict(kind="system", file="track-system.wav", frames=RATE),
         dict(kind="microphone", file="track-microphone.wav", frames=2 * RATE),
@@ -332,7 +363,7 @@ def test_a_test_records_both_streams_privately_then_judges_them(check):
     assert folder.parent == check.root and mode(folder) == 0o700
     assert recorder.kwargs == dict(test=False, observe_output=False)  # No mute observer writes.
     assert check.running and check.busy
-    recorder.open(microphone=tone(-20), system=np.zeros(RATE))
+    recorder.open(microphone=tone(-20), system=[0.0] * RATE)
     spin_until(lambda: check.state == "result")
     assert recorder.stops == 1 and recorder.closed  # The 8 s timer stopped it.
     assert check.outcomes == dict(microphone=Outcome(WORKING), system=Outcome(SILENT))

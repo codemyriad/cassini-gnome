@@ -9,8 +9,12 @@ sees it. Nothing is transcribed, named or analysed; a real Start discards it.
 """
 
 import logging
+import math
 import os
 import shutil
+import sys
+import wave
+from array import array
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +29,9 @@ KINDS = ("microphone", "system")
 SIDES = {"microphone": "me", "system": "others"}
 STREAMS = {"microphone": "common.yourMicrophone", "system": "recordFirst.sound.title"}
 WORKING, SILENT, REFUSED = "working", "silent", "refused"
+# recognition_fallback's ACTIVE_DBFS, FRAME (512 at 16 kHz) and MIN_RUN_FRAMES;
+# that module needs numpy, so the values are repeated here and tested equal.
+ACTIVE_DBFS, FRAME_MS, MIN_RUN_FRAMES = -50.0, 32, 5
 LOG = logging.getLogger(__name__)
 
 
@@ -103,18 +110,36 @@ def sweep(root):
 def judge(path):
     """WORKING when some audio is above the activity floor (D52.4, G10), else SILENT.
 
-    The floor is -50 dBFS alone, as for any track under 10 s: a side that
-    takes up to the 3 s open bound makes the other's track longer than the
-    8 s test, and must not switch it to the floor + 12 dB rule.
+    ActivityMeter's rule in plain Python, so a profile without numpy can test
+    too: mean-removed RMS over 32 ms frames, loud at -50 dBFS (its rounded
+    level code), active in runs of at least 160 ms. The floor is -50 dBFS
+    alone, as for any track under 10 s: a side that takes up to the 3 s open
+    bound makes the other's track longer than the 8 s test, and must not
+    switch it to the floor + 12 dB rule.
     """
-    from .recognition_fallback import ACTIVE_DBFS, ActivityMeter
-    from .speech_pipeline import resampled_chunks
-
-    meter = ActivityMeter()
-    meter.threshold_db = lambda: (None, ACTIVE_DBFS)
-    for _block in meter.wrap(resampled_chunks(path)):
-        pass
-    return WORKING if meter.samples and any(meter.active()) else SILENT
+    with wave.open(str(path), "rb") as source:
+        if source.getsampwidth() != 2 or source.getcomptype() != "NONE":
+            raise ValueError("The test recording is not PCM16")
+        rate, channels = source.getframerate(), source.getnchannels()
+        size = rate * FRAME_MS // 1000
+        run = 0
+        while data := source.readframes(size):
+            samples = array("h")
+            samples.frombytes(data)
+            if sys.byteorder == "big":
+                samples.byteswap()
+            if channels > 1:
+                samples = [sum(samples[i : i + channels]) / channels for i in range(0, len(samples), channels)]
+            if len(samples) < size:
+                break  # A partial last frame, as ActivityMeter keeps it unmeasured.
+            mean = sum(samples) / size
+            power = sum((x - mean) ** 2 for x in samples) / size
+            level = math.sqrt(power) / 32768
+            loud = level > 0 and round(120 + 20 * math.log10(level)) - 120 >= ACTIVE_DBFS
+            run = run + 1 if loud else 0
+            if run >= MIN_RUN_FRAMES:
+                return WORKING
+    return SILENT
 
 
 @dataclass(frozen=True)
