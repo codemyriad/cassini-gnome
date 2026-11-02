@@ -272,23 +272,20 @@ CAUSES = {"microphone": "Fake microphone is held by another application", "syste
         ({"microphone": ("fail", 0), "system": ("fail", 0)}, START_FAILURE),
     ],
 )
-def test_both_sides_refused_keeps_todays_start_failure(tmp_path, caplog, plan, problem):
+def test_both_sides_refused_leaves_no_folder_and_shows_the_cause(tmp_path, caplog, plan, problem):
     caplog.set_level(logging.WARNING, logger="cassini_talk.native_recorder")
     recorder, _sides, signals = start(tmp_path, plan, CAUSES)
     try:
         spin_until(lambda: any(name == "finished" for name, _ in signals))
-        session = recorder.session
-        # Today's failure path: no started, the device's error, then the folder.
-        assert signals == [("error", problem), ("finished", str(session.directory))]
-        assert session.directory.is_dir() and session.finished
-        assert session.manifest["state"] == "interrupted"
-        assert session.manifest["problem"] == problem and session.manifest["problemKind"] == "capture"
-        assert session.manifest["events"][-1]["type"] == "end" and session.manifest["events"][-1]["reason"] == "error"
-        assert start_selection(session) == [
-            dict(atMs=0, type="othersSource", source="system", reason="missing"),
-            dict(atMs=0, type="selection", me=True, others=True, reason="start"),
+        # D58 point 2: nothing opened, so there is no recording and no folder.
+        # The error still names the device's cause; the banner lists the refusals.
+        assert signals == [("error", problem), ("finished", "")]
+        assert recorder.discarded and not recorder.session.directory.exists()
+        assert not list(tmp_path.iterdir())
+        assert [(r["side"], r["code"]) for r in recorder.refusals] == [
+            ("me", "deviceUnavailable"),
+            ("others", "deviceUnavailable"),
         ]
-        assert session.manifest["tracks"] == [] and not list(session.directory.glob("track-*.wav"))
         assert len(refusals(caplog)) == 2
         assert recorder.pipeline is None and not recorder.starting
     finally:
@@ -728,15 +725,17 @@ def test_browser_native_taps_open_in_parallel(tmp_path):
         capture.stop()
 
 
-def test_every_refused_browser_native_tap_keeps_todays_start_failure(tmp_path, caplog):
+def test_every_refused_browser_native_tap_leaves_no_folder(tmp_path, caplog):
+    from cassini_talk.refusals import NothingOpened
+
     caplog.set_level(logging.WARNING, logger="cassini_talk.browser_capture")
     taps = Taps(refuse={"microphone": 1, "system": 1})
-    with pytest.raises(OSError, match="Fake microphone refused"):
+    with pytest.raises(NothingOpened, match="Fake microphone refused") as raised:
         browser_start(tmp_path, taps, others_source="system")
-    (directory,) = [path for path in tmp_path.iterdir() if path.is_dir()]
-    saved = json.loads((directory / "session.json").read_text())
-    assert saved["state"] == "interrupted" and saved["problem"] == "Fake microphone refused"
-    assert saved["problemKind"] == "capture" and saved["events"][-1] == dict(
-        type="end", atMs=saved["events"][-1]["atMs"], reason="error"
-    )
-    assert saved["tracks"] == [] and len(refusals(caplog)) == 2
+    # D58 point 2: no folder; the start banner gets every refusal, in order.
+    assert not list(tmp_path.iterdir())
+    assert raised.value.refusals == [
+        dict(atMs=0, side="me", code="deviceUnavailable", message="Fake microphone refused"),
+        dict(atMs=0, side="others", code="deviceUnavailable", message="Fake system refused"),
+    ]
+    assert len(refusals(caplog)) == 2

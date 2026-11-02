@@ -11,6 +11,8 @@ from uuid import uuid4
 
 from .capture_sources import BrowserStreams, canonical_order, change_time, selected_pcm
 from .recording_session import BrowserHost, ProtocolError, stop_reason
+from .refusals import SIDES, NothingOpened, entry
+from .refusals import append as append_refusal
 from .session_events import source_state
 from .spectro_source import SpectroSource
 
@@ -18,7 +20,6 @@ RESUME_FEATURE = "resume-capture-v1"
 # D52.3c: a resume may join a system-sound stand-in (D49, seam callConnected) or
 # a system/lost fallback after its audio transport closed (D52.4, seam restored).
 RESUME_TARGETS = (("system", "missing"), ("system", "lost"))
-SIDES = {"microphone": "me", "system": "others"}
 LOG = logging.getLogger(__name__)
 
 
@@ -55,6 +56,7 @@ class BrowserCapture:
         # Native sides requested at start that never opened (R79 §1). A
         # fallback or restore does not reopen them; turning one off forgets it.
         self.refused_sides = set()
+        self.discarded = False  # D58: nothing opened, and the folder was removed.
         self.me, self.others = True, True
         self.browser_lost = False
         self.browser_lost_since = None
@@ -96,7 +98,7 @@ class BrowserCapture:
 
     @property
     def directory(self):
-        return self.host.session.directory if self.host.session else None
+        return self.host.session.directory if self.host.session and not self.discarded else None
 
     def snapshot(self):
         with self.lock:
@@ -126,7 +128,9 @@ class BrowserCapture:
                 events=list(self.host.session.manifest.get("events", [])),
             )
 
-    def start(self, message, *, others_source="browser", reason="start"):
+    def start(self, message, *, others_source="browser", reason="start", refusals=()):
+        """Start this capture. `refusals` are start refusals made before the folder
+        existed (a rejected browser Start): they are stored with the start events."""
         identifier = message.get("captureId")
         origin = message.get("timelineOriginMs")
         microphone = message.get("microphone", True)
@@ -163,19 +167,26 @@ class BrowserCapture:
                 self.streams.browser = not self.browser_lost
                 # The start selection records what was requested; a native
                 # side's track is added only when that side opens.
+                # A browser refusal explains this othersSource: one checkpoint.
                 with self.host.session.change(
                     [
                         dict(atMs=0, type="othersSource", source=others_source, reason=reason),
                         dict(atMs=0, type="selection", me=microphone, others=True, reason="start"),
                     ]
                 ):
-                    pass
+                    for item in refusals:
+                        append_refusal(self.host.session.manifest, item)
                 self._sync_spectrogram()
             requested = [kind for kind, wanted in (("microphone", microphone), ("system", self.browser_lost)) if wanted]
             refused = self._open_natives(requested)
+            items = [self._refusal(0, kind, refused[kind]) for kind in requested if kind in refused]
             if requested and len(refused) == len(requested) and self.browser_lost:
-                # Nothing records: today's start failure, folder included.
-                raise refused[requested[0]]
+                # Nothing records (D58 point 2): no folder, only the start banner.
+                raise NothingOpened(str(refused[requested[0]]), [*refusals, *items]) from refused[requested[0]]
+            if items:
+                with self.lock:
+                    if not self.finished:
+                        self.host.session.refuse(*items)
             if self.tap_factory is None:
                 from .output_mute import OutputMuteObserver
 
@@ -187,7 +198,7 @@ class BrowserCapture:
             self.starting = False
             self.ready.set()
             if self.host.session is not None:
-                self.stop(str(error))
+                self.stop(str(error), discard=error.refusals if isinstance(error, NothingOpened) else None)
             raise
         finally:
             self.starting = False
@@ -195,6 +206,15 @@ class BrowserCapture:
         if self.stop_requested.is_set():
             self.stop()
         return result
+
+    @staticmethod
+    def _classify(_kind, error):
+        """GNOME knows only deviceUnavailable for a native side that never opened."""
+        return "deviceUnavailable", str(error)
+
+    def _refusal(self, at_ms, kind, error):
+        code, message = self._classify(kind, error)
+        return entry(at_ms, SIDES[kind], code, message=message)
 
     def _output_sample(self):
         from .output_mute import OutputSample, monitor_device
@@ -564,6 +584,22 @@ class BrowserCapture:
                 callGeneration=self.call_generation,
             )
 
+    def refuse_resume(self, message):
+        """D58 #10: a refused resume is startRejected/resumeRefused in this folder.
+
+        Only a live recording records it; a finished or stopping one has no
+        place for it, and a refusal never changes the recording itself.
+        """
+        with self.lock:
+            session = self.host.session
+            if self.finished or self.stopping or self.stop_requested.is_set() or session is None or session.finished:
+                return
+            item = entry(self.elapsed_ms(), "browser", "startRejected", detail="resumeRefused", message=message)
+            try:
+                session.refuse(item)
+            except Exception:
+                LOG.exception("Could not record a refused resume")
+
     def restore(self):
         try:
             return self._apply_change(self.me, self.others, restore=True)
@@ -643,21 +679,25 @@ class BrowserCapture:
                     raise ProtocolError("limit", "A session supports at most 64 sources")
             prepared = {}
             committed = False
+            opening = None
             try:
                 # Start/read the replacements while the old source remains live.
                 # No new PCM or event may reach the session until commit below.
                 for kind in sorted(kinds):
+                    opening = kind
                     identifier = kind + "-" + str(uuid4())
                     tap, state = self._make_native(kind, identifier)
                     prepared[kind] = identifier, tap, state
                     tap.start()
+                opening = None
                 with self.lock:
                     if self.finished or self.stopping or self.stop_requested.is_set():
                         raise ProtocolError("state", "No active recording")
                     if self.tab_closed and (fallback is not None or restore):
                         return self.snapshot()  # A tab may close while a fallback device gets ready.
-                    for _identifier, _tap, state in prepared.values():
+                    for kind, (_identifier, _tap, state) in prepared.items():
                         if state["error"]:
+                            opening = kind
                             raise OSError(state["error"])
                     # New wire tracks can arrive while native taps get ready.
                     needed = self.streams.additions(me, others, browser=not lost) + len(prepared)
@@ -701,11 +741,31 @@ class BrowserCapture:
                     self._mute_observer.refresh()
                 self.changed(self, "sources")
                 return self.snapshot()
+            except Exception as error:
+                if opening is not None and fallback is None and not restore:
+                    self._turn_on_refused(opening, error)
+                raise
             finally:
                 if not committed:
                     for _identifier, tap, _state in prepared.values():
                         with contextlib.suppress(Exception):
                             tap.stop()
+
+    def _turn_on_refused(self, kind, error):
+        """D58 (R79 §6.6): a user's refused turn-on is appended at its real time.
+
+        It writes no selection event and leaves the selection unchanged. A
+        fallback or restore that cannot open its device is not a turn-on.
+        """
+        item = self._refusal(self.elapsed_ms(), kind, error)
+        LOG.warning("Native %s side (%s) did not open when turned on: %s", SIDES[kind], kind, error)
+        with self.lock:
+            if self.finished or self.stopping or self.host.session is None or self.host.session.finished:
+                return
+            try:
+                self.host.session.refuse(item)
+            except Exception:
+                LOG.exception("Could not record a refused turn-on")
 
     def _sync_spectrogram(self):
         """Declare committed spans before accepting their PCM; no DSP here."""
@@ -758,7 +818,9 @@ class BrowserCapture:
             self.spectrogram.release_if_idle()
         return result
 
-    def stop(self, problem=None, *, reason=None):
+    def stop(self, problem=None, *, reason=None, discard=None):
+        """Finish this capture. `discard` (the start refusals) removes a folder
+        nothing opened into, unless the user already typed into it (D58)."""
         from .session_events import END_REASONS
 
         if reason is not None and (not isinstance(reason, str) or reason not in END_REASONS):
@@ -798,11 +860,18 @@ class BrowserCapture:
                         problem = problem or str(error)
                         self.end_reason = "error"
                 with self.lock:
-                    self.host.session.finish(
-                        problem, reason=self.end_reason, at_ms=self.elapsed_ms(), retain_lease=True
-                    )
+                    if discard is not None:
+                        self.discarded = self.host.session.discard()
+                        if not self.discarded:
+                            self.host.session.refuse(*discard)  # A folder kept for typed content.
+                    if not self.discarded:
+                        self.host.session.finish(
+                            problem, reason=self.end_reason, at_ms=self.elapsed_ms(), retain_lease=True
+                        )
                     self.host.stopped = True
                 self.spectrogram.finish()
+            if self.discarded:
+                return dict(type="stopped", path=None)
             from .library_publication import root_for, submit_stopped
 
             if root_for(self.directory) is not None:
