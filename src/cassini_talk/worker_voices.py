@@ -202,8 +202,17 @@ def run(tracks, options, notify, *, statvfs=None):
             if not selected:
                 continue
             total_frames = max(total_frames, frames)
+            # A track's words are its own speaker's, so nothing else breaks a
+            # run: a pause that could be a window by itself ends it instead.
             for speaker, windows in select_windows(
-                turns, selected, 16000, frames, own_labels=labels, min_seconds=0, max_seconds=None
+                turns,
+                selected,
+                16000,
+                frames,
+                own_labels=labels,
+                min_seconds=0,
+                max_seconds=None,
+                max_pause_ms=MIN_SEGMENT_MS,
             ).items():
                 plans.setdefault(speaker, []).extend((index, start, end) for start, end in windows)
         group_file.close()

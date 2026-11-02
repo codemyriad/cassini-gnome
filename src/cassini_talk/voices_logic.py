@@ -121,8 +121,18 @@ def _clean(start, end, others):
 
 
 def select_windows(
-    turns, words, sample_rate, total_samples, *, own_labels=None, min_seconds=MIN_SECONDS, max_seconds=MAX_SECONDS
+    turns,
+    words,
+    sample_rate,
+    total_samples,
+    *,
+    own_labels=None,
+    min_seconds=MIN_SECONDS,
+    max_seconds=MAX_SECONDS,
+    max_pause_ms=None,
 ):
+    # max_pause_ms (desktop only; None is the shared D25 rule): a longer pause
+    # between one speaker's words ends their run, so no window spans silence.
     if sample_rate <= 0 or total_samples < 0:
         raise ValueError("Invalid print audio geometry")
     valid = [t for t in turns if t["endMs"] > t["startMs"] and t["speaker"] >= 0]
@@ -146,7 +156,7 @@ def select_windows(
         if word["endMs"] <= word["startMs"]:
             continue
         speaker = word["speaker"]
-        if runs and runs[-1][0] == speaker:
+        if runs and runs[-1][0] == speaker and (max_pause_ms is None or word["startMs"] - runs[-1][2] <= max_pause_ms):
             runs[-1] = speaker, runs[-1][1], max(runs[-1][2], word["endMs"])
         else:
             runs.append((speaker, word["startMs"], word["endMs"]))
