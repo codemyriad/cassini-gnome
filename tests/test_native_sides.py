@@ -274,6 +274,19 @@ def test_an_opening_side_keeps_the_error_that_names_its_cause():
         recorder._executor.shutdown(wait=True)
 
 
+def test_the_microphone_track_stays_first_when_the_system_opens_first(tmp_path):
+    recorder, _sides, _signals = start(tmp_path, {"microphone": ("ok", 0.6), "system": ("ok", 0.1)})
+    try:
+        session = recorder.session
+        # Speaker colours and speech order follow this order, not the race.
+        assert kinds_of(session) == ["microphone", "system"]
+        saved = json.loads((session.directory / "session.json").read_text())
+        assert [t["kind"] for t in saved["tracks"]] == ["microphone", "system"]
+        assert [t["file"] for t in saved["tracks"]] == ["track-microphone.wav", "track-system.wav"]
+    finally:
+        close(recorder)
+
+
 def test_a_selection_of_only_a_refused_side_reopens_it_or_is_rejected(tmp_path):
     recorder, _sides, _signals = start(tmp_path, {"microphone": ("fail", 0), "system": ("ok", 0.1)})
     try:
@@ -342,8 +355,8 @@ def test_a_refused_side_can_be_turned_off_and_on_again(tmp_path, refused):
 class Taps:
     """A tap factory whose opens the test scripts; no device."""
 
-    def __init__(self, refuse=(), barrier=None):
-        self.refuse, self.barrier = dict(refuse), barrier
+    def __init__(self, refuse=(), barrier=None, gate=()):
+        self.refuse, self.barrier, self.gate = dict(refuse), barrier, dict(gate)
         self.made = []
 
     def __call__(self, kind, origin, append, failed, *, level):
@@ -359,6 +372,8 @@ class Taps:
             def start(self):
                 if taps.barrier is not None:
                     taps.barrier.wait()  # Every side must be opening at once.
+                if kind in taps.gate:
+                    assert taps.gate[kind].wait(5)  # Bound only: opens after its gate.
                 if taps.refuse.get(kind):
                     taps.refuse[kind] -= 1
                     raise OSError(f"Fake {kind} refused")
@@ -376,11 +391,13 @@ class Taps:
         return [tap for tap in self.made if tap.kind == kind]
 
 
-def browser_start(tmp_path, taps, *, microphone=True, others_source="browser"):
+def browser_start(tmp_path, taps, *, microphone=True, others_source="browser", prepare=None):
     from cassini_talk.browser_capture import BrowserCapture
 
     changes = []
     capture = BrowserCapture(lambda _capture, change: changes.append(change), parent=tmp_path, tap_factory=taps)
+    if prepare is not None:
+        prepare(capture)
     message = dict(type="start", captureId="sides", timelineOriginMs=int(time.time() * 1000), microphone=microphone)
     if others_source == "browser":
         result = capture.start(message)
@@ -458,6 +475,30 @@ def test_a_refused_system_tap_leaves_the_microphone_recording(tmp_path, caplog):
     finally:
         capture.stop()
     assert session.manifest["state"] == "completed"
+
+
+def test_browser_microphone_track_stays_first_when_the_system_tap_opens_first(tmp_path):
+    system_added = threading.Event()
+
+    def prepare(capture):
+        add = capture._add_native
+
+        def added(kind, *args, **kwargs):
+            result = add(kind, *args, **kwargs)
+            if kind == "system":
+                system_added.set()
+            return result
+
+        capture._add_native = added
+
+    taps = Taps(gate={"microphone": system_added})
+    capture, _result, _changes = browser_start(tmp_path, taps, others_source="system", prepare=prepare)
+    try:
+        assert kinds_of(capture.host.session) == ["microphone", "system"]
+        saved = json.loads((capture.directory / "session.json").read_text())
+        assert [t["kind"] for t in saved["tracks"]] == ["microphone", "system"]
+    finally:
+        capture.stop()
 
 
 @pytest.mark.parametrize("reopens", [False, True])

@@ -218,11 +218,7 @@ try:
         import wave
 
         tones = []
-        # Sides open in parallel (R79 §1): match each track by kind, not order.
-        by_kind = {track["kind"]: track for track in manifest["tracks"]}
-        assert sorted(by_kind) == ["microphone", "system"] and len(manifest["tracks"]) == 2
-        tracks = (by_kind["microphone"], by_kind["system"])
-        for track, frequency, other in zip(tracks, (440, 880), (880, 440), strict=True):
+        for track, frequency, other in zip(manifest["tracks"], (440, 880), (880, 440), strict=True):
             with wave.open(str(saved / track["file"])) as audio:
                 assert audio.getnchannels() == 1 and audio.getframerate() == 48000
                 assert audio.getnframes() >= 48000 * 0.4

@@ -9,7 +9,7 @@ from concurrent.futures import CancelledError, ThreadPoolExecutor
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from .capture_sources import BrowserStreams, change_time, selected_pcm
+from .capture_sources import BrowserStreams, canonical_order, change_time, selected_pcm
 from .recording_session import BrowserHost, ProtocolError, stop_reason
 from .session_events import source_state
 from .spectro_source import SpectroSource
@@ -365,6 +365,7 @@ class BrowserCapture:
                 # One checkpoint holds the track with its start.
                 with self.host.session.change([]):
                     self._add_native(kind, at, identifier=identifier)
+                    canonical_order(self.host.session.manifest["tracks"])
                 state.update(active=True, at=at)
                 self.native_taps[kind] = identifier, tap
                 if kind == "microphone":

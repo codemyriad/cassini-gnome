@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from gi.repository import GLib, GObject, Gst
 
-from .capture_sources import change_time, selected_pcm
+from .capture_sources import canonical_order, change_time, selected_pcm
 from .native_timing import NS, NativeTimeline
 from .recorder import request_eos
 from .recording_details import ACMeter, space_left
@@ -273,6 +273,7 @@ class NativeRecorder(GObject.Object):
             with self.session.change([]):
                 self.session.add_track(kind, label, kind, RATE, 1, filename=f"track-{kind}.wav")
                 self.session.manifest["tracks"][-1]["startOffsetMs"] = at
+                canonical_order(self.session.manifest["tracks"])
             self.spectrogram.declare(kind, kind=kind, now_ms=at)
             self._spectro_starts[kind] = at
             self._track_ids[kind] = kind
