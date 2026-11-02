@@ -222,10 +222,8 @@ def seed_recordings(service, browser, vector, parent):
 
 
 def row(vector):
-    """The vector's meeting as the extension sends it: real rows always carry
-    pageState (background.js meetings()), and an absent one is unknown, which
-    holds back a resume ask (SPEC-CONTROL D52.5)."""
-    return dict(vector["meeting"], pageState=vector["meeting"].get("pageState", "present"))
+    """The vector's meeting row, sent exactly as written (it carries pageState, D57)."""
+    return vector["meeting"]
 
 
 def resume_packets(packets):

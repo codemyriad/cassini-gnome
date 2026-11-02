@@ -648,6 +648,19 @@ def test_shared_stale_watchdog_vectors_on_the_real_transport(broker, case):
                     send_packet(peer.stream, dict(type="pong", seq=0))
                     wait_for(lambda: control.last_inbound == clock.now)
                     continue
+                if kind == "documentChanged":
+                    # D57: the recording tab's page state and document, as the
+                    # extension's status reports them on the control link.
+                    entry = dict(recording=True, tabId=3, captureId=identifier, pageState=frame["pageState"])
+                    if "documentGeneration" in frame:
+                        entry["documentGeneration"] = frame["documentGeneration"]
+                    send_packet(peer.stream, dict(type="status", recording=True, sessions=[entry]))
+                    wait_for(lambda: control.last_inbound == clock.now)
+                    with service.lock:
+                        pass  # update() holds the lock until the status is applied.
+                    # navigating zeroes the row's count; the page keeps its call.
+                    peer.inventory((3,))
+                    continue
                 if kind == "track":
                     packet = declare(frame["id"], "receiver-" + frame["id"])
                 elif kind == "audio":

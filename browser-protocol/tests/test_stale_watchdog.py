@@ -48,7 +48,7 @@ class StaleWatchdogTests(unittest.TestCase):
                 self.assertTrue(case['probes'])
         self.assertEqual(failing(oracle), set())
         kinds = {f['frame'] for case in VECTORS['cases'] for f in case['frames']}
-        self.assertEqual(kinds, {'track', 'audio', 'sources', 'trackEnd', 'stop', 'control'})
+        self.assertEqual(kinds, {'track', 'audio', 'sources', 'trackEnd', 'stop', 'control', 'documentChanged'})
 
     def test_mutants_fail(self):
         boundary = {'pcm-then-silence-closes-at-exactly-45-seconds', 'control-frames-do-not-count',
@@ -73,6 +73,26 @@ class StaleWatchdogTests(unittest.TestCase):
         sticky = failing(mutant('return bool(open_spans & delivered)', 'return bool(delivered)'))
         self.assertIn('last-armed-span-ended-disarms', sticky)
         self.assertIn('stop-disarms', sticky)
+
+    def test_document_retirement_is_normative_and_mutants_fail(self):
+        # D57: a gone document's spans never arm the watchdog; the next one's do.
+        self.assertIn('`documentChanged` frames', (ROOT / 'SPEC.md').read_text())
+        case = 'gone-documents-spans-are-retired-and-the-next-documents-spans-arm'
+        mutants = {
+            'navigating keeps the open spans': ('                open_spans.clear()\n                departing = True', '                departing = True'),
+            'no departing window': ("            if not departing:\n                open_spans.add(frame['id'])", "            open_spans.add(frame['id'])"),
+            'only a generation closes the window': ("if page == 'present' or document is not None:", 'if document is not None:'),
+            'the window never closes': ('                departing = False\n', '                pass\n'),
+            'a new generation retires nothing': ('open_spans.difference_update(declared[:confirmed])', 'pass'),
+            "a new generation retires the next document's spans": ('difference_update(declared[:confirmed])', 'difference_update(declared)'),
+            'confirmation never moves': ('generation, confirmed = document, len(declared)', 'generation = document'),
+            'documentChanged is activity': ('            continue  # a control frame: never activity',
+                                            "            last = frame['atMs']\n            continue"),
+            'a retired span re-arms on its PCM': ("elif kind == 'audio' and frame['id'] in open_spans:", "elif kind == 'audio':\n            open_spans.add(frame['id'])"),
+        }
+        for name, (old, new) in mutants.items():
+            with self.subTest(mutant=name):
+                self.assertIn(case, failing(mutant(old, new)))
 
 
 if __name__ == '__main__':

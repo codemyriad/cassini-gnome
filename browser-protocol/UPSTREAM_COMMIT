@@ -1,26 +1,27 @@
-tree b79611d2cfbc1587f4bfbd83bae0d95af57c719e
-parent 57365bdfce4604d8445d63950ff84f67a634ff1c
-parent 1448d7aad607b87b1de38066b177b435526df141
-author Silvio Tomatis <silviot@gmail.com> 1793577892 +0100
-committer GitHub <noreply@github.com> 1793577892 +0100
-gpgsig -----BEGIN PGP SIGNATURE-----
- 
- wsFcBAABCAAQBQJq59OkCRC1aQ7uu5UhlAAA7HQQAAzPotResdXzJc/Y5UqKCGuT
- TaxG4XqsSFT3JIUinhauXNS+D/juKvMMKkOXaSfMrpw3SnNPQ6+JY+hKiMpV0v04
- G/qHuU/tQyMqPQ899/Uxv3v3DmmYvVf8YCdPTCgRam4hAA0WdN/Toq15bnBG38/c
- kiOYn2XCZP9bqh78CFCPh8jefglRtgxu/7n9dF+wCCBwezDiytYg2wo+ookG2sRb
- SdBzLHUUhbQhp+xktYYyur4R8zAxozd3iPIn2OmYp2B0mIMoQlR9P7twSPcFpyDT
- mWJFB42l+w/38Jr6Ixab13g1tNzcvDnIv1KoPdJYs1CrKKqy5S93H+aHVr2kQeW9
- eaoMc/52BCehBTHy5YHG3ZQrgtjVE7jQp3hWkbYGDB01xteaqmhrYZpUa+7jvRw8
- +CTKD2BHlt3FM9G0gA4jNA/3/drAVSw/lvKtv8vx61pKRuuxzEgkhZn1VxaWWjJ6
- fncD+5jMW3igxWhdYto5085Mfk1TnmKl+ZxklueplnPeEbPneKCC75xG4QvNB8cN
- 4wiMqTuywktBqINgPwZYbrfaSlpqWyUS2YQ/otPkcjYNtkBNt8fsFNxg8e2GBC0G
- HcMfZf8wG1XotiibiB6tdb22kgtuW8YMFptQMRucq9QuJVaqDxOLtxuTSijDkdF1
- jD5YO+i/rj00emwnIQxp
- =6Tma
- -----END PGP SIGNATURE-----
- 
+tree 7a405937b43d9e8b5d9765e2bfa3fb83946e7e14
+parent 941a82cb9aa9acf70e1c9ed3c698caa222a218fc
+author Silvio Tomatis <silviot@gmail.com> 1793600503 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793600503 +0100
 
-Merge pull request #33 from codemyriad/chore/liveness-nits
+Resume host clarifications from GNOME G7 part C (D57)
 
-Pin the 45 s deadline arrival, the peer-free match comment and cross-generation grace
+R78 points 1, 2, 4 and 5, adopted in D57.
+
+1. SPEC-CONTROL D52.5: the app asks to resume only after the extension's
+   status no longer reports a session for that tab. Before that the
+   extension is still tearing the old session down and refuses the Start,
+   which would spend the only ask.
+2. auto-start-vectors.json meeting rows carry pageState "present", as real
+   rows do; an absent page state is unknown and holds back a resume ask.
+4. Dead spans after a fast reload: a documentChanged control frame in the
+   stale-watchdog oracle, one case, one SPEC.md sentence. navigating retires
+   every open span and opens a departing window whose declarations are
+   retired; it closes on the next present or new documentGeneration. A new
+   documentGeneration retires the spans declared up to the last frame that
+   still reported the old one; a span declared after that stays armed. A
+   retired span's PCM never re-arms it. Mutant tests cover each rule.
+5. The resume Start example carries keepOnNavigation:true.
+
+No extension code changes, so no version bump.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

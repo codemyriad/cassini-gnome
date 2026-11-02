@@ -387,8 +387,7 @@ class BrowserCapture:
         are born dormant. It closes when the tab is present again, which the
         extension publishes as soon as the next document's frame connects and
         before that frame is told to start recording, or when a status names
-        a new documentGeneration. The stored generation is cleared, so the
-        next document's generation is learned rather than compared.
+        a new documentGeneration.
         T2, a new documentGeneration (a reload the app did not see as
         navigating): only spans declared up to the last status that still
         confirmed the old generation are retired. A new document's span can
@@ -401,7 +400,6 @@ class BrowserCapture:
                 return 0
             if navigating:
                 retired = self._retire_spans(None)
-                self.document_generation = None
                 self.streams.departing = True
                 return retired
             generation = generation_value(generation)

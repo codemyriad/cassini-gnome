@@ -5,7 +5,9 @@ unchanged inputs against its production auto-start policy and its manual Record
 path after adopting this protocol snapshot. The extension has no automatic-start
 policy: it publishes discovery and accepts explicit app commands.
 
-Each case contains the hello `capabilities`, one listed `meeting`, and hand-written
+Each case contains the hello `capabilities`, one listed `meeting` (with
+`pageState: "present"`, as real rows always carry it; an absent page state is
+unknown and holds back a resume ask), and hand-written
 `expect.automatic` / `expect.manual` booleans. These are full hello capability
 lists on a compatible transport: pre-D30 companion 0.2.1 advertises
 `["independent-sessions-v1"]`; D30 adds `"call-evidence-v1"` to that baseline.

@@ -45,6 +45,9 @@ class ControlTests(unittest.TestCase):
             with self.subTest(case=case['name']):
                 self.assertTrue(validator.is_valid(dict(type='hello',version=1,capabilities=case['capabilities'])))
                 self.assertTrue(validator.is_valid(dict(type='meetings',meetings=[case['meeting']])))
+                # D57: real rows always carry pageState; absent is unknown and
+                # would hold back a D52.5 resume ask in both desktop runners.
+                self.assertEqual(case['meeting'].get('pageState'),'present')
                 self.assertIs(type(case['expect']['automatic']),bool)
                 self.assertIs(type(case['expect']['manual']),bool)
                 # D52.5: optional app-side recordings, matched to the row by tabId plus
