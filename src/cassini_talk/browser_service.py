@@ -97,6 +97,12 @@ LOCAL_DETAILS = {
 }
 
 
+def resumable(current, capture):
+    """D52.5 system/lost, or the D58 #2 stand-in: system/missing with the browser lost (R82 1a)."""
+    source = (current.source, current.reason)
+    return source == ("system", "lost") or source == ("system", "missing") and capture.browser_lost
+
+
 def start_refusals(error):
     """The refusals a failed Start shows in its banner. A cancelled Start shows none."""
     from .refusals import entry
@@ -2295,8 +2301,11 @@ class BrowserService:
                         resume = ResumeInputs(
                             # D52.5 C1-C3, C7-C9; page, count and control are
                             # checked in the lifecycle's present-row branch.
+                            # R82 1a: the D58 #2 stand-in (system/missing with the
+                            # browser lost) is adopted the same way, D49's ask once,
+                            # with loss 0: a later system/lost gets its own ask.
                             ready=RESUME_CAPTURE in peer[0].capabilities
-                            and (current.source, current.reason) == ("system", "lost")
+                            and resumable(current, capture)
                             and not attached
                             and capture.call_generation is not None
                             and meeting.get("callGeneration") == capture.call_generation
@@ -2491,7 +2500,7 @@ class BrowserService:
             and meeting.get("callGeneration") == capture.call_generation
             and lifecycle.heard
             and tab not in browser.reported  # the extension released the tab
-            and (current.source, current.reason) == ("system", "lost")
+            and resumable(current, capture)
             and capture.browser_lost
             and capture.others
             and not (capture.finished or capture.stopping or capture.stop_requested.is_set())
