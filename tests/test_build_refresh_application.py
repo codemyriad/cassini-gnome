@@ -22,6 +22,7 @@ def test_open_consumes_combined_files_record_and_automatic_intent_once(applicati
         _activate_current=lambda **_kw: SimpleNamespace(open_file=opened.append),
         _record_current=lambda: records.append(True),
         build_refresh=None,
+        _exit_begun=False,
     )
     bound(app, application_class, "_take_resume_intent", "_restore_automatic")
     files = [object(), object()]
@@ -30,6 +31,27 @@ def test_open_consumes_combined_files_record_and_automatic_intent_once(applicati
     assert not app._resume_record and not app._resume_background and not app._resume_automatic
     application_class.do_activate(app)
     assert records == [True] and automatic == [True], "A later Activate replayed the restart's Record intent"
+
+
+def test_a_launch_during_the_exit_opens_and_records_nothing(application_class):  # noqa: F811
+    """A hold can delay the exit (D60); a window then would have nothing behind it."""
+    records = []
+    app = SimpleNamespace(
+        _exit_begun=True,
+        _quitting=True,
+        _resume_background=False,
+        _resume_record=True,
+        _resume_automatic=False,
+        _record_current=lambda: records.append(True),
+        build_refresh=None,
+        recording_active=lambda: False,
+    )
+    bound(app, application_class, "_take_resume_intent", "_restore_automatic", "_activate_current")
+    application_class.do_activate(app)
+    application_class.do_open(app, [SimpleNamespace(get_uri=lambda: "file:///a")], 1, "")
+    application_class.open_in_new_window(app, object())
+    application_class.on_record(app)
+    assert app._activate_current() is None and not records and app._quitting
 
 
 def test_automatic_handoff_is_held_before_activate_or_open(application_class):  # noqa: F811

@@ -73,6 +73,7 @@ class CassiniApplication(Adw.Application):
         self._transcription_holds = 0
         self._transcription_generation = 0
         self._quitting = False
+        self._exit_begun = False  # begin_exit ran: services are shut down for good.
         self._capture_background = False
         self._capture_confirmation = None
         self._browser_stops = set()
@@ -297,7 +298,7 @@ class CassiniApplication(Adw.Application):
 
         def callback():
             window = self._activate_current(background=background)
-            if record:
+            if record and not self._exit_begun:
                 self._record_current()
             return window
 
@@ -307,6 +308,11 @@ class CassiniApplication(Adw.Application):
             callback()
 
     def _activate_current(self, *, background=False):
+        if self._exit_begun:
+            # A launch while a hold delays the exit (D60): a window now would
+            # have no recorder, test or models behind it. The next launch opens.
+            logging.getLogger(__name__).info("Ignored an activation during exit")
+            return None
         self._quitting = False
         if background and not self._resume_writing:
             return None
@@ -354,6 +360,8 @@ class CassiniApplication(Adw.Application):
 
         def opened():
             window = self._activate_current()
+            if window is None:
+                return
             for file in files:
                 window.open_file(file)
             if record:
@@ -368,7 +376,8 @@ class CassiniApplication(Adw.Application):
         """Import/open only after the installed build check completes."""
 
         def callback():
-            return self._activate_current().open_file(file)
+            window = self._activate_current()
+            return window.open_file(file) if window is not None else None
 
         if self.build_refresh:
             self.build_refresh.check(callback, show=True, files=[file.get_uri()])
@@ -636,8 +645,8 @@ class CassiniApplication(Adw.Application):
             return
 
         def record():
-            self._activate_current()
-            self._record_current()
+            if self._activate_current() is not None:
+                self._record_current()
 
         if self.build_refresh:
             self.build_refresh.check(record, show=True, record=True)
@@ -1332,7 +1341,7 @@ class CassiniApplication(Adw.Application):
             present()
 
     def begin_exit(self):
-        self._quitting = True
+        self._quitting = self._exit_begun = True
         if self.sound_check:
             self.sound_check.shutdown()
         if self.voice_backfill:

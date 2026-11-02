@@ -3,7 +3,8 @@
 """Actual GApplication process exits: busy inference, stop/save and start/stop race.
 
 The test-recording modes (D60) exit while a test's recorder prepares or its
-folder is made, then check the cache once the process has exited.
+folder is made, also with a second launch during that exit, then check the
+cache once the process has exited.
 """
 
 import faulthandler
@@ -20,7 +21,7 @@ from pathlib import Path
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Use build-aux/ux-screenshot.sh")
 ROOT = Path(__file__).resolve().parents[2]
-TEST_RECORDING_MODES = ("test-recording-quit", "test-recording-close")
+TEST_RECORDING_MODES = ("test-recording-quit", "test-recording-close", "test-recording-reactivate")
 
 
 def test_recording_exit(mode):
@@ -241,6 +242,11 @@ with tempfile.TemporaryDirectory() as tmp:
             global closing_at
             closing_at = time.monotonic()
             app.on_quit() if mode == "test-recording-quit" else app.get_active_window().close()
+            if mode == "test-recording-reactivate":
+                app.activate()  # A second launch while the hold delays the exit.
+                if any(w.get_visible() for w in app.get_windows()):
+                    errors.append("A launch during the exit opened a window")
+                    app.quit()  # That window would keep the process: end it here.
             # Runs only while GTK still runs after the exit: something holds the app.
             GLib.idle_add(lambda: print("test-recording: held", flush=True) or False)
             return False

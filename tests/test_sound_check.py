@@ -845,7 +845,7 @@ def test_record_during_a_test_starts_a_recording_rather_than_stopping(applicatio
         order,
         build_refresh=None,
         on_stop_recording=lambda: order.events.append("stop"),
-        _activate_current=lambda: None,
+        _activate_current=lambda: SimpleNamespace(),  # The window.
         _record_current=lambda: order.events.append("record"),
     )
     assert not app.recording_active() and not app.can_test_recording()  # A test runs: no second one.
