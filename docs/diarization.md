@@ -26,6 +26,15 @@ An unnamed disk-backed scratch file is mapped by the child rather than decoding
 an entire long meeting into RAM or `/tmp`. Inputs shorter than 0.2 seconds do not
 construct or call the model.
 
+G14: the voice step also keeps at most one group's scratch file, 64 KB per second
+of meeting, whatever the number of sources or spans. It rejoins each group to pick
+windows, then rejoins again only the groups whose windows a print reads. Before
+every scratch file, diarization and the voice step require free space for that
+file plus the recorder's reserve, max(1 GiB, 2 %). The speech child cannot see
+whether a recording is running, so the reserve always applies. Without the space,
+that group keeps D11 (or gets no print), nothing is written, the transcript is
+kept and the numbers go to the app log.
+
 The pure word assignment follows the shared S-11 vectors. Stable IDs use the
 original group followed by `~n`; display numbering follows speaking word order.
 If fewer than two voices receive words, the D11 speaker is retained. A model

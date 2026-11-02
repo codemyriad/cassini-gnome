@@ -17,15 +17,44 @@ import numpy as np
 
 from .speech_pipeline import audio_chunks
 
+# One rejoin file is float32 at 16 kHz: 64 bytes per millisecond of meeting.
+BYTES_PER_MS = 4 * 16
 
-@contextmanager
-def rejoin(tracks, *, scratch=None, heartbeat=lambda: None):
+
+def scratch_directory(scratch=None):
     directory = (
         Path(scratch)
         if scratch
         else Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "cassini/diarization"
     )
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return directory
+
+
+def shortfall(duration_ms, *, scratch=None, statvfs=os.statvfs):
+    """G14/R75: None when one rejoin of this group fits, else the numbers.
+
+    Needed is the rejoin size from the group's metadata extent, plus one
+    second for rounding, so no audio is read. The reserve is the recorder's
+    D7 Q5 reserve. The speech child cannot see whether a recording is running
+    on this volume: the recorder lives in the app process, and a recording
+    can start after the job's options were made. So the reserve always
+    applies, the conservative choice.
+    """
+    from .recording_details import disk_reserve
+
+    usage = statvfs(scratch_directory(scratch))
+    free = usage.f_bavail * usage.f_frsize
+    needed = (max(0, duration_ms) + 1000) * BYTES_PER_MS
+    reserve = disk_reserve(usage.f_blocks * usage.f_frsize)
+    if free >= needed + reserve:
+        return None
+    return dict(freeBytes=free, neededBytes=needed, reserveBytes=reserve)
+
+
+@contextmanager
+def rejoin(tracks, *, scratch=None, heartbeat=lambda: None):
+    directory = scratch_directory(scratch)
     last_notice = time.monotonic()
     # A file descriptor avoids transporting paths to temporary audio; no
     # transcript/capture file is opened for writing by the worker.
