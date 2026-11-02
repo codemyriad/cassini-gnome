@@ -584,15 +584,33 @@ class BrowserCapture:
                 callGeneration=self.call_generation,
             )
 
-    def refuse_resume(self, message):
+    def refuse_resume(self, packet, message):
         """D58 #10: a refused resume is startRejected/resumeRefused in this folder.
 
-        Only an open session records it (a finished one refuses any change),
-        and a refusal never changes the recording itself.
+        Only while this recording still waits on system sound for that call: it
+        is live (not stopping, stopped or starting), its others come from a
+        resume target (system/missing or system/lost), no transport is attached
+        and the resume names its call generation. A refusal because the user
+        stopped, or a resume that is redundant or for another call, is
+        command scoped only. A refusal never changes the recording itself.
         """
         with self.lock:
             session = self.host.session
-            if session is None or session.finished:
+            if (
+                session is None
+                or session.finished
+                or self.finished
+                or self.stopping
+                or self.starting
+                or self.stop_requested.is_set()
+                or self.audio_connected
+                or self.tab_closed
+                or self.call_generation is None
+                or packet.get("callGeneration") != self.call_generation
+            ):
+                return
+            current = source_state(session.manifest.get("events"))
+            if (current.source, current.reason) not in RESUME_TARGETS:
                 return
             item = entry(self.elapsed_ms(), "browser", "startRejected", detail="resumeRefused", message=message)
             try:

@@ -926,9 +926,10 @@ class BrowserService:
                 raise ResumeRefused()
             proof = target.resume(packet)
         except ResumeRefused as error:
-            if target is not None:
-                # D58 #10: in the existing folder, at its real time.
-                target.refuse_resume(str(error))
+            if target is not None and not refused:
+                # D58 #10: in the existing folder, at its real time, when the
+                # recording still waits on system for that call (refuse_resume).
+                target.refuse_resume(packet, str(error))
             raise
         try:
             with self.lock:
