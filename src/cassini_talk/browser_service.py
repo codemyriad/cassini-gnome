@@ -1886,9 +1886,22 @@ class BrowserService:
                 self._stopping_all.clear()
         self.policy()
 
-    def start_all(self, *, microphone=True, group_id=None):
+    def start_all(self, *, microphone=True, group_id=None, only=None):
+        """Start every recordable meeting, or with `only` just that one (R82 §2).
+
+        `only` is {id, callGeneration}: a D17 line's Try again. It starts that
+        meeting only while it is still the same call; otherwise nothing.
+        """
         if type(microphone) is not bool:
             raise ValueError("Invalid microphone selection")
+        if only is not None and (
+            not isinstance(only, dict)
+            or not isinstance(only.get("id"), str)
+            or not 0 < len(only["id"]) <= 512
+            or only.get("callGeneration") is not None
+            and not isinstance(only.get("callGeneration"), str)
+        ):
+            raise ValueError("Invalid meeting to retry")
         group = threading.Event()
         token = str(uuid4()) if group_id is None else group_id
         if not isinstance(token, str) or not 0 < len(token) <= 128:
@@ -1908,6 +1921,12 @@ class BrowserService:
                 # D52.5: a call already being recorded, under any peer.
                 and not self._generation_recording(tab, meeting, active=True)
             ]
+            if only is not None:
+                targets = [
+                    (identifier, meeting)
+                    for identifier, meeting in targets
+                    if identifier == only["id"] and meeting.get("callGeneration") == only.get("callGeneration")
+                ]
             self._record_groups[token] = group
         deadline = time.monotonic() + self.batch_timeout
 
@@ -1957,6 +1976,7 @@ class BrowserService:
             results, _futures = self._batch(jobs, deadline, cancelled=group, expired=expired)
             titles = {identifier: meeting["title"] for identifier, meeting in targets}
             cancelled = group.is_set() and not expired.is_set()
+            generations = {identifier: meeting.get("callGeneration") for identifier, meeting in targets}
 
             def reported(error):
                 # D58: only the user's cancel shows no refusal. Without one, a
@@ -1968,7 +1988,13 @@ class BrowserService:
                 return error
 
             failures = [
-                dict(id=identifier, title=titles[identifier], error=str(error), refusals=start_refusals(error))
+                dict(
+                    id=identifier,
+                    title=titles[identifier],
+                    callGeneration=generations[identifier],
+                    error=str(error),
+                    refusals=start_refusals(error),
+                )
                 for identifier, error in ((i, reported(e)) for i, _result, e in results if e is not None)
             ]
             return dict(self.snapshot(), attempted=len(targets), cancelled=cancelled, failures=failures)
@@ -2784,7 +2810,9 @@ class BrowserService:
                             result = self.snapshot()
                         elif action == "start-all":
                             result = self.start_all(
-                                microphone=packet.get("microphone", True), group_id=packet.get("groupId")
+                                microphone=packet.get("microphone", True),
+                                group_id=packet.get("groupId"),
+                                only=packet.get("only"),
                             )
                         elif action == "stop-all":
                             pid, _, _ = struct.unpack(

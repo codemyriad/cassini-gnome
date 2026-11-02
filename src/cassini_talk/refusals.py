@@ -117,12 +117,23 @@ def lines(stored):
     return shown, roles
 
 
-def banner(refusals):
-    """The start banner when nothing opened: its line, caption and action."""
-    first = refusals[0] if refusals else {}
+def banner(refusals, *more):
+    """The start banner when nothing opened: its line, captions and action.
+
+    `more` are the refusal lists of further meetings that failed too: the
+    banner shows every distinct caption in first-occurrence order (R82
+    decision 6). `caption` is the first of them.
+    """
+    captions = []
+    for listed in (refusals, *more):
+        first = listed[0] if listed else {}
+        caption = CAPTIONS.get(first.get("detail")) if isinstance(first, dict) else None
+        if caption is not None and caption not in captions:
+            captions.append(caption)
     return dict(
         id="errors.recordFailed.line",
-        caption=CAPTIONS.get(first.get("detail")),
+        caption=captions[0] if captions else None,
+        captions=captions,
         action="common.tryAgain",
         refusals=list(refusals),
     )

@@ -351,6 +351,60 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: text("errors.recordFailed.line") in texts(window.first_recording_lines))
     assert text("common.tryAgain") in texts(window.first_recording_lines)
     assert not app.recording_error
+
+    # R82 1a/1c: the browser line is info only, with no button; a refused
+    # native side of a browser capture (a meeting that is not a native
+    # recording) gets Try again; a permission line never does.
+    def buttons(widget, label):
+        found, child = 0, widget.get_first_child()
+        while child is not None:
+            found += isinstance(child, Gtk.Button) and child.get_label() == label
+            found += buttons(child, label)
+            child = child.get_next_sibling()
+        return found
+
+    meeting = window.snapshot.meetings[0]
+    assert app.comfort._native_for(meeting) is None
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+    window.append_refusal_lines(
+        box,
+        [
+            dict(side="browser", id="errors.othersFallback.line", caption="errors.refusal.noSources"),
+            dict(side="me", id="errors.deviceUnavailable.me", caption=None),
+        ],
+        True,
+        meeting,
+    )
+    shown = texts(box)
+    assert text("errors.othersFallback.line") in shown and text("errors.refusal.noSources") in shown
+    assert buttons(box, text("common.tryAgain")) == 1, shown  # Only the microphone's line.
+    assert button(box, text("common.tryAgain")).get_sensitive()
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+    window.append_refusal_lines(box, [dict(side="me", id="errors.micPermission.line", caption=None)], False, meeting)
+    assert buttons(box, text("common.tryAgain")) == 0
+
+    # R82 §2: one line per meeting that failed while others started, with its
+    # caption and its own Try again, insensitive while any start is pending.
+    from concurrent.futures import Future
+
+    app.recording_failure = None  # The earlier start banner is gone; a partial start shows lines.
+    app.recording_failures = [
+        dict(id="call/a", callGeneration="call-A", title="Weekly sync", caption="errors.refusal.busy"),
+        dict(id="call/b", callGeneration="call-B", title=None, caption=None),
+    ]
+    window._recording_line(None)
+    lines = texts(window.first_recording_lines)
+    assert text("errors.recordFailed.meeting", title="Weekly sync") in lines
+    assert text("errors.recordFailed.meeting", title=text("library.untitled")) in lines
+    assert text("errors.refusal.busy") in lines and buttons(window.first_recording_lines, text("common.tryAgain")) == 2
+    assert button(window.first_recording_lines, text("common.tryAgain")).get_sensitive()
+    app._record_start_future = Future()  # A start is pending.
+    window._recording_line(None)
+    assert not button(window.first_recording_lines, text("common.tryAgain")).get_sensitive()
+    app._record_start_future = None
+    app.recording_failures = []
+    window._recording_line(None)
+    assert buttons(window.first_recording_lines, text("common.tryAgain")) == 0
     window.close()
     app.do_shutdown()
 print(
