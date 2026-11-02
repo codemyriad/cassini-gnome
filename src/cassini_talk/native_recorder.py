@@ -173,7 +173,9 @@ class NativeRecorder(GObject.Object):
         try:
             self.session, (self.minutes_left, reserve) = future.result()
             if self._stop_requested:
+                # Stopped before any side opened: the blank folder goes (D58).
                 self.starting = False
+                self._discard = True
                 self._begin_finish()
                 return False
             self._test_sources = test
@@ -381,6 +383,11 @@ class NativeRecorder(GObject.Object):
             committed, refused = future.result()
             if not committed:
                 if self._stop_requested:
+                    # Stopped before any side opened: no recording either. The
+                    # blank folder goes (unless typed into), with no banner and
+                    # no refusals: the user cancelled this start.
+                    self.refusals = []
+                    self._discard = True
                     self._begin_finish()
                     return False
                 # Nothing opened (D58 point 2): no recording. The folder is
