@@ -89,3 +89,13 @@ sample, power and bleed thresholds. Call-generation tests reuse a receiver,
 exclude late old peers, and preserve intentional `callChanged` retirement.
 Run only with a private audio server. Network-isolated containers need a private
 bridge with a route for ICE, not a desktop audio/bus/home mount.
+
+## D58 classified refusals
+
+`conformance/refusals/` holds the injected-refusal writer cases, the wire cases for
+`ok:false` result codes and the Details reader lines, with an independent oracle.
+`tests/test_refusals.py` checks the oracle against every case, mutates it to prove each
+R79 guard fails a case, and validates every expected list against the session schema.
+CI cannot produce a real TCC or device denial: each app injects the refusals through its
+own start path, writer and reader. `extension/tests/result-codes.test.cjs` checks the
+code the extension sets at each `ok:false` site.

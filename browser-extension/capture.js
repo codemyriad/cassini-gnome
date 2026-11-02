@@ -12,6 +12,11 @@ async function bounded(promise, message, schedule = setTimeout, cancel = clearTi
   } finally { cancel(timer); }
 }
 
+// D58 (R79): a classified start failure. `resultCode` is the open control-result
+// vocabulary (SPEC-CONTROL "Result codes"), never the audio-plane `code`.
+const classified = resultCode => error => {
+  throw Object.assign(error instanceof Error ? error : new Error(String(error)), { resultCode });
+};
 const clocks = new WeakMap();
 const retirementReason = error => error?.code === "callChanged" ? "callChanged" :
   error?.code === "state" && error.scope === "source" && error.retired === true ? "ended" :
@@ -63,14 +68,14 @@ async function captureOnce({ stream, id, label, kind, origin, workletURL, send, 
     fail(error);
   }
   try {
-    await wait(context.audioWorklet.addModule(workletURL), "This meeting page blocks separate-track recording. Record the whole tab instead.");
+    await wait(context.audioWorklet.addModule(workletURL), "This meeting page blocks separate-track recording. Record the whole tab instead.").catch(classified("workletBlocked"));
     // Chromium may not decode a receiver for Web Audio until a media renderer exists.
     // Keep a silent renderer alive (crbug.com/40094084), without playing remote audio twice.
     if (kind === "remote") {
       remotePlayback = new Audio();
       remotePlayback.muted = true;
       remotePlayback.srcObject = stream;
-      await wait(remotePlayback.play(), "A participant’s audio did not start. Record the whole tab instead.");
+      await wait(remotePlayback.play(), "A participant’s audio did not start. Record the whole tab instead.").catch(classified("audioBlocked"));
     }
     source = context.createMediaStreamSource(stream);
     node = new AudioWorkletNode(context, "cassini-pcm", {
@@ -85,8 +90,8 @@ async function captureOnce({ stream, id, label, kind, origin, workletURL, send, 
     const ready = new Promise(resolve => { node.port.onmessage = ({data}) => {if (data.ready) resolve();}; });
     node.connect(silent).connect(context.destination);
     if (audible) source.connect(context.destination);
-    await wait(context.resume(), "Click somewhere in the meeting page so the browser allows audio, then try again. Or record the whole tab.");
-    if (context.state !== "running") throw new Error("Audio capture is suspended. Interact with the meeting page, then try again or use Tab audio.");
+    await wait(context.resume(), "Click somewhere in the meeting page so the browser allows audio, then try again. Or record the whole tab.").catch(classified("audioBlocked"));
+    if (context.state !== "running") throw Object.assign(new Error("Audio capture is suspended. Interact with the meeting page, then try again or use Tab audio."), { resultCode: "audioBlocked" });
     await wait(ready, "Audio render clock did not become ready.");
     source.connect(node);
     let clockOffset = clocks.get(context);

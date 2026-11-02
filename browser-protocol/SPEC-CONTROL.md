@@ -84,6 +84,7 @@ recording continues. No management message supplies a filesystem destination.
 | status | recording bool, tabId nullable, path nullable string, message string; optional tracks integer ≥0 and stopping bool |
 | action / mode | start or stop; start requires tracks |
 | error | string ≤2000 code points |
+| code | optional on ok:false, `^[A-Za-z]{1,32}$`; see Result codes |
 
 Unknown fields are ignored. Unknown host message types are ignored. Apps ignore unknown
 extension message types. The extension sends no unsolicited message types beyond those
@@ -636,3 +637,45 @@ timing and the exact wire replies, independent oracle `heartbeat.py`) and the
 companion example: control lost at 25 s and computer-sound fallback at 27 s;
 the audio transport closed at 45 s (`PCM_STALE_AFTER`); `pageGone` at 145 s if the browser never
 returns, or restoration once it returns with a new audio transport.
+
+## Result codes (D58 / R79; extension 0.2.10)
+
+An `ok:false` result MAY carry `code`, a string matching `^[A-Za-z]{1,32}$` as a whole
+string (not before a final newline: see SPEC.md, "Refusals"), that classifies the refusal:
+
+```json
+{"type":"result","requestId":"record-1","ok":false,"error":"No audio is available from that meeting yet.","code":"noSources"}
+```
+
+The field is optional. Hosts MUST accept results without it (older extensions, and Starts
+the extension does not classify) and need no capability, since unknown fields are ignored.
+A host copies any pattern-valid value, known or not, into the browser refusal's `detail`
+(SPEC.md, "Refusals") and drops any other value; the result's `error` becomes its `message`.
+This is an open vocabulary, separate from and unrelated to the closed audio-plane `code` of
+`response.schema.json` (`version`, `state`, `source`, ...): the extension never forwards a
+native host's error code as a result code. Apps do not wait for it: they classify what they
+know locally and record a code-less `startRejected` otherwise.
+
+| code | Extension 0.2.10 sets it when |
+| --- | --- |
+| `busy` | a recording is already running or starting, in that tab or (legacy) anywhere; also a legacy Stop for another tab |
+| `limit` | 128 requests are pending, or 100 recordings are running or starting |
+| `noSources` | the tab has no discovered meeting audio |
+| `gone` | the tab no longer exists or closes during Start, the call generation changed before or during Start, or a Stop names a capture that is no longer active |
+| `notWebPage` | the tab is not an http(s) page |
+| `pageUnreachable` | no page frame of the tab connected in time |
+| `invalid` | the command or its options are malformed, or ask for whole-tab capture |
+| `resumeRefused` | the host's answer to a resume did not confirm the original capture |
+| `workletBlocked` | the page blocked the AudioWorklet (capture.js) |
+| `audioBlocked` | the browser kept the page's audio suspended or refused playback (capture.js) |
+
+`busy` comes first: a Start for a tab that is already recording or starting (or, for a
+legacy Start, any recording) answers `busy` before any other check, including `noSources`,
+`limit` and `invalid`, so an app that falls back on other refusals never records that
+meeting twice (D58 #11; wire case `same-tab-busy-result-is-detail-busy`).
+
+Only a Start the app cancelled itself (`Recording could not start.`: its own Stop or
+cancel) and a failure reported by the native host, or the loss of that host, carry no code. `workletBlocked` and `audioBlocked` are set where capture.js
+raises the error; a tracks Start answers before the page's capture begins, so today these
+reach the app as a later source failure (`captureOutcome failed`, P10), not on a result.
+Shared wire cases: the `wire` list in `conformance/refusals/writer.json`.

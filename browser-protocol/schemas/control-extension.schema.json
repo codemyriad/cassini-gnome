@@ -294,6 +294,11 @@
           "type": "string",
           "maxLength": 2000
         },
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Za-z]{1,32}$",
+          "$comment": "D58 (R79): optional on ok:false, an open refusal class. Known: busy, limit, noSources, gone, notWebPage, pageUnreachable, invalid, resumeRefused, workletBlocked, audioBlocked. Hosts accept results without it and copy any value that matches the pattern as a whole string (not before a final newline) into the refusal's detail. Unrelated to the closed audio-plane code of response.schema.json."
+        },
         "status": {
           "$ref": "#/$defs/status"
         }

@@ -2,8 +2,8 @@
 // Persistent app management, independent of the per-recording PCM connection.
 export class AppControl {
   constructor({ runtime, alarms, snapshot, command, capabilities = [], cancelPending = () => {}, connected = async () => {},
-                later = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id) }) {
-    Object.assign(this, { runtime, alarms, snapshot, command, capabilities, cancelPending, connected, later, cancel });
+                later = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id), busy = () => false }) {
+    Object.assign(this, { runtime, alarms, snapshot, command, capabilities, cancelPending, connected, later, cancel, busy });
     this.port = null;
     this.ready = false;
     this.retry = null;
@@ -118,7 +118,10 @@ export class AppControl {
       }
       if (this.requests.size >= 128) {
         // Never evict an in-flight command and accidentally execute its retry twice.
-        this.send(port, { type: 'result', requestId: id, ok: false, error: 'Cassini has received too many commands. Reconnect and try again.' });
+        // D58 #11: a Start for a busy tab says so even when the table is full.
+        this.send(port, this.busy(message)
+          ? { type: 'result', requestId: id, ok: false, error: 'A recording is already running. Stop it before starting another.', code: 'busy' }
+          : { type: 'result', requestId: id, ok: false, error: 'Cassini has received too many commands. Reconnect and try again.', code: 'limit' });
         return;
       }
       const resume = message.resumeCapture;
@@ -146,23 +149,30 @@ export class AppControl {
         }
         this.cancelPending(message);
       }
+      // D58: `resultCode` carries the open result `code` (SPEC-CONTROL "Result
+      // codes"). A Start this app cancelled itself is not classified.
+      const invalid = message => Object.assign(new Error(message), { resultCode: 'invalid' });
       const execute = async () => {
         if (port !== this.port) return null;
         try {
+          // D58 #11: `busy` wins over every other refusal of a Start for that tab.
+          if (this.busy(message)) throw Object.assign(new Error('A recording is already running. Stop it before starting another.'), { resultCode: 'busy' });
           if (!['start', 'stop'].includes(message.action) || !Number.isSafeInteger(message.tabId) || message.tabId < 0)
-            throw new Error('Choose a meeting to record.');
+            throw invalid('Choose a meeting to record.');
           if (message.action === 'start' && message.mode !== 'tracks')
-            throw new Error('To record the whole tab, click Record the whole tab in the browser.');
+            throw invalid('To record the whole tab, click Record the whole tab in the browser.');
           for (const key of ['independent', 'captureLocal', 'microphone', 'keepOnNavigation']) {
             if (message[key] !== undefined && typeof message[key] !== 'boolean')
-              throw new Error('Choose a meeting to record.');
+              throw invalid('Choose a meeting to record.');
           }
-          if (!validOptions) throw new Error('Choose a meeting to record.');
+          if (!validOptions) throw invalid('Choose a meeting to record.');
           if (intent.cancelled) throw new Error('Recording could not start.');
           const status = await this.command(message, intent);
           return { type: 'result', requestId: id, ok: true, status };
         } catch (error) {
-          return { type: 'result', requestId: id, ok: false, error: String(error.message || error).slice(0, 2000) };
+          const result = { type: 'result', requestId: id, ok: false, error: String(error.message || error).slice(0, 2000) };
+          if (typeof error?.resultCode === 'string' && /^[A-Za-z]{1,32}$/.test(error.resultCode)) result.code = error.resultCode;
+          return result;
         }
       };
       // Independent tabs must not wait on another tab's lookup, audio host or

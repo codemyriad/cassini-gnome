@@ -111,6 +111,11 @@ class StaleWatchdogTests(unittest.TestCase):
             # document's, and live: never retire one past the confirmation.
             'retirement reaches one span past the confirmation': (
                 'difference_update(declared[:confirmed])', 'difference_update(declared[:confirmed + 1])', first_new_span),
+            # Mac review of #34: the first generation reported counts as new.
+            'the first generation never closes the window': (
+                'changed = document is not None and document != generation',
+                'changed = document is not None and generation is not None and document != generation',
+                'a-first-generation-closes-the-departing-window'),
         }
         for name, (old, new, case) in mutants.items():
             with self.subTest(mutant=name):
