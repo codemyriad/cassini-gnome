@@ -110,7 +110,7 @@ def run(tracks, options, notify, *, statvfs=os.statvfs):
     only the groups that hold chosen windows, and reads just those.
     """
     from .campplus import SpeakerExtractor
-    from .diarization_audio import rejoin, shortfall
+    from .diarization_audio import live_recordings, rejoin, shortfall
 
     directory = Path(options["directory"])
     background = options.get("prepareMissing", False)
@@ -123,6 +123,7 @@ def run(tracks, options, notify, *, statvfs=os.statvfs):
     )
     cached = read_cache(directory / "speaker-turns.json")
     tracks_by_id = {t["id"]: t for t in tracks}
+    live = live_recordings(options)
     plans, digests = {}, {}
     total_frames = 0
     with contextlib.ExitStack() as stack:
@@ -133,7 +134,9 @@ def run(tracks, options, notify, *, statvfs=os.statvfs):
         def group_audio(index):
             """The group's rejoin, or None after a low-disk diagnostic."""
             group = groups[index]
-            if short := shortfall(group["durationMs"], scratch=options.get("scratch"), statvfs=statvfs):
+            if short := shortfall(
+                group["durationMs"], scratch=options.get("scratch"), statvfs=statvfs, recordings=live
+            ):
                 notify("voice-progress", diagnostic=dict(code="voices-skipped-low-disk", group=group["id"], **short))
                 return None
             return rejoin(

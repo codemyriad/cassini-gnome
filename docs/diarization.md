@@ -30,10 +30,12 @@ G14: the voice step also keeps at most one group's scratch file, 64 KB per secon
 of meeting, whatever the number of sources or spans. It rejoins each group to pick
 windows, then rejoins again only the groups whose windows a print reads. Before
 every scratch file, diarization and the voice step require free space for that
-file plus the recorder's reserve, max(1 GiB, 2 %). The speech child cannot see
-whether a recording is running, so the reserve always applies. Without the space,
-that group keeps D11 (or gets no print), nothing is written, the transcript is
-kept and the numbers go to the app log.
+file plus a 1 GiB floor. When the app has a recording running on the same volume
+as the job starts, the recorder's reserve, max(1 GiB, 2 %), applies instead. A
+recording that starts mid-job is covered only by the floor and by the recorder's
+own low-disk handling; that gap is accepted. Without the space, that group keeps
+D11 (or gets no print), nothing is written, the transcript is kept and the
+numbers go to the app log.
 
 The pure word assignment follows the shared S-11 vectors. Stable IDs use the
 original group followed by `~n`; display numbering follows speaking word order.

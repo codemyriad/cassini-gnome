@@ -55,8 +55,9 @@ def read_cache(path):
 
 def run(tracks, options, notify, *, statvfs=os.statvfs):
     """Failure keeps D11. Results are streamed in bounded messages, never words."""
-    from .diarization_audio import rejoin, shortfall
+    from .diarization_audio import live_recordings, rejoin, shortfall
 
+    live = live_recordings(options)
     by_id = {t["id"]: t for t in tracks}
     cached = read_cache(options.get("storedTurnsPath"))
     model = None
@@ -73,7 +74,9 @@ def run(tracks, options, notify, *, statvfs=os.statvfs):
             try:
                 # G14: too little disk for this group's temp audio keeps D11,
                 # as any other failure does, without creating the file.
-                if short := shortfall(group["durationMs"], scratch=options.get("scratch"), statvfs=statvfs):
+                if short := shortfall(
+                    group["durationMs"], scratch=options.get("scratch"), statvfs=statvfs, recordings=live
+                ):
                     diagnostics.append(
                         dict(code="diarization-kept-d11", group=identifier, message="Not enough disk space", **short)
                     )

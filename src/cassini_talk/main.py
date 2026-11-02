@@ -956,8 +956,27 @@ class CassiniApplication(Adw.Application):
                 diarization_models=self.diarization_models,
                 voice_models=self.voice_models,
                 voice_store=self.voice_store,
+                recordings=self.live_recording_directories,
             )
         return self.transcriber
+
+    def live_recording_directories(self):
+        """Library folders of native and browser captures running now (G14 disk budget).
+
+        The transcription thread calls this. It reads only the capture registry
+        and the broker snapshot, which this thread replaces rather than edits.
+        """
+        from .capture_guard import browser_capture_busy, recorder_busy
+
+        folders = []
+        for recorder in tuple(self.native_captures.values()):
+            session = getattr(recorder, "session", None)
+            if recorder_busy(recorder) and session is not None:
+                folders.append(str(session.directory))
+        for status in self._browser_snapshot.get("statuses", ()):
+            if browser_capture_busy(status) and isinstance(status.get("path"), str):
+                folders.append(status["path"])
+        return folders
 
     def recompute_voices(self, directory, affected):
         if self._quitting or self._capture_exiting or self.meeting_trash.hides(directory):

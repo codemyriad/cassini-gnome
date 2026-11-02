@@ -22,6 +22,8 @@ import pytest
 
 pytest.importorskip("numpy")  # Core/Whistle-light profiles need no PCM worker dependencies.
 
+from test_voice_application import application_class  # noqa: E402, F401
+
 from cassini_talk import diarization_audio, worker_diarization, worker_voices  # noqa: E402
 
 RATE = 16000
@@ -250,14 +252,14 @@ def test_voice_temp_disk_and_memory_stay_one_group_whatever_the_number_of_source
 def test_low_disk_skips_voice_audio_without_a_temp_file(tmp_path, monkeypatch, extractor):
     tracks = meeting(tmp_path, 2, 1)
     meter = Meter(monkeypatch)
-    events = voices(tmp_path, tracks, statvfs=usage(2 << 30, 100 << 30))
+    events = voices(tmp_path, tracks, statvfs=usage(1 << 30, 100 << 30))
     assert meter.created == 0 and not extractor
     assert not [e for e in events if e["type"] == "voice-print"]
     diagnostics = [e["diagnostic"] for e in events if "diagnostic" in e]
     assert [d["group"] for d in diagnostics] == ["others", "track-r1", "track-r2"]
     needed = (HOURS_2 * 1000 + 1000) * 64
     assert diagnostics[0] == dict(
-        code="voices-skipped-low-disk", group="others", freeBytes=2 << 30, neededBytes=needed, reserveBytes=2 << 30
+        code="voices-skipped-low-disk", group="others", freeBytes=1 << 30, neededBytes=needed, reserveBytes=1 << 30
     )
 
 
@@ -271,16 +273,47 @@ def test_space_lost_before_the_second_pass_skips_only_the_prints_that_need_it(tm
     assert [e["diagnostic"]["group"] for e in events if "diagnostic" in e] == ["others"]
 
 
-def test_budget_is_one_rejoin_plus_the_recorder_reserve(tmp_path):
+NEEDED = 61000 * 64  # One minute of group, plus one second.
+
+
+def budget(tmp_path, free, recordings=(), statvfs=None):
+    return diarization_audio.shortfall(
+        60000, scratch=tmp_path / "scratch", statvfs=statvfs or usage(free, 500 << 30), recordings=recordings
+    )
+
+
+def test_without_a_live_recording_the_budget_keeps_only_the_1_gib_floor(tmp_path):
+    """500 GiB volume: the recorder's 2 % would be 10 GiB, and must not apply."""
+    floor = 1 << 30
+    assert budget(tmp_path, NEEDED + floor) is None
+    assert budget(tmp_path, NEEDED + floor - 1) == dict(
+        freeBytes=NEEDED + floor - 1, neededBytes=NEEDED, reserveBytes=floor
+    )
+    # A recording that already ended (folder gone) changes nothing.
+    assert budget(tmp_path, NEEDED + floor, [str(tmp_path / "gone")]) is None
+
+
+def test_a_live_recording_on_the_same_volume_keeps_the_recorder_reserve(tmp_path):
     from cassini_talk.recording_details import disk_reserve
 
     reserve = disk_reserve(500 << 30)
     assert reserve == 10 << 30  # 2 % of 500 GiB beats 1 GiB.
-    needed = 61000 * 64
-    assert diarization_audio.shortfall(60000, scratch=tmp_path, statvfs=usage(needed + reserve, 500 << 30)) is None
-    assert diarization_audio.shortfall(60000, scratch=tmp_path, statvfs=usage(needed + reserve - 1, 500 << 30)) == dict(
-        freeBytes=needed + reserve - 1, neededBytes=needed, reserveBytes=reserve
+    live = tmp_path / "Recording-live"
+    live.mkdir()
+    assert budget(tmp_path, NEEDED + reserve, [str(live)]) is None
+    assert budget(tmp_path, NEEDED + reserve - 1, [str(live)]) == dict(
+        freeBytes=NEEDED + reserve - 1, neededBytes=NEEDED, reserveBytes=reserve
     )
+
+
+def test_a_live_recording_on_another_volume_keeps_only_the_floor(tmp_path):
+    other = Path("/proc")  # Another device on every Linux system.
+    assert os.stat(other).st_dev != os.stat(tmp_path).st_dev
+
+    def statvfs(path):
+        return usage(NEEDED + (1 << 30), (2 << 40) if Path(path) == other else 500 << 30)(path)
+
+    assert budget(tmp_path, None, [str(other)], statvfs=statvfs) is None
 
 
 def test_low_disk_diarization_keeps_d11_without_a_temp_file(tmp_path, monkeypatch):
@@ -302,7 +335,9 @@ def test_low_disk_diarization_keeps_d11_without_a_temp_file(tmp_path, monkeypatc
     ]
 
 
-def test_low_disk_diarization_still_writes_the_transcript(tmp_path, monkeypatch, caplog):
+@pytest.mark.parametrize("recording", [False, True])
+def test_low_disk_diarization_still_writes_the_transcript(tmp_path, monkeypatch, caplog, recording):
+    """The queue passes the recordings live at job start; one on this volume raises the reserve."""
     from test_diarization_queue import Models
 
     from cassini_talk.meeting_store import read_metadata
@@ -314,7 +349,9 @@ def test_low_disk_diarization_still_writes_the_transcript(tmp_path, monkeypatch,
     session.append("room", b"\x01\x00" * 32000, 0)
     session.finish()
     meter = Meter(monkeypatch)
-    low = usage(0, 10 << 30)
+    low = usage(0, 100 << 30)
+    live = tmp_path / "Recording-live"
+    live.mkdir()
     words = [dict(text="One", startMs=10, endMs=800), dict(text="Two", startMs=1010, endMs=1800)]
 
     class Client:
@@ -344,6 +381,7 @@ def test_low_disk_diarization_still_writes_the_transcript(tmp_path, monkeypatch,
         root=tmp_path,
         client_factory=Client,
         diarization_models=Models(),
+        recordings=lambda: [live] if recording else [],
     )
     try:
         with caplog.at_level("WARNING"):
@@ -356,7 +394,10 @@ def test_low_disk_diarization_still_writes_the_transcript(tmp_path, monkeypatch,
         separation = metadata["recordingDetails"]["writingDown"]["speakerSeparation"]
         assert separation == dict(status="failed", reason="processingFailed")
         assert meter.created == 0 and not (session.directory / "speaker-turns.json").exists()
-        assert any("diarization-kept-d11" in r.message and "neededBytes" in r.message for r in caplog.records)
+        reserve = (2 << 30) if recording else 1 << 30  # 2 % of 100 GiB, or the floor.
+        assert any(
+            "diarization-kept-d11" in r.message and f"'reserveBytes': {reserve}" in r.message for r in caplog.records
+        )
     finally:
         queue.close()
 
@@ -380,4 +421,26 @@ def test_voice_diagnostics_reach_the_app_log(caplog):
         assert client.voiceprints([], {}) == {}
     assert [r.message for r in caplog.records] == [
         "Voice diagnostic: {'code': 'voices-skipped-low-disk', 'group': 'others', 'freeBytes': 1}"
+    ]
+
+
+def test_application_lists_the_recordings_running_now(application_class, tmp_path):  # noqa: F811
+    native = dict(
+        busy=types.SimpleNamespace(
+            pipeline=object(), session=types.SimpleNamespace(directory=tmp_path / "Recording-a")
+        ),
+        starting=types.SimpleNamespace(pipeline=None, starting=True, session=None),
+        ended=types.SimpleNamespace(pipeline=None, session=types.SimpleNamespace(directory=tmp_path / "Recording-old")),
+    )
+    statuses = [
+        dict(recording=True, path="/library/Recording-b"),
+        dict(stopping=True, path="/library/Recording-c"),  # Still writing its PCM.
+        dict(recording=False, path="/library/Recording-d"),
+        dict(recording=True),
+    ]
+    app = types.SimpleNamespace(native_captures=native, _browser_snapshot=dict(statuses=statuses))
+    assert application_class.live_recording_directories(app) == [
+        str(tmp_path / "Recording-a"),
+        "/library/Recording-b",
+        "/library/Recording-c",
     ]
