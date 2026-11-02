@@ -48,10 +48,11 @@ class Sides:
     stream then, "fail" fails its state change, "never" stays silent. The
     recorder's bounded open wait advances the fake clock to the next scripted
     event, fires it, and then waits for the recorder to signal that it saw it.
+    causes names an "error" side's cause, by kind.
     """
 
-    def __init__(self, recorder, plan):
-        self.recorder, self.plan = recorder, dict(plan)
+    def __init__(self, recorder, plan, causes=None):
+        self.recorder, self.plan, self.causes = recorder, dict(plan), dict(causes or {})
         self.now = 0.0
         self.built, self.sources, self.fired = {}, {}, set()
         self.started_at = None
@@ -81,7 +82,7 @@ class Sides:
         source = self.sources[kind]
         if self.plan[kind][0] == "error":
             # A failing source reports its cause, then a stream error, then ends.
-            for problem in ("Fake device went away", "Internal data stream error."):
+            for problem in (self.causes.get(kind, "Fake device went away"), "Internal data stream error."):
                 source.post_message(Gst.Message.new_error(source, GLib.Error(problem), "scripted"))
             return source.emit("end-of-stream")
         return source.emit("push-buffer", Gst.Buffer.new_wrapped(FRAME))
@@ -112,9 +113,9 @@ class Sides:
         return event.wait(5)
 
 
-def start(tmp_path, plan):
+def start(tmp_path, plan, causes=None):
     recorder = NativeRecorder()
-    sides = Sides(recorder, plan)
+    sides = Sides(recorder, plan, causes)
     signals = []
     recorder.connect("started", lambda _r, path: signals.append(("started", path)))
     recorder.connect("error", lambda _r, message: signals.append(("error", message)))
@@ -217,17 +218,31 @@ def test_both_sides_open_and_record(tmp_path, caplog):
     assert session.manifest["state"] == "completed"
 
 
-def test_both_sides_refused_keeps_todays_start_failure(tmp_path, caplog):
+CAUSES = {"microphone": "Fake microphone is held by another application", "system": "Fake monitor went away"}
+
+
+@pytest.mark.parametrize(
+    ("plan", "problem"),
+    [
+        # Both report a cause: the microphone's, though the monitor's came first.
+        ({"microphone": ("error", 0.4), "system": ("error", 0.2)}, CAUSES["microphone"]),
+        # A failed state change reports no cause; the other side's is kept.
+        ({"microphone": ("fail", 0), "system": ("error", 0.4)}, CAUSES["system"]),
+        # No side reports a cause: today's generic start failure.
+        ({"microphone": ("fail", 0), "system": ("fail", 0)}, START_FAILURE),
+    ],
+)
+def test_both_sides_refused_keeps_todays_start_failure(tmp_path, caplog, plan, problem):
     caplog.set_level(logging.WARNING, logger="cassini_talk.native_recorder")
-    recorder, _sides, signals = start(tmp_path, {"microphone": ("fail", 0), "system": ("error", 0.4)})
+    recorder, _sides, signals = start(tmp_path, plan, CAUSES)
     try:
         spin_until(lambda: any(name == "finished" for name, _ in signals))
         session = recorder.session
-        # Today's failure path: no started, the generic error, then the folder.
-        assert signals == [("error", START_FAILURE), ("finished", str(session.directory))]
+        # Today's failure path: no started, the device's error, then the folder.
+        assert signals == [("error", problem), ("finished", str(session.directory))]
         assert session.directory.is_dir() and session.finished
         assert session.manifest["state"] == "interrupted"
-        assert session.manifest["problem"] == START_FAILURE and session.manifest["problemKind"] == "capture"
+        assert session.manifest["problem"] == problem and session.manifest["problemKind"] == "capture"
         assert session.manifest["events"][-1]["type"] == "end" and session.manifest["events"][-1]["reason"] == "error"
         assert start_selection(session) == [
             dict(atMs=0, type="othersSource", source="system", reason="missing"),

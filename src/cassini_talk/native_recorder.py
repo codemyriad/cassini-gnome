@@ -25,6 +25,8 @@ WRAP_TOLERANCE_NS = 2 * NS
 # R79 §1: a side has opened when its first buffer is admitted within this bound.
 OPEN_TIMEOUT_S = 3
 START_FAILURE = "Could not start audio capture. Check your audio devices and GStreamer plugins."
+# A failed state change reports no cause of its own (no bus error came with it).
+STATE_FAILURE = "Could not start native audio capture"
 SIDES = {"microphone": "me", "system": "others"}
 LOG = logging.getLogger(__name__)
 
@@ -216,7 +218,7 @@ class NativeRecorder(GObject.Object):
                     self._pending_sources[kind] = attempt
                 pipeline.add(branch)
                 if not branch.sync_state_with_parent():
-                    attempt["error"] = attempt["error"] or "Could not start native audio capture"
+                    attempt["error"] = attempt["error"] or STATE_FAILURE
             deadline = self._open_clock() + OPEN_TIMEOUT_S
             undecided = dict(attempts)
             while undecided and not self._start_cancelled(pipeline):
@@ -290,13 +292,15 @@ class NativeRecorder(GObject.Object):
         if self._finishing:
             return False  # A committed side already failed; its finish reports it.
         try:
-            committed, _refused = future.result()
+            committed, refused = future.result()
             if not committed:
                 if self._stop_requested:
                     self._begin_finish()
                     return False
-                # Nothing opened: today's start failure, folder included.
-                raise RuntimeError(START_FAILURE)
+                # Nothing opened: today's start failure, folder included. Keep
+                # the device's own cause, the microphone's first.
+                causes = [refused[kind] for kind in SIDES if refused.get(kind, STATE_FAILURE) != STATE_FAILURE]
+                raise RuntimeError(causes[0] if causes else START_FAILURE)
             if self.minutes_left < 10:
                 self.line = "errors.diskLow.line"
             if not test:
