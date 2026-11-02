@@ -1,6 +1,6 @@
 {
   "source": "drmeyers:~/dev/cassini-coordination/ux-draft",
-  "commit": "0f0c21da5c4c4af617f2cb463910e9f75deb3e95",
+  "commit": "d4f767eb70be44b9496c798dbbbf15705b4cc2f1",
   "paths": {
     "format-vectors.json": "tests/ux/format-vectors.json",
     "states-vectors.json": "tests/ux/states-vectors.json",
@@ -70,7 +70,7 @@
     "format-vectors.json": "8d9449e30b28b117c85f5396de6b0123b1f79cc9b53f6504157b1a0dfffcc791",
     "states-vectors.json": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
     "LIBRARY-RULES.md": "95a0e5068a08efa521f6eed73799b715ab50b2cf6aee374570b5337a6a3bdd2a",
-    "meeting.schema.json": "c51f7e61d2e8e513ead66622ae0b7b992f6e25cbdcf9e709823c0f488626f3c3",
+    "meeting.schema.json": "f668c7e2a4f5d2b99b04e4d2cadf339ba8011e474d6e225ad52f4d3a9a94ce16",
     "library-vectors/verify.py": "2011c3a7fc8d6fd5c58a4f06b16e8397f081755f743725f2732e332e4d1767da",
     "library-vectors/README.md": "8e8cbbe91ab72bbf9f404a94ab3b83822f4e137cca8cbbb25afd493b78394b54",
     "library-vectors/cases.json": "80723c1274ac44d8b23d0a154daa7b6fc5e559a1fceb6491b8e52558c4a6ce2b",
@@ -99,7 +99,7 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "5e8a5b393d8d5cbd7787916e87bf746ece5132dcaca1ea499e4cf2982cc341c4",
+    "strings.json": "830f0e74d03e84ed7a561782807abf49ce3671931130b533241826234e4e28ee",
     "LIBRARY.md": "6cd4063cdd58567c75a4733c8862e9fe0983863df890b86a91e9a9bb17749751",
     "session-events/session.json": "6bcec60cf4024421b57683d86a44d7ffd92efdc84a3e5b67e24cb09fcfb55723",
     "session-events/expected.json": "905ad1966fa3cac23aa348109d4f694a5606ea685f3a5689cc052cf092a8a920",

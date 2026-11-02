@@ -12540,7 +12540,8 @@
    "en": "Playback speed, {rate}",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "android"
    ],
    "role": "a11y",
    "boards": [],
@@ -18892,6 +18893,245 @@
     },
     "pt-PT": {
      "text": "Não havia espaço livre suficiente no disco para separar os oradores. A transcrição foi mantida."
+    }
+   }
+  },
+  {
+   "id": "errors.deviceUnavailable.me",
+   "en": "Your microphone is not being recorded. It couldn’t be started.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D58",
+   "note": "Coordinator (D58, R79). Recording page and Mac status menu: the microphone side was refused with deviceUnavailable.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Il tuo microfono non viene registrato. Non è stato possibile avviarlo."
+    },
+    "fr": {
+     "text": "Votre microphone n’est pas enregistré. Il n’a pas pu être démarré."
+    },
+    "es": {
+     "text": "No se está grabando tu micrófono. No se pudo iniciar."
+    },
+    "pt-BR": {
+     "text": "Seu microfone não está sendo gravado. Não foi possível iniciá-lo."
+    },
+    "pt-PT": {
+     "text": "O seu microfone não está a ser gravado. Não foi possível iniciá-lo."
+    }
+   }
+  },
+  {
+   "id": "errors.deviceUnavailable.others",
+   "en": "The others are not being recorded. This computer’s sound couldn’t be started.",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D58",
+   "note": "Coordinator (D58, R79). GNOME Recording page: the others side was refused with deviceUnavailable (Mac shows errors.othersPermission.line).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Gli altri non vengono registrati. Non è stato possibile avviare l’audio di questo computer."
+    },
+    "fr": {
+     "text": "Les autres ne sont pas enregistrés. Le son de cet ordinateur n’a pas pu être démarré."
+    },
+    "es": {
+     "text": "No se está grabando a los demás. No se pudo iniciar el sonido de este equipo."
+    },
+    "pt-BR": {
+     "text": "Os outros não estão sendo gravados. Não foi possível iniciar o som deste computador."
+    },
+    "pt-PT": {
+     "text": "Os outros não estão a ser gravados. Não foi possível iniciar o som deste computador."
+    }
+   }
+  },
+  {
+   "id": "errors.refusal.busy",
+   "en": "Another recording is already running.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "D58",
+   "note": "Coordinator (D58, R79). Caption under errors.recordFailed.line or errors.othersFallback.line for detail busy.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "È già in corso un’altra registrazione."
+    },
+    "fr": {
+     "text": "Un autre enregistrement est déjà en cours."
+    },
+    "es": {
+     "text": "Ya hay otra grabación en curso."
+    },
+    "pt-BR": {
+     "text": "Outra gravação já está em andamento."
+    },
+    "pt-PT": {
+     "text": "Já está a decorrer outra gravação."
+    }
+   }
+  },
+  {
+   "id": "errors.refusal.noSources",
+   "en": "No audio is available from that meeting yet.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "D58",
+   "note": "Coordinator (D58, R79). Caption for detail noSources.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Quella riunione non ha ancora audio disponibile."
+    },
+    "fr": {
+     "text": "Aucun son n’est encore disponible pour cette réunion."
+    },
+    "es": {
+     "text": "Esa reunión todavía no tiene audio disponible."
+    },
+    "pt-BR": {
+     "text": "Ainda não há áudio disponível dessa reunião."
+    },
+    "pt-PT": {
+     "text": "Ainda não há áudio disponível dessa reunião."
+    }
+   }
+  },
+  {
+   "id": "errors.refusal.noAnswer",
+   "en": "The browser didn’t answer.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "D58",
+   "note": "Coordinator (D58, R79). Caption for startFailed with detail timeout or disconnected.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Il browser non ha risposto."
+    },
+    "fr": {
+     "text": "Le navigateur n’a pas répondu."
+    },
+    "es": {
+     "text": "El navegador no respondió."
+    },
+    "pt-BR": {
+     "text": "O navegador não respondeu."
+    },
+    "pt-PT": {
+     "text": "O navegador não respondeu."
+    }
+   }
+  },
+  {
+   "id": "details.sources.refused.permissionDenied",
+   "en": "{source}: access wasn’t allowed.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D58",
+   "note": "Coordinator (D58, R79). Recording details, Audio sources: a side refused with permissionDenied. {source} is details.source.*.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{source}: l’accesso non è stato consentito."
+    },
+    "fr": {
+     "text": "{source} :l’accès n’a pas été autorisé."
+    },
+    "es": {
+     "text": "{source}: no se permitió el acceso."
+    },
+    "pt-BR": {
+     "text": "{source}: o acesso não foi permitido."
+    },
+    "pt-PT": {
+     "text": "{source}: o acesso não foi permitido."
+    }
+   }
+  },
+  {
+   "id": "details.sources.refused.deviceUnavailable",
+   "en": "{source}: couldn’t be started.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D58",
+   "note": "Coordinator (D58, R79). Recording details, Audio sources: a side refused with deviceUnavailable.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{source}: non è stato possibile avviarlo."
+    },
+    "fr": {
+     "text": "{source} :n’a pas pu être démarré."
+    },
+    "es": {
+     "text": "{source}: no se pudo iniciar."
+    },
+    "pt-BR": {
+     "text": "{source}: não foi possível iniciar."
+    },
+    "pt-PT": {
+     "text": "{source}: não foi possível iniciar."
+    }
+   }
+  },
+  {
+   "id": "details.sources.refused.startRejected",
+   "en": "{source}: the browser didn’t start recording.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D58",
+   "note": "Coordinator (D58, R79). Recording details, Audio sources: the browser side refused with startRejected.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{source}: il browser non ha avviato la registrazione."
+    },
+    "fr": {
+     "text": "{source} :le navigateur n’a pas démarré l’enregistrement."
+    },
+    "es": {
+     "text": "{source}: el navegador no empezó a grabar."
+    },
+    "pt-BR": {
+     "text": "{source}: o navegador não iniciou a gravação."
+    },
+    "pt-PT": {
+     "text": "{source}: o navegador não iniciou a gravação."
     }
    }
   }

@@ -552,6 +552,40 @@
         },
         "additionalProperties": true
        }
+      },
+      "refusals": {
+       "description": "D58 (R79): verbatim copy of session.json refusals: sides that were requested but never opened (first buffer within 3 s), in the order they happened, at most 16 (the first 15 plus the latest). Never changes state, problem, problemKind or captureOutcome. Readers ignore a non-list value and skip bad entries for display; unknown members and codes are preserved.",
+       "type": "array",
+       "maxItems": 16,
+       "items": {
+        "type": "object",
+        "properties": {
+         "atMs": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 86460000
+         },
+         "side": {
+          "type": "string"
+         },
+         "code": {
+          "type": "string"
+         },
+         "detail": {
+          "type": "string",
+          "pattern": "^[A-Za-z]{1,32}$"
+         },
+         "message": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "atMs",
+         "side",
+         "code"
+        ],
+        "additionalProperties": true
+       }
       }
      },
      "additionalProperties": true,
