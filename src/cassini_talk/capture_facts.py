@@ -78,12 +78,24 @@ def writing_details(previous, facts):
     separation = dict(writing.pop("speakerSeparation", {}))
     for key in ("status", "modelId", "modelRevision", "speakersFound", "reused", "reason"):
         separation.pop(key, None)
-    for key in ("wallDurationMs", "resumed", "speechSegments", "sourceSpansSeparated", "recognitionFallback"):
+    for key in (
+        "wallDurationMs",
+        "resumed",
+        "speechSegments",
+        "sourceSpansSeparated",
+        "recognitionFallback",
+        "offsetsAssumedZero",
+    ):
         writing.pop(key, None)
     details["writingDown"] = dict(
         writing, **dict(facts, speakerSeparation=dict(separation, **facts["speakerSeparation"]))
     )
     return details
+
+
+def offsets_assumed_zero(tracks):
+    """D55 (M9): this attempt placed a track whose start offset is unknown at 0."""
+    return any(track.get("offsetMs") is None for track in tracks)
 
 
 def recognition_fallback(value):
