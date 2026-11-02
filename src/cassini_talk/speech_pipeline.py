@@ -402,10 +402,12 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
 
     detector = SpeechDetector(vad_model)
     plan = []
-    meters = []
+    meters = {}
     diagnostics = []
     decided = []  # R71/D52.4 provenance: one entry per track that met the G10 gate
-    for order, track in enumerate(tracks):
+    # D56: the parent measured these; they are never decoded, planned or recognised.
+    audible = [(order, track) for order, track in enumerate(tracks) if track.get("silent") is not True]
+    for order, track in audible:
         path = Path(track["path"])
         offset = track.get("offsetMs")
         if offset is None:
@@ -414,7 +416,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
         if type(offset) not in (int, float) or not math.isfinite(offset) or offset < 0:
             raise ValueError("Invalid capture offset")
         meter = fallback.ActivityMeter(track.get("presence"))
-        meters.append(meter)
+        meters[order] = meter
         for segment in segment_ranges(
             path,
             detector,
@@ -463,7 +465,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
         )
 
     by_order = {order: list(entries) for order, entries in groupby(plan, key=lambda entry: entry[0])}
-    for order, track in enumerate(tracks):
+    for order, track in audible:
         entries = by_order.get(order, [])
         meter = meters[order]
         active = meter.active()

@@ -30,16 +30,17 @@ def bounds(track, *, display=False):
     return min(start for start, _ in result), max(end for _, end in result)
 
 
-def separate(tracks):
+def separate(tracks, reserved=()):
     """Keep input order; assign sorted spans to the lowest disjoint speaker lane.
 
     Lane IDs follow the approved R64 rule. Reserve every ordinary
     speaker ID first, since an opaque source ID can itself contain our suffix.
+    `reserved` adds the IDs of tracks that get no lane (D56 silent tracks).
     Unknown offsets get their own lane; no timing or PCM is changed.
     """
     result = [dict(track) for track in tracks]
     grouped = {}
-    reserved = {track["speaker"] for track in result}
+    reserved = {track["speaker"] for track in result} | set(reserved)
     for track in result:
         if track.get("kind") not in ("microphone", "local", "system", "original"):
             grouped.setdefault(track["speaker"], []).append(track)

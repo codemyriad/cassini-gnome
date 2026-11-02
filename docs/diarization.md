@@ -52,6 +52,14 @@ is written and the transcript is kept:
   matches and rejections stay as they were. The numbers go to the app log; the
   file records nothing (D56).
 
+D56: tracks with fewer than 32 non-zero 32 ms frames (see `docs/transcription.md`,
+Silent tracks) are left out of every group's rejoin, in diarization and in the
+voice step; a voice job outside the writing-down takes them from meeting.json.
+Eligibility is still decided on every track, so a silent remote never
+makes the microphone the only group. A group of only silent tracks is absent;
+when no eligible group is left, `speakerSeparation` is `skipped`,
+`notApplicable`.
+
 The pure word assignment follows the shared S-11 vectors. Stable IDs use the
 original group followed by `~n`; display numbering follows speaking word order.
 If fewer than two voices receive words, the D11 speaker is retained. A model

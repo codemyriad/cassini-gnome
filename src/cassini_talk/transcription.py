@@ -126,15 +126,20 @@ def track_presence(track):
     return ranges
 
 
-def prepare_tracks(meeting, *, diagnostics=None):
+def prepare_tracks(meeting, *, diagnostics=None, silent=None):
+    """One job per readable track. `silent(track)` marks D56 silent tracks.
+
+    A silent track, including one with no samples at all, keeps its job, its
+    speaker row and its place in the D11 layout, flagged `silent`. It is never
+    recognised, rejoined or given an overlap lane, so it cannot push a live span
+    of its source onto a lane; its speaker ID stays reserved, so no lane takes it.
+    """
     # Identity/kind come only from the scanner's validated or recovered model.
     from uuid import NAMESPACE_URL, uuid5
 
     tracks = []
     speakers = {}
     for index, track in enumerate(meeting.tracks):
-        if not track.frames:
-            continue
         identity = track.source_track_id or track.id or "recovered-" + str(uuid5(NAMESPACE_URL, track.path.name))
         speaker, name, provenance = track_speaker(dict(id=identity, kind=track.kind))
         if len(speaker) > 256:
@@ -162,6 +167,12 @@ def prepare_tracks(meeting, *, diagnostics=None):
                 ),
             )
         )
+        speakers.setdefault(speaker, dict(id=speaker, name=name, provenance=provenance, colourIndex=index))
+        # D56: no samples is fewer than 32 non-zero frames; nothing reads such a file.
+        if not track.frames or silent is not None and silent(track):
+            tracks[-1]["silent"] = True
+        if not track.frames:
+            continue
         if track.ownership_windows is not None:
             tracks[-1]["ownershipWindows"] = [list(window) for window in track.ownership_windows]
         # D52.2: the G10 fallback measures and windows only present or unknown time.
@@ -181,13 +192,13 @@ def prepare_tracks(meeting, *, diagnostics=None):
                 for span in track.spans
             ]
             tracks[-1]["sessionDirectory"] = str(meeting.directory)
-        speakers.setdefault(speaker, dict(id=speaker, name=name, provenance=provenance, colourIndex=index))
     from .source_spans import separate
 
-    separated, separation_diagnostics = separate(tracks)
+    audible = [track for track in tracks if not track.get("silent")]
+    separated, separation_diagnostics = separate(audible, reserved=[track["speaker"] for track in tracks])
     if diagnostics is not None:
         diagnostics.extend(separation_diagnostics)
-    for original, track in zip(tracks, separated, strict=True):
+    for original, track in zip(audible, separated, strict=True):
         if track["speaker"] != original["speaker"]:
             speakers.setdefault(
                 track["speaker"],
@@ -199,7 +210,16 @@ def prepare_tracks(meeting, *, diagnostics=None):
             )
     for diagnostic in separation_diagnostics:
         LOG.warning("Transcription diagnostic: %s", diagnostic)
-    return separated, speakers
+    lanes = iter(separated)
+    return [track if track.get("silent") else next(lanes) for track in tracks], speakers
+
+
+def recorded_silent_tracks(metadata):
+    """D56: the ids meeting.json lists in writingDown.silentTracks; absent means none."""
+    details = metadata.get("recordingDetails")
+    writing = details.get("writingDown") if isinstance(details, dict) else None
+    listed = writing.get("silentTracks") if isinstance(writing, dict) else None
+    return frozenset(i for i in listed if isinstance(i, str)) if isinstance(listed, list) else frozenset()
 
 
 def voice_group(identifier):
@@ -561,7 +581,12 @@ class TranscriptionQueue:
             ]
             speakers = {"track-original": dict(id="track-original", name=None, provenance="unnamed", colourIndex=0)}
         else:
-            tracks, speakers = prepare_tracks(meeting, diagnostics=source_diagnostics)
+            from .silent_tracks import silent
+
+            # D56: only this attempt measures; it writes the list the voice step reads.
+            tracks, speakers = prepare_tracks(
+                meeting, diagnostics=source_diagnostics, silent=lambda track: silent(track, self._check_open)
+            )
         if not tracks:
             raise ValueError("Meeting has no complete audio frames")
         by_track = {track["id"]: track for track in tracks}
@@ -577,6 +602,7 @@ class TranscriptionQueue:
             recognition_fallback,
             separation_result,
             separation_unavailable,
+            silent_tracks,
             writing_details,
         )
 
@@ -789,6 +815,8 @@ class TranscriptionQueue:
             facts["recognitionFallback"] = fallback
         if offsets_assumed_zero(tracks):
             facts["offsetsAssumedZero"] = True
+        if left_out := silent_tracks(tracks):
+            facts["silentTracks"] = left_out
         with mutation(directory):
             self._check_open()
             # End facts or other metadata may have arrived while this job ran.
@@ -903,7 +931,10 @@ class TranscriptionQueue:
                 if not diarization:
                     return
                 options = dict(options, prepareMissing=True, diarization=diarization)
-            tracks, _speakers = prepare_tracks(meeting)
+            # D56/D47: the voice step leaves out exactly the tracks the file
+            # lists as silent, whoever wrote it; it never measures again.
+            listed = recorded_silent_tracks(meeting.metadata or {})
+            tracks, _speakers = prepare_tracks(meeting, silent=lambda track: track.id in listed)
             if meeting.origin == "received":
                 tracks = [
                     dict(

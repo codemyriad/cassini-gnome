@@ -85,6 +85,7 @@ def writing_details(previous, facts):
         "sourceSpansSeparated",
         "recognitionFallback",
         "offsetsAssumedZero",
+        "silentTracks",
     ):
         writing.pop(key, None)
     details["writingDown"] = dict(
@@ -94,8 +95,21 @@ def writing_details(previous, facts):
 
 
 def offsets_assumed_zero(tracks):
-    """D55 (M9): this attempt placed a track whose start offset is unknown at 0."""
-    return any(track.get("offsetMs") is None for track in tracks)
+    """D55 (M9): this attempt placed a track whose start offset is unknown at 0.
+
+    A D56 silent track is never placed: it is neither recognised nor rejoined.
+    """
+    return any(track.get("offsetMs") is None for track in tracks if not track.get("silent"))
+
+
+def silent_tracks(tracks):
+    """D56 (R75 Q1): session.json ids of the tracks this attempt left out, in track order.
+
+    The id is the track entry's own (`captureTrackId`, as in captureRecord and
+    `x["codemyriad.io"].tracks[]`), so each span of a source is listed on its own.
+    """
+    ids = (track.get("captureTrackId", track["id"]) for track in tracks if track.get("silent") is True)
+    return list(dict.fromkeys(i for i in ids if isinstance(i, str) and 0 < len(i) <= 200))[:1001]
 
 
 def recognition_fallback(value):
