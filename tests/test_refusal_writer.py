@@ -546,33 +546,24 @@ def test_an_unreadable_meeting_json_keeps_the_folder(tmp_path):
     assert (session.directory / "meeting.json").read_text() == "{not json"
 
 
-def test_a_save_queued_on_the_lock_never_leaves_an_orphan_folder(tmp_path, monkeypatch):
-    import threading
-
+def test_the_folder_is_removed_under_the_metadata_lock(tmp_path, monkeypatch):
+    """A title or notes save queued on the lock then finds no folder: no orphan."""
+    from cassini_talk import meeting_store
     from cassini_talk.meeting_store import update_metadata
 
     session = started(tmp_path)
-    real, waiting, errors = Path.rmdir, threading.Event(), []
-
-    def save():
-        waiting.set()
-        try:
-            update_metadata(session.directory, title="Weekly sync", titleSource="user")
-        except Exception as error:  # A save after removal fails visibly.
-            errors.append(error)
-
-    saver = threading.Thread(target=save)
+    real, held = Path.rmdir, []
 
     def rmdir(path, *args, **kwargs):
-        if path == session.directory and not saver.is_alive():
-            saver.start()  # It queues on the metadata lock that discard holds.
-            assert waiting.wait(5)
+        if path == session.directory:
+            held.append(bool(getattr(meeting_store._TRANSACTIONS, "held", None)))
         return real(path, *args, **kwargs)
 
     monkeypatch.setattr(Path, "rmdir", rmdir)
     assert session.discard()
-    saver.join(5)
-    assert not saver.is_alive() and errors
+    assert held == [True], "The folder is removed while the metadata lock is held"
+    with pytest.raises((OSError, ValueError)):
+        update_metadata(session.directory, title="Weekly sync", titleSource="user")
     assert not session.directory.exists(), "No orphan folder"
 
 
