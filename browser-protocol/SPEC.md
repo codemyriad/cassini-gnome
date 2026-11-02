@@ -40,7 +40,7 @@ exponents are permitted for offsetMs; NaN and Infinity tokens are invalid JSON.
 | Request | Required fields | Optional fields | Response |
 | --- | --- | --- | --- |
 | start | type="start" | version integer 1, title string | started, path string |
-| track | type="track", id string, kind string, sampleRate integer, channels integer | label string | ack |
+| track | type="track", id string, kind string, sampleRate integer, channels integer | label string; clock facts and documentGeneration (see Page trust and browser clocks) | ack |
 | audio | type="audio", id string, sequence integer, offsetMs number, pcm base64 string | none | ack |
 | stop | type="stop" | problem string | stopped, path string, optional problem string |
 
@@ -106,10 +106,48 @@ it, supply arbitrary audio/labels, disrupt capture, or spoof page events. The re
 packets to track/audio and supplies fixed interruption strings. Unexpected stopped events
 must visibly interrupt the session. Host labels/paths are never executable content.
 
-One AudioContext per meeting frame shares a calibration from the first worklet batch using
-getOutputTimestamp, or first-batch arrival minus rendered duration as fallback. Later offsets
-come only from render frames. Different frames/devices remain approximately aligned, not
-sample-accurate conference clocks. Local sender mute/suspension produces silence.
+One AudioContext per meeting frame shares one calibration (D61, extension 0.2.12). The session
+origin is a wall-clock Date.now(). The capturing document maps it onto its own performance.now()
+once, by reading Date.now() on both sides of one performance.now(), and never uses
+performance.timeOrigin, which each document fixes on its own. The render clock is then placed on
+that base with getOutputTimestamp (`outputTimestamp`), or, when no positive stamp exists, with a
+worklet round trip that reads the render frame between two performance.now() readings
+(`roundTrip`). Both place a render frame at the instant the browser says it reaches the output
+device, so roundTrip adds the context's outputLatency to the time it read the frame. Calibration
+happens before the track is declared. Later offsets come only from
+render frames. Different frames/devices remain approximately aligned, not sample-accurate
+conference clocks. Local sender mute/suspension produces silence.
+
+Since extension 0.2.12 a browser `track` carries three record-only clock facts. All spans on
+one AudioContext repeat the same values. Native tracks omit them.
+
+- `clockMethod`: "outputTimestamp" or "roundTrip". Readers treat absent, null or any other
+  value as unknown. Writers never send another value.
+- `clockUncertaintyMs`: an integer from 0 to 86400000. It is the part of the error in the
+  span's start against the session origin that the extension measures, rounded up: the mapping
+  read plus one render quantum, and for roundTrip half the round trip, with one device callback
+  (baseLatency) in place of the quantum when that is longer. It is not a bound on what the
+  extension cannot measure: the accuracy of the browser's output timestamp and latency
+  estimates, and input latency the browser does not report.
+- `clockClampMs`: an integer from 1 to 86400000, present only when the calibrated start fell
+  before the origin. The extension then moves the whole span later by that many milliseconds,
+  once, so chunk spacing stays exact, and clockUncertaintyMs is at least clockClampMs. A start
+  more than 86400000 ms early is a fault: the span fails and is retried. Offsets are never
+  clamped chunk by chunk; a chunk that would still be negative aborts its span.
+
+Hosts copy the three facts into the browser track entry of session.json as received, and omit
+them when absent or invalid. They are record-only: no reader moves or widens a track with them.
+
+Since extension 0.2.12 a `track` may also carry `documentGeneration`: the opaque generation of
+the document the span came from, 1 to 200 UTF-8 bytes, the same value status reports
+(SPEC-CONTROL.md) and compared only for equality. The extension's background writes it from
+the frame that sent the span and replaces any value the page sent. A main frame's span gets
+that frame's generation; a subframe's span gets the generation of the main frame it was first
+discovered under (the first one not obsolete at one of its discoveries), never a later main
+frame's, so a departing subframe's late span cannot name the next document. A generation counts
+UTF-8 bytes wherever the extension reads it, so status and `track` agree. It is absent for whole-tab
+spans, when unknown, and from older extensions. It is a live liveness hint (see Audio transport
+liveness) and is never written to session.json. sourceTrackId stays opaque.
 
 ## Session directory v1
 
@@ -154,7 +192,9 @@ value while receiving distinct track IDs/WAVs. Transcription groups spans with t
 same sourceTrackId into one speaker; absent IDs remain separate sources. Labels
 never establish identity. Writers omit sourceTrackId for microphone/system tracks,
 which already retain their Me/The others identity. As with other optional fields,
-writers omit absent values and readers accept null as absent.
+writers omit absent values and readers accept null as absent. Browser tracks may also carry
+clockMethod, clockUncertaintyMs and clockClampMs (D61), copied from the track declaration
+(see Page trust and browser clocks).
 
 The optional `events` array has at most 1000 objects, in append-only,
 non-decreasing `atMs` order. `atMs` is a finite nonnegative number of milliseconds
@@ -579,7 +619,21 @@ relay that keeps the transport open but silent. Times are monotonic.
   armed (`documentChanged` frames). The first documentGeneration reported for
   the recording, with no earlier one to compare, counts as new: it closes an
   open departing window (unless it arrives with pageState `navigating`) and
-  retires nothing. The app applies these rules in its own receipt order across
+  retires nothing. Since extension 0.2.12 a span may carry its documentGeneration
+  on `track` (D61). The app keeps the set of departed generations: on
+  navigating, the current documentGeneration joins it, and so does the
+  generation of every open span; when the documentGeneration changes from a
+  known one, the old one joins it, and so does the generation of every open
+  span other than the new one. A span with a documentGeneration is dormant
+  exactly when its generation is in that set, evaluated at every check; the
+  declaration-order rules above apply only to spans without one, and a
+  generation that is not 1 to 200 UTF-8 bytes counts as absent. No generation
+  ever leaves the set, so the spans of a document restored from the
+  back/forward cache stay dormant: that only delays stale detection. A track's
+  generation is not news about the document: only status and meetings rows
+  move the current one. A status that arrives after a newer document's span
+  can retire that span; its PCM is still recorded. The app applies these
+  rules in its own receipt order across
   the control connection and the audio transport: a status and an audio frame
   are ordered by when the app received them, never by extension timestamps or
   by reordering one socket against the other; the vectors' frame order is that

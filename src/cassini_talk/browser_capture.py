@@ -75,6 +75,8 @@ class BrowserCapture:
         # made while a status still confirmed it (see observe_document).
         self.document_generation = None
         self.document_mark = 0
+        # D61: the documentGenerations seen leave. None ever leaves the set.
+        self.departed_documents = set()
         self.audio_connected = False
         self.lifecycle_capable = False
         self.multistream_capable = False
@@ -460,10 +462,21 @@ class BrowserCapture:
             return any(
                 track.kind not in ("microphone", "local")
                 and not track.ended
-                and not track.dormant
+                and not self.dormant(track)
                 and track.received_at is not None
                 for track in self.streams.tracks.values()
             )
+
+    def dormant(self, track):
+        """Whether a span no longer arms the watchdog, evaluated at every check.
+
+        D61: a span that carries a documentGeneration is dormant exactly while
+        that generation has departed; the declaration-order rules of
+        observe_document apply only to spans without one.
+        """
+        if track.document is not None:
+            return track.document in self.departed_documents
+        return track.dormant
 
     def observe_document(self, generation=None, *, navigating=False, present=False):
         """Retire a gone document's spans from the stale-PCM watchdog.
@@ -482,7 +495,13 @@ class BrowserCapture:
         confirmed the old generation are retired. A new document's span can
         reach the broker before the status that names its generation, and it
         must stay armed. sourceTrackId is opaque (SPEC.md), so a span's own
-        document is never inferred from it. Returns how many spans were retired.
+        document is never inferred from it.
+        D61: a span that names its documentGeneration needs no window. The
+        old generation departs on T1 and T2, and so does every open span's
+        own (on T2, every one but the new document's): a late span of a gone
+        document stays dormant after the window closes. Only status (and
+        meetings) rows move the current generation, never a track.
+        Returns how many spans were retired.
         """
         with self.lock:
             if self.finished or self.streams is None:
@@ -492,6 +511,7 @@ class BrowserCapture:
             retired = 0
             if changed and self.document_generation is not None:
                 retired = self._retire_spans(self.document_mark)
+                retired += self._depart(self.document_generation, keep=generation)
             if generation is not None:
                 # Any reported generation, the departing one's on navigating
                 # included, is the latest confirmation of what was declared.
@@ -499,6 +519,7 @@ class BrowserCapture:
                 self.document_mark = self.streams.declared
             if navigating:
                 retired += self._retire_spans(None)
+                retired += self._depart(self.document_generation)
                 self.streams.departing = True
             elif present or changed:
                 # The next document is here; the same one never closes it.
@@ -510,6 +531,7 @@ class BrowserCapture:
         for track in self.streams.tracks.values():
             if (
                 track.kind not in ("microphone", "local")
+                and track.document is None
                 and not track.ended
                 and not track.dormant
                 and (through is None or track.serial <= through)
@@ -517,6 +539,18 @@ class BrowserCapture:
                 track.dormant = True
                 retired += 1
         return retired
+
+    def _depart(self, generation, *, keep=None):
+        """D61: `generation` and every open span's own (but `keep`) have departed."""
+        spans = [
+            track
+            for track in self.streams.tracks.values()
+            if track.document is not None and not track.ended and not self.dormant(track)
+        ]
+        if generation is not None:
+            self.departed_documents.add(generation)
+        self.departed_documents.update(track.document for track in spans if track.document != keep)
+        return sum(self.dormant(track) for track in spans)
 
     def retire_transport_spans(self, identifiers):
         """End the open spans a closed audio transport declared.

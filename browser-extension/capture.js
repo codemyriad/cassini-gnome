@@ -17,6 +17,9 @@ async function bounded(promise, message, schedule = setTimeout, cancel = clearTi
 const classified = resultCode => error => {
   throw Object.assign(error instanceof Error ? error : new Error(String(error)), { resultCode });
 };
+// D61: one calibration per AudioContext, shared by every span on it. A pending
+// calibration is its promise; a finished one is {clockOffset, clockMethod,
+// clockUncertaintyMs, clockClampMs?}, whose clockOffset a resumed suspension moves.
 const clocks = new WeakMap();
 const retirementReason = error => error?.code === "callChanged" ? "callChanged" :
   error?.code === "state" && error.scope === "source" && error.retired === true ? "ended" :
@@ -28,11 +31,59 @@ function resumeSuspended(context) {
   const task = bounded(Promise.resolve().then(() => context.resume()), "Audio capture did not resume within four seconds.").then(() => {
     if (context.state !== "running") throw new Error("Audio capture remains suspended.");
     const gap = Math.max(0, performance.now() - began - ((context.currentTime || 0) - render) * 1000);
-    if (clocks.has(context)) clocks.set(context, clocks.get(context) + gap);
+    const clock = clocks.get(context);
+    if (typeof clock?.clockOffset === "number") clock.clockOffset += gap;
   });
   resuming.set(context, task);
   task.then(() => resuming.delete(context), () => resuming.delete(context));
   return task;
+}
+
+// D61: the session origin is a wall-clock Date.now(). Map it onto this document's
+// performance.now() once, so every later time is performance.now(),
+// performanceTime or render frames: never performance.timeOrigin, which each
+// document fixes on its own. Both methods place a render frame at the instant it
+// reaches the output, as getOutputTimestamp does. The uncertainty is the part of the
+// span's start error the extension measures; the browser's own latency estimates
+// and input latency it never reports are outside it.
+const latencyMs = value => Number.isFinite(value) && value > 0 ? value * 1000 : 0;
+async function measure(context, node, origin, wait) {
+  const a = Date.now(), p = performance.now(), b = Date.now();
+  const originNow = p - ((a + b) / 2 - origin), rate = context.sampleRate, quantum = 128 / rate * 1000;
+  let clockMethod = "outputTimestamp", clockOffset, uncertainty = b - a + 1 + quantum;
+  const stamp = context.getOutputTimestamp?.();
+  if (stamp?.contextTime > 0 && stamp?.performanceTime > 0) clockOffset = stamp.performanceTime - originNow - stamp.contextTime * 1000;
+  else {
+    // The worklet reads its render frame between t0 and t1, so half the round trip bounds
+    // when; the frame moves once per device callback (baseLatency), and reaches the
+    // output outputLatency after it is rendered.
+    clockMethod = "roundTrip";
+    const t0 = performance.now();
+    const { frame, t1 } = await wait(new Promise(resolve => {
+      node.port.onmessage = ({ data }) => { if (Number.isFinite(data?.clockFrame)) resolve({ frame: data.clockFrame, t1: performance.now() }); };
+      node.port.postMessage("clock");
+    }), "Audio render clock did not answer.");
+    clockOffset = (t0 + t1) / 2 + latencyMs(context.outputLatency) - originNow - frame / rate * 1000;
+    uncertainty += (t1 - t0) / 2 + Math.max(0, latencyMs(context.baseLatency) - quantum);
+  }
+  // No PCM precedes currentTime. A negative start moves the whole span once, keeps
+  // its spacing exact and is recorded; it proves an error at least that large. One a
+  // day early is a fault, not a clamp. Chunks add the same start, so rounding cannot
+  // leave the raised first chunk a hair below zero.
+  const start = (context.currentTime || 0) * 1000, first = clockOffset + start, clockClampMs = first < 0 ? Math.ceil(-first) : 0;
+  if (clockClampMs > 86400000) throw new Error("Audio timing fell before the recording start.");
+  const raised = clockOffset + clockClampMs + start < 0 ? -start : clockOffset + clockClampMs;
+  return { clockOffset: raised, clockMethod,
+    clockUncertaintyMs: Math.min(86400000, Math.max(Math.ceil(uncertainty), clockClampMs)), ...(clockClampMs ? { clockClampMs } : {}) };
+}
+function calibrate(context, node, origin, wait) {
+  if (!clocks.has(context)) {
+    const task = measure(context, node, origin, wait);
+    clocks.set(context, task);
+    task.then(clock => { if (clocks.get(context) === task) clocks.set(context, clock); },
+      () => { if (clocks.get(context) === task) clocks.delete(context); });
+  }
+  return Promise.resolve(clocks.get(context));
 }
 
 async function captureOnce({ stream, id, label, kind, origin, workletURL, send, fail, audible = false, enabled = () => true, channels = 1, sharedContext, getSharedContext, warn = () => {}, sourceTrackId, reportOutcomes = false, onAudio = () => {}, schedule, cancel }) {
@@ -94,9 +145,10 @@ async function captureOnce({ stream, id, label, kind, origin, workletURL, send, 
     if (context.state !== "running") throw Object.assign(new Error("Audio capture is suspended. Interact with the meeting page, then try again or use Tab audio."), { resultCode: "audioBlocked" });
     await wait(ready, "Audio render clock did not become ready.");
     source.connect(node);
-    let clockOffset = clocks.get(context);
+    const clock = await calibrate(context, node, origin, wait);
     await send({ type: "track", id, label, kind, sampleRate: context.sampleRate, channels,
-      ...(sourceTrackId ? { sourceTrackId } : {}) });
+      ...(sourceTrackId ? { sourceTrackId } : {}), clockMethod: clock.clockMethod, clockUncertaintyMs: clock.clockUncertaintyMs,
+      ...(clock.clockClampMs ? { clockClampMs: clock.clockClampMs } : {}) });
     announced = true;
     node.onprocessorerror = () => abort(new Error("Audio capture stopped unexpectedly."));
     stateChanged = () => {
@@ -110,29 +162,24 @@ async function captureOnce({ stream, id, label, kind, origin, workletURL, send, 
       if (data.stopped) { if (stopping) ending = true; flushed?.(); return; }
       if (failure || ending || ended) return;
       const frames = data.pcm.byteLength / (channels * 2);
-      clockOffset = clocks.get(context) ?? clockOffset;
-      if (clockOffset === undefined) {
-        // resume() can resolve before the device/render clock has started. Calibrate
-        // once samples exist, then preserve render-frame timing rather than timing
-        // packets by their arrival on the main thread.
-        const stamp = context.getOutputTimestamp?.();
-        clockOffset = stamp?.contextTime > 0 && stamp?.performanceTime > 0
-          ? performance.timeOrigin + stamp.performanceTime - origin - stamp.contextTime * 1000
-          : performance.timeOrigin + performance.now() - origin - (data.frame + frames) / context.sampleRate * 1000;
-      }
       if (pendingFrames + frames > context.sampleRate * 10) {
         droppedFrames += frames;
         warn("One track fell more than ten seconds behind and has a gap. The other tracks continue.", {kind:"gap"});
         return;
       }
-      const offsetMs = Math.max(0, clockOffset + data.frame / context.sampleRate * 1000);
+      // Render frames time every chunk: arrival on the main thread never does.
+      const offsetMs = clock.clockOffset + data.frame / context.sampleRate * 1000;
+      if (!(offsetMs >= 0)) {
+        droppedFrames += frames;
+        abort(new Error("Audio timing fell before the recording start."));
+        return;
+      }
       if (endOffsetMs !== null && offsetMs - endOffsetMs > 60000) {
         droppedFrames += frames;
         abort(new Error("A suspended source needs a new audio span."));
         return;
       }
       pendingFrames += frames;
-      clocks.set(context, clockOffset);
       // For sender tracks, respect track enabled/muted state and sender suspension.
       if (!enabled()) new Uint8Array(data.pcm).fill(0);
       const message = { type: "audio", id, sequence: sequence++,

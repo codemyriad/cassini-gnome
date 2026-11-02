@@ -12,6 +12,7 @@ class CassiniPCM extends AudioWorkletProcessor {
     this.ready = false;
     this.port.onmessage = ({ data }) => {
       if (data === "start") this.armed = true;
+      if (data === "clock") this.port.postMessage({ clockFrame: currentFrame }); // D61 round-trip calibration
       if (data === "stop") {
         this.stopped = true;
         this.flush();

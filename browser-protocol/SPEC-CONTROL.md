@@ -1,7 +1,7 @@
 # App/browser control — v1
 
 This separate channel lets Cassini show and record meetings in the browser. It does not
-change the audio host, audio SPEC, or the 88 audio vectors. The extension maintains a
+change the audio host, audio SPEC, or the audio vectors. The extension maintains a
 persistent Native Messaging connection to **io.codemyriad.cassini.control**; PCM still
 uses **io.codemyriad.cassini**, one connection per recording. Either host may be missing
 without breaking the other. Losing control never stops or deletes a recording.
@@ -391,7 +391,10 @@ conformance/multistream/lifecycle.json. How apps derive controlAlive and
 transportAlive from the wire is in "Control heartbeat" below (D52.4).
 
 Rows/status include optional documentGeneration and callGeneration; capture
-statuses retain captureId. Adopting starts echo callGeneration and are checked
+statuses retain captureId. Since extension 0.2.12 the same documentGeneration also
+rides on each audio-plane `track` of a page span (SPEC.md, "Page trust and browser
+clocks"), written by the extension's background; it is a liveness hint only.
+Adopting starts echo callGeneration and are checked
 after tab lookup. Stops echo captureId and are checked before cancellation.
 A changed call address retires the old token before admitting new-call audio;
 fragment-only navigation preserves the existing call. Document-local generation
@@ -660,7 +663,7 @@ This is an open vocabulary, separate from and unrelated to the closed audio-plan
 native host's error code as a result code. Apps do not wait for it: they classify what they
 know locally and record a code-less `startRejected` otherwise.
 
-| code | Extension 0.2.11 sets it when |
+| code | Extension 0.2.12 sets it when |
 | --- | --- |
 | `busy` | a recording is already running or starting, in that tab or (legacy) anywhere; also a legacy Stop for another tab |
 | `limit` | 128 requests are pending, or 100 recordings are running or starting |

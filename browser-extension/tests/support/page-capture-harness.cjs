@@ -25,7 +25,7 @@ module.exports = async function fixture(run, settings={}) {
   const item={...options,stopped:false};captures.push(item);
   if(settings.capture){item.recorder=await settings.capture(options);return item.recorder;}
   options.getSharedContext?.();
-  await options.send({type:'track',id:options.id,label:options.label,kind:options.kind,sampleRate:48000,channels:1,sourceTrackId:options.sourceTrackId});
+  await options.send({type:'track',id:options.id,label:options.label,kind:options.kind,sampleRate:48000,channels:1,sourceTrackId:options.sourceTrackId,clockMethod:'roundTrip',clockUncertaintyMs:9,clockClampMs:3});
   return {failed:false,async stop(){item.stopped=true}};
  };
  const ContextClass=settings.Context || Context;

@@ -2164,5 +2164,38 @@
         "type": "stopped"
       }
     ]
+  },
+  {
+    "name": "track-clock-and-document-fields",
+    "requests": [
+      "{\"type\":\"start\",\"title\":\"Request-derived conformance\"}",
+      "{\"type\":\"track\",\"id\":\"x\",\"kind\":\"remote\",\"sampleRate\":48000,\"channels\":1,\"clockMethod\":\"roundTrip\",\"clockUncertaintyMs\":9,\"clockClampMs\":3,\"documentGeneration\":\"doc-1\"}",
+      "{\"type\":\"audio\",\"id\":\"x\",\"sequence\":0,\"offsetMs\":250,\"pcm\":\"AQACAA==\"}",
+      "{\"type\":\"stop\"}"
+    ],
+    "expect": [
+      {
+        "type": "started"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "ack"
+      },
+      {
+        "type": "stopped"
+      }
+    ],
+    "state": "completed",
+    "tracks": {
+      "x": {
+        "kind": "remote",
+        "clockMethod": "roundTrip",
+        "clockUncertaintyMs": 9,
+        "clockClampMs": 3,
+        "documentGeneration": null
+      }
+    }
   }
 ]

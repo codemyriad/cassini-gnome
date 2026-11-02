@@ -95,6 +95,41 @@
           "minLength": 1,
           "maxLength": 200,
           "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
+        },
+        "clockMethod": {
+          "enum": [
+            "outputTimestamp",
+            "roundTrip",
+            null
+          ],
+          "$comment": "Since extension 0.2.12 (D61), record-only: how the extension placed this span's start on the session timeline. Readers treat absent, null or any other value as unknown; writers never send another value."
+        },
+        "clockUncertaintyMs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 86400000,
+          "$comment": "Since extension 0.2.12 (D61), record-only: the part of the error in this span's start against the session origin that the extension measures, rounded up. Not a bound on the browser's own output timestamp and latency estimates or on input latency it does not report. At least clockClampMs when that is present."
+        },
+        "clockClampMs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 86400000,
+          "$comment": "Since extension 0.2.12 (D61), record-only: present only when the calibrated start was before the session origin and the whole span was moved later by this many milliseconds. Its presence is the flag."
+        },
+        "documentGeneration": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 200,
+          "$comment": "Since extension 0.2.12 (D61): the opaque generation of the document the span came from, the same value status reports, compared only for equality. Written by the extension's background, never taken from the page. Absent for whole-tab spans and when unknown. At most 200 UTF-8 bytes. A live liveness hint, never written to session.json."
         }
       },
       "additionalProperties": true

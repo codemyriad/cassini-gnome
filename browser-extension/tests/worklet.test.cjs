@@ -61,3 +61,12 @@ test('worklet readiness discards initialization frames and preserves the first a
   assert.equal(packets[1].pcm.byteLength,256);
   assert.ok([...new Int16Array(packets[1].pcm)].every(value=>value===8192));
 });
+
+test('a clock request is answered with the current render frame, before or after arming', () => {
+  for (const armed of [false, true]) {
+    const {node,packets,context}=processor(1,armed);
+    context.currentFrame=12345;
+    node.port.onmessage({data:'clock'});
+    assert.deepEqual(JSON.parse(JSON.stringify(packets)),[{clockFrame:12345}]);
+  }
+});

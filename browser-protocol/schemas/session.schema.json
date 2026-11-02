@@ -155,6 +155,32 @@
             "maxLength": 200,
             "$comment": "Opaque source identity, at most 200 UTF-8 bytes in addition to the Unicode length limit. Omit when unknown, and for microphone/system sources. Never derive identity from labels."
           },
+          "clockMethod": {
+            "enum": [
+              "outputTimestamp",
+              "roundTrip",
+              null
+            ],
+            "$comment": "Since extension 0.2.12 (D61), record-only: copied from the browser track declaration as received; omitted when absent or invalid. Readers treat absent, null or any other value as unknown, and never move or widen anything with it."
+          },
+          "clockUncertaintyMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 86400000,
+            "$comment": "Since extension 0.2.12 (D61), record-only: copied from the browser track declaration as received; omitted when absent or invalid."
+          },
+          "clockClampMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 86400000,
+            "$comment": "Since extension 0.2.12 (D61), record-only: copied from the browser track declaration as received; omitted when absent or invalid. documentGeneration is never written here."
+          },
           "gapFrames": {
             "type": [
               "integer",

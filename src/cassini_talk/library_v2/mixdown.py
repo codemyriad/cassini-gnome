@@ -150,8 +150,18 @@ class Timeline:
 
 SPAN_COPY = ("codec", "decodedRate", "sourceFile", "clockAnchors")
 # D52.2: the file keeps absence facts with each logical track; D57/R77: and why
-# a native track has no clockAnchors.
-TRACK_COPY = ("kind", "sourceTrackId", "gaps", "gapFrames", "droppedFrames", "clockSlaving")
+# a native track has no clockAnchors; D61: a browser track's record-only clock facts.
+TRACK_COPY = (
+    "kind",
+    "sourceTrackId",
+    "gaps",
+    "gapFrames",
+    "droppedFrames",
+    "clockSlaving",
+    "clockMethod",
+    "clockUncertaintyMs",
+    "clockClampMs",
+)
 
 
 def session_spans(directory, manifest):

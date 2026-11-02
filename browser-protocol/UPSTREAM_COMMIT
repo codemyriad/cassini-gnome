@@ -1,26 +1,26 @@
-tree 15d592e22215867f30876e0138e4612eab6ffb57
-parent 14c929bee3b4f5ffe48a0ddf9aec9a6aac82fec8
-parent 08ad6f6401941d5e259cde2d3359226e53a5a3c0
-author Silvio Tomatis <silviot@gmail.com> 1793650493 +0100
-committer GitHub <noreply@github.com> 1793650493 +0100
+tree f4d2e6b8bd7c4b8fde0116dc9e71317219e9512e
+parent 364c87b94b6769f06263a418a8399eedb91b7bbe
+parent a53de3fcf58bf214c407f81fc558c38fec8ed053
+author Silvio Tomatis <silviot@gmail.com> 1793658300 +0100
+committer GitHub <noreply@github.com> 1793658300 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq6O89CRC1aQ7uu5UhlAAARI8QACuiIp/x3rcr6su6hvsJgNCL
- wzvQNhmbz1plS+TxXQIB2IPZZG46EQIuLz82BZMGWorShTYhKjNacEoLTbi3IKvi
- DIw0yaeXrURS5kEpiRKG/pi7iD4Wf10jLjosn6m0D8+PlqZRTUIH60jzpVWeQ7ej
- fCgmm1udCrkaDEuQSgD8xPTkys4Lq+dDYkEYBcz9189IwSPBfOUtU/KUTixoX0et
- xTw6yLTopyg7knK/CSMROQqdh/oUKs3kIB6yyW1FZlHHeXm9Y48BR83eBcVWlKFQ
- Z+buMqRU4AeoegX2UX07ObVjc+bZ52gxSsoBB99CbeFXdgIvdYbAQ6V/GKc2Lwhy
- 41Lysa/uPnqT9Ry3ftue4/T6to3HsNV+23y+svVAV+fSeMtkaDaGt28AD3AWHoC+
- DqtKR3azHUaIWd+kevYNirlO09ZVG1/IbVaeBcwM7L3WER5Mh1MCXE7ft3JhrTH/
- 72GhDd8mkLhIKo9CWkiPGdJjyg2yUVYRtienHEBN2+6xDoPY8mQmVTZSpduCkqt+
- 2aR1sujq0Vu6Aj+EQv7mMwNK0ZGY7l+4eF0Htmg+83QOGS68wmoKpttQAv46MQ23
- KKYzHXmZIDc82nbbPpT0UR7d1wXBTrfM24UWpy/UYHgp6x6+rsIoC1qPSRfy2XvO
- s7IOTJXzicrewdrJ7sqI
- =1vgy
+ wsFcBAABCAAQBQJq6Q28CRC1aQ7uu5UhlAAAO2cQACMBv2VpzttK3Z4krPY4hzho
+ 3oKAEQCJg1HOYiad9dXx3TlLtMWv94rBpXNnFyooiRH7Dk1WGbHeJ8sQFaHdkVmI
+ R1FM3RXDGKJ+DCQ8HSmb48M1V7YsyaDLXg/bOBLvuKvBcEgBqGR75ryLxph+JV2l
+ kkO6cXORzMkVzHf2uajnb4z+IwVOpWMHEuBJLb/bivg1xWY1C5QXVA4aF0EkGCVs
+ EBEKTC0OAEKvW+VmgcunjaqxsabxeYjZW6/KziFJI+/wKtt5F3c1yosSUg+yHd6D
+ 2wYQSW3PKwQ2bO0gCkZg+Y2VgRoBHaRBj5NcXZ70hJYJYDUskjdb2bfCS1b/wBlY
+ LouuiGyGedWJddMd0ZfNhUoukCkb/AFk+ODOvDYgU4hAlvd8bX4n/OhOkosbvDPs
+ Cp15mbLFU+6cyJPHg0wkWPIMwPvyWxOCSNrkj3MRROyAmsyIVBUj4933Aiao0A0o
+ PajsjB9ZoiKIt9Ee3nWTx/CZKUVqbxqLxKfssmXA60dUBVtCHdR38vdBZGYosWOq
+ /M3a3FKcn5bDn+IMdHU5/+cq3zAbFQ2eTc3fXWzxqm+9gJ28Gdepv5jo2m3p5QL4
+ B+yOjZXQiY8zTUhmFEwfcmp9UoiQeHrV+sxmJ1t+4JsxcC8jskXv4PidbANtNI9E
+ Wuny20DZrUkmH4UBcbE5
+ =bsED
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #38 from codemyriad/chore/resume-ask-followups
+Merge pull request #39 from codemyriad/feat/clock-facts
 
-Resume requestId follow-ups from Mac's #37 review
+D61: one clock base, recorded clock facts and documentGeneration on track (extension 0.2.12)

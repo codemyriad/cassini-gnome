@@ -78,6 +78,31 @@ def source_track_identity(value):
     return value
 
 
+CLOCK_LIMIT_MS = 86400000
+
+
+def clock_facts(message):
+    """D61: a browser track's record-only clock facts, as received.
+
+    Each fact is kept only when valid on its own; an absent or invalid one is
+    omitted. Clamp and uncertainty are never checked against each other.
+    """
+    facts = {}
+    method = message.get("clockMethod")
+    if isinstance(method, str) and method in ("outputTimestamp", "roundTrip"):
+        facts["clockMethod"] = method
+    for key, low in (("clockUncertaintyMs", 0), ("clockClampMs", 1)):
+        value = message.get(key)
+        if type(value) is int and low <= value <= CLOCK_LIMIT_MS:  # bool and float are not integers here
+            facts[key] = value
+    return facts
+
+
+def document_generation(value):
+    """D61: a track's documentGeneration (1..200 UTF-8 bytes), or None when absent or invalid."""
+    return value if isinstance(value, str) and 0 < len(value.encode("utf-8", "surrogatepass")) <= 200 else None
+
+
 def source_parameters(identifier, label, kind, rate, channels, identifiers):
     if (
         not isinstance(identifier, str)
@@ -457,7 +482,17 @@ class RecordingSession:
         self.checkpoint()
 
     def add_track(
-        self, identifier, label, kind, rate, channels, *, filename=None, label_source=None, source_track_id=None
+        self,
+        identifier,
+        label,
+        kind,
+        rate,
+        channels,
+        *,
+        filename=None,
+        label_source=None,
+        source_track_id=None,
+        clock=None,
     ):
         if self.finished:
             raise ProtocolError("source", "Invalid or duplicate audio source")
@@ -494,6 +529,7 @@ class RecordingSession:
         )
         if source_track_id is not None:
             self.manifest["tracks"][-1]["sourceTrackId"] = source_track_id
+        self.manifest["tracks"][-1].update(clock or {})
         if self.capture_record is not None and self.manifest["tracks"][-1]["labelSource"] == "browser":
             self.capture_record.bind(identifier, source_track_id or identifier)
         self.checkpoint()
@@ -948,14 +984,25 @@ class BrowserHost:
                     for other, value in self.declarations.items()
                 ):
                     raise ProtocolError("source", "Overlapping live source spans")
-            (self.audio_sink or self.session).add_track(
+            declared = (
                 identifier,
                 message.get("label"),
                 message.get("kind"),
                 message.get("sampleRate"),
                 message.get("channels"),
-                source_track_id=message.get("sourceTrackId"),
             )
+            # D61: documentGeneration is a live liveness hint, never written to files.
+            if self.audio_sink is not None:
+                self.audio_sink.add_track(
+                    *declared,
+                    source_track_id=message.get("sourceTrackId"),
+                    clock=clock_facts(message),
+                    document=document_generation(message.get("documentGeneration")),
+                )
+            else:
+                self.session.add_track(
+                    *declared, source_track_id=message.get("sourceTrackId"), clock=clock_facts(message)
+                )
             self.sequences[identifier] = 0
         elif kind == "audio":
             identifier = message.get("id")
