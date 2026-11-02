@@ -78,9 +78,13 @@ def test_stop_during_replacement_first_sample_keeps_the_confirmed_tracks(tmp_pat
     entered, release = threading.Event(), threading.Event()
     try:
         recorder.start(tmp_path, test=True)
+        # Each side's track is added only when it opens (R79 §1), and no source
+        # change is available until the start has finished: wait for both.
         spin_until(
             lambda: (
-                recorder.session is not None and all(t["frames"] >= 9600 for t in recorder.session.manifest["tracks"])
+                not recorder.starting
+                and len(recorder._track_ids) == 2
+                and all(t["frames"] >= 9600 for t in recorder.session.manifest["tracks"])
             )
         )
         first = recorder.select(True, False)

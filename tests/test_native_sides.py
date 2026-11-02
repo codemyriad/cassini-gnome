@@ -63,8 +63,8 @@ class Sides:
     "ok" admits a first buffer then, "error" posts a bus error and ends its
     stream then, "fail" fails its state change, "never" stays silent, and
     "block" holds its state change until release is set. The recorder's
-    bounded open wait first waits for every other side's state change to
-    return, then advances the fake clock to the next scripted event, fires
+    bounded open wait first waits for a "block" side's state change to begin
+    and every other side's to return, then advances the fake clock to the next scripted event, fires
     it, and waits for the recorder to signal that it saw it. causes names an
     "error" side's cause, by kind. With frozen set, the clock never advances
     without a scripted event; overshoot lets the wait wake that much late;
@@ -120,18 +120,25 @@ class Sides:
             assert self.sources[kind].emit("push-buffer", Gst.Buffer.new_wrapped(FRAME)) == Gst.FlowReturn.OK
 
     def _inflight(self):
-        pending = dict(self.recorder._pending_sources)
-        changing = any(
-            not attempt.get("settled", True) and self.plan.get(kind, ("",))[0] != "block"
-            for kind, attempt in pending.items()
-        )
-        return changing or any(kind in pending and not pending[kind]["ready"].is_set() for kind in self.fired)
+        # Under the recorder's lock: a side marks itself settled and sets the
+        # open wake in one hold, so a settled side's wake is already set.
+        with self.recorder._lock:
+            pending = dict(self.recorder._pending_sources)
+            changing = any(
+                not attempt.get("settled", True) and self.plan.get(kind, ("",))[0] != "block"
+                for kind, attempt in pending.items()
+            )
+            return changing or any(kind in pending and not pending[kind]["ready"].is_set() for kind in self.fired)
 
     def wait(self, event, timeout):
-        if event.is_set():
-            return True  # Like a real wait: no time passes for an event already set.
+        for branch in self.blocked.values():
+            # A stuck side is stuck from the start: its state change begins
+            # before any time passes, however late its thread is scheduled.
+            branch.entered.wait(5)  # Bound only: its state-change thread enters it.
         if self._inflight():
             return event.wait(5)  # Bound only: the recorder signals admission.
+        if event.is_set():
+            return True  # Like a real wait: no time passes for an event already set.
         scripted = {
             kind: self.built[kind] + delay
             for kind, (behaviour, delay) in self.plan.items()

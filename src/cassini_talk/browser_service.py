@@ -1944,12 +1944,21 @@ class BrowserService:
             expired = threading.Event()
             results, _futures = self._batch(jobs, deadline, cancelled=group, expired=expired)
             titles = {identifier: meeting["title"] for identifier, meeting in targets}
+            cancelled = group.is_set() and not expired.is_set()
+
+            def reported(error):
+                # D58: only the user's cancel shows no refusal. Without one, a
+                # Start that saw the deadline itself (its own check, or the
+                # cancel the expiry sets) before the results were read is
+                # unanswered, like one still running then: startFailed/timeout.
+                if not cancelled and not isinstance(error, StartCancelled) and not start_refusals(error):
+                    return TimeoutError("The browser did not finish the recording command")
+                return error
+
             failures = [
                 dict(id=identifier, title=titles[identifier], error=str(error), refusals=start_refusals(error))
-                for identifier, _result, error in results
-                if error is not None
+                for identifier, error in ((i, reported(e)) for i, _result, e in results if e is not None)
             ]
-            cancelled = group.is_set() and not expired.is_set()
             return dict(self.snapshot(), attempted=len(targets), cancelled=cancelled, failures=failures)
         finally:
             with self.lock:
