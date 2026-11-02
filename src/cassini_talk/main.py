@@ -687,7 +687,9 @@ class CassiniApplication(Adw.Application):
     def can_test_recording(self):
         """D60: no test while any recording runs, and one test at a time."""
         check = self.sound_check
-        return bool(check and not self._quitting and not check.busy and not self.recording_active())
+        return bool(
+            check and not self._quitting and not check.closed and not check.busy and not self.recording_active()
+        )
 
     def start_test_recording(self, *, test=False):
         if not self.can_test_recording():

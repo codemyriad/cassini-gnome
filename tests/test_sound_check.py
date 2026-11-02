@@ -107,6 +107,18 @@ def test_a_click_shorter_than_an_active_run_is_no_sound_heard(tmp_path):
     assert judge(tmp_path / "a.wav") == SILENT
 
 
+@pytest.mark.parametrize("signal", [tone(-20, 11), noise(-30, 11)], ids=["tone", "noise"])
+def test_a_steady_sound_over_10_s_is_still_working(tmp_path, signal):
+    # The other side took the 3 s open bound: this track is about 11 s.
+    write_wav(tmp_path / "a.wav", signal)
+    assert judge(tmp_path / "a.wav") == WORKING
+
+
+def test_quiet_noise_over_10_s_is_still_no_sound_heard(tmp_path):
+    write_wav(tmp_path / "a.wav", noise(-62, 11))
+    assert judge(tmp_path / "a.wav") == SILENT
+
+
 def test_each_stream_is_judged_on_its_own_track(tmp_path):
     write_wav(tmp_path / "track-microphone.wav", tone(-20))
     write_wav(tmp_path / "track-system.wav", np.zeros(RATE))
@@ -420,6 +432,15 @@ def test_shutdown_deletes_at_once(check):
         check.start()
 
 
+def test_shutdown_deletes_a_folder_made_after_it(check):
+    check.start()
+    (recorder,) = FakeRecorder.made
+    check.shutdown()  # Before the worker made the folder.
+    spin_until(lambda: recorder.closed)
+    check._executor.shutdown(wait=True)
+    assert recorder.parent is None and not any(check.root.iterdir())
+
+
 @pytest.mark.parametrize("observe", [True, False])
 def test_a_test_recording_starts_no_mute_observer(tmp_path, monkeypatch, observe):
     """observe_output=False: the test writes no meeting.json audio health."""
@@ -675,3 +696,35 @@ def test_exiting_deletes_a_running_test_at_once(application_class, tmp_path, ord
     application_class.begin_exit(app)
     check._executor.shutdown(wait=True)  # The deletion was queued before the exit.
     assert not folder.exists() and order.events == ["test stopped"]
+
+
+def test_exit_as_the_last_window_closes_deletes_the_test(application_class, tmp_path, order):  # noqa: F811
+    check, folder = running_test(tmp_path, order)
+    window = SimpleNamespace(get_visible=lambda: True)
+    app = fake_app(
+        application_class,
+        check,
+        order,
+        _closing_background_windows=False,
+        _auto_recording_held=False,
+        _capture_background_active=lambda: False,
+        begin_exit=lambda: order.events.append("exit") or check.shutdown(),
+    )
+    app.get_windows = lambda: [window]
+    application_class.window_closing(app, window)  # Discards the test, then exits.
+    assert order.events == ["test stopped", "exit"]
+    (recorder,) = FakeRecorder.made
+    check._executor.shutdown(wait=True)
+    assert recorder.stopping and not folder.exists()  # Gone before the recorder finished.
+    spin_until(lambda: recorder.closed)
+    assert not folder.exists()
+
+
+def test_no_test_after_exit_even_if_the_app_is_activated_again(application_class, tmp_path, order):  # noqa: F811
+    check = SoundCheck(FakeRecorder, root=tmp_path / "cache/cassini-talk/test")
+    app = fake_app(application_class, check, order)
+    assert app.can_test_recording()
+    check.shutdown()  # begin_exit
+    app._quitting = False  # _activate_current, while a hold keeps the process alive.
+    assert not app.can_test_recording()
+    assert application_class.start_test_recording(app) is False

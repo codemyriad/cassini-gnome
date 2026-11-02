@@ -101,11 +101,17 @@ def sweep(root):
 
 
 def judge(path):
-    """WORKING when some audio is above the activity floor (D52.4, G10), else SILENT."""
-    from .recognition_fallback import ActivityMeter
+    """WORKING when some audio is above the activity floor (D52.4, G10), else SILENT.
+
+    The floor is -50 dBFS alone, as for any track under 10 s: a side that
+    takes up to the 3 s open bound makes the other's track longer than the
+    8 s test, and must not switch it to the floor + 12 dB rule.
+    """
+    from .recognition_fallback import ACTIVE_DBFS, ActivityMeter
     from .speech_pipeline import resampled_chunks
 
     meter = ActivityMeter()
+    meter.threshold_db = lambda: (None, ACTIVE_DBFS)
     for _block in meter.wrap(resampled_chunks(path)):
         pass
     return WORKING if meter.samples and any(meter.active()) else SILENT
@@ -190,6 +196,7 @@ class SoundCheck(GObject.Object):
         self._run = None
         self._timer = 0
         self._pending = 0  # Discarded runs not yet deleted.
+        self._stopping = set()  # Their folders while the recorder stops.
         self._closed = False
         # One worker: a sweep, a folder's creation, judging and deletion run in order.
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-sound-check")
@@ -206,6 +213,11 @@ class SoundCheck(GObject.Object):
     def busy(self):
         """A test runs, or a discarded one is still stopping or being deleted."""
         return self.running or self._pending > 0
+
+    @property
+    def closed(self):
+        """After shutdown() (app exit) no test can start."""
+        return self._closed
 
     @property
     def folder(self):
@@ -268,6 +280,7 @@ class SoundCheck(GObject.Object):
     def _finished(self, recorder, path, run):
         recorder.close()
         if run is not self._run:
+            self._stopping.discard(run.folder)
             self._delete(run.folder)
             return
         self._stop_timer()
@@ -329,12 +342,13 @@ class SoundCheck(GObject.Object):
 
     def shutdown(self):
         """App exit: discard, and delete now even if the recorder is still
-        stopping; the next start sweeps anything the exit leaves."""
-        run = self._run
+        stopping, also a test discarded just before (the last window closed);
+        the next start sweeps anything the exit leaves."""
         self._discard()
         self._closed = True
-        if run is not None and run.folder is not None:
-            self._delete(run.folder, counted=False)
+        for folder in self._stopping:
+            self._delete(folder, counted=False)
+        self._stopping.clear()
         self._executor.shutdown(wait=False)
 
     def _discard(self):
@@ -347,6 +361,7 @@ class SoundCheck(GObject.Object):
             if run.folder is None:
                 pass  # Still being made: _made deletes it.
             elif recorder_busy(run.recorder):
+                self._stopping.add(run.folder)
                 run.recorder.stop()  # _finished deletes it.
             else:
                 self._delete(run.folder)
@@ -354,10 +369,15 @@ class SoundCheck(GObject.Object):
             self.emit("changed")
 
     def _delete(self, folder, counted=True):
-        """Delete off GTK, after any judging of it on the same worker."""
+        """Delete off GTK, after any judging of it on the same worker; after
+        shutdown(), here, as the recorder may write until it finishes."""
         try:
             future = self._executor.submit(remove, folder, self.root)
-        except RuntimeError:  # Exiting: the next start sweeps it.
+        except RuntimeError:
+            try:
+                remove(folder, self.root)
+            except (OSError, ValueError) as error:  # The next start sweeps it.
+                LOG.warning("Could not delete the test recording %s: %s", folder, error)
             return
         future.add_done_callback(lambda f: GLib.idle_add(self._deleted, f, folder, counted))
 
