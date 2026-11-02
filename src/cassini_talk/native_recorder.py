@@ -24,11 +24,11 @@ WRAP_TOLERANCE_NS = 2 * NS
 LOG = logging.getLogger(__name__)
 
 
-def segment_wrap_ns(sink):
-    """Exact stamp offset of 2^32 ring-buffer segments of this branch's pulsesrc.
+def pulse_latency(sink):
+    """(actual-latency-time in us, rate) of this branch's pulsesrc, or None.
 
-    None when the segment is unknown or 2^32 segments are not a whole number of
-    nanoseconds (e.g. 1024 samples at 48 kHz): a rounded shift would be wrong.
+    GstAudioBaseSrc reports one ring-buffer segment, floored to microseconds;
+    it is also the source's latency (a segment fills before it is read).
     """
     branch = sink.get_parent()
     source = branch.get_by_name("capture-source") if branch is not None else None
@@ -37,9 +37,15 @@ def segment_wrap_ns(sink):
         return None
     found, rate = caps.get_structure(0).get_int("rate")
     latency_us = source.get_property("actual-latency-time")
-    if not found or rate <= 0 or latency_us <= 0:
-        return None
-    # GstAudioBaseSrc reports segsize * 10^6 / rate floored to microseconds.
+    return (latency_us, rate) if found and rate > 0 and latency_us > 0 else None
+
+
+def segment_wrap_ns(latency_us, rate):
+    """Exact stamp offset of 2^32 ring-buffer segments.
+
+    None when 2^32 segments are not a whole number of nanoseconds (e.g. 1024
+    samples at 48 kHz): a rounded shift would be wrong.
+    """
     samples = -(-latency_us * rate // 1_000_000)
     if samples * 1_000_000 // rate != latency_us:
         return None
@@ -365,7 +371,7 @@ class NativeRecorder(GObject.Object):
         return False
 
     def _input_pts(self, sink, identifier, pts, frames):
-        """Input stamp in pipeline running time, kept on one per-branch timeline.
+        """(stamp in pipeline running time, shift removed) on one per-branch timeline.
 
         GstAudioBaseSrc's skew slaving resyncs the first buffer with unsigned
         segment arithmetic. When the device has already written past the
@@ -375,26 +381,30 @@ class NativeRecorder(GObject.Object):
         branch, so consecutive stamps still detect real gaps.
         """
         pipeline = self.pipeline
-        clock = pipeline.get_clock() if pipeline is not None else None
-        if clock is None:
-            return pts
+        if pipeline is None:
+            return pts, 0
         shift = self._pts_shifts.get(sink)
         if shift is None:
-            shift = self._pts_shifts[sink] = self._pts_shift(
-                sink, identifier, pts, frames, clock.get_time() - pipeline.get_base_time()
-            )
-        return pts - shift
+            clock = pipeline.get_clock()
+            if clock is None:
+                return pts, 0
+            now = clock.get_time() - pipeline.get_base_time()
+            shift = self._pts_shifts[sink] = self._pts_shift(sink, identifier, pts, frames, now)
+        return pts - shift, shift
 
     @staticmethod
     def _pts_shift(sink, identifier, pts, frames, now):
         if pts <= now + FUTURE_PTS_SLACK_NS:
             return 0
-        wrap = segment_wrap_ns(sink)
+        latency = pulse_latency(sink)
+        wrap = segment_wrap_ns(*latency) if latency else None
         if wrap is not None and abs(pts - now - wrap) <= WRAP_TOLERANCE_NS:
             shift, path = wrap, "removed the exact 2^32-segment wrap"
         else:
-            # Unknown cause: anchor this buffer's end at the current running time.
-            shift, path = pts - max(0, now - frames * NS // RATE), "re-anchored at running time"
+            # Unknown cause: this buffer began one source latency before it
+            # reached the appsink; without pulsesrc facts, use its duration.
+            before = latency[0] * 1000 if latency else frames * NS // RATE
+            shift, path = pts - max(0, now - before), f"re-anchored at running time - {before} ns"
         LOG.warning(
             "Native %s input stamp %d ns leads running time %d ns (2^32-segment wrap: %s ns); %s, shift %d ns",
             identifier,
@@ -405,8 +415,13 @@ class NativeRecorder(GObject.Object):
             shift,
         )
         # The wrapped segment counter keeps segment_skew near -2^32, so this
-        # source never resyncs to the pipeline clock again.
-        LOG.warning("Native %s input has no GStreamer drift slaving for the rest of this recording", identifier)
+        # source never resyncs to the pipeline clock again: its stamps are
+        # sample counts, not clock observations, and are never saved as anchors.
+        LOG.warning(
+            "Native %s input has no GStreamer drift slaving for the rest of this recording; "
+            "no clock anchors are saved for it",
+            identifier,
+        )
         return shift
 
     def _sample(self, sink, identifier):
@@ -414,12 +429,12 @@ class NativeRecorder(GObject.Object):
         if sample is None:
             return Gst.FlowReturn.EOS
         buffer = sample.get_buffer()
-        pts = buffer.pts
+        raw, shift = buffer.pts, 0
         try:
-            if pts == Gst.CLOCK_TIME_NONE:
+            if raw == Gst.CLOCK_TIME_NONE:
                 raise ValueError("Audio source has no clock timestamp")
             data = buffer.extract_dup(0, buffer.get_size())
-            pts = self._input_pts(sink, identifier, pts, len(data) // 2)
+            pts, shift = self._input_pts(sink, identifier, raw, len(data) // 2)
             picture = None
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
@@ -441,7 +456,10 @@ class NativeRecorder(GObject.Object):
                         host_ns = pts + (original_frames - frames) * NS // rate
                         timeline = self._timelines.setdefault(stored, NativeTimeline(rate))
                         offset, gap = timeline.map(host_ns, frames, offset)
-                        absolute = self.pipeline.get_base_time() + host_ns if self.pipeline is not None else None
+                        # A shifted source has no clock observations (see _pts_shift).
+                        absolute = None
+                        if self.pipeline is not None and not shift:
+                            absolute = self.pipeline.get_base_time() + host_ns
                         self.session.append_native(stored, data, offset, gap_frames=gap, host_ns=absolute)
                         start = self._spectro_starts.get(stored)
                         if start is None:
@@ -468,7 +486,9 @@ class NativeRecorder(GObject.Object):
             else:
                 self.spectrogram.release_if_idle()
         except Exception as error:
-            LOG.warning("Native %s capture failed at input stamp %s ns: %s", identifier, pts, error)
+            LOG.warning(
+                "Native %s capture failed at raw input stamp %s ns (shift %d ns): %s", identifier, raw, shift, error
+            )
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
                 if attempt is not None:
