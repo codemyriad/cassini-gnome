@@ -1819,7 +1819,10 @@ class BrowserService:
                 if not any(p["tabId"] == tab for p in browser.pending.values()):
                     browser.busy.discard(tab)
 
-    def _batch(self, jobs, deadline, *, cancelled=None):
+    def _batch(self, jobs, deadline, *, cancelled=None, expired=None):
+        """Run jobs until the deadline. `expired` is set when the deadline,
+        not a caller, retired the jobs still running (D58: a Start that got
+        no answer is a startFailed refusal, not a cancelled Record)."""
         if not jobs:
             return [], []
         executor = ThreadPoolExecutor(max_workers=min(32, len(jobs)), thread_name_prefix="cassini-browser-batch")
@@ -1831,6 +1834,8 @@ class BrowserService:
                     remaining, timeout=min(0.05, max(0, deadline - time.monotonic())), return_when=FIRST_COMPLETED
                 )
             if remaining and cancelled is not None:
+                if expired is not None and not cancelled.is_set():
+                    expired.set()
                 cancelled.set()
                 for future in remaining:
                     future.cancel()
@@ -1922,14 +1927,16 @@ class BrowserService:
                 (identifier, lambda identifier=identifier, meeting=meeting: start_one(identifier, meeting))
                 for identifier, meeting in targets
             ]
-            results, _futures = self._batch(jobs, deadline, cancelled=group)
+            expired = threading.Event()
+            results, _futures = self._batch(jobs, deadline, cancelled=group, expired=expired)
             titles = {identifier: meeting["title"] for identifier, meeting in targets}
             failures = [
                 dict(id=identifier, title=titles[identifier], error=str(error), refusals=start_refusals(error))
                 for identifier, _result, error in results
                 if error is not None
             ]
-            return dict(self.snapshot(), attempted=len(targets), cancelled=group.is_set(), failures=failures)
+            cancelled = group.is_set() and not expired.is_set()
+            return dict(self.snapshot(), attempted=len(targets), cancelled=cancelled, failures=failures)
         finally:
             with self.lock:
                 self._record_groups.pop(token, None)

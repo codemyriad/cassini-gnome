@@ -721,7 +721,9 @@ class CassiniApplication(Adw.Application):
             self._browser_changed(snapshot)
             active = [s for s in snapshot.get("statuses", []) if s.get("recording") and isinstance(s.get("path"), str)]
             calls = [m for m in snapshot.get("meetings", []) if m.get("sourceCount", 0) > 0]
-            if not calls and not active:
+            # No browser meeting to record: a native Record. A meeting whose
+            # Start failed (even if its browser then went away) shows the banner.
+            if not calls and not active and not snapshot.get("failures"):
                 self.start_native()
             elif snapshot.get("failures") and active:
                 self.recording_error = snapshot["failures"][0]["error"]  # D17 partial start, unchanged.
