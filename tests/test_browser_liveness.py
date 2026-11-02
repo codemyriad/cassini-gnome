@@ -651,9 +651,10 @@ def test_shared_stale_watchdog_vectors_on_the_real_transport(broker, case):
                 if kind == "documentChanged":
                     # D57: the recording tab's page state and document, as the
                     # extension's status reports them on the control link.
-                    entry = dict(recording=True, tabId=3, captureId=identifier, pageState=frame["pageState"])
-                    if "documentGeneration" in frame:
-                        entry["documentGeneration"] = frame["documentGeneration"]
+                    entry = dict(recording=True, tabId=3, captureId=identifier)
+                    for key in ("pageState", "documentGeneration"):  # either may be absent
+                        if key in frame:
+                            entry[key] = frame[key]
                     send_packet(peer.stream, dict(type="status", recording=True, sessions=[entry]))
                     wait_for(lambda: control.last_inbound == clock.now)
                     with service.lock:

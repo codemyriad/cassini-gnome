@@ -1247,13 +1247,14 @@ class BrowserService:
                 browser.attempted.add(tab)
 
     def _observe_document(self, owner, page, document):
-        """T1 (navigating) and T2 (a new documentGeneration) for a recording's tab."""
-        if page == "navigating":
-            retired = owner.observe_document(navigating=True)
-        elif page == "present" or page != "closed" and document is not None:
-            retired = owner.observe_document(document, present=page == "present")
-        else:
+        """T1 (navigating) and T2 (a new documentGeneration) for a recording's tab.
+
+        The same rules as the shared oracle's documentChanged frame, for any
+        reported pageState (closed included) and generation.
+        """
+        if page not in ("navigating", "present") and document is None:
             return
+        retired = owner.observe_document(document, navigating=page == "navigating", present=page == "present")
         if retired:
             logging.getLogger(__name__).debug("Retired %d spans of a gone document from the PCM watchdog", retired)
 

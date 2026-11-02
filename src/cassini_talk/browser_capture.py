@@ -387,7 +387,8 @@ class BrowserCapture:
         are born dormant. It closes when the tab is present again, which the
         extension publishes as soon as the next document's frame connects and
         before that frame is told to start recording, or when a status names
-        a new documentGeneration.
+        a different documentGeneration (a status still on the departing
+        document, closed or otherwise, keeps it open).
         T2, a new documentGeneration (a reload the app did not see as
         navigating): only spans declared up to the last status that still
         confirmed the old generation are retired. A new document's span can
@@ -398,20 +399,22 @@ class BrowserCapture:
         with self.lock:
             if self.finished or self.streams is None:
                 return 0
-            if navigating:
-                retired = self._retire_spans(None)
-                self.streams.departing = True
-                return retired
             generation = generation_value(generation)
-            if present or generation is not None:
-                self.streams.departing = False
-            if generation is None:
-                return 0
+            changed = generation is not None and generation != self.document_generation
             retired = 0
-            if self.document_generation is not None and generation != self.document_generation:
+            if changed and self.document_generation is not None:
                 retired = self._retire_spans(self.document_mark)
-            self.document_generation = generation
-            self.document_mark = self.streams.declared
+            if generation is not None:
+                # Any reported generation, the departing one's on navigating
+                # included, is the latest confirmation of what was declared.
+                self.document_generation = generation
+                self.document_mark = self.streams.declared
+            if navigating:
+                retired += self._retire_spans(None)
+                self.streams.departing = True
+            elif present or changed:
+                # The next document is here; the same one never closes it.
+                self.streams.departing = False
             return retired
 
     def _retire_spans(self, through):

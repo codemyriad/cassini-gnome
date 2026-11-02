@@ -1,27 +1,21 @@
-tree 7a405937b43d9e8b5d9765e2bfa3fb83946e7e14
-parent 941a82cb9aa9acf70e1c9ed3c698caa222a218fc
-author Silvio Tomatis <silviot@gmail.com> 1793600503 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793600503 +0100
+tree a2a259fce777977b568135110d702d48eb3523cf
+parent 4d8c8010426e2487416170fad779d9dd28d5fae2
+author Silvio Tomatis <silviot@gmail.com> 1793606116 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793606116 +0100
 
-Resume host clarifications from GNOME G7 part C (D57)
+Close the departing window only on present or a new generation (review)
 
-R78 points 1, 2, 4 and 5, adopted in D57.
-
-1. SPEC-CONTROL D52.5: the app asks to resume only after the extension's
-   status no longer reports a session for that tab. Before that the
-   extension is still tearing the old session down and refuses the Start,
-   which would spend the only ask.
-2. auto-start-vectors.json meeting rows carry pageState "present", as real
-   rows do; an absent page state is unknown and holds back a resume ask.
-4. Dead spans after a fast reload: a documentChanged control frame in the
-   stale-watchdog oracle, one case, one SPEC.md sentence. navigating retires
-   every open span and opens a departing window whose declarations are
-   retired; it closes on the next present or new documentGeneration. A new
-   documentGeneration retires the spans declared up to the last frame that
-   still reported the old one; a span declared after that stays armed. A
-   retired span's PCM never re-arms it. Mutant tests cover each rule.
-5. The resume Start example carries keepOnNavigation:true.
-
-No extension code changes, so no version bump.
+Codex review of #34:
+- The oracle closed the departing window on any reported documentGeneration,
+  so a status still on the departing document (closed/doc-1 after
+  navigating/doc-1) armed the old document's late span. The window now
+  closes only on present or on a generation different from the stored one,
+  and every reported generation (the navigating frame's too) is the latest
+  confirmation.
+- Three cases pin what the first one left open: a same-document status after
+  navigating keeps the window open; an unchanged generation retires nothing;
+  a new generation closes the window even when present was missed (pageState
+  may be absent from a documentChanged frame).
+- test_stale_watchdog asserts the three matching oracle mutants fail.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

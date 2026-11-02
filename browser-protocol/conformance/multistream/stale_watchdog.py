@@ -7,10 +7,11 @@ open remote span (declared by `track`, not yet ended by `trackEnd` or `stop`)
 has delivered PCM (`audio`), and the deadline is `now - lastFrame >= 45000`.
 
 `documentChanged` (D57) is the recording tab's page state and documentGeneration
-as a control status reports them; like every control frame it is not activity.
-navigating retires every open span and opens a departing window: a span declared
-while it is open is retired at once (the old document still runs until the next
-commits). The window closes on the next present or new documentGeneration. A new
+as a control status reports them (pageState may be absent); like every control
+frame it is not activity. navigating retires every open span and opens a
+departing window: a span declared while it is open is retired at once (the old
+document still runs until the next commits). The window closes on the next
+present or on a new documentGeneration, never on the same one. A new
 documentGeneration retires the spans declared up to the last frame that still
 reported the old one; a span declared after that, even before its own
 generation is reported, stays armed. A retired span never arms the watchdog.
@@ -40,16 +41,16 @@ def closed(frames, now):
         if frame['frame'] == 'documentChanged':
             # A retired span leaves open_spans for good: its PCM never arms.
             page, document = frame.get('pageState'), frame.get('documentGeneration')
+            changed = document is not None and document != generation
+            if changed and generation is not None:
+                open_spans.difference_update(declared[:confirmed])
+            if document is not None:
+                generation, confirmed = document, len(declared)
             if page == 'navigating':
                 open_spans.clear()
                 departing = True
-                continue
-            if page == 'present' or document is not None:
-                departing = False
-            if document is not None:
-                if generation is not None and document != generation:
-                    open_spans.difference_update(declared[:confirmed])
-                generation, confirmed = document, len(declared)
+            elif page == 'present' or changed:
+                departing = False  # the next document is here; the same one is not
             continue  # a control frame: never activity
         if frame['frame'] not in AUDIO_TRANSPORT:
             continue  # control frames (ping/pong/meetings/status/...) never count
