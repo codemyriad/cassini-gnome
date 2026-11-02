@@ -20,7 +20,31 @@ from .spectro_source import SpectroSource
 RATE = 48000
 # A source's input stamps can never lead the pipeline clock; see _input_pts.
 FUTURE_PTS_SLACK_NS = 10 * NS
+WRAP_TOLERANCE_NS = 2 * NS
 LOG = logging.getLogger(__name__)
+
+
+def segment_wrap_ns(sink):
+    """Exact stamp offset of 2^32 ring-buffer segments of this branch's pulsesrc.
+
+    None when the segment is unknown or 2^32 segments are not a whole number of
+    nanoseconds (e.g. 1024 samples at 48 kHz): a rounded shift would be wrong.
+    """
+    branch = sink.get_parent()
+    source = branch.get_by_name("capture-source") if branch is not None else None
+    caps = source.get_static_pad("src").get_current_caps() if source is not None else None
+    if caps is None:
+        return None
+    found, rate = caps.get_structure(0).get_int("rate")
+    latency_us = source.get_property("actual-latency-time")
+    if not found or rate <= 0 or latency_us <= 0:
+        return None
+    # GstAudioBaseSrc reports segsize * 10^6 / rate floored to microseconds.
+    samples = -(-latency_us * rate // 1_000_000)
+    if samples * 1_000_000 // rate != latency_us:
+        return None
+    wrap, remainder = divmod(2**32 * samples * NS, rate)
+    return None if remainder else wrap
 
 
 class NativeRecorder(GObject.Object):
@@ -345,25 +369,45 @@ class NativeRecorder(GObject.Object):
 
         GstAudioBaseSrc's skew slaving resyncs the first buffer with unsigned
         segment arithmetic. When the device has already written past the
-        running-time segment, the difference wraps and every later stamp of
-        that source lands 2^32 segments (about 497 days at 10 ms) in the
-        future. Re-anchor such a branch once at the current running time and
-        keep the constant shift, so consecutive stamps still detect real gaps.
+        running-time segment, the negative difference is truncated to 32 bits
+        and every later stamp of that source lands exactly 2^32 segments
+        (about 497 days at 10 ms) in the future. Remove that constant once per
+        branch, so consecutive stamps still detect real gaps.
         """
         pipeline = self.pipeline
         clock = pipeline.get_clock() if pipeline is not None else None
         if clock is None:
             return pts
         shift = self._pts_shifts.get(sink)
-        if shift is not None:
-            return pts - shift
-        now = clock.get_time() - pipeline.get_base_time()
-        shift = 0
-        if pts > now + FUTURE_PTS_SLACK_NS:
-            shift = pts - max(0, now - frames * NS // RATE)
-            LOG.warning("Native %s input stamp %d ns is ahead of running time %d ns; re-anchored", identifier, pts, now)
-        self._pts_shifts[sink] = shift
+        if shift is None:
+            shift = self._pts_shifts[sink] = self._pts_shift(
+                sink, identifier, pts, frames, clock.get_time() - pipeline.get_base_time()
+            )
         return pts - shift
+
+    @staticmethod
+    def _pts_shift(sink, identifier, pts, frames, now):
+        if pts <= now + FUTURE_PTS_SLACK_NS:
+            return 0
+        wrap = segment_wrap_ns(sink)
+        if wrap is not None and abs(pts - now - wrap) <= WRAP_TOLERANCE_NS:
+            shift, path = wrap, "removed the exact 2^32-segment wrap"
+        else:
+            # Unknown cause: anchor this buffer's end at the current running time.
+            shift, path = pts - max(0, now - frames * NS // RATE), "re-anchored at running time"
+        LOG.warning(
+            "Native %s input stamp %d ns leads running time %d ns (2^32-segment wrap: %s ns); %s, shift %d ns",
+            identifier,
+            pts,
+            now,
+            wrap,
+            path,
+            shift,
+        )
+        # The wrapped segment counter keeps segment_skew near -2^32, so this
+        # source never resyncs to the pipeline clock again.
+        LOG.warning("Native %s input has no GStreamer drift slaving for the rest of this recording", identifier)
+        return shift
 
     def _sample(self, sink, identifier):
         sample = sink.emit("pull-sample")
