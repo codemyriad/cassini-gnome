@@ -475,6 +475,10 @@ or shift timestamps. After asynchronous lookup it checks the selected generation
 The first native packet is deliberately a distinct `type:"resume"`, version1,
 with independent:true, captureId, timelineOriginMs, callGeneration and features
 including resume-capture-v1. It otherwise uses the same transport as Start.
+Since extension 0.2.11 it also carries this command's `requestId`, so the app
+can tell which ask a refused resume answers; an ordinary Start never carries it.
+An app that keys on it gives every resume ask a fresh, never reused requestId
+(see conformance/control/RESUME-CAPTURE.md).
 Older hosts must reject this unknown type before creating any folder. This is
 safer than adding an ignored optional field to Start. The app atomically verifies
 that the target is active, not stopping/stopped, the exact origin/generation
@@ -656,7 +660,7 @@ This is an open vocabulary, separate from and unrelated to the closed audio-plan
 native host's error code as a result code. Apps do not wait for it: they classify what they
 know locally and record a code-less `startRejected` otherwise.
 
-| code | Extension 0.2.10 sets it when |
+| code | Extension 0.2.11 sets it when |
 | --- | --- |
 | `busy` | a recording is already running or starting, in that tab or (legacy) anywhere; also a legacy Stop for another tab |
 | `limit` | 128 requests are pending, or 100 recordings are running or starting |

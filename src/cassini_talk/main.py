@@ -106,6 +106,8 @@ class CassiniApplication(Adw.Application):
         self.recording_error = None
         # D58: the start banner when nothing opened; catalog copy, never raw text.
         self.recording_failure = None
+        # R82 §2 (D17): one entry per meeting that failed while others started.
+        self.recording_failures = []
         self.record_first = None
         self.settings_dialog = None
         self.shortcuts_dialog = None
@@ -582,6 +584,8 @@ class CassiniApplication(Adw.Application):
         else:
             self._auto_recording_revision = revision
         self._browser_snapshot = snapshot
+        if getattr(self, "recording_failures", None):
+            self._prune_recording_failures(snapshot)
         for status in snapshot.get("statuses", []):
             self._permission_sources.update(
                 kind for kind in status.get("permittedSources", []) if kind in ("microphone", "system")
@@ -688,6 +692,7 @@ class CassiniApplication(Adw.Application):
         # partial start's, on the browser path too.
         self.recording_failure = None
         self.recording_error = None
+        self.recording_failures = []
         if not self.browser_companion_available:
             self.start_native()
             return
@@ -709,7 +714,60 @@ class CassiniApplication(Adw.Application):
             lambda future: GLib.idle_add(self._recordings_started, future, generation)
         )
 
-    def _recordings_started(self, future, generation):
+    def retry_meeting(self, entry):
+        """A D17 line's Try again (R82 §2): that meeting only, while still that call.
+
+        It repeats the Record it retries (start_one: busy never falls back,
+        another rejection falls back into that meeting's own folder). It never
+        starts a native recording or shows the banner.
+        """
+        from . import browser_service
+
+        if self._record_start_future is not None or self._quitting:
+            return
+        self._record_start_generation += 1
+        generation = self._record_start_generation
+        group = self._record_start_group = str(uuid4())
+        only = dict(id=entry["id"], callGeneration=entry.get("callGeneration"))
+        self.hold()
+
+        def start():
+            target = browser_service.ensure_service()
+            return browser_service.request("start-all", path=target, groupId=group, only=only)
+
+        self._record_start_future = self._record_start_executor.submit(start)
+        self._record_start_future.add_done_callback(
+            lambda future: GLib.idle_add(self._recordings_started, future, generation, entry)
+        )
+        self._native_changed()
+
+    @staticmethod
+    def failure_entry(failure):
+        """A D17 line: the meeting, its call, its title and its first refusal's caption."""
+        from .refusals import CAPTIONS
+
+        refusals = failure.get("refusals") if isinstance(failure.get("refusals"), list) else []
+        first = refusals[0] if refusals and isinstance(refusals[0], dict) else {}
+        title = failure.get("title")
+        return dict(
+            id=failure.get("id"),
+            callGeneration=failure.get("callGeneration"),
+            title=title.strip() if isinstance(title, str) and title.strip() else None,
+            caption=CAPTIONS.get(first.get("detail")),
+        )
+
+    def _prune_recording_failures(self, snapshot):
+        """A D17 line stays until its call records, leaves the snapshot or changes call."""
+        meetings = {m.get("id"): m for m in snapshot.get("meetings", []) if isinstance(m, dict)}
+        self.recording_failures = [
+            entry
+            for entry in self.recording_failures
+            if entry["id"] in meetings
+            and meetings[entry["id"]].get("callGeneration") == entry.get("callGeneration")
+            and not meetings[entry["id"]].get("recording")
+        ]
+
+    def _recordings_started(self, future, generation, retried=None):
         self._record_start_future = None
         self._record_start_group = None
         try:
@@ -722,6 +780,17 @@ class CassiniApplication(Adw.Application):
             ):
                 return False
             self._browser_changed(snapshot)
+            if retried is not None:
+                # A D17 retry: a new failure replaces its line; success or a gone
+                # call clears it (pruning); attempted 0 keeps it.
+                failed = next((f for f in snapshot.get("failures", []) if f.get("id") == retried["id"]), None)
+                if failed is not None:
+                    replaced = self.failure_entry(failed)
+                    self.recording_failures = [
+                        replaced if entry["id"] == retried["id"] else entry for entry in self.recording_failures
+                    ]
+                self._native_changed()
+                return False
             active = [s for s in snapshot.get("statuses", []) if s.get("recording") and isinstance(s.get("path"), str)]
             calls = [m for m in snapshot.get("meetings", []) if m.get("sourceCount", 0) > 0]
             # No browser meeting to record: a native Record. A meeting whose
@@ -729,13 +798,15 @@ class CassiniApplication(Adw.Application):
             if not calls and not active and not snapshot.get("failures"):
                 self.start_native()
             elif snapshot.get("failures") and active:
-                self.recording_error = snapshot["failures"][0]["error"]  # D17 partial start, unchanged.
+                # D17 partial start (R82 §2): one line per failed meeting, never raw text.
+                self.recording_failures = [self.failure_entry(failure) for failure in snapshot["failures"]]
             elif snapshot.get("failures"):
                 from .refusals import banner
 
-                # Nothing opened (D58): the start banner, with the first failure's refusals.
-                refusals = snapshot["failures"][0].get("refusals")
-                self.recording_failure = banner(refusals if isinstance(refusals, list) else [])
+                # Nothing opened (D58): the start banner, with the first failure's refusals,
+                # and every distinct caption of the meetings that failed (R82 decision 6).
+                lists = [f.get("refusals") if isinstance(f.get("refusals"), list) else [] for f in snapshot["failures"]]
+                self.recording_failure = banner(*lists)
             elif active and any(w.get_visible() for w in self.get_windows()):
                 self._pending_recording = active[0]["path"]
             self._native_changed()
@@ -747,7 +818,8 @@ class CassiniApplication(Adw.Application):
                 from .refusals import banner
 
                 logging.getLogger(__name__).warning("Could not start recording: %s", error)
-                self.recording_failure = banner([])
+                if retried is None:  # A D17 retry keeps its line and never shows the banner.
+                    self.recording_failure = banner([])
                 self._native_changed()
         finally:
             self.release()
@@ -774,7 +846,7 @@ class CassiniApplication(Adw.Application):
             self._native_held = True
         recorder.start(test=test)
 
-    def change_recording_sources(self, meeting, me, others):
+    def change_recording_sources(self, meeting, me, others, *, retry=False):
         from . import browser_service
 
         key = str(meeting.directory)
@@ -788,7 +860,13 @@ class CassiniApplication(Adw.Application):
                 native.select(me, others)
                 if native
                 else self._record_start_executor.submit(
-                    browser_service.request, "selection", directory=key, me=me, others=others
+                    browser_service.request,
+                    "selection",
+                    directory=key,
+                    me=me,
+                    others=others,
+                    # R82 1c: Try again on a side refused at start; no selection event.
+                    **({"retry": True} if retry else {}),
                 )
             )
         except Exception:

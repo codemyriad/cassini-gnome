@@ -3,8 +3,9 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `d789cf30`, ships companion 0.2.10, whose `ok:false` results carry a
-D58 result `code`, with authoritative page-state
+The current pin, `14c929be`, ships companion 0.2.11, whose `ok:false` results carry a
+D58 result `code` and whose native resume packet carries the command's `requestId`, so
+a refused resume is keyed to its own ask. It keeps authoritative page-state
 publication and a coherent multi-tab inventory. Call identity and the hook
 baseline survive worker restarts; persisted addresses use bounded fingerprints.
 A worklet must prove its render clock is advancing before source PCM is armed;
@@ -46,7 +47,8 @@ An active capture's ended physical span returns `state/source/retired:true`;
 its cleanup and in-flight chunks cannot mean the whole capture was saved.
 Capture finalization returns `state/command`. Failed spans are fenced locally,
 healthy sources and the microphone continue, and a live source retries a new ID.
-The pin is the merge commit of protocol PR #36, d789cf30 (the D58 refusal vector follow-ups), on top of
+The pin is protocol commit 14c929be (the PR #37 merge: the native resume packet carries the ask's `requestId`, a fresh UUID per ask), on top of
+the merge commit of protocol PR #36, d789cf30 (the D58 refusal vector follow-ups), on top of
 protocol PR #35, 71d9bc4 (D58 classified refusals: the session `refusals` member, optional
 `ok:false` result codes and the `conformance/refusals` vectors), on top of protocol PR #34,
 95b647aa (D57: the app asks to resume only after the
@@ -56,8 +58,8 @@ protocol PR #33, 941a82cb, which adds vectors
 only (a frame arriving at the 45 s deadline is too late; other-generation rows
 drive a lost recording's grace timers) to #32's D52.5 rules (ask-once resume, no
 second recording, the 45 s PCM_STALE_AFTER and its watchdog vectors), on top of #31's
-heartbeat-v1 and audio transport liveness (D52.4). Companion 0.2.10 answers the
-app's control pings (0.2.9) and adds the result codes; see
+heartbeat-v1 and audio transport liveness (D52.4). Companion 0.2.11 answers the
+app's control pings (0.2.9), adds the result codes (0.2.10) and the resume `requestId`; see
 [call-lifecycle.md](call-lifecycle.md). Conformance
 runs give every case a private CASSINI_LIBRARY_DIR, which
 tests/conformance_host.py requires.

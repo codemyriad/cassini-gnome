@@ -206,3 +206,55 @@ for(const patch of [{captureId:'other'}, {timelineOriginMs:1001}, {callGeneratio
       assert.ok(!f.app.pages[0].sent.some(p=>p.type==='start'));
     }finally{await f.close();}
   });
+
+for (const id of ['ask-A', 7])
+  test('the native resume packet carries the control requestId; ordinary Start does not: '+JSON.stringify(id), async () => {
+    // 0.2.11: a host keys a refused resume to its ask by this requestId.
+    const f = await fixture(); f.defer = true;
+    try {
+      const pending = f.app.command(f.start(id));
+      await until(() => f.deferred.length === 1);
+      assert.equal(f.packets[0].type, 'resume');
+      assert.equal(f.packets[0].requestId, id);
+      f.deferred.shift()();
+      assert.equal((await pending).ok, true);
+      assert.equal((await f.app.command(f.stop('resume-stop'))).ok, true);
+      const fresh = f.start(id === 7 ? 8 : 'fresh'); delete fresh.resumeCapture;
+      assert.equal((await f.app.command(fresh)).ok, true);
+      const ordinary = f.packets.filter(p => p.type === 'start');
+      assert.equal(ordinary.length, 1);
+      assert.equal(Object.hasOwn(ordinary[0], 'requestId'), false);
+    } finally {await f.close();}
+  });
+
+for (const finished of ['disconnect', 'timeout'])
+  test('a late native resume keeps its own requestId after a fresh ask on '+(finished==='disconnect'?'a new':'the same')+' connection', async () => {
+    // Codex #37: ask A finishes for the app (its control connection closes, or
+    // the app stops waiting), then ask B starts; A's native packet, built late,
+    // still names A only. The VM's reconnect is the extension's real reconnect.
+    const f = await fixture(); let release, entered = false;
+    const get = f.app.chrome.tabs.get, gate = new Promise(resolve => release = resolve);
+    let hold = true;
+    f.app.chrome.tabs.get = async id => {if (id === 2 && hold) {hold = false; entered = true; await gate;} return get(id);};
+    try {
+      const first = f.app.ports[0];
+      first.onMessage.emit(f.start('ask-A'));
+      await until(() => entered);
+      assert.equal(f.packets.length, 0);
+      if (finished === 'disconnect') assert.notEqual(await f.app.reconnect(), first);
+      f.app.frame(99);
+      const b = {...f.start('ask-B'), tabId:99, callGeneration:f.app.api.callInfo(99).generation};
+      const answered = await f.app.command(b);
+      assert.equal(answered.ok, false); // Refused natively: tab 99 is not the target.
+      assert.deepEqual(f.packets.map(p => [p.type, p.requestId]), [['resume', 'ask-B']]);
+      f.job.active = false; // A's late native resume is refused too.
+      release();
+      await until(() => f.packets.length === 2);
+      assert.deepEqual(f.packets.map(p => [p.type, p.requestId]), [['resume', 'ask-B'], ['resume', 'ask-A']]);
+      assert.equal(f.packets[1].callGeneration, f.job.generation);
+      if (finished === 'timeout') {
+        await until(() => first.sent.some(m => m.type === 'result' && m.requestId === 'ask-A'));
+        assert.equal(first.sent.find(m => m.type === 'result' && m.requestId === 'ask-A').ok, false);
+      } else await until(() => f.app.api.controlStatus(2).sessions.length === 0);
+    } finally {release?.(); await f.close();}
+  });

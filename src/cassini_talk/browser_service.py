@@ -29,10 +29,12 @@ from .call_lifecycle import (
     CallLifecycle,
     ResumeInputs,
 )
-from .refusals import NothingOpened, StartCancelled
+from .refusals import NothingOpened, StartCancelled, word
 from .session_events import source_state
 
 MAX_PACKET = 512 * 1024
+# A start with no expected call generation (only a D17 retry carries one).
+ANY_GENERATION = object()
 RESUME_CAPTURE = "resume-capture-v1"
 # Bounded correlation of in-flight resume asks per control connection.
 RESUME_HISTORY = 64
@@ -95,6 +97,12 @@ LOCAL_DETAILS = {
     "This meeting is already being recorded": "busy",
     "This meeting is no longer available": "gone",
 }
+
+
+def resumable(current, capture):
+    """D52.5 system/lost, or the D58 #2 stand-in: system/missing with the browser lost (R82 1a)."""
+    source = (current.source, current.reason)
+    return source == ("system", "lost") or source == ("system", "missing") and capture.browser_lost
 
 
 def start_refusals(error):
@@ -561,6 +569,12 @@ class BrowserService:
                 logging.getLogger(__name__).info(
                     "The browser did not resume recording %s: %s", asked, str(packet.get("error"))[:500]
                 )
+                with self.lock:
+                    capture = self.captures.get(asked)
+                if capture is not None:
+                    # D58 #10 (R82 1b): the host's result code is the message.
+                    code = packet.get("code")
+                    capture.refuse_resume(None, code if word(code) else None, request_id=request_id)
             return
         pending = browser.pending.get(request_id)
         metadata = pending or browser.commands.get(request_id)
@@ -627,6 +641,12 @@ class BrowserService:
             if pending["action"] == "start":
                 pending["cancelled"] = True
                 pending["event"].set()
+
+    @staticmethod
+    def _validate_generation(browser, tab, generation):
+        """A D17 retry starts only the call its line was for: a rejoin is another call."""
+        if generation is not ANY_GENERATION and browser.meetings.get(tab, {}).get("callGeneration") != generation:
+            raise ValueError("This meeting is no longer available")
 
     def _validate_call(self, browser, tab, expected, *, version=None):
         if (
@@ -899,6 +919,8 @@ class BrowserService:
         identifier = packet.get("captureId")
         origin = packet.get("timelineOriginMs")
         features = packet.get("features")
+        # R82 1b: the control command's requestId, copied onto the native resume.
+        request_id = packet.get("requestId")
         if (
             type(packet.get("version")) is not int
             or packet["version"] != 1
@@ -913,6 +935,13 @@ class BrowserService:
             or any(not isinstance(f, str) or len(f) > 64 for f in features)
             or len(set(features)) != len(features)
             or RESUME_FEATURE not in features
+            or "requestId" in packet
+            and not (
+                isinstance(request_id, str)
+                and 0 < len(request_id) <= 128
+                or type(request_id) is int
+                and 0 <= request_id <= 2**53 - 1
+            )
         ):
             raise ResumeRefused("Invalid resume request")
         with self.lock:
@@ -937,7 +966,7 @@ class BrowserService:
             if target is not None and not refused:
                 # D58 #10: in the existing folder, at its real time, when the
                 # recording still waits on system for that call (refuse_resume).
-                target.refuse_resume(packet, str(error))
+                target.refuse_resume(packet, str(error), request_id=request_id)
             raise
         try:
             with self.lock:
@@ -1552,6 +1581,7 @@ class BrowserService:
         cancelled=None,
         call_version=None,
         expected_capture=None,
+        call_generation=ANY_GENERATION,
     ):
         from .session_events import END_REASONS
 
@@ -1645,6 +1675,7 @@ class BrowserService:
                 if tab not in browser.meetings:
                     raise ValueError("This meeting is no longer available")
                 self._validate_call(browser, tab, expected, version=call_version)
+                self._validate_generation(browser, tab, call_generation)
                 # D52.5/R67: never a second folder for a call being recorded,
                 # also for a manual Start; one the user stopped no longer counts.
                 owner = self.captures.get(browser.states.get(tab, {}).get("captureId"))
@@ -1779,6 +1810,8 @@ class BrowserService:
                     and (browser.browser_instance, tab, browser.meetings.get(tab, {}).get("url")) != expected
                 ):
                     raise ValueError("This meeting is no longer available")
+                if action == "start":
+                    self._validate_generation(browser, tab, call_generation)
                 if action == "start" and (
                     pending.get("cancelled")
                     or cancelled is not None
@@ -1877,9 +1910,22 @@ class BrowserService:
                 self._stopping_all.clear()
         self.policy()
 
-    def start_all(self, *, microphone=True, group_id=None):
+    def start_all(self, *, microphone=True, group_id=None, only=None):
+        """Start every recordable meeting, or with `only` just that one (R82 §2).
+
+        `only` is {id, callGeneration}: a D17 line's Try again. It starts that
+        meeting only while it is still the same call; otherwise nothing.
+        """
         if type(microphone) is not bool:
             raise ValueError("Invalid microphone selection")
+        if only is not None and (
+            not isinstance(only, dict)
+            or not isinstance(only.get("id"), str)
+            or not 0 < len(only["id"]) <= 512
+            or only.get("callGeneration") is not None
+            and not isinstance(only.get("callGeneration"), str)
+        ):
+            raise ValueError("Invalid meeting to retry")
         group = threading.Event()
         token = str(uuid4()) if group_id is None else group_id
         if not isinstance(token, str) or not 0 < len(token) <= 128:
@@ -1899,8 +1945,17 @@ class BrowserService:
                 # D52.5: a call already being recorded, under any peer.
                 and not self._generation_recording(tab, meeting, active=True)
             ]
+            if only is not None:
+                targets = [
+                    (identifier, meeting)
+                    for identifier, meeting in targets
+                    if identifier == only["id"] and meeting.get("callGeneration") == only.get("callGeneration")
+                ]
             self._record_groups[token] = group
         deadline = self.deadline_clock() + self.batch_timeout
+
+        # A retry's call generation holds through its Start and any stand-in.
+        expected = {} if only is None else dict(call_generation=only.get("callGeneration"))
 
         def start_one(identifier, meeting):
             if group.is_set() or self._stopping_all.is_set() or self.deadline_clock() >= deadline:
@@ -1908,7 +1963,13 @@ class BrowserService:
             cleanup_sent = False
             try:
                 return self.command(
-                    identifier, "start", microphone=microphone, user=True, deadline=deadline, cancelled=group
+                    identifier,
+                    "start",
+                    microphone=microphone,
+                    user=True,
+                    deadline=deadline,
+                    cancelled=group,
+                    **expected,
                 )
             except StartRejected as rejected:
                 if group.is_set() or self._stopping_all.is_set() or self.deadline_clock() >= deadline:
@@ -1918,7 +1979,13 @@ class BrowserService:
                     raise StartRefused(str(rejected), [rejected.refusal]) from None
                 try:
                     return self.start_fallback(
-                        identifier, meeting, microphone, cancelled=group, deadline=deadline, refusals=[rejected.refusal]
+                        identifier,
+                        meeting,
+                        microphone,
+                        cancelled=group,
+                        deadline=deadline,
+                        refusals=[rejected.refusal],
+                        **expected,
                     )
                 except (NothingOpened, StartCancelled):
                     raise  # It already lists the browser refusal first, or none: a Stop.
@@ -1948,6 +2015,7 @@ class BrowserService:
             results, _futures = self._batch(jobs, deadline, cancelled=group, expired=expired)
             titles = {identifier: meeting["title"] for identifier, meeting in targets}
             cancelled = group.is_set() and not expired.is_set()
+            generations = {identifier: meeting.get("callGeneration") for identifier, meeting in targets}
 
             def reported(error):
                 # D58: only the user's cancel shows no refusal. Without one, a
@@ -1959,7 +2027,13 @@ class BrowserService:
                 return error
 
             failures = [
-                dict(id=identifier, title=titles[identifier], error=str(error), refusals=start_refusals(error))
+                dict(
+                    id=identifier,
+                    title=titles[identifier],
+                    callGeneration=generations[identifier],
+                    error=str(error),
+                    refusals=start_refusals(error),
+                )
                 for identifier, error in ((i, reported(e)) for i, _result, e in results if e is not None)
             ]
             return dict(self.snapshot(), attempted=len(targets), cancelled=cancelled, failures=failures)
@@ -1978,6 +2052,7 @@ class BrowserService:
         deadline=None,
         call_version=None,
         refusals=(),
+        call_generation=ANY_GENERATION,
     ):
         from .browser_capture import BrowserCapture
 
@@ -2007,6 +2082,7 @@ class BrowserService:
                 raise ValueError("Recording start was cancelled")
             tab = int(raw_tab)
             self._validate_call(browser, tab, expected, version=call_version)
+            self._validate_generation(browser, tab, call_generation)
             if meeting.get("url") != browser.meetings.get(tab, {}).get("url"):
                 raise ValueError("This meeting is no longer available")
             existing = self.captures.get(browser.states.get(tab, {}).get("captureId"))
@@ -2298,8 +2374,11 @@ class BrowserService:
                         resume = ResumeInputs(
                             # D52.5 C1-C3, C7-C9; page, count and control are
                             # checked in the lifecycle's present-row branch.
+                            # R82 1a: the D58 #2 stand-in (system/missing with the
+                            # browser lost) is adopted the same way, D49's ask once,
+                            # with loss 0: a later system/lost gets its own ask.
                             ready=RESUME_CAPTURE in peer[0].capabilities
-                            and (current.source, current.reason) == ("system", "lost")
+                            and resumable(current, capture)
                             and not attached
                             and capture.call_generation is not None
                             and meeting.get("callGeneration") == capture.call_generation
@@ -2494,7 +2573,7 @@ class BrowserService:
             and meeting.get("callGeneration") == capture.call_generation
             and lifecycle.heard
             and tab not in browser.reported  # the extension released the tab
-            and (current.source, current.reason) == ("system", "lost")
+            and resumable(current, capture)
             and capture.browser_lost
             and capture.others
             and not (capture.finished or capture.stopping or capture.stop_requested.is_set())
@@ -2549,10 +2628,13 @@ class BrowserService:
             browser.resumes[request_id] = key
             while len(browser.resumes) > RESUME_HISTORY:
                 browser.resumes.pop(next(iter(browser.resumes)))
+            # R82 1b: one refusal entry per ask, from whichever answer comes first.
+            capture.mark_resume_ask(request_id)
             try:
                 browser.send(packet)
             except (OSError, ValueError) as error:
                 browser.resumes.pop(request_id, None)
+                capture.clear_resume_ask(request_id)
                 logging.getLogger(__name__).info("Could not ask the browser to resume recording %s: %s", key, error)
 
     def _fallback(self, identifier, capture):
@@ -2769,7 +2851,9 @@ class BrowserService:
                             result = self.snapshot()
                         elif action == "start-all":
                             result = self.start_all(
-                                microphone=packet.get("microphone", True), group_id=packet.get("groupId")
+                                microphone=packet.get("microphone", True),
+                                group_id=packet.get("groupId"),
+                                only=packet.get("only"),
                             )
                         elif action == "stop-all":
                             pid, _, _ = struct.unpack(
@@ -2797,7 +2881,9 @@ class BrowserService:
                                 )
                             if capture is None:
                                 raise ValueError("This meeting is no longer recording")
-                            result = capture.select(packet.get("me"), packet.get("others"))
+                            result = capture.select(
+                                packet.get("me"), packet.get("others"), retry=packet.get("retry") is True
+                            )
                         else:
                             result = self.command(
                                 packet.get("id"),

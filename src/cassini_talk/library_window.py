@@ -734,27 +734,47 @@ class LibraryWindow(Adw.ApplicationWindow):
         app = self.get_application()
         message = getattr(app, "recording_error", None)
         failure = getattr(app, "recording_failure", None)
-        banner = (failure["id"], failure["caption"], failure["action"]) if failure else None
+        banner = (failure["id"], tuple(failure.get("captions", ())), failure["action"]) if failure else None
+        # D17 (R82 §2): one line per meeting that failed while others started.
+        pending = getattr(app, "_record_start_future", None) is not None
+        meetings = tuple(
+            (entry["id"], entry.get("callGeneration"), entry.get("title"), entry.get("caption"), pending)
+            for entry in getattr(app, "recording_failures", ())
+        )
         selected = app.comfort.status(self.selected) if self.selected else {}
         live = bool(self.selected and self.selected.lifecycle in ("recording", "saving"))
         fallback = bool(live and app.comfort.sources(self.selected).fallback)
         refused = tuple(tuple(sorted(line.items())) for line in self._refusal_lines(self.selected)) if live else ()
-        signature = selected.get("line"), selected.get("minutes", 0), message, fallback, banner, refused
+        signature = selected.get("line"), selected.get("minutes", 0), message, fallback, banner, refused, meetings
         if signature != getattr(self, "_recording_line_signature", None):
             self._recording_line_signature = signature
             lines = getattr(self, "recording_lines", None)
             if lines is not None:
-                lines.set_visible(bool(signature[0] or message or fallback or banner or refused))
+                lines.set_visible(bool(signature[0] or message or fallback or banner or refused or meetings))
                 while child := lines.get_first_child():
                     lines.remove(child)
-                self._fill_recording_lines(lines, signature[0], signature[1], message, banner, fallback, refused)
-        first = (recorder.line, recorder.minutes_left, message, banner) if recorder else (None, 0, message, banner)
+                self._fill_recording_lines(
+                    lines, signature[0], signature[1], message, banner, fallback, refused, meetings
+                )
+        first = (
+            (recorder.line, recorder.minutes_left, message, banner, meetings)
+            if recorder
+            else (
+                None,
+                0,
+                message,
+                banner,
+                meetings,
+            )
+        )
         if first != getattr(self, "_first_recording_line_signature", None):
             self._first_recording_line_signature = first
-            self.first_recording_lines.set_visible(bool(first[0] or message or banner))
+            self.first_recording_lines.set_visible(bool(first[0] or message or banner or meetings))
             while child := self.first_recording_lines.get_first_child():
                 self.first_recording_lines.remove(child)
-            self._fill_recording_lines(self.first_recording_lines, first[0], first[1], message, banner)
+            self._fill_recording_lines(
+                self.first_recording_lines, first[0], first[1], message, banner, meetings=meetings
+            )
         if self.meeting_page:
             state = app.comfort.status(self.meeting_page.meeting)
             self.meeting_page.set_recording_notice(state["line"], state["minutes"])
@@ -766,12 +786,12 @@ class LibraryWindow(Adw.ApplicationWindow):
         native = self.get_application().comfort._native_for(meeting)
         if native is not None and native.session is not None:
             manifest = native.session.manifest
-            tracks = [(t.get("kind"), t.get("ended")) for t in manifest.get("tracks", ())]
+            tracks = [(t.get("kind"), t.get("ended"), t.get("startOffsetMs")) for t in manifest.get("tracks", ())]
             return live_lines(manifest.get("refusals"), tracks, manifest.get("events") or ())
-        tracks = [(t.kind, t.ended) for t in meeting.tracks]
+        tracks = [(t.kind, t.ended, t.start_offset_ms) for t in meeting.tracks]
         return live_lines(list(meeting.capture_refusals), tracks, meeting.capture_events)
 
-    def _fill_recording_lines(self, box, line, minutes, message, banner, fallback=False, refused=()):
+    def _fill_recording_lines(self, box, line, minutes, message, banner, fallback=False, refused=(), meetings=()):
         from .inline_line import InlineLine
 
         app = self.get_application()
@@ -779,8 +799,23 @@ class LibraryWindow(Adw.ApplicationWindow):
             box.append(InlineLine(line, n=minutes))
         if banner:
             # Nothing opened (D58): catalog copy and Try again, never raw error text.
-            identifier, caption, action = banner
+            # Every distinct caption, in first-occurrence order (R82 decision 6).
+            identifier, captions, action = banner
             box.append(InlineLine(identifier, action=action, callback=app.retry_recording))
+            for caption in captions:
+                box.append(label(text(caption), "caption", "dim-label", wrap=True, xalign=0))
+        for identifier, generation, title, caption, pending in meetings:
+            # D17 (R82 §2): this meeting's line and its own Try again, insensitive
+            # while any start is pending.
+            entry = dict(id=identifier, callGeneration=generation, title=title, caption=caption)
+            box.append(
+                InlineLine(
+                    "errors.recordFailed.meeting",
+                    title=(title or "").strip() or text("library.untitled"),
+                    action="common.tryAgain",
+                    callback=None if pending else lambda entry=entry: app.retry_meeting(entry),
+                )
+            )
             if caption:
                 box.append(label(text(caption), "caption", "dim-label", wrap=True, xalign=0))
         if message:
@@ -796,7 +831,12 @@ class LibraryWindow(Adw.ApplicationWindow):
         for item in refused:
             if item["side"] == "browser":
                 continue
-            retry = self._turn_on(item["side"], meeting or self.selected)
+            # Try again only for deviceUnavailable: GNOME never classifies a permission.
+            retry = (
+                None
+                if item["id"] == "errors.micPermission.line"
+                else self._turn_on(item["side"], meeting or self.selected)
+            )
             box.append(InlineLine(item["id"], action="common.tryAgain" if retry else None, callback=retry))
         if browser is not None:
             # A browser refusal: its caption, if any, instead of Why? (R79 §3).
@@ -817,16 +857,25 @@ class LibraryWindow(Adw.ApplicationWindow):
             )
 
     def _turn_on(self, side, meeting):
-        """Try again for a refused native side: a turn-on, where the recorder can retry it."""
+        """Try again for a refused native side: a turn-on.
+
+        The native recorder reopens a selected side without a track. A browser
+        capture reopens it through selection {retry: true} (R82 1c).
+        """
         app = self.get_application()
-        if meeting is None or app.comfort._native_for(meeting) is None:
+        if meeting is None:
             return None
+        native = app.comfort._native_for(meeting) is not None
         current = app.comfort.sources(meeting)
 
         def retry():
             # A change already in progress raises ValueError; the line stays.
             with contextlib.suppress(ValueError):
-                app.change_recording_sources(meeting, current.me or side == "me", current.others or side == "others")
+                me, others = current.me or side == "me", current.others or side == "others"
+                if native:
+                    app.change_recording_sources(meeting, me, others)
+                else:
+                    app.change_recording_sources(meeting, me, others, retry=True)
 
         return retry
 

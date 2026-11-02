@@ -20,6 +20,7 @@ RESUME_FEATURE = "resume-capture-v1"
 # D52.3c: a resume may join a system-sound stand-in (D49, seam callConnected) or
 # a system/lost fallback after its audio transport closed (D52.4, seam restored).
 RESUME_TARGETS = (("system", "missing"), ("system", "lost"))
+RESUME_ASKS = 8
 LOG = logging.getLogger(__name__)
 
 
@@ -57,6 +58,9 @@ class BrowserCapture:
         # fallback or restore does not reopen them; turning one off forgets it.
         self.refused_sides = set()
         self.discarded = False  # D58: nothing opened, and the folder was removed.
+        # R82 1b: unanswered resume asks, {requestId: atMs}, oldest first; one per
+        # open control connection that asked, so a small bound is enough.
+        self.resume_asks = {}
         self.me, self.others = True, True
         self.browser_lost = False
         self.browser_lost_since = None
@@ -410,10 +414,12 @@ class BrowserCapture:
                 with contextlib.suppress(Exception):
                     tap.stop()
 
-    def select(self, me, others):
+    def select(self, me, others, *, retry=False):
+        """Change what is recorded. `retry` (R82 1c) also reopens a selected side
+        that was refused, as Try again does; it writes no selection event."""
         if type(me) is not bool or type(others) is not bool or not (me or others):
             raise ValueError("Select at least one recording source")
-        return self._change(me, others)
+        return self._change(me, others, retry=retry)
 
     def fallback(self, reason="lost"):
         if reason not in ("missing", "lost"):
@@ -586,6 +592,7 @@ class BrowserCapture:
                 # Another transport is still attached: never two on one capture.
                 raise ResumeRefused()
             self.audio_connected = True
+            self.resume_asks.clear()  # Attached: every ask is answered.
             return dict(
                 type="started",
                 path=str(self.directory),
@@ -596,18 +603,42 @@ class BrowserCapture:
                 callGeneration=self.call_generation,
             )
 
-    def refuse_resume(self, packet, message):
-        """D58 #10: a refused resume is startRejected/resumeRefused in this folder.
+    def mark_resume_ask(self, request_id):
+        """R82 1b: this recording asked the browser to resume it (one entry per ask)."""
+        with self.lock:
+            self.resume_asks.pop(request_id, None)
+            self.resume_asks[request_id] = self.elapsed_ms()
+            while len(self.resume_asks) > RESUME_ASKS:
+                self.resume_asks.pop(next(iter(self.resume_asks)))
 
-        Only while this recording still waits on system sound for that call: it
-        is live (not stopping, stopped or starting), its others come from a
-        resume target (system/missing or system/lost), no transport is attached
-        and the resume names its call generation. A refusal because the user
-        stopped, or a resume that is redundant or for another call, is
-        command scoped only. A refusal never changes the recording itself.
+    def clear_resume_ask(self, request_id=None):
+        """Forget one ask, or every ask without a requestId."""
+        with self.lock:
+            if request_id is None:
+                self.resume_asks.clear()
+            else:
+                self.resume_asks.pop(request_id, None)
+
+    def refuse_resume(self, packet, message, *, request_id=None):
+        """D58 #10 (R82 1b): a refused resume is startRejected/resumeRefused here.
+
+        One entry per ask: the native host's refusal (on the audio pipe) or the
+        browser's ok:false reply, whichever comes first, writes it at the ask's
+        time and forgets that ask; the other writes nothing. Both answer only
+        the requestId they carry; a native refusal without a known one writes
+        nothing (its ask's own reply records it). Only while this recording
+        still waits on system sound for that call: live (not stopping, stopped
+        or starting), its others from a resume target, no transport attached,
+        and a native resume naming its call generation. A refusal never changes
+        the recording itself.
         """
         with self.lock:
             session = self.host.session
+            if not isinstance(request_id, str):
+                return
+            at = self.resume_asks.get(request_id)
+            if at is None:
+                return
             if (
                 session is None
                 or session.finished
@@ -618,13 +649,15 @@ class BrowserCapture:
                 or self.audio_connected
                 or self.tab_closed
                 or self.call_generation is None
-                or packet.get("callGeneration") != self.call_generation
+                or packet is not None
+                and packet.get("callGeneration") != self.call_generation
             ):
                 return
             current = source_state(session.manifest.get("events"))
             if (current.source, current.reason) not in RESUME_TARGETS:
                 return
-            item = entry(self.elapsed_ms(), "browser", "startRejected", detail="resumeRefused", message=message)
+            del self.resume_asks[request_id]
+            item = entry(at, "browser", "startRejected", detail="resumeRefused", message=message)
             try:
                 session.refuse(item)
             except Exception:
@@ -652,8 +685,8 @@ class BrowserCapture:
         """Whether this loss's restore already failed on the track limit."""
         return self.restore_refused is not None and self.restore_refused == self.loss_serial
 
-    def _change(self, me, others, *, fallback=None):
-        return self._apply_change(me, others, fallback=fallback)
+    def _change(self, me, others, *, fallback=None, retry=False):
+        return self._apply_change(me, others, fallback=fallback, retry=retry)
 
     def _events(self, me, others, lost, fallback, at):
         old = source_state(self.host.session.manifest.get("events"))
@@ -683,7 +716,7 @@ class BrowserCapture:
             )
         return events
 
-    def _apply_change(self, me, others, *, fallback=None, restore=False):
+    def _apply_change(self, me, others, *, fallback=None, restore=False, retry=False):
         if self.starting and not self.ready.wait(12):
             raise TimeoutError("Native capture did not finish starting")
         with self.transition:
@@ -695,10 +728,11 @@ class BrowserCapture:
                 if restore and (not self.browser_lost or not self.browser_ready):
                     return self.snapshot()
                 lost = False if restore else self.browser_lost or fallback is not None
-                if (me, others, lost) == (self.me, self.others, self.browser_lost):
-                    return self.snapshot()
                 desired = {kind for kind, enabled in (("microphone", me), ("system", others and lost)) if enabled}
-                kinds = desired - self.native_taps.keys() - self.refused_sides
+                retrying = desired & self.refused_sides - self.native_taps.keys() if retry else set()
+                if (me, others, lost) == (self.me, self.others, self.browser_lost) and not retrying:
+                    return self.snapshot()
+                kinds = (desired - self.native_taps.keys() - self.refused_sides) | retrying
                 if not (kinds or desired & self.native_taps.keys() or others and not lost):
                     # Every side this change keeps was refused at start. Recording
                     # nothing is never committed: the change asks for them again,
@@ -862,6 +896,7 @@ class BrowserCapture:
         with self.lock:
             self.end_reason = self.end_reason or reason or ("error" if problem else "user")
             self.stop_requested.set()
+            self.resume_asks.clear()  # A result after Stop writes nothing.
         if self.starting and not self.ready.wait(12):
             raise TimeoutError("Native capture did not finish starting")
         with self.lock:

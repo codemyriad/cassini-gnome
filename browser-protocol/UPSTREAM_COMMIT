@@ -1,26 +1,26 @@
-tree 9d56ccf8fd7b7f83c2b45adbae0bd623838b4b7e
-parent 71d9bc465781a943c32bd41159fb2dc0b49ffe19
-parent dc9238213f33088a95d5a548b2be184d8808b7b0
-author Silvio Tomatis <silviot@gmail.com> 1793613898 +0100
-committer GitHub <noreply@github.com> 1793613898 +0100
+tree 660d5736cc9da28ed855ee1c89445ffd9d1d8efd
+parent d789cf30a6611de7020893502f3be927e4f8e51d
+parent 4ff01c17ff9f556facb235d04986bd767d65d033
+author Silvio Tomatis <silviot@gmail.com> 1793649900 +0100
+committer GitHub <noreply@github.com> 1793649900 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq6GBKCRC1aQ7uu5UhlAAAWmIQACIRFZKEZF2B4sJFLB8KBnOW
- PfUpyXvuAqxqIPV9QDKOHSYCuLjPidxsYhX7UcDXu2w70HN9ZRa/qy2b3927iwUp
- JOtQ6d0VFlCeFWrquAfJ2b1JyUCRED0KlEvggsgnNiZUMZdjax5ldy3/EKc0ouxa
- Uqv3x+y2dNGcmdrv+nGIkbUjww5Be0wSxHgcPjhuyzoQmcHYC5LDsMhN4zjhHfLv
- MTcf2IBNZZWC7X1ywYzSypHWJayrkrz8iCy6JVkLdwWmSHpEg8OG1Vo8tSEmuTfP
- e4bH0Vq3WMEdTtoYfzl89JBy3y0+EOnBxdVxyq7WUA0/achMhxWX1fIix8Qj4DEU
- d5tjpYM5BfpGLg4VjAZssFwQypl/3gM2xzSBOjxFqtxIIBLupF9cCinFJg3WU9An
- HEFSONb9uxnqDV+f8XQbn5DVBKpiLnRQodadygIBQGYikpP/n6udnS6WVrQZk6BZ
- phRLvFaHdY69COh/OVvgbYUspGoDtfqIfEkS8zkrppkz9M003x7Oz8rI1GEa6vwQ
- HRLmIhOAVVJIyeNWCyvy3w0bQYwxft3w/9KSolrwHFpmIESL+QFaZybaa62IXIxe
- no2TpCcC0D9LY39vu8B4Xq7CyzDQ79Tv7Tj+34Mfo1kynPsE9gKfSTOm2Wcl5Y+F
- Ztl012FwWrsEWaRO70oz
- =Nv29
+ wsFcBAABCAAQBQJq6OzsCRC1aQ7uu5UhlAAA4wIQAKf4crl0ktycMTRLkOQnuV+B
+ 3aqHfd2gjj7ppjB9552/y3ELvOjww1IPQNipN+p3OhvLS2k4v57V6hDLdK13jRgc
+ RDmkZ4kg7LUk8fSCWfDyCZctPszLVUun15/PTHqdWAmhT5yplapTz+8qKaTfFDCm
+ KFcGZQ41iWgKTXaIF8S1ibKASGSyebRf/VGoSPXgAmlzBOrB7qdzqrq8qyNm1M+D
+ P/jadhCMl+ZIZqgsq65nvRYxYgI87iPb1KGrjpFhFwKJxqmmU3lhqxlSa1vxmIUW
+ 2efxYK6gTqmNHjTeQ2biqhM9A8biNdj4uknGwKeF41yny1ZfzhoGbSpJmOHvuKN3
+ 1JtdXUKbhTXAgY23AOzCwQX+kTVw/hY8mmjanaMtj8CVvaFvNmPW6lEy6trjKbrR
+ 6qJI56x9IMyzoBWeM1Hsjv4ulGwqnZTvgweGVqDZbSAXx1OkgmzTW6a5YIVLffy4
+ 1pqzDakRx6u252mNBCtW+ZsXspSrur8K4+0GMex/Ntc2ZlBWk0VXLIGm+kv6XnTh
+ Z636Ke7vLErgm1d/xSOqkq6D3ATPANGiTcd8CgbAPqJYP/KH1CDaxVLY2u4pSnRE
+ Y3xxhIZAahtnUqFmNH7fRVq7Sig1tOfT8eF9BYO1dgnB6gak6j3KnZJnAg/Bi0wU
+ DDQXHQL5TYeIYLbiUJMP
+ =KqnF
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #36 from codemyriad/chore/refusal-vector-followups
+Merge pull request #37 from codemyriad/feat/resume-ask-id
 
-Refusal and watchdog vector follow-ups (#35, #34; D58, D57)
+Carry the control requestId on native resume packets (extension 0.2.11)

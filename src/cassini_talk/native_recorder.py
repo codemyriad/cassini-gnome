@@ -526,10 +526,13 @@ class NativeRecorder(GObject.Object):
                         opening = kind
                         raise OSError(attempt["error"])
                 at = change_time(self.session, elapsed)
-                events = [dict(atMs=at, type="selection", me=me, others=others, reason="user")]
+                # A selection is written only when it changes (R82 1c): Try again
+                # on a side refused at start reopens it under the start selection.
+                changed = (me, others) != (current.me, current.others)
+                events = [dict(atMs=at, type="selection", me=me, others=others, reason="user")] if changed else []
                 if not others and current.others:
                     events.append(dict(atMs=at, type="othersSource", source="none", reason="user"))
-                elif "system" in added:
+                elif "system" in added and not current.others:
                     events.append(dict(atMs=at, type="othersSource", source="system", reason="user"))
                 identifiers = dict(self._track_ids)
                 retired_ids = [identifiers[kind] for kind in removed]

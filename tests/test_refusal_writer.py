@@ -204,10 +204,9 @@ def test_live_lines_show_each_side_that_records_nothing_now():
         ("me", "errors.micPermission.line"),
         ("others", "errors.deviceUnavailable.others"),
     ]
-    # A side that records now shows nothing.
-    assert [line["side"] for line in refusals.live_lines(stored, [("microphone", None), ("remote", False)])] == [
-        "others"
-    ]
+    # A side that records now shows nothing; browser audio records the others too (R82 1d).
+    assert refusals.live_lines(stored, [("microphone", None), ("remote", False)]) == []
+    assert [line["side"] for line in refusals.live_lines(stored, [("microphone", None)])] == ["others"]
     # A side turned off after its refusal shows nothing; a refused turn-on does.
     off = [dict(type="selection", atMs=7000, me=False, others=True, reason="user")]
     assert [line["side"] for line in refusals.live_lines(stored, system, off)] == ["browser"]
@@ -257,9 +256,10 @@ def test_refused_resume_is_start_rejected_in_the_same_folder(broker):  # noqa: F
     lose(broker, client, capture)
     events = json.dumps(capture.host.session.manifest["events"])
     folder = capture.directory
+    capture.mark_resume_ask("ask-1")  # R82 1b: refusals are recorded for an ask.
     attempt = proxy(broker)
     try:
-        reply = attempt.handle(resume(capture, timelineOriginMs=capture.origin_ms + 1))
+        reply = attempt.handle(resume(capture, timelineOriginMs=capture.origin_ms + 1, requestId="ask-1"))
         assert reply["type"] == "error" and reply["scope"] == "command"
         saved = json.loads((folder / "session.json").read_text())
         (item,) = saved["refusals"]
@@ -647,9 +647,10 @@ def test_only_a_refused_resume_of_a_waiting_recording_is_recorded(broker, name):
         if name == "restored":
             restored(broker, other, capture, "returned", "doc-1:source:2")
     before = list(capture.host.session.manifest.get("refusals", []))
+    capture.mark_resume_ask("ask-1")  # R82 1b: refusals are recorded for an ask.
     attempt = proxy(broker)
     try:
-        assert attempt.handle(resume(capture, **packet))["type"] == "error"
+        assert attempt.handle(resume(capture, **packet, requestId="ask-1"))["type"] == "error"
         after = capture.host.session.manifest.get("refusals", [])
         if name == "origin":
             (item,) = after[len(before) :]

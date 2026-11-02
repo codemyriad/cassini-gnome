@@ -516,6 +516,15 @@ Explicit successful proof is a `started` response with resumed:true, the exact
 captureId/timelineOriginMs/callGeneration, path and resume-capture-v1 feature.
 See SPEC-CONTROL.md and conformance/control/RESUME-CAPTURE.md for cancellation,
 interleavings and the shared seam fixture. Existing ordinary Start is unchanged.
+Since extension 0.2.11 the resume packet also carries the control command's
+requestId as `requestId` (same domain as the control requestId), so a host can
+tell which ask a refused resume answers. Hosts that do not use it ignore it.
+A host that keys on it gives every resume ask a fresh requestId and never
+reuses it for another ask, on the same or another control connection, after a
+reconnect or an app restart: the audio pipe names no connection, and a late
+packet can follow a timeout or a closed connection. A UUID per ask is the
+simple way. A late refusal whose ask is already answered or
+unknown records nothing.
 
 
 ### Source retirement during an active capture (extension0.2.8)

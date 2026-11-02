@@ -345,6 +345,8 @@ async function start(mode, tabId = null, options = {}) {
         // optional field on ordinary Start could create a second folder.
         start.type = "resume";
         start.features.push("resume-capture-v1");
+        // Names the ask a refused resume answers (only ever on resume packets).
+        if (options.requestId !== undefined) start.requestId = options.requestId;
         delete start.microphone; // The app retains its actual per-session selection.
       }
       const result = await session.host.send(start);
@@ -662,7 +664,7 @@ async function controlCommand(command, intent = {}) {
     if (![...frames].some(frame => frame.tabId === command.tabId && frame.sourceCount > 0))
       throw refused("No audio is available from that meeting yet.", "noSources");
     await start("tracks", command.tabId, { independent: command.independent === true,
-      captureLocal: command.captureLocal, microphone: command.microphone, keepOnNavigation: command.keepOnNavigation, expectedCallGeneration: command.callGeneration, resumeCapture: command.resumeCapture, resumeIntent: intent });
+      captureLocal: command.captureLocal, microphone: command.microphone, keepOnNavigation: command.keepOnNavigation, expectedCallGeneration: command.callGeneration, resumeCapture: command.resumeCapture, requestId: command.requestId, resumeIntent: intent });
   } else {
     if (!command.independent && firstSession() && firstSession().tabId !== command.tabId) throw refused("A recording is already running. Stop it before starting another.", "busy");
     const session = sessions.get(command.tabId);
