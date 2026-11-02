@@ -609,6 +609,27 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.split.set_content(Adw.NavigationPage.new(content, text("library.previewPane.a11y")))
         self.root_box.add_named(self.split, "library")
 
+    def open_pending_recording(self):
+        """Open the recording the application just started, once this Library has it live.
+
+        Only a row scanned as recording (or saving) opens it: its Recording
+        page. Sides open after the folder exists (R79 §1), so a scan made
+        before the recorder was active can show the row as an ordinary
+        meeting, and the activity tick replays that snapshot: opening that
+        row would show a meeting page instead. A recording that ends before
+        any live scan clears its pending path when it finishes.
+        """
+        app = self.get_application()
+        pending = app._pending_recording
+        if not pending or self.snapshot is None:
+            return False
+        current = next((m for m in self.snapshot.meetings if str(m.directory) == pending), None)
+        if current is None or current.lifecycle not in ("recording", "saving"):
+            return False
+        app._pending_recording = None
+        self.open_meeting(current)
+        return True
+
     def capture_changed(self):
         # Level messages arrive at 10 Hz. Update meters, scanning only on a
         # controller phase change; date grouping stays on the one-second tick.
@@ -845,12 +866,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                 self.open_meeting(current)
             else:
                 self.back_to_library()
-        pending = self.get_application()._pending_recording
-        if pending:
-            current = next((m for m in snapshot.meetings if str(m.directory) == pending), None)
-            if current:
-                self.get_application()._pending_recording = None
-                self.open_meeting(current)
+        self.open_pending_recording()
         if self.meeting_page and not self._external_meeting:
             current = next((m for m in snapshot.meetings if m.key == self.meeting_page.meeting.key), None)
             if current is None:

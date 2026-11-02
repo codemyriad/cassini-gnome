@@ -6,6 +6,7 @@ Host SetStatus rejection is reported as an explicit platform limitation; it is
 never substituted with a fake Background Apps entry or a tray implementation.
 """
 
+import contextlib
 import json
 import math
 import os
@@ -120,7 +121,31 @@ def click(label, *, dialog=None):
                 target = target.get_parent()
         return False
 
-    until(find, "click " + label)
+    try:
+        until(find, "click " + label)
+    except AssertionError:
+        # Keep the next failure diagnosable: what was on screen, and what the
+        # accessibility tree offered instead.
+        with contextlib.suppress(Exception):
+            screenshot("click-timeout-" + "".join(c if c.isalnum() else "-" for c in label) + ".png")
+        with contextlib.suppress(Exception):
+            names = []
+            for node in walk(Atspi.get_desktop(0)):
+                name = node.get_name() or ""
+                if name:
+                    states = node.get_state_set()
+                    names.append(
+                        dict(
+                            name=name[:120],
+                            role=node.get_role_name(),
+                            showing=states.contains(Atspi.StateType.SHOWING),
+                            sensitive=states.contains(Atspi.StateType.SENSITIVE),
+                        )
+                    )
+            (OUT / ("click-timeout-" + "".join(c if c.isalnum() else "-" for c in label) + ".json")).write_text(
+                json.dumps(names[:2000], indent=1) + "\n"
+            )
+        raise
 
 
 def portal_rows(appid):

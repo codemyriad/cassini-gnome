@@ -128,6 +128,8 @@ with tempfile.TemporaryDirectory() as temporary:
     until(
         lambda: (
             window.recording_page is not None
+            and not app.recorder.starting  # Each side opens on its own (R79 §1).
+            and len(app.recorder.session.manifest["tracks"]) == 2
             and all(t["frames"] >= 9600 for t in app.recorder.session.manifest["tracks"])
         )
     )
@@ -163,6 +165,103 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: native.pipeline is None and not native.stopping)
     assert native.session.manifest["state"] == "completed"
     assert not app._source_changes
+
+    # R79 §1: sides open after the folder exists, so the Library can scan the
+    # live row before the start is reported. The Recording page must still open
+    # when it is reported (the GNOME 50 indicator gate lost it, #172). Hold the
+    # system side's first buffer until that scan has happened: no timing guess.
+    from gi.repository import Gst
+
+    from cassini_talk.native_recorder import NativeRecorder
+
+    held, branch = {}, NativeRecorder._branch
+
+    def slow(recorder, kind):
+        if kind != "system":
+            return branch(recorder, kind)
+        result = Gst.parse_bin_from_description(
+            "appsrc name=held is-live=true format=time do-timestamp=true "
+            'caps="audio/x-raw,format=S16LE,rate=48000,channels=1,layout=interleaved" ! '
+            "appsink name=system emit-signals=true sync=false async=false",
+            False,
+        )
+        result.get_by_name("system").connect("new-sample", recorder._sample, "system")
+        held["source"] = result.get_by_name("held")
+        return result
+
+    with patch.object(NativeRecorder, "_branch", slow):
+        app.start_native(test=True)
+        late = app.recorder
+        until(
+            lambda: (
+                late.starting
+                and "source" in held
+                and any(
+                    m.directory == late.session.directory and m.lifecycle == "recording"
+                    for m in window.snapshot.meetings
+                )
+            )
+        )
+        reported = []
+        late.connect("started", lambda *_: reported.append(window.recording_page is not None))
+        assert held["source"].emit("push-buffer", Gst.Buffer.new_wrapped(bytes(960))) == Gst.FlowReturn.OK
+        until(lambda: bool(reported))
+    assert reported == [True], "The Recording page opens when the start is reported"
+    assert window.recording_page.meeting.directory == late.session.directory
+    app.stop_native()
+    until(lambda: late.pipeline is None and not late.stopping)
+
+    # The row can even be scanned before the recorder is active: the scan
+    # shows an ordinary meeting. The one-second activity tick replays that
+    # stale snapshot after the start is reported. It must not open that row
+    # as a meeting page (the GNOME 50 indicator gate saw this, #172): the
+    # Recording page opens from a live scan. Hold the recorder's preparation
+    # until the Library has scanned the stale row; no timing guess.
+    held, prepared = {}, NativeRecorder._prepared
+    delivered = window.monitor.callback
+
+    def stale(directory):
+        return any(
+            m.directory == directory and m.lifecycle not in ("recording", "saving") for m in window.snapshot.meetings
+        )
+
+    def scanned(*args):
+        delivered(*args)
+        if "args" in held and stale(held["args"][1].result()[0].directory):
+            prepared(*held.pop("args"))
+
+    def gated(recorder, future, test):
+        held["args"] = (recorder, future, test)
+        window.monitor.refresh_now()
+        return False
+
+    window.back_to_library()  # The stopped recording's own meeting page closes.
+    window.monitor.callback = scanned
+    try:
+        with patch.object(NativeRecorder, "_prepared", gated):
+            app.start_native(test=True)
+            early = app.recorder
+            replayed = []
+
+            def started(*_):
+                # The activity tick's replay of the snapshot it already has.
+                window._updated(window._source_snapshot or window.snapshot)
+                page = window.meeting_page
+                replayed.append(page is None or page.meeting.directory != early.session.directory)
+
+            early.connect("started", started)
+            until(lambda: bool(replayed))
+        assert replayed == [True], "A stale, non-live row never opens as a meeting page"
+        until(
+            lambda: (
+                window.recording_page is not None and window.recording_page.meeting.directory == early.session.directory
+            )
+        )
+        assert window.meeting_page is None or window.meeting_page.meeting.directory != early.session.directory
+    finally:
+        window.monitor.callback = delivered
+    app.stop_native()
+    until(lambda: early.pipeline is None and not early.stopping)
     window.close()
     app.do_shutdown()
 print(

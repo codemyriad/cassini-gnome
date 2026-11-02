@@ -3,7 +3,6 @@
 
 import base64
 import ctypes.util
-import struct
 import time
 import wave
 
@@ -20,8 +19,10 @@ def real_fft():
         pytest.skip("Install GStreamer base for the recording/GUI gate")
 
 
-def capture_at(root, microphone=False, others_source="browser"):
+def capture_at(root, microphone=False, others_source="browser", opened_at=None):
     capture = BrowserCapture(lambda *_: None, parent=root, tap_factory=Tap)
+    if opened_at is not None:
+        capture.elapsed_ms = lambda: opened_at
     capture.start(
         dict(
             type="start",
@@ -87,7 +88,10 @@ def test_browser_pcm_is_unchanged_and_analysis_is_outside_the_owner_lock(tmp_pat
 @pytest.mark.parametrize("kind", ["microphone", "system"])
 def test_broker_native_and_readiness_taps_keep_audio_independent_of_picture(tmp_path, monkeypatch, kind):
     capture = capture_at(
-        tmp_path, microphone=kind == "microphone", others_source="system" if kind == "system" else "browser"
+        tmp_path,
+        microphone=kind == "microphone",
+        others_source="system" if kind == "system" else "browser",
+        opened_at=0,
     )
     source = capture.spectrogram
     source.subscribe()
@@ -107,13 +111,13 @@ def test_broker_native_and_readiness_taps_keep_audio_independent_of_picture(tmp_
         identifier, tap = capture.native_taps[kind]
         tap.append(pcm, 100 + 4 * 1000 / 48000)
         assert len(observed) == 1 and observed[0]["kind"] == kind
-        assert observed[0]["start_ms"] == (100 if kind == "microphone" else 0)
+        assert observed[0]["start_ms"] == 0  # Each side's span starts when it opened.
         source.unsubscribe(next(iter(source.subscribers)))
         tap.append(pcm, 200 + 4 * 1000 / 48000)
         assert not source.tracks and len(observed) == 1
         capture.stop()
-        prefix = bytes(9600) if kind == "system" else b""
-        assert read_pcm(capture, identifier) == prefix + struct.pack("<hhhh", 100, 200, 300, 400) + pcm + pcm
+        # The tap's readiness PCM from before its side committed is discarded.
+        assert read_pcm(capture, identifier) == bytes(9608) + pcm + pcm
     finally:
         capture.stop()
 

@@ -153,7 +153,8 @@ def test_stop_never_waits_for_source_stream_locks_on_main_context(tmp_path, monk
     recorder.connect("finished", lambda _r, path: finished.append(path))
     recorder.connect("error", lambda _r, error: errors.append(error))
     recorder.start(tmp_path / "meeting.opus" if kind == "opus" else tmp_path, test=True)
-    spin_until(lambda: recorder.pipeline is not None)
+    # Native sides commit their tracks while starting.
+    spin_until(lambda: recorder.pipeline is not None and not getattr(recorder, "starting", False))
     if kind == "tracks":
         # This scenario tests two active stream locks, rather than empty
         # sources which are retired without EOS before their first sample.

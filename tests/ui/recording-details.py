@@ -367,7 +367,17 @@ with tempfile.TemporaryDirectory() as temporary:
     native = app.recorder
     until(lambda: native.session is not None and sum(w.frames for w in native.session.writers.values()) > 96000)
     directory = native.session.directory
-    until(lambda: any(m.directory == directory and m.lifecycle == "recording" for m in window.snapshot.meetings))
+    # Each side's track appears when it opens (R79 §1): wait until the Library
+    # row has both recorded tracks, so the live Details shape is settled.
+    until(
+        lambda: any(
+            m.directory == directory
+            and m.lifecycle == "recording"
+            and len(m.tracks) == 2
+            and all(t.frames > 0 for t in m.tracks)
+            for m in window.snapshot.meetings
+        )
+    )
     meeting = next(m for m in window.snapshot.meetings if m.directory == directory)
     window.open_meeting(meeting)
     begin_details()

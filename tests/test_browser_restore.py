@@ -12,8 +12,9 @@ from cassini_talk.session_events import source_state
 
 def recording(tmp_path):
     capture = BrowserCapture(lambda *_: None, parent=tmp_path, tap_factory=Tap)
-    capture.start(dict(type="start", captureId="retained", timelineOriginMs=1, microphone=True))
+    # The microphone's span starts when it opens, on this fixed clock.
     capture.elapsed_ms = lambda: 1000
+    capture.start(dict(type="start", captureId="retained", timelineOriginMs=1, microphone=True))
     capture.handle(dict(type="track", id="original", kind="remote", sampleRate=48000, channels=1))
     capture.handle(dict(type="audio", id="original", sequence=0, offsetMs=0, pcm="AQACAA=="))
     capture.fallback()

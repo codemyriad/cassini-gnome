@@ -32,6 +32,18 @@ class Tap:
         self.stopped = True
 
 
+def stream(capture, kind="microphone"):
+    """Deliver the fake device's PCM once its side has committed.
+
+    A tap's PCM before its side commits is readiness PCM and is discarded
+    (R79 §1), as a running device keeps delivering after it opened.
+    """
+    identifier, tap = capture.native_taps[kind]
+    track = next(t for t in capture.host.session.manifest["tracks"] if t["id"] == identifier)
+    tap.append(struct.pack("<hhhh", 100, 200, 300, 400), track["startOffsetMs"])
+    return track
+
+
 @pytest.fixture
 def server(tmp_path):
     Tap.instances = []
@@ -183,6 +195,7 @@ def test_independent_native_host_writers_copy_only_the_selected_microphone(serve
         second = start(two, "second", microphone=False)
         assert first["path"] != second["path"]
         assert len(Tap.instances) == 1 and Tap.instances[0].started
+        opened = stream(service.captures["first"])["startOffsetMs"]
         remote(one, "remote-one")
         remote(two, "remote-two")
         assert len([s for s in request(path=path)["statuses"] if s["recording"]]) == 2
@@ -207,7 +220,7 @@ def test_independent_native_host_writers_copy_only_the_selected_microphone(serve
         assert [t["kind"] for t in first["tracks"]] == ["microphone", "remote"]
         assert [t["kind"] for t in second["tracks"]] == ["remote"]
         assert first["tracks"][0]["labelSource"] == "device"
-        assert first["tracks"][0]["startOffsetMs"] == 100
+        assert first["tracks"][0]["startOffsetMs"] == opened and first["tracks"][0]["frames"] == 4
         assert second["tracks"][0]["frames"] == 8
         for folder in root.iterdir():
             metadata = json.loads((folder / "session.json").read_text())
@@ -313,7 +326,8 @@ def test_rejected_browser_start_uses_its_own_system_fallback_without_forcing_mic
             dict(atMs=0, type="selection", me=False, others=True, reason="start"),
         ]
         assert [t["kind"] for t in value["tracks"]] == ["system"]
-        assert value["tracks"][0]["startOffsetMs"] == 0
+        # The side's span starts when it opened, within the 3 s bound.
+        assert 0 <= value["tracks"][0]["startOffsetMs"] < 3000
         # The rejected fake browser never services a later Stop. Retire that
         # transport explicitly instead of racing its final status and waiting
         # for the production 25 s batch deadline. The native fallback survives.
@@ -607,6 +621,7 @@ def test_disconnected_fallback_is_saved_after_bounded_browser_return_grace(serve
     client = BrowserAudioProxy(path=path)
     start(client, "disconnected")
     capture = service.captures["disconnected"]
+    stream(capture)
     bind_capture(peer, capture)
     peer.close()
     wait_for(lambda: not service.browsers)
@@ -771,6 +786,7 @@ def test_initial_system_fallback_expires_when_control_left_before_first_policy(s
             identifier = request(path=path)["meetings"][0]["id"]
             snapshot = service.start_fallback(identifier, meeting())
             capture = service.captures[snapshot["captureId"]]
+            stream(capture, "system")
             peer.close()
             wait_for(lambda: not service.browsers)
         finally:

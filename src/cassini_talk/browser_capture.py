@@ -5,11 +5,11 @@ import contextlib
 import logging
 import threading
 import time
-from concurrent.futures import CancelledError
+from concurrent.futures import CancelledError, ThreadPoolExecutor
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from .capture_sources import BrowserStreams, change_time, selected_pcm
+from .capture_sources import BrowserStreams, canonical_order, change_time, selected_pcm
 from .recording_session import BrowserHost, ProtocolError, stop_reason
 from .session_events import source_state
 from .spectro_source import SpectroSource
@@ -18,6 +18,8 @@ RESUME_FEATURE = "resume-capture-v1"
 # D52.3c: a resume may join a system-sound stand-in (D49, seam callConnected) or
 # a system/lost fallback after its audio transport closed (D52.4, seam restored).
 RESUME_TARGETS = (("system", "missing"), ("system", "lost"))
+SIDES = {"microphone": "me", "system": "others"}
+LOG = logging.getLogger(__name__)
 
 
 class ResumeRefused(ProtocolError):
@@ -50,6 +52,9 @@ class BrowserCapture:
         self.call_tab = None
         self.microphone = None
         self.native_taps = {}
+        # Native sides requested at start that never opened (R79 §1). A
+        # fallback or restore does not reopen them; turning one off forgets it.
+        self.refused_sides = set()
         self.me, self.others = True, True
         self.browser_lost = False
         self.browser_lost_since = None
@@ -156,19 +161,21 @@ class BrowserCapture:
                     self.host.session, me=microphone, picture_enabled=lambda: self.spectrogram.active, native_me=True
                 )
                 self.streams.browser = not self.browser_lost
+                # The start selection records what was requested; a native
+                # side's track is added only when that side opens.
                 with self.host.session.change(
                     [
                         dict(atMs=0, type="othersSource", source=others_source, reason=reason),
                         dict(atMs=0, type="selection", me=microphone, others=True, reason="start"),
                     ]
                 ):
-                    mic = self._add_native("microphone") if microphone else None
-                    system = self._add_native("system", 0) if self.browser_lost else None
+                    pass
                 self._sync_spectrogram()
-            if mic is not None:
-                self._start_native("microphone", mic)
-            if system is not None:
-                self._start_native("system", system)
+            requested = [kind for kind, wanted in (("microphone", microphone), ("system", self.browser_lost)) if wanted]
+            refused = self._open_natives(requested)
+            if requested and len(refused) == len(requested) and self.browser_lost:
+                # Nothing records: today's start failure, folder included.
+                raise refused[requested[0]]
             if self.tap_factory is None:
                 from .output_mute import OutputMuteObserver
 
@@ -319,14 +326,57 @@ class BrowserCapture:
 
         return factory(kind, self.origin_ms, append, failed, level=level), state
 
-    def _start_native(self, kind, identifier, at=0):
+    def _open_natives(self, kinds):
+        """Open each requested native side on its own and in parallel (R79 §1).
+
+        A side opens when its tap admits a first buffer within its 3 s bound
+        (NativeTap.start), and commits at once. Returns the refused sides'
+        errors; a commit failure is not a refusal and propagates.
+        """
+        if not kinds:
+            return {}
+        with ThreadPoolExecutor(len(kinds), thread_name_prefix="cassini-native-open") as pool:
+            futures = {kind: pool.submit(self._open_native, kind) for kind in kinds}
+        refused = {kind: error for kind, future in futures.items() if (error := future.result()) is not None}
+        with self.lock:
+            self.refused_sides.update(refused)
+        for kind, error in refused.items():
+            LOG.warning("Native %s side (%s) did not open at start: %s", SIDES[kind], kind, error)
+        return refused
+
+    def _open_native(self, kind):
+        """Open-then-commit one side, as a turn-on does. Returns its refusal, if any."""
         if self.stop_requested.is_set():
-            return
-        tap, _state = self._make_native(kind, identifier, at, active=True)
-        self.native_taps[kind] = identifier, tap
-        if kind == "microphone":
-            self.microphone = tap
-        tap.start()
+            return None
+        identifier = kind + "-" + str(uuid4())
+        tap, state = self._make_native(kind, identifier)
+        try:
+            tap.start()
+        except Exception as error:
+            return error
+        committed = False
+        try:
+            with self.lock:
+                if self.finished or self.stop_requested.is_set():
+                    return None
+                if state["error"]:
+                    return OSError(state["error"])
+                at = change_time(self.host.session, self.elapsed_ms())
+                # One checkpoint holds the track with its start.
+                with self.host.session.change([]):
+                    self._add_native(kind, at, identifier=identifier)
+                    canonical_order(self.host.session.manifest["tracks"])
+                state.update(active=True, at=at)
+                self.native_taps[kind] = identifier, tap
+                if kind == "microphone":
+                    self.microphone = tap
+                self._sync_spectrogram()
+                committed = True
+            return None
+        finally:
+            if not committed:
+                with contextlib.suppress(Exception):
+                    tap.stop()
 
     def select(self, me, others):
         if type(me) is not bool or type(others) is not bool or not (me or others):
@@ -582,7 +632,12 @@ class BrowserCapture:
                 if (me, others, lost) == (self.me, self.others, self.browser_lost):
                     return self.snapshot()
                 desired = {kind for kind, enabled in (("microphone", me), ("system", others and lost)) if enabled}
-                kinds = desired - self.native_taps.keys()
+                kinds = desired - self.native_taps.keys() - self.refused_sides
+                if not (kinds or desired & self.native_taps.keys() or others and not lost):
+                    # Every side this change keeps was refused at start. Recording
+                    # nothing is never committed: the change asks for them again,
+                    # as a turn-on, and fails like one if they still refuse.
+                    kinds = desired - self.native_taps.keys()
                 needed = self.streams.additions(me, others, browser=not lost) + len(kinds)
                 if len(self.host.session.writers) + needed > 64:
                     raise ProtocolError("limit", "A session supports at most 64 sources")
@@ -633,6 +688,7 @@ class BrowserCapture:
                         state.update(active=True, at=at)
                         self.native_taps[kind] = identifier, tap
                     self.microphone = self.native_taps.get("microphone", (None, None))[1]
+                    self.refused_sides = (self.refused_sides & desired) - prepared.keys()
                     committed = True
                 if "system" in removed and self._mute_observer:
                     self._mute_observer.retire(removed["system"][0], at)

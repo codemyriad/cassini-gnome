@@ -293,7 +293,12 @@ with tempfile.TemporaryDirectory() as temporary:
     try:
         app.start_native(test=True)
         until(
-            lambda: app.recorder and app.recorder.pipeline is not None and window.live_meeting(),
+            lambda: (
+                app.recorder
+                and app.recorder.pipeline is not None
+                and not app.recorder.starting
+                and window.live_meeting()
+            ),
             "native capture in Library",
         )
         recorder = app.recorder
@@ -386,6 +391,7 @@ with tempfile.TemporaryDirectory() as temporary:
                 lambda: (
                     second is not recorder
                     and second.pipeline is not None
+                    and not second.starting
                     and any(m.directory == second.session.directory for m in window.snapshot.meetings)
                 ),
                 "second independent native recording appeared in Library",

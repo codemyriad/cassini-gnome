@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from broker_fixture import stop_broker
-from test_browser_capture import Tap
+from test_browser_capture import Tap, stream
 from test_browser_service import wait_for
 from test_browser_sessions import Extension
 from test_capture_record import declare, pcm
@@ -195,6 +195,7 @@ def test_stop_finishes_and_policy_resumes_under_a_stuck_writer(broker, monkeypat
     peer = Extension(path, (3,))
     try:
         capture = negotiated(client, service, "stuck-stop")
+        stream(capture)
         state = dict(recording=True, tabId=3, captureId="stuck-stop", path=str(capture.directory))
         send_packet(peer.stream, dict(type="status", recording=True, sessions=[state]))
         (browser,) = service.browsers.values()

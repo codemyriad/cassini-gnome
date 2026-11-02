@@ -27,6 +27,18 @@ def change_time(session, elapsed):
     )
 
 
+def canonical_order(tracks):
+    """Keep a start's microphone track before its system track, whichever opened first.
+
+    Transcription colours and speech ordering follow the manifest's track
+    order, which must not depend on which device answered first.
+    """
+    if tracks and tracks[-1]["kind"] == "microphone":
+        system = next((index for index, track in enumerate(tracks) if track["kind"] == "system"), None)
+        if system is not None:
+            tracks.insert(system, tracks.pop())
+
+
 def selected_pcm(data, offset, rate, channels, start):
     """Drop queued pre-selection frames without moving their original timestamps."""
     skip = max(0, math.ceil((start - offset) * rate / 1000))

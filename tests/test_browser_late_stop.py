@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from test_browser_attempt_reset import announce
-from test_browser_capture import server, start  # noqa: F401
+from test_browser_capture import server, start, stream  # noqa: F401
 from test_browser_service import no_command, service, wait_for  # noqa: F401
 from test_control_reconnect import peer
 
@@ -45,6 +45,7 @@ def test_batch_timeout_retires_a_late_start_and_its_status_or_audio(server, with
             if client is not None:
                 started = start(client, "late")
                 capture = broker.captures["late"]
+                stream(capture)
                 directory = started["path"]
             else:
                 directory = "/private/Recording-late"
