@@ -108,6 +108,25 @@ def test_capture_record_copies_refusals_even_without_capture_outcome():
     assert from_session(dict(tracks=[], refusals="bad"))["refusals"] == "bad"
 
 
+@pytest.mark.parametrize(
+    "stored",
+    [
+        None,
+        "not a list",
+        [{"atMs": 0, "side": "browser", "code": "startRejected", "detail": None, "message": None}],
+        [{"atMs": -1, "side": "a b", "code": "x", "message": "m" * 300}],
+        [{"atMs": 0, "side": "me", "code": "deviceUnavailable"}] * 17,
+    ],
+    ids=["null", "non-list", "null-fields", "bad-entry", "over-cap"],
+)
+def test_odd_capture_record_refusals_never_invalidate_meeting_json(stored):
+    """R81: captureRecord.refusals is documentation-only; readers filter it."""
+    from cassini_talk import library_schema
+
+    node = library_schema.SCHEMA["properties"]["recordingDetails"]["properties"]["captureRecord"]
+    assert library_schema.valid(dict(version=1, sources=[], refusals=stored), node)
+
+
 def test_captured_source_rows_stay_authoritative_next_to_refusals():
     from cassini_talk.source_report import sources
 

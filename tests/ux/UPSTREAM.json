@@ -1,6 +1,6 @@
 {
   "source": "drmeyers:~/dev/cassini-coordination/ux-draft",
-  "commit": "d4f767eb70be44b9496c798dbbbf15705b4cc2f1",
+  "commit": "3cb3ec29f5e4078985629665aa0f86462b3010d3",
   "paths": {
     "format-vectors.json": "tests/ux/format-vectors.json",
     "states-vectors.json": "tests/ux/states-vectors.json",
@@ -70,7 +70,7 @@
     "format-vectors.json": "8d9449e30b28b117c85f5396de6b0123b1f79cc9b53f6504157b1a0dfffcc791",
     "states-vectors.json": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
     "LIBRARY-RULES.md": "95a0e5068a08efa521f6eed73799b715ab50b2cf6aee374570b5337a6a3bdd2a",
-    "meeting.schema.json": "f668c7e2a4f5d2b99b04e4d2cadf339ba8011e474d6e225ad52f4d3a9a94ce16",
+    "meeting.schema.json": "b20f930cdd689c779a225939e2c35f2379c965d81454b54a80aa70478c7b679e",
     "library-vectors/verify.py": "2011c3a7fc8d6fd5c58a4f06b16e8397f081755f743725f2732e332e4d1767da",
     "library-vectors/README.md": "8e8cbbe91ab72bbf9f404a94ab3b83822f4e137cca8cbbb25afd493b78394b54",
     "library-vectors/cases.json": "80723c1274ac44d8b23d0a154daa7b6fc5e559a1fceb6491b8e52558c4a6ce2b",
