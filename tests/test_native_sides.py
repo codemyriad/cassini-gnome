@@ -457,6 +457,13 @@ def test_a_refused_microphone_tap_leaves_browser_audio_recording(tmp_path, caplo
         assert len(taps.of("microphone")) == 1 and set(capture.native_taps) == {"system"}
         assert native_pcm(capture, "system")["frames"] == 480
         assert not capture.finished and not capture.error
+        # The browser source returns: the restore goes back to it, still
+        # without reopening the refused microphone.
+        at = session.manifest["events"][-1]["atMs"]
+        capture.handle(pcm("remote", 480, sequence=1, offset=at + 100))
+        capture.restore()
+        assert not capture.browser_lost and not capture.native_taps
+        assert len(taps.of("microphone")) == 1 and capture.refused_sides == {"microphone"}
     finally:
         capture.stop()
     assert session.manifest["state"] == "completed"
