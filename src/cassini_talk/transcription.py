@@ -126,7 +126,13 @@ def track_presence(track):
     return ranges
 
 
-def prepare_tracks(meeting, *, diagnostics=None):
+def prepare_tracks(meeting, *, diagnostics=None, silent=None):
+    """One job per track with frames. `silent(track)` marks D56 silent tracks.
+
+    A silent track keeps its job, its speaker row and its place in the D11
+    layout, flagged `silent`; it is never recognised, rejoined or given an
+    overlap lane, so it cannot push a live span of its source onto a lane.
+    """
     # Identity/kind come only from the scanner's validated or recovered model.
     from uuid import NAMESPACE_URL, uuid5
 
@@ -162,6 +168,8 @@ def prepare_tracks(meeting, *, diagnostics=None):
                 ),
             )
         )
+        if silent is not None and silent(track):
+            tracks[-1]["silent"] = True
         if track.ownership_windows is not None:
             tracks[-1]["ownershipWindows"] = [list(window) for window in track.ownership_windows]
         # D52.2: the G10 fallback measures and windows only present or unknown time.
@@ -184,10 +192,11 @@ def prepare_tracks(meeting, *, diagnostics=None):
         speakers.setdefault(speaker, dict(id=speaker, name=name, provenance=provenance, colourIndex=index))
     from .source_spans import separate
 
-    separated, separation_diagnostics = separate(tracks)
+    audible = [track for track in tracks if not track.get("silent")]
+    separated, separation_diagnostics = separate(audible)
     if diagnostics is not None:
         diagnostics.extend(separation_diagnostics)
-    for original, track in zip(tracks, separated, strict=True):
+    for original, track in zip(audible, separated, strict=True):
         if track["speaker"] != original["speaker"]:
             speakers.setdefault(
                 track["speaker"],
@@ -199,7 +208,8 @@ def prepare_tracks(meeting, *, diagnostics=None):
             )
     for diagnostic in separation_diagnostics:
         LOG.warning("Transcription diagnostic: %s", diagnostic)
-    return separated, speakers
+    lanes = iter(separated)
+    return [track if track.get("silent") else next(lanes) for track in tracks], speakers
 
 
 def voice_group(identifier):
@@ -561,7 +571,9 @@ class TranscriptionQueue:
             ]
             speakers = {"track-original": dict(id="track-original", name=None, provenance="unnamed", colourIndex=0)}
         else:
-            tracks, speakers = prepare_tracks(meeting, diagnostics=source_diagnostics)
+            from .silent_tracks import silent
+
+            tracks, speakers = prepare_tracks(meeting, diagnostics=source_diagnostics, silent=silent)
         if not tracks:
             raise ValueError("Meeting has no complete audio frames")
         by_track = {track["id"]: track for track in tracks}
@@ -577,6 +589,7 @@ class TranscriptionQueue:
             recognition_fallback,
             separation_result,
             separation_unavailable,
+            silent_tracks,
             writing_details,
         )
 
@@ -789,6 +802,8 @@ class TranscriptionQueue:
             facts["recognitionFallback"] = fallback
         if offsets_assumed_zero(tracks):
             facts["offsetsAssumedZero"] = True
+        if left_out := silent_tracks(tracks):
+            facts["silentTracks"] = left_out
         with mutation(directory):
             self._check_open()
             # End facts or other metadata may have arrived while this job ran.
@@ -903,7 +918,11 @@ class TranscriptionQueue:
                 if not diarization:
                     return
                 options = dict(options, prepareMissing=True, diarization=diarization)
-            tracks, _speakers = prepare_tracks(meeting)
+            from .silent_tracks import silent
+
+            # D56: the same measurement as the writing-down, so the voice step
+            # leaves out exactly the tracks the file lists as silent.
+            tracks, _speakers = prepare_tracks(meeting, silent=silent)
             if meeting.origin == "received":
                 tracks = [
                     dict(

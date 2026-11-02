@@ -62,12 +62,27 @@ FALLBACK = dict(
 )
 
 
+def spoken_capture(root):
+    """capture() with 1.1 s and 1.2 s of sound, so neither track is D56 silent."""
+    from cassini_talk.recording_session import RecordingSession
+
+    session = RecordingSession(root, "Capture title")
+    session.add_track("mic", "Not a person", "microphone", 48000, 1)
+    session.add_track("others", "Raw receiver is not a speaker", "remote", 48000, 1)
+    for identifier, frames, offset in (("mic", 52800, 250), ("others", 57600, 500)):
+        for first in range(0, frames, 4800):
+            session.append(identifier, b"\x01\x00" * 4800, offset + first // 48)
+    session.checkpoint()
+    session.finish()
+    return session
+
+
 @pytest.mark.parametrize(("overlap", "unknown_offset"), [(False, False), (True, False), (False, True)])
 @pytest.mark.parametrize(("previous", "resumed"), [("none", False), ("running", True), ("failed", False)])
 def test_successful_job_records_this_attempt_wall_time_and_skip_reason(
     tmp_path, previous, resumed, overlap, unknown_offset
 ):
-    session = capture(tmp_path)
+    session = spoken_capture(tmp_path)
     session.manifest["tracks"][1]["kind"] = "system"
     if overlap:
         for track in session.manifest["tracks"]:
@@ -90,6 +105,7 @@ def test_successful_job_records_this_attempt_wall_time_and_skip_reason(
                 sourceSpansSeparated=True,
                 recognitionFallback=STALE_FALLBACK,
                 offsetsAssumedZero=True,
+                silentTracks=["old"],
                 futureWriting={"keep": True},
                 speakerSeparation=dict(
                     status="completed",
@@ -149,7 +165,7 @@ def test_successful_job_records_this_attempt_wall_time_and_skip_reason(
         assert metadata["transcript"]["status"] == "done"
         assert metadata["title"] == "Edited during writing" and metadata["notes"] == [dict(atMs=2, text="Keep")]
         details = metadata["recordingDetails"]
-        assert details["end"] == dict(reason="user", atMs=200 if overlap else 700) and details["futureDetail"] is True
+        assert details["end"] == dict(reason="user", atMs=1200 if overlap else 1700) and details["futureDetail"] is True
         assert details["writingDown"] == dict(
             wallDurationMs=4250,
             resumed=resumed,
@@ -162,7 +178,7 @@ def test_successful_job_records_this_attempt_wall_time_and_skip_reason(
             futureWriting={"keep": True},
             # This attempt's decisions replace, never merge with, an older attempt's.
             **({"sourceSpansSeparated": True, "recognitionFallback": FALLBACK} if overlap else {}),
-            # Replaced each attempt: an older attempt's flag never survives.
+            # Replaced each attempt: an older attempt's flag or silentTracks (D56) never survives.
             **({"offsetsAssumedZero": True} if unknown_offset else {}),
         )
         assert valid(metadata)

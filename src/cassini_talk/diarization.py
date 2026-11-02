@@ -192,7 +192,12 @@ def split_segments(segments, group_id, turns):
 
 
 def group_tracks(tracks, *, origin="own"):
-    """Input may carry the already validated D11 `speaker` from prepare_tracks."""
+    """Input may carry the already validated D11 `speaker` from prepare_tracks.
+
+    D56: a `silent` track still counts in the layout that decides eligibility,
+    so a silent participant never makes the microphone the only group. It joins
+    no group and no rejoin; a group whose every track is silent is absent.
+    """
     from .source_spans import bounds, separate
 
     groups, kinds = {}, {}
@@ -203,7 +208,9 @@ def group_tracks(tracks, *, origin="own"):
         fallback = "me" if kind in ("microphone", "local") else "others" if kind == "system" else "track-" + identity
         speaker = track.get("speaker", "track-original" if origin == "received" else fallback)
         planned.append(dict(track, speaker=speaker, kind=kind))
-    separated, diagnostics = separate(planned)
+        if track.get("silent") is True:
+            kinds.setdefault(speaker, set()).add(kind)
+    separated, diagnostics = separate([track for track in planned if track.get("silent") is not True])
     for diagnostic in diagnostics:
         LOG.warning("Diarization diagnostic: %s", diagnostic)
     for track in separated:
@@ -219,7 +226,7 @@ def group_tracks(tracks, *, origin="own"):
             origin == "received"
             or speaker == "others"
             or speaker == "me"
-            and len(groups) == 1
+            and len(kinds) == 1
             or bool(kinds[speaker] & {"tab", "media", "application"})
         )
     return list(groups.values())

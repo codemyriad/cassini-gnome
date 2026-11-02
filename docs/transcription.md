@@ -192,6 +192,28 @@ and system sources. Mixed/unknown browser streams stay unnamed. Progress rereads
 app-owned speaker metadata and preserves user/recognised names changed while the
 job was queued or running, including unknown speaker fields.
 
+## Silent tracks (D56)
+
+Before the speech child starts, the app counts each track's non-zero 32 ms
+frames, gocassini's literal rule, which Mac uses too. A frame is
+floor(rate × 32 / 1000) sample frames of one file at the rate it is stored, or
+48 kHz for compacted Opus (1536 at 48 kHz, 512 at 16 kHz). Frames are counted
+from each file's first sample without overlap, and a trailing partial frame does
+not count. A frame is non-zero when any sample on any channel is != 0, so
+constant DC counts as sound. A track entry (one session.json track, with its
+rotation files) with fewer than 32 non-zero frames is silent. Each span of a
+source is its own track entry and is judged on its own. The count stops at 32,
+so only a silent track is read to its end; a track that cannot be read is kept.
+
+A silent track is not recognised, gets no overlap lane, and is left out of the
+diarization mix and of the voice step. A group whose every track is silent is
+absent, but the track still counts in the layout that decides eligibility: a
+silent participant never makes the microphone the only group. The track stays in
+the published mixdown, its `captureOutcome` is unchanged and its speaker row is
+kept. `recordingDetails.writingDown.silentTracks` lists the session.json track
+ids, replaced with each attempt and omitted when empty. `offsetsAssumedZero`
+ignores silent tracks, because they are not placed.
+
 ## Bounded publication and reading work
 
 The first nonempty segment is published promptly. Later growing snapshots are
