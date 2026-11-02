@@ -96,6 +96,8 @@ class Sides:
         return any(kind in pending and not pending[kind]["ready"].is_set() for kind in self.fired)
 
     def wait(self, event, timeout):
+        if event.is_set():
+            return True  # Like a real wait: no time passes for an event already set.
         if self._inflight():
             return event.wait(5)  # Bound only: the recorder signals admission.
         scripted = {
