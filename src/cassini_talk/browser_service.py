@@ -375,6 +375,9 @@ class BrowserService:
         self.lock = threading.RLock()
         # Transport liveness only; lifecycle timers keep their own clock.
         self.clock = clock
+        # Command and batch deadlines (Start, Stop, reconnect grace). Waits
+        # still sleep in real time and recheck this clock when they wake.
+        self.deadline_clock = time.monotonic
         self.browsers = {}
         self._audio_transports = set()
         self.recordings = []
@@ -698,9 +701,9 @@ class BrowserService:
 
     def _resolve_call(self, identifier, *, wait=False, deadline=None, for_stop=False):
         deadline = (
-            min(deadline, time.monotonic() + CONTROL_RECONNECT_GRACE)
+            min(deadline, self.deadline_clock() + CONTROL_RECONNECT_GRACE)
             if deadline is not None
-            else time.monotonic() + CONTROL_RECONNECT_GRACE
+            else self.deadline_clock() + CONTROL_RECONNECT_GRACE
         )
         while True:
             with self.lock:
@@ -744,7 +747,7 @@ class BrowserService:
                 lineage = self._call_lineage.get((instance, tab))
                 if not for_stop and lineage is not None and lineage[0] != url:
                     raise ValueError("This meeting is no longer available")
-            if not wait or time.monotonic() >= deadline or self.closed.wait(0.02):
+            if not wait or self.deadline_clock() >= deadline or self.closed.wait(0.02):
                 raise ValueError("This browser is no longer connected")
 
     def _recover_command(self, browser, tab, action, pending, deadline):
@@ -752,8 +755,8 @@ class BrowserService:
             return None
         with self.lock:
             identifier = self._meeting_id(browser, tab)
-        deadline = min(deadline, time.monotonic() + CONTROL_RECONNECT_GRACE)
-        while not self.closed.is_set() and time.monotonic() < deadline:
+        deadline = min(deadline, self.deadline_clock() + CONTROL_RECONNECT_GRACE)
+        while not self.closed.is_set() and self.deadline_clock() < deadline:
             with self.lock:
                 if pending["action"] == "start" and (
                     pending.get("cancelled")
@@ -1553,11 +1556,11 @@ class BrowserService:
         from .session_events import END_REASONS
 
         deadline = (
-            min(deadline, time.monotonic() + self.command_timeout)
+            min(deadline, self.deadline_clock() + self.command_timeout)
             if deadline is not None
-            else time.monotonic() + self.command_timeout
+            else self.deadline_clock() + self.command_timeout
         )
-        if action == "start" and (time.monotonic() >= deadline or cancelled is not None and cancelled.is_set()):
+        if action == "start" and (self.deadline_clock() >= deadline or cancelled is not None and cancelled.is_set()):
             raise ValueError("Recording start was cancelled")
 
         if (
@@ -1632,7 +1635,7 @@ class BrowserService:
             tab = int(raw_tab)
             if action == "start" and (
                 self._stopping_all.is_set()
-                or time.monotonic() >= deadline
+                or self.deadline_clock() >= deadline
                 or cancelled is not None
                 and cancelled.is_set()
             ):
@@ -1742,7 +1745,7 @@ class BrowserService:
                 # user's Stop waiting after their audio is safely saved.
                 capture.stop(reason=reason)
                 return dict(self.snapshot(), stoppedPath=str(capture.directory))
-            if not joining["event"].wait(min(self.command_timeout, max(0, deadline - time.monotonic()))):
+            if not joining["event"].wait(min(self.command_timeout, max(0, deadline - self.deadline_clock()))):
                 raise TimeoutError("The browser did not finish the recording command")
             if not preserve_capture:
                 capture = self._command_capture(joining, capture, reason)
@@ -1787,7 +1790,7 @@ class BrowserService:
                 browser.send(packet)
             if capture is not None and capture.finished and action == "stop" and not preserve_capture:
                 return dict(self.snapshot(), stoppedPath=str(capture.directory))
-            if not pending["event"].wait(min(self.command_timeout, max(0, deadline - time.monotonic()))):
+            if not pending["event"].wait(min(self.command_timeout, max(0, deadline - self.deadline_clock()))):
                 raise TimeoutError("The browser did not finish the recording command")
             if action == "stop" and not preserve_capture:
                 capture = self._command_capture(pending, capture, reason)
@@ -1837,9 +1840,9 @@ class BrowserService:
         futures = [(identifier, executor.submit(job)) for identifier, job in jobs]
         remaining = {future for _identifier, future in futures}
         try:
-            while remaining and time.monotonic() < deadline and not (cancelled is not None and cancelled.is_set()):
+            while remaining and self.deadline_clock() < deadline and not (cancelled is not None and cancelled.is_set()):
                 _done, remaining = wait(
-                    remaining, timeout=min(0.05, max(0, deadline - time.monotonic())), return_when=FIRST_COMPLETED
+                    remaining, timeout=min(0.05, max(0, deadline - self.deadline_clock())), return_when=FIRST_COMPLETED
                 )
             if remaining and cancelled is not None:
                 if expired is not None and not cancelled.is_set():
@@ -1897,10 +1900,10 @@ class BrowserService:
                 and not self._generation_recording(tab, meeting, active=True)
             ]
             self._record_groups[token] = group
-        deadline = time.monotonic() + self.batch_timeout
+        deadline = self.deadline_clock() + self.batch_timeout
 
         def start_one(identifier, meeting):
-            if group.is_set() or self._stopping_all.is_set() or time.monotonic() >= deadline:
+            if group.is_set() or self._stopping_all.is_set() or self.deadline_clock() >= deadline:
                 raise ValueError("Recording start was cancelled")
             cleanup_sent = False
             try:
@@ -1908,7 +1911,7 @@ class BrowserService:
                     identifier, "start", microphone=microphone, user=True, deadline=deadline, cancelled=group
                 )
             except StartRejected as rejected:
-                if group.is_set() or self._stopping_all.is_set() or time.monotonic() >= deadline:
+                if group.is_set() or self._stopping_all.is_set() or self.deadline_clock() >= deadline:
                     raise ValueError("Recording start was cancelled") from None
                 if rejected.refusal.get("detail") == "busy":
                     # D58 #11: it may be this tab already recording; never record it twice.
@@ -1930,7 +1933,7 @@ class BrowserService:
                     self.command(identifier, "stop", user=True)
                 raise
             finally:
-                if not cleanup_sent and group.is_set() and time.monotonic() >= deadline:
+                if not cleanup_sent and group.is_set() and self.deadline_clock() >= deadline:
                     # The request can return while a late accepted Start is
                     # being retired. Never leave that unacknowledged capture on.
                     with contextlib.suppress(OSError, ValueError, TimeoutError):
@@ -1988,7 +1991,7 @@ class BrowserService:
                 browser is None
                 or self._stopping_all.is_set()
                 or (cancelled is not None and cancelled.is_set())
-                or (deadline is not None and time.monotonic() >= deadline)
+                or (deadline is not None and self.deadline_clock() >= deadline)
                 or (
                     automatic_generation is not None
                     and (
@@ -2052,7 +2055,7 @@ class BrowserService:
                 if browser.states.get(tab, {}).get("captureId") == capture_id:
                     browser.states[tab] = dict(recording=False, tabId=tab)
             raise
-        if cancelled is not None and cancelled.is_set() or deadline is not None and time.monotonic() >= deadline:
+        if cancelled is not None and cancelled.is_set() or deadline is not None and self.deadline_clock() >= deadline:
             capture.stop(reason="user")
             raise ValueError("Recording start was cancelled")
         return capture.snapshot()
@@ -2077,7 +2080,7 @@ class BrowserService:
 
         stop_token = str(uuid4())
         futures = []
-        deadline = time.monotonic() + self.batch_timeout
+        deadline = self.deadline_clock() + self.batch_timeout
         if directory is None:
             with self.lock:
                 self._stop_batches.add(stop_token)
