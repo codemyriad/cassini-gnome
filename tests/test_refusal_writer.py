@@ -204,10 +204,9 @@ def test_live_lines_show_each_side_that_records_nothing_now():
         ("me", "errors.micPermission.line"),
         ("others", "errors.deviceUnavailable.others"),
     ]
-    # A side that records now shows nothing.
-    assert [line["side"] for line in refusals.live_lines(stored, [("microphone", None), ("remote", False)])] == [
-        "others"
-    ]
+    # A side that records now shows nothing; browser audio records the others too (R82 1d).
+    assert refusals.live_lines(stored, [("microphone", None), ("remote", False)]) == []
+    assert [line["side"] for line in refusals.live_lines(stored, [("microphone", None)])] == ["others"]
     # A side turned off after its refusal shows nothing; a refused turn-on does.
     off = [dict(type="selection", atMs=7000, me=False, others=True, reason="user")]
     assert [line["side"] for line in refusals.live_lines(stored, system, off)] == ["browser"]

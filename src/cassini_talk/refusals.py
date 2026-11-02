@@ -130,7 +130,8 @@ def banner(refusals):
 
 LIVE_KINDS = {
     "me": ("microphone", "local"),
-    "others": ("system",),
+    # The others record from computer sound or from browser audio (R82 1d).
+    "others": ("system", "remote", "tab", "media", "application"),
     "browser": ("remote", "tab", "media", "application"),
 }
 
@@ -138,22 +139,31 @@ LIVE_KINDS = {
 def live_lines(stored, tracks, events=()):
     """Recording page lines (R79 §3): one per refused side that records nothing now.
 
-    `tracks` is (kind, ended) for each track. A side that opened later (a
-    successful turn-on, a restored browser source), or that the user turned
-    off after its refusal, shows no line. Each line is keyed on (side, code,
-    detail), never on stored text.
+    `tracks` is (kind, ended, startOffsetMs) for each track. A refusal is
+    covered (R82 1d) when a track of its side's kinds is live, or started at
+    or after the refusal: a side opened later (a turn-on, the callConnected
+    seam, a restored browser source) shows no line, and a later loss brings
+    back its own line (Why?) rather than the start refusal's caption. A side
+    the user turned off after its refusal shows none either. A refused resume
+    (resumeRefused) never drives a line: it shows only in Details. Each line
+    is keyed on (side, code, detail), never on stored text.
     """
     selections = [e for e in events if isinstance(e, dict) and e.get("type") == "selection"]
     last = selections[-1] if selections else {}
     latest = {}
     for item in read(stored):
-        if item["side"] in LIVE_KINDS:
+        if item["side"] in LIVE_KINDS and item.get("detail") != "resumeRefused":
             latest.pop(item["side"], None)
             latest[item["side"]] = item
-    live = {kind for kind, ended in tracks if ended is not True}
+    tracks = [(*track, None)[:3] for track in tracks]
+    live = {kind for kind, ended, _start in tracks if ended is not True}
     result = []
     for side, item in latest.items():
-        if live & set(LIVE_KINDS[side]):
+        kinds = set(LIVE_KINDS[side])
+        if any(
+            kind in kinds and (ended is not True or isinstance(start, (int, float)) and start >= item["atMs"])
+            for kind, ended, start in tracks
+        ):
             continue
         if last.get("me" if side == "me" else "others") is False and last.get("atMs", 0) > item["atMs"]:
             continue  # Turned off after it was refused.
