@@ -56,6 +56,10 @@ class BrowserCapture:
         # D52.5: each transition into a browser loss is a new loss, so a
         # resume is asked again once per loss and control connection.
         self.loss_serial = 0
+        # The loss whose restore the 64-track format cap refused. It stays on
+        # computer sound for that loss (SPEC-CONTROL: keep the computer source
+        # if a staged restoration fails), and policy stops asking each tick.
+        self.restore_refused = None
         # The recording tab's documentGeneration, and the last declaration
         # made while a status still confirmed it (see observe_document).
         self.document_generation = None
@@ -372,17 +376,24 @@ class BrowserCapture:
                 for track in self.streams.tracks.values()
             )
 
-    def observe_document(self, generation=None, *, navigating=False):
+    def observe_document(self, generation=None, *, navigating=False, present=False):
         """Retire a gone document's spans from the stale-PCM watchdog.
 
         T1, navigating: every current remote span belongs to the document
-        that is going away. The stored generation is cleared, so the next
-        document's generation is learned rather than compared.
+        that is going away. The old document keeps running until the next one
+        commits and can still declare spans (an obsolete frame's packets are
+        still forwarded), so a departing window opens: spans declared in it
+        are born dormant. It closes when the tab is present again, which the
+        extension publishes as soon as the next document's frame connects and
+        before that frame is told to start recording, or when a status names
+        a new documentGeneration. The stored generation is cleared, so the
+        next document's generation is learned rather than compared.
         T2, a new documentGeneration (a reload the app did not see as
         navigating): only spans declared up to the last status that still
         confirmed the old generation are retired. A new document's span can
         reach the broker before the status that names its generation, and it
-        must stay armed. Returns how many spans were retired.
+        must stay armed. sourceTrackId is opaque (SPEC.md), so a span's own
+        document is never inferred from it. Returns how many spans were retired.
         """
         with self.lock:
             if self.finished or self.streams is None:
@@ -390,8 +401,11 @@ class BrowserCapture:
             if navigating:
                 retired = self._retire_spans(None)
                 self.document_generation = None
+                self.streams.departing = True
                 return retired
             generation = generation_value(generation)
+            if present or generation is not None:
+                self.streams.departing = False
             if generation is None:
                 return 0
             retired = 0
@@ -499,7 +513,26 @@ class BrowserCapture:
             )
 
     def restore(self):
-        return self._apply_change(self.me, self.others, restore=True)
+        try:
+            return self._apply_change(self.me, self.others, restore=True)
+        except ProtocolError as error:
+            if error.code != "limit":
+                raise
+            with self.lock:
+                first = self.restore_refused != self.loss_serial
+                self.restore_refused = self.loss_serial
+            if first:
+                logging.getLogger(__name__).warning(
+                    "Keeping computer sound for recording %s; the browser source cannot be restored: %s",
+                    self.capture_id,
+                    error,
+                )
+            return self.snapshot()
+
+    @property
+    def restore_blocked(self):
+        """Whether this loss's restore already failed on the track limit."""
+        return self.restore_refused is not None and self.restore_refused == self.loss_serial
 
     def _change(self, me, others, *, fallback=None):
         return self._apply_change(me, others, fallback=fallback)

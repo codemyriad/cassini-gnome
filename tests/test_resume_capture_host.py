@@ -707,10 +707,56 @@ def test_end_to_end_a_watchdog_close_is_asked_once_and_resumed_on_the_same_folde
         assert folders(broker) == [capture.directory] and str(capture.directory) == reply["path"]
         assert capture.host.session.capture_record.seen["doc-1:source:1"]["failed"] is False
         (browser,) = service.browsers.values()
-        assert not browser.resumes and service._capture_lifecycles["F"].asked[1] == browser.id
+        assert not browser.resumes and service._capture_lifecycles["F"].asked_on == {browser.id}
         capture.stop()
     finally:
         if resumed is not None:
             resumed.close()
         native.close()
         control.close()
+
+
+def test_repeated_resumes_never_mark_a_live_source_failed(broker, caplog):
+    """Each loss and resume re-declares the page's roots under fresh span ids.
+    Retired spans hold no wire slot, so declarations keep being accepted. The
+    session's own 64-track format cap eventually refuses a restore: the call
+    then stays on computer sound for that loss, logged once, with no source
+    marked failed (SPEC-CONTROL: keep the computer source if a staged
+    restoration fails)."""
+    import logging
+
+    roots = [f"doc-1:source:{n}" for n in range(4)]
+    client, capture = started(broker)
+    ledger = capture.host.session.capture_record
+    restored_cycles, blocked_cycles = [], []
+    try:
+        with caplog.at_level(logging.WARNING, logger="cassini_talk.browser_capture"):
+            for cycle in range(20):
+                for n, root in enumerate(roots):
+                    span = f"c{cycle}-s{n}"
+                    assert client.handle(declare(span, root)) == ACK, (cycle, root)
+                    assert client.handle(pcm(span, 480, offset=now_ms(capture))) == ACK, (cycle, root)
+                if cycle:
+                    capture.restore()
+                    capture.restore()  # A repeated attempt in the same loss logs nothing more.
+                    (blocked_cycles if capture.browser_lost else restored_cycles).append(cycle)
+                    assert capture.restore_blocked is capture.browser_lost
+                assert not any(ledger.seen[root]["failed"] for root in roots), cycle
+                lose(broker, client, capture)
+                client = proxy(broker)
+                assert client.handle(resume(capture))["resumed"] is True
+        assert len(capture.host.session.writers) <= 64
+        assert restored_cycles == list(range(1, restored_cycles[-1] + 1)) and blocked_cycles
+        assert blocked_cycles == list(range(restored_cycles[-1] + 1, 20))
+        # Once refused, the recording never left that loss: later transport
+        # closes while on computer sound are not new losses.
+        assert capture.loss_serial == restored_cycles[-1] + 1
+        refused = [r for r in caplog.records if "cannot be restored" in r.getMessage()]
+        assert len(refused) == 1, "once per loss, never once per attempt"
+        saved = capture.stop()
+        assert saved["type"] == "stopped"
+        manifest = json.loads((capture.directory / "session.json").read_text())
+        outcomes = {s["sourceTrackId"]: s["captureOutcome"] for s in manifest["captureOutcome"]["sources"]}
+        assert all(outcomes[root] != "failed" for root in roots)
+    finally:
+        client.close()

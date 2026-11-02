@@ -748,7 +748,12 @@ def test_a_missed_navigation_is_caught_by_a_new_document_generation(broker):
 @pytest.mark.parametrize("order", ["navigating-status-first", "navigating-span-first", "missed-navigation-span-first"])
 def test_a_reloaded_documents_new_span_still_arms_the_watchdog(broker, order):
     """The new document's span may reach the broker before the status that
-    names its documentGeneration; it is that document's span, not the old one's."""
+    names its documentGeneration; it is that document's span, not the old one's.
+
+    The extension publishes present as soon as the next document's frame
+    connects, with no generation yet (background.js onConnect, documentFor),
+    and only then tells that frame to start: that is what a navigating-then-
+    span-first order looks like on the wire."""
     service, path, clock, lost = broker
     client = Settled(BrowserAudioProxy(path=path), service)
     peer = Extension(path, (3,))
@@ -764,6 +769,9 @@ def test_a_reloaded_documents_new_span_still_arms_the_watchdog(broker, order):
         if order == "navigating-status-first":
             report(peer, capture, "present", "doc-2")
             seen_document(capture, "doc-2")
+        elif order == "navigating-span-first":
+            report(peer, capture, "present")
+            wait_for(lambda: not capture.streams.departing)
         assert client.handle(declare("new-frame", "doc-2:source:1")) == ACK
         assert client.handle(pcm("new-frame", 480, offset=1000)) == ACK
         if order != "navigating-status-first":
@@ -811,6 +819,56 @@ def test_dormant_span_pcm_is_still_recorded_but_does_not_rearm(broker):
         assert not transport.shut_down.is_set()
         assert client.handle(declare("guest", "doc-2:source:1")) == ACK
         assert not capture.browser_lost and not lost.is_set()
+        capture.stop()
+    finally:
+        client.close()
+        peer.close()
+
+
+@pytest.mark.parametrize("reload", ["fast", "slow"])
+def test_a_span_the_departing_document_declares_after_navigating_is_retired(broker, reload):
+    """tabs.onUpdated loading publishes navigating while the old document still
+    runs: its obsolete frame's packets are still forwarded until the next one
+    commits, so it can declare one more span after T1. That span never gets
+    trackEnd either. Fast: the page returns before any fallback. Slow: the
+    late span arrives on fallback and the browser source is restored later."""
+    service, path, clock, lost = broker
+    client = Settled(BrowserAudioProxy(path=path), service)
+    peer = Extension(path, (3,))
+    try:
+        capture = negotiated(client, service, "departing-" + reload)
+        assert client.handle(declare("old-frame", "doc-1:source:1")) == ACK
+        assert client.handle(pcm("old-frame", 480)) == ACK
+        report(peer, capture, "present", "doc-1")
+        seen_document(capture, "doc-1")
+        report(peer, capture, "navigating", "doc-1")
+        wait_for(lambda: capture.streams.departing)
+        if reload == "slow":
+            capture.fallback()
+        assert client.handle(declare("old-late", "doc-1:source:2")) == ACK
+        assert client.handle(pcm("old-late", 480, offset=5)) == ACK
+        assert capture.streams.tracks["old-late"].dormant
+        report(peer, capture, "present")  # The next document's frame connected.
+        wait_for(lambda: not capture.streams.departing)
+        report(peer, capture, "present", "doc-2")
+        peer.inventory((3,))
+        seen_document(capture, "doc-2")
+        assert client.handle(declare("new-frame", "doc-2:source:1")) == ACK
+        assert client.handle(pcm("new-frame", 480, offset=1000)) == ACK
+        assert not capture.streams.tracks["new-frame"].dormant
+        if reload == "slow":
+            capture.restore()
+            assert not capture.browser_lost
+        # The guest leaves: the only live span ends, a healthy quiet.
+        assert client.handle(end("new-frame")) == ACK
+        assert not capture.remote_open()
+        clock.now = PCM_STALE_AFTER * 10
+        service.tick()
+        (transport,) = service._audio_transports
+        assert not transport.shut_down.is_set(), "the departed document's late span is not a running recorder"
+        assert client.handle(declare("guest-back", "doc-2:source:2")) == ACK
+        assert not capture.browser_lost
+        assert len(lost_events(capture)) == (1 if reload == "slow" else 0)
         capture.stop()
     finally:
         client.close()

@@ -70,12 +70,12 @@ def fresh_starts(sent):
     return [packet for _peer, packet in sent if packet.get("action") == "start" and "resumeCapture" not in packet]
 
 
-def recording(service, parent, browser):
-    """F records call-A in tab 3 under this peer, then its audio transport closes."""
+def recording(service, parent, browser, **meeting):
+    """F records call-A in tab 3 under this peer; the caller closes its transport."""
     capture = BrowserCapture(service._capture_changed, parent=parent, tap_factory=Tap)
     capture.start(dict(type="start", captureId="F", callGeneration="call-A", timelineOriginMs=int(time.time() * 1000)))
     service.captures["F"] = capture
-    service.update(browser, dict(type="meetings", meetings=[row()]))
+    service.update(browser, dict(type="meetings", meetings=[row(**meeting)]))
     service.update(browser, dict(type="status", recording=True, sessions=[session()]))
     assert capture.lifecycle_capable and capture.multistream_capable
     return capture
@@ -142,7 +142,7 @@ def test_no_ask_while_the_transport_is_alive_on_a_control_loss_fallback(policy):
             service.policy()
             run(tasks)
         assert not asks(sent)
-        assert service._capture_lifecycles["F"].asked is None, "the loss's only ask is still unspent"
+        assert not service._capture_lifecycles["F"].asked_on, "the loss's only ask is still unspent"
         # Now the transport closes too, within the same loss: that is the ask.
         capture.close()
         service.policy()
@@ -233,7 +233,7 @@ def test_dropped_policy_task_does_not_spend_the_ask(policy):
             service._capture_policy_pending.add("F")  # A lifecycle task is still running.
         released(service, browser)
         service.policy()
-        assert not tasks and service._capture_lifecycles["F"].asked is None
+        assert not tasks and not service._capture_lifecycles["F"].asked_on
         with service.lock:
             service._capture_policy_pending.discard("F")
         service.policy()
@@ -286,5 +286,103 @@ def test_a_retired_command_result_is_no_news_about_a_document(policy):
         )
         assert browser.states[3]["captureId"] == "F"
         assert not capture.streams.tracks["live"].dormant and capture.document_generation == "doc-2"
+    finally:
+        capture.stop()
+
+
+def test_a_restore_refused_by_the_track_limit_is_not_retried_every_tick(policy, caplog):
+    """The 64-track format cap counts every WAV of the session. A restore that
+    cannot fit stays on computer sound for this loss, logged once."""
+    from cassini_talk.browser_service import AudioTransport
+
+    service, tasks, sent, parent = policy
+    browser = peer(service)
+    capture = recording(service, parent, browser)
+    try:
+        session = capture.host.session
+        for index in range(64 - len(session.writers) - 1):
+            session.add_track(f"earlier-{index}", "Earlier span", "remote", 48000, 1)
+            session.end_track(f"earlier-{index}")
+        capture.close()  # The loss adds the system WAV: 64 tracks.
+        assert capture.browser_lost and len(session.writers) == 64
+        released(service, browser)
+        run(tasks)
+        assert len(asks(sent)) == 1
+        service._resume_attach(
+            dict(
+                type="resume",
+                version=1,
+                independent=True,
+                captureId="F",
+                timelineOriginMs=capture.origin_ms,
+                callGeneration="call-A",
+                features=["resume-capture-v1"],
+            ),
+            AudioTransport(None, service.clock),
+        )
+        capture.handle(dict(type="track", id="back", kind="remote", label="Guest", sampleRate=48000, channels=1))
+        capture.handle(dict(type="audio", id="back", sequence=0, offsetMs=capture.elapsed_ms(), pcm="AQACAA=="))
+        assert capture.browser_ready
+        with caplog.at_level(logging.WARNING, logger="cassini_talk.browser_capture"):
+            service.policy()
+            assert [arguments[-1] for _function, arguments in tasks] == ["restore"]
+            run(tasks)
+            assert capture.browser_lost and capture.restore_blocked
+            for _ in range(3):
+                service.update(browser, dict(type="meetings", meetings=[row()]))
+                service.policy()
+                assert not tasks, "no restore is queued again for this loss"
+        assert len([r for r in caplog.records if "cannot be restored" in r.getMessage()]) == 1
+    finally:
+        capture.stop()
+
+
+def test_a_late_result_for_another_tab_does_not_close_the_release_gate(policy):
+    """A retired command's result is merged with GNOME's own retained rows,
+    the lost recording's included. That is not the extension's inventory."""
+    service, tasks, sent, parent = policy
+    browser = peer(service)
+    capture = recording(service, parent, browser, heard=False)
+    try:
+        capture.close()
+        released(service, browser)
+        run(tasks)
+        assert not asks(sent) and not browser.reported, "not heard yet"
+        with service.lock:
+            browser.commands["late"] = dict(tabId=4, action="stop", serial=0)
+        service.update(
+            browser, dict(type="result", requestId="late", ok=True, status=dict(recording=False, sessions=[]))
+        )
+        assert browser.states[3]["captureId"] == "F" and not browser.reported
+        service.update(browser, dict(type="meetings", meetings=[row(heard=True)]))
+        run(tasks)
+        assert len(asks(sent)) == 1
+    finally:
+        capture.stop()
+
+
+def test_returning_to_an_earlier_open_connection_does_not_ask_it_again(policy):
+    """Asked on A, then on B (a newer connection of the same browser while A
+    is still open). When B goes away, policy falls back to A for the same
+    loss: A was already asked."""
+    service, tasks, sent, parent = policy
+    first = peer(service)
+    capture = recording(service, parent, first)
+    try:
+        capture.close()
+        released(service, first)
+        run(tasks)
+        assert [peer for peer, packet in sent if "resumeCapture" in packet] == [first]
+        second = peer(service)
+        service.update(second, dict(type="meetings", meetings=[row()]))
+        released(service, second)
+        run(tasks)
+        assert [peer for peer, packet in sent if "resumeCapture" in packet] == [first, second]
+        close(service, second)
+        for _ in range(3):
+            service.update(first, dict(type="meetings", meetings=[row()]))
+            service.policy()
+            run(tasks)
+        assert len(asks(sent)) == 2, "never twice per loss on one connection"
     finally:
         capture.stop()

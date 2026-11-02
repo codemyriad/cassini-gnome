@@ -552,7 +552,8 @@ class BrowserService:
                     if other_tab in browser.page_states:
                         state["pageState"] = browser.page_states[other_tab]
                     preserved.append(state)
-                self._status(browser, dict(status, sessions=[*preserved, target]))
+                # GNOME's own retained rows: not the extension's inventory.
+                self._status(browser, dict(status, sessions=[*preserved, target]), inventory=False)
         if pending is not None:
             pending["result"] = packet
             pending["event"].set()
@@ -1014,7 +1015,7 @@ class BrowserService:
         self.policy()
         return self.snapshot()
 
-    def _status(self, browser, value):
+    def _status(self, browser, value, *, inventory=True):
         if type(value.get("recording")) is not bool:
             return
         browser.status_seen = True
@@ -1076,12 +1077,17 @@ class BrowserService:
                     )
                     if key in item
                 }
-            # Every raw session counts, stale or retained rows included: the
-            # extension still holds that tab until its session is deleted.
-            browser.reported = {item["tabId"]: item.get("captureId") for item in items if item["recording"]}
+            # Every raw session counts, stale-generation rows included: the
+            # extension still holds that tab until its session is deleted. A
+            # synthesized inventory (a retired command's late result, merged
+            # with GNOME's retained rows) says nothing about that.
+            if inventory:
+                browser.reported = {item["tabId"]: item.get("captureId") for item in items if item["recording"]}
         else:
             tab = value.get("tabId")
-            if type(tab) is int and "independent-sessions-v1" in browser.capabilities:
+            if not inventory:
+                pass
+            elif type(tab) is int and "independent-sessions-v1" in browser.capabilities:
                 if value["recording"]:
                     browser.reported[tab] = value.get("captureId")
                 else:
@@ -1233,8 +1239,8 @@ class BrowserService:
         """T1 (navigating) and T2 (a new documentGeneration) for a recording's tab."""
         if page == "navigating":
             retired = owner.observe_document(navigating=True)
-        elif page != "closed" and document is not None:
-            retired = owner.observe_document(document)
+        elif page == "present" or page != "closed" and document is not None:
+            retired = owner.observe_document(document, present=page == "present")
         else:
             return
         if retired:
@@ -2200,7 +2206,7 @@ class BrowserService:
                         count,
                         fallback=capture.browser_lost,
                         others=capture.others,
-                        restore_ready=capture.browser_ready,
+                        restore_ready=capture.browser_ready and not capture.restore_blocked,
                         multistream=capture.multistream_capable,
                         # D52.5: another call's heard never arms this recording's
                         # restore or OTHERS_GONE grace; it latches only on rows

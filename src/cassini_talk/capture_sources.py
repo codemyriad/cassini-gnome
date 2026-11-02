@@ -66,6 +66,10 @@ class BrowserStreams:
         self.me, self.others, self.browser = me, others, True
         self.tracks = {}
         self.declared = 0
+        # Between navigating and the next document's frame connecting, only
+        # the departing document can still declare spans (see
+        # BrowserCapture.observe_document); they are born dormant.
+        self.departing = False
         self.selection_at = 0
         self.picture_enabled = picture_enabled
         self.picture = None
@@ -106,9 +110,24 @@ class BrowserStreams:
         self.session.checkpoint()
 
     def add_track(self, identifier, label, kind, rate, channels, *, source_track_id=None):
-        label = source_parameters(identifier, label, kind, rate, channels, self.tracks)
+        if identifier in self.tracks:
+            raise ProtocolError("source", "Invalid or duplicate audio source")
+        # Ended spans (trackEnd, refusal, or a closed transport's retirement)
+        # hold no wire slot: every resume re-declares the page's sources under
+        # fresh ids. Recorded spans stay bounded by the session's own 64-track
+        # format cap on its WAVs.
+        live = {key: track for key, track in self.tracks.items() if not track.ended}
+        label = source_parameters(identifier, label, kind, rate, channels, live)
         source_track_id = source_track_identity(source_track_id)
-        track = WireTrack(label, kind, rate, channels, source_track_id=source_track_id, available=self.browser)
+        track = WireTrack(
+            label,
+            kind,
+            rate,
+            channels,
+            source_track_id=source_track_id,
+            available=self.browser,
+            dormant=self.departing and kind not in ME_KINDS,
+        )
         if self.enabled(track):
             with self.session.change([]):
                 self._record(identifier, track)

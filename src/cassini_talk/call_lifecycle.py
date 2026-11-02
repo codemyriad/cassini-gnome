@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """D33 per-capture monotonic deadlines; browser facts never own device changes."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 CALL_END_GRACE = 2
 BROWSER_RETURN_GRACE = 120
@@ -32,9 +32,12 @@ class CallLifecycle:
     ended: float | None = None
     closed: float | None = None
     heard: bool = False
-    # (loss, connection) of the last resume ask. Never a timer: a refused or
-    # pending ask is repeated only for a new loss or a new control connection.
-    asked: tuple | None = None
+    # The loss being asked about, and every control connection already asked
+    # for it. Never a timer: a refused or pending ask is repeated only for a
+    # new loss or a connection not yet asked, even after returning to an
+    # earlier connection that is still open.
+    asked_loss: int | None = None
+    asked_on: set = field(default_factory=set)
 
     def decide(
         self,
@@ -109,17 +112,13 @@ class CallLifecycle:
             self.missing = self.ended = None
             if self.heard and fallback and others and restore_ready:
                 return "switch:browser:callConnected" if initial_missing else "restore"
-            if (
-                resume is not None
-                and resume.ready
-                and fallback
-                and others
-                and self.heard
-                and self.asked != (resume.loss, resume.connection)
-            ):
-                # D52.5: ask once per loss and control connection.
-                self.asked = (resume.loss, resume.connection)
-                return "askResume"
+            if resume is not None and resume.ready and fallback and others and self.heard:
+                if self.asked_loss != resume.loss:
+                    self.asked_loss, self.asked_on = resume.loss, set()
+                if resume.connection not in self.asked_on:
+                    # D52.5: ask once per loss and control connection.
+                    self.asked_on.add(resume.connection)
+                    return "askResume"
             return None
         if page != "present" or not control_alive or self.missing is not None:
             self.ended = None
