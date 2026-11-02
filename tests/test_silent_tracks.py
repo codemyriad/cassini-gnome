@@ -66,7 +66,7 @@ def test_frame_geometry_is_32_ms_at_the_track_rate(tmp_path):
     samples = marked(16000, 40, 32, at=0, size=512)
     assert not silent(track(tmp_path / "16k.wav", 16000, 1, samples))
     assert silent(track(tmp_path / "48k.wav", 48000, 1, samples))
-    # 44.1 kHz frames are floor(1411.2) = 1411 samples, as gocassini computes them: a sample at the
+    # 44.1 kHz frames are floor(1411.2) = 1411 samples (D56 geometry, rounded down): a sample at the
     # start of each of 32 such frames touches only 31 frames of 1412.
     assert frame_samples(44100) == 1411
     assert not silent(track(tmp_path / "44k.wav", 44100, 1, marked(44100, 40, 32, at=0, size=1411)))
@@ -485,8 +485,13 @@ def test_a_silent_track_is_not_placed_so_its_unknown_offset_is_not_assumed_zero(
     assert silent_tracks([quiet, heard]) == ["q"] and silent_tracks([heard]) == []
 
 
-def test_a_voice_job_measures_like_the_writing_down(tmp_path, monkeypatch):
-    """Historical voice preparation sends the same silent flags the writing-down recorded."""
+@pytest.mark.parametrize("listed", [["tab-a"], None])
+def test_a_voice_job_leaves_out_what_the_file_lists_and_never_measures(tmp_path, monkeypatch, listed):
+    """D47: meeting.json, not the audio, says which tracks are silent outside the writing-down.
+
+    The file lists tab-a, which has sound, and not r1 or tab-b, which are silent;
+    without the key, no track is silent.
+    """
     from test_voice_queue import Models
 
     from cassini_talk import voice_models
@@ -495,7 +500,12 @@ def test_a_voice_job_measures_like_the_writing_down(tmp_path, monkeypatch):
     from cassini_talk.voice_store import VoiceStore
 
     directory = meeting(tmp_path).directory
-    update_metadata(directory, transcript=dict(status="done", reference=REFERENCE))
+    writing = dict(wallDurationMs=1, resumed=False, speakerSeparation=dict(status="skipped", reason="notApplicable"))
+    if listed is not None:
+        writing["silentTracks"] = listed
+    update_metadata(
+        directory, transcript=dict(status="done", reference=REFERENCE), recordingDetails=dict(writingDown=writing)
+    )
     items = [dict(speaker="track-tab", text="Speech", startMs=0, endMs=900)]
     (directory / "transcript.json").write_text(json.dumps(dict(format="cassini.words.v1", language="en", items=items)))
     store = VoiceStore(tmp_path / "private")
@@ -535,4 +545,101 @@ def test_a_voice_job_measures_like_the_writing_down(tmp_path, monkeypatch):
         assert done.wait(30)
     finally:
         queue.close()
-    assert sent == [{"mic": False, "r1": True, "tab-a": False, "tab-b": True}]
+    assert sent == [{"mic": False, "r1": False, "tab-a": listed is not None, "tab-b": False}]
+
+
+class Gate(set):
+    """The queue's cancelled-meeting set; `added` fires when Trash registers a meeting."""
+
+    def __init__(self):
+        super().__init__()
+        self.added = threading.Event()
+
+    def add(self, value):
+        super().add(value)
+        self.added.set()
+
+
+@pytest.mark.parametrize("stop", ["trash", "quit"])
+def test_cancelling_stops_the_measurement_of_a_long_silent_track_mid_file(tmp_path, monkeypatch, stop):
+    """The fake reader parks on its first audio block until the job is cancelled, then lets it go on."""
+    import os
+
+    from cassini_talk import silent_tracks
+    from cassini_talk.meeting_store import read_metadata
+    from cassini_talk.transcription import TranscriptionQueue
+
+    session = RecordingSession(tmp_path, source="gnome")
+    session.add_track("quiet", "Remote", "remote", RATE, 1, source_track_id="quiet")
+    feed(session, "quiet", [0] * (120 * RATE), 0)  # 2 min of zeros: 15 blocks of 256 frames.
+    session.finish()
+    directory = session.directory.absolute()
+    reading, cancelled = threading.Event(), threading.Event()
+    reads = []
+
+    class Reader:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return self.stream.__exit__(*args)
+
+        def fileno(self):
+            return self.stream.fileno()
+
+        def read(self, size):
+            reads.append(size)
+            if len(reads) == 2:  # The header, then the first audio block.
+                reading.set()
+                assert cancelled.wait(30)
+            return self.stream.read(size)
+
+    fake_os = types.SimpleNamespace(fdopen=lambda fd, mode: Reader(os.fdopen(fd, mode)), fstat=os.fstat)
+    monkeypatch.setattr(silent_tracks, "os", fake_os)
+    recognised, finished = [], threading.Event()
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            recognised.append(tracks)
+            return dict(segments=0, diagnostics=[])
+
+    queue = TranscriptionQueue(
+        lambda _: None, lambda _directory: finished.set(), bundle=tmp_path, root=tmp_path, client_factory=Client
+    )
+    queue._cancelled_meetings = gate = Gate()
+    trashed = threading.Event()
+
+    def trash():
+        with queue.cancel_meeting(directory):
+            trashed.set()
+
+    try:
+        assert queue.enqueue(directory)
+        assert reading.wait(30)
+        if stop == "trash":
+            threading.Thread(target=trash, daemon=True).start()
+            assert gate.added.wait(30)
+        else:
+            queue.close()
+        cancelled.set()
+        assert finished.wait(30)
+        if stop == "trash":
+            assert trashed.wait(30)
+    finally:
+        cancelled.set()
+        queue.close()
+    # The job stopped at the next block: header and one block read of 16, nothing recognised or written.
+    assert len(reads) == 2 and not recognised
+    assert read_metadata(directory)["transcript"]["status"] != "done"

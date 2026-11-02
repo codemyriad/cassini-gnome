@@ -212,6 +212,14 @@ def prepare_tracks(meeting, *, diagnostics=None, silent=None):
     return [track if track.get("silent") else next(lanes) for track in tracks], speakers
 
 
+def recorded_silent_tracks(metadata):
+    """D56: the ids meeting.json lists in writingDown.silentTracks; absent means none."""
+    details = metadata.get("recordingDetails")
+    writing = details.get("writingDown") if isinstance(details, dict) else None
+    listed = writing.get("silentTracks") if isinstance(writing, dict) else None
+    return frozenset(i for i in listed if isinstance(i, str)) if isinstance(listed, list) else frozenset()
+
+
 def voice_group(identifier):
     """The D11 group of a D24 `<group>~n` voice id, or None for any other id."""
     group, separator, ordinal = identifier.rpartition("~")
@@ -573,7 +581,10 @@ class TranscriptionQueue:
         else:
             from .silent_tracks import silent
 
-            tracks, speakers = prepare_tracks(meeting, diagnostics=source_diagnostics, silent=silent)
+            # D56: only this attempt measures; it writes the list the voice step reads.
+            tracks, speakers = prepare_tracks(
+                meeting, diagnostics=source_diagnostics, silent=lambda track: silent(track, self._check_open)
+            )
         if not tracks:
             raise ValueError("Meeting has no complete audio frames")
         by_track = {track["id"]: track for track in tracks}
@@ -918,11 +929,10 @@ class TranscriptionQueue:
                 if not diarization:
                     return
                 options = dict(options, prepareMissing=True, diarization=diarization)
-            from .silent_tracks import silent
-
-            # D56: the same measurement as the writing-down, so the voice step
-            # leaves out exactly the tracks the file lists as silent.
-            tracks, _speakers = prepare_tracks(meeting, silent=silent)
+            # D56/D47: the voice step leaves out exactly the tracks the file
+            # lists as silent, whoever wrote it; it never measures again.
+            listed = recorded_silent_tracks(meeting.metadata or {})
+            tracks, _speakers = prepare_tracks(meeting, silent=lambda track: track.id in listed)
             if meeting.origin == "received":
                 tracks = [
                     dict(

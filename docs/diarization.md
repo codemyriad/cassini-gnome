@@ -54,7 +54,8 @@ is written and the transcript is kept:
 
 D56: tracks with fewer than 32 non-zero 32 ms frames (see `docs/transcription.md`,
 Silent tracks) are left out of every group's rejoin, in diarization and in the
-voice step. Eligibility is still decided on every track, so a silent remote never
+voice step; a voice job outside the writing-down takes them from meeting.json.
+Eligibility is still decided on every track, so a silent remote never
 makes the microphone the only group. A group of only silent tracks is absent;
 when no eligible group is left, `speakerSeparation` is `skipped`,
 `notApplicable`.
