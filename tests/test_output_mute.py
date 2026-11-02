@@ -327,7 +327,7 @@ def test_delayed_device_query_does_not_block_pcm_or_error_handling(tmp_path, mon
     if kind == "native":
         capture = NativeRecorder()
         capture._stop_requested = False
-        capture.session, capture.pipeline = session, SimpleNamespace(get_base_time=lambda: 0)
+        capture.session, capture.pipeline = session, SimpleNamespace(get_base_time=lambda: 0, get_clock=lambda: None)
         capture._start_us = GLib.get_monotonic_time()
         capture._track_ids = {"system": "system"}
         capture._branches = {"system": object()}

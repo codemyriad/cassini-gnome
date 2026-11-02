@@ -11,8 +11,8 @@ from uuid import UUID
 import pytest
 
 from cassini_talk import recording_session
-from cassini_talk.native_timing import NativeTimeline
-from cassini_talk.recording_session import ProtocolError, RecordingSession, WAVWriter
+from cassini_talk.native_timing import NS, NativeTimeline
+from cassini_talk.recording_session import MAX_CHUNK, ProtocolError, RecordingSession, WAVWriter, chunk_plan
 
 FIXTURE = Path(__file__).parents[1] / "browser-protocol/conformance/native-session-gap"
 
@@ -31,10 +31,30 @@ def recorder_class():
     return NativeRecorder, Gst
 
 
-def feed(recorder, identifier, data, pts):
+class Sink:
+    """One appsink: a branch keeps its identity across buffers."""
+
+    def __init__(self):
+        self.sample = None
+
+    def emit(self, _action):
+        return self.sample
+
+
+def feed(recorder, identifier, data, pts, sink=None):
     buffer = SimpleNamespace(pts=pts, get_size=lambda: len(data), extract_dup=lambda _start, _length: data)
-    sample = SimpleNamespace(get_buffer=lambda: buffer)
-    return recorder._sample(SimpleNamespace(emit=lambda _action: sample), identifier)
+    sink = sink or Sink()
+    sink.sample = SimpleNamespace(get_buffer=lambda: buffer)
+    return recorder._sample(sink, identifier)
+
+
+def scheduled_problems(monkeypatch, recorder):
+    """Run no GTK callback; return the problems a sample handed to _begin_finish."""
+    from cassini_talk import native_recorder
+
+    scheduled = []
+    monkeypatch.setattr(native_recorder.GLib, "idle_add", lambda function, *args: scheduled.append((function, args)))
+    return lambda: [args[0] for function, args in scheduled if function == recorder._begin_finish]
 
 
 @pytest.mark.parametrize("offset", [-2060, 4000])
@@ -314,3 +334,114 @@ def test_late_spectrogram_subscription_keeps_the_original_sample_grid(tmp_path):
     finally:
         session.finish()
         recorder.close()
+
+
+# GstAudioBaseSrc's first-buffer skew resync wrapped by 2^32 segments of 10 ms.
+WRAPPED_NS = 2**32 * 480 * NS // 48000
+
+
+def test_wrapped_first_input_stamp_is_reanchored_instead_of_ending_the_recording(tmp_path, monkeypatch, caplog):
+    """CI desktop-mic-149/159: the monitor's first stamp lay ~497 days ahead; Record ended at 80 ms."""
+    NativeRecorder, Gst = recorder_class()
+    session = RecordingSession(tmp_path)
+    session.add_track("microphone", "Me", "microphone", 48000, 1)
+    session.add_track("system", "The others", "system", 48000, 1)
+    session.manifest["tracks"][-1]["startOffsetMs"] = 0
+    recorder = NativeRecorder()
+    recorder.session = session
+    problems = scheduled_problems(monkeypatch, recorder)
+    base, now = 5 * NS, [80_000_000]
+    clock = SimpleNamespace(get_time=lambda: base + now[0])
+    recorder.pipeline = SimpleNamespace(get_base_time=lambda: base, get_clock=lambda: clock)
+    mic, system = Sink(), Sink()
+    pcm = (1000).to_bytes(2, "little", signed=True) * 480
+    try:
+        with caplog.at_level("WARNING", logger="cassini_talk.native_recorder"):
+            results = [
+                feed(recorder, "microphone", pcm, 70_000_000, mic),
+                feed(recorder, "system", pcm, WRAPPED_NS + 60_000_000, system),
+            ]
+            now[0] = 90_000_000
+            results += [
+                feed(recorder, "system", pcm, WRAPPED_NS + 70_000_000, system),
+                feed(recorder, "microphone", pcm, 80_000_000, mic),
+            ]
+        assert problems() == []
+        assert results == [Gst.FlowReturn.OK] * 4
+        assert "Native system input stamp" in caplog.text
+        me, others = session.manifest["tracks"]
+        assert me["startOffsetMs"] == 70 and me["frames"] == 960 and not me["gaps"]
+        # Re-anchored at running time minus the buffer; the second stamp stays contiguous.
+        assert others["frames"] == 3360 + 960
+        assert others["gaps"] == [dict(atMs=0, durationMs=70, frames=3360, kind="prefix")]
+    finally:
+        recorder.pipeline = None
+        session.finish()
+        recorder.close()
+
+
+def test_native_buffer_beyond_the_wire_chunk_limit_is_split_not_rejected(tmp_path, monkeypatch):
+    NativeRecorder, Gst = recorder_class()
+    session = RecordingSession(tmp_path)
+    session.add_track("microphone", "Me", "microphone", 48000, 1)
+    recorder = NativeRecorder()
+    recorder.session = session
+    problems = scheduled_problems(monkeypatch, recorder)
+    pcm = bytes(range(250)) * (3 * MAX_CHUNK // 500)
+    try:
+        result = feed(recorder, "microphone", pcm, 0)
+        assert problems() == [] and result == Gst.FlowReturn.OK
+        session.finish()
+        (track,) = session.manifest["tracks"]
+        assert track["frames"] == len(pcm) // 2 and not track["gaps"]
+        with wave.open(str(session.directory / track["file"])) as audio:
+            assert audio.readframes(audio.getnframes()) == pcm
+    finally:
+        session.finish()
+        recorder.close()
+
+
+def test_native_chunk_failure_names_its_source_and_condition(tmp_path, monkeypatch, caplog):
+    NativeRecorder, Gst = recorder_class()
+    session = RecordingSession(tmp_path)
+    session.add_track("system", "The others", "system", 48000, 1)
+    recorder = NativeRecorder()
+    recorder.session = session
+    problems = scheduled_problems(monkeypatch, recorder)
+    try:
+        with caplog.at_level("WARNING", logger="cassini_talk.native_recorder"):
+            result = feed(recorder, "system", bytes(960), WRAPPED_NS)
+        assert result == Gst.FlowReturn.ERROR
+        assert problems() == ["Audio timestamp 42949672960.0 ms is outside 0..86400000"]
+        assert "Native system capture failed" in caplog.text
+    finally:
+        session.finish()
+        recorder.close()
+
+
+@pytest.mark.parametrize(
+    ("data", "offset", "message"),
+    [
+        (b"\0\0", "0", "Audio timestamp is not a number"),
+        (b"\0\0", float("nan"), "Audio timestamp nan ms is outside 0..86400000"),
+        (b"\0\0", -1, "Audio timestamp -1 ms is outside 0..86400000"),
+        (b"\0\0", 10**400, "Audio timestamp beyond 1e18 ms is outside 0..86400000"),
+        (b"", 0, "Empty audio chunk"),
+        (bytes(MAX_CHUNK + 2), 0, "Audio chunk of 262146 bytes exceeds 262144"),
+    ],
+    ids=["type", "nan", "negative", "huge", "empty", "oversized"],
+)
+def test_chunk_errors_name_the_failing_condition(data, offset, message):
+    with pytest.raises(ProtocolError) as error:
+        chunk_plan(48000, 1, 0, None, data, offset)
+    assert (error.value.code, str(error.value)) == ("chunk", message)
+
+
+def test_append_names_an_unknown_or_finished_source(tmp_path):
+    session = RecordingSession(tmp_path)
+    session.add_track("microphone", "Me", "microphone", 48000, 1)
+    with pytest.raises(ProtocolError, match="^Audio chunk for an unknown source$"):
+        session.append("system", b"\0\0", 0)
+    session.finish()
+    with pytest.raises(ProtocolError, match="^Audio arrived after the recording finished$"):
+        session.append("microphone", b"\0\0", 0)

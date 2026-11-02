@@ -2,6 +2,7 @@
 """Separate native PCM tracks on one GStreamer clock, checkpointed off GTK."""
 
 import contextlib
+import logging
 import threading
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
@@ -17,6 +18,9 @@ from .recording_session import RecordingSession
 from .spectro_source import SpectroSource
 
 RATE = 48000
+# A source's input stamps can never lead the pipeline clock; see _input_pts.
+FUTURE_PTS_SLACK_NS = 10 * NS
+LOG = logging.getLogger(__name__)
 
 
 class NativeRecorder(GObject.Object):
@@ -52,6 +56,7 @@ class NativeRecorder(GObject.Object):
         self._pending_sources = {}
         self._retired_branches = set()
         self._timelines = {}
+        self._pts_shifts = {}
         self._ac_meters = {}
         self.spectrogram = SpectroSource()
         self._spectro_starts = {}
@@ -84,6 +89,7 @@ class NativeRecorder(GObject.Object):
         self._pending_sources = {}
         self._retired_branches = set()
         self._timelines = {}
+        self._pts_shifts = {}
         self._ac_meters = {}
         self.spectrogram = SpectroSource()
         self._spectro_starts = {}
@@ -334,15 +340,42 @@ class NativeRecorder(GObject.Object):
             self.stop()
         return False
 
+    def _input_pts(self, sink, identifier, pts, frames):
+        """Input stamp in pipeline running time, kept on one per-branch timeline.
+
+        GstAudioBaseSrc's skew slaving resyncs the first buffer with unsigned
+        segment arithmetic. When the device has already written past the
+        running-time segment, the difference wraps and every later stamp of
+        that source lands 2^32 segments (about 497 days at 10 ms) in the
+        future. Re-anchor such a branch once at the current running time and
+        keep the constant shift, so consecutive stamps still detect real gaps.
+        """
+        pipeline = self.pipeline
+        clock = pipeline.get_clock() if pipeline is not None else None
+        if clock is None:
+            return pts
+        shift = self._pts_shifts.get(sink)
+        if shift is not None:
+            return pts - shift
+        now = clock.get_time() - pipeline.get_base_time()
+        shift = 0
+        if pts > now + FUTURE_PTS_SLACK_NS:
+            shift = pts - max(0, now - frames * NS // RATE)
+            LOG.warning("Native %s input stamp %d ns is ahead of running time %d ns; re-anchored", identifier, pts, now)
+        self._pts_shifts[sink] = shift
+        return pts - shift
+
     def _sample(self, sink, identifier):
         sample = sink.emit("pull-sample")
         if sample is None:
             return Gst.FlowReturn.EOS
         buffer = sample.get_buffer()
+        pts = buffer.pts
         try:
-            if buffer.pts == Gst.CLOCK_TIME_NONE:
+            if pts == Gst.CLOCK_TIME_NONE:
                 raise ValueError("Audio source has no clock timestamp")
             data = buffer.extract_dup(0, buffer.get_size())
+            pts = self._input_pts(sink, identifier, pts, len(data) // 2)
             picture = None
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
@@ -358,12 +391,10 @@ class NativeRecorder(GObject.Object):
                         self.levels[0 if identifier == "microphone" else 1] = meter.level
                         GLib.idle_add(self.emit, "changed")
                     original_frames = len(data) // (channels * 2)
-                    data, offset = selected_pcm(
-                        data, buffer.pts / Gst.MSECOND, rate, channels, self._boundaries[identifier]
-                    )
+                    data, offset = selected_pcm(data, pts / Gst.MSECOND, rate, channels, self._boundaries[identifier])
                     if data:
                         frames = len(data) // (channels * 2)
-                        host_ns = buffer.pts + (original_frames - frames) * NS // rate
+                        host_ns = pts + (original_frames - frames) * NS // rate
                         timeline = self._timelines.setdefault(stored, NativeTimeline(rate))
                         offset, gap = timeline.map(host_ns, frames, offset)
                         absolute = self.pipeline.get_base_time() + host_ns if self.pipeline is not None else None
@@ -393,6 +424,7 @@ class NativeRecorder(GObject.Object):
             else:
                 self.spectrogram.release_if_idle()
         except Exception as error:
+            LOG.warning("Native %s capture failed at input stamp %s ns: %s", identifier, pts, error)
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
                 if attempt is not None:
