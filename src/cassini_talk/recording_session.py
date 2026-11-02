@@ -22,6 +22,8 @@ from uuid import uuid4
 from .i18n import gettext as _
 
 MAX_MESSAGE = 512 * 1024
+# One browser-wire PCM chunk; native buffers are split to it, never rejected.
+MAX_CHUNK = 256 * 1024
 # D52.2: absence ranges kept per track before one overflow marker.
 GAP_BUDGET = 1000
 # Readers of session.json and meeting.json (captureRecord): 64 tracks with a
@@ -97,14 +99,16 @@ def source_parameters(identifier, label, kind, rate, channels, identifiers):
 
 def chunk_plan(rate, channels, frames, start, data, offset):
     """Validate wire geometry even when the selected side is not being saved."""
-    if (
-        type(offset) not in (int, float)
-        or not 0 <= offset <= 86400000
-        or not math.isfinite(offset)
-        or not data
-        or len(data) > 262144
-    ):
-        raise ProtocolError("chunk", "Invalid audio chunk or timestamp")
+    if type(offset) not in (int, float):
+        raise ProtocolError("chunk", "Audio timestamp is not a number")
+    if not 0 <= offset <= 86400000 or not math.isfinite(offset):
+        # A JSON integer can have hundreds of digits; never print it whole.
+        shown = offset if type(offset) is float or abs(offset) < 10**18 else "beyond 1e18"
+        raise ProtocolError("chunk", f"Audio timestamp {shown} ms is outside 0..86400000")
+    if not data:
+        raise ProtocolError("chunk", "Empty audio chunk")
+    if len(data) > MAX_CHUNK:
+        raise ProtocolError("chunk", f"Audio chunk of {len(data)} bytes exceeds {MAX_CHUNK}")
     if len(data) % (channels * 2):
         raise ProtocolError("chunk", "Incomplete PCM frame")
     start = offset if start is None else start
@@ -535,8 +539,10 @@ class RecordingSession:
             entry.update(durationMs=self._ms(written * 1000 / rate), frames=written)
 
     def append(self, identifier, data, offset):
-        if self.finished or not isinstance(identifier, str) or identifier not in self.writers:
-            raise ProtocolError("chunk", "Invalid audio chunk or timestamp")
+        if self.finished:
+            raise ProtocolError("chunk", "Audio arrived after the recording finished")
+        if not isinstance(identifier, str) or identifier not in self.writers:
+            raise ProtocolError("chunk", "Audio chunk for an unknown source")
         writer = self.writers[identifier]
         track = next(t for t in self.manifest["tracks"] if t["id"] == identifier)
         if track.get("ended"):
@@ -587,7 +593,10 @@ class RecordingSession:
             raise ProtocolError("chunk", "Invalid native input gap")
         # Validate before changing the WAV. Explicit native gaps can be longer
         # than the browser wire's bounded timestamp padding allowance.
-        chunk_plan(writer.rate, writer.channels, writer.frames + gap_frames, track.get("startOffsetMs"), data, offset)
+        first, step = data[:MAX_CHUNK], writer.channels * 2
+        chunk_plan(writer.rate, writer.channels, writer.frames + gap_frames, track.get("startOffsetMs"), first, offset)
+        if len(data) % step:
+            raise ProtocolError("chunk", "Incomplete PCM frame")
         if gap_frames and track.get("startOffsetMs") is None:
             raise ProtocolError("chunk", "A native gap needs a first-buffer anchor")
         try:
@@ -624,7 +633,9 @@ class RecordingSession:
                 clock.add(index, host_ns)
                 if hasattr(writer, "observe_clock"):
                     writer.observe_clock(host_ns)
-            self.append(identifier, data, offset)
+            # A device buffer may exceed the browser wire's chunk limit.
+            for at in range(0, len(data), MAX_CHUNK):
+                self.append(identifier, data[at : at + MAX_CHUNK], offset + at // step * 1000 / writer.rate)
         except Exception as error:
             self._native_io_error = str(error)
             track["frames"] = writer.frames
