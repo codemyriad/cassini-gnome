@@ -147,7 +147,24 @@ def test_metadata_validator_agrees_with_the_actual_schema_for_common_invalid_doc
         "title": ["", 4],
         "transcript": [dict(status="done", reference="bad"), dict(status="done", reference=[])],
         "quoteOverride": [dict(atMs=0, text="")],
-        "speakers": [[dict(id="a", name=None, provenance="user", colourIndex=0)]],
+        "speakers": [
+            [dict(id="a", name=None, provenance="user", colourIndex=0)],
+            [dict(id="a", name=None, provenance="unnamed", colourIndex=0, voiceSource=dict(inputSHA256="0" * 64))],
+            [
+                dict(
+                    id="a",
+                    name=None,
+                    provenance="unnamed",
+                    colourIndex=0,
+                    voiceSource=dict(inputSHA256="0" * 64, turnsSHA256="f" * 64),
+                )
+            ],
+        ],
+        "recordingDetails": [
+            dict(writingDown=dict(wallDurationMs=1, resumed=False, speakerSeparation=separation, silentTracks=tracks))
+            for separation in (dict(status="skipped", reason="lowDisk"), dict(status="skipped", reason="lowMemory"))
+            for tracks in (["mic"], ["mic", "mic"])
+        ],
     }.items():
         for value in values:
             variant = copy.deepcopy(baseline)

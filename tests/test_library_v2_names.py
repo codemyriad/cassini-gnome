@@ -27,7 +27,6 @@ def test_vendored_library_v2_fixtures_match_their_pinned_upstream_bytes():
     for name in pinned:
         data = (ROOT / upstream["paths"][name]).read_bytes()
         assert hashlib.sha256(data).hexdigest() == upstream["sha256"][name], name
-        assert upstream["additionalSources"][name]["commit"].startswith("1bed4bc")
 
 
 def test_the_untitled_fallback_is_the_catalog_string():

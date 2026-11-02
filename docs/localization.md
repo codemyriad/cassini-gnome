@@ -22,12 +22,13 @@ places and `many` at whole millions. Search independently pluralizes its places
 and meeting counts. No runtime Babel/ICU dependency is needed.
 
 Shared copy lives in `src/cassini_talk/strings.json`; do not edit translations
-there by hand. While DrMeyers is unavailable the coordinator's authorized source
+there by hand. It is the published coordination `ux-draft/strings.json`, copied
+byte for byte at the commit pinned in `tests/ux/UPSTREAM.json` together with its
+hash. If DrMeyers is unavailable again, the coordinator's authorized fallback
 is `/mnt/ai/cassini/i18n/`: copy its `strings.json`, run its `merge.py` on the copy,
-then append the exact entries in `pending/d52-strings.json` and
-`pending/d50-strings.json`. Preserve every entry and do not invent missing copy.
-`tests/ux/UPSTREAM.json` records every input hash and the resulting catalog hash.
-Re-sync the same published bytes from coordination when DrMeyers returns.
+then append the exact pending entries. Preserve every entry, do not invent missing
+copy, record every input hash under `additionalSources` and re-sync the published
+bytes when DrMeyers returns.
 
 GNOME-only messages, GtkBuilder text and desktop/AppStream descriptions live in
 `po/{en,it,fr,es,pt_BR,pt_PT}.po`. Follow [the shared glossary](i18n-glossary.md).

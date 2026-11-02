@@ -439,6 +439,7 @@ def _separation(value):
             "notApplicable",
             "tooShort",
             "processingFailed",
+            "lowDisk",
         )
     }
     if status in ("skipped", "failed"):
