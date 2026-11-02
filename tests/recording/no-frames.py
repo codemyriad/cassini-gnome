@@ -98,6 +98,9 @@ try:
         lambda: (
             app.recorder
             and app.recorder.session
+            # The silent microphone is refused at its 3 s bound while the
+            # system side already records: wait for the start to finish.
+            and not app.recorder.starting
             and "system" in app.recorder.session.writers
             and app.recorder.session.writers["system"].frames >= 24000
         ),

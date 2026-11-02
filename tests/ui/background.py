@@ -153,6 +153,8 @@ with tempfile.TemporaryDirectory() as temporary:
             app.recorder
             and app.recorder.session
             and app.recorder.pipeline
+            and not app.recorder.starting  # Each side opens on its own (R79 §1).
+            and len(app.recorder.session.manifest["tracks"]) == 2
             and all(t["frames"] >= 9600 for t in app.recorder.session.manifest["tracks"])
         )
     )
@@ -214,6 +216,8 @@ with tempfile.TemporaryDirectory() as temporary:
             app.recorder
             and app.recorder.session
             and app.recorder.pipeline
+            and not app.recorder.starting  # Each side opens on its own (R79 §1).
+            and len(app.recorder.session.manifest["tracks"]) == 2
             and all(t["frames"] >= 9600 for t in app.recorder.session.manifest["tracks"])
         )
     )
