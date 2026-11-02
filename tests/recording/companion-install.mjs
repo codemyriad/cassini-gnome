@@ -49,11 +49,23 @@ function call(action='state',values={}) {
   app.stdin.write(JSON.stringify({action,...values})+'\n');
  });
 }
-async function poll(check,label,timeout=20000) {
+// Wait for an observable state; the timeout is only a bound.
+async function until(check,timeout) {
  const end=Date.now()+timeout;
  while(Date.now()<end) {const result=await check(); if(result)return result; await new Promise(r=>setTimeout(r,100));}
+ return null;
+}
+async function poll(check,label,timeout=20000) {
+ const result=await until(check,timeout);
+ if(result)return result;
  throw new Error('Timed out: '+label);
 }
+const key=name=>execFileSync('xdotool',['key','--clearmodifiers',name]);
+const focusedName=()=>{try {return execFileSync('xdotool',['getwindowfocus','getwindowname'],{encoding:'utf8'}).trim();} catch {return null;}};
+const windowVisible=title=>{
+ try {execFileSync('xdotool',['search','--onlyvisible','--name','^'+title.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'$'],{stdio:'ignore'});return true;}
+ catch {return false;}
+};
 async function launchBrowser() {
  for (const property of ['IsEnabled','ScreenReaderEnabled']) execFileSync('gdbus',['call','--session','--dest','org.a11y.Bus','--object-path','/org/a11y/bus','--method','org.freedesktop.DBus.Properties.Set','org.a11y.Status',property,'<true>']);
  context = await chromium.launchPersistentContext(profile,{headless:false,ignoreDefaultArgs:['--disable-extensions'],
@@ -120,32 +132,79 @@ try {
  await toggle.click();
  const load=manager.locator('extensions-toolbar').locator('#loadUnpacked');
  await load.waitFor({state:'visible'});
- const click=load.click();
- const picker=await poll(()=>{
-  const title=execFileSync('xdotool',['getwindowfocus','getwindowname'],{encoding:'utf8'}).trim();
-  return /select|directory|folder/i.test(title) ? title : null;
- },'native extension directory picker');
- evidence.stages.push({picker});
- await call('copy');
- await poll(async()=>{
-  const value=await call('clipboard');evidence.clipboardFolder=value;
-  return value.local && value.value===state.folder;
- },'the app owns the folder clipboard');
- execFileSync('xdotool',['key','--clearmodifiers','ctrl+l']);
- execFileSync('xdotool',['key','--clearmodifiers','ctrl+v']);
- // Chromium's GTK3 picker does not export through its browser AT-SPI tree.
- // Invoke the real Open button's native keyboard mnemonic on both GTK paths;
- // loading the pinned ID and then the same-folder update proves acceptance.
- assert.equal(execFileSync('xdotool',['getwindowfocus','getwindowname'],{encoding:'utf8'}).trim(),picker);
- const selection={folder:state.folder,openAction:'Alt+O',accepted:false};
- evidence.stages.push(selection);
- execFileSync('xdotool',['key','--clearmodifiers','alt+o']);
- await click;
- const loaded=await poll(async()=>{
-  const values=await manager.locator('extensions-item').evaluateAll(items=>items.map(item=>({id:item.id,name:item.data?.name,version:item.data?.version})));
-  return values.some(item=>item.id===id) ? values : null;
- },'Load unpacked installs the copied folder');
- selection.accepted=true;
+ const listed=()=>manager.locator('extensions-item').evaluateAll(items=>items.map(item=>({id:item.id,name:item.data?.name,version:item.data?.version})));
+ const loadError=()=>page.evaluate(()=>{
+  const dialog=document.querySelector('extensions-manager')?.shadowRoot?.querySelector('extensions-load-error');
+  return dialog ? (dialog.shadowRoot?.textContent||'').replace(/\s+/g,' ').trim().slice(0,400) : null;
+ }).catch(error=>'unreadable: '+error.message);
+ // One native selection through Load unpacked. Every observation is kept in
+ // evidence.stages so a failed attempt says where the picker went wrong.
+ async function selectFolder(attempt) {
+  const selection={attempt,folder:state.folder,openAction:'Alt+O',accepted:false};
+  evidence.stages.push(selection);
+  const click=load.click();
+  selection.picker=await poll(()=>{
+   const title=focusedName();
+   return /select|directory|folder/i.test(title) ? title : null;
+  },'native extension directory picker');
+  await call('copy');
+  selection.clipboard=await poll(async()=>{
+   const value=await call('clipboard');evidence.clipboardFolder=value;
+   return value.local && value.value===state.folder ? value : null;
+  },'the app owns the folder clipboard');
+  // Chromium's GTK3 picker does not export through its browser AT-SPI tree,
+  // and the paste is an asynchronous X selection transfer from the app, so
+  // Open may be handled before the folder arrives (an empty entry closes the
+  // picker with nothing loaded). Observe the location entry instead: select
+  // all of its text and read PRIMARY, which the picker then owns. Ctrl+L
+  // toggles the entry away when it already has focus (GTK keeps the location
+  // mode for the next picker), so a second Ctrl+L restores it.
+  selection.paste=[];
+  for(const toggle of [1,2]) {
+   const started=Date.now(), seen=[];
+   key('ctrl+l');
+   key('ctrl+v');
+   const landed=await until(async()=>{
+    key('ctrl+a');
+    const value=(await call('primary')).value;
+    if(seen.at(-1)!==value) seen.push(value);
+    return typeof value==='string' && value.replace(/\/$/,'')===state.folder ? value : null;
+   },5000);
+   selection.paste.push({toggle,landed:landed!==null,ms:Date.now()-started,primary:seen.slice(-4)});
+   if(landed) break;
+  }
+  if(!selection.paste.at(-1).landed) {
+   key('Escape');
+   selection.cancelled=!!await until(()=>!windowVisible(selection.picker),10000);
+   await click;
+   return null;
+  }
+  assert.equal(focusedName(),selection.picker);
+  // Invoke the real Open button's native keyboard mnemonic on both GTK paths;
+  // loading the pinned ID and then the same-folder update proves acceptance.
+  key('alt+o');
+  await click;
+  selection.focusAfterOpen=focusedName();
+  selection.pickerClosed=!!await until(()=>!windowVisible(selection.picker),10000);
+  selection.focusAfterClose=focusedName();
+  const loaded=selection.pickerClosed ? await until(async()=>{
+   const values=await listed();
+   return values.some(item=>item.id===id) ? values : null;
+  },15000) : null;
+  selection.accepted=loaded!==null;
+  if(!loaded) {
+   selection.extensions=await listed();
+   selection.loadError=await loadError();
+   if(!selection.pickerClosed) {
+    key('Escape');
+    selection.cancelled=!!await until(()=>!windowVisible(selection.picker),10000);
+   }
+  }
+  return loaded;
+ }
+ // At most one retry of the whole native selection, recorded above.
+ const loaded=await selectFolder(1) || await selectFolder(2);
+ if(!loaded) throw new Error('Timed out: Load unpacked installs the copied folder (2 native picker attempts, see stages)');
  assert.equal(loaded.find(item=>item.id===id).version,installed.version);
  evidence.stages.push({loaded});
  await poll(async()=>(await call()).connected,'real companion handshake');
