@@ -72,3 +72,13 @@ counter stops that source's skew resyncs for the rest of the recording, so its
 stamps are sample counts rather than clock observations: no `clockAnchors` are
 saved for it, and the app logs the shift, the path and the lost drift slaving.
 The desktop CI job copies those lines into its job summary.
+
+D57/R77: the re-anchored track also says so in session.json, as
+`clockSlaving: {state: "lost", path: "exactWrap" | "runningTime", shiftNs}`
+(the integer shift in ns). It is written under the capture lock before that
+track's next PCM, so the following checkpoint and Stop keep it; a healthy track
+never has it. Library publication copies it with the track's other absence
+facts into x["codemyriad.io"].tracks, next to the span map whose missing
+`clockAnchors` it explains. It is diagnostic only: no UI shows it, and readers
+that do not know it ignore it. Browser captureRecord does not copy it, because
+only native GNOME capture re-anchors and those sessions have no captureRecord.

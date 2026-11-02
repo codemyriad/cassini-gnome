@@ -414,6 +414,11 @@ def start_with_a_wrapped_system_stamp(tmp_path, monkeypatch, source, system_pts,
         # Only a drift-slaved source's stamps are clock observations.
         assert me["clockAnchors"] == [[0, 5 * NS + 70_000_000 - NS], [480, 5 * NS + 80_000_000 - NS]]
         assert "clockAnchors" not in others
+        # D57/R77: only the re-anchored track says why, and the checkpoint keeps it.
+        assert "clockSlaving" not in me
+        saved = json.loads((session.directory / "session.json").read_text())
+        assert saved["tracks"][1].get("clockSlaving") == others.get("clockSlaving")
+        assert "clockSlaving" not in saved["tracks"][0]
         return others
     finally:
         recorder.pipeline = None
@@ -430,23 +435,36 @@ def test_wrapped_first_input_stamp_keeps_its_exact_gstreamer_anchor(tmp_path, mo
     assert others["frames"] == 2880 + 960
     assert others["gaps"] == [dict(atMs=0, durationMs=60, frames=2880, kind="prefix")]
     assert f"removed the exact 2^32-segment wrap, shift {WRAPPED_NS} ns" in caplog.text
+    assert others["clockSlaving"] == dict(state="lost", path="exactWrap", shiftNs=WRAPPED_NS)
     assert "Native system input has no GStreamer drift slaving" in caplog.text
 
 
+def test_clock_slaving_is_accepted_by_the_pinned_session_schema(tmp_path, monkeypatch):
+    jsonschema = pytest.importorskip("jsonschema")
+    others = start_with_a_wrapped_system_stamp(
+        tmp_path, monkeypatch, pulse_source(10000, 48000), WRAPPED_NS + 60_000_000
+    )
+    (path,) = (tmp_path / "Library").rglob("session.json")
+    saved = json.loads(path.read_text())
+    assert saved["tracks"][1]["clockSlaving"] == others["clockSlaving"]
+    schema = json.loads((FIXTURE.parents[1] / "schemas/session.schema.json").read_text())
+    jsonschema.Draft202012Validator(schema, format_checker=jsonschema.FormatChecker()).validate(saved)
+
+
 @pytest.mark.parametrize(
-    ("source", "system_pts", "prefix"),
+    ("source", "system_pts", "prefix", "anchor"),
     [
         # Without pulsesrc facts, the 10 ms buffer itself is the latency.
-        (None, WRAPPED_NS + 60_000_000, 3360),
+        (None, WRAPPED_NS + 60_000_000, 3360, 70_000_000),
         # 1024 samples at 48 kHz: 2^32 segments are not whole nanoseconds; 21.333 ms latency.
-        ((21333, 48000), 2**32 * 1024 * NS // 48000 + 60_000_000, 2816),
+        ((21333, 48000), 2**32 * 1024 * NS // 48000 + 60_000_000, 2816, 58_667_000),
         # Far ahead, but not by 2^32 segments; the reported 20 ms latency, not the 10 ms buffer.
-        ((20000, 48000), 3600 * NS, 2880),
+        ((20000, 48000), 3600 * NS, 2880, 60_000_000),
     ],
     ids=["no-pulsesrc", "fractional-segment", "not-a-wrap"],
 )
 def test_unexplained_future_first_stamp_starts_one_source_latency_before_running_time(
-    tmp_path, monkeypatch, caplog, source, system_pts, prefix
+    tmp_path, monkeypatch, caplog, source, system_pts, prefix, anchor
 ):
     source = pulse_source(*source) if source else None
     with caplog.at_level("WARNING", logger="cassini_talk.native_recorder"):
@@ -454,6 +472,7 @@ def test_unexplained_future_first_stamp_starts_one_source_latency_before_running
     # The second buffer stays contiguous with the re-anchored first one.
     assert others["frames"] == prefix + 960
     assert [(gap["kind"], gap["frames"]) for gap in others["gaps"]] == [("prefix", prefix)]
+    assert others["clockSlaving"] == dict(state="lost", path="runningTime", shiftNs=system_pts - anchor)
     assert "re-anchored at running time" in caplog.text
     assert "Native system input has no GStreamer drift slaving" in caplog.text
 
