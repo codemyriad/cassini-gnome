@@ -1,24 +1,14 @@
-tree 0b28ddf23c4a7a69be197ef99fef03fd4459adc4
-parent d789cf30a6611de7020893502f3be927e4f8e51d
-author Silvio Tomatis <silviot@gmail.com> 1793645061 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793645187 +0100
+tree cfd626a034cd48204b51ced131eafeb8938079df
+parent b619007537b5c1bd37d75ba810d406533fc8913a
+author Silvio Tomatis <silviot@gmail.com> 1793646681 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793646681 +0100
 
-Carry the control requestId on native resume packets (extension 0.2.11)
+Resume requestId: unique across connections, a closed connection records nothing, pin 0.2.11 over 0.2.10
 
-A refused native resume had no ask identity, so a desktop host with
-overlapping asks could not tell which ask it answers. The extension now
-copies the control command's requestId verbatim onto type:"resume"
-packets only; ordinary Start is unchanged. Hosts that do not use the
-field ignore it (the resume schema stays additionalProperties:true).
-
-- background.js: thread command.requestId to start(); set it only in
-  the resume branch.
-- request.schema.json: optional resume requestId, control domain.
-- SPEC.md / RESUME-CAPTURE.md: document the field and the host rule
-  (key a refused resume to its ask; a refusal without one records
-  nothing on its own).
-- Tests: VM test for string/integer ids and no id on ordinary Start;
-  schema valid/invalid cases.
-- manifest 0.2.10 -> 0.2.11.
+Review follow-ups: the audio pipe names no connection, so a host keying on the
+requestId keeps ids unique across its control connections while asks are
+pending. An ask whose connection closed unanswered records nothing. A present
+requestId outside the domain refuses the resume. Installers never replace an
+equal 0.2.10, so pin that 0.2.11 is newer.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

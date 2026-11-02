@@ -1,6 +1,6 @@
 # Browser call lifetime (D33)
 
-Shared protocol pin: `b619007537b5c1bd37d75ba810d406533fc8913a` (resume packets carry the ask's `requestId`, on top of protocol PR #36, the D58 refusal vector follow-ups, #35's classified refusals and result codes, #34's D57 resume host clarifications and the D52.5 PR #32).
+Shared protocol pin: `5d95ac7aae2874a194a1415008c9a4f3e3eae2a0` (protocol PR #37: resume packets carry the ask's `requestId`, on top of protocol PR #36, the D58 refusal vector follow-ups, #35's classified refusals and result codes, #34's D57 resume host clarifications and the D52.5 PR #32).
 Companion 0.2.11 replaces older local installs; no Chrome Web Store packaging or upload is performed.
 
 The broker owns every independent capture and its Library folder. With the

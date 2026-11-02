@@ -519,6 +519,8 @@ interleavings and the shared seam fixture. Existing ordinary Start is unchanged.
 Since extension 0.2.11 the resume packet also carries the control command's
 requestId as `requestId` (same domain as the control requestId), so a host can
 tell which ask a refused resume answers. Hosts that do not use it ignore it.
+A host that keys on it keeps requestIds unique across all its control
+connections while those asks are pending: the audio pipe names no connection.
 
 
 ### Source retirement during an active capture (extension0.2.8)
