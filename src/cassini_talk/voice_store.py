@@ -388,12 +388,17 @@ class VoiceStore:
                 self._publish(people)
         return self.snapshot()
 
-    def meeting(self, directory):
+    def meeting(self, directory, *, raw=False):
+        """The meeting's private cache. An item whose voiceSource differs from
+        the same id in meeting.json was made on another voice and is absent
+        (G12), so no sample or print of it is shown. `raw` is for rewriters."""
         key = _key(directory)
+        stamps = None if raw else _library_stamps(directory)
         with self._locked():
             people = self._people()
             result = self._meeting(key, people["generation"])
             self._publish(people)
+            _drop_stale(result, stamps)
             return result
 
     def preparation(self, directory):

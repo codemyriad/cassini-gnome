@@ -562,6 +562,26 @@ def test_recompute_never_moves_a_confirmed_person_onto_another_voice(root, tmp_p
 
 
 @pytest.mark.parametrize("reset", [False, True])
+def test_stale_cache_item_gives_no_sample_clip(root, tmp_path, reset):
+    """The voice board and Saved voices page read meeting(): no clip of another voice."""
+    from cassini_talk.voice_store import sample_window
+
+    store = VoiceStore(tmp_path / "private")
+    store.refresh()
+    old, new = stamp(X, TURNS_A), stamp(Y, TURNS_B)
+    directory = stamped_meeting(root, old)
+    mira_print = dict(embedding=embedding(0), seconds=8, windows=[dict(startMs=1000, endMs=1800)])
+    store.commit_job(directory, {"others~2": mira_print}, 0, voice_sources={"others~2": old})
+    assert store.remember(directory, "others~2", "Mira")
+    mira = store.snapshot()["voices"][0]["id"]
+    if reset:
+        restamp(directory, "others~2", new)
+    assert ("others~2" in store.meeting(directory)["speakers"]) is not reset
+    assert sample_window(store.meeting(directory), mira) == (None if reset else (1000, 1800))
+    assert store.meeting(directory, raw=True)["speakers"]["others~2"]["voiceSource"] == old
+
+
+@pytest.mark.parametrize("reset", [False, True])
 def test_stale_cache_item_is_absent_for_remember_and_preparation(root, tmp_path, reset):
     """Run 1 cached Mira's print on others~2, run 2 reset others~2 in meeting.json."""
     store = VoiceStore(tmp_path / "private")
