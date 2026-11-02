@@ -1,15 +1,26 @@
 tree 85f61a473d2586ad6dd123acefcf41b14808c1b0
-parent 604c957d7356bc31db2906b9916ad8316e468082
-author Silvio Tomatis <silviot@gmail.com> 1793606627 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793606627 +0100
+parent 941a82cb9aa9acf70e1c9ed3c698caa222a218fc
+parent c2e66666d045f9b13b263d2813f1366d16fa4521
+author Silvio Tomatis <silviot@gmail.com> 1793607898 +0100
+committer GitHub <noreply@github.com> 1793607898 +0100
+gpgsig -----BEGIN PGP SIGNATURE-----
+ 
+ wsFcBAABCAAQBQJq6EjaCRC1aQ7uu5UhlAAAVPwQAJLo6DfxoCt14YXm2N6J9BHZ
+ 2dfihOB27OhfHGjbGpKVBAD+dyElFnYLlxzIvZrOchz2hJ0VzCk++eHgjOsyXKJa
+ 1J/OuDf5+cctQMORR8sekDvY/U48MjiCCG1qACQZnNigtWY6N6hVri74jetQHrvN
+ SM9VBmNoTdge5gOMAkYizWBt2zxXh4LViak+SmKeoNuEK5zYjW8cZSj+0aHFmSFu
+ fomtXt5IV62iaRML4+4Srj89O8S2zGBQv7gl+X3mHaMv6oidVe0O25ZlaFcGL1UN
+ t5ibxkcyRQr1pUhCavFZ6PUG5GZ/CFMIBKxl42JxU/ehTVjwxWD0Ds3/tBLe2p/K
+ uesgrZt3MbSTM2qQVU8jcM/UZbSLD3onJWzClc0PI750bsouKcJeFfSSq+Lgh+S9
+ POctcvKDvg4PJSXAVNiwt1mG9z0Cp3ic7x90c3rdPJ3KAhV74an02HjtrE3vbA8R
+ FpJyj1rOHrmPPZpc0IPY0rfwqFJw6rsGKlprguCZIWXZSdWXQJE+kc1VFbwdeXv2
+ tNGVFNsLNvJL0JwHV8t4yXr3eBfPwZpzQBoZyIAV4rFw4yEHG9bueuQHGYFUIYCY
+ o1sNdwpPC+v0iNxQk5bZNCdny2bSdncCdqAF9K0NG2uQ4RuBbegC7Zf9De+p2Uky
+ 2EPYn935R6eYc4hiiA+z
+ =FZvT
+ -----END PGP SIGNATURE-----
+ 
 
-Pin that retirement stops at the last confirmation
+Merge pull request #34 from codemyriad/feat/resume-host-clarifications
 
-A mutant retiring one span past the last confirmation (declared[:confirmed + 1])
-passed every vector: the reload case's first new span only gets PCM after
-navigating has already cleared it. The new case is a missed reload whose new
-document declares and sends PCM before its generation is reported; that span
-is live and must stay armed (close at 47000). test_stale_watchdog asserts the
-off-by-one mutant fails it.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Resume host clarifications from GNOME G7 part C (D57)
