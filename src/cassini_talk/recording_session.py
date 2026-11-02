@@ -745,6 +745,8 @@ class RecordingSession:
                 try:
                     metadata = read_metadata(self.directory)
                 except (OSError, ValueError):
+                    if (self.directory / "meeting.json").exists():
+                        return False  # Unreadable: it may hold typed content. Mac keeps it too.
                     metadata = {}
                 notes = metadata.get("notes")
                 typed = bool(notes) or metadata.get("titleSource") == "user" and bool(metadata.get("title"))
@@ -757,18 +759,23 @@ class RecordingSession:
                         writer.close()
                 for path in entries:
                     path.unlink(missing_ok=True)
-        except (OSError, ValueError):
-            if not self.finished:
-                return False
-        try:
-            self.directory.rmdir()
+                # Still under the metadata lock: a title or notes save queued on it
+                # finds no folder and fails visibly, never leaving an orphan.
+                self.directory.rmdir()
             descriptor = os.open(self.directory.parent, os.O_RDONLY | os.O_DIRECTORY)
             try:
                 os.fsync(descriptor)
             finally:
                 os.close(descriptor)
-        except OSError:
-            pass  # An emptied folder left behind has no session.json: nothing reads it.
+        except (OSError, ValueError):
+            if not self.finished:
+                return False
+            if self.directory.exists():
+                # Emptied but not removed: finish it as a session again rather than
+                # report a removal that did not happen.
+                self.finished = False
+                self.checkpoint()
+                return False
         self.release_lease()
         return True
 
