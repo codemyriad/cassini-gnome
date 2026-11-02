@@ -803,7 +803,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             box.append(InlineLine("errors.othersFallback.line", info=True))
             if browser["caption"]:
                 box.append(label(text(browser["caption"]), "caption", "dim-label", wrap=True, xalign=0))
-        elif fallback:
+        elif fallback and not any(item["side"] == "others" for item in refused):
+            # A refused computer-sound side has its own line; never claim it records.
             from .what_is_recorded import explain_fallback
 
             box.append(

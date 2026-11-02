@@ -157,6 +157,8 @@ def live_lines(stored, tracks, events=()):
         elif side == "others":
             key = "errors.deviceUnavailable.others"
         else:
+            if "system" not in live:
+                continue  # Not recorded from computer sound either: its own line says so.
             key = "errors.othersFallback.line"
         result.append(dict(side=side, id=key, caption=CAPTIONS.get(item.get("detail")) if side == "browser" else None))
     return result

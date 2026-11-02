@@ -318,6 +318,25 @@ with tempfile.TemporaryDirectory() as temporary:
     app.stop_native()
     until(lambda: refused.pipeline is None and not refused.stopping)
 
+    # Computer sound refused: never the line that says it records the others.
+    with patch.object(
+        NativeRecorder, "_branch", lambda recorder, kind: Refusing() if kind == "system" else branch(recorder, kind)
+    ):
+        app.start_native(test=True)
+        no_system = app.recorder
+        until(
+            lambda: (
+                not no_system.starting
+                and window.recording_page is not None
+                and window.recording_page.meeting.directory == no_system.session.directory
+            )
+        )
+    page = window.recording_page
+    until(lambda: text("errors.deviceUnavailable.others") in texts(page.lines))
+    assert text("errors.othersFallback.line") not in texts(page.lines)
+    app.stop_native()
+    until(lambda: no_system.pipeline is None and not no_system.stopping)
+
     library = Path(os.environ["CASSINI_LIBRARY_DIR"])
     before = set(library.rglob("Recording-*"))
     with patch.object(NativeRecorder, "_branch", lambda recorder, kind: Refusing()):
