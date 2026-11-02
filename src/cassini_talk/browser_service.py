@@ -29,7 +29,7 @@ from .call_lifecycle import (
     CallLifecycle,
     ResumeInputs,
 )
-from .refusals import NothingOpened, StartCancelled
+from .refusals import NothingOpened, StartCancelled, word
 from .session_events import source_state
 
 MAX_PACKET = 512 * 1024
@@ -564,6 +564,12 @@ class BrowserService:
                 logging.getLogger(__name__).info(
                     "The browser did not resume recording %s: %s", asked, str(packet.get("error"))[:500]
                 )
+                with self.lock:
+                    capture = self.captures.get(asked)
+                if capture is not None:
+                    # D58 #10 (R82 1b): the host's result code is the message.
+                    code = packet.get("code")
+                    capture.refuse_resume(None, code if word(code) else None, request_id=request_id)
             return
         pending = browser.pending.get(request_id)
         metadata = pending or browser.commands.get(request_id)
@@ -2555,10 +2561,13 @@ class BrowserService:
             browser.resumes[request_id] = key
             while len(browser.resumes) > RESUME_HISTORY:
                 browser.resumes.pop(next(iter(browser.resumes)))
+            # R82 1b: one refusal entry per ask, from whichever answer comes first.
+            capture.mark_resume_ask(request_id)
             try:
                 browser.send(packet)
             except (OSError, ValueError) as error:
                 browser.resumes.pop(request_id, None)
+                capture.clear_resume_ask(request_id)
                 logging.getLogger(__name__).info("Could not ask the browser to resume recording %s: %s", key, error)
 
     def _fallback(self, identifier, capture):

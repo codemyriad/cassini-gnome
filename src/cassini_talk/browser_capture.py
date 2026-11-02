@@ -57,6 +57,7 @@ class BrowserCapture:
         # fallback or restore does not reopen them; turning one off forgets it.
         self.refused_sides = set()
         self.discarded = False  # D58: nothing opened, and the folder was removed.
+        self.resume_ask = None  # R82 1b: an unanswered resume ask, {requestId, atMs}.
         self.me, self.others = True, True
         self.browser_lost = False
         self.browser_lost_since = None
@@ -586,6 +587,7 @@ class BrowserCapture:
                 # Another transport is still attached: never two on one capture.
                 raise ResumeRefused()
             self.audio_connected = True
+            self.resume_ask = None  # Attached: the ask is answered.
             return dict(
                 type="started",
                 path=str(self.directory),
@@ -596,18 +598,31 @@ class BrowserCapture:
                 callGeneration=self.call_generation,
             )
 
-    def refuse_resume(self, packet, message):
-        """D58 #10: a refused resume is startRejected/resumeRefused in this folder.
+    def mark_resume_ask(self, request_id):
+        """R82 1b: this recording asked the browser to resume it (one entry per ask)."""
+        with self.lock:
+            self.resume_ask = dict(requestId=request_id, atMs=self.elapsed_ms())
 
-        Only while this recording still waits on system sound for that call: it
-        is live (not stopping, stopped or starting), its others come from a
-        resume target (system/missing or system/lost), no transport is attached
-        and the resume names its call generation. A refusal because the user
-        stopped, or a resume that is redundant or for another call, is
-        command scoped only. A refusal never changes the recording itself.
+    def clear_resume_ask(self, request_id=None):
+        with self.lock:
+            if self.resume_ask is not None and request_id in (None, self.resume_ask["requestId"]):
+                self.resume_ask = None
+
+    def refuse_resume(self, packet, message, *, request_id=None):
+        """D58 #10 (R82 1b): a refused resume is startRejected/resumeRefused here.
+
+        One entry per ask: the native host's refusal (on the audio pipe, with
+        no requestId) or the browser's ok:false reply, whichever comes first,
+        writes it at the ask's time and clears the marker; the other writes
+        nothing. Only while this recording still waits on system sound for
+        that call: live (not stopping, stopped or starting), its others from a
+        resume target, no transport attached, and a native resume naming its
+        call generation. A refusal never changes the recording itself.
         """
         with self.lock:
-            session = self.host.session
+            ask, session = self.resume_ask, self.host.session
+            if ask is None or request_id is not None and request_id != ask["requestId"]:
+                return
             if (
                 session is None
                 or session.finished
@@ -618,13 +633,15 @@ class BrowserCapture:
                 or self.audio_connected
                 or self.tab_closed
                 or self.call_generation is None
-                or packet.get("callGeneration") != self.call_generation
+                or packet is not None
+                and packet.get("callGeneration") != self.call_generation
             ):
                 return
             current = source_state(session.manifest.get("events"))
             if (current.source, current.reason) not in RESUME_TARGETS:
                 return
-            item = entry(self.elapsed_ms(), "browser", "startRejected", detail="resumeRefused", message=message)
+            self.resume_ask = None
+            item = entry(ask["atMs"], "browser", "startRejected", detail="resumeRefused", message=message)
             try:
                 session.refuse(item)
             except Exception:
@@ -862,6 +879,7 @@ class BrowserCapture:
         with self.lock:
             self.end_reason = self.end_reason or reason or ("error" if problem else "user")
             self.stop_requested.set()
+            self.resume_ask = None  # A result after Stop writes nothing.
         if self.starting and not self.ready.wait(12):
             raise TimeoutError("Native capture did not finish starting")
         with self.lock:

@@ -257,6 +257,7 @@ def test_refused_resume_is_start_rejected_in_the_same_folder(broker):  # noqa: F
     lose(broker, client, capture)
     events = json.dumps(capture.host.session.manifest["events"])
     folder = capture.directory
+    capture.mark_resume_ask("ask-1")  # R82 1b: refusals are recorded for an ask.
     attempt = proxy(broker)
     try:
         reply = attempt.handle(resume(capture, timelineOriginMs=capture.origin_ms + 1))
@@ -647,6 +648,7 @@ def test_only_a_refused_resume_of_a_waiting_recording_is_recorded(broker, name):
         if name == "restored":
             restored(broker, other, capture, "returned", "doc-1:source:2")
     before = list(capture.host.session.manifest.get("refusals", []))
+    capture.mark_resume_ask("ask-1")  # R82 1b: refusals are recorded for an ask.
     attempt = proxy(broker)
     try:
         assert attempt.handle(resume(capture, **packet))["type"] == "error"
