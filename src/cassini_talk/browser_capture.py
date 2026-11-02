@@ -24,6 +24,9 @@ class BrowserCapture:
         self.transition = threading.RLock()
         self.capture_id = None
         self.call_generation = None
+        # The tab a control status last bound this capture to, under any peer
+        # (instance-less companions have no call_captures binding).
+        self.call_tab = None
         self.microphone = None
         self.native_taps = {}
         self.me, self.others = True, True

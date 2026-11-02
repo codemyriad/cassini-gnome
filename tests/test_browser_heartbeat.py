@@ -5,6 +5,7 @@ import importlib.util
 import json
 import socket
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -35,18 +36,29 @@ class Clock:
 class Link:
     """One extension control connection, served by BrowserService.handle()."""
 
-    def __init__(self, service):
+    def __init__(self, service, instance="heartbeat-browser"):
         broker, self.socket = socket.socketpair()
         self.socket.settimeout(5)  # An upper bound for reads, never a wait.
         self.stream = self.socket.makefile("rwb")
         self.thread = threading.Thread(target=service.handle, args=(broker,), daemon=True)
         self.thread.start()
-        send_packet(self.stream, dict(role="extension", browserInstance="heartbeat-browser"))
+        hello = dict(role="extension")
+        if instance is not None:
+            hello["browserInstance"] = instance
+        send_packet(self.stream, hello)
 
     def close(self):
         self.stream.close()
         self.socket.close()
         self.thread.join(5)
+
+
+def settle(condition, timeout=5):
+    """Wait for a broker-thread state change; the timeout is only a bound."""
+    deadline = time.monotonic() + timeout
+    while not condition():
+        assert time.monotonic() < deadline, "broker did not settle"
+        time.sleep(0.001)
 
 
 @pytest.fixture
@@ -128,6 +140,9 @@ def test_shared_heartbeat_vectors_on_the_real_control_handler(broker, case):
             for seq in range(sent, browser.ping_seq if browser is not None else 0):
                 ping = read_packet(link.stream)
                 assert ping == dict(type="ping", seq=seq)
+                # E1: the writer clears write_started just after the ping is
+                # read; the next fake-clock step must not find it still set.
+                settle(lambda browser=browser: browser.write_started is None)
                 assert oracle.pong_for(ping) == dict(type="pong", seq=seq)
                 outputs.append(f"ping:{seq}")
             assert outputs == step["expect"], (case["name"], step)
@@ -162,9 +177,10 @@ def test_heartbeat_loss_takes_the_ordinary_control_loss_path(broker):
         link.close()
 
 
-def test_a_returning_frozen_companion_does_not_auto_start_a_second_recording(broker, tmp_path, monkeypatch):
-    import time
-
+@pytest.mark.parametrize("instance", ["heartbeat-browser", None], ids=["same-instance", "no-browser-instance"])
+def test_a_returning_frozen_companion_does_not_auto_start_a_second_recording(broker, tmp_path, monkeypatch, instance):
+    """Without browserInstance the returning peer cannot be matched; the call's
+    unfinished capture (same callGeneration) still blocks a second folder."""
     from test_browser_capture import Tap
 
     from cassini_talk.browser_capture import BrowserCapture
@@ -177,7 +193,7 @@ def test_a_returning_frozen_companion_does_not_auto_start_a_second_recording(bro
     capture = BrowserCapture(service._capture_changed, parent=tmp_path / "Library", tap_factory=Tap)
     capture.start(dict(type="start", captureId="first", callGeneration="g1", timelineOriginMs=int(time.time() * 1000)))
     service.captures["first"] = capture
-    first = Link(service)
+    first = Link(service, instance)
     second = None
     try:
         frame(first, dict(type="hello", version=1, capabilities=capabilities))
@@ -195,7 +211,7 @@ def test_a_returning_frozen_companion_does_not_auto_start_a_second_recording(bro
         tasks = []
         monkeypatch.setattr(service.workers, "submit", lambda function, *args: tasks.append((function, args)))
         # SIGCONT: the same browser instance returns with the same tab and call.
-        second = Link(service)
+        second = Link(service, instance)
         frame(second, dict(type="hello", version=1, capabilities=capabilities))
         frame(second, dict(type="meetings", meetings=[meeting]))
         frame(second, dict(type="status", recording=False, sessions=[]))

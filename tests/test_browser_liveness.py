@@ -60,6 +60,31 @@ def broker(tmp_path, monkeypatch):
     stop_broker(service, worker, path)
 
 
+class Settled:
+    """E1: wait for the broker to finish each frame before the test moves on.
+
+    handle() returns once the reply is read, but the broker thread clears
+    write_started, then stamps last_inbound and clears handling, just after.
+    Advancing the fake clock and ticking first would blame a healthy peer.
+    """
+
+    def __init__(self, client, service):
+        self.client, self.service = client, service
+
+    def handle(self, packet):
+        reply = self.client.handle(packet)
+        wait_for(self.idle)
+        return reply
+
+    def idle(self):
+        with self.service.lock:
+            transports = list(self.service._audio_transports)
+        return all(t.shut_down.is_set() or t.write_started is None and not t.handling for t in transports)
+
+    def __getattr__(self, name):
+        return getattr(self.client, name)
+
+
 def negotiated(client, service, identifier):
     reply = client.handle(
         dict(
@@ -166,7 +191,7 @@ def test_outbound_overflow_closes_the_peer_instead_of_growing(broker):
 def test_stop_finishes_and_policy_resumes_under_a_stuck_writer(broker, monkeypatch):
     service, path, _clock, _lost = broker
     service.batch_timeout = 1
-    client = BrowserAudioProxy(path=path)
+    client = Settled(BrowserAudioProxy(path=path), service)
     peer = Extension(path, (3,))
     try:
         capture = negotiated(client, service, "stuck-stop")
@@ -203,7 +228,7 @@ def test_stop_finishes_and_policy_resumes_under_a_stuck_writer(broker, monkeypat
 
 def test_frozen_audio_transport_falls_back_and_keeps_me(broker):
     service, path, clock, lost = broker
-    client = BrowserAudioProxy(path=path)
+    client = Settled(BrowserAudioProxy(path=path), service)
     try:
         capture = negotiated(client, service, "frozen")
         assert client.handle(declare("guest", "receiver")) == ACK
@@ -281,7 +306,7 @@ def flood_audio(client, transport):
 
 def test_no_fallback_before_the_first_remote_pcm(broker):
     service, path, clock, lost = broker
-    client = BrowserAudioProxy(path=path)
+    client = Settled(BrowserAudioProxy(path=path), service)
     try:
         capture = negotiated(client, service, "pre-join")
         assert client.handle(declare("guest", "receiver")) == ACK
@@ -298,7 +323,7 @@ def test_no_fallback_before_the_first_remote_pcm(broker):
 
 def test_no_fallback_while_pcm_keeps_arriving(broker):
     service, path, clock, lost = broker
-    client = BrowserAudioProxy(path=path)
+    client = Settled(BrowserAudioProxy(path=path), service)
     try:
         capture = negotiated(client, service, "healthy")
         assert client.handle(declare("guest", "receiver")) == ACK
@@ -321,7 +346,7 @@ def end(identifier):
 
 def test_an_ended_remote_span_leaves_its_quiet_transport_open(broker):
     service, path, clock, lost = broker
-    client = BrowserAudioProxy(path=path)
+    client = Settled(BrowserAudioProxy(path=path), service)
     try:
         capture = negotiated(client, service, "guest-left")
         assert client.handle(declare("guest", "receiver")) == ACK
@@ -342,7 +367,7 @@ def test_an_ended_remote_span_leaves_its_quiet_transport_open(broker):
 
 def test_a_rejoined_span_is_recorded_and_watched_again(broker):
     service, path, clock, lost = broker
-    client = BrowserAudioProxy(path=path)
+    client = Settled(BrowserAudioProxy(path=path), service)
     try:
         capture = negotiated(client, service, "rejoin")
         assert client.handle(declare("guest", "receiver")) == ACK
@@ -371,7 +396,7 @@ def test_a_rejoined_span_is_recorded_and_watched_again(broker):
 
 def test_a_recorder_waiting_out_its_longest_retry_is_not_cut_over(broker):
     service, path, clock, lost = broker
-    client = BrowserAudioProxy(path=path)
+    client = Settled(BrowserAudioProxy(path=path), service)
     try:
         capture = negotiated(client, service, "retrying")
         assert client.handle(declare("guest", "receiver")) == ACK
@@ -393,7 +418,7 @@ def test_a_recorder_waiting_out_its_longest_retry_is_not_cut_over(broker):
 
 def test_a_navigated_frames_dead_spans_do_not_keep_the_watchdog_armed(broker):
     service, path, clock, _lost = broker
-    client = BrowserAudioProxy(path=path)
+    client = Settled(BrowserAudioProxy(path=path), service)
     try:
         capture = negotiated(client, service, "reloaded")
         assert client.handle(declare("old-frame", "receiver")) == ACK
@@ -420,7 +445,7 @@ def test_a_navigated_frames_dead_spans_do_not_keep_the_watchdog_armed(broker):
 
 def test_the_brokers_own_stall_is_not_blamed_on_the_peer(broker):
     service, path, clock, lost = broker
-    client = BrowserAudioProxy(path=path)
+    client = Settled(BrowserAudioProxy(path=path), service)
     try:
         capture = negotiated(client, service, "slow-disk")
         assert client.handle(declare("guest", "receiver")) == ACK
@@ -454,7 +479,7 @@ def test_the_brokers_own_stall_is_not_blamed_on_the_peer(broker):
 @pytest.mark.parametrize("kind", ["sources", "track", "trackEnd"])
 def test_every_frame_on_the_audio_transport_counts(broker, kind):
     service, path, clock, lost = broker
-    client = BrowserAudioProxy(path=path)
+    client = Settled(BrowserAudioProxy(path=path), service)
     try:
         negotiated(client, service, "frames-" + kind)
         assert client.handle(declare("guest", "receiver-a")) == ACK
@@ -482,7 +507,7 @@ def test_every_frame_on_the_audio_transport_counts(broker, kind):
 
 def test_a_capture_without_multistream_control_is_never_cut_over(broker):
     service, path, clock, lost = broker
-    client = BrowserAudioProxy(path=path)
+    client = Settled(BrowserAudioProxy(path=path), service)
     try:
         capture = negotiated(client, service, "legacy-control")
         capture.multistream_capable = False
@@ -502,7 +527,7 @@ def test_a_capture_without_multistream_control_is_never_cut_over(broker):
 @pytest.mark.parametrize("ending", ["requested", "finished"])
 def test_a_stopping_capture_is_never_cut_over(broker, ending):
     service, path, clock, lost = broker
-    client = BrowserAudioProxy(path=path)
+    client = Settled(BrowserAudioProxy(path=path), service)
     try:
         capture = negotiated(client, service, "stopping")
         assert client.handle(declare("guest", "receiver")) == ACK
@@ -547,7 +572,7 @@ def test_pcm_stale_after_is_pinned_by_d52_5():
 
 def test_an_open_span_quiet_from_zero_is_closed_at_exactly_45_seconds(broker):
     service, path, clock, lost = broker
-    client = BrowserAudioProxy(path=path)
+    client = Settled(BrowserAudioProxy(path=path), service)
     try:
         capture = negotiated(client, service, "boundary")
         assert client.handle(declare("guest", "receiver")) == ACK
@@ -577,7 +602,7 @@ def test_stale_watchdog_constant_matches_the_shared_vectors():
 def test_shared_stale_watchdog_vectors_on_the_real_transport(broker, case):
     """Replay audio-transport and control frames; tick at every frame, probe and deadline time."""
     service, path, clock, _lost = broker
-    client = BrowserAudioProxy(path=path)
+    client = Settled(BrowserAudioProxy(path=path), service)
     peer = Extension(path, (3,))
     try:
         identifier = "stale-" + case["name"][:40]
@@ -626,7 +651,7 @@ def test_shared_stale_watchdog_vectors_on_the_real_transport(broker, case):
 def test_a_frame_after_the_deadline_is_too_late_before_any_tick(broker, late):
     """The shared runner ticks first; here the late frame arrives between ticks."""
     service, path, clock, _lost = broker
-    client = BrowserAudioProxy(path=path)
+    client = Settled(BrowserAudioProxy(path=path), service)
     try:
         negotiated(client, service, "stale-between-ticks")
         (transport,) = service._audio_transports

@@ -1051,6 +1051,10 @@ class BrowserService:
                     # audio socket. Preserve that association across an early
                     # control disconnect, including the original call address.
                     self._bind_capture(browser, tab, capture_id)
+        for tab, state in states.items():
+            owner = self.captures.get(state.get("captureId"))
+            if owner is not None and not owner.finished and state.get("recording"):
+                owner.call_tab = tab  # Under any peer, with or without browserInstance.
         for tab, state in tuple(states.items()):
             if tab not in received_pages and "pageState" in state:
                 states[tab] = {key: value for key, value in state.items() if key != "pageState"}
@@ -1083,6 +1087,29 @@ class BrowserService:
                     self._remember_saved(
                         path, browser.meetings.get(tab, {}).get("title", "Recorded meeting"), value.get("message")
                     )
+
+    def _generation_recording(self, tab, meeting):
+        """Whether an unfinished capture already records this row's call.
+
+        Peer matching falls back to the connection id when a companion sends
+        no browserInstance, so a returning companion must not start a second
+        folder for a call (tabId plus callGeneration, D52.5) that is still
+        being recorded under any control peer.
+        """
+        generation = meeting.get("callGeneration")
+        if generation is None:
+            return False
+        # A capture's tab: its instance binding, or the tab a status last
+        # bound it to under any peer.
+        bindings = {(capture_id, bound) for (_owner, bound), (capture_id, _url) in self.call_captures.items()}
+        bindings |= {(capture_id, c.call_tab) for capture_id, c in self.captures.items() if c.call_tab is not None}
+        return any(
+            bound == tab
+            and (capture := self.captures.get(capture_id)) is not None
+            and capture.call_generation == generation
+            and not capture.finished
+            for capture_id, bound in bindings
+        )
 
     def _stale_call_generation(self, browser, tab, value):
         generation = value.get("callGeneration")
@@ -1694,6 +1721,7 @@ class BrowserService:
                 capture.browser_lost = True
                 capture.browser_lost_since = time.monotonic()
                 capture_generation = browser.meetings.get(tab, {}).get("callGeneration")
+                capture.call_tab = tab
                 self.captures[capture_id] = capture
                 browser.states[tab] = dict(recording=True, captureId=capture_id, tabId=tab)
                 if browser.browser_instance is not None:
@@ -2076,6 +2104,7 @@ class BrowserService:
                             and self._meeting_id(browser, tab) not in self._scheduled_calls
                             and self._auto_start_ready(browser, meeting)
                             and not browser.states.get(tab, {}).get("recording")
+                            and not self._generation_recording(tab, meeting)
                         ):
                             browser.attempted.add(tab)
                             browser.scheduled.add(tab)
@@ -2153,9 +2182,12 @@ class BrowserService:
                         return
                     browser_id, _, raw_tab = identifier.partition(":")
                     browser = self.browsers.get(browser_id)
+                    meeting = browser.meetings.get(int(raw_tab), {}) if browser is not None else {}
                     if browser is None or (
                         "call-evidence-v1" in browser.capabilities
-                        and not self._auto_start_ready(browser, browser.meetings.get(int(raw_tab), {}))
+                        and not self._auto_start_ready(browser, meeting)
+                        # The call may have gained a capture while this task waited.
+                        or self._generation_recording(int(raw_tab), meeting)
                     ):
                         # Evidence may disappear while this task waits for a worker.
                         if browser is not None:
