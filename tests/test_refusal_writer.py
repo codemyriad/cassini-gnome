@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from test_browser_service import service  # noqa: F401
 from test_resume_capture_host import broker  # noqa: F401
+from test_voice_application import application_class  # noqa: F401
 
 from cassini_talk import refusals
 from cassini_talk.recording_session import RecordingSession
@@ -171,11 +172,18 @@ def test_live_lines_show_each_side_that_records_nothing_now():
         refusals.entry(0, "me", "permissionDenied"),
         refusals.entry(5000, "others", "deviceUnavailable"),
     ]
-    lines = refusals.live_lines(stored, [("system", True)])
+    system = [("system", None)]
+    # The fallback line only while computer sound really records the others.
+    lines = refusals.live_lines(stored[:2], system)
     assert [(line["side"], line["id"], line["caption"]) for line in lines] == [
         ("browser", "errors.othersFallback.line", "errors.refusal.noSources"),
         ("me", "errors.micPermission.line", None),
-        ("others", "errors.deviceUnavailable.others", None),
+    ]
+    # Computer sound refused too: no claim that it records, its own line instead.
+    lines = refusals.live_lines(stored, [("system", True)])
+    assert [(line["side"], line["id"]) for line in lines] == [
+        ("me", "errors.micPermission.line"),
+        ("others", "errors.deviceUnavailable.others"),
     ]
     # A side that records now shows nothing.
     assert [line["side"] for line in refusals.live_lines(stored, [("microphone", None), ("remote", False)])] == [
@@ -183,7 +191,7 @@ def test_live_lines_show_each_side_that_records_nothing_now():
     ]
     # A side turned off after its refusal shows nothing; a refused turn-on does.
     off = [dict(type="selection", atMs=7000, me=False, others=True, reason="user")]
-    assert [line["side"] for line in refusals.live_lines(stored, [], off)] == ["browser", "others"]
+    assert [line["side"] for line in refusals.live_lines(stored, system, off)] == ["browser"]
     turned_on = [refusals.entry(9000, "me", "deviceUnavailable")]
     assert [line["id"] for line in refusals.live_lines(turned_on, [], off)] == ["errors.deviceUnavailable.me"]
     # Unreadable entries are skipped, not shown.
@@ -379,3 +387,269 @@ def test_an_automatic_start_never_falls_back_on_busy(service, code):  # noqa: F8
     finally:
         stream.close()
         connection.close()
+
+
+# #173 review fixes.
+
+
+def recordings_started(application, snapshot):
+    """main._recordings_started on a finished start-all, with a minimal application."""
+    from concurrent.futures import Future
+    from types import SimpleNamespace
+
+    future = Future()
+    future.set_result(snapshot)
+    app = SimpleNamespace(
+        _record_start_future=future,
+        _record_start_group="group",
+        _record_start_generation=1,
+        _quitting=False,
+        _capture_exiting=False,
+        recording_failure=None,
+        recording_error=None,
+        _pending_recording=None,
+        _browser_changed=lambda _snapshot: None,
+        start_native=lambda: pytest.fail("A browser meeting failed: no native start"),
+        get_windows=lambda: [],
+        _native_changed=lambda: None,
+        _show_pending_recording=lambda: None,
+        release=lambda: None,
+    )
+    application._recordings_started(app, future, 1)
+    return app
+
+
+@pytest.mark.parametrize("answer", ["none", "disconnect"])
+def test_an_unanswered_start_shows_the_banner_at_the_production_timeout_ratio(tmp_path, application_class, answer):  # noqa: F811
+    """Production waits as long for one Start as for the whole batch (25 s each)."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from broker_fixture import stop_broker
+    from test_browser_sessions import Extension
+    from test_refusal_vectors import Taps
+
+    from cassini_talk.browser_service import BrowserService, request
+
+    Taps.refused = {}
+    broker_service = BrowserService(
+        tmp_path / "config.json",
+        capture_parent=tmp_path / "library",
+        tap_factory=Taps,
+        notifier=lambda *_: None,
+        command_timeout=1,
+    )
+    broker_service.batch_timeout = broker_service.command_timeout
+    path = tmp_path / "broker/browser.sock"
+    ready = threading.Event()
+    worker = threading.Thread(target=broker_service.serve, args=(path, ready), daemon=True)
+    worker.start()
+    assert ready.wait(2)
+    peer = Extension(path, (3,))
+    try:
+        with ThreadPoolExecutor(1) as pool:
+            pending = pool.submit(request, "start-all", path=path)
+            assert peer.receive()["action"] == "start"
+            if answer == "disconnect":
+                peer.close()
+            snapshot = pending.result(10)
+        assert not snapshot["cancelled"], "The deadline is not the user's cancel"
+        detail = "timeout" if answer == "none" else snapshot["failures"][0]["refusals"][0].get("detail")
+        assert detail in ("timeout", "disconnected")
+        assert snapshot["failures"][0]["refusals"] == [dict(atMs=0, side="browser", code="startFailed", detail=detail)]
+        app = recordings_started(application_class, snapshot)
+        assert app.recording_failure["id"] == "errors.recordFailed.line"
+        assert app.recording_failure["caption"] == "errors.refusal.noAnswer"
+        assert app.recording_failure["action"] == "common.tryAgain" and app.recording_error is None
+    finally:
+        peer.close()
+        stop_broker(broker_service, worker, path)
+
+
+def test_a_cancelled_record_shows_no_banner(application_class):  # noqa: F811
+    app = recordings_started(
+        application_class, dict(cancelled=True, failures=[dict(refusals=[], error="x")], statuses=[], meetings=[])
+    )
+    assert app.recording_failure is None and app.recording_error is None
+
+
+def test_a_local_fallback_failure_keeps_the_browser_refusal_first(broker, monkeypatch):  # noqa: F811
+    from concurrent.futures import ThreadPoolExecutor
+
+    from test_browser_sessions import Extension
+
+    from cassini_talk.browser_service import request, send_packet
+
+    def busy(*_args, **_kwargs):
+        raise ValueError("A recording command is still being processed")
+
+    monkeypatch.setattr(broker.service, "start_fallback", busy)
+    peer = Extension(broker.path, (3,))
+    message = "No audio is available from that meeting yet."
+    try:
+        with ThreadPoolExecutor(1) as pool:
+            pending = pool.submit(request, "start-all", path=broker.path)
+            command = peer.receive()
+            result = dict(type="result", requestId=command["requestId"], ok=False, error=message, code="noSources")
+            send_packet(peer.stream, result)
+            snapshot = pending.result(10)
+        stored = snapshot["failures"][0]["refusals"]
+        assert stored == [
+            dict(atMs=0, side="browser", code="startRejected", detail="noSources", message=message),
+            dict(atMs=0, side="browser", code="startFailed", detail="busy"),
+        ]
+        assert refusals.banner(stored)["caption"] == "errors.refusal.noSources"
+    finally:
+        peer.close()
+
+
+def test_a_folder_kept_for_typed_content_stores_each_refusal_once(tmp_path):
+    import time
+
+    from test_native_sides import Taps
+
+    from cassini_talk.browser_capture import BrowserCapture
+    from cassini_talk.meeting_store import update_metadata
+    from cassini_talk.refusals import NothingOpened, from_result
+
+    class TypedTaps(Taps):
+        def __call__(self, kind, origin, append, failed, *, level):
+            tap = super().__call__(kind, origin, append, failed, level=level)
+            start = tap.start
+
+            def typed():
+                # The user types a title while the sides open.
+                update_metadata(capture.host.session.directory, title="Weekly", titleSource="user")
+                start()
+
+            tap.start = typed
+            return tap
+
+    capture = BrowserCapture(
+        lambda *_: None, parent=tmp_path, tap_factory=TypedTaps(refuse={"microphone": 1, "system": 1})
+    )
+    capture.browser_lost = True
+    browser = from_result(dict(ok=False, code="pageUnreachable", error="No page yet"))
+    message = dict(type="start", captureId="kept", timelineOriginMs=int(time.time() * 1000), microphone=True)
+    with pytest.raises(NothingOpened) as raised:
+        capture.start(message, others_source="system", reason="missing", refusals=[browser])
+    assert [r["side"] for r in raised.value.refusals] == ["browser", "me", "others"]
+    (directory,) = tmp_path.iterdir()
+    saved = json.loads((directory / "session.json").read_text())
+    assert [r["side"] for r in saved["refusals"]] == ["browser", "me", "others"]
+
+
+def test_an_unreadable_meeting_json_keeps_the_folder(tmp_path):
+    session = started(tmp_path)
+    (session.directory / "meeting.json").write_text("{not json")
+    assert not session.discard() and session.directory.exists() and not session.finished
+    assert (session.directory / "meeting.json").read_text() == "{not json"
+
+
+def test_a_save_queued_on_the_lock_never_leaves_an_orphan_folder(tmp_path, monkeypatch):
+    import threading
+
+    from cassini_talk.meeting_store import update_metadata
+
+    session = started(tmp_path)
+    real, waiting, errors = Path.rmdir, threading.Event(), []
+
+    def save():
+        waiting.set()
+        try:
+            update_metadata(session.directory, title="Weekly sync", titleSource="user")
+        except Exception as error:  # A save after removal fails visibly.
+            errors.append(error)
+
+    saver = threading.Thread(target=save)
+
+    def rmdir(path, *args, **kwargs):
+        if path == session.directory and not saver.is_alive():
+            saver.start()  # It queues on the metadata lock that discard holds.
+            assert waiting.wait(5)
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "rmdir", rmdir)
+    assert session.discard()
+    saver.join(5)
+    assert not saver.is_alive() and errors
+    assert not session.directory.exists(), "No orphan folder"
+
+
+def test_app_too_old_expires_and_never_hides_a_setup_failure(broker):  # noqa: F811
+    from test_browser_service import wait_for
+
+    from cassini_talk.browser_connection import BrowserConnection
+    from cassini_talk.browser_service import APP_TOO_OLD_S, request
+    from cassini_talk.companion import SetupError
+
+    connection, stream = hello(broker.path, 2)
+    try:
+        connection.settimeout(5)
+        assert stream.read(1) == b""
+    finally:
+        stream.close()
+        connection.close()
+    wait_for(lambda: request(path=broker.path)["appTooOld"])
+    broker.clock.now += APP_TOO_OLD_S + 1  # The newer companion stopped retrying.
+    assert request(path=broker.path)["appTooOld"] is False
+
+    controller = BrowserConnection(
+        lambda: None, available=False, later=lambda *_: 0, post=lambda *_: 0, cancel=lambda *_: None
+    )
+    controller.observe(dict(appTooOld=True))
+    assert controller.snapshot()["phase"] == "appTooOld"
+    controller.error = SetupError("buildMissing", retryable=True)
+    assert controller.snapshot()["phase"] == "failed", "A real setup failure keeps its Retry"
+
+
+from test_resume_capture_host import REFUSALS as RESUME_REFUSALS  # noqa: E402
+
+
+@pytest.mark.parametrize("name", [*RESUME_REFUSALS, "stop_all", "cancelled", "attached", "restored"])
+def test_only_a_refused_resume_of_a_waiting_recording_is_recorded(broker, name):  # noqa: F811
+    """D58 #10: recorded only while the recording waits on system for that call.
+
+    A user Stop, Stop all, a cancelled capture, a resume for another call, an
+    attached or restored capture: command scoped only, nothing in the file.
+    """
+    from test_capture_record import declare, pcm
+    from test_resume_capture_host import ACK, lose, proxy, restored, resume, started
+
+    client, capture = started(broker)
+    assert client.handle(declare("guest", "doc-1:source:1")) == ACK
+    assert client.handle(pcm("guest", 480)) == ACK
+    lose(broker, client, capture)
+    packet, other = {}, None
+    if name in RESUME_REFUSALS:
+        case = RESUME_REFUSALS[name]
+        if case.get("before") is not None:
+            case["before"](broker, capture)
+        packet = case.get("packet", {})
+        packet = packet(capture) if callable(packet) else packet
+    elif name == "stop_all":
+        broker.service._stopping_all.set()
+    elif name == "cancelled":
+        broker.service._cancelled_captures[capture.capture_id] = "user"
+    else:
+        other = proxy(broker)
+        assert other.handle(resume(capture))["resumed"] is True
+        if name == "restored":
+            restored(broker, other, capture, "returned", "doc-1:source:2")
+    before = list(capture.host.session.manifest.get("refusals", []))
+    attempt = proxy(broker)
+    try:
+        assert attempt.handle(resume(capture, **packet))["type"] == "error"
+        after = capture.host.session.manifest.get("refusals", [])
+        if name == "origin":
+            (item,) = after[len(before) :]
+            assert (item["side"], item["code"], item["detail"]) == ("browser", "startRejected", "resumeRefused")
+        else:
+            assert after == before, name
+    finally:
+        attempt.close()
+        if other is not None:
+            other.close()
+        broker.service._stopping_all.clear()
+        broker.service._cancelled_captures.pop(capture.capture_id, None)
+        capture.stop()

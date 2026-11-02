@@ -462,6 +462,25 @@ def test_a_selection_of_only_a_refused_side_reopens_it_or_is_rejected(tmp_path):
         close(recorder)
 
 
+def test_a_stop_before_any_side_opened_leaves_no_folder(tmp_path):
+    recorder = NativeRecorder()
+    Sides(recorder, {"microphone": ("never", 0), "system": ("never", 0)})
+    recorder._open_wait = lambda event, timeout: event.wait(5)  # Only the stop wakes it.
+    signals = []
+    for name in ("started", "error", "finished"):
+        recorder.connect(name, lambda _r, value, name=name: signals.append((name, value)))
+    recorder.start(tmp_path, test=True)
+    try:
+        spin_until(lambda: len(recorder._pending_sources) == 2)
+        recorder.stop()
+        spin_until(lambda: any(name == "finished" for name, _ in signals))
+        # The user cancelled this start: no recording, no folder, no banner.
+        assert signals == [("finished", "")] and recorder.discarded
+        assert not list(tmp_path.iterdir()) and recorder.refusals == []
+    finally:
+        close(recorder)
+
+
 def test_slow_sides_open_in_parallel_within_one_bound(tmp_path):
     recorder, sides, signals = start(tmp_path, {"microphone": ("ok", 2.5), "system": ("ok", 2.5)})
     try:
