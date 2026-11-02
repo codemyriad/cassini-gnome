@@ -717,6 +717,61 @@ class RecordingSession:
         if failure:
             raise failure
 
+    def refuse(self, *items):
+        """D58: append refusals in one checkpoint. They never change any other record."""
+        from .refusals import append
+
+        if not items:
+            return
+        with self.change([]):
+            for item in items:
+                append(self.manifest, item)
+
+    def discard(self):
+        """D58 point 2: remove a start-failure folder, unless it holds user content.
+
+        Mac's discardBlank guard: a title or notes the user already typed keep the
+        folder. Returns True once removed; a kept folder is finished as before.
+        """
+        from .library_edits import mutation
+        from .meeting_store import read_metadata
+
+        if self.finished or any(track["frames"] for track in self.manifest["tracks"]):
+            return False
+        allowed = {"session.json", "session.tmp", "meeting.json", ".meeting.lock"}
+        allowed |= {track["file"] for track in self.manifest["tracks"]}
+        try:
+            with mutation(self.directory):
+                try:
+                    metadata = read_metadata(self.directory)
+                except (OSError, ValueError):
+                    metadata = {}
+                notes = metadata.get("notes")
+                typed = bool(notes) or metadata.get("titleSource") == "user" and bool(metadata.get("title"))
+                entries = list(self.directory.iterdir())
+                if typed or any(e.name not in allowed or e.is_symlink() or not e.is_file() for e in entries):
+                    return False
+                self.finished = True
+                for writer in self.writers.values():
+                    with suppress(OSError):
+                        writer.close()
+                for path in entries:
+                    path.unlink(missing_ok=True)
+        except (OSError, ValueError):
+            if not self.finished:
+                return False
+        try:
+            self.directory.rmdir()
+            descriptor = os.open(self.directory.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        except OSError:
+            pass  # An emptied folder left behind has no session.json: nothing reads it.
+        self.release_lease()
+        return True
+
     def release_lease(self):
         """Release ownership only after publication/cancellation has finished."""
         if self._lease_fd is not None:
