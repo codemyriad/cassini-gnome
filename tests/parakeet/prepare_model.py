@@ -25,7 +25,7 @@ except FileNotFoundError:
     # Hosted runners can spend over ten seconds in a dist TLS handshake. This
     # is build-fixture acquisition only; the app's cancellable D4 timeout stays
     # unchanged, and hash failures still fail without retry.
-    store = ModelStore(args.cache, timeout=90)
+    store = ModelStore(args.cache, timeout=90, user_agent="CassiniTalk/ci-fetch (GNOME; Linux; source)")
     manifest = store.fetch_manifest()
     check_manifest(manifest.model(MODEL_ID, REVISION))
     last = [0.0, None]

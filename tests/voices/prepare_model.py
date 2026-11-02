@@ -13,7 +13,7 @@ from cassini_talk.model_download import ModelStore  # noqa: E402
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--cache", type=Path, required=True)
 args = parser.parse_args()
-store = ModelStore(args.cache)
+store = ModelStore(args.cache, user_agent="CassiniTalk/ci-fetch (GNOME; Linux; source)")
 expected = {name: (size, digest) for name, (size, digest, _compressed) in FILES.items()}
 if not store.installed(MODEL_ID, REVISION, expected_files=expected):
     manifest = store.fetch_manifest()

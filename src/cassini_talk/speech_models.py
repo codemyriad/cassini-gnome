@@ -6,7 +6,7 @@ import threading
 from concurrent.futures import CancelledError
 
 from . import parakeet_model
-from .model_download import IntegrityError, ModelStore, _write
+from .model_download import IntegrityError, _write
 from .model_manifest import NOTICE
 from .parakeet_client import ParakeetClient
 from .received import regular_input
@@ -20,8 +20,9 @@ class SpeechModels:
     invalid_notice = "models.parakeetUltra.invalidFallback"
     removed_notice = "models.parakeetUltra.removedFallback"
 
-    def __init__(self, selected, persist, changed, *, store=None, client_factory=ParakeetClient):
-        self.store = store if store is not None else ModelStore()
+    def __init__(self, selected, persist, changed, *, store, client_factory=ParakeetClient):
+        # D54: the app builds one ModelStore with its User-Agent and shares it.
+        self.store = store
         self.persist, self.changed = persist, changed
         self.client_factory = client_factory
         self.lock = threading.RLock()

@@ -64,7 +64,12 @@ def remote():
                 code, etag = 200, None
             elif self.path == "/NOTICE.txt":
                 body, code, etag = NOTICE, 200, None
-            elif self.path == "/" + state.key:
+            elif self.path == "/" + state.key and state.mode == "same-origin-redirect":
+                self.send_response(302)
+                self.send_header("Location", state.origin + "/moved/" + state.key)
+                self.end_headers()
+                return
+            elif self.path in ("/" + state.key, "/moved/" + state.key):
                 if state.mode == "redirect":
                     self.send_response(302)
                     self.send_header("Location", "https://example.invalid/forbidden")
@@ -151,7 +156,13 @@ def remote():
 
 
 def store(tmp_path, remote, **options):
-    return ModelStore(tmp_path / "models", origin=remote.origin, fixture=True, **options)
+    return ModelStore(
+        tmp_path / "models",
+        origin=remote.origin,
+        fixture=True,
+        **options,
+        user_agent="CassiniTalk/test (GNOME; Linux; source)",
+    )
 
 
 def download(client, remote, **options):
@@ -287,9 +298,14 @@ def test_exact_pin_is_required_and_no_latest_revision_is_followed(remote, tmp_pa
 
 def test_wrong_origin_and_redirect_are_rejected(remote, tmp_path):
     with pytest.raises(ValueError):
-        ModelStore(tmp_path, origin=remote.origin)
+        ModelStore(tmp_path, origin=remote.origin, user_agent="CassiniTalk/test (GNOME; Linux; source)")
     with pytest.raises(ValueError):
-        ModelStore(tmp_path, origin="https://example.invalid", fixture=True)
+        ModelStore(
+            tmp_path,
+            origin="https://example.invalid",
+            fixture=True,
+            user_agent="CassiniTalk/test (GNOME; Linux; source)",
+        )
     remote.mode = "redirect"
     with pytest.raises(ValueError, match="origin"):
         download(store(tmp_path, remote), remote)
@@ -495,7 +511,7 @@ def test_store_rejects_a_root_or_absent_ancestor_later_replaced_by_symlink(remot
     outside.mkdir()
     (outside / "NOTICE.txt").write_text("Keep this notice")
     root = tmp_path / "models" if component == "root" else tmp_path / "missing" / "models"
-    client = ModelStore(root, origin=remote.origin, fixture=True)
+    client = ModelStore(root, origin=remote.origin, fixture=True, user_agent="CassiniTalk/test (GNOME; Linux; source)")
     anchor = root if component == "root" else root.parent
     anchor.symlink_to(outside, target_is_directory=True)
     for operation in (
@@ -633,3 +649,49 @@ def test_resumed_verified_expanded_files_contribute_to_progress(remote, tmp_path
     download(client, remote, progress=lambda *event: events.append(event))
     assert remote.counts["/" + remote.key] == requests_before
     assert ("verifying", "weights.onnx", len(remote.compressed), len(remote.compressed)) in events
+
+
+UA = "CassiniTalk/0.3.0 (GNOME; Linux; flatpak)"
+
+
+def test_every_model_request_and_redirect_hop_names_the_app(remote, tmp_path):
+    """D54: manifest, NOTICE, artifact and each same-origin redirect hop carry the exact User-Agent."""
+    remote.mode = "same-origin-redirect"
+    client = ModelStore(tmp_path / "models", origin=remote.origin, fixture=True, user_agent=UA)
+    client.download(ID, REVISION, manifest=client.fetch_manifest())
+    paths = [path for path, _ in remote.requests]
+    assert {"/manifest.json", "/NOTICE.txt", "/" + remote.key, "/moved/" + remote.key} <= set(paths)
+    assert all(headers["User-Agent"] == UA for _, headers in remote.requests), remote.requests
+
+
+@pytest.mark.parametrize("packaging", ["flatpak", "deb", "rpm", "arch", "source"])
+def test_user_agent_names_only_the_app_version_and_packaging(packaging):
+    from cassini_talk.model_download import user_agent
+
+    assert user_agent("0.3.0-dev", packaging) == f"CassiniTalk/0.3.0-dev (GNOME; Linux; {packaging})"
+
+
+@pytest.mark.parametrize("version,packaging", [("", "source"), (None, "deb"), ("0.3.0", "snap")])
+def test_user_agent_refuses_an_unknown_identity(version, packaging):
+    from cassini_talk.model_download import user_agent
+
+    with pytest.raises(ValueError):
+        user_agent(version, packaging)
+
+
+def test_a_store_without_the_app_user_agent_is_refused(tmp_path):
+    with pytest.raises(TypeError):
+        ModelStore(tmp_path)
+    with pytest.raises(ValueError):
+        ModelStore(tmp_path, user_agent="Cassini/0.2")
+
+
+def test_installed_packaging_comes_from_the_build(tmp_path):
+    from cassini_talk.model_download import installed_packaging
+
+    config = tmp_path / "paths.json"
+    assert installed_packaging(config) == "source"  # a source run has no paths.json
+    config.write_text(json.dumps(dict(packaging="rpm")))
+    assert installed_packaging(config) == "rpm"
+    config.write_text(json.dumps(dict(packaging="snap")))
+    assert installed_packaging(config) == "source"

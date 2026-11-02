@@ -83,7 +83,7 @@ with patch.object(ModelStore, "fetch_manifest", side_effect=AssertionError("Abou
         assert about.emit("activate-link", notice.as_uri())
         assert launched == [str(notice)]
     about.force_close()
-    ModelStore().remove("fixture-model", "a" * 64)
+    ModelStore(user_agent="CassiniTalk/test (GNOME; Linux; source)").remove("fixture-model", "a" * 64)
     assert notice.is_file()  # A kept notice alone must not expose the link.
     removed = app.on_about()
     assert "Licences of downloaded models" not in labels(removed)

@@ -70,7 +70,7 @@ sha256sums=('SKIP'
 _srcdir=$pkgname-$pkgver
 
 build() {
-  arch-meson "$_srcdir" build -Dwhistle=enabled -Dwhistle_cache="$srcdir" -Dsherpa=enabled -Dsherpa_cache="$srcdir"
+  arch-meson "$_srcdir" build -Dpackaging=arch -Dwhistle=enabled -Dwhistle_cache="$srcdir" -Dsherpa=enabled -Dsherpa_cache="$srcdir"
   meson compile -C build
 }
 

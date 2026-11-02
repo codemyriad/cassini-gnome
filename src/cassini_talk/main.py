@@ -182,22 +182,29 @@ class CassiniApplication(Adw.Application):
         from .sherpa_runtime import available as parakeet_available
 
         if self.writing_available and parakeet_available():
+            from .model_download import ModelStore, installed_packaging, user_agent
             from .speech_models import SpeechModels
 
+            # D54: one store, one app-wide User-Agent, for every model request.
+            store = ModelStore(user_agent=user_agent(self.version, installed_packaging()))
             self.speech_models = SpeechModels(
                 self.recording_settings.get_string("speech-model"),
                 lambda value: self.recording_settings.set_string("speech-model", value),
                 lambda: GLib.idle_add(self._models_changed),
+                store=store,
             )
             from .diarization_models import DiarizationModels
             from .transcription import bundle_path
 
-            self.diarization_models = DiarizationModels(bundle_path(), lambda: GLib.idle_add(self._models_changed))
+            self.diarization_models = DiarizationModels(
+                bundle_path(), lambda: GLib.idle_add(self._models_changed), store=store
+            )
             from .voice_models import VoiceModels
 
             self.voice_models = VoiceModels(
                 bundle_path(),
                 lambda: GLib.idle_add(self._models_changed),
+                store=store,
                 enabled=lambda: bool(self.diarization_models.snapshot().get("ready")),
             )
         import threading

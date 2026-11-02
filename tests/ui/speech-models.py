@@ -96,7 +96,12 @@ try:
                 "whistle",
                 lambda value: app.recording_settings.set_string("speech-model", value),
                 lambda: GLib.idle_add(app._models_changed),
-                store=ModelStore(tmp / "models", origin=server.origin, fixture=True),
+                store=ModelStore(
+                    tmp / "models",
+                    origin=server.origin,
+                    fixture=True,
+                    user_agent="CassiniTalk/test (GNOME; Linux; source)",
+                ),
             )
             until(lambda: not app.speech_models.snapshot()["busy"])
             dialog = app.settings_dialog = SettingsDialog(app)
