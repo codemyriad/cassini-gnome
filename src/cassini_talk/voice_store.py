@@ -15,7 +15,7 @@ from pathlib import Path
 from .library import meeting_id
 from .library_edits import transaction
 from .meeting_store import LOCK as METADATA_LOCK
-from .meeting_store import atomic_json
+from .meeting_store import atomic_json, read_metadata
 from .model_download import model_root
 from .received import regular_input
 from .speaker_edits import name_value
@@ -65,6 +65,32 @@ def _vector(value):
         and all(type(v) in (int, float) and math.isfinite(v) for v in value)
         and 0.99 < sum(float(v) * v for v in value) < 1.01
     )
+
+
+def _library_stamps(directory):
+    """G12: `{id: voiceSource}` from meeting.json, which is the truth.
+
+    None for a bare key without a Library folder (nothing to compare). An
+    unreadable meeting.json counts every stamped cache item as different.
+    """
+    path = Path(directory)
+    if not (path / "meeting.json").is_file():
+        return None
+    try:
+        speakers = read_metadata(path)["speakers"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+    return {s["id"]: s.get("voiceSource") for s in speakers if isinstance(s, dict) and "id" in s}
+
+
+def _drop_stale(cache, stamps):
+    """Treat items made on another voice of the same id as absent; True if any."""
+    if stamps is None:
+        return False
+    stale = [s for s, item in cache["speakers"].items() if item.get("voiceSource") != stamps.get(s)]
+    for speaker in stale:
+        del cache["speakers"][speaker]
+    return bool(stale)
 
 
 def _key(directory):
@@ -362,43 +388,69 @@ class VoiceStore:
                 self._publish(people)
         return self.snapshot()
 
-    def meeting(self, directory):
+    def meeting(self, directory, *, raw=False):
+        """The meeting's private cache. An item whose voiceSource differs from
+        the same id in meeting.json was made on another voice and is absent
+        (G12), so no sample or print of it is shown. `raw` is for rewriters."""
         key = _key(directory)
+        stamps = None if raw else _library_stamps(directory)
         with self._locked():
             people = self._people()
             result = self._meeting(key, people["generation"])
             self._publish(people)
+            _drop_stale(result, stamps)
             return result
 
     def preparation(self, directory):
         """Return the cache and whether extraction actually completed.
 
         An absent entry is evidence of short speech only after a successful
-        extraction. Missing, damaged and obsolete caches are not that evidence.
+        extraction. Missing, damaged and obsolete caches are not that evidence,
+        and neither is an item whose voiceSource differs from meeting.json (G12).
         """
         key = _key(directory)
+        stamps = _library_stamps(directory)
         with self._locked():
             people = self._people()
             path = self.root / "meetings" / (key + ".json")
             empty = dict(version=1, model=REVISION, generation=people["generation"], speakers={})
             value = self._read(path, self._validate_meeting, empty)
             prepared = path.is_file() and value.get("generation", people["generation"]) == people["generation"]
-            return (value if prepared else empty), prepared
+            if not prepared:
+                return empty, False
+            return value, not _drop_stale(value, stamps)
 
     def commit_job(
-        self, directory, prints, generation, *, check_active=lambda: None, apply_names=None, auto_eligible=None
+        self,
+        directory,
+        prints,
+        generation,
+        *,
+        check_active=lambda: None,
+        apply_names=None,
+        auto_eligible=None,
+        voice_sources=None,
     ):
         key = _key(directory)
+        sources = voice_sources or {}
         with self._locked(), transaction(directory):
             people = self._people()
             if people["generation"] != generation:
                 return {}
             previous = self._meeting(key, generation)
+            # G12: a confirmed match, its embedding and rejections belong to the
+            # voice they were made on. Carry them only while its stamp is equal.
+            previous["speakers"] = {
+                s: item for s, item in previous["speakers"].items() if item.get("voiceSource") == sources.get(s)
+            }
             excluded = {s: item.get("rejected", []) for s, item in previous["speakers"].items()}
             for speaker, item in previous["speakers"].items():
                 if item.get("match", {}).get("state") == "rejected":
                     excluded.setdefault(speaker, []).append(item["match"]["voiceId"])
             value = dict(version=1, model=REVISION, generation=generation, speakers=copy.deepcopy(prints))
+            for speaker, item in value["speakers"].items():
+                if speaker in sources:
+                    item["voiceSource"] = dict(sources[speaker])
             self._validate_meeting(value)
             current_voices = {v["id"]: v for v in people["voices"] if not stale(v)}
             confirmed = {
@@ -443,11 +495,13 @@ class VoiceStore:
     def remember(self, directory, speaker, name, *, voice_id=None, remember=True):
         """The name write is independent: a private-store error never loses it."""
         key, name = _key(directory), name_value(name)
+        stamps = _library_stamps(directory)
         with self._locked():
             people = self._people()
             meeting = self._meeting(key, people["generation"])
             item = meeting["speakers"].get(speaker)
-            if item is None:
+            # G12: never enrol a print made on another voice of this id.
+            if item is None or stamps is not None and item.get("voiceSource") != stamps.get(speaker):
                 return False
             voices = {v["id"]: v for v in people["voices"]}
             old = item.get("match") or {}
@@ -525,6 +579,10 @@ class VoiceStore:
             if people["generation"] != generation:
                 return False
             meeting = self._meeting(key, generation)
+            # G12: stamps come from meeting.json. An old item made on another
+            # voice of the same id is absent here, as in commit_job.
+            stamps = _library_stamps(directory)
+            _drop_stale(meeting, stamps)
             voices = {v["id"]: v for v in people["voices"]}
             original_voices = dict(voices)
             # A merged-away voice (or one with too little clean speech) has no
@@ -537,6 +595,10 @@ class VoiceStore:
                     if match.get("state") != "confirmed" or match.get("voiceId") not in voices:
                         meeting["speakers"].pop(speaker, None)
             replacements = {s: copy.deepcopy(prints[s]) for s in affected if s in prints}
+            for speaker, item in replacements.items():
+                item.pop("voiceSource", None)
+                if stamps and stamps.get(speaker) is not None:
+                    item["voiceSource"] = copy.deepcopy(stamps[speaker])
             confirmed = {}
             for speaker in replacements:
                 old = meeting["speakers"].get(speaker)

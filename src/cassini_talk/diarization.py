@@ -5,6 +5,8 @@ No model, NumPy or native library is imported here. Stable voice identity comes
 from first turns; display numbering comes from the resulting word order.
 """
 
+import hashlib
+import json
 import logging
 import math
 import struct
@@ -58,6 +60,18 @@ def voice_ordinals(turns):
         if usable(turn) and turn["speaker"] not in result:
             result[turn["speaker"]] = len(result) + 1
     return result
+
+
+def turns_sha256(turns):
+    """G12: hash the usable turns as `[startMs, endMs, ordinal]`, never native labels."""
+    order = voice_ordinals(turns)
+    rows = [[t["startMs"], t["endMs"], order[t["speaker"]]] for t in sorted(turns, key=turn_key) if usable(t)]
+    return hashlib.sha256(json.dumps(rows, separators=(",", ":")).encode("ascii")).hexdigest()
+
+
+def voice_source(input_sha256, turns):
+    """G12 (provisional, R74): what a `<group>~n` voice and its name are bound to."""
+    return dict(inputSHA256=input_sha256, turnsSHA256=turns_sha256(turns))
 
 
 def assign_words(words, turns):
@@ -119,8 +133,11 @@ def apply_transcript(words, groups):
             continue
         for index, speaker in zip(positions, chosen["wordSpeakerIds"], strict=True):
             output[index]["speaker"] = speaker
+        source = voice_source(group["inputSHA256"], group["turns"])
         for speaker in chosen["voiceIds"]:
-            new_speakers[speaker] = dict(id=speaker, name=None, provenance="unnamed", colourIndex=0)
+            new_speakers[speaker] = dict(
+                id=speaker, name=None, provenance="unnamed", colourIndex=0, voiceSource=dict(source)
+            )
     for rank, speaker in enumerate(speaking_order(output)):
         if speaker in new_speakers:
             new_speakers[speaker]["colourIndex"] = rank

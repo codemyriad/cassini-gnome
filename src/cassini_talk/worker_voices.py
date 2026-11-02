@@ -7,7 +7,7 @@ import os
 from collections import deque
 from pathlib import Path
 
-from .diarization import group_tracks, voice_ordinals
+from .diarization import group_tracks, voice_ordinals, voice_source
 from .library import LibraryScanner, _sidecar_words
 from .meeting_store import read_metadata
 from .received import regular_input
@@ -40,7 +40,8 @@ def historical_words(directory):
     return [dict(speaker=w.speaker, startMs=w.start_ms, endMs=w.end_ms) for w in meeting.words]
 
 
-def group_words(group, words, turns, merges, *, all_words=False, excluded_groups=()):
+def group_words(group, words, turns, merges, *, all_words=False, excluded_groups=(), labelled=None):
+    """`labelled` limits ordinal labels to saved ids made from these turns (G12)."""
     ordinals = voice_ordinals(turns)
     native_ids = {f"{group['id']}~{ordinal}": native for native, ordinal in ordinals.items()}
     selected = [
@@ -52,7 +53,7 @@ def group_words(group, words, turns, merges, *, all_words=False, excluded_groups
     labels = {}
     for word in selected:
         raw = word["speaker"]
-        if raw in native_ids:
+        if raw in native_ids and (labelled is None or raw in labelled):
             labels.setdefault(merges.get(raw, raw), set()).add(native_ids[raw])
     return [dict(w, speaker=merges.get(w["speaker"], w["speaker"])) for w in selected], labels
 
@@ -109,7 +110,7 @@ def run(tracks, options, notify):
                 )
             )
             previous = cached.get(group["id"], {})
-            turns = previous.get("turns", [])
+            turns, turns_input = previous.get("turns", []), previous.get("inputSHA256")
             if (
                 background
                 and group["eligible"]
@@ -131,12 +132,18 @@ def run(tracks, options, notify):
                     turns = diarizer.infer(samples, lambda *_: notify("voice-progress"))["turns"]
                 finally:
                     samples._mmap.close()
+                turns_input = sha
+            # G12: saved `<group>~n` ids name ordinals of the turns they were
+            # stamped with. Other turns' ordinals may belong to another voice.
+            stamp = voice_source(turns_input, turns)
+            labelled = {s["id"] for s in metadata.get("speakers", []) if s.get("voiceSource") == stamp}
             selected, labels = group_words(
                 group,
                 words,
                 turns,
                 merges,
                 excluded_groups=tuple(g["id"] for g in groups if g["id"] != group["id"]) if background else (),
+                labelled=labelled,
                 all_words=background
                 and (
                     options.get("origin") == "received"

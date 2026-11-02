@@ -8,6 +8,7 @@ import threading
 import pytest
 from test_transcription import until
 
+from cassini_talk.diarization import voice_source
 from cassini_talk.library import LibraryScanner
 from cassini_talk.meeting_store import read_metadata, update_metadata
 from cassini_talk.nemotron_model import MODEL_TAG
@@ -31,9 +32,12 @@ def test_voice_publication_and_diarization_failures_preserve_words_and_capture(t
     session.append("room", b"\x01\x00" * 32000, 0)
     session.finish()
     before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in session.directory.iterdir()}
+    turns = [dict(startMs=0, endMs=900, speaker=0), dict(startMs=1000, endMs=2000, speaker=1)]
+    # G12: the name was typed on this exact input and these turns, so it stays.
+    source = voice_source("a" * 64, turns)
     update_metadata(
         session.directory,
-        speakers=[dict(id="others~1", name="Alice", provenance="user", colourIndex=0)],
+        speakers=[dict(id="others~1", name="Alice", provenance="user", colourIndex=0, voiceSource=source)],
         notes=[dict(atMs=100, text="Keep this")],
         privateField="preserved",
     )
@@ -41,7 +45,6 @@ def test_voice_publication_and_diarization_failures_preserve_words_and_capture(t
         dict(text="One", startMs=10, endMs=800, lowConfidenceSpeaker=True),
         dict(text="Two", startMs=1010, endMs=1800),
     ]
-    turns = [dict(startMs=0, endMs=900, speaker=0), dict(startMs=1000, endMs=2000, speaker=1)]
     finished = []
 
     class Client:
@@ -107,6 +110,7 @@ def test_voice_publication_and_diarization_failures_preserve_words_and_capture(t
             (meeting,) = LibraryScanner(tmp_path).scan().meetings
             assert meeting.speaker_names == ("Alice", "Speaker 2")
             assert meeting.speakers[0].provenance == "user"
+            assert read_metadata(session.directory)["speakers"][-1]["voiceSource"] == source
         else:
             assert [w["speaker"] for w in body["items"]] == ["others", "others"]
             assert not (session.directory / "speaker-turns.json").exists()
@@ -248,7 +252,13 @@ def test_cancelled_attribution_remains_running_and_restart_redoes_missing_turns(
     from cassini_talk import diarization, transcript_publish
 
     session = system_capture
-    update_metadata(session.directory, speakers=[dict(id="others~1", name="Alice", provenance="user", colourIndex=0)])
+    turns = [dict(startMs=0, endMs=900, speaker=0), dict(startMs=1000, endMs=2000, speaker=1)]
+    # G12: the redone turns equal the ones Alice was named on, so the name stays.
+    source = voice_source("a" * 64, turns)
+    update_metadata(
+        session.directory,
+        speakers=[dict(id="others~1", name="Alice", provenance="user", colourIndex=0, voiceSource=source)],
+    )
     entered, release = threading.Event(), threading.Event()
     completed_flushes, finished = [], []
     apply = diarization.apply_transcript
