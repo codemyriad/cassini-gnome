@@ -822,6 +822,12 @@ class BrowserService:
         try:
             reply(dict(ready=True, protocol=2))
             while (packet := read_packet(stream)) is not None:
+                # D52.5: a frame arriving at or after PCM_STALE_AFTER is too
+                # late, even when no tick has noticed the deadline yet.
+                if (reason := transport.expired(self.clock())) is not None:
+                    logging.getLogger(__name__).warning("Closing a browser peer that %s", reason)
+                    transport.shutdown()
+                    break
                 transport.last_inbound = self.clock()
                 transport.handling = True
                 try:

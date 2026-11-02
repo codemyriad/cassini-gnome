@@ -51,10 +51,13 @@ class StaleWatchdogTests(unittest.TestCase):
         self.assertEqual(kinds, {'track', 'audio', 'sources', 'trackEnd', 'stop', 'control'})
 
     def test_mutants_fail(self):
-        boundary = {'pcm-then-silence-closes-at-exactly-45-seconds', 'control-frames-do-not-count'}
+        boundary = {'pcm-then-silence-closes-at-exactly-45-seconds', 'control-frames-do-not-count',
+                    'audio-frame-arriving-at-the-deadline-is-too-late'}
         self.assertLessEqual(boundary, failing(mutant('return now - last >= PCM_STALE_AFTER', 'return now - last > PCM_STALE_AFTER')))
         self.assertIn('pcm-then-silence-closes-at-exactly-45-seconds',
                       failing(mutant('PCM_STALE_AFTER = 45000', 'PCM_STALE_AFTER = 40000')))
+        self.assertIn('audio-frame-arriving-at-the-deadline-is-too-late',
+                      failing(mutant('return True  # a frame at or after the deadline arrives too late', 'pass')))
         self.assertIn('track-only-frames-keep-the-transport-alive',
                       failing(mutant("{'track', 'audio', 'sources', 'trackEnd', 'stop'}", "{'audio', 'sources', 'trackEnd', 'stop'}")))
         self.assertIn('sources-only-frames-keep-the-transport-alive',

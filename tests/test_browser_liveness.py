@@ -17,6 +17,7 @@ from test_capture_record import declare, pcm
 
 from cassini_talk.browser_audio_proxy import BrowserAudioProxy
 from cassini_talk.browser_service import PCM_STALE_AFTER, WRITE_DEADLINE, BrowserService, send_packet
+from cassini_talk.recording_session import ProtocolError
 
 ACK = dict(type="ack")
 
@@ -619,3 +620,31 @@ def test_shared_stale_watchdog_vectors_on_the_real_transport(broker, case):
     finally:
         client.close()
         peer.close()
+
+
+@pytest.mark.parametrize("late", [False, True], ids=["before-the-deadline", "after-the-deadline"])
+def test_a_frame_after_the_deadline_is_too_late_before_any_tick(broker, late):
+    """The shared runner ticks first; here the late frame arrives between ticks."""
+    service, path, clock, _lost = broker
+    client = BrowserAudioProxy(path=path)
+    try:
+        negotiated(client, service, "stale-between-ticks")
+        (transport,) = service._audio_transports
+        clock.now = 0
+        assert client.handle(declare("a", "receiver-a")).get("type") == "ack"
+        assert client.handle(pcm("a", 480, sequence=0, offset=1)).get("type") == "ack"
+        clock.now = PCM_STALE_AFTER + (0.3 if late else -0.3)
+        try:
+            reply = client.handle(pcm("a", 480, sequence=1, offset=2))
+        except (ConnectionError, OSError, ProtocolError):
+            reply = None
+        if late:
+            assert reply is None or reply.get("type") != "ack"
+            assert transport.shut_down.wait(5)
+        else:
+            assert reply.get("type") == "ack"
+            clock.now = PCM_STALE_AFTER + 0.3
+            service.tick()
+            assert not transport.shut_down.is_set()
+    finally:
+        client.close()

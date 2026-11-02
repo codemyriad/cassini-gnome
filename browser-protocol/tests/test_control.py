@@ -47,8 +47,9 @@ class ControlTests(unittest.TestCase):
                 self.assertTrue(validator.is_valid(dict(type='meetings',meetings=[case['meeting']])))
                 self.assertIs(type(case['expect']['automatic']),bool)
                 self.assertIs(type(case['expect']['manual']),bool)
-                # D52.5: optional app-side recordings of this browser instance and
-                # the optional resume expectation (absent means false).
+                # D52.5: optional app-side recordings, matched to the row by tabId plus
+                # callGeneration across every control peer, and the optional resume
+                # expectation (absent means false).
                 self.assertIs(type(case['expect'].get('resume',False)),bool)
                 self.assertLessEqual(set(case['expect']),{'automatic','manual','resume'})
                 for recording in case.get('recordings',[]):

@@ -1,26 +1,26 @@
-tree cafb6118501708b456c8a2cd380c40261ed52323
-parent a1be3bcf2678a308d5b17c5b09b1a57c1c8d5635
-parent 4a59e9733206112eb4cc0ec98e903e4e3609702f
-author Silvio Tomatis <silviot@gmail.com> 1793575325 +0100
-committer GitHub <noreply@github.com> 1793575325 +0100
+tree b79611d2cfbc1587f4bfbd83bae0d95af57c719e
+parent 57365bdfce4604d8445d63950ff84f67a634ff1c
+parent 1448d7aad607b87b1de38066b177b435526df141
+author Silvio Tomatis <silviot@gmail.com> 1793577892 +0100
+committer GitHub <noreply@github.com> 1793577892 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq58mdCRC1aQ7uu5UhlAAAGrEQAJTHlNIXGHfoJylBwY5/LAgQ
- yqu8m1Onl8b01i7CvdLEdf0o8wusOd0GTrYLZxPQAA1kzXuhPUSsZONaDCq1QRVL
- pIW34ydUhUCe96Qhdz+HI1klMqViV0zcCEAPIqjkDzU+EO57ZJkrJpsybe6+Qxgi
- vh1LyeArBFOG9hK2CcNfN9HwE7g4I24tUXVkQLk3TjwlCyBjvV1y72W/QNo3H65q
- DWr/LhviRw4+0W+OKkmnWCCLQaQu7ODJA2js7SiEx3cERtCvsW2DLMl9SnTj3zK5
- W5IyOQbbd6SVo0Lo9oTBGeNR/NHN/JKLFTV6fp85fKguMgZZNdwBK6U+dckLf067
- guE6Ongvc8QHVvwlBQ2KStDMw4CyYkrO1avX9rEbJCZ2406VEWLN7tipTJdWcIt5
- zqR9uFOD/IXvyXHD0hyQctOGQzKHc6urv2C/g8F0SojyDZSuVzhpYo25a11h+1l1
- 2q68NlSguiNgCJsqILjEOawg2uDBcJ7YcfUeh6p4lJTBZhdX7E0+OwLJhl/7fLe7
- //8O+Dokz7dDvDmyCddwboFupv5dnCu7P0E973dtdSRrX4N2tyiPEgel+Ld6t1Gq
- jBkLT4vv+y49hQg4JtIqGSnFQZT2hoPR6JaRGiXicPpoVn+pMcH5GUhaUvPp+mpG
- 3pb28IPiOqt2Tr/DPQxZ
- =3F85
+ wsFcBAABCAAQBQJq59OkCRC1aQ7uu5UhlAAA7HQQAAzPotResdXzJc/Y5UqKCGuT
+ TaxG4XqsSFT3JIUinhauXNS+D/juKvMMKkOXaSfMrpw3SnNPQ6+JY+hKiMpV0v04
+ G/qHuU/tQyMqPQ899/Uxv3v3DmmYvVf8YCdPTCgRam4hAA0WdN/Toq15bnBG38/c
+ kiOYn2XCZP9bqh78CFCPh8jefglRtgxu/7n9dF+wCCBwezDiytYg2wo+ookG2sRb
+ SdBzLHUUhbQhp+xktYYyur4R8zAxozd3iPIn2OmYp2B0mIMoQlR9P7twSPcFpyDT
+ mWJFB42l+w/38Jr6Ixab13g1tNzcvDnIv1KoPdJYs1CrKKqy5S93H+aHVr2kQeW9
+ eaoMc/52BCehBTHy5YHG3ZQrgtjVE7jQp3hWkbYGDB01xteaqmhrYZpUa+7jvRw8
+ +CTKD2BHlt3FM9G0gA4jNA/3/drAVSw/lvKtv8vx61pKRuuxzEgkhZn1VxaWWjJ6
+ fncD+5jMW3igxWhdYto5085Mfk1TnmKl+ZxklueplnPeEbPneKCC75xG4QvNB8cN
+ 4wiMqTuywktBqINgPwZYbrfaSlpqWyUS2YQ/otPkcjYNtkBNt8fsFNxg8e2GBC0G
+ HcMfZf8wG1XotiibiB6tdb22kgtuW8YMFptQMRucq9QuJVaqDxOLtxuTSijDkdF1
+ jD5YO+i/rj00emwnIQxp
+ =6Tma
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #32 from codemyriad/feat/resume-once
+Merge pull request #33 from codemyriad/chore/liveness-nits
 
-Ask once to resume a lost recording, never start a second one; PCM_STALE_AFTER 45 s (D52.5)
+Pin the 45 s deadline arrival, the peer-free match comment and cross-generation grace
