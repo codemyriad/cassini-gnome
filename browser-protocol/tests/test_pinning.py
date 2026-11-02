@@ -13,6 +13,12 @@ sys.path.insert(0, str(ROOT))
 from verify import verify
 
 class PinningTests(unittest.TestCase):
+    def test_clock_and_document_facts_can_replace_an_installed_0211_companion(self):
+        manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
+        parts = tuple(int(part) for part in manifest['version'].split('.'))
+        self.assertGreater(parts + (0,) * (4 - len(parts)), (0, 2, 11, 0),
+                           'D61 clock facts and track documentGeneration need a newer version: local installers never replace equal 0.2.11')
+
     def test_resume_request_id_can_replace_an_installed_0210_companion(self):
         manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
         parts = tuple(int(part) for part in manifest['version'].split('.'))

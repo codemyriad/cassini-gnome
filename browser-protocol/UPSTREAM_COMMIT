@@ -1,26 +1,26 @@
-tree 15d592e22215867f30876e0138e4612eab6ffb57
-parent 14c929bee3b4f5ffe48a0ddf9aec9a6aac82fec8
-parent 08ad6f6401941d5e259cde2d3359226e53a5a3c0
-author Silvio Tomatis <silviot@gmail.com> 1793650493 +0100
-committer GitHub <noreply@github.com> 1793650493 +0100
+tree 03cfbc426e16263f8b762afeb7960263e9f1bf3a
+parent 82c241935c2cbb639ce4d3c03a0862579d092b9d
+parent f5333f507e817580cf61336c37eddc6ae84eb3d3
+author Silvio Tomatis <silviot@gmail.com> 1793660718 +0100
+committer GitHub <noreply@github.com> 1793660718 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq6O89CRC1aQ7uu5UhlAAARI8QACuiIp/x3rcr6su6hvsJgNCL
- wzvQNhmbz1plS+TxXQIB2IPZZG46EQIuLz82BZMGWorShTYhKjNacEoLTbi3IKvi
- DIw0yaeXrURS5kEpiRKG/pi7iD4Wf10jLjosn6m0D8+PlqZRTUIH60jzpVWeQ7ej
- fCgmm1udCrkaDEuQSgD8xPTkys4Lq+dDYkEYBcz9189IwSPBfOUtU/KUTixoX0et
- xTw6yLTopyg7knK/CSMROQqdh/oUKs3kIB6yyW1FZlHHeXm9Y48BR83eBcVWlKFQ
- Z+buMqRU4AeoegX2UX07ObVjc+bZ52gxSsoBB99CbeFXdgIvdYbAQ6V/GKc2Lwhy
- 41Lysa/uPnqT9Ry3ftue4/T6to3HsNV+23y+svVAV+fSeMtkaDaGt28AD3AWHoC+
- DqtKR3azHUaIWd+kevYNirlO09ZVG1/IbVaeBcwM7L3WER5Mh1MCXE7ft3JhrTH/
- 72GhDd8mkLhIKo9CWkiPGdJjyg2yUVYRtienHEBN2+6xDoPY8mQmVTZSpduCkqt+
- 2aR1sujq0Vu6Aj+EQv7mMwNK0ZGY7l+4eF0Htmg+83QOGS68wmoKpttQAv46MQ23
- KKYzHXmZIDc82nbbPpT0UR7d1wXBTrfM24UWpy/UYHgp6x6+rsIoC1qPSRfy2XvO
- s7IOTJXzicrewdrJ7sqI
- =1vgy
+ wsFcBAABCAAQBQJq6RcuCRC1aQ7uu5UhlAAAOkEQAIP18Qf5NjCrL1aTgcU2Zs4/
+ j8aqQsUzQPax8SLdUNVXiUomhcSWp4PSkivIVglFV17+SNprs9fPy9Ug97GhqMSh
+ /Gui4AifbVY9pc7hEtq1xoHtsaEEImF4Cg6798j4Axno4/x3fOnxafRjhFdemLhw
+ skLC+HAVK5Xce3lrLYjQskyZ9/ptcyZB/y34+cU78XSYdNvHeMY7AQ8kGTX5jioC
+ 7GHcGTGhBKUr2NX9lnLEeX7iNXotaSzIW8uzTXZyycBylKda45rxKwB0yRc6cFoH
+ bTczc3ZYTx0OkGrT+g88iDOkuw/+GuOW1XW99wPOyhHiRkKnf4d5uSC3K6eUzsH9
+ cDs5+LA1Iy2iVWO7DLFNDLxyOemIRzFJ/3INZp4H82zRn5xmeKZQVWbXeSeCMdBR
+ RokBKPgvbz88fEdiB4oemCEBHKA1eTO6DNRgNQ0yinKNv7CrwKNSaR6srVXU4VrH
+ I7OGpcE1tNr4OvSEeJvy/wFRRV9ZQywvxi/9GM38ao1UR0G6AphEef1xscTKHmdC
+ wKqD/ZeHwUfFCx+xle++Jakc5pycfQjplLl+IDHZFT+ipEIkHNRKKVYl/rF8T4mG
+ jzsWA+/hvewLUYzNa1bDVrw+Ru1knuOaE+Yp6/3+35AqF1CyRlclfag7sXLP0QLr
+ KBvoL9tDXp6sDvbmz7O/
+ =hd0C
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #38 from codemyriad/chore/resume-ask-followups
+Merge pull request #40 from codemyriad/chore/clock-facts-followups
 
-Resume requestId follow-ups from Mac's #37 review
+D61 follow-ups from Mac's review of #39

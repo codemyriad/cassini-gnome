@@ -68,6 +68,12 @@ class WireTrack:
     dormant: bool = False
     # Declaration order on this capture, for retiring one document's spans.
     serial: int = 0
+    # D61: the record-only clock facts every stored span of this wire span carries.
+    clock: dict | None = None
+    # D61: the documentGeneration the extension stamped on the track. A span
+    # with one is dormant exactly while that generation has departed
+    # (BrowserCapture.dormant); `dormant` above applies only to spans without one.
+    document: str | None = None
 
 
 class BrowserStreams:
@@ -113,6 +119,7 @@ class BrowserStreams:
             track.channels,
             label_source="browser",
             source_track_id=source_track_id,
+            clock=track.clock,
         )
         track.recorded = track.last_recorded = stored
         track.boundary = boundary or 0
@@ -121,7 +128,7 @@ class BrowserStreams:
             self.session.manifest["tracks"][-1]["startOffsetMs"] = boundary
         self.session.checkpoint()
 
-    def add_track(self, identifier, label, kind, rate, channels, *, source_track_id=None):
+    def add_track(self, identifier, label, kind, rate, channels, *, source_track_id=None, clock=None, document=None):
         if identifier in self.tracks:
             raise ProtocolError("source", "Invalid or duplicate audio source")
         # Ended spans (trackEnd, refusal, or a closed transport's retirement)
@@ -138,7 +145,9 @@ class BrowserStreams:
             channels,
             source_track_id=source_track_id,
             available=self.browser,
-            dormant=self.departing and kind not in ME_KINDS,
+            dormant=self.departing and kind not in ME_KINDS and document is None,
+            clock=clock,
+            document=document,
         )
         if self.enabled(track):
             with self.session.change([]):

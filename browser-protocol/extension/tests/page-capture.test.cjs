@@ -10,6 +10,13 @@ test('remote span waits for a connected peer and a positive packet delta',()=>fi
  remote.packets=1;await f.tick();await f.scan();assert.equal(f.captures.length,1);
  assert.ok(f.captures[0].sourceTrackId);
 }));
+test('the page relays capture clock facts as declared and never names the document itself',()=>fixture(async f=>{
+ // D61: the background stamps documentGeneration from the sending frame; the page adds none.
+ const remote=f.remote();await f.tick();remote.packets=10;await f.tick();await f.start();
+ const track=f.messages.find(m=>m.type==='packet'&&m.packet.type==='track').packet;
+ assert.deepEqual([track.clockMethod,track.clockUncertaintyMs,track.clockClampMs],['roundTrip',9,3]);
+ assert.equal('documentGeneration' in track,false);
+}));
 test('equal labels have different identities; a receiver replacement retains its root identity',()=>fixture(async f=>{
  const a=f.remote(),b=f.remote();await f.tick();a.packets=b.packets=10;await f.tick();await f.start();
  assert.equal(f.captures.length,2);assert.notEqual(f.captures[0].sourceTrackId,f.captures[1].sourceTrackId);

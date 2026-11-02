@@ -121,5 +121,61 @@ class StaleWatchdogTests(unittest.TestCase):
             with self.subTest(mutant=name):
                 self.assertIn(case, failing(mutant(old, new)))
 
+    def test_document_generation_on_track_is_normative_and_mutants_fail(self):
+        # D61: a span that carries a documentGeneration is dormant exactly when its
+        # generation departed; spans without one keep the D57 declaration-order rule.
+        self.assertIn('the set of departed generations', (ROOT / 'SPEC.md').read_text())
+        late = 'late-span-of-a-departed-document-stays-dormant-after-the-window-closes'
+        new_document = 'new-documents-span-during-the-departing-window-arms'
+        missed = 'a-change-retires-a-missed-documents-spans'
+        navigating = 'navigating-departs-the-current-and-every-open-spans-generation'
+        invalid = 'an-invalid-span-generation-counts-as-absent'
+        over_bytes = 'a-generation-over-200-utf8-bytes-counts-as-absent'
+        reused = 'a-reused-span-id-keeps-its-first-declaration'
+        cases = {case['name']: case for case in VECTORS['cases']}
+        for name in (late, new_document, missed, navigating, invalid, over_bytes, reused):
+            self.assertTrue(any('documentGeneration' in f for f in cases[name]['frames'] if f['frame'] == 'track'), name)
+        legacy = [case['name'] for case in VECTORS['cases'] if not any(f['frame'] == 'track' and 'documentGeneration' in f for f in case['frames'])]
+        self.assertEqual(len(legacy), 17, 'the D57 cases stay generation-less and unchanged')
+        mutants = {
+            'the oracle ignores departed generations': ('return documents[id] in departed', 'return False', {late, missed}),
+            'generation spans follow the declaration-order rule': (
+                "if kind == 'track' and valid(frame.get('documentGeneration')):", "if False:", {late, new_document, missed, navigating}),
+            'navigating departs nothing': (
+                '                if generation is not None:\n                    departed.add(generation)\n'
+                '                departed.update(documents.values())  # every open span\'s document is gone\n', '', {late, navigating}),
+            # Review of D61: navigating retires every open span (D57), including a
+            # missed document's, and the current generation even with no open span.
+            'navigating departs only the current generation': (
+                '                departed.update(documents.values())  # every open span\'s document is gone\n', '', {navigating}),
+            'navigating departs only the open spans\' generations': (
+                '                if generation is not None:\n                    departed.add(generation)\n                departed.update(documents.values())',
+                '                departed.update(documents.values())', {navigating}),
+            'an invalid generation counts': ("if kind == 'track' and valid(frame.get('documentGeneration')):",
+                                             "if kind == 'track' and frame.get('documentGeneration') is not None:", {invalid}),
+            'a change departs only the old generation': (
+                'departed.update(g for g in documents.values() if g != document)', 'pass', {missed}),
+            'a change departs only the open spans\' generations': (
+                '                departed.add(generation)\n                departed.update(g for', '                departed.update(g for', {missed}),
+            'a change departs the new generation too': (
+                'departed.update(g for g in documents.values() if g != document)', 'departed.update(documents.values())', {new_document}),
+            # Mac review of #39: the 200 limit counts UTF-8 bytes, and a reused span
+            # id changes no span, so it keeps its first declaration, open or ended.
+            'a generation counts characters': ('0 < len(document.encode()) <= 200', '0 < len(document) <= 200', {over_bytes}),
+            'a re-declaration is accepted': ("if kind == 'track' and frame['id'] in seen:", 'if False:', {reused}),
+            'a re-declaration without a generation is accepted': (
+                "if kind == 'track' and frame['id'] in seen:",
+                "if kind == 'track' and frame['id'] in seen and valid(frame.get('documentGeneration')):", {reused}),
+            'a re-declaration with a generation is accepted': (
+                "if kind == 'track' and frame['id'] in seen:",
+                "if kind == 'track' and frame['id'] in seen and not valid(frame.get('documentGeneration')):", {reused}),
+            'an ended span id can be declared again': (
+                "if kind == 'track' and frame['id'] in seen:",
+                "if kind == 'track' and (frame['id'] in open_spans or frame['id'] in documents):", {reused}),
+        }
+        for name, (old, new, expected) in mutants.items():
+            with self.subTest(mutant=name):
+                self.assertLessEqual(expected, failing(mutant(old, new)))
+
 if __name__ == '__main__':
     unittest.main()

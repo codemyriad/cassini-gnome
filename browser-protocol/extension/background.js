@@ -48,9 +48,10 @@ function callInfo(tabId) {
   }
   return callGenerations.get(tabId);
 }
-function documentFor(tabId) {
-  return [...frames].find(f => f.tabId === tabId && !f.obsolete && f.frameId === 0)?.documentGeneration;
-}
+const mainFrame = tabId => [...frames].find(f => f.tabId === tabId && !f.obsolete && f.frameId === 0);
+function documentFor(tabId) { return mainFrame(tabId)?.documentGeneration; }
+// A documentGeneration is 1 to 200 UTF-8 bytes wherever it is read, so status and track agree.
+const validDocument = value => typeof value === "string" && value.length > 0 && new TextEncoder().encode(value).length <= 200;
 async function addressFingerprint(url) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(callAddress(url)));
   return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("");
@@ -405,9 +406,23 @@ async function start(mode, tabId = null, options = {}) {
   } finally { if (pendingStarts.get(key) === request) pendingStarts.delete(key); }
 }
 
+// D61: a span's documentGeneration is the browser's record of the frame that
+// sent it, never the page's: one in the packet is replaced, or dropped when the
+// span has no known document (whole-tab spans have none). A main frame's span
+// gets its own generation; a subframe's gets the generation of the main frame it
+// was first discovered under, never a later one's, so a departing subframe's late
+// span cannot name the next document.
+const spanDocument = frame => frame.frameId === 0 ? frame.documentGeneration : frame.mainFrame?.documentGeneration;
+function stampDocument(packet, documentGeneration) {
+  if (packet?.type !== "track") return packet;
+  const { documentGeneration: _ignored, ...track } = packet;
+  return validDocument(documentGeneration) ? { ...track, documentGeneration } : track;
+}
+
 // One admission path for page frames and whole-tab offscreen capture. A retired
 // span is fenced locally: its late packets are not a failure of the live root.
-async function forwardPacket(session, packet) {
+async function forwardPacket(session, packet, documentGeneration) {
+  packet = stampDocument(packet, documentGeneration);
   if (session.callChanged && packet.type !== "trackEnd")
     throw Object.assign(new Error("This audio belongs to a different call."), { scope: "source", code: "callChanged" });
   if (["track", "audio", "trackEnd"].includes(packet.type) &&
@@ -470,8 +485,10 @@ chrome.runtime.onConnect.addListener(port => {
     }
     if (message.type === "discovery") {
       if (frame.obsolete || pageState(frame.tabId) === "closed") return;
+      // A subframe's spans belong to the main document it appeared under (D61).
+      if (frame.frameId !== 0) frame.mainFrame ??= mainFrame(frame.tabId);
       const document = message.documentGeneration, generation = message.callGeneration;
-      if (typeof document === "string" && document.length > 0 && document.length <= 200 &&
+      if (validDocument(document) &&
           typeof generation === "string" && generation.length > 0 && generation.length <= 200) {
         const info = callInfo(frame.tabId);
         if (frame.frameId === 0 && !frame.identitySeeded) {
@@ -522,7 +539,7 @@ chrome.runtime.onConnect.addListener(port => {
     if (message.type === "error") { failure("The meeting page could not record separate tracks. Record the whole tab instead. Audio recorded so far was saved.", session); return; }
     if (message.type !== "packet" || !["track", "audio", ...(session.sourceOutcomes ? ["trackEnd", "sources"] : [])].includes(message.packet?.type)) return;
     try {
-      await forwardPacket(session, message.packet);
+      await forwardPacket(session, message.packet, spanDocument(frame));
       port.postMessage({ type: "ack", token: session.token, request: message.request });
     } catch (error) {
       if (error.retired) { /* Already retired locally; keep other spans recording. */ }

@@ -624,6 +624,43 @@ def test_stale_watchdog_constant_matches_the_shared_vectors():
 
 @pytest.mark.parametrize("case", STALE_VECTORS["cases"], ids=lambda case: case["name"])
 def test_shared_stale_watchdog_vectors_on_the_real_transport(broker, case):
+    replay(broker, case)
+
+
+# Shapes the shared vectors do not have yet, replayed by the same runner.
+LOCAL_STALE_CASES = [
+    # Statuses at one time: the last must be applied before the span after
+    # it is declared, or b lands in the departing window and never arms.
+    dict(
+        name="statuses-at-one-time-apply-in-order",
+        frames=[
+            dict(atMs=0, frame="track", id="a"),
+            dict(atMs=0, frame="audio", id="a"),
+            *(
+                dict(
+                    atMs=1000,
+                    frame="documentChanged",
+                    pageState=page,
+                    documentGeneration=f"doc-{n + (page == 'present')}",
+                )
+                for n in range(1, 5)
+                for page in ("navigating", "present")
+            ),
+            dict(atMs=1000, frame="track", id="b"),
+            dict(atMs=1000, frame="audio", id="b"),
+        ],
+        closeAtMs=46000,
+        probes=[dict(atMs=45999, closed=False), dict(atMs=46000, closed=True)],
+    ),
+]
+
+
+@pytest.mark.parametrize("case", LOCAL_STALE_CASES, ids=lambda case: case["name"])
+def test_local_stale_watchdog_cases_on_the_real_transport(broker, case):
+    replay(broker, case)
+
+
+def replay(broker, case):
     """Replay audio-transport and control frames; tick at every frame, probe and deadline time."""
     service, path, clock, _lost = broker
     client = Settled(BrowserAudioProxy(path=path), service)
@@ -633,7 +670,7 @@ def test_shared_stale_watchdog_vectors_on_the_real_transport(broker, case):
         negotiated(client, service, identifier)
         (transport,) = service._audio_transports
         (control,) = service.browsers.values()
-        sequences = {}
+        sequences, ended = {}, set()
         times = {f["atMs"] for f in case["frames"]} | {p["atMs"] for p in case["probes"]}
         times |= {f["atMs"] + PCM_STALE_AFTER * 1000 for f in case["frames"]}
         closed_at = None
@@ -656,15 +693,24 @@ def test_shared_stale_watchdog_vectors_on_the_real_transport(broker, case):
                     for key in ("pageState", "documentGeneration"):  # either may be absent
                         if key in frame:
                             entry[key] = frame[key]
+                    # Each status and inventory replaces its dict: wait for that,
+                    # since last_inbound already matches when two share a time.
+                    pages = control.status_pages
                     send_packet(peer.stream, dict(type="status", recording=True, sessions=[entry]))
-                    wait_for(lambda: control.last_inbound == clock.now)
+                    wait_for(lambda before=pages: control.status_pages is not before)
                     with service.lock:
                         pass  # update() holds the lock until the status is applied.
                     # navigating zeroes the row's count; the page keeps its call.
+                    meetings = control.meetings
                     peer.inventory((3,))
+                    wait_for(lambda before=meetings: control.meetings is not before)
+                    with service.lock:
+                        pass
                     continue
                 if kind == "track":
                     packet = declare(frame["id"], "receiver-" + frame["id"])
+                    if "documentGeneration" in frame:  # D61: the extension's stamp
+                        packet["documentGeneration"] = frame["documentGeneration"]
                 elif kind == "audio":
                     sequence = sequences.get(frame["id"], 0)
                     sequences[frame["id"]] = sequence + 1
@@ -676,7 +722,13 @@ def test_shared_stale_watchdog_vectors_on_the_real_transport(broker, case):
                 else:
                     packet = dict(type="stop", captureId=identifier)
                 reply = client.handle(packet)
-                assert reply.get("type") in ("ack", "stopped"), (frame, reply)
+                if kind in ("track", "audio") and frame["id"] in ended:
+                    # An ended id stays ended: its repeat and audio are refused.
+                    assert (reply.get("type"), reply.get("code")) == ("error", "state"), (frame, reply)
+                else:
+                    assert reply.get("type") in ("ack", "stopped"), (frame, reply)
+                if kind == "trackEnd":
+                    ended.add(frame["id"])
             for probe in (p for p in case["probes"] if p["atMs"] == at):
                 assert (closed_at is not None) is probe["closed"], (case["name"], probe)
         assert closed_at == case["closeAtMs"], case["name"]
@@ -941,3 +993,109 @@ def test_a_frozen_companions_transport_is_closed_on_a_control_loss_fallback(brok
         capture.stop()
     finally:
         client.close()
+
+
+def test_an_old_documents_late_span_stays_dormant_after_the_window_closes(broker):
+    """D61: a span that names its document is dormant exactly while that
+    generation has departed, whenever it arrives; a new document's span arms."""
+    service, path, clock, lost = broker
+    client = Settled(BrowserAudioProxy(path=path), service)
+    peer = Extension(path, (3,))
+    try:
+        capture = negotiated(client, service, "late-old-document")
+        assert client.handle(dict(declare("old-frame", "doc-1:source:1"), documentGeneration="doc-1")) == ACK
+        assert client.handle(pcm("old-frame", 480)) == ACK
+        report(peer, capture, "present", "doc-1")
+        seen_document(capture, "doc-1")
+        report(peer, capture, "navigating", "doc-1")
+        wait_for(lambda: capture.streams.departing)
+        assert capture.departed_documents == {"doc-1"} and not capture.remote_open()
+        report(peer, capture, "present", "doc-2")
+        peer.inventory((3,))
+        seen_document(capture, "doc-2")
+        assert not capture.streams.departing
+        # The old document's last span reaches the broker after the window closed.
+        assert client.handle(dict(declare("old-late", "doc-1:source:2"), documentGeneration="doc-1")) == ACK
+        assert client.handle(pcm("old-late", 480, offset=5)) == ACK
+        old = next(t for t in capture.host.session.manifest["tracks"] if t["id"] == "old-late")
+        assert old["frames"] == 480 and "documentGeneration" not in old, "its PCM is still recorded"
+        assert not capture.streams.tracks["old-late"].dormant, "the declaration-order flag is not what decides"
+        assert not capture.remote_open()
+        (transport,) = service._audio_transports
+        clock.now = PCM_STALE_AFTER * 10
+        service.tick()
+        assert not transport.shut_down.is_set(), "a departed document's span is not a running recorder"
+        # The new document's span arms as usual, and a track never moves the current generation.
+        assert client.handle(dict(declare("new-frame", "doc-2:source:1"), documentGeneration="doc-2")) == ACK
+        assert client.handle(pcm("new-frame", 480, offset=1000)) == ACK
+        assert capture.remote_open() and capture.document_generation == "doc-2"
+        clock.now = PCM_STALE_AFTER * 11 - 0.001
+        service.tick()
+        assert not transport.shut_down.is_set()
+        clock.now = PCM_STALE_AFTER * 11
+        service.tick()
+        assert transport.shut_down.is_set()
+        assert lost.wait(5) and len(lost_events(capture)) == 1
+        capture.stop()
+    finally:
+        client.close()
+        peer.close()
+
+
+def test_navigating_departs_every_open_spans_own_generation(broker):
+    """A span of a document the app never saw named (a missed reload) still
+    departs when the tab navigates; it stays dormant once the tab is back."""
+    service, path, clock, _lost = broker
+    client = Settled(BrowserAudioProxy(path=path), service)
+    peer = Extension(path, (3,))
+    try:
+        capture = negotiated(client, service, "navigating-open-spans")
+        report(peer, capture, "present", "doc-1")
+        seen_document(capture, "doc-1")
+        assert client.handle(dict(declare("b", "doc-2:source:1"), documentGeneration="doc-2")) == ACK
+        assert client.handle(pcm("b", 480)) == ACK
+        assert capture.remote_open()
+        report(peer, capture, "navigating")
+        wait_for(lambda: capture.streams.departing)
+        report(peer, capture, "present")
+        wait_for(lambda: not capture.streams.departing)
+        assert capture.departed_documents == {"doc-1", "doc-2"} and not capture.remote_open()
+        (transport,) = service._audio_transports
+        clock.now = PCM_STALE_AFTER * 10
+        service.tick()
+        assert not transport.shut_down.is_set()
+        capture.stop()
+    finally:
+        client.close()
+        peer.close()
+
+
+@pytest.mark.parametrize("generation", ["", "é" * 101, 7], ids=["empty", "201-bytes", "number"])
+def test_an_invalid_span_generation_counts_as_absent(broker, generation):
+    """Such a span follows the declaration-order rules: declared in the
+    departing window it is born dormant, and the window's close never wakes it."""
+    service, path, clock, _lost = broker
+    client = Settled(BrowserAudioProxy(path=path), service)
+    peer = Extension(path, (3,))
+    try:
+        capture = negotiated(client, service, "invalid-generation")
+        report(peer, capture, "present", "doc-1")
+        seen_document(capture, "doc-1")
+        report(peer, capture, "navigating", "doc-1")
+        wait_for(lambda: capture.streams.departing)
+        assert client.handle(dict(declare("late", "doc-1:source:1"), documentGeneration=generation)) == ACK
+        assert client.handle(pcm("late", 480)) == ACK
+        span = capture.streams.tracks["late"]
+        assert span.document is None and span.dormant
+        report(peer, capture, "present", "doc-2")
+        peer.inventory((3,))
+        seen_document(capture, "doc-2")
+        assert generation not in capture.departed_documents and not capture.remote_open()
+        (transport,) = service._audio_transports
+        clock.now = PCM_STALE_AFTER * 10
+        service.tick()
+        assert not transport.shut_down.is_set()
+        capture.stop()
+    finally:
+        client.close()
+        peer.close()

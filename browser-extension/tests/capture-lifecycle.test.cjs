@@ -19,8 +19,9 @@ async function mocked(run) {
  globalThis.AudioContext=Context;globalThis.AudioWorkletNode=Worklet;
  globalThis.Audio=class {constructor(){renderers.push(this)}async play(){}pause(){this.paused=true}};
  Object.defineProperty(globalThis,'performance',{configurable:true,value:{timeOrigin:100000,now:()=>now}});
+ const wall=Date.now;Date.now=()=>100000+now; // D61: the origin's wall clock, in step with performance.now()
  try {const module=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));await run({...module,nodes,contexts,renderers,Context,setNow:value=>{now=value}})}
- finally {for(const [key,descriptor] of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}
+ finally {Date.now=wall;for(const [key,descriptor] of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 test('transient suspension resumes without source failure and preserves the elapsed gap',async()=>mocked(async({capture,nodes,contexts,setNow})=>{
@@ -30,6 +31,8 @@ test('transient suspension resumes without source failure and preserves the elap
  nodes[0].port.onmessage({data:{pcm:new ArrayBuffer(8192*2),frame:8192}});await recorder.stop();
  const chunks=packets.filter(p=>p.type==='audio');assert.equal(chunks.length,2);assert.equal(packets.filter(p=>p.type==='track').length,1);
  assert.ok(Math.abs(chunks[1].offsetMs-chunks[0].offsetMs-8192/48-500)<0.001);assert.deepEqual(failures,[]);
+ // D61: the gap moves the shared calibration object; the origin maps onto performance.now() 1000.
+ assert.equal(chunks[0].offsetMs,0);assert.equal(packets.find(p=>p.type==='track').clockMethod,'outputTimestamp');
 }));
 function clock() {
  let now=1000, serial=0; const timers=new Map();
@@ -232,6 +235,9 @@ test('source connects only after render readiness and PCM arms only after the na
 for(const recover of [false,true])test(`a timed-out source stays visible through relay/status/retries (${recover?'recovered':'still failing'}) while healthy audio continues`,async()=>mocked(async({capture,nodes,contexts,renderers,Context})=>{
  const vm=require('node:vm'),{setup,until,event}=require('./support/app-control-harness.cjs');
  const pageFixture=require('./support/page-capture-harness.cjs'),time=clock();
+ // The background takes the session origin from the real wall clock: put the page's
+ // Date.now() on it, as one browser does, so calibration sees no day-sized skew.
+ const skew=new Date().getTime()-Date.now(),paged=Date.now;Date.now=()=>paged()+skew;
  const app=await setup(2,{},['source-outcomes-v1']);
  const frame=app.pages[0],endpoint={onMessage:event(),onDisconnect:event(),postMessage:packet=>frame.onMessage.emit(packet)};
  frame.postMessage=packet=>{frame.sent.push(packet);endpoint.onMessage.emit(packet)};
