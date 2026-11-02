@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 
 import pytest
+from test_browser_service import service  # noqa: F401
 from test_resume_capture_host import broker  # noqa: F401
 
 from cassini_talk import refusals
@@ -308,3 +309,73 @@ def test_a_newer_hello_is_visible_as_app_too_old(broker, caplog, version):  # no
             assert request(path=broker.path)["appTooOld"] is False
         finally:
             peer.close()
+
+
+def test_a_gstreamer_refusal_message_is_its_domain_code_and_debug_string():
+    gi = pytest.importorskip("gi")
+    gi.require_version("Gst", "1.0")
+    from gi.repository import GLib, Gst
+
+    Gst.init(None)
+    error = GLib.Error.new_literal(Gst.ResourceError.quark(), "Translated text", int(Gst.ResourceError.OPEN_READ))
+    expected = f"gst-resource-error-quark:{int(Gst.ResourceError.OPEN_READ)}: pulsesrc.c(1088): gst_pulsesrc_open"
+    assert refusals.gst_message(error, "pulsesrc.c(1088): gst_pulsesrc_open") == expected
+    assert refusals.gst_message(error, None) == f"gst-resource-error-quark:{int(Gst.ResourceError.OPEN_READ)}"
+
+
+def test_a_fallback_whose_device_fails_is_not_a_turn_on_refusal(tmp_path):
+    import time
+
+    from test_native_sides import Taps
+
+    from cassini_talk.browser_capture import BrowserCapture
+
+    capture = BrowserCapture(lambda *_: None, parent=tmp_path, tap_factory=Taps(refuse={"system": 1}))
+    capture.start(dict(type="start", captureId="lost", timelineOriginMs=int(time.time() * 1000), microphone=False))
+    try:
+        with pytest.raises(OSError, match="Fake system refused"):
+            capture.fallback()
+        assert "refusals" not in capture.host.session.manifest
+    finally:
+        capture.stop()
+
+
+@pytest.mark.parametrize("code", ["busy", "noSources"])
+def test_an_automatic_start_never_falls_back_on_busy(service, code):  # noqa: F811
+    import threading
+
+    from test_browser_service import browser
+
+    from cassini_talk.browser_service import read_packet, request, send_packet
+
+    server, path = service
+    done = threading.Event()
+    automatic = server._automatic
+
+    def observed(*args):
+        try:
+            automatic(*args)
+        finally:
+            done.set()
+
+    server._automatic = observed
+    connection, stream = browser(path)
+    message = "A recording is already running. Stop it before starting another."
+    try:
+        request("configure", path=path, autoRecord=True)
+        command = read_packet(stream)
+        assert command["action"] == "start"
+        send_packet(stream, dict(type="result", requestId=command["requestId"], ok=False, error=message, code=code))
+        assert done.wait(5)  # Bound only: the automatic start task signals its end.
+        captures = [c for c in server.captures.values() if c.directory is not None]
+        if code == "busy":
+            assert not captures, "D58 #11: busy never records the meeting a second time"
+        else:
+            (capture,) = captures
+            assert capture.host.session.manifest["refusals"] == [
+                dict(atMs=0, side="browser", code="startRejected", detail="noSources", message=message)
+            ]
+            capture.stop()
+    finally:
+        stream.close()
+        connection.close()

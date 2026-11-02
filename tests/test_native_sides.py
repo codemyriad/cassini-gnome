@@ -110,7 +110,8 @@ class Sides:
         if self.plan[kind][0] == "error":
             # A failing source reports its cause, then a stream error, then ends.
             for problem in (self.causes.get(kind, "Fake device went away"), "Internal data stream error."):
-                source.post_message(Gst.Message.new_error(source, GLib.Error(problem), "scripted"))
+                error = GLib.Error.new_literal(Gst.ResourceError.quark(), problem, int(Gst.ResourceError.OPEN_READ))
+                source.post_message(Gst.Message.new_error(source, error, "scripted"))
             return source.emit("end-of-stream")
         return source.emit("push-buffer", Gst.Buffer.new_wrapped(FRAME))
 
@@ -222,6 +223,15 @@ def test_one_refused_side_gets_no_track_while_the_other_records(tmp_path, caplog
         ]
         assert refusals(caplog) == [
             f"Native {SIDE[refused]} side ({refused}) did not open at start: {REASONS[behaviour]}"
+        ]
+        # D58: the stored message is raw: a GStreamer error's domain, code and debug string.
+        raw = {
+            "error": f"gst-resource-error-quark:{int(Gst.ResourceError.OPEN_READ)}: scripted",
+            "fail": "Could not start native audio capture",
+            "never": "Native audio capture did not produce a sample",
+        }
+        assert session.manifest["refusals"] == [
+            dict(atMs=0, side=SIDE[refused], code="deviceUnavailable", message=raw[behaviour])
         ]
         sides.feed(opened, 10)
         spin_until(lambda: session.writers[opened].frames >= 4800)
