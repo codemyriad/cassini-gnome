@@ -385,7 +385,7 @@ def test_the_selection_request_carries_retry_to_the_capture(served, tmp_path):  
 class Peer:
     """A companion with call generations, answering each Start by tab."""
 
-    def __init__(self, path, rows, instance="d17-browser"):
+    def __init__(self, path, rows, instance="d17-browser", capabilities=("independent-sessions-v1",)):
         from test_browser_service import wait_for
 
         from cassini_talk.browser_service import connect, request, send_packet
@@ -394,7 +394,7 @@ class Peer:
         self.connection = connect(path, timeout=5)
         self.stream = self.connection.makefile("rwb")
         send_packet(self.stream, dict(role="extension", browserInstance=instance))
-        send_packet(self.stream, dict(type="hello", version=1, capabilities=["independent-sessions-v1"]))
+        send_packet(self.stream, dict(type="hello", version=1, capabilities=list(capabilities)))
         send_packet(self.stream, dict(type="status", recording=False, sessions=[]))
         self.meetings(rows)
         wait_for(lambda: len(request(path=path)["meetings"]) == len(rows))
@@ -538,6 +538,94 @@ def test_stop_all_cancels_a_retry(served):  # noqa: F811
             request("stop-all", path=path, cancelGroups=["retry-2"])
             result = pending.result(10)
         assert result["cancelled"] is True
+    finally:
+        peer.close()
+
+
+MULTI = ("independent-sessions-v1", "multi-stream-v1")
+GONE = dict(ok=False, error="That call is no longer active.", code="gone")
+
+
+def generation(service, tab):
+    return next(b.meetings[tab].get("callGeneration") for b in service.browsers.values() if tab in b.meetings)
+
+
+def sent_starts(service, monkeypatch):
+    """Every Start packet any connection queues from now on."""
+    starts = []
+    for browser in service.browsers.values():
+
+        def send(packet, original=browser.send):
+            if packet.get("action") == "start":
+                starts.append(packet)
+            return original(packet)
+
+        monkeypatch.setattr(browser, "send", send)
+    return starts
+
+
+def rejoined(peer, service):
+    from test_browser_service import wait_for
+
+    peer.meetings([meeting_row(3), meeting_row(4, "call-4b")])
+    wait_for(lambda: generation(service, 4) == "call-4b")
+
+
+def test_a_retry_never_starts_a_call_rejoined_before_its_start(served, monkeypatch):  # noqa: F811
+    from cassini_talk.browser_service import request
+
+    service, path, library = served
+    peer = Peer(path, [meeting_row(3), meeting_row(4)], capabilities=MULTI)
+    try:
+        (failure,) = start_all(path, peer, {3: dict(ok=True), 4: BUSY})["failures"]
+        recorded = folders(library)
+        original = service.command
+
+        def late(identifier, action, *args, **kwargs):
+            if action == "start":
+                rejoined(peer, service)  # G2 lands between the target filter and command().
+            return original(identifier, action, *args, **kwargs)
+
+        monkeypatch.setattr(service, "command", late)
+        starts = sent_starts(service, monkeypatch)
+        result = request("start-all", path=path, only=dict(id=failure["id"], callGeneration="call-4"), groupId="r")
+        assert result["attempted"] == 1 and starts == [], "no Start for the rejoined call"
+        (again,) = result["failures"]
+        assert (again["id"], again["callGeneration"]) == (failure["id"], "call-4")
+        assert again["error"] == "This meeting is no longer available"
+        assert folders(library) == recorded, "no Recording-* folder for the rejoined call"
+    finally:
+        peer.close()
+
+
+def test_a_retry_never_falls_back_into_a_call_rejoined_during_its_start(served, monkeypatch):  # noqa: F811
+    from concurrent.futures import ThreadPoolExecutor
+
+    from cassini_talk.browser_service import request
+
+    service, path, library = served
+    peer = Peer(path, [meeting_row(3), meeting_row(4)], capabilities=MULTI)
+    try:
+        (failure,) = start_all(path, peer, {3: dict(ok=True), 4: BUSY})["failures"]
+        before, recorded = set(service.captures), folders(library)
+        original = service.start_fallback
+
+        def late(*args, **kwargs):
+            rejoined(peer, service)  # G2 lands during the Start's round trip.
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(service, "start_fallback", late)
+        with ThreadPoolExecutor(1) as pool:
+            only = dict(id=failure["id"], callGeneration="call-4")
+            pending = pool.submit(request, "start-all", path=path, only=only, groupId="r")
+            command = peer.receive()
+            assert command["action"] == "start" and command["callGeneration"] == "call-4"
+            peer.answer(command, **GONE)  # Not busy: GNOME would fall back.
+            result = pending.result(10)
+        (again,) = result["failures"]
+        assert (again["id"], again["callGeneration"]) == (failure["id"], "call-4")
+        assert set(service.captures) == before, "no stand-in for the rejoined call"
+        assert folders(library) == recorded, "no Recording-* folder for the rejoined call"
     finally:
         peer.close()
 
