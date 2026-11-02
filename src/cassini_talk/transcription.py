@@ -127,11 +127,12 @@ def track_presence(track):
 
 
 def prepare_tracks(meeting, *, diagnostics=None, silent=None):
-    """One job per track with frames. `silent(track)` marks D56 silent tracks.
+    """One job per readable track. `silent(track)` marks D56 silent tracks.
 
-    A silent track keeps its job, its speaker row and its place in the D11
-    layout, flagged `silent`; it is never recognised, rejoined or given an
-    overlap lane, so it cannot push a live span of its source onto a lane.
+    A silent track, including one with no samples at all, keeps its job, its
+    speaker row and its place in the D11 layout, flagged `silent`. It is never
+    recognised, rejoined or given an overlap lane, so it cannot push a live span
+    of its source onto a lane; its speaker ID stays reserved, so no lane takes it.
     """
     # Identity/kind come only from the scanner's validated or recovered model.
     from uuid import NAMESPACE_URL, uuid5
@@ -139,8 +140,6 @@ def prepare_tracks(meeting, *, diagnostics=None, silent=None):
     tracks = []
     speakers = {}
     for index, track in enumerate(meeting.tracks):
-        if not track.frames:
-            continue
         identity = track.source_track_id or track.id or "recovered-" + str(uuid5(NAMESPACE_URL, track.path.name))
         speaker, name, provenance = track_speaker(dict(id=identity, kind=track.kind))
         if len(speaker) > 256:
@@ -168,8 +167,12 @@ def prepare_tracks(meeting, *, diagnostics=None, silent=None):
                 ),
             )
         )
-        if silent is not None and silent(track):
+        speakers.setdefault(speaker, dict(id=speaker, name=name, provenance=provenance, colourIndex=index))
+        # D56: no samples is fewer than 32 non-zero frames; nothing reads such a file.
+        if not track.frames or silent is not None and silent(track):
             tracks[-1]["silent"] = True
+        if not track.frames:
+            continue
         if track.ownership_windows is not None:
             tracks[-1]["ownershipWindows"] = [list(window) for window in track.ownership_windows]
         # D52.2: the G10 fallback measures and windows only present or unknown time.
@@ -189,11 +192,10 @@ def prepare_tracks(meeting, *, diagnostics=None, silent=None):
                 for span in track.spans
             ]
             tracks[-1]["sessionDirectory"] = str(meeting.directory)
-        speakers.setdefault(speaker, dict(id=speaker, name=name, provenance=provenance, colourIndex=index))
     from .source_spans import separate
 
     audible = [track for track in tracks if not track.get("silent")]
-    separated, separation_diagnostics = separate(audible)
+    separated, separation_diagnostics = separate(audible, reserved=[track["speaker"] for track in tracks])
     if diagnostics is not None:
         diagnostics.extend(separation_diagnostics)
     for original, track in zip(audible, separated, strict=True):

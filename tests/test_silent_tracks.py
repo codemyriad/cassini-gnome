@@ -11,6 +11,7 @@ import array
 import hashlib
 import json
 import random
+import shutil
 import struct
 import sys
 import threading
@@ -21,6 +22,13 @@ import pytest
 from cassini_talk.library import CaptureTrack, LibraryScanner
 from cassini_talk.recording_session import RecordingSession
 from cassini_talk.silent_tracks import frame_samples, nonzero_frames, silent
+
+
+@pytest.fixture(autouse=True)
+def release(tmp_path):
+    """Later suite tests need their own free space on a small test tmpfs: drop these files."""
+    yield
+    shutil.rmtree(tmp_path.absolute(), ignore_errors=True)
 
 
 def wav(path, rate, channels, samples):
@@ -643,3 +651,76 @@ def test_cancelling_stops_the_measurement_of_a_long_silent_track_mid_file(tmp_pa
     # The job stopped at the next block: header and one block read of 16, nothing recognised or written.
     assert len(reads) == 2 and not recognised
     assert read_metadata(directory)["transcript"]["status"] != "done"
+
+
+def test_an_empty_track_is_a_silent_job_that_keeps_its_row_and_its_place_in_the_layout(tmp_path, monkeypatch):
+    """#166 review: an audible microphone and a remote that never sent a sample."""
+    from cassini_talk.library_schema import valid
+    from cassini_talk.meeting_store import read_metadata
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    session = RecordingSession(tmp_path, source="gnome")
+    session.add_track("mic", "Microphone", "microphone", RATE, 1)
+    session.add_track("remote", "Remote", "remote", RATE, 1, source_track_id="remote")
+    feed(session, "mic", bursts(3), 0)
+    session.finish()
+    directory = session.directory
+    (meeting_value,) = LibraryScanner(tmp_path).scan().meetings
+    assert {t.id: t.frames for t in meeting_value.tracks}["remote"] == 0
+    files = {t["id"]: t["file"] for t in session.manifest["tracks"]}
+    decoded, rejoined, sent = set(), [], []
+    write_down(tmp_path, directory, in_process_child(monkeypatch, decoded, rejoined, sent))
+
+    metadata = read_metadata(directory)
+    writing = metadata["recordingDetails"]["writingDown"]
+    assert metadata["transcript"]["status"] == "done" and valid(metadata)
+    assert writing["silentTracks"] == ["remote"]
+    assert {t["captureTrackId"]: t.get("silent", False) for t in sent[0]} == {"mic": False, "remote": True}
+    assert "track-remote" in {s["id"] for s in metadata["speakers"]}
+    # The empty remote still counts in the layout: Me is not the only group, so nothing is separated.
+    assert writing["speakerSeparation"]["status"] == "skipped"
+    assert writing["speakerSeparation"]["reason"] == "notApplicable"
+    assert rejoined == [] and Diarizer.inputs == []
+    assert decoded == {files["mic"]}
+
+
+def receiver_jobs(tmp_path):
+    """Two overlapping audible spans of `receiver` and a silent source whose id is their second lane's."""
+    session = RecordingSession(tmp_path, source="gnome")
+    session.add_track("a", "Receiver", "remote", RATE, 1, source_track_id="receiver")
+    session.add_track("b", "Receiver", "remote", RATE, 1, source_track_id="receiver")
+    session.add_track("quiet", "Other person", "remote", RATE, 1, source_track_id="receiver:overlap:1")
+    feed(session, "a", bursts(3), 0)
+    feed(session, "b", bursts(3), 1000)
+    feed(session, "quiet", [0] * (2 * RATE), 0)
+    session.finish()
+    (meeting_value,) = LibraryScanner(tmp_path).scan().meetings
+    return meeting_value
+
+
+def test_a_silent_source_keeps_its_speaker_id_from_overlap_lanes_when_preparing(tmp_path):
+    from cassini_talk.silent_tracks import silent as measure
+    from cassini_talk.transcription import prepare_tracks
+
+    tracks, speakers = prepare_tracks(receiver_jobs(tmp_path), silent=measure)
+    assert [(t["captureTrackId"], t["speaker"], t.get("silent", False)) for t in tracks] == [
+        ("a", "track-receiver", False),
+        ("b", "track-receiver:overlap:2", False),
+        ("quiet", "track-receiver:overlap:1", True),
+    ]
+    assert set(speakers) == {"track-receiver", "track-receiver:overlap:1", "track-receiver:overlap:2"}
+
+
+def test_a_silent_source_keeps_its_speaker_id_from_overlap_lanes_when_grouping(tmp_path):
+    """The child's grouping lays out lanes itself when the jobs carry no speaker."""
+    from cassini_talk.diarization import group_tracks
+    from cassini_talk.silent_tracks import silent as measure
+    from cassini_talk.transcription import prepare_tracks
+
+    tracks, _speakers = prepare_tracks(receiver_jobs(tmp_path), silent=measure)
+    jobs = [dict({k: v for k, v in t.items() if k != "speaker"}, sourceTrackId=s) for t, s in zip(
+        tracks, ("receiver", "receiver", "receiver:overlap:1"), strict=True
+    )]  # fmt: skip
+    by_id = {t["id"]: t["captureTrackId"] for t in tracks}
+    groups = [(g["id"], [by_id[i] for i in g["tracks"]]) for g in group_tracks(jobs)]
+    assert groups == [("track-receiver", ["a"]), ("track-receiver:overlap:2", ["b"])]

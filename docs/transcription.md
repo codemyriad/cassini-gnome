@@ -217,7 +217,10 @@ at 32, so only a silent track is read to its end; the job's cancellation check
 runs before every block, so Trash, preemption and quit stop it mid-file. A track
 that cannot be read is kept.
 
-A silent track is not recognised, gets no overlap lane, and is left out of the
+A track entry with no samples at all is silent too: it keeps its job, its speaker
+row and its place in the layout, and nothing reads its file. A silent track is
+not recognised, gets no overlap lane (its speaker id stays reserved, so no lane of
+another source can take it), and is left out of the
 diarization mix and of the voice step. A group whose every track is silent is
 absent, but the track still counts in the layout that decides eligibility: a
 silent participant never makes the microphone the only group. The track stays in

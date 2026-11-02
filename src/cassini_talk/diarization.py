@@ -195,8 +195,9 @@ def group_tracks(tracks, *, origin="own"):
     """Input may carry the already validated D11 `speaker` from prepare_tracks.
 
     D56: a `silent` track still counts in the layout that decides eligibility,
-    so a silent participant never makes the microphone the only group. It joins
-    no group and no rejoin; a group whose every track is silent is absent.
+    so a silent participant never makes the microphone the only group, and its
+    speaker ID stays reserved. It joins no group and no rejoin; a group whose
+    every track is silent is absent.
     """
     from .source_spans import bounds, separate
 
@@ -210,7 +211,10 @@ def group_tracks(tracks, *, origin="own"):
         planned.append(dict(track, speaker=speaker, kind=kind))
         if track.get("silent") is True:
             kinds.setdefault(speaker, set()).add(kind)
-    separated, diagnostics = separate([track for track in planned if track.get("silent") is not True])
+    separated, diagnostics = separate(
+        [track for track in planned if track.get("silent") is not True],
+        reserved=[track["speaker"] for track in planned],
+    )
     for diagnostic in diagnostics:
         LOG.warning("Diarization diagnostic: %s", diagnostic)
     for track in separated:
