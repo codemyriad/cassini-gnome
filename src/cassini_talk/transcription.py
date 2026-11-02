@@ -289,8 +289,12 @@ class TranscriptionQueue:
         voice_models=None,
         voice_store=None,
         clock=time.monotonic,
+        recordings=tuple,
     ):
         self.changed, self.finished = changed, finished
+        # Folders of captures running now. G14 keeps the recorder's reserve
+        # free on their volume when the job starts.
+        self.recordings = recordings
         self.clock = clock
         self.bundle = Path(bundle) if bundle else bundle_path()
         self.root = library_root(root).absolute()
@@ -495,6 +499,14 @@ class TranscriptionQueue:
         finally:
             self._completed(directory)
 
+    def _live_recordings(self):
+        try:
+            return [str(directory) for directory in self.recordings()][:64]
+        except Exception:
+            # The 1 GiB floor still applies in the worker.
+            LOG.exception("Could not list live recordings for the disk budget")
+            return []
+
     def _run(self, meeting, metadata):
         started = self.clock()
         self._check_open()
@@ -557,6 +569,9 @@ class TranscriptionQueue:
         diarization = (
             self.diarization_models.request(directory, origin=meeting.origin) if self.diarization_models else None
         )
+        live = self._live_recordings()
+        if diarization is not None:
+            diarization = dict(diarization, recordingDirectories=live)
         from .capture_facts import (
             offsets_assumed_zero,
             recognition_fallback,
@@ -573,6 +588,8 @@ class TranscriptionQueue:
                 if not state["readOnly"]:
                     voice_generation = state["generation"]
                     voices_options = self.voice_models.request(directory, origin=meeting.origin)
+                    if voices_options is not None:
+                        voices_options = dict(voices_options, recordingDirectories=live)
             except (OSError, ValueError):
                 LOG.exception("Saved voices unavailable; keeping ordinary speaker names")
         self.client.keep_for_voices = voices_options is not None
@@ -874,6 +891,7 @@ class TranscriptionQueue:
             options = self.voice_models.request(directory, origin=meeting.origin)
             if not options:
                 return
+            options = dict(options, recordingDirectories=self._live_recordings())
             if background:
                 diarization = self.diarization_models.request(directory, origin=meeting.origin)
                 if not diarization:

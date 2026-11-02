@@ -206,6 +206,10 @@ def test_optional_details_schema_rejects_false_measurements_but_accepts_absence(
     assert not valid(
         dict(metadata, recordingDetails=dict(writingDown=dict(facts, speakerSeparation=dict(status="completed"))))
     )
+    # D56: lowDisk is a skipped reason; silentTracks lists distinct track ids.
+    low_disk = dict(facts, speakerSeparation=dict(status="skipped", reason="lowDisk"), silentTracks=["mic"])
+    assert valid(dict(metadata, recordingDetails=dict(writingDown=low_disk)))
+    assert not valid(dict(metadata, recordingDetails=dict(writingDown=dict(low_disk, silentTracks=["mic", "mic"]))))
 
 
 @pytest.mark.parametrize(

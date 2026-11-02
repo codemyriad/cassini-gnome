@@ -3,6 +3,7 @@
 
 import contextlib
 import json
+import logging
 import os
 import selectors
 import subprocess
@@ -13,6 +14,8 @@ from concurrent.futures import CancelledError
 from pathlib import Path
 
 from .whistle_worker import PRIVACY, verify_bundle
+
+LOG = logging.getLogger(__name__)
 
 
 class WhistleClient:
@@ -147,7 +150,10 @@ class WhistleClient:
                 if speaker in result or len(result) >= 512:
                     raise ValueError("Duplicate or excess voice print")
                 result[speaker] = {k: value[k] for k in ("embedding", "seconds", "windows")}
-            elif value.get("type") != "voice-progress":
+            elif value.get("type") == "voice-progress":
+                if "diagnostic" in value:  # The child's stderr is not kept.
+                    LOG.warning("Voice diagnostic: %s", value["diagnostic"])
+            else:
                 raise RuntimeError("Voice worker failed: " + str(value.get("message", "invalid reply")))
 
     def cancel(self):

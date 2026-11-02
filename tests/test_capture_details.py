@@ -229,6 +229,21 @@ def test_new_writing_facts_do_not_get_inferred_for_older_meetings(meetings):
     assert values["Time taken"] == "4.217 s" and values["Speaker separation"] == "Tell speakers apart was not installed"
 
 
+def test_every_schema_separation_reason_has_its_details_copy(meetings):
+    from cassini_talk.library_schema import SCHEMA
+    from cassini_talk.strings import text
+
+    writing = SCHEMA["properties"]["recordingDetails"]["properties"]["writingDown"]["properties"]
+    reasons = writing["speakerSeparation"]["properties"]["reason"]["enum"]
+    assert "lowDisk" in reasons
+    meeting = meetings["microphone"]
+    for reason in reasons:
+        facts = dict(wallDurationMs=1, resumed=False, speakerSeparation=dict(status="skipped", reason=reason))
+        updated = replace(meeting, metadata=dict(meeting.metadata, recordingDetails=dict(writingDown=facts)))
+        shown = dict(read_details(updated).writing)["Speaker separation"]
+        assert shown == text("details.separation." + reason) != UNKNOWN, reason
+
+
 def test_manual_end_fact_works_without_a_new_session_event(meetings):
     meeting = meetings["no-events"]
     updated = replace(

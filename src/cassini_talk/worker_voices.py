@@ -2,6 +2,7 @@
 """D25 extraction inside the speech child, after final D24 attribution."""
 
 import contextlib
+import errno
 import json
 import os
 from collections import deque
@@ -77,10 +78,43 @@ def combined_windows(windows, total_frames):
     return sorted(chosen, key=lambda w: w[1])
 
 
-def run(tracks, options, notify):
-    """Only bounded per-speaker prints cross the private worker pipe."""
+def chosen_windows(windows, total_frames):
+    """The (group, start, end) windows one speaker's print reads, in order."""
+    budget, chosen = MAX_SECONDS * 16000, []
+    for group, start, end in combined_windows(windows, total_frames):
+        end = min(end, start + budget)
+        if end - start < MIN_SEGMENT_MS * 16:
+            continue
+        chosen.append((group, start, end))
+        budget -= end - start
+        if budget < MIN_SEGMENT_MS * 16:
+            break
+    return chosen
+
+
+def read_window(stream, start, end):
+    import numpy as np
+
+    stream.seek(start * 4)
+    raw = stream.read((end - start) * 4)
+    if len(raw) != (end - start) * 4:
+        raise ValueError("Voice window audio was truncated")
+    return np.frombuffer(raw, dtype="<f4")
+
+
+def run(tracks, options, notify, *, statvfs=None):
+    """Only bounded per-speaker prints cross the private worker pipe.
+
+    G14: at most one group's rejoin file exists at a time. The first pass
+    rejoins each group, picks its windows and closes the file. A speaker's
+    45 s budget needs every group's windows, so the second pass rejoins again
+    only the groups that hold chosen windows, and reads just those. Without
+    disk space for a group, the whole step fails (voices-error) and the app
+    keeps its previous voices.
+    """
     from .campplus import SpeakerExtractor
     from .diarization_audio import rejoin
+    from .scratch_budget import live_recordings, shortfall
 
     directory = Path(options["directory"])
     background = options.get("prepareMissing", False)
@@ -93,22 +127,35 @@ def run(tracks, options, notify):
     )
     cached = read_cache(directory / "speaker-turns.json")
     tracks_by_id = {t["id"]: t for t in tracks}
-    plans = {}
+    live = live_recordings(options)
+    plans, digests = {}, {}
     total_frames = 0
     with contextlib.ExitStack() as stack:
         model = stack.enter_context(contextlib.closing(SpeakerExtractor(options["modelPath"], options["runtimePath"])))
         diarizer = None
         groups = group_tracks(tracks, origin=options.get("origin", "own"))
-        for group in groups:
+
+        def group_audio(index):
+            """The group's rejoin. Without the space nothing is committed, as on ENOSPC before G14."""
+            group = groups[index]
+            if short := shortfall(
+                group["durationMs"], scratch=options.get("scratch"), statvfs=statvfs, recordings=live
+            ):
+                notify("voice-progress", diagnostic=dict(code="voices-skipped-low-disk", group=group["id"], **short))
+                raise OSError(errno.ENOSPC, "Not enough disk space for saved voices")
+            return rejoin(
+                [tracks_by_id[t] for t in group["tracks"]],
+                scratch=options.get("scratch"),
+                heartbeat=lambda: notify("voice-progress"),
+            )
+
+        group_file = stack.enter_context(contextlib.ExitStack())
+        for index, group in enumerate(groups):
+            group_file.close()  # G14: the previous group's audio is gone first.
             if group["id"] == "me" and "me" not in merges and not any(w["speaker"].startswith("me~") for w in words):
                 continue
-            stream, frames, sha = stack.enter_context(
-                rejoin(
-                    [tracks_by_id[t] for t in group["tracks"]],
-                    scratch=options.get("scratch"),
-                    heartbeat=lambda: notify("voice-progress"),
-                )
-            )
+            stream, frames, sha = group_file.enter_context(group_audio(index))
+            digests[index] = sha
             previous = cached.get(group["id"], {})
             turns, turns_input = previous.get("turns", []), previous.get("inputSHA256")
             if (
@@ -158,37 +205,44 @@ def run(tracks, options, notify):
             for speaker, windows in select_windows(
                 turns, selected, 16000, frames, own_labels=labels, min_seconds=0, max_seconds=None
             ).items():
-                plans.setdefault(speaker, []).extend((stream, start, end) for start, end in windows)
-        for speaker, windows in plans.items():
-            budget, chunks, chosen = MAX_SECONDS * 16000, [], []
-            for stream, start, end in combined_windows(windows, total_frames):
-                end = min(end, start + budget)
-                if end - start < MIN_SEGMENT_MS * 16:
-                    continue
-                stream.seek(start * 4)
-                raw = stream.read((end - start) * 4)
-                if len(raw) != (end - start) * 4:
-                    raise ValueError("Voice window audio was truncated")
-                import numpy as np
+                plans.setdefault(speaker, []).extend((index, start, end) for start, end in windows)
+        group_file.close()
+        chosen = {speaker: chosen_windows(windows, total_frames) for speaker, windows in plans.items()}
+        speakers, audio = deque(chosen), {}
 
-                chunks.append(np.frombuffer(raw, dtype="<f4"))
-                chosen.append(dict(startMs=start // 16, endMs=end // 16))
-                budget -= end - start
-                if budget < MIN_SEGMENT_MS * 16:
-                    break
-            result = model.embed(chunks)
-            if result is None and sum(len(chunk) for chunk in chunks) >= 4 * 16000:
-                raise ValueError("Selected speech produced no usable speaker print")
-            if result is not None:
-                notify(
-                    "voice-print",
-                    speaker=speaker,
-                    embedding=result["embedding"],
-                    seconds=result["seconds"],
-                    windows=chosen,
-                    inputSHA256=result["inputSHA256"],
-                )
-            notify("voice-progress")
+        def embed_ready():
+            """Prints keep plan order; each is made, and its audio freed, once all its windows are read."""
+            while speakers and all((speakers[0], n) in audio for n in range(len(chosen[speakers[0]]))):
+                speaker = speakers.popleft()
+                chunks = [audio.pop((speaker, n)) for n in range(len(chosen[speaker]))]
+                result = model.embed(chunks)
+                if result is None and sum(len(chunk) for chunk in chunks) >= 4 * 16000:
+                    raise ValueError("Selected speech produced no usable speaker print")
+                if result is not None:
+                    notify(
+                        "voice-print",
+                        speaker=speaker,
+                        embedding=result["embedding"],
+                        seconds=result["seconds"],
+                        windows=[dict(startMs=start // 16, endMs=end // 16) for _, start, end in chosen[speaker]],
+                        inputSHA256=result["inputSHA256"],
+                    )
+                notify("voice-progress")
+
+        embed_ready()
+        for index in sorted({index for windows in chosen.values() for index, _start, _end in windows}):
+            with group_audio(index) as (stream, _frames, sha):
+                if sha != digests[index]:
+                    raise ValueError("Voice audio changed during extraction")
+                for speaker in list(speakers):
+                    if speaker not in speakers:
+                        continue  # Printed while reading this group.
+                    for n, (at, start, end) in enumerate(chosen[speaker]):
+                        if at == index:
+                            audio[speaker, n] = read_window(stream, start, end)
+                    embed_ready()
+        if speakers:
+            raise ValueError("Voice windows were left unread")
     notify("voices-complete")
 
 

@@ -1,6 +1,6 @@
 {
   "source": "drmeyers:~/dev/cassini-coordination/ux-draft",
-  "commit": "0bf0a4b8f862ea3d40e31140907489942fd10d1d",
+  "commit": "0f0c21da5c4c4af617f2cb463910e9f75deb3e95",
   "paths": {
     "format-vectors.json": "tests/ux/format-vectors.json",
     "states-vectors.json": "tests/ux/states-vectors.json",
@@ -70,7 +70,7 @@
     "format-vectors.json": "8d9449e30b28b117c85f5396de6b0123b1f79cc9b53f6504157b1a0dfffcc791",
     "states-vectors.json": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
     "LIBRARY-RULES.md": "95a0e5068a08efa521f6eed73799b715ab50b2cf6aee374570b5337a6a3bdd2a",
-    "meeting.schema.json": "fa316da3862c7da2d9448dcadb44f7f8176f688ca294438ff630a4d0194026c3",
+    "meeting.schema.json": "c51f7e61d2e8e513ead66622ae0b7b992f6e25cbdcf9e709823c0f488626f3c3",
     "library-vectors/verify.py": "2011c3a7fc8d6fd5c58a4f06b16e8397f081755f743725f2732e332e4d1767da",
     "library-vectors/README.md": "8e8cbbe91ab72bbf9f404a94ab3b83822f4e137cca8cbbb25afd493b78394b54",
     "library-vectors/cases.json": "80723c1274ac44d8b23d0a154daa7b6fc5e559a1fceb6491b8e52558c4a6ce2b",
@@ -99,7 +99,7 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "2803cc55e04ef7faea56984ace606e1e3e4af90cf03867494e6c4e28d68983a8",
+    "strings.json": "5e8a5b393d8d5cbd7787916e87bf746ece5132dcaca1ea499e4cf2982cc341c4",
     "LIBRARY.md": "6cd4063cdd58567c75a4733c8862e9fe0983863df890b86a91e9a9bb17749751",
     "session-events/session.json": "6bcec60cf4024421b57683d86a44d7ffd92efdc84a3e5b67e24cb09fcfb55723",
     "session-events/expected.json": "905ad1966fa3cac23aa348109d4f694a5606ea685f3a5689cc052cf092a8a920",
@@ -129,156 +129,6 @@
     "dc/dc-quiet-jfk-v1-control.wav": "e31ed958621a39baf1d33dab6d10798695b8319e78fcaa1cb672cdb43c5f7830",
     "library-v2/name-vectors.json": "ea88624249550fabb92a2f5d7b03bfaa6424e8b10a7245431cf3c15da03709ff",
     "library-v2/name-vectors-malformed.json": "5de3b0b1effc01a0bb3cd1c106b88bbee2067373b62628c9c4337bcb47a3f6d9",
-    "library-v2/x-schema.json": "2c3b8312e7120a5c6903a5aeaa15114d32fcf2bd0077804ea7444c19f843a1ac"
-  },
-  "additionalSources": {
-    "strings.json": {
-      "source": "roy:/mnt/ai/cassini/i18n",
-      "decision": "D50/D50.1/D50.2",
-      "note": "Coordinator fallback catalog merged with merge.py and out/<lang>.json, followed by exact pending d52 and d50 entries; resync when drmeyers returns",
-      "inputs": {
-        "strings.json": "6c88e1096f555fb93f83c85b62077f1c621a6dbc030a5f1018cc9e2b4bebcb38",
-        "merge.py": "ce3b6e253def546a977055c3a12c8462b883b4796f6a89052dc9e8168740a3e1",
-        "out/es.json": "4b793988e4a0b04308aaba1a575c829b65bf03b699ea71744148628e2e2ca589",
-        "out/fr.json": "583fc416109c0f1d43e0d7f83d6560638e56c5b87dd8962eab74968cdbabbda4",
-        "out/it.json": "fe670b4092e197dfe51adacc3ec57fed4cfcc5e9ec86034278124b8f441f5167",
-        "out/pt-BR.json": "e7a19abb7b648147f5cf44e97647f608942dcc9ca1be541422862019904c72da",
-        "out/pt-PT.json": "9ff9ecaa5c81af94f19116c45fcf26f9fa77bc35b2e57d72c21909176397f070",
-        "pending/d52-strings.json": "6284099c78168ed210983748f628d60ac800ad4ea0bb58b17d2f7bd2d75ff738",
-        "pending/d50-strings.json": "88c7dd4818fba24757b662696e8e4a5da1d21080dd30de915a937d5764605597"
-      }
-    },
-    "LIBRARY-RULES.md": {
-      "commit": "c74460bc61ea498dcf821e628190266348486345",
-      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
-    },
-    "meeting.schema.json": {
-      "commit": "2e7777c66f42e9476f67ec436bc1ebcd4010dfd7",
-      "note": "D48: approved publication copy and optional original speaker label, verbatim"
-    },
-    "LIBRARY.md": {
-      "commit": "c74460bc61ea498dcf821e628190266348486345",
-      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
-    },
-    "session-events/session.json": {
-      "commit": "3349555b8e9bd5f47236cc5ce61b1edfee201d34",
-      "note": "S-6 shared fallback and browser off/on source identity fixtures"
-    },
-    "session-events/expected.json": {
-      "commit": "3349555b8e9bd5f47236cc5ce61b1edfee201d34",
-      "note": "S-6 shared fallback and browser off/on source identity fixtures"
-    },
-    "session-events/make.py": {
-      "commit": "3349555b8e9bd5f47236cc5ce61b1edfee201d34",
-      "note": "S-6 shared fallback and browser off/on source identity fixtures"
-    },
-    "session-events/README.md": {
-      "commit": "3349555b8e9bd5f47236cc5ce61b1edfee201d34",
-      "note": "S-6 shared fallback and browser off/on source identity fixtures"
-    },
-    "session-events/browser-off-on.session.json": {
-      "commit": "3349555b8e9bd5f47236cc5ce61b1edfee201d34",
-      "note": "S-6 shared fallback and browser off/on source identity fixtures"
-    },
-    "session-events/browser-off-on.expected.json": {
-      "commit": "3349555b8e9bd5f47236cc5ce61b1edfee201d34",
-      "note": "S-6 shared fallback and browser off/on source identity fixtures"
-    },
-    "SESSION-EVENTS.md": {
-      "commit": "87ddac2f2abd6b473848f7c252bc6fac12430200",
-      "note": "S-6 with approved optional sourceTrackId"
-    },
-    "diarization/ATTRIBUTION.md": {
-      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
-      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
-    },
-    "diarization/README.md": {
-      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
-      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
-    },
-    "diarization/SHA256SUMS": {
-      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
-      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
-    },
-    "diarization/assign-vectors.json": {
-      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
-      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
-    },
-    "diarization/build.py": {
-      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
-      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
-    },
-    "diarization/fetch-pins.json": {
-      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
-      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
-    },
-    "diarization/golden.json": {
-      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
-      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
-    },
-    "diarization/verify.py": {
-      "commit": "36315b0341e58ce07542e844f6cc6dcb8269c9bf",
-      "note": "D24 S-11 diarization, OpenMDW-1.1 and approved256-character voice IDs"
-    },
-    "voices/AndroidOracle.kt": {
-      "commit": "c74460bc61ea498dcf821e628190266348486345",
-      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
-    },
-    "voices/README.md": {
-      "commit": "c74460bc61ea498dcf821e628190266348486345",
-      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
-    },
-    "voices/SHA256SUMS": {
-      "commit": "c74460bc61ea498dcf821e628190266348486345",
-      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
-    },
-    "voices/android-reference.py": {
-      "commit": "c74460bc61ea498dcf821e628190266348486345",
-      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
-    },
-    "voices/desktop-vectors.json": {
-      "commit": "c74460bc61ea498dcf821e628190266348486345",
-      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
-    },
-    "voices/golden.json": {
-      "commit": "c74460bc61ea498dcf821e628190266348486345",
-      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
-    },
-    "voices/vectors.json": {
-      "commit": "c74460bc61ea498dcf821e628190266348486345",
-      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
-    },
-    "voices/verify.py": {
-      "commit": "c74460bc61ea498dcf821e628190266348486345",
-      "note": "D25 S-9 and Saved voices, including confirmed desktop merge/key rules"
-    },
-    "dc/README.md": {
-      "commit": "196c179",
-      "note": "D26.1 coordinator-approved WebRTC/Silero input stage and public DC vector"
-    },
-    "dc/dc-quiet-jfk-v1.wav": {
-      "commit": "196c179",
-      "note": "D26.1 coordinator-approved WebRTC/Silero input stage and public DC vector"
-    },
-    "dc/dc-quiet-jfk-v1-control.wav": {
-      "commit": "196c179",
-      "note": "D26.1 coordinator-approved WebRTC/Silero input stage and public DC vector"
-    },
-    "format-vectors.json": {
-      "commit": "8a25902",
-      "note": "D37.10/R37 format-vectors v4 with approved KB cases"
-    },
-    "library-v2/name-vectors.json": {
-      "commit": "1bed4bcee7dae9a02f65738252cce5fbbe7bf78d",
-      "note": "S-12 step 1 name vectors and x[\"codemyriad.io\"] schema with the \u00a711 answers (Library v2 step 3a)"
-    },
-    "library-v2/name-vectors-malformed.json": {
-      "commit": "1bed4bcee7dae9a02f65738252cce5fbbe7bf78d",
-      "note": "S-12 step 1 name vectors and x[\"codemyriad.io\"] schema with the \u00a711 answers (Library v2 step 3a)"
-    },
-    "library-v2/x-schema.json": {
-      "commit": "1bed4bcee7dae9a02f65738252cce5fbbe7bf78d",
-      "note": "S-12 step 1 name vectors and x[\"codemyriad.io\"] schema with the \u00a711 answers (Library v2 step 3a)"
-    }
+    "library-v2/x-schema.json": "214917c6e1f24936a9a97dc3b64e8fe6b4249733c67c985b11be67c2b0463f70"
   }
 }

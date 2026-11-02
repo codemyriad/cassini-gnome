@@ -15,7 +15,10 @@
    "description": "meeting.json id, verbatim (case kept). Together with origin, the meeting's identity (S-12 §1)."
   },
   "origin": {
-   "enum": ["Recording", "Received"],
+   "enum": [
+    "Recording",
+    "Received"
+   ],
    "description": "The session folder's prefix: .cassini/sessions/<origin>-<sessionId>/. Received iff meeting.received is an object."
   },
   "namePrefix": {
@@ -24,7 +27,12 @@
    "description": "S-12 §2 prefix, chosen once and never recomputed. Mirrors meeting.json namePrefix (optional v2 member of meeting.schema.json, S-12 §11 Q11)."
   },
   "namePrefixSource": {
-   "enum": ["recorded", "legacy-device-tz", "date-tag", "import-time"],
+   "enum": [
+    "recorded",
+    "legacy-device-tz",
+    "date-tag",
+    "import-time"
+   ],
    "description": "Optional; mirrors meeting.json namePrefixSource: present in one copy iff present in the other, never in passthrough. How namePrefix was chosen (names.py, S-12 §11 Q12): recorded = capture start + recorded UTC offset; legacy-device-tz = no valid offset, the Library device's zone at first conversion; date-tag = a received file's DATE; import-time = conversion/import time (received without a usable DATE, or unknown start, Q16). The last two mark an assumption."
   },
   "revision": {
@@ -37,12 +45,16 @@
    "type": "object",
    "description": "meeting.json members that meeting.schema.json v1 defines, other than id, revision, notes, namePrefix, namePrefixSource and published (which live at the x top level or nowhere), each verbatim (unknown members nested inside them stay in place). A schema-1 writer puts exactly these keys here and every other top-level meeting.json member in passthrough. Members absent from meeting.json are absent here (speakerMerges and recordingDetails are optional): absence is preserved, never normalised to [] or {}.",
    "properties": {
-    "version": { "$ref": "../meeting.schema.json#/properties/version" },
+    "version": {
+     "$ref": "../meeting.schema.json#/properties/version"
+    },
     "title": {
      "$ref": "../meeting.schema.json#/properties/title",
      "description": "The stored title, null when the automatic name applies (D38.4). The manifest meeting.title and the TITLE tag hold the displayed title instead."
     },
-    "titleSource": { "$ref": "../meeting.schema.json#/properties/titleSource" },
+    "titleSource": {
+     "$ref": "../meeting.schema.json#/properties/titleSource"
+    },
     "speakers": {
      "$ref": "../meeting.schema.json#/properties/speakers",
      "description": "Verbatim and in order: id, name (null when unnamed), provenance, colourIndex, nameCleared. Ids are the original, unmerged speaker ids the transcript bodies use."
@@ -55,32 +67,77 @@
      "$ref": "../meeting.schema.json#/properties/transcript",
      "description": "status, reference and model, verbatim. The source of truth for the words is the file's default words transcript (S-12 §11 Q14)."
     },
-    "etaMinutes": { "$ref": "../meeting.schema.json#/properties/etaMinutes" },
-    "error": { "$ref": "../meeting.schema.json#/properties/error" },
-    "quoteOverride": { "$ref": "../meeting.schema.json#/properties/quoteOverride" },
+    "etaMinutes": {
+     "$ref": "../meeting.schema.json#/properties/etaMinutes"
+    },
+    "error": {
+     "$ref": "../meeting.schema.json#/properties/error"
+    },
+    "quoteOverride": {
+     "$ref": "../meeting.schema.json#/properties/quoteOverride"
+    },
     "received": {
      "$ref": "../meeting.schema.json#/properties/received",
      "description": "Received-file metadata verbatim. sha256 stays the original file's hash (duplicate detection, UX4), not the Library file's."
     },
-    "recordingDetails": { "$ref": "../meeting.schema.json#/properties/recordingDetails" }
+    "recordingDetails": {
+     "$ref": "../meeting.schema.json#/properties/recordingDetails"
+    }
    },
-   "required": ["version", "title", "titleSource", "speakers", "transcript", "etaMinutes", "error", "quoteOverride", "received"],
+   "required": [
+    "version",
+    "title",
+    "titleSource",
+    "speakers",
+    "transcript",
+    "etaMinutes",
+    "error",
+    "quoteOverride",
+    "received"
+   ],
    "additionalProperties": true,
    "allOf": [
-    { "$ref": "../meeting.schema.json#/allOf/0" },
-    { "$ref": "../meeting.schema.json#/allOf/1" }
+    {
+     "$ref": "../meeting.schema.json#/allOf/0"
+    },
+    {
+     "$ref": "../meeting.schema.json#/allOf/1"
+    }
    ]
   },
   "passthrough": {
    "type": "object",
    "description": "Every top-level meeting.json member this schema does not place elsewhere, carried as-is (name and JSON value). Absent when there are none. No key here may also appear in meeting or be id, revision, notes, namePrefix, namePrefixSource or published.",
    "propertyNames": {
-    "not": { "enum": ["id", "revision", "notes", "namePrefix", "namePrefixSource", "published", "version", "title", "titleSource", "speakers", "speakerMerges", "transcript", "etaMinutes", "error", "quoteOverride", "received", "recordingDetails"] }
+    "not": {
+     "enum": [
+      "id",
+      "revision",
+      "notes",
+      "namePrefix",
+      "namePrefixSource",
+      "published",
+      "version",
+      "title",
+      "titleSource",
+      "speakers",
+      "speakerMerges",
+      "transcript",
+      "etaMinutes",
+      "error",
+      "quoteOverride",
+      "received",
+      "recordingDetails"
+     ]
+    }
    },
    "additionalProperties": true
   },
   "automaticTitle": {
-   "type": ["string", "null"],
+   "type": [
+    "string",
+    "null"
+   ],
    "maxLength": 500,
    "description": "S-12 §11 Q1. The automatic name D38.4 falls back to when meeting.title is null: session.json title for a Recording, the received file's original manifest meeting.title/TITLE for a Received one. Captured at first publish and updated (journaled, revision bump) whenever the automatic name changes. A blank rename restores it, even without a session folder. null when there is none (then the Library falls back to the received name stem or the untitled catalog string)."
   },
@@ -91,9 +148,23 @@
    "items": {
     "type": "object",
     "properties": {
-     "id": { "type": "string", "minLength": 1, "maxLength": 200, "description": "session.json track id." },
-     "kind": { "type": "string", "description": "session.json track kind (microphone, system, browser participant…)." },
-     "sourceTrackId": { "type": ["string", "null"], "maxLength": 200 },
+     "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "session.json track id."
+     },
+     "kind": {
+      "type": "string",
+      "description": "session.json track kind (microphone, system, browser participant…)."
+     },
+     "sourceTrackId": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "maxLength": 200
+     },
      "spans": {
       "type": "array",
       "minItems": 1,
@@ -103,38 +174,134 @@
         "file": {
          "type": "string",
          "pattern": "^(tracks/)?[^/\\\\]+$",
-         "not": { "pattern": "(^|/)\\.\\.?$" },
+         "not": {
+          "pattern": "(^|/)\\.\\.?$"
+         },
          "description": "Path relative to the session folder; confined to it, regular files only."
         },
-        "sampleRate": { "type": "integer", "minimum": 1 },
-        "channels": { "type": "integer", "enum": [1, 2] },
-        "frames": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "sampleRate": {
+         "type": "integer",
+         "minimum": 1
+        },
+        "channels": {
+         "type": "integer",
+         "enum": [
+          1,
+          2
+         ]
+        },
+        "frames": {
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 9007199254740991
+        },
         "startOffsetMs": {
-         "oneOf": [{ "type": "number", "minimum": 0, "maximum": 86400000 }, { "type": "null" }],
+         "oneOf": [
+          {
+           "type": "number",
+           "minimum": 0,
+           "maximum": 86400000
+          },
+          {
+           "type": "null"
+          }
+         ],
          "description": "Placement on the session timeline; null when unknown (then x[\"gocassini.com\"].recovery.offsetsAssumedZero, D19 / S-12 §11 Q7)."
         },
-        "gapMaterialized": { "type": "boolean" },
-        "codec": { "const": "opus", "description": "§5 compacted span; absent means WAV." },
-        "decodedRate": { "const": 48000 }
+        "gapMaterialized": {
+         "type": "boolean"
+        },
+        "codec": {
+         "const": "opus",
+         "description": "§5 compacted span; absent means WAV."
+        },
+        "decodedRate": {
+         "const": 48000
+        }
        },
-       "required": ["file", "sampleRate", "frames", "startOffsetMs"],
-       "dependentRequired": { "codec": ["decodedRate"] },
+       "required": [
+        "file",
+        "sampleRate",
+        "frames",
+        "startOffsetMs"
+       ],
+       "dependentRequired": {
+        "codec": [
+         "decodedRate"
+        ]
+       },
        "additionalProperties": true
       }
+     },
+     "gaps": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "maxItems": 1001,
+      "$comment": "D52.2/D52.4: same shape as the browser-protocol session.schema gaps: [{atMs, durationMs, frames, kind}] half-open, session-absolute ms; kinds jump|input|prefix|writer|overflow; null or missing = unknown.",
+      "items": {
+       "type": "object",
+       "additionalProperties": true
+      }
+     },
+     "gapFrames": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "droppedFrames": {
+      "type": "integer",
+      "minimum": 0
      }
     },
-    "required": ["id", "spans"],
+    "required": [
+     "id",
+     "spans"
+    ],
     "additionalProperties": true
    }
   }
  },
- "required": ["schema", "sessionId", "origin", "namePrefix", "revision", "meeting"],
+ "required": [
+  "schema",
+  "sessionId",
+  "origin",
+  "namePrefix",
+  "revision",
+  "meeting"
+ ],
  "additionalProperties": true,
  "allOf": [
   {
-   "if": { "properties": { "origin": { "const": "Received" } } },
-   "then": { "properties": { "meeting": { "properties": { "received": { "type": "object" } } } } },
-   "else": { "properties": { "meeting": { "properties": { "received": { "type": "null" } } } } }
+   "if": {
+    "properties": {
+     "origin": {
+      "const": "Received"
+     }
+    }
+   },
+   "then": {
+    "properties": {
+     "meeting": {
+      "properties": {
+       "received": {
+        "type": "object"
+       }
+      }
+     }
+    }
+   },
+   "else": {
+    "properties": {
+     "meeting": {
+      "properties": {
+       "received": {
+        "type": "null"
+       }
+      }
+     }
+    }
+   }
   }
  ],
  "examples": [
@@ -150,22 +317,73 @@
     "title": null,
     "titleSource": "meeting-window",
     "speakers": [
-     { "id": "spk-me", "name": "Me", "provenance": "source", "colourIndex": 0 },
-     { "id": "spk-1", "name": "Dana", "provenance": "user", "colourIndex": 1 },
-     { "id": "spk-2", "name": null, "provenance": "unnamed", "colourIndex": 2, "nameCleared": true }
+     {
+      "id": "spk-me",
+      "name": "Me",
+      "provenance": "source",
+      "colourIndex": 0
+     },
+     {
+      "id": "spk-1",
+      "name": "Dana",
+      "provenance": "user",
+      "colourIndex": 1
+     },
+     {
+      "id": "spk-2",
+      "name": null,
+      "provenance": "unnamed",
+      "colourIndex": 2,
+      "nameCleared": true
+     }
     ],
-    "speakerMerges": [{ "from": "spk-2", "into": "spk-1" }],
-    "transcript": { "status": "done", "reference": { "kind": "sidecar", "file": "transcript.json", "format": "cassini.words.v1" }, "model": "whistle" },
+    "speakerMerges": [
+     {
+      "from": "spk-2",
+      "into": "spk-1"
+     }
+    ],
+    "transcript": {
+     "status": "done",
+     "reference": {
+      "kind": "sidecar",
+      "file": "transcript.json",
+      "format": "cassini.words.v1"
+     },
+     "model": "whistle"
+    },
     "etaMinutes": null,
     "error": null,
-    "quoteOverride": { "atMs": 61000, "text": "Ship it on Friday." },
+    "quoteOverride": {
+     "atMs": 61000,
+     "text": "Ship it on Friday."
+    },
     "received": null
    },
    "automaticTitle": "Weekly sync",
    "tracks": [
-    { "id": "microphone", "kind": "microphone", "spans": [{ "file": "track-microphone.wav", "sampleRate": 48000, "channels": 1, "frames": 172800000, "startOffsetMs": 0 }] }
+    {
+     "id": "microphone",
+     "kind": "microphone",
+     "spans": [
+      {
+       "file": "track-microphone.wav",
+       "sampleRate": 48000,
+       "channels": 1,
+       "frames": 172800000,
+       "startOffsetMs": 0
+      }
+     ]
+    }
    ],
-   "passthrough": { "macWindowFrame": [10, 20, 800, 600] }
+   "passthrough": {
+    "macWindowFrame": [
+     10,
+     20,
+     800,
+     600
+    ]
+   }
   }
  ]
 }

@@ -52,10 +52,12 @@ def read_cache(path):
         return {}
 
 
-def run(tracks, options, notify):
+def run(tracks, options, notify, *, statvfs=None):
     """Failure keeps D11. Results are streamed in bounded messages, never words."""
     from .diarization_audio import rejoin
+    from .scratch_budget import live_recordings, shortfall
 
+    live = live_recordings(options)
     by_id = {t["id"]: t for t in tracks}
     cached = read_cache(options.get("storedTurnsPath"))
     model = None
@@ -70,6 +72,21 @@ def run(tracks, options, notify):
                 continue
             identifier = group["id"]
             try:
+                # G14: too little disk for this group's temp audio keeps D11,
+                # as any other failure does, without creating the file.
+                if short := shortfall(
+                    group["durationMs"], scratch=options.get("scratch"), statvfs=statvfs, recordings=live
+                ):
+                    diagnostics.append(
+                        dict(
+                            code="diarization-kept-d11",
+                            group=identifier,
+                            reason="lowDisk",
+                            message="Not enough disk space",
+                            **short,
+                        )
+                    )
+                    continue
 
                 def heartbeat(group=group, identifier=identifier):
                     notify(
@@ -157,14 +174,14 @@ def estimate(tracks, options):
     )
 
 
-def complete(summary, tracks, options, notify):
+def complete(summary, tracks, options, notify, *, statvfs=None):
     if not options:
         return summary
     # If a native diarizer crashes after recognition, the parent still has
     # every word and this marker. It can finish the transcript with D11 names.
     notify("recognised", summary=summary, etaMinutes=1)
     try:
-        summary["diarization"] = run(tracks, options, notify)
+        summary["diarization"] = run(tracks, options, notify, statvfs=statvfs)
     except Exception as error:
         summary.setdefault("diagnostics", []).append(dict(code="diarization-kept-d11", message=str(error)))
     return summary

@@ -17295,6 +17295,257 @@
    }
   },
   {
+   "id": "format.searchCount.places",
+   "en": "{n} places",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "format",
+   "boards": [],
+   "milestone": "D50",
+   "placeholders": {
+    "n": "number of places"
+   },
+   "plural": {
+    "one": "{n} place",
+    "other": "{n} places"
+   },
+   "note": "Coordinator (D50, Mac request). Search summary count of places; pluralized on its own n. Combined by format.searchCount.join.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{n} risultati",
+     "plural": {
+      "one": "{n} risultato",
+      "many": "{n} risultati",
+      "other": "{n} risultati"
+     }
+    },
+    "fr": {
+     "text": "{n} occurrences",
+     "plural": {
+      "one": "{n} occurrence",
+      "many": "{n} occurrences",
+      "other": "{n} occurrences"
+     }
+    },
+    "es": {
+     "text": "{n} coincidencias",
+     "plural": {
+      "one": "{n} coincidencia",
+      "many": "{n} coincidencias",
+      "other": "{n} coincidencias"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} trechos",
+     "plural": {
+      "one": "{n} trecho",
+      "many": "{n} trechos",
+      "other": "{n} trechos"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} ocorrências",
+     "plural": {
+      "one": "{n} ocorrência",
+      "many": "{n} ocorrências",
+      "other": "{n} ocorrências"
+     }
+    }
+   }
+  },
+  {
+   "id": "format.searchCount.meetings",
+   "en": "{n} meetings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "format",
+   "boards": [],
+   "milestone": "D50",
+   "placeholders": {
+    "n": "number of meetings"
+   },
+   "plural": {
+    "one": "{n} meeting",
+    "other": "{n} meetings"
+   },
+   "note": "Coordinator (D50, Mac request). Search summary count of meetings; pluralized on its own n. Combined by format.searchCount.join.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{n} riunioni",
+     "plural": {
+      "one": "{n} riunione",
+      "many": "{n} riunioni",
+      "other": "{n} riunioni"
+     }
+    },
+    "fr": {
+     "text": "{n} réunions",
+     "plural": {
+      "one": "{n} réunion",
+      "many": "{n} réunions",
+      "other": "{n} réunions"
+     }
+    },
+    "es": {
+     "text": "{n} reuniones",
+     "plural": {
+      "one": "{n} reunión",
+      "many": "{n} reuniones",
+      "other": "{n} reuniones"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} reuniões",
+     "plural": {
+      "one": "{n} reunião",
+      "many": "{n} reuniões",
+      "other": "{n} reuniões"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} reuniões",
+     "plural": {
+      "one": "{n} reunião",
+      "many": "{n} reuniões",
+      "other": "{n} reuniões"
+     }
+    }
+   }
+  },
+  {
+   "id": "format.searchCount.join",
+   "en": "{places} in {meetings}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "format",
+   "boards": [],
+   "milestone": "D50",
+   "placeholders": {
+    "places": "format.searchCount.places result",
+    "meetings": "format.searchCount.meetings result"
+   },
+   "note": "Coordinator (D50, Mac request). Joins the two pluralized counts, e.g. '1 place in 2 meetings'. Replaces format.searchCount for apps that adopt it; the old entry stays until every app has switched.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{places} in {meetings}"
+    },
+    "fr": {
+     "text": "{places} dans {meetings}"
+    },
+    "es": {
+     "text": "{places} en {meetings}"
+    },
+    "pt-BR": {
+     "text": "{places} em {meetings}"
+    },
+    "pt-PT": {
+     "text": "{places} em {meetings}"
+    }
+   }
+  },
+  {
+   "id": "export.markdown.speakersLine",
+   "en": "Speakers: {names}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D50.2",
+   "placeholders": {
+    "names": "comma-joined speaker names"
+   },
+   "note": "Coordinator (D50.2). Markdown export (S-5) line after the date; {names} is the comma-joined speaking speakers in first-speaking order, as stored.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Voci: {names}"
+    },
+    "fr": {
+     "text": "Intervenants : {names}"
+    },
+    "es": {
+     "text": "Hablantes: {names}"
+    },
+    "pt-BR": {
+     "text": "Locutores: {names}"
+    },
+    "pt-PT": {
+     "text": "Oradores: {names}"
+    }
+   }
+  },
+  {
+   "id": "export.markdown.transcriptHeading",
+   "en": "Transcript",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "D50.2",
+   "note": "Coordinator (D50.2). Markdown export (S-5) level-2 heading before the turns.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Trascrizione"
+    },
+    "fr": {
+     "text": "Transcription"
+    },
+    "es": {
+     "text": "Transcripción"
+    },
+    "pt-BR": {
+     "text": "Transcrição"
+    },
+    "pt-PT": {
+     "text": "Transcrição"
+    }
+   }
+  },
+  {
+   "id": "export.markdown.notesHeading",
+   "en": "Notes",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "D50.2",
+   "note": "Coordinator (D50.2). Markdown export (S-5) level-2 heading before the notes (only when there are notes).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Note"
+    },
+    "fr": {
+     "text": "Notes"
+    },
+    "es": {
+     "text": "Notas"
+    },
+    "pt-BR": {
+     "text": "Notas"
+    },
+    "pt-PT": {
+     "text": "Notas"
+    }
+   }
+  },
+  {
    "id": "details.sources.title",
    "en": "Audio sources",
    "platforms": [
@@ -17646,253 +17897,1001 @@
    }
   },
   {
-   "id": "export.markdown.speakersLine",
-   "en": "Speakers: {names}",
+   "id": "mac.quicklook.speakerCount",
+   "en": "{n} speakers",
    "platforms": [
-    "gnome",
     "mac"
    ],
    "role": "line",
    "boards": [],
-   "milestone": "D50.2",
-   "placeholders": {
-    "names": "comma-joined speaker names"
+   "milestone": "D50",
+   "plural": {
+    "one": "{n} speaker",
+    "other": "{n} speakers"
    },
-   "note": "Coordinator (D50.2). Markdown export (S-5) line after the date; {names} is the comma-joined speaking speakers in first-speaking order, as stored.",
+   "note": "Coordinator (D50 Mac follow-up). QuickLook preview: number of speakers in the file.",
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Voci: {names}"
+     "text": "{n} voci",
+     "plural": {
+      "one": "{n} voce",
+      "many": "{n} voci",
+      "other": "{n} voci"
+     }
     },
     "fr": {
-     "text": "Intervenants : {names}"
+     "text": "{n} intervenants",
+     "plural": {
+      "one": "{n} intervenant",
+      "many": "{n} intervenants",
+      "other": "{n} intervenants"
+     }
     },
     "es": {
-     "text": "Hablantes: {names}"
+     "text": "{n} hablantes",
+     "plural": {
+      "one": "{n} hablante",
+      "many": "{n} hablantes",
+      "other": "{n} hablantes"
+     }
     },
     "pt-BR": {
-     "text": "Locutores: {names}"
+     "text": "{n} locutores",
+     "plural": {
+      "one": "{n} locutor",
+      "many": "{n} locutores",
+      "other": "{n} locutores"
+     }
     },
     "pt-PT": {
-     "text": "Oradores: {names}"
+     "text": "{n} oradores",
+     "plural": {
+      "one": "{n} orador",
+      "many": "{n} oradores",
+      "other": "{n} oradores"
+     }
     }
    }
   },
   {
-   "id": "export.markdown.transcriptHeading",
-   "en": "Transcript",
+   "id": "mac.quicklook.openForMore",
+   "en": "Open in Cassini for the whole transcript.",
    "platforms": [
-    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). QuickLook preview footer; Cassini is the app (never translated).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Apri in Cassini per vedere tutta la trascrizione."
+    },
+    "fr": {
+     "text": "Ouvrez le fichier dans Cassini pour voir toute la transcription."
+    },
+    "es": {
+     "text": "Ábrelo en Cassini para ver la transcripción completa."
+    },
+    "pt-BR": {
+     "text": "Abra no Cassini para ver a transcrição completa."
+    },
+    "pt-PT": {
+     "text": "Abra no Cassini para ver a transcrição completa."
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.noTranscript",
+   "en": "No transcript in this file.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). Viewer for an .opus opened from outside the Library; the file is plain audio.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Nessuna trascrizione in questo file."
+    },
+    "fr": {
+     "text": "Aucune transcription dans ce fichier."
+    },
+    "es": {
+     "text": "Este archivo no tiene transcripción."
+    },
+    "pt-BR": {
+     "text": "Este arquivo não tem transcrição."
+    },
+    "pt-PT": {
+     "text": "Este ficheiro não tem transcrição."
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.unreadable",
+   "en": "This file could not be read.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). Viewer: the file itself is unreadable.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Impossibile leggere questo file."
+    },
+    "fr": {
+     "text": "Impossible de lire ce fichier."
+    },
+    "es": {
+     "text": "No se pudo leer este archivo."
+    },
+    "pt-BR": {
+     "text": "Não foi possível ler este arquivo."
+    },
+    "pt-PT": {
+     "text": "Não foi possível ler este ficheiro."
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.transcriptUnreadable",
+   "en": "The transcript could not be loaded.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). Viewer: audio fine, transcript metadata unreadable.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Impossibile caricare la trascrizione."
+    },
+    "fr": {
+     "text": "Impossible de charger la transcription."
+    },
+    "es": {
+     "text": "No se pudo cargar la transcripción."
+    },
+    "pt-BR": {
+     "text": "Não foi possível carregar a transcrição."
+    },
+    "pt-PT": {
+     "text": "Não foi possível carregar a transcrição."
+    }
+   }
+  },
+  {
+   "id": "mac.inspector.title",
+   "en": "File info",
+   "platforms": [
     "mac"
    ],
    "role": "heading",
    "boards": [],
-   "milestone": "D50.2",
-   "note": "Coordinator (D50.2). Markdown export (S-5) level-2 heading before the turns.",
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). Inspector panel title for an opened .opus file.",
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Trascrizione"
+     "text": "Informazioni sul file"
     },
     "fr": {
-     "text": "Transcription"
+     "text": "Informations sur le fichier"
     },
     "es": {
-     "text": "Transcripción"
+     "text": "Información del archivo"
     },
     "pt-BR": {
-     "text": "Transcrição"
+     "text": "Informações do arquivo"
     },
     "pt-PT": {
-     "text": "Transcrição"
+     "text": "Informações do ficheiro"
     }
    }
   },
   {
-   "id": "export.markdown.notesHeading",
-   "en": "Notes",
+   "id": "mac.inspector.recording",
+   "en": "Recording",
    "platforms": [
-    "gnome",
     "mac"
    ],
    "role": "heading",
    "boards": [],
-   "milestone": "D50.2",
-   "note": "Coordinator (D50.2). Markdown export (S-5) level-2 heading before the notes (only when there are notes).",
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). Inspector section about the recording (duration, date).",
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Note"
+     "text": "Registrazione"
     },
     "fr": {
-     "text": "Notes"
+     "text": "Enregistrement"
     },
     "es": {
-     "text": "Notas"
+     "text": "Grabación"
     },
     "pt-BR": {
-     "text": "Notas"
+     "text": "Gravação"
     },
     "pt-PT": {
-     "text": "Notas"
+     "text": "Gravação"
     }
    }
   },
   {
-   "id": "format.searchCount.places",
-   "en": "{n} places",
+   "id": "mac.inspector.details",
+   "en": "Details",
    "platforms": [
-    "gnome",
     "mac"
    ],
-   "role": "format",
+   "role": "heading",
    "boards": [],
    "milestone": "D50",
-   "placeholders": {
-    "n": "number of places"
-   },
-   "plural": {
-    "one": "{n} place",
-    "other": "{n} places"
-   },
-   "note": "Coordinator (D50, Mac request). Search summary count of places; pluralized on its own n. Combined by format.searchCount.join.",
+   "note": "Coordinator (D50 Mac follow-up). Inspector section title.",
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "{n} risultati",
-     "plural": {
-      "one": "{n} risultato",
-      "many": "{n} risultati",
-      "other": "{n} risultati"
-     }
+     "text": "Dettagli"
     },
     "fr": {
-     "text": "{n} occurrences",
-     "plural": {
-      "one": "{n} occurrence",
-      "many": "{n} occurrences",
-      "other": "{n} occurrences"
-     }
+     "text": "Détails"
     },
     "es": {
-     "text": "{n} coincidencias",
-     "plural": {
-      "one": "{n} coincidencia",
-      "many": "{n} coincidencias",
-      "other": "{n} coincidencias"
-     }
+     "text": "Detalles"
     },
     "pt-BR": {
-     "text": "{n} trechos",
-     "plural": {
-      "one": "{n} trecho",
-      "many": "{n} trechos",
-      "other": "{n} trechos"
-     }
+     "text": "Detalhes"
     },
     "pt-PT": {
-     "text": "{n} ocorrências",
-     "plural": {
-      "one": "{n} ocorrência",
-      "many": "{n} ocorrências",
-      "other": "{n} ocorrências"
-     }
+     "text": "Detalhes"
     }
    }
   },
   {
-   "id": "format.searchCount.meetings",
-   "en": "{n} meetings",
+   "id": "mac.inspector.duration",
+   "en": "Duration",
    "platforms": [
-    "gnome",
     "mac"
    ],
-   "role": "format",
+   "role": "label",
    "boards": [],
    "milestone": "D50",
-   "placeholders": {
-    "n": "number of meetings"
-   },
-   "plural": {
-    "one": "{n} meeting",
-    "other": "{n} meetings"
-   },
-   "note": "Coordinator (D50, Mac request). Search summary count of meetings; pluralized on its own n. Combined by format.searchCount.join.",
+   "note": "Coordinator (D50 Mac follow-up). Inspector row label.",
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "{n} riunioni",
-     "plural": {
-      "one": "{n} riunione",
-      "many": "{n} riunioni",
-      "other": "{n} riunioni"
-     }
+     "text": "Durata"
     },
     "fr": {
-     "text": "{n} réunions",
-     "plural": {
-      "one": "{n} réunion",
-      "many": "{n} réunions",
-      "other": "{n} réunions"
-     }
+     "text": "Durée"
     },
     "es": {
-     "text": "{n} reuniones",
-     "plural": {
-      "one": "{n} reunión",
-      "many": "{n} reuniones",
-      "other": "{n} reuniones"
-     }
+     "text": "Duración"
     },
     "pt-BR": {
-     "text": "{n} reuniões",
-     "plural": {
-      "one": "{n} reunião",
-      "many": "{n} reuniões",
-      "other": "{n} reuniões"
-     }
+     "text": "Duração"
     },
     "pt-PT": {
-     "text": "{n} reuniões",
-     "plural": {
-      "one": "{n} reunião",
-      "many": "{n} reuniões",
-      "other": "{n} reuniões"
-     }
+     "text": "Duração"
     }
    }
   },
   {
-   "id": "format.searchCount.join",
-   "en": "{places} in {meetings}",
+   "id": "mac.inspector.recorded",
+   "en": "Recorded",
+   "platforms": [
+    "mac"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). Inspector row label: when it was recorded (a date follows).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Registrata"
+    },
+    "fr": {
+     "text": "Enregistré"
+    },
+    "es": {
+     "text": "Grabada"
+    },
+    "pt-BR": {
+     "text": "Gravada"
+    },
+    "pt-PT": {
+     "text": "Gravada"
+    }
+   }
+  },
+  {
+   "id": "mac.inspector.footer",
+   "en": "Transcript and speakers live inside this .opus file, so any audio player can still play it.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). Inspector footer explaining the Cassini file. Keep .opus.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "La trascrizione e le voci sono salvate dentro questo file .opus, quindi qualsiasi lettore audio può comunque riprodurlo."
+    },
+    "fr": {
+     "text": "La transcription et les intervenants sont stockés dans ce fichier .opus : n’importe quel lecteur audio peut donc toujours le lire."
+    },
+    "es": {
+     "text": "La transcripción y los hablantes están dentro de este archivo .opus, así que cualquier reproductor de audio puede reproducirlo igualmente."
+    },
+    "pt-BR": {
+     "text": "A transcrição e os locutores ficam dentro deste arquivo .opus, então qualquer reprodutor de áudio ainda pode reproduzi-lo."
+    },
+    "pt-PT": {
+     "text": "A transcrição e os oradores ficam dentro deste ficheiro .opus, por isso qualquer leitor de áudio continua a poder reproduzi-lo."
+    }
+   }
+  },
+  {
+   "id": "mac.inspector.showInFinder",
+   "en": "Show in Finder",
+   "platforms": [
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). macOS standard action; use Apple's localized wording for 'Show in Finder'.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Mostra nel Finder"
+    },
+    "fr": {
+     "text": "Afficher dans le Finder"
+    },
+    "es": {
+     "text": "Mostrar en el Finder"
+    },
+    "pt-BR": {
+     "text": "Mostrar no Finder"
+    },
+    "pt-PT": {
+     "text": "Mostrar no Finder"
+    }
+   }
+  },
+  {
+   "id": "mac.inspector.audio.ok",
+   "en": "Audio matches transcript",
+   "platforms": [
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). Integrity state: the audio is the one the transcript was made from.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "L’audio corrisponde alla trascrizione"
+    },
+    "fr": {
+     "text": "L’audio correspond à la transcription"
+    },
+    "es": {
+     "text": "El audio coincide con la transcripción"
+    },
+    "pt-BR": {
+     "text": "O áudio corresponde à transcrição"
+    },
+    "pt-PT": {
+     "text": "O áudio corresponde à transcrição"
+    }
+   }
+  },
+  {
+   "id": "mac.inspector.audio.staleAudio",
+   "en": "Audio doesn’t match transcript",
+   "platforms": [
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). Integrity state: the audio changed after the transcript was made.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "L’audio non corrisponde alla trascrizione"
+    },
+    "fr": {
+     "text": "L’audio ne correspond pas à la transcription"
+    },
+    "es": {
+     "text": "El audio no coincide con la transcripción"
+    },
+    "pt-BR": {
+     "text": "O áudio não corresponde à transcrição"
+    },
+    "pt-PT": {
+     "text": "O áudio não corresponde à transcrição"
+    }
+   }
+  },
+  {
+   "id": "mac.inspector.audio.unverified",
+   "en": "Audio not verified",
+   "platforms": [
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). Integrity state: no check was possible.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Audio non verificato"
+    },
+    "fr": {
+     "text": "Audio non vérifié"
+    },
+    "es": {
+     "text": "Audio sin verificar"
+    },
+    "pt-BR": {
+     "text": "Áudio não verificado"
+    },
+    "pt-PT": {
+     "text": "Áudio não verificado"
+    }
+   }
+  },
+  {
+   "id": "mac.inspector.audio.plainAudio",
+   "en": "No transcript in this file",
+   "platforms": [
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). Integrity state: plain Opus audio.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Nessuna trascrizione in questo file"
+    },
+    "fr": {
+     "text": "Aucune transcription dans ce fichier"
+    },
+    "es": {
+     "text": "Este archivo no tiene transcripción"
+    },
+    "pt-BR": {
+     "text": "Este arquivo não tem transcrição"
+    },
+    "pt-PT": {
+     "text": "Este ficheiro não tem transcrição"
+    }
+   }
+  },
+  {
+   "id": "mac.inspector.audio.plainAudioDetail",
+   "en": "An ordinary Opus file without Cassini metadata.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). Detail under plainAudio. Opus and Cassini are names.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Un normale file Opus senza metadati Cassini."
+    },
+    "fr": {
+     "text": "Un fichier Opus ordinaire, sans métadonnées Cassini."
+    },
+    "es": {
+     "text": "Un archivo Opus normal, sin metadatos de Cassini."
+    },
+    "pt-BR": {
+     "text": "Um arquivo Opus comum, sem metadados do Cassini."
+    },
+    "pt-PT": {
+     "text": "Um ficheiro Opus comum, sem metadados do Cassini."
+    }
+   }
+  },
+  {
+   "id": "mac.inspector.audio.newerFormat",
+   "en": "Newer Cassini format",
+   "platforms": [
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). The file was made by a newer version of the Cassini format than this app understands.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Formato Cassini più recente"
+    },
+    "fr": {
+     "text": "Format Cassini plus récent"
+    },
+    "es": {
+     "text": "Formato de Cassini más reciente"
+    },
+    "pt-BR": {
+     "text": "Formato do Cassini mais recente"
+    },
+    "pt-PT": {
+     "text": "Formato do Cassini mais recente"
+    }
+   }
+  },
+  {
+   "id": "mac.inspector.audio.invalid",
+   "en": "Transcript unreadable",
+   "platforms": [
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). Integrity state: transcript metadata is invalid.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Trascrizione illeggibile"
+    },
+    "fr": {
+     "text": "Transcription illisible"
+    },
+    "es": {
+     "text": "Transcripción ilegible"
+    },
+    "pt-BR": {
+     "text": "Transcrição ilegível"
+    },
+    "pt-PT": {
+     "text": "Transcrição ilegível"
+    }
+   }
+  },
+  {
+   "id": "mac.inspector.audio.unreadable",
+   "en": "Can’t read this file",
+   "platforms": [
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D50 Mac follow-up). Integrity state: the file cannot be read.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Impossibile leggere questo file"
+    },
+    "fr": {
+     "text": "Impossible de lire ce fichier"
+    },
+    "es": {
+     "text": "No se puede leer este archivo"
+    },
+    "pt-BR": {
+     "text": "Não é possível ler este arquivo"
+    },
+    "pt-PT": {
+     "text": "Não é possível ler este ficheiro"
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.followAlong",
+   "en": "Follow along",
+   "platforms": [
+    "mac"
+   ],
+   "role": "toggle",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D55, legacy viewer). Legacy viewer player bar: when on, the transcript scrolls with playback.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Segui la riproduzione"
+    },
+    "fr": {
+     "text": "Suivre la lecture"
+    },
+    "es": {
+     "text": "Seguir la reproducción"
+    },
+    "pt-BR": {
+     "text": "Acompanhar a reprodução"
+    },
+    "pt-PT": {
+     "text": "Acompanhar a reprodução"
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.summary",
+   "en": "Summary",
+   "platforms": [
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D55, legacy viewer). Legacy viewer: heading or tab for the file's summary.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Riassunto"
+    },
+    "fr": {
+     "text": "Résumé"
+    },
+    "es": {
+     "text": "Resumen"
+    },
+    "pt-BR": {
+     "text": "Resumo"
+    },
+    "pt-PT": {
+     "text": "Resumo"
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.jumpToCurrent",
+   "en": "Jump to current",
+   "platforms": [
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D55, legacy viewer). Legacy viewer: scrolls the transcript back to the words being played.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Vai al punto attuale"
+    },
+    "fr": {
+     "text": "Aller à la position actuelle"
+    },
+    "es": {
+     "text": "Ir a la posición actual"
+    },
+    "pt-BR": {
+     "text": "Ir para a posição atual"
+    },
+    "pt-PT": {
+     "text": "Ir para a posição atual"
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.previousMatch",
+   "en": "Previous match",
+   "platforms": [
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D55, legacy viewer). Legacy viewer in-file search: icon-only button.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Risultato precedente"
+    },
+    "fr": {
+     "text": "Résultat précédent"
+    },
+    "es": {
+     "text": "Resultado anterior"
+    },
+    "pt-BR": {
+     "text": "Resultado anterior"
+    },
+    "pt-PT": {
+     "text": "Resultado anterior"
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.nextMatch",
+   "en": "Next match",
+   "platforms": [
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D55, legacy viewer). Legacy viewer in-file search: icon-only button.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Risultato successivo"
+    },
+    "fr": {
+     "text": "Résultat suivant"
+    },
+    "es": {
+     "text": "Resultado siguiente"
+    },
+    "pt-BR": {
+     "text": "Próximo resultado"
+    },
+    "pt-PT": {
+     "text": "Resultado seguinte"
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.toggleInfo",
+   "en": "Show or hide the file information",
+   "platforms": [
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [],
+   "milestone": "D50",
+   "note": "Coordinator (D55, legacy viewer). Legacy viewer: icon-only button that toggles the Inspector.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Mostra o nascondi le informazioni sul file"
+    },
+    "fr": {
+     "text": "Afficher ou masquer les informations du fichier"
+    },
+    "es": {
+     "text": "Mostrar u ocultar la información del archivo"
+    },
+    "pt-BR": {
+     "text": "Mostrar ou ocultar as informações do arquivo"
+    },
+    "pt-PT": {
+     "text": "Mostrar ou ocultar as informações do ficheiro"
+    }
+   }
+  },
+  {
+   "id": "meeting.turn.over",
+   "en": "(over {names})",
    "platforms": [
     "gnome",
     "mac"
    ],
-   "role": "format",
-   "boards": [],
-   "milestone": "D50",
-   "placeholders": {
-    "places": "format.searchCount.places result",
-    "meetings": "format.searchCount.meetings result"
-   },
-   "note": "Coordinator (D50, Mac request). Joins the two pluralized counts, e.g. '1 place in 2 meetings'. Replaces format.searchCount for apps that adopt it; the old entry stays until every app has switched.",
+   "role": "label",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "D55",
+   "note": "Coordinator (D55.1). After the speaker name and time in a turn header when another speaker's words overlap this turn by at least 150 ms. {names} is the overlapping speakers' labels, joined with \", \" as GNOME does.",
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "{places} in {meetings}"
+     "text": "(in sovrapposizione con {names})"
     },
     "fr": {
-     "text": "{places} dans {meetings}"
+     "text": "(en même temps que {names})"
     },
     "es": {
-     "text": "{places} en {meetings}"
+     "text": "(a la vez que {names})"
     },
     "pt-BR": {
-     "text": "{places} em {meetings}"
+     "text": "(ao mesmo tempo que {names})"
     },
     "pt-PT": {
-     "text": "{places} em {meetings}"
+     "text": "(ao mesmo tempo que {names})"
+    }
+   }
+  },
+  {
+   "id": "meeting.turn.over.tooltip",
+   "en": "Simultaneous speech",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "tooltip",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "D55",
+   "note": "Coordinator (D55.1). Tooltip and accessibility hint of meeting.turn.over.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Parlato simultaneo"
+    },
+    "fr": {
+     "text": "Paroles simultanées"
+    },
+    "es": {
+     "text": "Habla simultánea"
+    },
+    "pt-BR": {
+     "text": "Fala simultânea"
+    },
+    "pt-PT": {
+     "text": "Fala simultânea"
+    }
+   }
+  },
+  {
+   "id": "meeting.turn.aside",
+   "en": "{name}: {text}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "D55",
+   "note": "Coordinator (D55.1). Inline aside chip inside a host turn: another speaker's short turn (at most 2 s). Visible text and accessible label. {name} is the speaker label as stored, {text} the words.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{name}: {text}"
+    },
+    "fr": {
+     "text": "{name} : {text}"
+    },
+    "es": {
+     "text": "{name}: {text}"
+    },
+    "pt-BR": {
+     "text": "{name}: {text}"
+    },
+    "pt-PT": {
+     "text": "{name}: {text}"
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.match.none",
+   "en": "No matches for “{query}”",
+   "platforms": [
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D55",
+   "note": "Coordinator (D55.1). Legacy viewer in-file search count when nothing matches.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Nessun risultato per «{query}»"
+    },
+    "fr": {
+     "text": "Aucun résultat pour « {query} »"
+    },
+    "es": {
+     "text": "No hay resultados para «{query}»"
+    },
+    "pt-BR": {
+     "text": "Nenhum resultado para “{query}”"
+    },
+    "pt-PT": {
+     "text": "Nenhum resultado para «{query}»"
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.match.one",
+   "en": "1 match for “{query}”",
+   "platforms": [
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D55",
+   "note": "Coordinator (D55.1). Legacy viewer in-file search count with exactly one match.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "1 risultato per «{query}»"
+    },
+    "fr": {
+     "text": "1 résultat pour « {query} »"
+    },
+    "es": {
+     "text": "1 resultado para «{query}»"
+    },
+    "pt-BR": {
+     "text": "1 resultado para “{query}”"
+    },
+    "pt-PT": {
+     "text": "1 resultado para «{query}»"
+    }
+   }
+  },
+  {
+   "id": "mac.legacy.match.position",
+   "en": "{index} of {count} matches for “{query}”",
+   "platforms": [
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D55",
+   "note": "Coordinator (D55.1). Legacy viewer in-file search position; count is at least 2.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{index} di {count} risultati per «{query}»"
+    },
+    "fr": {
+     "text": "{index} sur {count} résultats pour « {query} »"
+    },
+    "es": {
+     "text": "{index} de {count} resultados para «{query}»"
+    },
+    "pt-BR": {
+     "text": "{index} de {count} resultados para “{query}”"
+    },
+    "pt-PT": {
+     "text": "{index} de {count} resultados para «{query}»"
+    }
+   }
+  },
+  {
+   "id": "details.separation.lowDisk",
+   "en": "There was not enough free disk space to separate speakers. The transcript was kept.",
+   "role": "value",
+   "note": "Coordinator (D56). speakerSeparation.reason lowDisk: the pass was skipped because free space was below the need plus a running recording's reserve.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "boards": [],
+   "milestone": "D56",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Non c’era abbastanza spazio libero su disco per distinguere le voci. La trascrizione è stata conservata."
+    },
+    "fr": {
+     "text": "L’espace disque libre était insuffisant pour distinguer les intervenants. La transcription a été conservée."
+    },
+    "es": {
+     "text": "No había suficiente espacio libre en el disco para distinguir a los hablantes. Se conservó la transcripción."
+    },
+    "pt-BR": {
+     "text": "Não havia espaço livre suficiente no disco para separar os locutores. A transcrição foi mantida."
+    },
+    "pt-PT": {
+     "text": "Não havia espaço livre suficiente no disco para separar os oradores. A transcrição foi mantida."
     }
    }
   }

@@ -7,25 +7,19 @@ WAV in /tmp or a concatenated in-memory PCM array.
 
 import hashlib
 import math
-import os
 import tempfile
 import time
 from contextlib import closing, contextmanager
-from pathlib import Path
 
 import numpy as np
 
+from .scratch_budget import scratch_directory
 from .speech_pipeline import audio_chunks
 
 
 @contextmanager
 def rejoin(tracks, *, scratch=None, heartbeat=lambda: None):
-    directory = (
-        Path(scratch)
-        if scratch
-        else Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "cassini/diarization"
-    )
-    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    directory = scratch_directory(scratch)
     last_notice = time.monotonic()
     # A file descriptor avoids transporting paths to temporary audio; no
     # transcript/capture file is opened for writing by the worker.

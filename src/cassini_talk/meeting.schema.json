@@ -92,6 +92,25 @@
       "minLength": 1,
       "maxLength": 200,
       "$comment": "D48 (R60). Optional; version stays 1. The label this speaker's words were originally produced with, kept verbatim in the writer's language (D47), including for unnamed voices (e.g. 'Parlante 19'). Written when words are produced and when a name is saved or cleared; Merge never changes it. Undo merge restores the manifest label of the merged-away id from it. Readers that don't know it ignore it; it is never a display-time rule."
+     },
+     "voiceSource": {
+      "type": "object",
+      "description": "D56 (R74, G12): the diarization input this diarized voice id was made from. Set only by a writer that diarizes, when it creates the voice; kept unchanged by renames and merges; preserved verbatim by every other writer, never invented. A writer that re-diarizes rewrites it with the new ids or removes it. When it differs from the current input, names, nameCleared and merges of that id are reset.",
+      "properties": {
+       "inputSHA256": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+       },
+       "turnsSHA256": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+       }
+      },
+      "required": [
+       "inputSHA256",
+       "turnsSHA256"
+      ],
+      "additionalProperties": true
      }
     },
     "required": [
@@ -439,7 +458,8 @@
           "unavailable",
           "notApplicable",
           "tooShort",
-          "processingFailed"
+          "processingFailed",
+          "lowDisk"
          ]
         }
        },
@@ -486,6 +506,21 @@
          }
         }
        ]
+      },
+      "offsetsAssumedZero": {
+       "type": "boolean",
+       "description": "D55 (M9): true when this attempt placed at least one track at an assumed offset of 0 because its offset was unknown. Absent or false otherwise. Replaced with each attempt. Playback never aligns from an assumed offset (D19)."
+      },
+      "silentTracks": {
+       "type": "array",
+       "description": "D56 (R75 Q1): track ids this attempt left out of recognition and speaker separation because they had fewer than 32 non-zero 32 ms frames (any sample != 0). Omitted when empty; replaced with each attempt. The tracks stay in the published mixdown.",
+       "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+       },
+       "maxItems": 1001,
+       "uniqueItems": true
       }
      },
      "required": [
@@ -494,6 +529,33 @@
       "speakerSeparation"
      ],
      "additionalProperties": true
+    },
+    "captureRecord": {
+     "type": "object",
+     "required": [
+      "version"
+     ],
+     "properties": {
+      "version": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "sources": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "captureExpected": {
+          "type": "boolean",
+          "$comment": "D52.1 R69. Optional; missing means true. False only if the source was never selected and never opened a span."
+         }
+        },
+        "additionalProperties": true
+       }
+      }
+     },
+     "additionalProperties": true,
+     "$comment": "D52.1 R65. Optional; version 1. Source outcome rows (every announced source, incl. never-opened), whitelisted track diagnostics and S-6 events, kept through publication and cache deletion. Readers preserve unknown fields and never downgrade a newer version. Shape owned by GNOME #144 (docs/d52-capture-record.md); Mac writes the same."
     }
    },
    "additionalProperties": true

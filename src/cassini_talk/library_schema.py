@@ -27,6 +27,7 @@ KEYWORDS = ANNOTATIONS | {
     "required",
     "items",
     "maxItems",
+    "uniqueItems",
     "allOf",
     "oneOf",
     "if",
@@ -75,6 +76,9 @@ def valid(value, schema=SCHEMA):
             return False
     if isinstance(value, list):
         if len(value) > schema.get("maxItems", math.inf):
+            return False
+        unique = schema.get("uniqueItems") is True
+        if unique and len({json.dumps(item, sort_keys=True) for item in value}) != len(value):
             return False
         if "items" in schema and not all(valid(item, schema["items"]) for item in value):
             return False
