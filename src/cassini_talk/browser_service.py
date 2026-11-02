@@ -38,9 +38,13 @@ OUTBOUND_LIMIT = 64
 # A frozen companion keeps its audio socket open. A healthy one can leave an
 # open remote span silent while a failed recorder waits to reattach: capture.js
 # retryDelay() backs off 1, 5, 15, then 30 s, and the broker cannot see that
-# state. So: the longest retry wait plus the extension's 10 s acknowledgement
-# limit, still under the 60 s span cut that would end the source anyway.
-PCM_STALE_AFTER = 40
+# state. The longest retry wait plus the extension's 10 s acknowledgement limit
+# is 40 s, so 5 s of margin on top (D52.5), still under the 60 s span cut.
+PCM_STALE_AFTER = 45
+# heartbeat-v1 (D52.4): the app pings a negotiated control link, and any
+# inbound frame proves it alive. Two missed pings plus 5 s of slack.
+HEARTBEAT_INTERVAL = 10
+CONTROL_LOSS_AFTER = 25
 
 
 @dataclass(frozen=True)
@@ -175,13 +179,18 @@ class AudioTransport(Transport):
     def __init__(self, connection, clock):
         super().__init__(connection, clock)
         self.capture = None
-        # Any packet counts, so declaring a new span restarts the wait.
+        # Any packet counts (PCM, track, sources, trackEnd), so declaring a new
+        # span restarts the wait.
         self.last_inbound = clock()
+        # While the reader handles a packet, a quiet peer is the broker's own
+        # stall (a disk write under the capture lock), never the browser's.
+        self.handling = False
 
     def expired(self, now):
         capture = self.capture
         if (
             capture is not None
+            and not self.handling
             and capture.multistream_capable
             and now - self.last_inbound >= PCM_STALE_AFTER
             and not (capture.finished or capture.stopping or capture.stop_requested.is_set() or capture.browser_lost)
@@ -210,6 +219,10 @@ class BrowserConnection(Transport):
         self.outbound_ready = threading.Condition(threading.RLock())
         self.writer = None
         self.ignored = set()
+        self.last_inbound = clock()
+        # Set by the first status after a heartbeat-v1 hello; None never pings.
+        self.last_ping = None
+        self.ping_seq = 0
         self.meetings = {}
         self.status = {"recording": False}
         self.status_seen = self.hello_seen = False
@@ -229,6 +242,11 @@ class BrowserConnection(Transport):
         self.status_pages = {}
         self.capabilities = set()
         self.closed = False
+
+    def expired(self, now):
+        if self.last_ping is not None and now - self.last_inbound >= CONTROL_LOSS_AFTER:
+            return "stopped answering pings"
+        return super().expired(now)
 
     def send(self, packet):
         data = encode_packet(packet)
@@ -804,7 +822,14 @@ class BrowserService:
         try:
             reply(dict(ready=True, protocol=2))
             while (packet := read_packet(stream)) is not None:
+                # D52.5: a frame arriving at or after PCM_STALE_AFTER is too
+                # late, even when no tick has noticed the deadline yet.
+                if (reason := transport.expired(self.clock())) is not None:
+                    logging.getLogger(__name__).warning("Closing a browser peer that %s", reason)
+                    transport.shutdown()
+                    break
                 transport.last_inbound = self.clock()
+                transport.handling = True
                 try:
                     if capture is None:
                         if packet.get("type") != "start" or packet.get("independent") is not True:
@@ -853,6 +878,9 @@ class BrowserService:
                     # is transport loss, just like EOF. Preserve the native
                     # microphone and invoke Q4 rather than ending the meeting.
                     break
+                # The peer could not send while this packet was handled.
+                transport.last_inbound = self.clock()
+                transport.handling = False
         finally:
             with self.lock:
                 self._audio_transports.discard(transport)
@@ -1023,6 +1051,10 @@ class BrowserService:
                     # audio socket. Preserve that association across an early
                     # control disconnect, including the original call address.
                     self._bind_capture(browser, tab, capture_id)
+        for tab, state in states.items():
+            owner = self.captures.get(state.get("captureId"))
+            if owner is not None and not owner.finished and state.get("recording"):
+                owner.call_tab = tab  # Under any peer, with or without browserInstance.
         for tab, state in tuple(states.items()):
             if tab not in received_pages and "pageState" in state:
                 states[tab] = {key: value for key, value in state.items() if key != "pageState"}
@@ -1055,6 +1087,29 @@ class BrowserService:
                     self._remember_saved(
                         path, browser.meetings.get(tab, {}).get("title", "Recorded meeting"), value.get("message")
                     )
+
+    def _generation_recording(self, tab, meeting):
+        """Whether an unfinished capture already records this row's call.
+
+        Peer matching falls back to the connection id when a companion sends
+        no browserInstance, so a returning companion must not start a second
+        folder for a call (tabId plus callGeneration, D52.5) that is still
+        being recorded under any control peer.
+        """
+        generation = meeting.get("callGeneration")
+        if generation is None:
+            return False
+        # A capture's tab: its instance binding, or the tab a status last
+        # bound it to under any peer.
+        bindings = {(capture_id, bound) for (_owner, bound), (capture_id, _url) in self.call_captures.items()}
+        bindings |= {(capture_id, c.call_tab) for capture_id, c in self.captures.items() if c.call_tab is not None}
+        return any(
+            bound == tab
+            and (capture := self.captures.get(capture_id)) is not None
+            and capture.call_generation == generation
+            and not capture.finished
+            for capture_id, bound in bindings
+        )
 
     def _stale_call_generation(self, browser, tab, value):
         generation = value.get("callGeneration")
@@ -1110,6 +1165,7 @@ class BrowserService:
 
     def update(self, browser, packet):
         with self.lock:
+            browser.last_inbound = self.clock()  # Every frame type proves liveness.
             kind = packet.get("type")
             if kind == "meetings":
                 values = packet.get("meetings")
@@ -1189,9 +1245,14 @@ class BrowserService:
                             browser.attempted.add(tab)
                 browser.attempted.intersection_update(meetings)
             elif kind == "status":
+                if "heartbeat-v1" in browser.capabilities and browser.last_ping is None:
+                    # Pings wait for the first status: hello, meetings, status.
+                    browser.last_ping = browser.last_inbound
                 self._status(browser, packet)
             elif kind == "result":
                 self._command_result(browser, packet)
+            elif kind == "pong":
+                pass  # Liveness only, recorded above; seq needs no correlation.
             elif kind == "hello":
                 if type(packet.get("version")) is not int or packet["version"] != 1:
                     raise ValueError("Unsupported browser control version")
@@ -1202,6 +1263,7 @@ class BrowserService:
                     if isinstance(capabilities, list) and len(capabilities) <= 16
                     else set()
                 )
+                browser.last_ping, browser.ping_seq = None, 0
             else:
                 # Forward compatible: a newer companion's message is not a
                 # broken link. Log each new type once per connection.
@@ -1659,6 +1721,7 @@ class BrowserService:
                 capture.browser_lost = True
                 capture.browser_lost_since = time.monotonic()
                 capture_generation = browser.meetings.get(tab, {}).get("callGeneration")
+                capture.call_tab = tab
                 self.captures[capture_id] = capture
                 browser.states[tab] = dict(recording=True, captureId=capture_id, tabId=tab)
                 if browser.browser_instance is not None:
@@ -1822,6 +1885,20 @@ class BrowserService:
             if reason is not None and not transport.shut_down.is_set():
                 logging.getLogger(__name__).warning("Closing a browser peer that %s", reason)
                 transport.shutdown()
+        with self.lock:
+            # Loss is checked first. Pings are unconditional, not idle-only, and
+            # only queue: no socket I/O under the inventory lock.
+            for browser in self.browsers.values():
+                if (
+                    browser.last_ping is not None
+                    and not browser.shut_down.is_set()
+                    and now - browser.last_ping >= HEARTBEAT_INTERVAL
+                ):
+                    browser.last_ping = now
+                    ping = dict(type="ping", seq=browser.ping_seq)
+                    browser.ping_seq += 1
+                    with contextlib.suppress(OSError):
+                        browser.send(ping)  # An overflow already shut the peer down.
         self.policy()
 
     def policy(self):
@@ -1922,7 +1999,11 @@ class BrowserService:
                         others=capture.others,
                         restore_ready=capture.browser_ready,
                         multistream=capture.multistream_capable,
-                        heard=meeting.get("heard") is True,
+                        # D52.5: another call's heard never arms this recording's
+                        # restore or OTHERS_GONE grace; it latches only on rows
+                        # of the recording's own callGeneration, when it has one.
+                        heard=meeting.get("heard") is True
+                        and capture.call_generation in (None, meeting.get("callGeneration")),
                         inventory_known=peer is not None
                         and peer[2] is not None
                         and meeting.get("sourceCountKnown", True),
@@ -2023,6 +2104,7 @@ class BrowserService:
                             and self._meeting_id(browser, tab) not in self._scheduled_calls
                             and self._auto_start_ready(browser, meeting)
                             and not browser.states.get(tab, {}).get("recording")
+                            and not self._generation_recording(tab, meeting)
                         ):
                             browser.attempted.add(tab)
                             browser.scheduled.add(tab)
@@ -2100,9 +2182,12 @@ class BrowserService:
                         return
                     browser_id, _, raw_tab = identifier.partition(":")
                     browser = self.browsers.get(browser_id)
+                    meeting = browser.meetings.get(int(raw_tab), {}) if browser is not None else {}
                     if browser is None or (
                         "call-evidence-v1" in browser.capabilities
-                        and not self._auto_start_ready(browser, browser.meetings.get(int(raw_tab), {}))
+                        and not self._auto_start_ready(browser, meeting)
+                        # The call may have gained a capture while this task waited.
+                        or self._generation_recording(int(raw_tab), meeting)
                     ):
                         # Evidence may disappear while this task waits for a worker.
                         if browser is not None:

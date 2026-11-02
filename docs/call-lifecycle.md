@@ -1,7 +1,7 @@
 # Browser call lifetime (D33)
 
-Shared protocol pin: `8e160acf194fc6e21e8b132893afd612f0223557` (merged test-Library isolation PR #30).
-Companion 0.2.8 replaces older local installs; no Chrome Web Store packaging or upload is performed.
+Shared protocol pin: `941a82cb9aa9acf70e1c9ed3c698caa222a218fc` (protocol PR #33, vectors on top of the D52.5 PR #32).
+Companion 0.2.9 replaces older local installs; no Chrome Web Store packaging or upload is performed.
 
 The broker owns every independent capture and its Library folder. With the
 `page-state-v1` capability it starts the extension with `keepOnNavigation: true`.
@@ -88,8 +88,8 @@ bounded batch executor; a slow tab cannot serialize every other acknowledgement.
 The same deadline covers command waits, reconnect recovery and fallback startup.
 Each unfinished Start is reported as a failure; queued Starts are cancelled and
 fallbacks that finish too late are stopped and kept. Already accepted successful
-recordings keep running. Start and Stop share the transport write lock so Stop
-cannot overtake a prepared Start and leave it recording afterwards.
+recordings keep running. Start and Stop share the connection's ordering lock so
+Stop cannot overtake a prepared Start and leave it recording afterwards.
 
 Stop schedules native saves before browser acknowledgement work and remembers
 all owned calls immediately. If saving outlasts the request, it continues in the
@@ -113,3 +113,51 @@ announced after cancellation is saved and retired, even if its capture identity
 arrives after Stop was dispatched. A returning worker that reports a stopped
 call receives Stop. Stop-all deduplicates logical calls, and Quit joins an
 existing Stop instead of dispatching a competing command.
+
+## Transport liveness (D52.4, D52.5)
+
+A frozen browser or companion keeps both sockets open, so an open connection is
+not liveness. All of these deadlines run on the broker's injected monotonic clock
+and are enforced by its periodic `tick()`, which keeps running during Stop.
+
+- Writes to the browser go through a bounded per-connection queue and one writer
+  thread. A write in progress for `WRITE_DEADLINE` (10 s), or a queue overflow,
+  shuts the socket down without waiting behind the stuck write.
+- heartbeat-v1: when a control hello lists it, the broker pings every
+  `HEARTBEAT_INTERVAL` (10 s) from that connection's first status. Any inbound
+  frame refreshes liveness. After `CONTROL_LOSS_AFTER` (25 s) of silence the
+  control socket is shut down and the ordinary disconnect path runs: the peer is
+  forgotten (`controlAlive=false`) and the reconnect window starts. Older
+  companions are never pinged or timed out.
+- An audio connection with no packet of any kind (PCM, track, sources, trackEnd)
+  for `PCM_STALE_AFTER` (45 s) is shut down, so the capture falls back to
+  computer sound with `othersSource` reason `lost`. It is armed only while an
+  available remote span that has delivered PCM is still open, and never while
+  the broker itself is handling a packet. 45 s is the extension's longest source
+  retry wait (30 s) plus its 10 s acknowledgement limit, plus 5 s of margin.
+- A closed audio connection falls back at once. With the page present, control
+  alive and a known positive source count the recording stays on that fallback
+  until the call ends: no missing timer and no `pageGone` deadline. A known zero
+  count still ends it as `callEnded`.
+- D52.5(a): while a recording of a browser instance is on its system/lost
+  fallback, that call (same tab and callGeneration) is recording: its row shows
+  Stop, Record all skips it and it is never started again automatically. The
+  recording stays bound to the instance and tab, and a returning control
+  connection adopts it as that tab's recording, so no second folder is created.
+  A different callGeneration in that tab ends the old call's recording as
+  `callEnded` (the existing call boundary) and then follows the ordinary rules.
+- A row's heard evidence latches a recording's lifecycle only when the row's
+  callGeneration is the recording's own, so another call's heard never arms its
+  restore or the 30-second call-end grace (D52.5).
+- The shared vectors run on the real policy: `lifecycle.json`, the `recordings`
+  cases of `auto-start-vectors.json` and `stale-watchdog.json`. Expectations
+  that need the resume host side (an `askResume`, a resume, or a restore through
+  a resumed transport) are strict xfails until it lands.
+
+TODO (D52.3 host side): Cassini on GNOME does not implement the
+resume-capture-v1 host side yet, so a recording on a system/lost fallback keeps
+computer sound until the call ends or `pageGone`. When it lands, D52.5(b)
+applies: ask the extension to resume such a recording at most once per loss, at
+the first tick where control is alive, its row is present with a known positive
+count and the same callGeneration is heard; ask again only on a new control
+connection, never on a timer.

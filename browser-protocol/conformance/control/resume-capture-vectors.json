@@ -18,5 +18,18 @@
     "tracks":[{"id":"microphone","kind":"microphone","startMs":0,"endMs":10000},{"id":"system","kind":"system","startMs":0,"endMs":7000},{"id":"browser","kind":"remote","startMs":5000,"endMs":10000}],
     "expectedWindows":{"microphone":[[0,10000]],"system":[[0,6000]],"browser":[[6000,10000]]},
     "ownershipAt":[{"atMs":5999.999,"others":["system"]},{"atMs":6000,"others":["browser"]},{"atMs":7000,"others":["browser"]}]
+  },
+  "targets": {
+    "note": "D52.4: which current othersSource a resume may attach to, and the reason its committed seam writes. Any other current source refuses the resume without side effects.",
+    "eligible":[{"source":"system","reason":"missing","seamReason":"callConnected"},{"source":"system","reason":"lost","seamReason":"restored"}],
+    "ineligible":[{"source":"browser","reason":"start"},{"source":"browser","reason":"restored"},{"source":"none","reason":"user"}]
+  },
+  "lostSeam": {
+    "note": "D52.4: the original audio transport closed at 3000 (EOF or PCM_STALE_AFTER), the app fell back to system/lost, and a resumed transport commits at 6000 with reason restored.",
+    "atMs":6000,
+    "events":[{"type":"selection","atMs":0,"me":true,"others":true,"reason":"start"},{"type":"othersSource","atMs":0,"source":"browser","reason":"start"},{"type":"othersSource","atMs":3000,"source":"system","reason":"lost"},{"type":"othersSource","atMs":6000,"source":"browser","reason":"restored"}],
+    "tracks":[{"id":"microphone","kind":"microphone","startMs":0,"endMs":10000},{"id":"original","kind":"remote","startMs":0,"endMs":3000},{"id":"system","kind":"system","startMs":3000,"endMs":7000},{"id":"resumed","kind":"remote","startMs":5000,"endMs":10000}],
+    "expectedWindows":{"microphone":[[0,10000]],"original":[[0,3000]],"system":[[3000,6000]],"resumed":[[6000,10000]]},
+    "ownershipAt":[{"atMs":2999.999,"others":["original"]},{"atMs":3000,"others":["system"]},{"atMs":5999.999,"others":["system"]},{"atMs":6000,"others":["resumed"]},{"atMs":7000,"others":["resumed"]}]
   }
 }

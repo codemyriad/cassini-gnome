@@ -1,177 +1,205 @@
 {
-  "type": "object",
-  "properties": {
-    "type": {
-      "const": "command"
+  "oneOf": [
+    {
+      "$ref": "#/$defs/command"
     },
-    "requestId": {
-      "oneOf": [
-        {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "ping"
         },
-        {
+        "seq": {
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991
         }
-      ]
-    },
-    "action": {
-      "enum": [
-        "start",
-        "stop"
-      ]
-    },
-    "tabId": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 9007199254740991
-    },
-    "independent": {
-      "type": "boolean"
-    },
-    "captureLocal": {
-      "type": "boolean"
-    },
-    "microphone": {
-      "type": "boolean"
-    },
-    "keepOnNavigation": {
-      "type": "boolean"
-    },
-    "reason": {
-      "enum": [
-        "user",
-        "callEnded",
-        "tabClosed",
-        "pageGone",
-        "disk",
-        "error",
-        "appQuit"
-      ]
-    },
-    "captureId": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 200,
-      "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
-    },
-    "callGeneration": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 200
-    },
-    "resumeCapture": {
-      "type": "object",
+      },
       "required": [
-        "captureId",
-        "timelineOriginMs"
+        "type",
+        "seq"
       ],
+      "additionalProperties": true,
+      "$comment": "heartbeat-v1: sent only to a peer whose hello lists heartbeat-v1, after its first status."
+    }
+  ],
+  "$defs": {
+    "command": {
+      "type": "object",
       "properties": {
+        "type": {
+          "const": "command"
+        },
+        "requestId": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          ]
+        },
+        "action": {
+          "enum": [
+            "start",
+            "stop"
+          ]
+        },
+        "tabId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "independent": {
+          "type": "boolean"
+        },
+        "captureLocal": {
+          "type": "boolean"
+        },
+        "microphone": {
+          "type": "boolean"
+        },
+        "keepOnNavigation": {
+          "type": "boolean"
+        },
+        "reason": {
+          "enum": [
+            "user",
+            "callEnded",
+            "tabClosed",
+            "pageGone",
+            "disk",
+            "error",
+            "appQuit"
+          ]
+        },
         "captureId": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 128,
-          "$comment": "At most128 UTF-8 bytes; opaque active native capture identity."
+          "maxLength": 200,
+          "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
         },
-        "timelineOriginMs": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 253402300799000
+        "callGeneration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "resumeCapture": {
+          "type": "object",
+          "required": [
+            "captureId",
+            "timelineOriginMs"
+          ],
+          "properties": {
+            "captureId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "$comment": "At most128 UTF-8 bytes; opaque active native capture identity."
+            },
+            "timelineOriginMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 253402300799000
+            }
+          },
+          "additionalProperties": true
         }
       },
-      "additionalProperties": true
+      "required": [
+        "type",
+        "requestId",
+        "action",
+        "tabId"
+      ],
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "start"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "mode"
+            ],
+            "properties": {
+              "mode": {
+                "const": "tracks"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "keepOnNavigation"
+            ],
+            "properties": {
+              "keepOnNavigation": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "independent"
+            ],
+            "properties": {
+              "independent": {
+                "const": true
+              },
+              "action": {
+                "const": "start"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "reason"
+            ]
+          },
+          "then": {
+            "properties": {
+              "action": {
+                "const": "stop"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "resumeCapture"
+            ]
+          },
+          "then": {
+            "required": [
+              "independent",
+              "callGeneration"
+            ],
+            "properties": {
+              "independent": {
+                "const": true
+              },
+              "action": {
+                "const": "start"
+              }
+            }
+          }
+        }
+      ]
     }
   },
-  "required": [
-    "type",
-    "requestId",
-    "action",
-    "tabId"
-  ],
-  "additionalProperties": true,
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "action": {
-            "const": "start"
-          }
-        }
-      },
-      "then": {
-        "required": [
-          "mode"
-        ],
-        "properties": {
-          "mode": {
-            "const": "tracks"
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "required": [
-          "keepOnNavigation"
-        ],
-        "properties": {
-          "keepOnNavigation": {
-            "const": true
-          }
-        }
-      },
-      "then": {
-        "required": [
-          "independent"
-        ],
-        "properties": {
-          "independent": {
-            "const": true
-          },
-          "action": {
-            "const": "start"
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "required": [
-          "reason"
-        ]
-      },
-      "then": {
-        "properties": {
-          "action": {
-            "const": "stop"
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "required": [
-          "resumeCapture"
-        ]
-      },
-      "then": {
-        "required": [
-          "independent",
-          "callGeneration"
-        ],
-        "properties": {
-          "independent": {
-            "const": true
-          },
-          "action": {
-            "const": "start"
-          }
-        }
-      }
-    }
-  ],
   "$schema": "https://json-schema.org/draft/2020-12/schema"
 }

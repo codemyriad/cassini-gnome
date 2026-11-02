@@ -142,50 +142,165 @@ def test_auto_fallback_reservation_rechecks_capable_evidence(policy, monkeypatch
 
 @pytest.fixture
 def command_packets(policy, monkeypatch):
-    """Acknowledge transport commands; keep production policy/dispatch intact."""
-    service, browser, _tasks = policy
+    """Acknowledge transport commands on every peer; keep production policy/dispatch intact."""
+    service, _browser, _tasks = policy
     packets = []
 
-    def send(packet):
+    def send(peer, packet):
         packets.append(packet)
         service.update(
-            browser,
+            peer,
             dict(type="result", requestId=packet["requestId"], ok=True, status=dict(recording=False)),
         )
 
-    monkeypatch.setattr(browser, "send", send)
+    monkeypatch.setattr(BrowserConnection, "send", send)
     return packets
 
 
-@pytest.mark.parametrize("vector", SHARED_AUTO_START_CASES, ids=lambda case: case["name"])
-def test_shared_auto_start_vectors_schedule_and_dispatch(policy, command_packets, vector):
-    service, browser, tasks = policy
-    service.update(browser, dict(type="hello", version=1, capabilities=vector["capabilities"]))
-    service.update(browser, dict(type="meetings", meetings=[vector["meeting"]]))
-    assert bool(tasks) is vector["expect"]["automatic"]
-    if tasks:
-        assert len(tasks) == 1
-        worker, arguments = tasks.pop()
-        worker(*arguments)
-    assert bool(command_packets) is vector["expect"]["automatic"]
-    for packet in command_packets:
-        assert packet["action"] == "start" and packet["tabId"] == vector["meeting"]["tabId"]
-        assert packet["independent"] is True
+def seed_recordings(service, browser, vector, parent):
+    """Seed D52.5 system/lost recordings into the real registry; return the vector's peer.
+
+    Each recording is started the production way: its peer reports the call and
+    the capture, then the audio transport closes (capture.close() falls back to
+    system/lost). `controlPeer: earlier` closes that peer afterwards, so the
+    vector's hello and meetings arrive on a new peer of the same browser.
+    """
+    import time
+
+    from test_browser_capture import Tap
+
+    from cassini_talk.browser_capture import BrowserCapture
+
+    recordings = vector.get("recordings", [])
+    if not recordings:
+        return browser
+    peer = None
+    for recording in recordings:
+        assert recording["othersSource"] == dict(source="system", reason="lost")
+        capture = BrowserCapture(service._capture_changed, parent=parent, tap_factory=Tap)
+        capture.start(
+            dict(
+                type="start",
+                captureId=recording["captureId"],
+                callGeneration=recording["callGeneration"],
+                timelineOriginMs=int(time.time() * 1000),
+                microphone=False,
+            )
+        )
+        service.captures[recording["captureId"]] = capture
+        peer = BrowserConnection(None, browser_instance="auto-start-browser")
+        service.browsers[peer.id] = peer
+        tab = recording["tabId"]
+        row = dict(
+            vector["meeting"],
+            tabId=tab,
+            callGeneration=recording["callGeneration"],
+            heard=recording.get("heardSeen", False),
+        )
+        service.update(peer, dict(type="hello", version=1, capabilities=vector["capabilities"]))
+        service.update(peer, dict(type="meetings", meetings=[row]))
+        session = dict(recording=True, tabId=tab, captureId=recording["captureId"], pageState="present")
+        service.update(
+            peer, dict(type="status", recording=True, sessions=[dict(session, callGeneration=row["callGeneration"])])
+        )
+        capture.close()
+        assert capture.browser_lost and not capture.finished
+        if recording.get("controlPeer", "current") == "earlier":
+            with service.lock:
+                peer.closed = True
+                service.browsers.pop(peer.id)
+            peer = None
+    service.browsers.pop(browser.id, None)
+    if peer is None:
+        peer = BrowserConnection(None, browser_instance="auto-start-browser")
+        service.browsers[peer.id] = peer
+        service.update(peer, dict(type="status", recording=False, sessions=[]))
+    return peer
+
+
+def starts(tasks, service):
+    return [arguments for function, arguments in tasks if function == service._automatic and arguments[1] == "start"]
+
+
+def settle(service, tasks):
+    """Run queued production work other than automatic starts, as the worker pool
+    would (a call boundary finalizes the old call's recording there), then let
+    policy reconsider."""
+    while work := [(function, arguments) for function, arguments in tasks if function != service._automatic]:
+        for item in work:
+            tasks.remove(item)
+            item[0](*item[1])
     service.policy()
-    assert not tasks, "replayed inventory cannot duplicate a scheduled start"
 
 
 @pytest.mark.parametrize("vector", SHARED_AUTO_START_CASES, ids=lambda case: case["name"])
-def test_shared_manual_start_vectors_use_record_candidates_and_dispatch(policy, command_packets, vector):
+def test_shared_auto_start_vectors_schedule_and_dispatch(policy, command_packets, vector, tmp_path):
     service, browser, tasks = policy
     service.auto_record = False
+    browser = seed_recordings(service, browser, vector, tmp_path / "Library")
+    service.auto_record = True
+    tasks.clear()
     service.update(browser, dict(type="hello", version=1, capabilities=vector["capabilities"]))
     service.update(browser, dict(type="meetings", meetings=[vector["meeting"]]))
+    settle(service, tasks)
+    scheduled = starts(tasks, service)
+    assert bool(scheduled) is vector["expect"]["automatic"]
+    if scheduled:
+        assert len(scheduled) == 1
+        service._automatic(*scheduled[0])
+    started = [packet for packet in command_packets if packet["action"] == "start"]
+    assert bool(started) is vector["expect"]["automatic"]
+    for packet in started:
+        assert packet["tabId"] == vector["meeting"]["tabId"]
+        assert packet["independent"] is True and "resumeCapture" not in packet
+    tasks.clear()
+    service.policy()
+    assert not starts(tasks, service), "replayed inventory cannot duplicate a scheduled start"
+
+
+@pytest.mark.parametrize(
+    "vector",
+    [
+        pytest.param(
+            vector,
+            marks=pytest.mark.xfail(strict=True, reason="D52.3 resume-capture-v1 host side not implemented"),
+        )
+        if vector["expect"].get("resume")
+        else vector
+        for vector in SHARED_AUTO_START_CASES
+    ],
+    ids=lambda case: case["name"],
+)
+def test_shared_auto_start_vectors_resume_a_lost_recording_once(policy, command_packets, vector, tmp_path):
+    service, browser, tasks = policy
+    service.auto_record = False
+    browser = seed_recordings(service, browser, vector, tmp_path / "Library")
+    service.auto_record = True
+    service.update(browser, dict(type="hello", version=1, capabilities=vector["capabilities"]))
+    service.update(browser, dict(type="meetings", meetings=[vector["meeting"]]))
+    service.policy()
+    for function, arguments in tasks:
+        if function == service._automatic:
+            function(*arguments)
+    resumes = [packet["resumeCapture"]["captureId"] for packet in command_packets if "resumeCapture" in packet]
+    expected = [r["captureId"] for r in vector.get("recordings", [])][:1] if vector["expect"].get("resume") else []
+    assert resumes == expected
+
+
+@pytest.mark.parametrize("vector", SHARED_AUTO_START_CASES, ids=lambda case: case["name"])
+def test_shared_manual_start_vectors_use_record_candidates_and_dispatch(policy, command_packets, vector, tmp_path):
+    service, browser, tasks = policy
+    service.auto_record = False
+    browser = seed_recordings(service, browser, vector, tmp_path / "Library")
+    tasks.clear()
+    service.update(browser, dict(type="hello", version=1, capabilities=vector["capabilities"]))
+    service.update(browser, dict(type="meetings", meetings=[vector["meeting"]]))
+    settle(service, tasks)
     # Record uses the production candidate filter; zero-source entries are not
     # candidates. Explicit starts for eligible tabs must also bypass heard.
     result = service.start_all()
     assert bool(result["attempted"]) is vector["expect"]["manual"]
-    assert not result["failures"] and not tasks
+    assert not result["failures"] and not starts(tasks, service)
     assert len(command_packets) == result["attempted"]
     if result["attempted"]:
         service.command(f"{browser.id}:{vector['meeting']['tabId']}", "start")

@@ -94,7 +94,17 @@ export class AppControl {
     })().finally(() => { this.publishing = null; if (this.dirty && this.port) this.publish(); });
   }
   receive(port, message) {
-    if (port !== this.port || message?.type !== 'command') return;
+    if (port !== this.port) return;
+    // heartbeat-v1: answer at once, never through the command queues (a Stop
+    // flush can legitimately hold them longer than the app's loss deadline).
+    // A pong is only ever a reply; the extension sends no unsolicited types.
+    if (message?.type === 'ping') {
+      if (!this.capabilities.includes('heartbeat-v1') || !Number.isSafeInteger(message.seq) || message.seq < 0) return;
+      this.delay = 1000;
+      this.send(port, { type: 'pong', seq: message.seq });
+      return;
+    }
+    if (message?.type !== 'command') return;
     this.delay = 1000;
     const id = message.requestId;
     if (!(typeof id === 'string' && id.length > 0 && [...id].length <= 128)

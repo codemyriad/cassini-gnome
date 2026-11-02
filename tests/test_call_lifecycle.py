@@ -14,6 +14,7 @@ from cassini_talk.browser_service import BrowserConnection, BrowserService
 from cassini_talk.call_lifecycle import BROWSER_RETURN_GRACE, CALL_END_GRACE
 
 VECTORS = Path(__file__).resolve().parents[1] / "browser-protocol/conformance/control/call-lifecycle-vectors.json"
+PCM_FRESH = 2  # browser_capture.browser_ready_since's window (SPEC.md)
 
 
 class Inline:
@@ -39,7 +40,13 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
     service.workers = Inline()
     capture = BrowserCapture(service._capture_changed, parent=tmp_path / "Library", tap_factory=Tap)
     capture.start(
-        dict(type="start", captureId="call", timelineOriginMs=int(time.time() * 1000), microphone=True),
+        dict(
+            type="start",
+            captureId="call",
+            timelineOriginMs=int(time.time() * 1000),
+            microphone=True,
+            callGeneration=case.get("callGeneration"),
+        ),
         others_source=case.get("source", "browser"),
         reason=case.get("sourceReason", "start"),
     )
@@ -56,9 +63,12 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
         browser.capabilities.add("multi-stream-v1")
     if case.get("callEvidence"):
         browser.capabilities.add("call-evidence-v1")
+    if case.get("resumeCapture"):
+        browser.capabilities.add("resume-capture-v1")
     browser.status_seen = True
     browser.states = {3: dict(recording=True, tabId=3, captureId="call")}
     service.browsers[browser.id] = browser
+    connection = 0
     commands, actions = [], []
     monkeypatch.setattr(service, "command", lambda *args, **kwargs: commands.append((args, kwargs)))
     lifecycle = service._capture_lifecycle
@@ -69,9 +79,22 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
 
     monkeypatch.setattr(service, "_capture_lifecycle", record)
     folder, microphone = capture.directory, capture.microphone
+    # Once its audio transport closed, nothing reaches this capture: a new
+    # start with its captureId is refused, and so is a resume frame until the
+    # D52.3 resume-capture-v1 host side exists.
+    transport_closed = False
     try:
         for index, step in enumerate(case["steps"]):
             now[0] = step["atMs"] / 1000
+            if step.get("controlConnection", connection) != connection:
+                # A new hello is a new control peer; the recording is matched
+                # by its call, never by the connection it started under.
+                connection = step["controlConnection"]
+                service.browsers.pop(browser.id, None)
+                replacement = BrowserConnection(None)
+                replacement.capabilities, replacement.status_seen = set(browser.capabilities), True
+                replacement.states = {3: dict(recording=True, tabId=3, captureId="call")}
+                browser = replacement
             same = step.get("sameTab", True)
             page = step["pageState"] if same else None
             count = step.get("sourceCount", 0) if same else 0
@@ -80,22 +103,43 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
                 3: dict(pageState=page, sourceCount=count, heard=step.get("heard", not case.get("multistream", False)))
             }
             browser.meetings[3]["sourceCountKnown"] = step.get("sourceCountKnown", True)
+            if "callGeneration" in step:
+                browser.meetings[3]["callGeneration"] = step["callGeneration"]
             if not step.get("rowPresent", True):
                 browser.meetings = {}
             if step.get("controlAlive", True):
                 service.browsers[browser.id] = browser
             else:
                 service.browsers.pop(browser.id, None)
-            if step.get("pcmLive"):
+            actions.clear()
+            if not step.get("transportAlive", True) and not transport_closed:
+                # D52.4: the real closed-transport path (EOF, error or the
+                # PCM_STALE_AFTER watchdog) is _audio's capture.close().
+                transport_closed = True
+                lost = capture.browser_lost
+                if not capture.finished:
+                    capture.close()
+                if capture.browser_lost and not lost:
+                    actions.append("fallback")
+            if step.get("pcmLive") and not transport_closed:
+                # pcmLive is a point sample of the 2 s PCM_FRESH window. Take
+                # the latest packet time a not-live row 1 ms later still allows.
+                now[0] = step["atMs"] / 1000 - PCM_FRESH + 0.0005
                 wire = "live-" + str(index)
                 capture.handle(dict(type="track", id=wire, kind="remote", sampleRate=48000, channels=1))
                 capture.handle(dict(type="audio", id=wire, sequence=0, offsetMs=step["atMs"], pcm="AQACAA=="))
-            # Only real PCM on the retained transport makes restore ready.
-            if not capture.finished and count and capture.browser_lost and step.get("restoreReady", True):
+                now[0] = step["atMs"] / 1000
+            # Only real PCM on the retained live transport makes restore ready.
+            if (
+                not capture.finished
+                and count
+                and capture.browser_lost
+                and not transport_closed
+                and step.get("restoreReady", True)
+            ):
                 wire = "return-" + str(index)
                 capture.handle(dict(type="track", id=wire, kind="remote", sampleRate=48000, channels=1))
                 capture.handle(dict(type="audio", id=wire, sequence=0, offsetMs=step["atMs"], pcm="AQACAA=="))
-            actions.clear()
             service.policy()
             assert actions == step["expect"], (case["name"], step, capture.error)
             assert capture.directory == folder and capture.microphone is microphone
@@ -305,9 +349,60 @@ def test_multistream_reload_through_present_zero_keeps_the_two_minute_return_dea
 D52_VECTORS = VECTORS.parents[1] / "multistream/lifecycle.json"
 
 
-@pytest.mark.parametrize("case", json.loads(D52_VECTORS.read_text())["cases"], ids=lambda case: case["name"])
-def test_d52_shared_lifecycle_on_actual_capture(tmp_path, monkeypatch, case):
-    case = dict(
+D52_CASES = json.loads(D52_VECTORS.read_text())["cases"]
+RESUME = "D52.3 resume-capture-v1 host side not implemented"
+
+
+def resume_step(case):
+    """Index of the first step that needs the resume host side, or None.
+
+    That is an askResume, or a restore after the audio transport closed: only
+    a resumed transport could carry its PCM.
+    """
+    closed = False
+    for index, step in enumerate(case["steps"]):
+        if "askResume" in step["expect"]:
+            return index
+        closed |= step.get("transportAlive", True) is False
+        if closed and any(action == "restore" or action.startswith("switch:") for action in step["expect"]):
+            return index
+    return None
+
+
+def d52(case):
+    return dict(
         case, multistream=True, steps=[dict(step, pageState=step.get("pageState", "present")) for step in case["steps"]]
     )
-    test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monkeypatch, case)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(case, marks=pytest.mark.xfail(strict=True, reason=RESUME))
+        if resume_step(case) is not None
+        else case
+        for case in D52_CASES
+    ],
+    ids=lambda case: case["name"],
+)
+def test_d52_shared_lifecycle_on_actual_capture(tmp_path, monkeypatch, case):
+    test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monkeypatch, d52(case))
+
+
+@pytest.mark.parametrize(
+    "case", [case for case in D52_CASES if resume_step(case) is not None], ids=lambda case: case["name"]
+)
+def test_d52_cases_needing_resume_conform_everywhere_else(tmp_path, monkeypatch, case):
+    """Run each resume case on the real policy minus what needs resume.
+
+    GNOME never asks to resume, so askResume is dropped from expectations; a
+    refused resume is then a no-op. The case ends before its first restore
+    through a resumed transport, since nothing after it can happen here.
+    """
+    steps = []
+    for step in case["steps"]:
+        closed = any(earlier.get("transportAlive", True) is False for earlier in steps)
+        if closed and any(action == "restore" or action.startswith("switch:") for action in step["expect"]):
+            break
+        steps.append(dict(step, expect=[action for action in step["expect"] if action != "askResume"]))
+    test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monkeypatch, d52(dict(case, steps=steps)))

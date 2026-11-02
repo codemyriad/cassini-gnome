@@ -24,6 +24,9 @@ class BrowserCapture:
         self.transition = threading.RLock()
         self.capture_id = None
         self.call_generation = None
+        # The tab a control status last bound this capture to, under any peer
+        # (instance-less companions have no call_captures binding).
+        self.call_tab = None
         self.microphone = None
         self.native_taps = {}
         self.me, self.others = True, True
@@ -325,11 +328,16 @@ class BrowserCapture:
     def remote_open(self):
         """Whether a browser track that has delivered PCM is still open.
 
-        Its recorder posts frames, silent ones included, until it ends.
+        Its recorder posts frames, silent ones included, until it ends. A
+        navigated or reloaded frame's spans never get trackEnd; fallback marks
+        them unavailable, and only their own PCM would make them available.
         """
         with self.lock:
             return any(
-                track.kind not in ("microphone", "local") and not track.ended and track.received_at is not None
+                track.kind not in ("microphone", "local")
+                and track.available
+                and not track.ended
+                and track.received_at is not None
                 for track in self.streams.tracks.values()
             )
 

@@ -136,6 +136,7 @@
     },
     {
       "name": "absent-control-uses-same-return-deadline",
+      "note": "Legacy (non-multistream) D33 only. Under multi-stream-v1, healthy admitted browser PCM prevents fallback for absent control; see conformance/multistream/lifecycle.json (control-absent-browser-pcm-live, control-absent-then-pcm-dies).",
       "steps": [
         {
           "atMs": 0,

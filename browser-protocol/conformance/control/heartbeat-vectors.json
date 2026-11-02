@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "constants": {"HEARTBEAT_INTERVAL":10000,"CONTROL_LOSS_AFTER":25000},
+  "note": "P11 heartbeat-v1 (D52.4). Milliseconds on the app's monotonic clock for one control connection. Each step first applies its inbound extension frame `in` (if any), then evaluates the app's heartbeat tick at atMs. hello starts a fresh connection: seq restarts at 0 and heartbeat is active only when its capabilities list heartbeat-v1. Pinging and the loss deadline start at the first status after a negotiated hello; the ping schedule is measured from that status and from each sent ping. Every inbound frame type refreshes liveness. Loss is checked before pinging; after controlLost the connection is gone until the next hello. `wire` lists app pings and the extension's exact reply (null: no reply, no side effect).",
+  "cases": [
+    {"name":"negotiated-pings-every-ten-seconds", "steps":[
+      {"atMs":0,"in":"hello","capabilities":["multi-stream-v1","heartbeat-v1"],"expect":[]},
+      {"atMs":0,"in":"meetings","expect":[]},
+      {"atMs":0,"in":"status","expect":[]},
+      {"atMs":9999,"expect":[]},
+      {"atMs":10000,"in":"pong","expect":["ping:0"]},
+      {"atMs":10001,"in":"pong","expect":[]},
+      {"atMs":19999,"expect":[]},
+      {"atMs":20000,"expect":["ping:1"]},
+      {"atMs":20001,"in":"pong","expect":[]},
+      {"atMs":30000,"expect":["ping:2"]},
+      {"atMs":30001,"in":"pong","expect":[]},
+      {"atMs":40000,"expect":["ping:3"]},
+      {"atMs":40001,"in":"pong","expect":[]},
+      {"atMs":50000,"expect":["ping:4"]}
+    ]},
+    {"name":"loss-at-twenty-five-seconds-without-any-frame", "steps":[
+      {"atMs":0,"in":"hello","capabilities":["heartbeat-v1"],"expect":[]},
+      {"atMs":0,"in":"meetings","expect":[]},
+      {"atMs":0,"in":"status","expect":[]},
+      {"atMs":10000,"expect":["ping:0"]},
+      {"atMs":20000,"expect":["ping:1"]},
+      {"atMs":24999,"expect":[]},
+      {"atMs":25000,"expect":["controlLost"]},
+      {"atMs":30000,"expect":[]},
+      {"atMs":300000,"expect":[]}
+    ]},
+    {"name":"reconnect-after-loss-restarts-sequence", "steps":[
+      {"atMs":0,"in":"hello","capabilities":["heartbeat-v1"],"expect":[]},
+      {"atMs":0,"in":"status","expect":[]},
+      {"atMs":25000,"expect":["controlLost"]},
+      {"atMs":60000,"in":"hello","capabilities":["heartbeat-v1"],"expect":[]},
+      {"atMs":60500,"in":"meetings","expect":[]},
+      {"atMs":60500,"in":"status","expect":[]},
+      {"atMs":70499,"expect":[]},
+      {"atMs":70500,"expect":["ping:0"]},
+      {"atMs":80500,"expect":["ping:1"]},
+      {"atMs":85499,"expect":[]},
+      {"atMs":85500,"expect":["controlLost"]}
+    ]},
+    {"name":"meetings-frame-refreshes-and-pings-are-not-idle-only", "steps":[
+      {"atMs":0,"in":"hello","capabilities":["heartbeat-v1"],"expect":[]},
+      {"atMs":0,"in":"status","expect":[]},
+      {"atMs":10000,"expect":["ping:0"]},
+      {"atMs":20000,"in":"meetings","expect":["ping:1"]},
+      {"atMs":25000,"expect":[]},
+      {"atMs":30000,"expect":["ping:2"]},
+      {"atMs":40000,"expect":["ping:3"]},
+      {"atMs":44999,"expect":[]},
+      {"atMs":45000,"expect":["controlLost"]}
+    ]},
+    {"name":"status-frame-refreshes", "steps":[
+      {"atMs":0,"in":"hello","capabilities":["heartbeat-v1"],"expect":[]},
+      {"atMs":0,"in":"status","expect":[]},
+      {"atMs":10000,"expect":["ping:0"]},
+      {"atMs":20000,"in":"status","expect":["ping:1"]},
+      {"atMs":25000,"expect":[]},
+      {"atMs":30000,"expect":["ping:2"]},
+      {"atMs":40000,"expect":["ping:3"]},
+      {"atMs":44999,"expect":[]},
+      {"atMs":45000,"expect":["controlLost"]}
+    ]},
+    {"name":"result-frame-refreshes", "steps":[
+      {"atMs":0,"in":"hello","capabilities":["heartbeat-v1"],"expect":[]},
+      {"atMs":0,"in":"status","expect":[]},
+      {"atMs":10000,"expect":["ping:0"]},
+      {"atMs":20000,"in":"result","expect":["ping:1"]},
+      {"atMs":25000,"expect":[]},
+      {"atMs":30000,"expect":["ping:2"]},
+      {"atMs":40000,"expect":["ping:3"]},
+      {"atMs":44999,"expect":[]},
+      {"atMs":45000,"expect":["controlLost"]}
+    ]},
+    {"name":"pong-frame-refreshes", "steps":[
+      {"atMs":0,"in":"hello","capabilities":["heartbeat-v1"],"expect":[]},
+      {"atMs":0,"in":"status","expect":[]},
+      {"atMs":10000,"expect":["ping:0"]},
+      {"atMs":20000,"in":"pong","expect":["ping:1"]},
+      {"atMs":25000,"expect":[]},
+      {"atMs":30000,"expect":["ping:2"]},
+      {"atMs":40000,"expect":["ping:3"]},
+      {"atMs":44999,"expect":[]},
+      {"atMs":45000,"expect":["controlLost"]}
+    ]},
+    {"name":"legacy-hello-never-pinged-or-timed-out", "steps":[
+      {"atMs":0,"in":"hello","capabilities":["independent-sessions-v1","call-evidence-v1","page-state-v1","multi-stream-v1","resume-capture-v1"],"expect":[]},
+      {"atMs":0,"in":"meetings","expect":[]},
+      {"atMs":0,"in":"status","expect":[]},
+      {"atMs":10000,"expect":[]},
+      {"atMs":25000,"expect":[]},
+      {"atMs":100000,"expect":[]},
+      {"atMs":300000,"expect":[]}
+    ]},
+    {"name":"hello-without-capabilities-never-pinged-or-timed-out", "steps":[
+      {"atMs":0,"in":"hello","expect":[]},
+      {"atMs":0,"in":"status","expect":[]},
+      {"atMs":25000,"expect":[]},
+      {"atMs":300000,"expect":[]}
+    ]},
+    {"name":"no-ping-before-initial-status", "steps":[
+      {"atMs":0,"in":"hello","capabilities":["heartbeat-v1"],"expect":[]},
+      {"atMs":0,"in":"meetings","expect":[]},
+      {"atMs":10000,"expect":[]},
+      {"atMs":25000,"expect":[]},
+      {"atMs":40000,"in":"meetings","expect":[]},
+      {"atMs":50000,"in":"status","expect":[]},
+      {"atMs":59999,"expect":[]},
+      {"atMs":60000,"expect":["ping:0"]},
+      {"atMs":70000,"expect":["ping:1"]},
+      {"atMs":74999,"expect":[]},
+      {"atMs":75000,"expect":["controlLost"]}
+    ]}
+  ],
+  "wire": [
+    {"name":"zero","ping":{"type":"ping","seq":0},"reply":{"type":"pong","seq":0}},
+    {"name":"ordinary","ping":{"type":"ping","seq":17},"reply":{"type":"pong","seq":17}},
+    {"name":"max-safe-integer","ping":{"type":"ping","seq":9007199254740991},"reply":{"type":"pong","seq":9007199254740991}},
+    {"name":"unknown-fields-ignored","ping":{"type":"ping","seq":3,"requestId":"not-a-command","action":"stop","tabId":2},"reply":{"type":"pong","seq":3}},
+    {"name":"missing-seq","ping":{"type":"ping"},"reply":null},
+    {"name":"negative-seq","ping":{"type":"ping","seq":-1},"reply":null},
+    {"name":"integral-float-seq","ping":{"type":"ping","seq":3.0},"reply":{"type":"pong","seq":3}},
+    {"name":"fractional-seq","ping":{"type":"ping","seq":1.5},"reply":null},
+    {"name":"fractional-seq-three-and-a-half","ping":{"type":"ping","seq":3.5},"reply":null},
+    {"name":"string-seq","ping":{"type":"ping","seq":"1"},"reply":null},
+    {"name":"null-seq","ping":{"type":"ping","seq":null},"reply":null},
+    {"name":"boolean-seq","ping":{"type":"ping","seq":true},"reply":null},
+    {"name":"above-max-safe-integer","ping":{"type":"ping","seq":9007199254740992},"reply":null},
+    {"name":"unknown-host-type-ignored","ping":{"type":"heartbeat","seq":1},"reply":null}
+  ]
+}
