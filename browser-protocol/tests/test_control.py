@@ -102,11 +102,12 @@ class ControlTests(unittest.TestCase):
 
     def test_audio_vectors_and_runner_are_unchanged(self):
         import hashlib
-        self.assertEqual(len(json.loads((ROOT / 'conformance/vectors.json').read_text())), 89)
+        self.assertEqual(len(json.loads((ROOT / 'conformance/vectors.json').read_text())), 91)
         # D52.2 Q7 added host-derived gapFrames/state to the two legacy gap vectors.
         # D61 appended track-clock-and-document-fields: the extra track keys are acknowledged
-        # and the three clock facts are copied into session.json.
-        self.assertEqual(hashlib.sha256((ROOT / 'conformance/vectors.json').read_bytes()).hexdigest(), '1b421d6ae5dca0c2890acecdfe34c58f2411eaa68e22ef43ff6b9a6cbebf9dd0')
+        # and the three clock facts are copied into session.json. Mac review of #39 appended
+        # track-invalid-clock-facts-are-omitted and track-clock-facts-are-not-cross-checked.
+        self.assertEqual(hashlib.sha256((ROOT / 'conformance/vectors.json').read_bytes()).hexdigest(), '1ecb25a8e57899eb437822c983b6daab3ffe76f723d2edfeb266308b444ce979')
         # The runner gained per-case private Libraries (test Library isolation).
         self.assertEqual(hashlib.sha256((ROOT / 'conformance/run.py').read_bytes()).hexdigest(), 'e1c01b919bcfb465e511058d285171f9ff1095f9193b8ca4684cc40236a26cb1')
 

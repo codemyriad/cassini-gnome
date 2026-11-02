@@ -629,30 +629,6 @@ def test_shared_stale_watchdog_vectors_on_the_real_transport(broker, case):
 
 # Shapes the shared vectors do not have yet, replayed by the same runner.
 LOCAL_STALE_CASES = [
-    # From the protocol follow-up (19b22e0): an ended id is refused with
-    # `state`, open ids are acked, and no repeat changes a span.
-    dict(
-        name="a-reused-span-id-keeps-its-first-declaration",
-        frames=[
-            dict(atMs=0, frame="track", id="a", documentGeneration="doc-1"),
-            dict(atMs=0, frame="audio", id="a"),
-            dict(atMs=0, frame="track", id="b", documentGeneration="doc-1"),
-            dict(atMs=0, frame="audio", id="b"),
-            dict(atMs=0, frame="track", id="c", documentGeneration="doc-1"),
-            dict(atMs=0, frame="audio", id="c"),
-            dict(atMs=500, frame="trackEnd", id="c"),
-            dict(atMs=1000, frame="documentChanged", pageState="navigating", documentGeneration="doc-1"),
-            dict(atMs=2000, frame="documentChanged", pageState="present", documentGeneration="doc-2"),
-            dict(atMs=3000, frame="track", id="a"),
-            dict(atMs=3000, frame="audio", id="a"),
-            dict(atMs=3000, frame="track", id="b", documentGeneration="doc-2"),
-            dict(atMs=3000, frame="audio", id="b"),
-            dict(atMs=3000, frame="track", id="c", documentGeneration="doc-2"),
-            dict(atMs=3000, frame="audio", id="c"),
-        ],
-        closeAtMs=None,
-        probes=[dict(atMs=47999, closed=False), dict(atMs=48000, closed=False), dict(atMs=200000, closed=False)],
-    ),
     # Statuses at one time: the last must be applied before the span after
     # it is declared, or b lands in the departing window and never arms.
     dict(

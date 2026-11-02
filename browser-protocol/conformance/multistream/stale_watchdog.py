@@ -25,6 +25,12 @@ generation is in that set, checked at every evaluation; the declaration-order
 rules above apply only to spans without one, and a generation that is not 1 to
 200 UTF-8 bytes counts as absent. A first generation still retires nothing, and
 none ever leaves the set.
+
+Track IDs are unique for the session, ended spans included: the host acks an
+identical repeat of an open id and refuses a repeat of an ended one, and the
+extension fences a repeat of an ended span locally. Either way, a
+`track` for an id already declared on this transport therefore changes no span,
+open or ended, and keeps its first generation; like every frame it is activity.
 """
 PCM_STALE_AFTER = 45000
 AUDIO_TRANSPORT = {'track', 'audio', 'sources', 'trackEnd', 'stop'}
@@ -45,6 +51,7 @@ def closed(frames, now):
     declared, generation, confirmed, departing = [], None, 0, False
     # D61: open spans that carry a documentGeneration, and the departed generations.
     documents, departed = {}, set()
+    seen = set()  # every track id declared on this transport, ended ones included
 
     def dormant(id):
         return documents[id] in departed
@@ -79,6 +86,10 @@ def closed(frames, now):
         if frame['frame'] not in AUDIO_TRANSPORT:
             continue  # control frames (ping/pong/meetings/status/...) never count
         last, kind = frame['atMs'], frame['frame']
+        if kind == 'track' and frame['id'] in seen:
+            continue  # a refused re-declaration: activity, but no span changes
+        if kind == 'track':
+            seen.add(frame['id'])
         if kind == 'track' and valid(frame.get('documentGeneration')):
             documents[frame['id']] = frame['documentGeneration']
         elif kind == 'track':

@@ -137,6 +137,11 @@ one AudioContext repeat the same values. Native tracks omit them.
 
 Hosts copy the three facts into the browser track entry of session.json as received, and omit
 them when absent or invalid. They are record-only: no reader moves or widens a track with them.
+An invalid fact is not a source error: the host acknowledges the track and omits only that fact,
+keeping the valid ones. The two numbers are integer fields, so 9.0 or 1e3 is invalid
+although JSON Schema reads it as an integer. Hosts do not cross-check the facts: each is validated on its own and
+copied as received, so a clockClampMs above clockUncertaintyMs is still copied (record-only, D47).
+The relation between them binds the writer only. Literal cases: conformance/vectors.json.
 
 Since extension 0.2.12 a `track` may also carry `documentGeneration`: the opaque generation of
 the document the span came from, 1 to 200 UTF-8 bytes, the same value status reports
@@ -145,8 +150,10 @@ the frame that sent the span and replaces any value the page sent. A main frame'
 that frame's generation; a subframe's span gets the generation of the main frame it was first
 discovered under (the first one not obsolete at one of its discoveries), never a later main
 frame's, so a departing subframe's late span cannot name the next document. A generation counts
-UTF-8 bytes wherever the extension reads it, so status and `track` agree. It is absent for whole-tab
-spans, when unknown, and from older extensions. It is a live liveness hint (see Audio transport
+UTF-8 bytes wherever the extension reads it, so status and `track` agree. The schemas cannot
+count bytes: their maxLength 200 is only an outer bound in characters, and the receiver checks
+the byte limit, so 200 two-byte characters pass the schema and still count as absent. It is
+absent for whole-tab spans, when unknown, and from older extensions. It is a live liveness hint (see Audio transport
 liveness) and is never written to session.json. sourceTrackId stays opaque.
 
 ## Session directory v1
@@ -629,7 +636,12 @@ relay that keeps the transport open but silent. Times are monotonic.
   declaration-order rules above apply only to spans without one, and a
   generation that is not 1 to 200 UTF-8 bytes counts as absent. No generation
   ever leaves the set, so the spans of a document restored from the
-  back/forward cache stay dormant: that only delays stale detection. A track's
+  back/forward cache stay dormant: that only delays stale detection. Track IDs
+  are unique for the session, ended spans included: a repeated `track` for an
+  id already declared on the transport changes no span, which keeps its first
+  declaration and generation, and its frame still counts as activity. The
+  host's reply follows the track rules: an identical repeat of an open id is
+  idempotent, and a repeat of an ended id is refused. A track's
   generation is not news about the document: only status and meetings rows
   move the current one. A status that arrives after a newer document's span
   can retire that span; its PCM is still recorded. The app applies these
