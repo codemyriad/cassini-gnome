@@ -137,7 +137,7 @@ def test_preparation_stop_end_time_uses_this_start_not_an_old_recorder_clock(tmp
         recorder._executor.shutdown()
 
 
-@pytest.mark.parametrize("empty", [("microphone",), ("system",), ("microphone", "system")])
+@pytest.mark.parametrize("empty", ["microphone", "system"])
 def test_stop_keeps_healthy_pcm_when_an_empty_source_never_acknowledges_eos(tmp_path, monkeypatch, empty):
     from gi.repository import Gst
 
@@ -151,7 +151,7 @@ def test_stop_keeps_healthy_pcm_when_an_empty_source_never_acknowledges_eos(tmp_
     recorder.connect("finished", lambda _r, value: finished.append(value))
 
     def stalled(kind):
-        if kind not in empty:
+        if kind != empty:
             return branch(kind)
         result = Gst.parse_bin_from_description(
             "appsrc name=unresponsive is-live=true format=time do-timestamp=true "
@@ -169,39 +169,41 @@ def test_stop_keeps_healthy_pcm_when_an_empty_source_never_acknowledges_eos(tmp_
         result.get_by_name(kind).connect("new-sample", recorder._sample, kind)
         return result
 
-    monkeypatch.setattr(recorder, "_branch", stalled)
     import time
 
     from test_recorder import spin_until
 
+    def select(me, others):
+        future = recorder.select(me, others)
+        spin_until(lambda: future.done() and not recorder._changing_sources)
+        return future.result()
+
+    healthy = "system" if empty == "microphone" else "microphone"
     try:
         recorder.start(tmp_path, test=True)
-        # The source opens with one first buffer, then never emits another
-        # frame: its side commits with an empty track (R79 §1).
-        spin_until(lambda: all(kind in recorder._pending_sources for kind in empty))
-        for kind in empty:
-            assert devices[kind].emit("push-buffer", Gst.Buffer.new_wrapped(bytes(960))) == Gst.FlowReturn.OK
-        spin_until(lambda: not recorder.starting)
-        assert sorted(recorder._track_ids) == ["microphone", "system"]
-        healthy = set(("microphone", "system")) - set(empty)
-        if healthy:
-            spin_until(lambda: all(recorder.session.writers[kind].frames >= 9600 for kind in healthy))
-        else:
-            spin_until(lambda: recorder.pipeline.get_state(0).state == Gst.State.PLAYING)
-        saved = {kind: (recorder.session.directory / ("track-" + kind + ".wav")).read_bytes()[44:] for kind in healthy}
+        spin_until(lambda: not recorder.starting and len(recorder._track_ids) == 2)
+        # A start side records from its first buffer, so only a turn-on can
+        # leave an empty track: its readiness buffer is not recorded. Turn the
+        # side off, then on again on a source that sends that one buffer only.
+        select(empty != "microphone", empty != "system")
+        monkeypatch.setattr(recorder, "_branch", stalled)
+        turning_on = recorder.select(True, True)
+        spin_until(lambda: empty in recorder._pending_sources)
+        assert devices[empty].emit("push-buffer", Gst.Buffer.new_wrapped(bytes(960))) == Gst.FlowReturn.OK
+        spin_until(lambda: turning_on.done() and not recorder._changing_sources)
+        turning_on.result()
+        identifier = recorder._track_ids[empty]
+        spin_until(lambda: recorder.session.writers[recorder._track_ids[healthy]].frames >= 9600)
+        saved = (recorder.session.directory / f"track-{healthy}.wav").read_bytes()[44:]
         started = time.monotonic()
         recorder.stop()
         assert time.monotonic() - started < 0.2
         spin_until(lambda: bool(finished), timeout=3)
         assert not errors
-        assert recorder.session.manifest["state"] == ("completed" if healthy else "interrupted")
-        if not healthy:
-            assert recorder.session.manifest["problemKind"] == "empty"
+        assert recorder.session.manifest["state"] == "completed"
         assert all(track["ended"] for track in recorder.session.manifest["tracks"])
-        for kind in empty:
-            assert recorder.session.writers[kind].frames == 0
-        for kind, pcm in saved.items():
-            assert pcm and (recorder.session.directory / ("track-" + kind + ".wav")).read_bytes()[44:].startswith(pcm)
+        assert recorder.session.writers[identifier].frames == 0
+        assert saved and (recorder.session.directory / f"track-{healthy}.wav").read_bytes()[44:].startswith(saved)
     finally:
         if recorder.pipeline is not None:
             recorder._begin_finish()

@@ -67,7 +67,8 @@ class Sides:
     return, then advances the fake clock to the next scripted event, fires
     it, and waits for the recorder to signal that it saw it. causes names an
     "error" side's cause, by kind. With frozen set, the clock never advances
-    without a scripted event; overshoot lets the wait wake that much late.
+    without a scripted event; overshoot lets the wait wake that much late;
+    stop_on_commit names a side whose commit the user follows with a Stop.
     """
 
     def __init__(self, recorder, plan, causes=None):
@@ -75,7 +76,7 @@ class Sides:
         self.now = 0.0
         self.built, self.sources, self.fired = {}, {}, set()
         self.started_at = None
-        self.frozen, self.overshoot = False, 0.0
+        self.frozen, self.overshoot, self.stop_on_commit = False, 0.0, None
         self.release, self.blocked = threading.Event(), {}
         self.real_branch = recorder._branch
         recorder._open_clock = lambda: self.now
@@ -142,9 +143,14 @@ class Sides:
             self.now += timeout
             return event.is_set()
         self.now = due
-        for kind in [kind for kind, at in scripted.items() if at <= due]:
+        fired = [kind for kind, at in scripted.items() if at <= due]
+        for kind in fired:
             self.fire(kind)
-        return event.wait(5)
+        seen = event.wait(5)
+        if self.stop_on_commit in fired:
+            assert self.stop_on_commit in self.recorder._track_ids  # It committed on its first buffer.
+            self.recorder.stop()  # The user stops before the start's next pass.
+        return seen
 
 
 def start(tmp_path, plan, causes=None):
@@ -380,6 +386,26 @@ def test_a_side_stuck_in_its_state_change_blocks_neither_the_other_side_nor_stop
         spin_until(lambda: not any(t.name == f"cassini-open-{blocked}" for t in threading.enumerate()))
         close(recorder)
     assert branch.get_parent() is None and branch.get_state(0)[1] == Gst.State.NULL
+
+
+def test_a_side_that_commits_just_before_a_stop_is_reported_as_opened(tmp_path):
+    recorder = NativeRecorder()
+    sides = Sides(recorder, {"microphone": ("ok", 0.1), "system": ("block", 0)})
+    sides.frozen, sides.stop_on_commit = True, "microphone"
+    signals = []
+    recorder.connect("started", lambda *_: signals.append("started"))
+    recorder.connect("finished", lambda *_: signals.append("finished"))
+    recorder.start(tmp_path, test=True)
+    try:
+        spin_until(lambda: "finished" in signals)
+        # The start saw the Stop before it saw the commit: the side still opened.
+        assert signals == ["started", "finished"]
+        saved = json.loads((recorder.session.directory / "session.json").read_text())
+        assert [t["kind"] for t in saved["tracks"]] == ["microphone"] and saved["state"] == "completed"
+    finally:
+        sides.release.set()
+        spin_until(lambda: not any(t.name == "cassini-open-system" for t in threading.enumerate()))
+        close(recorder)
 
 
 def test_an_opening_side_keeps_the_error_that_names_its_cause():

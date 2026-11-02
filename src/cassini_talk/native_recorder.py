@@ -207,7 +207,7 @@ class NativeRecorder(GObject.Object):
         errors; a Stop returns at once, without waiting on a state change.
         """
         pipeline, wake = self.pipeline, self._open_wake
-        attempts, committed, refused = {}, [], {}
+        attempts, refused = {}, {}
         try:
             for kind in kinds:
                 branch = self._branch(kind)
@@ -240,15 +240,12 @@ class NativeRecorder(GObject.Object):
                     now = self._open_clock()
                     for kind in tuple(undecided):
                         attempt = attempts[kind]
-                        if attempt["committed"]:
-                            committed.append(kind)
-                        elif attempt["error"]:
+                        if not attempt["committed"] and not attempt["error"] and now >= attempt["deadline"]:
+                            attempt["error"] = NO_SAMPLE
+                        if attempt["error"]:
                             refused[kind] = attempt["error"]
-                        elif now >= attempt["deadline"]:
-                            refused[kind] = attempt["error"] = NO_SAMPLE
-                        else:
-                            continue
-                        undecided.discard(kind)
+                        if attempt["committed"] or attempt["error"]:
+                            undecided.discard(kind)
                 if undecided and not self._start_cancelled(pipeline):
                     self._open_wait(wake, min(attempts[kind]["deadline"] for kind in undecided) - now)
         finally:
@@ -267,6 +264,9 @@ class NativeRecorder(GObject.Object):
                     branch.set_state(Gst.State.NULL)
                 if branch.get_parent() == pipeline:
                     pipeline.remove(branch)
+        # A side can commit after the last pass, until a Stop is seen: its
+        # attempt, not the pass, says it opened.
+        committed = [kind for kind in kinds if attempts.get(kind, {}).get("committed")]
         for kind, error in refused.items():
             LOG.warning("Native %s side (%s) did not open at start: %s", SIDES[kind], kind, error)
         return committed, refused
