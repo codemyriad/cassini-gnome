@@ -30,9 +30,11 @@ G14: the voice step also keeps at most one group's scratch file, 64 KB per secon
 of meeting, whatever the number of sources or spans. It rejoins each group to pick
 windows, then rejoins again only the groups whose windows a print reads, and
 refuses audio that changed between the two passes. A print's audio, at most 45 s
-of float32 (2.9 MB), is freed as soon as the print is made; prints keep their
-order, so a speaker merged across groups holds the speakers after it until its
-last group is read.
+of float32 (2.9 MB), is embedded and freed as soon as all its windows are read.
+Only a speaker merged across groups keeps its own audio until its last group;
+prints are still sent in their original order, each finished one waiting as a
+512-value vector. The voice pass checks for live recordings when it starts, not
+when writing down started.
 
 Before every scratch file, diarization and the voice step require free space for
 that file plus a 1 GiB floor. When the app has a recording running on the same
