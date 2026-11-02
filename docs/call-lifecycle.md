@@ -1,7 +1,7 @@
 # Browser call lifetime (D33)
 
-Shared protocol pin: `d789cf30a6611de7020893502f3be927e4f8e51d` (protocol PR #36, the D58 refusal vector follow-ups, on top of #35's classified refusals and result codes, #34's D57 resume host clarifications and the D52.5 PR #32).
-Companion 0.2.10 replaces older local installs; no Chrome Web Store packaging or upload is performed.
+Shared protocol pin: `b619007537b5c1bd37d75ba810d406533fc8913a` (resume packets carry the ask's `requestId`, on top of protocol PR #36, the D58 refusal vector follow-ups, #35's classified refusals and result codes, #34's D57 resume host clarifications and the D52.5 PR #32).
+Companion 0.2.11 replaces older local installs; no Chrome Web Store packaging or upload is performed.
 
 The broker owns every independent capture and its Library folder. With the
 `page-state-v1` capability it starts the extension with `keepOnNavigation: true`.

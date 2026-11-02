@@ -206,3 +206,23 @@ for(const patch of [{captureId:'other'}, {timelineOriginMs:1001}, {callGeneratio
       assert.ok(!f.app.pages[0].sent.some(p=>p.type==='start'));
     }finally{await f.close();}
   });
+
+for (const id of ['ask-A', 7])
+  test('the native resume packet carries the control requestId; ordinary Start does not: '+JSON.stringify(id), async () => {
+    // 0.2.11: a host keys a refused resume to its ask by this requestId.
+    const f = await fixture(); f.defer = true;
+    try {
+      const pending = f.app.command(f.start(id));
+      await until(() => f.deferred.length === 1);
+      assert.equal(f.packets[0].type, 'resume');
+      assert.equal(f.packets[0].requestId, id);
+      f.deferred.shift()();
+      assert.equal((await pending).ok, true);
+      assert.equal((await f.app.command(f.stop('resume-stop'))).ok, true);
+      const fresh = f.start(id === 7 ? 8 : 'fresh'); delete fresh.resumeCapture;
+      assert.equal((await f.app.command(fresh)).ok, true);
+      const ordinary = f.packets.filter(p => p.type === 'start');
+      assert.equal(ordinary.length, 1);
+      assert.equal(Object.hasOwn(ordinary[0], 'requestId'), false);
+    } finally {await f.close();}
+  });

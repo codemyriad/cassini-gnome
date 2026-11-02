@@ -36,6 +36,16 @@ class ResumeTests(unittest.TestCase):
         schema('request').validate(dict(type='start',version=1))
         schema('response').validate(dict(type='started',path='/fresh'))
 
+    def test_resume_packet_may_carry_the_control_request_id(self):
+        # 0.2.11: the ask's requestId, same domain as the control requestId.
+        target = VECTORS['initial']
+        native = dict(type='resume',version=1,independent=True,features=['resume-capture-v1'],
+                      **{k:target[k] for k in ('captureId','timelineOriginMs','callGeneration')})
+        for value in ('ask-A', 'é'*128, '\U0001F600'*128, 0, 9007199254740991):
+            schema('request').validate(dict(native,requestId=value))
+        for value in ('', 'é'*129, -1, 9007199254740992, 1.5, True, False, None, [], {}):
+            self.assertFalse(schema('request').is_valid(dict(native,requestId=value)),repr(value))
+
     def test_spec_example_keeps_navigation_and_the_ask_waits_for_the_tab_release(self):
         # D57: the documented resume Start keeps the session across a reload,
         # and the app asks only once the extension released that tab.

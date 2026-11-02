@@ -19,6 +19,10 @@ real retained microphone/system capture (private generated audio):
   capture appears after the target is saved. Fresh manual Record still works.
 - Change A to B while a resume is pending. Late A resume/status/Stop cannot bind
   or finalize B. Native rejection never modifies either capture's PCM.
+- A refused native resume answers only the ask whose control requestId it
+  carries (extension 0.2.11), and only while that ask is unanswered. A refusal
+  without one records nothing on its own: the ask's own ok:false result does.
+  Whichever answer arrives first records the ask once; the other adds nothing.
 - Use seam events/physical tracks exactly as written. Actual playback, export
   and both recognition inputs retain the microphone, use system before6000ms
   and browser from6000ms, without mixing both or dropping the seam sample.

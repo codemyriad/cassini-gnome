@@ -1,26 +1,24 @@
-tree 9d56ccf8fd7b7f83c2b45adbae0bd623838b4b7e
-parent 71d9bc465781a943c32bd41159fb2dc0b49ffe19
-parent dc9238213f33088a95d5a548b2be184d8808b7b0
-author Silvio Tomatis <silviot@gmail.com> 1793613898 +0100
-committer GitHub <noreply@github.com> 1793613898 +0100
-gpgsig -----BEGIN PGP SIGNATURE-----
- 
- wsFcBAABCAAQBQJq6GBKCRC1aQ7uu5UhlAAAWmIQACIRFZKEZF2B4sJFLB8KBnOW
- PfUpyXvuAqxqIPV9QDKOHSYCuLjPidxsYhX7UcDXu2w70HN9ZRa/qy2b3927iwUp
- JOtQ6d0VFlCeFWrquAfJ2b1JyUCRED0KlEvggsgnNiZUMZdjax5ldy3/EKc0ouxa
- Uqv3x+y2dNGcmdrv+nGIkbUjww5Be0wSxHgcPjhuyzoQmcHYC5LDsMhN4zjhHfLv
- MTcf2IBNZZWC7X1ywYzSypHWJayrkrz8iCy6JVkLdwWmSHpEg8OG1Vo8tSEmuTfP
- e4bH0Vq3WMEdTtoYfzl89JBy3y0+EOnBxdVxyq7WUA0/achMhxWX1fIix8Qj4DEU
- d5tjpYM5BfpGLg4VjAZssFwQypl/3gM2xzSBOjxFqtxIIBLupF9cCinFJg3WU9An
- HEFSONb9uxnqDV+f8XQbn5DVBKpiLnRQodadygIBQGYikpP/n6udnS6WVrQZk6BZ
- phRLvFaHdY69COh/OVvgbYUspGoDtfqIfEkS8zkrppkz9M003x7Oz8rI1GEa6vwQ
- HRLmIhOAVVJIyeNWCyvy3w0bQYwxft3w/9KSolrwHFpmIESL+QFaZybaa62IXIxe
- no2TpCcC0D9LY39vu8B4Xq7CyzDQ79Tv7Tj+34Mfo1kynPsE9gKfSTOm2Wcl5Y+F
- Ztl012FwWrsEWaRO70oz
- =Nv29
- -----END PGP SIGNATURE-----
- 
+tree 0b28ddf23c4a7a69be197ef99fef03fd4459adc4
+parent d789cf30a6611de7020893502f3be927e4f8e51d
+author Silvio Tomatis <silviot@gmail.com> 1793645061 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793645187 +0100
 
-Merge pull request #36 from codemyriad/chore/refusal-vector-followups
+Carry the control requestId on native resume packets (extension 0.2.11)
 
-Refusal and watchdog vector follow-ups (#35, #34; D58, D57)
+A refused native resume had no ask identity, so a desktop host with
+overlapping asks could not tell which ask it answers. The extension now
+copies the control command's requestId verbatim onto type:"resume"
+packets only; ordinary Start is unchanged. Hosts that do not use the
+field ignore it (the resume schema stays additionalProperties:true).
+
+- background.js: thread command.requestId to start(); set it only in
+  the resume branch.
+- request.schema.json: optional resume requestId, control domain.
+- SPEC.md / RESUME-CAPTURE.md: document the field and the host rule
+  (key a refused resume to its ask; a refusal without one records
+  nothing on its own).
+- Tests: VM test for string/integer ids and no id on ordinary Start;
+  schema valid/invalid cases.
+- manifest 0.2.10 -> 0.2.11.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
