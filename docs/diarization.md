@@ -35,8 +35,25 @@ marker also finishes with D11 speakers instead of failing that transcript.
 `speaker-turns.json` is atomic app-owned cache data and is not exported. Its
 optional per-group `inputSHA256` is the hash of rejoined float32 PCM. A retry can
 reuse turns only when the model, parameters, duration and actual input hash
-match; typed names are retained by stable ID. Words are reassigned once after
-recognition, with their text, timing and other fields preserved.
+match. Words are reassigned once after recognition, with their text, timing and
+other fields preserved.
+
+A `<group>~n` id is only a rank of first turns, so a name is tied to the input
+that produced it (G12). Each diarized speaker entry in `meeting.json` carries
+`voiceSource: {inputSHA256, turnsSHA256}`: the group's input hash and the
+SHA-256 of the group's usable turns as canonical JSON `[startMs, endMs,
+ordinal]` rows in turn order. On a rerun, a typed, recognised or cleared name
+stays on its id only when the stamp is equal, as it is for reused turns.
+Otherwise the entry becomes unnamed with the new stamp, as does any other
+`<group>~*` entry of a re-diarized group, and merges from or into those ids are
+removed in the same write. A dropped name is only logged (`voiceNameReset`).
+Entries without a stamp count as different; D11 ids such as `me`, `others` and
+`track-<id>` are unchanged. Renames and merges keep the stamp. The private voice
+cache carries a confirmed match, its print and rejections only for an equal
+stamp. Remember, preparation checks and Merge/Undo or background recomputation
+treat a cached print whose stamp differs from the same id in `meeting.json` as
+absent, and recomputed prints take their stamp from `meeting.json`. Voice
+preparation labels saved ids from turns only for an equal stamp. The field name and shape are provisional until coordinator decision R74.
 
 ## Verification
 

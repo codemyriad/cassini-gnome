@@ -43,7 +43,7 @@ def seed(app, meeting):
     app.voice_store.commit_job(meeting.directory, prints, 0)
     # For the sample page fixture all current profiles point to a playable
     # window; this is fixture data and never reaches the shipped Library.
-    cache = app.voice_store.meeting(meeting.directory)
+    cache = app.voice_store.meeting(meeting.directory, raw=True)  # Rewritten below.
     cache["speakers"]["guest"]["match"] = dict(voiceId=None, score=None, state="none")
     for index, person in enumerate(people):
         cache["speakers"]["board-" + str(index)] = dict(
