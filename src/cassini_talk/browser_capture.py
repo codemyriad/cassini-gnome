@@ -325,11 +325,16 @@ class BrowserCapture:
     def remote_open(self):
         """Whether a browser track that has delivered PCM is still open.
 
-        Its recorder posts frames, silent ones included, until it ends.
+        Its recorder posts frames, silent ones included, until it ends. A
+        navigated or reloaded frame's spans never get trackEnd; fallback marks
+        them unavailable, and only their own PCM would make them available.
         """
         with self.lock:
             return any(
-                track.kind not in ("microphone", "local") and not track.ended and track.received_at is not None
+                track.kind not in ("microphone", "local")
+                and track.available
+                and not track.ended
+                and track.received_at is not None
                 for track in self.streams.tracks.values()
             )
 
