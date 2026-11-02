@@ -50,6 +50,12 @@ class WireTrack:
     available: bool = True
     received_at: float | None = None
     recorded_at: float | None = None
+    # The control channel showed this span's document is gone. Its PCM is
+    # still recorded, but it no longer arms the stale-PCM watchdog, and its
+    # own late PCM never re-arms it.
+    dormant: bool = False
+    # Declaration order on this capture, for retiring one document's spans.
+    serial: int = 0
 
 
 class BrowserStreams:
@@ -59,6 +65,7 @@ class BrowserStreams:
             session.capture_record.native_me = native_me
         self.me, self.others, self.browser = me, others, True
         self.tracks = {}
+        self.declared = 0
         self.selection_at = 0
         self.picture_enabled = picture_enabled
         self.picture = None
@@ -105,6 +112,8 @@ class BrowserStreams:
         if self.enabled(track):
             with self.session.change([]):
                 self._record(identifier, track)
+        self.declared += 1
+        track.serial = self.declared
         self.tracks[identifier] = track
 
     def end_track(self, identifier):

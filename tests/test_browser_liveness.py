@@ -673,3 +673,145 @@ def test_a_frame_after_the_deadline_is_too_late_before_any_tick(broker, late):
             assert not transport.shut_down.is_set()
     finally:
         client.close()
+
+
+def report(peer, capture, page, document=None):
+    """The extension's status for the recording's tab (background.js controlStatus)."""
+    entry = dict(recording=True, tabId=3, captureId=capture.capture_id, pageState=page)
+    if document is not None:
+        entry["documentGeneration"] = document
+    send_packet(peer.stream, dict(type="status", recording=True, sessions=[entry]))
+
+
+def seen_document(capture, document):
+    wait_for(lambda: capture.document_generation == document)
+
+
+def test_a_fast_reload_retires_the_dead_documents_spans_without_falling_back(broker):
+    service, path, clock, lost = broker
+    client = Settled(BrowserAudioProxy(path=path), service)
+    peer = Extension(path, (3,))
+    try:
+        capture = negotiated(client, service, "fast-reload")
+        assert client.handle(declare("old-frame", "doc-1:source:1")) == ACK
+        assert client.handle(pcm("old-frame", 480)) == ACK
+        report(peer, capture, "present", "doc-1")
+        seen_document(capture, "doc-1")
+        # pagehide: keepOnNavigation keeps the session; the old recorder dies
+        # without trackEnd, and the page returns before any fallback.
+        report(peer, capture, "navigating", "doc-1")
+        wait_for(lambda: capture.streams.tracks["old-frame"].dormant)
+        report(peer, capture, "present", "doc-2")
+        peer.inventory((3,))
+        seen_document(capture, "doc-2")
+        assert client.handle(declare("new-frame", "doc-2:source:1")) == ACK
+        assert client.handle(pcm("new-frame", 480, offset=1000)) == ACK
+        # Later the guest leaves: the only live span ends, a healthy quiet.
+        assert client.handle(end("new-frame")) == ACK
+        clock.now = PCM_STALE_AFTER * 10
+        service.tick()
+        (transport,) = service._audio_transports
+        assert not transport.shut_down.is_set(), "a gone document's span is not a running recorder"
+        assert client.handle(declare("guest-back", "doc-2:source:2")) == ACK
+        assert not capture.browser_lost and not lost.is_set() and not lost_events(capture)
+        capture.stop()
+    finally:
+        client.close()
+        peer.close()
+
+
+def test_a_missed_navigation_is_caught_by_a_new_document_generation(broker):
+    service, path, clock, lost = broker
+    client = Settled(BrowserAudioProxy(path=path), service)
+    peer = Extension(path, (3,))
+    try:
+        capture = negotiated(client, service, "missed-navigation")
+        assert client.handle(declare("old-frame", "doc-1:source:1")) == ACK
+        assert client.handle(pcm("old-frame", 480)) == ACK
+        report(peer, capture, "present", "doc-1")
+        seen_document(capture, "doc-1")
+        # The navigating status never arrived (control was down meanwhile).
+        report(peer, capture, "present", "doc-2")
+        wait_for(lambda: capture.streams.tracks["old-frame"].dormant)
+        clock.now = PCM_STALE_AFTER * 10
+        service.tick()
+        (transport,) = service._audio_transports
+        assert not transport.shut_down.is_set()
+        assert client.handle(declare("guest", "doc-2:source:1")) == ACK
+        assert not capture.browser_lost and not lost.is_set() and not lost_events(capture)
+        capture.stop()
+    finally:
+        client.close()
+        peer.close()
+
+
+@pytest.mark.parametrize("order", ["navigating-status-first", "navigating-span-first", "missed-navigation-span-first"])
+def test_a_reloaded_documents_new_span_still_arms_the_watchdog(broker, order):
+    """The new document's span may reach the broker before the status that
+    names its documentGeneration; it is that document's span, not the old one's."""
+    service, path, clock, lost = broker
+    client = Settled(BrowserAudioProxy(path=path), service)
+    peer = Extension(path, (3,))
+    try:
+        capture = negotiated(client, service, "rearmed-" + order)
+        assert client.handle(declare("old-frame", "doc-1:source:1")) == ACK
+        assert client.handle(pcm("old-frame", 480)) == ACK
+        report(peer, capture, "present", "doc-1")
+        seen_document(capture, "doc-1")
+        if order.startswith("navigating"):
+            report(peer, capture, "navigating", "doc-1")
+            wait_for(lambda: capture.streams.tracks["old-frame"].dormant)
+        if order == "navigating-status-first":
+            report(peer, capture, "present", "doc-2")
+            seen_document(capture, "doc-2")
+        assert client.handle(declare("new-frame", "doc-2:source:1")) == ACK
+        assert client.handle(pcm("new-frame", 480, offset=1000)) == ACK
+        if order != "navigating-status-first":
+            report(peer, capture, "present", "doc-2")
+            seen_document(capture, "doc-2")
+        peer.inventory((3,))
+        assert capture.streams.tracks["old-frame"].dormant
+        assert not capture.streams.tracks["new-frame"].dormant
+        # The new recorder freezes: it is still caught at exactly 45 s.
+        (transport,) = service._audio_transports
+        clock.now = PCM_STALE_AFTER - 0.001
+        service.tick()
+        assert not transport.shut_down.is_set()
+        clock.now = PCM_STALE_AFTER
+        service.tick()
+        assert transport.shut_down.is_set()
+        assert lost.wait(5) and len(lost_events(capture)) == 1
+        capture.stop()
+    finally:
+        client.close()
+        peer.close()
+
+
+def test_dormant_span_pcm_is_still_recorded_but_does_not_rearm(broker):
+    service, path, clock, lost = broker
+    client = Settled(BrowserAudioProxy(path=path), service)
+    peer = Extension(path, (3,))
+    try:
+        capture = negotiated(client, service, "late-buffer")
+        assert client.handle(declare("old-frame", "doc-1:source:1")) == ACK
+        assert client.handle(pcm("old-frame", 480)) == ACK
+        report(peer, capture, "navigating", "doc-1")
+        wait_for(lambda: capture.streams.tracks["old-frame"].dormant)
+        # The old document posts a final buffer after navigating was published.
+        assert client.handle(pcm("old-frame", 480, sequence=1, offset=10)) == ACK
+        old = next(t for t in capture.host.session.manifest["tracks"] if t["id"] == "old-frame")
+        assert old["frames"] == 960, "a dormant span's PCM is still recorded"
+        assert capture.streams.tracks["old-frame"].dormant and not capture.remote_open()
+        report(peer, capture, "present", "doc-2")
+        peer.inventory((3,))
+        seen_document(capture, "doc-2")
+        clock.now = PCM_STALE_AFTER * 10
+        service.tick()
+        (transport,) = service._audio_transports
+        assert not transport.shut_down.is_set()
+        assert client.handle(declare("guest", "doc-2:source:1")) == ACK
+        assert not capture.browser_lost and not lost.is_set()
+        capture.stop()
+    finally:
+        client.close()
+        peer.close()

@@ -14,6 +14,27 @@ from .recording_session import BrowserHost, ProtocolError, stop_reason
 from .session_events import source_state
 from .spectro_source import SpectroSource
 
+RESUME_FEATURE = "resume-capture-v1"
+# D52.3c: a resume may join a system-sound stand-in (D49, seam callConnected) or
+# a system/lost fallback after its audio transport closed (D52.4, seam restored).
+RESUME_TARGETS = (("system", "missing"), ("system", "lost"))
+
+
+class ResumeRefused(ProtocolError):
+    """A refused resume-capture-v1 attach. It changes nothing and is command scoped."""
+
+    def __init__(self, message="Target is no longer active."):
+        super().__init__("state", message)
+
+
+def utf8_length(value):
+    return len(value.encode("utf-8", "surrogatepass"))
+
+
+def generation_value(value):
+    """A browser-generated call/document generation, or None."""
+    return value if isinstance(value, str) and 0 < utf8_length(value) <= 200 else None
+
 
 class BrowserCapture:
     def __init__(self, changed, *, parent=None, tap_factory=None):
@@ -32,6 +53,13 @@ class BrowserCapture:
         self.me, self.others = True, True
         self.browser_lost = False
         self.browser_lost_since = None
+        # D52.5: each transition into a browser loss is a new loss, so a
+        # resume is asked again once per loss and control connection.
+        self.loss_serial = 0
+        # The recording tab's documentGeneration, and the last declaration
+        # made while a status still confirmed it (see observe_document).
+        self.document_generation = None
+        self.document_mark = 0
         self.audio_connected = False
         self.lifecycle_capable = False
         self.multistream_capable = False
@@ -329,16 +357,145 @@ class BrowserCapture:
         """Whether a browser track that has delivered PCM is still open.
 
         Its recorder posts frames, silent ones included, until it ends. A
-        navigated or reloaded frame's spans never get trackEnd; fallback marks
-        them unavailable, and only their own PCM would make them available.
+        navigated or reloaded frame's spans never get trackEnd. Two things
+        disarm them: fallback marks them unavailable (only their own PCM would
+        make them available again), and document retirement marks them
+        dormant for good, even when the page returns before any fallback.
         """
         with self.lock:
             return any(
                 track.kind not in ("microphone", "local")
                 and track.available
                 and not track.ended
+                and not track.dormant
                 and track.received_at is not None
                 for track in self.streams.tracks.values()
+            )
+
+    def observe_document(self, generation=None, *, navigating=False):
+        """Retire a gone document's spans from the stale-PCM watchdog.
+
+        T1, navigating: every current remote span belongs to the document
+        that is going away. The stored generation is cleared, so the next
+        document's generation is learned rather than compared.
+        T2, a new documentGeneration (a reload the app did not see as
+        navigating): only spans declared up to the last status that still
+        confirmed the old generation are retired. A new document's span can
+        reach the broker before the status that names its generation, and it
+        must stay armed. Returns how many spans were retired.
+        """
+        with self.lock:
+            if self.finished or self.streams is None:
+                return 0
+            if navigating:
+                retired = self._retire_spans(None)
+                self.document_generation = None
+                return retired
+            generation = generation_value(generation)
+            if generation is None:
+                return 0
+            retired = 0
+            if self.document_generation is not None and generation != self.document_generation:
+                retired = self._retire_spans(self.document_mark)
+            self.document_generation = generation
+            self.document_mark = self.streams.declared
+            return retired
+
+    def _retire_spans(self, through):
+        retired = 0
+        for track in self.streams.tracks.values():
+            if (
+                track.kind not in ("microphone", "local")
+                and not track.ended
+                and not track.dormant
+                and (through is None or track.serial <= through)
+            ):
+                track.dormant = True
+                retired += 1
+        return retired
+
+    def retire_transport_spans(self, identifiers):
+        """End the open spans a closed audio transport declared.
+
+        Their recorders went with the transport, and no trackEnd can arrive
+        for them any more. A resumed transport re-declares the same page
+        sources (one sourceTrackId per MediaStreamTrack root for the whole
+        document) under fresh span ids, which the host would otherwise refuse
+        as overlapping live spans. Retiring is not a source failure: the
+        ledger's failed flag is left alone.
+        """
+        with self.lock:
+            session = self.host.session
+            if (
+                self.finished
+                or self.stopping
+                or self.stop_requested.is_set()
+                or self.streams is None
+                or session is None
+                or session.finished
+            ):
+                return 0
+            retired = 0
+            for identifier in identifiers:
+                track = self.streams.tracks.get(identifier)
+                if track is None or track.ended or identifier in self.host.ended:
+                    continue
+                self.host.ended.add(identifier)
+                self.streams.end_track(identifier)
+                retired += 1
+            if retired:
+                self._sync_spectrogram()
+            return retired
+
+    def resume(self, message):
+        """R3/R4: attach a new audio transport to this recording, or refuse.
+
+        Validation shares Stop's critical section: Stop sets stop_requested
+        under the capture lock, and a source change in progress holds the
+        transition lock, so a committing fallback is waited out, not misread.
+        A refusal changes nothing. On success nothing but the attachment
+        changes: no folder, clock, microphone, selection or title. The source
+        switch happens later, at the ordinary restore commit, once the
+        resumed transport has delivered PCM.
+        """
+        with self.transition, self.lock:
+            session = self.host.session
+            if (
+                self.finished
+                or self.stopping
+                or self.stop_requested.is_set()
+                or self.starting
+                or session is None
+                or session.finished
+                or self.streams is None
+            ):
+                raise ResumeRefused()
+            if (
+                message.get("captureId") != self.capture_id
+                or message.get("timelineOriginMs") != self.origin_ms
+                or type(message.get("timelineOriginMs")) is not int
+                or self.call_generation is None
+                or message.get("callGeneration") != self.call_generation
+                or self.tab_closed
+            ):
+                raise ResumeRefused()
+            current = source_state(session.manifest.get("events"))
+            # The recorded source is the authority: system/missing or system/lost
+            # (browser_lost with others selected), never browser or none.
+            if (current.source, current.reason) not in RESUME_TARGETS:
+                raise ResumeRefused()
+            if self.audio_connected:
+                # Another transport is still attached: never two on one capture.
+                raise ResumeRefused()
+            self.audio_connected = True
+            return dict(
+                type="started",
+                path=str(self.directory),
+                features=(["source-outcomes-v1"] if self.host.source_outcomes else []) + [RESUME_FEATURE],
+                resumed=True,
+                captureId=self.capture_id,
+                timelineOriginMs=self.origin_ms,
+                callGeneration=self.call_generation,
             )
 
     def restore(self):
@@ -430,6 +587,7 @@ class BrowserCapture:
                     self._sync_spectrogram()
                     if lost and not self.browser_lost:
                         self.browser_lost_since = time.monotonic()
+                        self.loss_serial += 1
                     self.me, self.others, self.browser_lost = me, others, lost
                     if not lost:
                         self.browser_lost_since = None

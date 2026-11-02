@@ -10,12 +10,31 @@ CONTROL_RECONNECT_GRACE = 10
 OTHERS_GONE_GRACE = 30
 
 
+@dataclass(frozen=True)
+class ResumeInputs:
+    """D52.5 facts the service computes for one tick; this module does no I/O.
+
+    ready: the peer negotiated resume-capture-v1, the recording is on
+    system/lost with its audio transport closed, the row is of the recording's
+    own callGeneration, the extension released the tab, and no lifecycle task
+    is pending for it. loss and connection key the ask: once per loss and
+    control connection.
+    """
+
+    ready: bool
+    loss: int
+    connection: str
+
+
 @dataclass
 class CallLifecycle:
     missing: float | None = None
     ended: float | None = None
     closed: float | None = None
     heard: bool = False
+    # (loss, connection) of the last resume ask. Never a timer: a refused or
+    # pending ask is repeated only for a new loss or a new control connection.
+    asked: tuple | None = None
 
     def decide(
         self,
@@ -32,6 +51,7 @@ class CallLifecycle:
         control_alive=True,
         pcm_live=False,
         initial_missing=False,
+        resume=None,
     ):
         self.heard |= heard
         if page == "closed" and self.closed is None:
@@ -57,6 +77,7 @@ class CallLifecycle:
                 inventory_known=inventory_known,
                 control_alive=control_alive,
                 initial_missing=initial_missing,
+                resume=resume,
             )
         if page == "present" and count > 0:
             self.missing = self.ended = None
@@ -71,12 +92,34 @@ class CallLifecycle:
         return "stop:callEnded" if now - self.ended >= CALL_END_GRACE else None
 
     def _multistream(
-        self, now, page, count, *, fallback, others, restore_ready, inventory_known, control_alive, initial_missing
+        self,
+        now,
+        page,
+        count,
+        *,
+        fallback,
+        others,
+        restore_ready,
+        inventory_known,
+        control_alive,
+        initial_missing,
+        resume=None,
     ):
         if page == "present" and control_alive and inventory_known and count > 0:
             self.missing = self.ended = None
             if self.heard and fallback and others and restore_ready:
                 return "switch:browser:callConnected" if initial_missing else "restore"
+            if (
+                resume is not None
+                and resume.ready
+                and fallback
+                and others
+                and self.heard
+                and self.asked != (resume.loss, resume.connection)
+            ):
+                # D52.5: ask once per loss and control connection.
+                self.asked = (resume.loss, resume.connection)
+                return "askResume"
             return None
         if page != "present" or not control_alive or self.missing is not None:
             self.ended = None
