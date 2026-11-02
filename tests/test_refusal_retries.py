@@ -660,3 +660,54 @@ def test_a_native_retry_writes_no_equal_valued_selection(tmp_path):
         recorder.stop()
         spin_until(lambda: recorder.pipeline is None and not recorder._finishing)
         recorder._executor.shutdown(wait=True)
+
+
+def test_try_again_on_a_browser_capture_sends_selection_with_retry(application_class, monkeypatch):  # noqa: F811
+    from concurrent.futures import Future
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from cassini_talk import browser_service
+
+    sent = []
+    monkeypatch.setattr(browser_service, "request", lambda action, **values: sent.append((action, values)) or {})
+
+    class Executor:
+        def submit(self, function, *args, **kwargs):
+            future = Future()
+            future.set_result(function(*args, **kwargs))
+            return future
+
+    sources = SimpleNamespace(me=True, others=True)
+    app = SimpleNamespace(
+        _quitting=False,
+        _capture_exiting=False,
+        _source_changes={},
+        native_recorder_for=lambda _directory: None,
+        comfort=SimpleNamespace(sources=lambda _meeting: sources),
+        hold=lambda: None,
+        release=lambda: None,
+        _record_start_executor=Executor(),
+        _native_changed=lambda: None,
+        _recording_sources_changed=lambda *_: False,
+    )
+    meeting = SimpleNamespace(directory=Path("/library/Recording-x"))
+    application_class.change_recording_sources(app, meeting, True, True, retry=True)
+    assert sent == [("selection", dict(directory="/library/Recording-x", me=True, others=True, retry=True))]
+    sent.clear()
+    app._source_changes.clear()
+    application_class.change_recording_sources(app, meeting, True, False)
+    assert sent == [("selection", dict(directory="/library/Recording-x", me=True, others=False))]
+
+
+def test_a_meeting_retry_waits_for_a_pending_start(application_class, monkeypatch):  # noqa: F811
+    from types import SimpleNamespace
+
+    started = []
+    app = SimpleNamespace(
+        _record_start_future=object(),  # A start is pending.
+        _quitting=False,
+        _record_start_executor=SimpleNamespace(submit=lambda *a, **k: started.append(a)),
+    )
+    application_class.retry_meeting(app, dict(id="call/4", callGeneration="call-4"))
+    assert not started
