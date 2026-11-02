@@ -430,6 +430,7 @@ def test_unexplained_future_first_stamp_is_reanchored_at_running_time(
     [(10000, 48000, WRAPPED_NS), (10000, 44100, WRAPPED_NS), (21333, 48000, None), (0, 48000, None)],
 )
 def test_segment_wrap_is_exact_or_absent(latency_us, rate, wrap):
+    recorder_class()  # Skips where GStreamer's Python bindings are absent.
     from cassini_talk.native_recorder import segment_wrap_ns
 
     assert segment_wrap_ns(Sink(pulse_source(latency_us, rate))) == wrap
