@@ -560,7 +560,7 @@ class NativeRecorder(GObject.Object):
                 pipeline.remove(branch)
             return source_state(self.session.manifest.get("events"))
         except OSError:
-            if opening is not None:
+            if opening in prepared:
                 self._turn_on_refused(pipeline, opening, prepared[opening])
             raise
         finally:

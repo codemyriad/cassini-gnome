@@ -587,12 +587,12 @@ class BrowserCapture:
     def refuse_resume(self, message):
         """D58 #10: a refused resume is startRejected/resumeRefused in this folder.
 
-        Only a live recording records it; a finished or stopping one has no
-        place for it, and a refusal never changes the recording itself.
+        Only an open session records it (a finished one refuses any change),
+        and a refusal never changes the recording itself.
         """
         with self.lock:
             session = self.host.session
-            if self.finished or self.stopping or self.stop_requested.is_set() or session is None or session.finished:
+            if session is None or session.finished:
                 return
             item = entry(self.elapsed_ms(), "browser", "startRejected", detail="resumeRefused", message=message)
             try:

@@ -325,6 +325,7 @@ with tempfile.TemporaryDirectory() as temporary:
         nothing = app.recorder
         until(lambda: nothing.discarded and nothing.pipeline is None and not nothing._finishing)
     assert set(library.rglob("Recording-*")) == before, "No folder when nothing opens"
+    assert app.recording_failure is not None, "Nothing opened: the start banner is shown"
     assert app.recording_failure["refusals"] == nothing.refusals and len(nothing.refusals) == 2
     window.back_to_library()
     window._recording_line(None)
