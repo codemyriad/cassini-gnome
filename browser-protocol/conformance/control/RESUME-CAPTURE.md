@@ -32,8 +32,10 @@ real retained microphone/system capture (private generated audio):
   resume ask a fresh requestId and never reuses it for another ask, on the same
   or another control connection, after a reconnect or an app restart (a late
   packet can follow a timeout or a closed connection); a UUID per ask is the
-  simple way. It refuses
-  a resume whose present requestId is outside the control requestId domain.
+  simple way. An app that keys on requestId refuses a resume whose present
+  requestId is outside the control requestId domain; one that does not use it
+  ignores it (SPEC.md). An app-side timeout forgets the ask: its late native
+  refusal then records nothing.
   `askAttribution` in `resume-capture-vectors.json` pins these orders.
 - Use seam events/physical tracks exactly as written. Actual playback, export
   and both recognition inputs retain the microphone, use system before6000ms

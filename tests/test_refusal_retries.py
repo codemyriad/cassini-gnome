@@ -403,6 +403,9 @@ def test_the_shared_ask_attribution_vectors_hold_with_a_fresh_id_per_ask(policy,
                 refuse_native(service, capture, requestId=ids[step["ask"]])
             elif op == "nativeWithoutId":
                 refuse_native(service, capture)
+            elif op == "forget":
+                # GNOME has no ask timeout; its RESUME_ASKS bound forgets the same way.
+                capture.clear_resume_ask(ids[step["ask"]])
             else:
                 assert op == "nativeUnknownId"
                 refuse_native(service, capture, requestId=str(uuid.uuid4()))
