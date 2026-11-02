@@ -8,12 +8,63 @@ import sys
 import tempfile
 from pathlib import Path
 import unittest
+import uuid
 from test_schemas import schema
 
 ROOT = Path(__file__).resolve().parents[1]
 VECTORS = json.loads((ROOT/'conformance/control/resume-capture-vectors.json').read_text())
 
+ATTRIBUTION = VECTORS['askAttribution']
+
+def attribute(steps, ids=None):
+    """Test-only ledger: a refusal answers the still-pending ask its requestId names."""
+    ids = {} if ids is None else ids
+    pending, times, entries, connections, closed = {}, {}, [], {}, set()
+    def answer(request_id, message):
+        if request_id in pending:
+            ask = pending.pop(request_id)
+            entries.append(dict(ask=ask, message=message, at=times[ask]))
+    for at, step in enumerate(steps):
+        op = step['op']
+        if op == 'ask':
+            assert step['connection'] not in closed, 'a closed connection never reopens'
+            connections[step['ask']] = step['connection']
+            ids.setdefault(step['ask'], str(uuid.uuid4()))
+            times[step['ask']] = at; pending[ids[step['ask']]] = step['ask']
+        elif op == 'reply':
+            assert connections[step['ask']] not in closed, 'a reply needs its open connection'
+            answer(ids[step['ask']], step['error'])
+        elif op == 'close':
+            closed.add(step['connection'])
+        elif op == 'native':
+            answer(ids[step['ask']], step['message'])
+        elif op not in ('nativeWithoutId', 'nativeUnknownId'):
+            raise AssertionError('unknown op ' + op)
+        # A refusal without a requestId, or with one no ask was given, records nothing.
+    return dict(entries=entries, pending=sorted(pending.values())), ids, times
+
 class ResumeTests(unittest.TestCase):
+    def test_ask_attribution_vectors_hold_with_a_fresh_id_per_ask(self):
+        # R82 1b: one entry per ask, from its first answer, at its own time.
+        self.assertGreaterEqual(len(ATTRIBUTION['cases']), 8)
+        for case in ATTRIBUTION['cases']:
+            with self.subTest(case=case['name']):
+                actual, ids, times = attribute(case['steps'])
+                self.assertEqual(len(set(ids.values())), len(ids))
+                self.assertEqual([dict(ask=e['ask'], message=e['message']) for e in actual['entries']], case['expect']['entries'])
+                self.assertTrue(all(e['at'] == times[e['ask']] for e in actual['entries']))
+                self.assertEqual(actual['pending'], sorted(case['expect']['pending']))
+
+    def test_a_recycled_request_id_breaks_the_finished_ask_vectors(self):
+        # The codex case: A finished, B on a new connection reuses A's id, then
+        # A's late native refusal would be written as B's entry.
+        for name in ('finished-ask-late-native-never-answers-a-fresh-ask', 'finished-ask-late-native-then-the-fresh-ask-reply'):
+            with self.subTest(case=name):
+                case = next(c for c in ATTRIBUTION['cases'] if c['name'] == name)
+                shared = str(uuid.uuid4())
+                recycled, _, _ = attribute(case['steps'], dict(A=shared, B=shared))
+                self.assertNotEqual([dict(ask=e['ask'], message=e['message']) for e in recycled['entries']], case['expect']['entries'])
+
     def test_resume_start_and_explicit_proof_validate_without_changing_legacy_start(self):
         target = VECTORS['initial']
         request = dict(type='command',requestId='resume',action='start',mode='tracks',tabId=2,independent=True,

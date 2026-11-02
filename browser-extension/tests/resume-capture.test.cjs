@@ -226,3 +226,35 @@ for (const id of ['ask-A', 7])
       assert.equal(Object.hasOwn(ordinary[0], 'requestId'), false);
     } finally {await f.close();}
   });
+
+for (const finished of ['disconnect', 'timeout'])
+  test('a late native resume keeps its own requestId after a fresh ask on '+(finished==='disconnect'?'a new':'the same')+' connection', async () => {
+    // Codex #37: ask A finishes for the app (its control connection closes, or
+    // the app stops waiting), then ask B starts; A's native packet, built late,
+    // still names A only. The VM's reconnect is the extension's real reconnect.
+    const f = await fixture(); let release, entered = false;
+    const get = f.app.chrome.tabs.get, gate = new Promise(resolve => release = resolve);
+    let hold = true;
+    f.app.chrome.tabs.get = async id => {if (id === 2 && hold) {hold = false; entered = true; await gate;} return get(id);};
+    try {
+      const first = f.app.ports[0];
+      first.onMessage.emit(f.start('ask-A'));
+      await until(() => entered);
+      assert.equal(f.packets.length, 0);
+      if (finished === 'disconnect') assert.notEqual(await f.app.reconnect(), first);
+      f.app.frame(99);
+      const b = {...f.start('ask-B'), tabId:99, callGeneration:f.app.api.callInfo(99).generation};
+      const answered = await f.app.command(b);
+      assert.equal(answered.ok, false); // Refused natively: tab 99 is not the target.
+      assert.deepEqual(f.packets.map(p => [p.type, p.requestId]), [['resume', 'ask-B']]);
+      f.job.active = false; // A's late native resume is refused too.
+      release();
+      await until(() => f.packets.length === 2);
+      assert.deepEqual(f.packets.map(p => [p.type, p.requestId]), [['resume', 'ask-B'], ['resume', 'ask-A']]);
+      assert.equal(f.packets[1].callGeneration, f.job.generation);
+      if (finished === 'timeout') {
+        await until(() => first.sent.some(m => m.type === 'result' && m.requestId === 'ask-A'));
+        assert.equal(first.sent.find(m => m.type === 'result' && m.requestId === 'ask-A').ok, false);
+      } else await until(() => f.app.api.controlStatus(2).sessions.length === 0);
+    } finally {release?.(); await f.close();}
+  });

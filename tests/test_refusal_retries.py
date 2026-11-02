@@ -5,11 +5,13 @@ rule, and the D17 per-meeting lines."""
 
 import json
 import time
+import uuid
 
 import pytest
 from test_browser_capture import Tap
 from test_browser_resume_policy import asks, close, peer, policy, row, run, scheduled_asks  # noqa: F401
 from test_refusal_vectors import broker as served  # noqa: F401
+from test_resume_capture_host import VECTORS
 from test_resume_capture_host import broker as wire  # noqa: F401
 from test_voice_application import application_class  # noqa: F401
 
@@ -353,6 +355,80 @@ def test_a_native_refusal_without_a_known_ask_writes_nothing(policy, identity): 
         assert [r["atMs"] for r in resume_refusals(capture)] == list(before.values())
     finally:
         capture.stop()
+
+
+def ask_on(service, tasks, sent, capture, browser):
+    """One more resume ask on this connection; returns its packet."""
+    # GNOME asks once per connection and loss: a vector's second ask on one
+    # connection stands for a policy that may ask that connection again.
+    lifecycle = service._capture_lifecycles.get(capture.capture_id)
+    if lifecycle is not None:
+        lifecycle.asked_on.discard(browser.id)
+    before = len(asks(sent))
+    for _ in range(5):
+        ticks(service, tasks, browser, count=1)
+        if len(asks(sent)) > before:
+            break
+    assert len(asks(sent)) == before + 1 and sent[-1][0] is browser
+    return asks(sent)[-1]
+
+
+def first_answer(case, ask):
+    return next(s for s in case["steps"] if s.get("ask") == ask and s["op"] in ("native", "reply"))
+
+
+@pytest.mark.parametrize("case", VECTORS["askAttribution"]["cases"], ids=lambda case: case["name"])
+def test_the_shared_ask_attribution_vectors_hold_with_a_fresh_id_per_ask(policy, case):  # noqa: F811
+    """Codex #37: a late native refusal answers only its own ask, across reconnects."""
+    service, tasks, sent, parent = policy
+    connections, capture, ids, at, packets = {}, None, {}, {}, {}
+    try:
+        for step in case["steps"]:
+            op = step["op"]
+            if op == "ask":
+                number = step["connection"]
+                if number not in connections:
+                    assert number == len(connections) + 1, "connections open in order"
+                    connections[number] = peer(service)
+                    if capture is None:
+                        capture = stand_in(service, parent, connections[number])
+                browser = connections[number]
+                assert not browser.closed, "a closed connection never reopens"
+                packet = ask_on(service, tasks, sent, capture, browser)
+                ids[step["ask"]] = packet["requestId"]
+                at[step["ask"]] = capture.resume_asks[packet["requestId"]]
+                packets[step["ask"]] = (browser, packet)
+            elif op == "reply":
+                browser, packet = packets[step["ask"]]
+                answer(service, browser, packet, ok=False, error=step["error"], code=step["code"])
+            elif op == "close":
+                close(service, connections[step["connection"]])
+            elif op == "native":
+                refuse_native(service, capture, requestId=ids[step["ask"]])
+            elif op == "nativeWithoutId":
+                refuse_native(service, capture)
+            else:
+                assert op == "nativeUnknownId"
+                refuse_native(service, capture, requestId=str(uuid.uuid4()))
+        assert len(set(ids.values())) == len(ids), "every ask has its own id"
+        assert all(uuid.UUID(value).version == 4 and str(uuid.UUID(value)) == value for value in ids.values())
+        # The vector's message is the first answer's native message or reply
+        # error; GNOME records the reply's code, so a reply-first entry maps to it.
+        expected = []
+        for item in case["expect"]["entries"]:
+            step = first_answer(case, item["ask"])
+            assert item["message"] == step.get("message", step.get("error"))
+            message = step["message"] if step["op"] == "native" else step["code"]
+            expected.append(
+                dict(
+                    atMs=at[item["ask"]], side="browser", code="startRejected", detail="resumeRefused", message=message
+                )
+            )
+        assert resume_refusals(capture) == expected
+        assert list(capture.resume_asks) == [ids[name] for name in case["expect"]["pending"]]
+    finally:
+        if capture is not None:
+            capture.stop()
 
 
 def test_a_native_refusal_on_the_audio_socket_is_keyed_on_its_request_id(wire):  # noqa: F811

@@ -1,14 +1,18 @@
-tree cfd626a034cd48204b51ced131eafeb8938079df
-parent b619007537b5c1bd37d75ba810d406533fc8913a
-author Silvio Tomatis <silviot@gmail.com> 1793646681 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793646681 +0100
+tree 0beeecbee60215efd8145589c5f53da5f73ac354
+parent 5d95ac7aae2874a194a1415008c9a4f3e3eae2a0
+author Silvio Tomatis <silviot@gmail.com> 1793647275 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793647275 +0100
 
-Resume requestId: unique across connections, a closed connection records nothing, pin 0.2.11 over 0.2.10
+Resume requestId: a fresh id per ask, never recycled while a native packet can arrive
 
-Review follow-ups: the audio pipe names no connection, so a host keying on the
-requestId keeps ids unique across its control connections while asks are
-pending. An ask whose connection closed unanswered records nothing. A present
-requestId outside the domain refuses the resume. Installers never replace an
-equal 0.2.10, so pin that 0.2.11 is newer.
+Codex review of #37: uniqueness only while asks are pending lets ask A finish
+(reply/timeout or a closed connection), B reuse A's id on another connection,
+and A's late native refusal land on B. An app now gives every resume ask a
+fresh requestId (a UUID per ask) and never reuses it across connections and
+reconnects while that ask's native packet could still arrive. A closed
+connection records nothing by itself; its ask stays answerable by its own
+native refusal only. Shared askAttribution vectors pin the orders, with a
+reference ledger that fails on a recycled id, and an extension VM regression
+holds A's native packet across a reconnect and a fresh ask B.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

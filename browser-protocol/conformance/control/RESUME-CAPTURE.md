@@ -22,11 +22,16 @@ real retained microphone/system capture (private generated audio):
 - A refused native resume answers only the ask whose control requestId it
   carries (extension 0.2.11), and only while that ask is unanswered. A refusal
   without one records nothing on its own: the ask's own ok:false result does,
-  if it arrives. An ask whose connection closed unanswered records nothing,
-  never an entry on another ask. Whichever answer arrives first records the ask
-  once; the other adds nothing. The app keeps requestIds unique across its
-  control connections while asks are pending, and refuses a resume whose
-  present requestId is outside the control requestId domain.
+  if it arrives. A late refusal whose ask is already answered or unknown
+  records nothing. A closed control connection records nothing by itself: its
+  unanswered ask stays answerable by its own native refusal, never by another
+  ask's. Whichever answer arrives first records the ask once; the other adds
+  nothing. The app gives every resume ask a fresh requestId and never reuses it
+  for another ask, across control connections and reconnects, for as long as a
+  native packet of that ask could still arrive (a late packet can follow a
+  timeout or a closed connection); a UUID per ask is the simple way. It refuses
+  a resume whose present requestId is outside the control requestId domain.
+  `askAttribution` in `resume-capture-vectors.json` pins these orders.
 - Use seam events/physical tracks exactly as written. Actual playback, export
   and both recognition inputs retain the microphone, use system before6000ms
   and browser from6000ms, without mixing both or dropping the seam sample.
