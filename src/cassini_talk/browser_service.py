@@ -67,6 +67,46 @@ class ControlReconnect:
 class StartRejected(ValueError):
     """The extension finished rejecting Start, rather than an unknown/late result."""
 
+    def __init__(self, message, result=None):
+        from .refusals import from_result
+
+        super().__init__(message)
+        # D58: the browser refusal it records; a pattern-valid result code is its detail.
+        self.refusal = from_result(result)
+
+
+class StartRefused(ValueError):
+    """A Start that recorded nothing, with the refusals the start banner shows (D58)."""
+
+    def __init__(self, message, refusals):
+        super().__init__(message)
+        self.refusals = list(refusals)
+
+
+# D58 startFailed details for local refusals and unanswered Starts (banner only).
+LOCAL_DETAILS = {
+    "The browser disconnected": "disconnected",
+    "A recording command is still being processed": "busy",
+    "This meeting is already being recorded": "busy",
+    "This meeting is no longer available": "gone",
+}
+
+
+def start_refusals(error):
+    """The refusals a failed Start shows in its banner. A cancelled Start shows none."""
+    from .refusals import entry
+
+    if isinstance(error, (StartRefused,)) or hasattr(error, "refusals"):
+        return list(error.refusals)
+    if isinstance(error, StartRejected):
+        return [error.refusal]
+    message = str(error)
+    if isinstance(error, ValueError) and message == "Recording start was cancelled":
+        return []
+    detail = "timeout" if isinstance(error, TimeoutError) else LOCAL_DETAILS.get(message)
+    # Nobody refused: no answer, or this app refused locally. No raw text to keep.
+    return [entry(0, "browser", "startFailed", detail=detail)]
+
 
 def service_path():
     runtime = os.environ.get("XDG_RUNTIME_DIR")
@@ -866,9 +906,8 @@ class BrowserService:
             raise ResumeRefused("Invalid resume request")
         with self.lock:
             target = self.captures.get(identifier)
-            if (
-                target is None
-                or identifier in self._cancelled_captures
+            refused = target is None or (
+                identifier in self._cancelled_captures
                 or self._stopping_all.is_set()
                 or any(
                     capture_id == identifier and self.stopped_calls.get(key, (None,))[0] == url
@@ -876,11 +915,18 @@ class BrowserService:
                     if url is not None
                 )
                 or any(t.capture is target for t in self._audio_transports if t is not transport)
-            ):
-                raise ResumeRefused()
+            )
         # Lock order is service, then capture: never wait on the capture's
         # transition (a committing fallback) while holding the inventory lock.
-        proof = target.resume(packet)
+        try:
+            if refused:
+                raise ResumeRefused()
+            proof = target.resume(packet)
+        except ResumeRefused as error:
+            if target is not None:
+                # D58 #10: in the existing folder, at its real time.
+                target.refuse_resume(str(error))
+            raise
         try:
             with self.lock:
                 transport.capture = target
@@ -1728,12 +1774,10 @@ class BrowserService:
             if result is None and browser.closed:
                 result = self._recover_command(browser, tab, action, pending, deadline)
             if result is None or result.get("ok") is not True:
-                error = (
-                    StartRejected
-                    if result is not None and action == "start" and not pending.get("cancelled")
-                    else ValueError
-                )
-                raise error(str((result or {}).get("error", "The browser disconnected"))[:500])
+                message = str((result or {}).get("error", "The browser disconnected"))[:500]
+                if result is not None and action == "start" and not pending.get("cancelled"):
+                    raise StartRejected(message, result)
+                raise ValueError(message)
             snapshot = self.snapshot()
             if action == "stop":
                 snapshot["stoppedPath"] = (
@@ -1835,10 +1879,15 @@ class BrowserService:
                 return self.command(
                     identifier, "start", microphone=microphone, user=True, deadline=deadline, cancelled=group
                 )
-            except StartRejected:
+            except StartRejected as rejected:
                 if group.is_set() or self._stopping_all.is_set() or time.monotonic() >= deadline:
                     raise ValueError("Recording start was cancelled") from None
-                return self.start_fallback(identifier, meeting, microphone, cancelled=group, deadline=deadline)
+                if rejected.refusal.get("detail") == "busy":
+                    # D58 #11: it may be this tab already recording; never record it twice.
+                    raise StartRefused(str(rejected), [rejected.refusal]) from None
+                return self.start_fallback(
+                    identifier, meeting, microphone, cancelled=group, deadline=deadline, refusals=[rejected.refusal]
+                )
             except TimeoutError:
                 # No acknowledgement means Start may still be finishing in the
                 # browser. Retire that attempt before its caller can retry it.
@@ -1861,7 +1910,7 @@ class BrowserService:
             results, _futures = self._batch(jobs, deadline, cancelled=group)
             titles = {identifier: meeting["title"] for identifier, meeting in targets}
             failures = [
-                dict(id=identifier, title=titles[identifier], error=str(error))
+                dict(id=identifier, title=titles[identifier], error=str(error), refusals=start_refusals(error))
                 for identifier, _result, error in results
                 if error is not None
             ]
@@ -1880,6 +1929,7 @@ class BrowserService:
         automatic_generation=None,
         deadline=None,
         call_version=None,
+        refusals=(),
     ):
         from .browser_capture import BrowserCapture
 
@@ -1944,6 +1994,7 @@ class BrowserService:
                 ),
                 others_source="system",
                 reason="missing",
+                refusals=refusals,
             )
         except Exception as error:
             capture.stop(str(error))
@@ -2538,7 +2589,9 @@ class BrowserService:
                             self.workers.submit(self._close_notification, close)
                 except Exception as error:
                     logging.getLogger(__name__).warning("Could not show recording notification: %s", error)
-        except StartRejected:
+        except StartRejected as rejected:
+            if rejected.refusal.get("detail") == "busy":
+                return  # D58 #11: it may be this tab already recording; never record it twice.
             try:
                 identifier = self._resolve_call(logical_identifier, wait=True)
             except ValueError:
@@ -2559,7 +2612,11 @@ class BrowserService:
             if action == "start" and allowed and meeting is not None:
                 try:
                     self.start_fallback(
-                        logical_identifier, meeting, automatic_generation=generation, call_version=call_version
+                        logical_identifier,
+                        meeting,
+                        automatic_generation=generation,
+                        call_version=call_version,
+                        refusals=[rejected.refusal],
                     )
                 except (OSError, ValueError, TimeoutError):
                     logging.getLogger(__name__).exception("Could not start the missing-browser fallback")
