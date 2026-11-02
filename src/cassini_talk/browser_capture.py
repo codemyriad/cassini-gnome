@@ -182,7 +182,9 @@ class BrowserCapture:
             items = [self._refusal(0, kind, refused[kind]) for kind in requested if kind in refused]
             if requested and len(refused) == len(requested) and self.browser_lost:
                 # Nothing records (D58 point 2): no folder, only the start banner.
-                raise NothingOpened(str(refused[requested[0]]), [*refusals, *items]) from refused[requested[0]]
+                error = NothingOpened(str(refused[requested[0]]), [*refusals, *items])
+                error.unwritten = items  # The browser refusals are already in the start checkpoint.
+                raise error from refused[requested[0]]
             if items:
                 with self.lock:
                     if not self.finished:
@@ -198,7 +200,7 @@ class BrowserCapture:
             self.starting = False
             self.ready.set()
             if self.host.session is not None:
-                self.stop(str(error), discard=error.refusals if isinstance(error, NothingOpened) else None)
+                self.stop(str(error), discard=error.unwritten if isinstance(error, NothingOpened) else None)
             raise
         finally:
             self.starting = False

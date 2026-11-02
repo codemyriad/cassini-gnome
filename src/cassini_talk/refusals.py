@@ -68,6 +68,7 @@ class NothingOpened(OSError):
     def __init__(self, message, refusals):
         super().__init__(message)
         self.refusals = list(refusals)
+        self.unwritten = list(refusals)  # Those not yet stored, should the folder be kept.
 
 
 def well_formed(item):
