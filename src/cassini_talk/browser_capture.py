@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from .capture_sources import BrowserStreams, canonical_order, change_time, selected_pcm
 from .recording_session import BrowserHost, ProtocolError, stop_reason
-from .refusals import SIDES, NothingOpened, entry
+from .refusals import SIDES, NothingOpened, StartCancelled, entry
 from .refusals import append as append_refusal
 from .session_events import source_state
 from .spectro_source import SpectroSource
@@ -180,7 +180,12 @@ class BrowserCapture:
             requested = [kind for kind, wanted in (("microphone", microphone), ("system", self.browser_lost)) if wanted]
             refused = self._open_natives(requested)
             items = [self._refusal(0, kind, refused[kind]) for kind in requested if kind in refused]
-            if requested and len(refused) == len(requested) and self.browser_lost:
+            if requested and self.browser_lost and not any(kind in self.native_taps for kind in requested):
+                if len(refused) < len(requested):
+                    # A Stop cancelled a side before it opened, and nothing
+                    # opened: no recording, and no refusal (R79 §1). The blank
+                    # folder goes with no banner, as on the native path.
+                    raise StartCancelled("Recording start was cancelled")
                 # Nothing records (D58 point 2): no folder, only the start banner.
                 error = NothingOpened(str(refused[requested[0]]), [*refusals, *items])
                 error.unwritten = items  # The browser refusals are already in the start checkpoint.
@@ -197,10 +202,15 @@ class BrowserCapture:
                 )
                 self._mute_observer.start()
         except Exception as error:
+            # Finish before ready: a Stop waiting on this start must find it
+            # finished, not finish the folder this start discards.
             self.starting = False
-            self.ready.set()
             if self.host.session is not None:
-                self.stop(str(error), discard=error.unwritten if isinstance(error, NothingOpened) else None)
+                if isinstance(error, StartCancelled):
+                    self.stop(discard=())
+                else:
+                    self.stop(str(error), discard=error.unwritten if isinstance(error, NothingOpened) else None)
+            self.ready.set()
             raise
         finally:
             self.starting = False
@@ -860,13 +870,14 @@ class BrowserCapture:
                 self.stopped.set()
                 return dict(type="stopped", path=None)
             if self.finished:
-                return dict(type="stopped", path=str(self.directory))
+                # A discarded start has no folder (D58).
+                return dict(type="stopped", path=None if self.directory is None else str(self.directory))
             joining = self.stopping
             self.stopping = True
         if joining:
             if not self._pcm_stopped.wait(12):
                 raise TimeoutError("Recording is still being saved")
-            return dict(type="stopped", path=str(self.directory))
+            return dict(type="stopped", path=None if self.directory is None else str(self.directory))
         publishing = False
         try:
             with self.transition:

@@ -685,3 +685,76 @@ def test_a_new_browser_record_clears_an_earlier_start_error(application_class): 
     )
     application_class.start_recordings(app)
     assert submitted and app.recording_error is None and app.recording_failure is None
+
+
+@pytest.mark.parametrize("refused", [(), ("microphone",)], ids=["both-cancelled", "one-refused-one-cancelled"])
+def test_a_stop_during_fallback_startup_leaves_no_folder_and_no_banner(tmp_path, refused):
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from test_native_sides import Taps
+
+    from cassini_talk.browser_capture import BrowserCapture
+    from cassini_talk.browser_service import start_refusals
+    from cassini_talk.refusals import StartCancelled, from_result
+
+    release = threading.Event()
+    entered = {"microphone": threading.Event(), "system": threading.Event()}
+
+    class GatedTaps(Taps):
+        def __call__(self, kind, origin, append, failed, *, level):
+            tap = super().__call__(kind, origin, append, failed, level=level)
+            start = tap.start
+
+            def opening():
+                entered[kind].set()
+                start()  # Waits on its gate.
+
+            tap.start = opening
+            return tap
+
+    taps = GatedTaps(refuse={kind: 1 for kind in refused}, gate={"microphone": release, "system": release})
+    capture = BrowserCapture(lambda *_: None, parent=tmp_path, tap_factory=taps)
+    capture.browser_lost = True
+    browser = from_result(dict(ok=False, code="pageUnreachable", error="No page yet"))
+    message = dict(type="start", captureId="stopped", timelineOriginMs=int(time.time() * 1000), microphone=True)
+    with ThreadPoolExecutor(2) as pool:
+        starting = pool.submit(capture.start, message, others_source="system", reason="missing", refusals=[browser])
+        assert all(event.wait(5) for event in entered.values())  # Bound only: both sides are opening.
+        stopping = pool.submit(capture.stop)
+        assert capture.stop_requested.wait(5)  # Bound only: the user's Stop has arrived.
+        release.set()
+        with pytest.raises(StartCancelled) as raised:
+            starting.result(10)
+        assert stopping.result(10) == dict(type="stopped", path=None)
+    # Nothing opened because of the Stop: no folder, no banner, no refusals.
+    assert capture.discarded and capture.finished and not list(tmp_path.iterdir())
+    assert start_refusals(raised.value) == []
+    assert all(tap.stopped for tap in taps.made if tap.started)
+
+
+def test_a_cancelled_fallback_start_keeps_no_browser_refusal_for_the_banner(broker, monkeypatch):  # noqa: F811
+    from concurrent.futures import ThreadPoolExecutor
+
+    from test_browser_sessions import Extension
+
+    from cassini_talk.browser_service import request, send_packet
+    from cassini_talk.refusals import StartCancelled
+
+    def stopped(*_args, **_kwargs):
+        raise StartCancelled("Recording start was cancelled")
+
+    monkeypatch.setattr(broker.service, "start_fallback", stopped)
+    peer = Extension(broker.path, (3,))
+    try:
+        with ThreadPoolExecutor(1) as pool:
+            pending = pool.submit(request, "start-all", path=broker.path)
+            command = peer.receive()
+            result = dict(type="result", requestId=command["requestId"], ok=False, error="No page", code="noSources")
+            send_packet(peer.stream, result)
+            snapshot = pending.result(10)
+        # A Stop is not a refusal: the browser's refusal leads no banner.
+        assert snapshot["failures"][0]["refusals"] == []
+    finally:
+        peer.close()

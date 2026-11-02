@@ -29,7 +29,7 @@ from .call_lifecycle import (
     CallLifecycle,
     ResumeInputs,
 )
-from .refusals import NothingOpened
+from .refusals import NothingOpened, StartCancelled
 from .session_events import source_state
 
 MAX_PACKET = 512 * 1024
@@ -1917,8 +1917,8 @@ class BrowserService:
                     return self.start_fallback(
                         identifier, meeting, microphone, cancelled=group, deadline=deadline, refusals=[rejected.refusal]
                     )
-                except NothingOpened:
-                    raise  # It already lists the browser refusal first.
+                except (NothingOpened, StartCancelled):
+                    raise  # It already lists the browser refusal first, or none: a Stop.
                 except (OSError, ValueError, TimeoutError) as error:
                     # The browser refused first: it leads the banner and its caption.
                     raise StartRefused(str(error), [rejected.refusal, *start_refusals(error)]) from error

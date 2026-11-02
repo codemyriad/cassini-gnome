@@ -71,6 +71,11 @@ class NothingOpened(OSError):
         self.unwritten = list(refusals)  # Those not yet stored, should the folder be kept.
 
 
+class StartCancelled(ValueError):
+    """A Stop cancelled every requested side before any opened: no recording,
+    and not a refusal (R79 §1), so no banner and no stored refusals."""
+
+
 def well_formed(item):
     """An entry the session schema accepts. A null detail or message means absent."""
     if not isinstance(item, dict):
