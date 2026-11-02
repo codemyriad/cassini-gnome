@@ -3,7 +3,6 @@
 
 import json
 import math
-import os
 import time
 
 from .diarization import group_tracks
@@ -53,9 +52,10 @@ def read_cache(path):
         return {}
 
 
-def run(tracks, options, notify, *, statvfs=os.statvfs):
+def run(tracks, options, notify, *, statvfs=None):
     """Failure keeps D11. Results are streamed in bounded messages, never words."""
-    from .diarization_audio import live_recordings, rejoin, shortfall
+    from .diarization_audio import rejoin
+    from .scratch_budget import live_recordings, shortfall
 
     live = live_recordings(options)
     by_id = {t["id"]: t for t in tracks}
@@ -174,7 +174,7 @@ def estimate(tracks, options):
     )
 
 
-def complete(summary, tracks, options, notify, *, statvfs=os.statvfs):
+def complete(summary, tracks, options, notify, *, statvfs=None):
     if not options:
         return summary
     # If a native diarizer crashes after recognition, the parent still has

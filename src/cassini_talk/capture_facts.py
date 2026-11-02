@@ -152,10 +152,11 @@ def separation_result(result, groups, reused):
     # D56 (R75 Q2): groups the worker skipped for disk space carry reason lowDisk.
     diagnostics = result.get("diagnostics") if isinstance(result.get("diagnostics"), list) else []
     low_disk = bool(diagnostics) and all(isinstance(d, dict) and d.get("reason") == "lowDisk" for d in diagnostics)
+    # Groups too short to separate do not hide that the others had no room.
+    if low_disk and all(group["durationMs"] < 200 for group in groups):
+        return dict(status="skipped", reason="lowDisk")
     if not groups:
-        return (
-            dict(status="skipped", reason="lowDisk") if low_disk else dict(status="failed", reason="processingFailed")
-        )
+        return dict(status="failed", reason="processingFailed")
     if all(group["durationMs"] < 200 for group in groups):
         return dict(status="skipped", reason="tooShort", modelId=MODEL_ID, modelRevision=REVISION)
     voices = {(group["id"], turn["speaker"]) for group in groups for turn in group["turns"] if usable(turn)}

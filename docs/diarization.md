@@ -28,18 +28,27 @@ construct or call the model.
 
 G14: the voice step also keeps at most one group's scratch file, 64 KB per second
 of meeting, whatever the number of sources or spans. It rejoins each group to pick
-windows, then rejoins again only the groups whose windows a print reads. Before
-every scratch file, diarization and the voice step require free space for that
-file plus a 1 GiB floor. When the app has a recording running on the same volume
-as the job starts, the recorder's reserve, max(1 GiB, 2 %), applies instead. A
-recording that starts mid-job is covered only by the floor and by the recorder's
-own low-disk handling; that gap is accepted. Without the space, that group keeps
-D11 (or gets no print), nothing is written, the transcript is kept and the
-numbers go to the app log. D56: when no group could be separated and every skip
-was for disk space, `speakerSeparation` records `skipped` with reason `lowDisk`;
-when other groups were separated it is `partial`, with reason `lowDisk` unless a
-group also failed for another reason (`processingFailed`). A skipped voice step
-is only logged.
+windows, then rejoins again only the groups whose windows a print reads, and
+refuses audio that changed between the two passes. A print's audio, at most 45 s
+of float32 (2.9 MB), is freed as soon as the print is made; prints keep their
+order, so a speaker merged across groups holds the speakers after it until its
+last group is read.
+
+Before every scratch file, diarization and the voice step require free space for
+that file plus a 1 GiB floor. When the app has a recording running on the same
+volume as the job starts, the recorder's reserve, max(1 GiB, 2 %), applies
+instead. A recording that starts mid-job is covered only by the floor and by the
+recorder's own low-disk handling; that gap is accepted. Without the space nothing
+is written and the transcript is kept:
+
+- Diarization: that group keeps D11. When no group could be separated and every
+  skip was for disk space (groups shorter than 0.2 s aside), `speakerSeparation`
+  records `skipped` with reason `lowDisk` (D56); when other groups were separated
+  it is `partial`, with reason `lowDisk` unless a group also failed for another
+  reason (`processingFailed`). The numbers go to the app log.
+- Voice step: the whole step fails, as a full disk did before, so saved voices,
+  matches and rejections stay as they were. The numbers go to the app log; the
+  file records nothing (D56).
 
 The pure word assignment follows the shared S-11 vectors. Stable IDs use the
 original group followed by `~n`; display numbering follows speaking word order.
