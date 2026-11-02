@@ -43,11 +43,18 @@ def dispatch(packet):
     try:
         window = app.get_active_window()
         action = packet.get("action", "state")
-        if action == "clipboard":
-            clipboard = window.get_display().get_clipboard()
+        if action in ("clipboard", "primary"):
+            # PRIMARY is read to observe the text another client has selected
+            # (the native picker's location entry); it may have no owner yet.
+            display = window.get_display()
+            clipboard = display.get_clipboard() if action == "clipboard" else display.get_primary_clipboard()
 
             def copied(c, result):
-                print(json.dumps(dict(value=c.read_text_finish(result), local=c.is_local())), flush=True)
+                try:
+                    value, failure = c.read_text_finish(result), None
+                except GLib.Error as error:
+                    value, failure = None, error.message
+                print(json.dumps(dict(value=value, local=c.is_local(), failure=failure)), flush=True)
 
             clipboard.read_text_async(None, copied)
             return GLib.SOURCE_REMOVE
