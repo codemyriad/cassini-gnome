@@ -29,6 +29,7 @@ from .call_lifecycle import (
     CallLifecycle,
     ResumeInputs,
 )
+from .refusals import NothingOpened
 from .session_events import source_state
 
 MAX_PACKET = 512 * 1024
@@ -1906,9 +1907,15 @@ class BrowserService:
                 if rejected.refusal.get("detail") == "busy":
                     # D58 #11: it may be this tab already recording; never record it twice.
                     raise StartRefused(str(rejected), [rejected.refusal]) from None
-                return self.start_fallback(
-                    identifier, meeting, microphone, cancelled=group, deadline=deadline, refusals=[rejected.refusal]
-                )
+                try:
+                    return self.start_fallback(
+                        identifier, meeting, microphone, cancelled=group, deadline=deadline, refusals=[rejected.refusal]
+                    )
+                except NothingOpened:
+                    raise  # It already lists the browser refusal first.
+                except (OSError, ValueError, TimeoutError) as error:
+                    # The browser refused first: it leads the banner and its caption.
+                    raise StartRefused(str(error), [rejected.refusal, *start_refusals(error)]) from error
             except TimeoutError:
                 # No acknowledgement means Start may still be finishing in the
                 # browser. Retire that attempt before its caller can retry it.
