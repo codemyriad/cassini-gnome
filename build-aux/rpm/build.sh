@@ -1,12 +1,14 @@
 #!/bin/sh
 # Build the RPM in a container and copy it (and the SRPM) to ./dist.
-#   build-aux/rpm/build.sh [base-image]      (default: fedora:latest)
+#   build-aux/rpm/build.sh [base-image]      (default: fedora:43)
+# fedora:43 (Python 3.14) until onnxruntime has cp315 wheels for the pinned ORT;
+# fedora:latest is Python 3.15. Move back with the CI matrix (packages.yml).
 # Works with Fedora (dnf) and openSUSE (zypper) images, e.g.
 #   build-aux/rpm/build.sh registry.opensuse.org/opensuse/tumbleweed:latest
 set -eu
 cd "$(dirname "$0")/../.."
 . build-aux/container.sh
-BASE=${1:-fedora:latest}
+BASE=${1:-fedora:43}
 VERSION=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -n1)
 SPEC_VERSION=$(sed -n 's/^Version: *//p' build-aux/rpm/cassini-talk.spec)
 if [ "$VERSION" != "$SPEC_VERSION" ]; then

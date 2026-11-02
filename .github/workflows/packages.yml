@@ -21,7 +21,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - base: fedora:latest
+          # fedora:latest ships Python 3.15, and onnxruntime has no cp315 wheel
+          # yet (1.31.1 stops at cp314), so the pinned private ORT the package
+          # bundles cannot be fetched (whistle/pins.json). Unpin to fedora:latest
+          # once onnxruntime publishes cp315 wheels and the pin is updated.
+          - base: fedora:43
             name: fedora
           - base: registry.opensuse.org/opensuse/tumbleweed:latest
             name: opensuse
