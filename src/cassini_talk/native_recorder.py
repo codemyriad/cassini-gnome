@@ -280,7 +280,11 @@ class NativeRecorder(GObject.Object):
             if not ok and not attempt["committed"] and not attempt["error"]:
                 attempt["error"] = STATE_FAILURE
             failed_committed = not ok and attempt["committed"]
-            self._signal(attempt)
+            # ready means decided: a state change that worked decides nothing.
+            if attempt["error"]:
+                self._signal(attempt)
+            else:
+                attempt["wake"].set()
         if retired:
             attempt["branch"].set_state(Gst.State.NULL)
         elif failed_committed:

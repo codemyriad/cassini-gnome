@@ -365,7 +365,7 @@ def test_a_side_stuck_in_its_state_change_blocks_neither_the_other_side_nor_stop
         branch = sides.blocked.get(blocked)
         # Released, the stuck side's own thread stops its detached branch.
         spin_until(lambda: not any(t.name == f"cassini-open-{blocked}" for t in threading.enumerate()))
-        recorder._executor.shutdown(wait=True)
+        close(recorder)
     assert branch.get_parent() is None and branch.get_state(0)[1] == Gst.State.NULL
 
 
