@@ -1,6 +1,6 @@
 # Browser call lifetime (D33)
 
-Shared protocol pin: `14c929bee3b4f5ffe48a0ddf9aec9a6aac82fec8` (protocol PR #37 merge: resume packets carry the ask's `requestId`, a fresh UUID per ask that is never reused, on top of protocol PR #36, the D58 refusal vector follow-ups, #35's classified refusals and result codes, #34's D57 resume host clarifications and the D52.5 PR #32).
+Shared protocol pin: `364c87b94b6769f06263a418a8399eedb91b7bbe` (protocol PR #38: Mac's #37 follow-ups, a forget vector; on top of the PR #37 merge: resume packets carry the ask's `requestId`, a fresh UUID per ask that is never reused, on top of protocol PR #36, the D58 refusal vector follow-ups, #35's classified refusals and result codes, #34's D57 resume host clarifications and the D52.5 PR #32).
 Companion 0.2.11 replaces older local installs; no Chrome Web Store packaging or upload is performed.
 
 The broker owns every independent capture and its Library folder. With the

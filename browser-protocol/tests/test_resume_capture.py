@@ -38,6 +38,8 @@ def attribute(steps, ids=None):
             closed.add(step['connection'])
         elif op == 'native':
             answer(ids[step['ask']], step['message'])
+        elif op == 'forget':
+            pending.pop(ids[step['ask']], None)  # An app-side timeout: nothing is written.
         elif op not in ('nativeWithoutId', 'nativeUnknownId'):
             raise AssertionError('unknown op ' + op)
         # A refusal without a requestId, or with one no ask was given, records nothing.
@@ -46,7 +48,7 @@ def attribute(steps, ids=None):
 class ResumeTests(unittest.TestCase):
     def test_ask_attribution_vectors_hold_with_a_fresh_id_per_ask(self):
         # R82 1b: one entry per ask, from its first answer, at its own time.
-        self.assertGreaterEqual(len(ATTRIBUTION['cases']), 9)
+        self.assertGreaterEqual(len(ATTRIBUTION['cases']), 10)
         self.assertEqual(ATTRIBUTION['entry'], dict(side='browser', code='startRejected', detail='resumeRefused'))
         for case in ATTRIBUTION['cases']:
             with self.subTest(case=case['name']):
