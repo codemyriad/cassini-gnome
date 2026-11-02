@@ -2366,6 +2366,46 @@ class BrowserService:
             with self.lock:
                 self._capture_policy_pending.discard(key)
 
+    def _resume_still_eligible(self, key, capture, browser, tab):
+        """Every D52.5 ask condition, read again at send time (caller holds self.lock).
+
+        The decision was taken on an earlier tick; the page may have navigated,
+        the row's count become unknown or zero, the call changed, the extension
+        reported the tab again, the loss ended or the connection gone since.
+        """
+        lifecycle = self._capture_lifecycles.get(key)
+        state = browser.states.get(tab, {})
+        meeting = browser.meetings.get(tab)
+        if lifecycle is None or meeting is None:
+            return False
+        page = browser.page_states.get(tab) or state.get("pageState") or meeting.get("pageState")
+        current = source_state(capture.host.session.manifest.get("events"))
+        return bool(
+            self.browsers.get(browser.id) is browser  # the same control connection, still open
+            and not browser.closed
+            and not browser.shut_down.is_set()
+            and browser.status_seen
+            and RESUME_CAPTURE in browser.capabilities
+            and state.get("recording")
+            and state.get("captureId") == key
+            and page == "present"
+            and meeting.get("sourceCountKnown", True) is True
+            and meeting.get("sourceCount", 0) > 0
+            and capture.call_generation is not None
+            and meeting.get("callGeneration") == capture.call_generation
+            and lifecycle.heard
+            and tab not in browser.reported  # the extension released the tab
+            and (current.source, current.reason) == ("system", "lost")
+            and capture.browser_lost
+            and capture.others
+            and not (capture.finished or capture.stopping or capture.stop_requested.is_set())
+            and not capture.audio_connected
+            and not any(t.capture is capture for t in self._audio_transports)
+            and lifecycle.asked_loss == capture.loss_serial  # the loss the ask was decided for
+            and browser.id in lifecycle.asked_on
+            and not self._stopping_all.is_set()
+        )
+
     def _ask_resume(self, key, capture, identifier):
         """D52.5: send one resume-capture-v1 Start naming this lost recording.
 
@@ -2373,24 +2413,24 @@ class BrowserService:
         would become a fresh Start fallback (forbidden after a failed resume),
         a stale result would cancel the very target, and it would wait up to
         the command timeout. Nothing here retries.
+
+        The ask was decided on an earlier tick. It is revalidated and queued
+        under the inventory lock that guards the decision; when it no longer
+        holds, nothing is sent and the reservation is released, so this loss
+        and connection can still ask once it is eligible again. Queueing is
+        not socket I/O: one writer thread owns the stream.
         """
+        browser_id, _, raw_tab = (identifier or "").partition(":")
         with self.lock:
-            browser_id, _, raw_tab = (identifier or "").partition(":")
             browser = self.browsers.get(browser_id)
             if (
                 browser is None
-                or browser.closed
-                or browser.shut_down.is_set()
-                or RESUME_CAPTURE not in browser.capabilities
                 or not raw_tab.isdecimal()
-                or capture.finished
-                or capture.stopping
-                or capture.stop_requested.is_set()
-                or not capture.browser_lost
-                or capture.audio_connected
-                or capture.call_generation is None
-                or self._stopping_all.is_set()
+                or not self._resume_still_eligible(key, capture, browser, int(raw_tab))
             ):
+                lifecycle = self._capture_lifecycles.get(key)
+                if lifecycle is not None:
+                    lifecycle.asked_on.discard(browser_id)
                 return
             request_id = str(uuid4())
             packet = dict(
@@ -2410,11 +2450,11 @@ class BrowserService:
             browser.resumes[request_id] = key
             while len(browser.resumes) > RESUME_HISTORY:
                 browser.resumes.pop(next(iter(browser.resumes)))
-        try:
-            with browser.order_lock:
+            try:
                 browser.send(packet)
-        except (OSError, ValueError) as error:
-            logging.getLogger(__name__).info("Could not ask the browser to resume recording %s: %s", key, error)
+            except (OSError, ValueError) as error:
+                browser.resumes.pop(request_id, None)
+                logging.getLogger(__name__).info("Could not ask the browser to resume recording %s: %s", key, error)
 
     def _fallback(self, identifier, capture):
         try:

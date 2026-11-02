@@ -386,3 +386,98 @@ def test_returning_to_an_earlier_open_connection_does_not_ask_it_again(policy):
         assert len(asks(sent)) == 2, "never twice per loss on one connection"
     finally:
         capture.stop()
+
+
+def a_new_loss(service, browser, capture):
+    """The browser source comes back and is lost again: loss 2, same connection."""
+    from cassini_talk.browser_service import AudioTransport
+
+    service._resume_attach(
+        dict(
+            type="resume",
+            version=1,
+            independent=True,
+            captureId="F",
+            timelineOriginMs=capture.origin_ms,
+            callGeneration="call-A",
+            features=["resume-capture-v1"],
+        ),
+        AudioTransport(None, service.clock),
+    )
+    capture.handle(dict(type="track", id="back", kind="remote", label="Guest", sampleRate=48000, channels=1))
+    capture.handle(dict(type="audio", id="back", sequence=0, offsetMs=capture.elapsed_ms(), pcm="AQACAA=="))
+    capture.restore()
+    assert not capture.browser_lost
+    capture.close()
+    assert capture.browser_lost and capture.loss_serial == 2
+
+
+# What may change between the tick that decided an ask and the worker sending it.
+CHANGES = {
+    # Codex's sequence on #169: the page navigates and its count becomes unknown.
+    "navigating-unknown-zero": lambda service, browser, capture: service.update(
+        browser, dict(type="meetings", meetings=[row(pageState="navigating", sourceCount=0, sourceCountKnown=False)])
+    ),
+    "present-zero-count": lambda service, browser, capture: service.update(
+        browser, dict(type="meetings", meetings=[row(sourceCount=0)])
+    ),
+    "tab-reported-again": lambda service, browser, capture: service.update(
+        browser, dict(type="status", recording=True, sessions=[session(stopping=True)])
+    ),
+    "a-new-loss": a_new_loss,
+}
+# What makes the ask eligible again afterwards, for that same connection.
+EASED = {
+    "navigating-unknown-zero": lambda service, browser: service.update(
+        browser, dict(type="meetings", meetings=[row()])
+    ),
+    "present-zero-count": lambda service, browser: service.update(browser, dict(type="meetings", meetings=[row()])),
+    "tab-reported-again": released,
+    "a-new-loss": lambda service, browser: service.policy(),
+}
+
+
+def queued_ask(service, parent, tasks, sent):
+    """Decide an ask on one tick and leave it queued, as a busy worker pool would."""
+    browser = peer(service)
+    capture = recording(service, parent, browser)
+    capture.close()
+    released(service, browser)
+    assert [arguments[-1] for _function, arguments in tasks] == ["askResume"] and not asks(sent)
+    assert service._capture_lifecycles["F"].asked_on == {browser.id}
+    return browser, capture
+
+
+@pytest.mark.parametrize("change", CHANGES)
+def test_an_ask_that_is_no_longer_eligible_when_sent_is_not_spent(policy, change):
+    service, tasks, sent, parent = policy
+    browser, capture = queued_ask(service, parent, tasks, sent)
+    try:
+        CHANGES[change](service, browser, capture)
+        run(tasks)  # The worker finally sends the ask decided earlier.
+        assert not asks(sent), "nothing is sent for a decision that no longer holds"
+        assert browser.id not in service._capture_lifecycles["F"].asked_on, "the reservation is released"
+        assert not browser.resumes
+    finally:
+        capture.stop()
+
+
+@pytest.mark.parametrize("change", CHANGES)
+def test_once_eligible_again_the_same_connection_asks_exactly_once(policy, change):
+    service, tasks, sent, parent = policy
+    browser, capture = queued_ask(service, parent, tasks, sent)
+    try:
+        CHANGES[change](service, browser, capture)
+        run(tasks)
+        assert not asks(sent)
+        EASED[change](service, browser)
+        run(tasks)
+        for _ in range(3):
+            service.update(browser, dict(type="meetings", meetings=[row()]))
+            service.policy()
+            run(tasks)
+        (packet,) = asks(sent)
+        assert sent[-1][0] is browser
+        assert packet["resumeCapture"] == dict(captureId="F", timelineOriginMs=capture.origin_ms)
+    finally:
+        capture.stop()
