@@ -33,7 +33,7 @@ class BrowserStatus(Gtk.Box):
             bool(
                 state
                 and self.app.browser_companion_available
-                and state.get("everConnected")
+                and (state.get("everConnected") or state["phase"] == "appTooOld")
                 and state["phase"] != "needsBrowser"
             )
         )
@@ -41,7 +41,9 @@ class BrowserStatus(Gtk.Box):
             return
         state = controller.snapshot()
         self.message.set_label(state_text(state))
-        self.message.set_css_classes(["caption", "warning" if state["phase"] == "failed" else "dim-label"])
+        self.message.set_css_classes(
+            ["caption", "warning" if state["phase"] in ("failed", "appTooOld") else "dim-label"]
+        )
         self.add.set_label(add_text(state))
         self.add.set_visible(bool(state["phase"] == "waiting" and state["browser"]))
         self.retry.set_visible(state["phase"] == "failed")

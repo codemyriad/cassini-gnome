@@ -411,6 +411,8 @@ class BrowserService:
         self.notifier = notifier
         self.workers = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cassini-browser")
         self.closed = threading.Event()
+        # D58 point 5: the last hello asked for a newer control version than ours.
+        self.app_too_old = False
 
     def _owners(self):
         owners = {}
@@ -830,6 +832,7 @@ class BrowserService:
                 browsers=len(self.browsers),
                 protocol=2,
                 connectedBrowsers=sum(b.hello_seen and b.status_seen for b in self.browsers.values()),
+                appTooOld=self.app_too_old,
                 browserNames=sorted(
                     {
                         b.browser_name
@@ -1489,8 +1492,20 @@ class BrowserService:
             elif kind == "pong":
                 pass  # Liveness only, recorded above; seq needs no correlation.
             elif kind == "hello":
-                if type(packet.get("version")) is not int or packet["version"] != 1:
+                version = packet.get("version")
+                if type(version) is int and version > 1:
+                    # D58 point 5: a newer companion is visible as appTooOld, not a silent close.
+                    self.app_too_old = True
+                    logging.getLogger(__name__).warning(
+                        "Browser companion speaks control version %d; update Cassini", version
+                    )
                     raise ValueError("Unsupported browser control version")
+                if type(version) is not int or version != 1:
+                    logging.getLogger(__name__).warning(
+                        "Closing a browser control connection with hello version %r", str(version)[:32]
+                    )
+                    raise ValueError("Unsupported browser control version")
+                self.app_too_old = False
                 browser.hello_seen = True
                 capabilities = packet.get("capabilities", [])
                 browser.capabilities = (

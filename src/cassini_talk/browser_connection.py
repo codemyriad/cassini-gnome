@@ -140,6 +140,8 @@ class BrowserConnection:
         self.closed = self.succeeded = self.connected = False
         self.ever_connected = bool(ever_connected)
         self.error = None
+        # D58 point 5: a companion speaks a newer control version than this app.
+        self.app_too_old = False
         self.browsers = self.names = ()
         self.future = None
         self.timer = 0
@@ -149,6 +151,8 @@ class BrowserConnection:
         phase = (
             "connected"
             if self.connected
+            else "appTooOld"
+            if self.app_too_old
             else "settingUp"
             if self.future is not None
             else "needsBrowser"
@@ -171,11 +175,12 @@ class BrowserConnection:
     def observe(self, snapshot):
         if self.closed:
             return
-        before = self.connected, self.names
+        before = self.connected, self.names, self.app_too_old
         self.connected = bool(snapshot.get("connectedBrowsers", snapshot.get("browsers")))
         self.ever_connected |= self.connected
         self.names = tuple(snapshot.get("browserNames", []))
-        if before != (self.connected, self.names):
+        self.app_too_old = bool(snapshot.get("appTooOld")) and not self.connected
+        if before != (self.connected, self.names, self.app_too_old):
             self.changed()
         if not self.connected and self.succeeded and self.browsers and not self.future and not self.timer:
             self._check_health()
