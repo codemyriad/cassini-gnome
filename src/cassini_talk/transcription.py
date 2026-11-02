@@ -583,8 +583,6 @@ class TranscriptionQueue:
                 if not state["readOnly"]:
                     voice_generation = state["generation"]
                     voices_options = self.voice_models.request(directory, origin=meeting.origin)
-                    if voices_options is not None:
-                        voices_options = dict(voices_options, recordingDirectories=live)
             except (OSError, ValueError):
                 LOG.exception("Saved voices unavailable; keeping ordinary speaker names")
         self.client.keep_for_voices = voices_options is not None
@@ -710,7 +708,15 @@ class TranscriptionQueue:
                 with transaction(directory):
                     history = read_metadata(directory).get("speakerMerges", [])
                 prints = self.client.voiceprints(
-                    tracks, dict(voices_options, directory=str(directory), speakerMerges=history), self._check_open
+                    tracks,
+                    # G14: recordings live now, not at job start: one may have begun while writing down.
+                    dict(
+                        voices_options,
+                        directory=str(directory),
+                        speakerMerges=history,
+                        recordingDirectories=self._live_recordings(),
+                    ),
+                    self._check_open,
                 )
                 self._check_open()
 

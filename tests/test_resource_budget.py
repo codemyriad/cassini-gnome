@@ -149,10 +149,13 @@ class Holes:
 
 
 def fake_extractor(monkeypatch, *, metadata=False):
-    """Prints are a digest of the chunks; `seen` keeps each chunk's distinct PCM16 values."""
+    """Prints are a digest of the chunks; `seen` keeps each chunk's distinct PCM16 values, in embed order."""
     import numpy as np
 
-    seen = []
+    class Seen(list):
+        by_digest = {}  # inputSHA256 -> the same values, for prints sent in another order.
+
+    seen = Seen()
 
     class Extractor:
         def __init__(self, *_args):
@@ -163,7 +166,9 @@ def fake_extractor(monkeypatch, *, metadata=False):
             joined = b"".join(chunk.tobytes() for chunk in chunks)
             if not joined:
                 return None
-            return dict(embedding=[len(chunks)], seconds=len(joined) / 4 / RATE, inputSHA256=sha256(joined).hexdigest())
+            digest = sha256(joined).hexdigest()
+            seen.by_digest[digest] = seen[-1]
+            return dict(embedding=[len(chunks)], seconds=len(joined) / 4 / RATE, inputSHA256=digest)
 
         def close(self):
             pass
@@ -198,16 +203,14 @@ def voices(root, tracks, *, merges=(), statvfs=ROOMY, complete=True):
 
 
 def voice_step(root, remotes, spans):
-    """One voice step on a fresh two-hour meeting; the child entry point of the test below."""
+    """One voice step on a fresh 30-minute meeting; the child entry point of the test below."""
     monkeypatch = pytest.MonkeyPatch()
     seen = fake_extractor(monkeypatch)
     tracks = meeting(Path(root), remotes, spans)
     meter = Meter(monkeypatch)
     events = voices(Path(root), tracks, merges=[("track-r2", "track-r1")] if remotes > 1 else ())
-    speakers = [e["speaker"] for e in events if e["type"] == "voice-print"]
-    return dict(
-        entries=len(tracks), peak=meter.peak, open=len(meter.open), chunks=dict(zip(speakers, seen, strict=True))
-    )
+    chunks = {e["speaker"]: seen.by_digest[e["inputSHA256"]] for e in events if e["type"] == "voice-print"}
+    return dict(entries=len(tracks), peak=meter.peak, open=len(meter.open), chunks=chunks)
 
 
 CHILD = """
@@ -672,3 +675,80 @@ def test_each_print_frees_its_window_audio_before_the_next_speaker_is_read(tmp_p
     assert [p["speaker"] for p in prints] == ["others~1", "others~2"]
     assert extractor == [[[50]] * len(prints[0]["windows"]), [[70]] * len(prints[1]["windows"])]
     assert peak[0] == max(len(p["windows"]) for p in prints) and held[0] == 0
+
+
+def test_a_speaker_merged_across_groups_holds_back_no_one_elses_audio(tmp_path, monkeypatch, extractor):
+    """The first speaker (others, merged with r3) waits for r3's group; r1 and r2 are embedded meanwhile."""
+    tracks = meeting(tmp_path, 3, 0)
+    held, peak = [0], [0]
+    read = worker_voices.read_window
+
+    def counted(stream, start, end):
+        held[0] += 1
+        peak[0] = max(peak[0], held[0])
+        return read(stream, start, end)
+
+    monkeypatch.setattr(worker_voices, "read_window", counted)
+    model = sys.modules["cassini_talk.campplus"].SpeakerExtractor
+    embed = model.embed
+
+    def released(self, chunks):
+        held[0] -= len(chunks)
+        return embed(self, chunks)
+
+    monkeypatch.setattr(model, "embed", released)
+    events = voices(tmp_path, tracks, merges=[("track-r3", "others")])
+    sent = [(e["type"], e.get("speaker")) for e in events if e["type"] != "voice-progress" or "speaker" in e]
+    # Prints still go out in plan order, each followed by its progress notice.
+    assert sent == [("voice-print", s) for s in ("others", "track-r1", "track-r2")] + [("voices-complete", None)]
+    kinds = [e["type"] for e in events]
+    assert all(kinds[i + 1] == "voice-progress" for i, kind in enumerate(kinds) if kind == "voice-print")
+    prints = {e["speaker"]: e for e in events if e["type"] == "voice-print"}
+    assert {v for chunk in extractor.by_digest[prints["others"]["inputSHA256"]] for v in chunk} == {50, 400}
+    assert held[0] == 0
+    others = len(prints["others"]["windows"])
+    assert peak[0] <= others + max(len(prints[s]["windows"]) for s in ("track-r1", "track-r2")), peak
+
+
+def test_a_recording_started_while_writing_down_counts_for_the_voice_pass(tmp_path, monkeypatch, caplog):
+    from cassini_talk.recording_session import RecordingSession
+    from cassini_talk.transcription import TranscriptionQueue
+    from cassini_talk.voice_store import VoiceStore
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    session = RecordingSession(tmp_path, source="gnome")
+    session.add_track("sound", "The others", "system", 16000, 1)
+    session.append("sound", b"\x01\x00" * 80000, 0)
+    session.finish()
+    live = tmp_path / "Recording-live"
+    live.mkdir()
+    started = threading.Event()
+    store = VoiceStore(tmp_path / "private")
+    store.refresh()
+
+    class Client(worker_client(monkeypatch, [dict(text="Hello", startMs=0, endMs=4000)])):
+        def process_tracks(self, tracks, notify):
+            started.set()  # A recording on this volume starts while writing down.
+            return super().process_tracks(tracks, notify)
+
+    monkeypatch.setattr(scratch_budget, "volume_usage", usage(0, 100 << 30))
+    done = threading.Event()
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _directory: done.set(),
+        bundle=tmp_path,
+        root=tmp_path,
+        client_factory=Client,
+        diarization_models=VoiceModels(),
+        voice_models=VoiceModels(),
+        voice_store=store,
+        recordings=lambda: [live] if started.is_set() else [],
+    )
+    try:
+        caplog.set_level("WARNING")
+        assert queue.enqueue(session.directory)
+        assert done.wait(30)
+        (diagnostic,) = [r.message for r in caplog.records if "voices-skipped-low-disk" in r.message]
+        assert f"'reserveBytes': {2 << 30}" in diagnostic  # 2 % of 100 GiB, not the 1 GiB floor.
+    finally:
+        queue.close()

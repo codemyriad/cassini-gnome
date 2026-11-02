@@ -208,16 +208,21 @@ def run(tracks, options, notify, *, statvfs=None):
                 plans.setdefault(speaker, []).extend((index, start, end) for start, end in windows)
         group_file.close()
         chosen = {speaker: chosen_windows(windows, total_frames) for speaker, windows in plans.items()}
-        speakers, audio = deque(chosen), {}
+        speakers, audio, results = deque(chosen), {}, {}
 
-        def embed_ready():
-            """Prints keep plan order; each is made, and its audio freed, once all its windows are read."""
-            while speakers and all((speakers[0], n) in audio for n in range(len(chosen[speakers[0]]))):
+        def embed(speaker):
+            """Embed once all of a speaker's windows are read, in any order, and free its audio."""
+            chunks = [audio.pop((speaker, n)) for n in range(len(chosen[speaker]))]
+            result = model.embed(chunks)
+            if result is None and sum(len(chunk) for chunk in chunks) >= 4 * 16000:
+                raise ValueError("Selected speech produced no usable speaker print")
+            results[speaker] = result
+
+        def notify_ready():
+            """Prints keep plan order (match ties and the private store follow it); a waiting one is small."""
+            while speakers and speakers[0] in results:
                 speaker = speakers.popleft()
-                chunks = [audio.pop((speaker, n)) for n in range(len(chosen[speaker]))]
-                result = model.embed(chunks)
-                if result is None and sum(len(chunk) for chunk in chunks) >= 4 * 16000:
-                    raise ValueError("Selected speech produced no usable speaker print")
+                result = results.pop(speaker)
                 if result is not None:
                     notify(
                         "voice-print",
@@ -229,18 +234,23 @@ def run(tracks, options, notify, *, statvfs=None):
                     )
                 notify("voice-progress")
 
-        embed_ready()
+        for speaker in speakers:
+            if not chosen[speaker]:
+                embed(speaker)
+        notify_ready()
         for index in sorted({index for windows in chosen.values() for index, _start, _end in windows}):
             with group_audio(index) as (stream, _frames, sha):
                 if sha != digests[index]:
                     raise ValueError("Voice audio changed during extraction")
-                for speaker in list(speakers):
-                    if speaker not in speakers:
-                        continue  # Printed while reading this group.
+                for speaker in speakers:
+                    if speaker in results:
+                        continue
                     for n, (at, start, end) in enumerate(chosen[speaker]):
                         if at == index:
                             audio[speaker, n] = read_window(stream, start, end)
-                    embed_ready()
+                    if all((speaker, n) in audio for n in range(len(chosen[speaker]))):
+                        embed(speaker)
+                notify_ready()
         if speakers:
             raise ValueError("Voice windows were left unread")
     notify("voices-complete")
