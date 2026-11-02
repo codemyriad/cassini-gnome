@@ -97,7 +97,13 @@ def _counter(tracks, ids, field):
 
 def sources(session, metadata, *, live):
     raw_tracks = session.get("tracks", [])
-    record = from_session(dict(session, tracks=raw_tracks if isinstance(raw_tracks, list) else []))
+    # Source rows come from captureOutcome. A session with only refusals (D58)
+    # has none of its own: the stored captureRecord's rows stay authoritative.
+    record = (
+        from_session(dict(session, tracks=raw_tracks if isinstance(raw_tracks, list) else []))
+        if isinstance(session.get("captureOutcome"), dict)
+        else None
+    )
     record = stored(dict(recordingDetails=dict(captureRecord=record))) if record is not None else stored(metadata)
     if record is None:
         return ()

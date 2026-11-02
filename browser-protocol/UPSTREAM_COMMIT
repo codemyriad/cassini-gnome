@@ -1,26 +1,26 @@
-tree 85f61a473d2586ad6dd123acefcf41b14808c1b0
-parent 941a82cb9aa9acf70e1c9ed3c698caa222a218fc
-parent c2e66666d045f9b13b263d2813f1366d16fa4521
-author Silvio Tomatis <silviot@gmail.com> 1793607898 +0100
-committer GitHub <noreply@github.com> 1793607898 +0100
+tree 9d56ccf8fd7b7f83c2b45adbae0bd623838b4b7e
+parent 71d9bc465781a943c32bd41159fb2dc0b49ffe19
+parent dc9238213f33088a95d5a548b2be184d8808b7b0
+author Silvio Tomatis <silviot@gmail.com> 1793613898 +0100
+committer GitHub <noreply@github.com> 1793613898 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq6EjaCRC1aQ7uu5UhlAAAVPwQAJLo6DfxoCt14YXm2N6J9BHZ
- 2dfihOB27OhfHGjbGpKVBAD+dyElFnYLlxzIvZrOchz2hJ0VzCk++eHgjOsyXKJa
- 1J/OuDf5+cctQMORR8sekDvY/U48MjiCCG1qACQZnNigtWY6N6hVri74jetQHrvN
- SM9VBmNoTdge5gOMAkYizWBt2zxXh4LViak+SmKeoNuEK5zYjW8cZSj+0aHFmSFu
- fomtXt5IV62iaRML4+4Srj89O8S2zGBQv7gl+X3mHaMv6oidVe0O25ZlaFcGL1UN
- t5ibxkcyRQr1pUhCavFZ6PUG5GZ/CFMIBKxl42JxU/ehTVjwxWD0Ds3/tBLe2p/K
- uesgrZt3MbSTM2qQVU8jcM/UZbSLD3onJWzClc0PI750bsouKcJeFfSSq+Lgh+S9
- POctcvKDvg4PJSXAVNiwt1mG9z0Cp3ic7x90c3rdPJ3KAhV74an02HjtrE3vbA8R
- FpJyj1rOHrmPPZpc0IPY0rfwqFJw6rsGKlprguCZIWXZSdWXQJE+kc1VFbwdeXv2
- tNGVFNsLNvJL0JwHV8t4yXr3eBfPwZpzQBoZyIAV4rFw4yEHG9bueuQHGYFUIYCY
- o1sNdwpPC+v0iNxQk5bZNCdny2bSdncCdqAF9K0NG2uQ4RuBbegC7Zf9De+p2Uky
- 2EPYn935R6eYc4hiiA+z
- =FZvT
+ wsFcBAABCAAQBQJq6GBKCRC1aQ7uu5UhlAAAWmIQACIRFZKEZF2B4sJFLB8KBnOW
+ PfUpyXvuAqxqIPV9QDKOHSYCuLjPidxsYhX7UcDXu2w70HN9ZRa/qy2b3927iwUp
+ JOtQ6d0VFlCeFWrquAfJ2b1JyUCRED0KlEvggsgnNiZUMZdjax5ldy3/EKc0ouxa
+ Uqv3x+y2dNGcmdrv+nGIkbUjww5Be0wSxHgcPjhuyzoQmcHYC5LDsMhN4zjhHfLv
+ MTcf2IBNZZWC7X1ywYzSypHWJayrkrz8iCy6JVkLdwWmSHpEg8OG1Vo8tSEmuTfP
+ e4bH0Vq3WMEdTtoYfzl89JBy3y0+EOnBxdVxyq7WUA0/achMhxWX1fIix8Qj4DEU
+ d5tjpYM5BfpGLg4VjAZssFwQypl/3gM2xzSBOjxFqtxIIBLupF9cCinFJg3WU9An
+ HEFSONb9uxnqDV+f8XQbn5DVBKpiLnRQodadygIBQGYikpP/n6udnS6WVrQZk6BZ
+ phRLvFaHdY69COh/OVvgbYUspGoDtfqIfEkS8zkrppkz9M003x7Oz8rI1GEa6vwQ
+ HRLmIhOAVVJIyeNWCyvy3w0bQYwxft3w/9KSolrwHFpmIESL+QFaZybaa62IXIxe
+ no2TpCcC0D9LY39vu8B4Xq7CyzDQ79Tv7Tj+34Mfo1kynPsE9gKfSTOm2Wcl5Y+F
+ Ztl012FwWrsEWaRO70oz
+ =Nv29
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #34 from codemyriad/feat/resume-host-clarifications
+Merge pull request #36 from codemyriad/chore/refusal-vector-followups
 
-Resume host clarifications from GNOME G7 part C (D57)
+Refusal and watchdog vector follow-ups (#35, #34; D58, D57)

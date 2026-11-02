@@ -359,6 +359,56 @@
         }
       },
       "additionalProperties": true
+    },
+    "refusals": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "required": [
+          "atMs",
+          "side",
+          "code"
+        ],
+        "properties": {
+          "atMs": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 86460000
+          },
+          "side": {
+            "type": "string",
+            "pattern": "^[A-Za-z]{1,32}$",
+            "$comment": "Open. Known: me, others, browser."
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Za-z]{1,32}$",
+            "$comment": "Open. Writers use permissionDenied, deviceUnavailable, startRejected, startFailed."
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Za-z]{1,32}$",
+            "$comment": "Open. A pattern-valid control result code is copied here as is; any other value is dropped. Null means absent."
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200,
+            "$comment": "Raw text from whoever refused, never catalog copy; cut to 200 Unicode code points; an empty text is omitted. Null means absent."
+          }
+        },
+        "additionalProperties": true
+      },
+      "$comment": "D58 (R79): optional; sides requested but never opened (SPEC S-6, Refusals). Step order, the first 15 plus the latest. Omitted when empty. Never changes state, problem, problemKind, end reason, othersSource or captureOutcome. Apply the patterns to the whole string: Python re.search and ICU/NSRegularExpression also let $ match before a final newline. Readers skip an entry this item schema rejects."
     }
   },
   "additionalProperties": true,

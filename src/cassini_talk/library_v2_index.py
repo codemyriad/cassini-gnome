@@ -300,6 +300,7 @@ class PublishedIndex:
                 capture_source=working.capture_source if working else None,
                 capture_state=working.capture_state if working else None,
                 capture_events=working.capture_events if working else (),
+                capture_refusals=working.capture_refusals if working else (),
                 interrupted_at_ms=working.interrupted_at_ms if working else None,
                 audio_file=path,
                 published_file=path,

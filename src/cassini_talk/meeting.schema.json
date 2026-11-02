@@ -552,6 +552,9 @@
         },
         "additionalProperties": true
        }
+      },
+      "refusals": {
+       "description": "D58 (R79), documentation only (R81): a verbatim copy of session.json refusals [{atMs, side, code, detail?, message?}], sides that were requested but never opened, at most 16 (the first 15 plus the latest); null means absent. No validation here: readers apply the lenient reading rules (a non-list value is ignored, a bad entry is skipped for display, unknown members and codes are preserved), so this member never makes a meeting.json invalid. Never changes state, problem, problemKind or captureOutcome."
       }
      },
      "additionalProperties": true,

@@ -69,7 +69,36 @@ def test_more_targets_than_workers_return_a_failure_for_every_unfinished_start(s
             assert first["action"] == "start"
             result = pending.result(1)
             assert time.monotonic() - before < 0.8
-            assert result["cancelled"] and result["attempted"] == len(result["failures"]) == 64
+            # The deadline is not the user's cancel (D58): each unanswered Start
+            # is a startFailed/timeout refusal for the start banner.
+            assert not result["cancelled"] and result["attempted"] == len(result["failures"]) == 64
+            timeout = [dict(atMs=0, side="browser", code="startFailed", detail="timeout")]
+            assert all(failure["refusals"] == timeout for failure in result["failures"])
+    finally:
+        peer.close()
+
+
+@pytest.mark.parametrize("user", [False, True], ids=["deadline", "user"])
+def test_a_start_that_saw_the_deadline_before_its_result_was_read_is_unanswered(service, monkeypatch, user):  # noqa: F811
+    server, path = service
+    peer = Extension(path, (3,))
+
+    def batch(jobs, _deadline, *, cancelled, expired):
+        # The Start saw the cancel (the expiry's or the user's) and ended
+        # before the batch read its result, as it can on a loaded host.
+        if not user:
+            expired.set()
+        cancelled.set()
+        return [(identifier, None, ValueError("Recording start was cancelled")) for identifier, _job in jobs], []
+
+    monkeypatch.setattr(server, "_batch", batch)
+    try:
+        result = request("start-all", path=path)
+        # D58: only the user's cancel shows no refusal; at the deadline the
+        # Start is unanswered, as if it were still running then.
+        assert result["cancelled"] is user and len(result["failures"]) == 1
+        expected = [] if user else [dict(atMs=0, side="browser", code="startFailed", detail="timeout")]
+        assert result["failures"][0]["refusals"] == expected
     finally:
         peer.close()
 
@@ -97,7 +126,8 @@ def test_a_native_fallback_crossing_the_deadline_is_saved_and_never_left_recordi
             peer.answer(peer.receive(), ok=False)
             assert entered.wait(1)
             result = pending.result(1)
-            assert result["cancelled"] and len(result["failures"]) == 1
+            assert not result["cancelled"] and len(result["failures"]) == 1
+            assert result["failures"][0]["refusals"][0]["code"] == "startFailed"
             release.set()
             wait_for(lambda: server.captures and all(c.finished for c in server.captures.values()))
             assert not any(s["recording"] for s in request(path=path)["statuses"])

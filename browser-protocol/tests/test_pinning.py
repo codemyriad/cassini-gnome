@@ -13,6 +13,12 @@ sys.path.insert(0, str(ROOT))
 from verify import verify
 
 class PinningTests(unittest.TestCase):
+    def test_result_codes_can_replace_an_installed_029_companion(self):
+        manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
+        parts = tuple(int(part) for part in manifest['version'].split('.'))
+        self.assertGreater(parts + (0,) * (4 - len(parts)), (0, 2, 9, 0),
+                           'D58 result codes need a newer version: local installers never replace equal 0.2.9')
+
     def test_source_retirement_fix_can_replace_an_installed_027_companion(self):
         manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
         parts = tuple(int(part) for part in manifest['version'].split('.'))

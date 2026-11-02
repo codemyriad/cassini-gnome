@@ -68,7 +68,7 @@ def test_failed_replacement_keeps_old_source_and_manifest(server, via_callback):
         capture = service.captures["change-failure"]
         capture.fallback()
         old = capture.native_taps["system"][1]
-        before = (capture.directory / "session.json").read_bytes()
+        before = json.loads((capture.directory / "session.json").read_text())
         files = {p.name for p in capture.directory.iterdir()}
         capture.tap_factory = Broken
         with pytest.raises(ValueError, match="Device unavailable"):
@@ -77,7 +77,12 @@ def test_failed_replacement_keeps_old_source_and_manifest(server, via_callback):
         assert (capture.me, capture.others, capture.browser_lost) == (False, True, True)
         assert capture.native_taps == {"system": (capture.native_taps["system"][0], old)}
         assert not old.stopped and Tap.instances[-1].stopped
-        assert (capture.directory / "session.json").read_bytes() == before
+        # D58: the refused turn-on is appended; nothing else in the file changes.
+        after = json.loads((capture.directory / "session.json").read_text())
+        refusals = after.pop("refusals")
+        assert after == before and len(refusals) == 1
+        assert refusals[0]["side"] == "me" and refusals[0]["code"] == "deviceUnavailable"
+        assert refusals[0]["message"] == "Device unavailable" and refusals[0]["atMs"] > 0
         assert {p.name for p in capture.directory.iterdir()} == files
         old.append(b"\x01\x00" * 480, capture.elapsed_ms() + 100)
         assert not capture.finished

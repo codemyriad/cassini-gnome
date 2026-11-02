@@ -1,0 +1,1228 @@
+{
+ "version": 1,
+ "decision": "D58 (R79)",
+ "note": "Injected refusals. Apps replay them through their own start path and writer. See README.md.",
+ "cases": [
+  {
+   "name": "mic-denied-others-keep-recording",
+   "request": {
+    "me": true,
+    "others": "system"
+   },
+   "steps": [
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "me",
+     "code": "permissionDenied"
+    },
+    {
+     "op": "stop",
+     "atMs": 60000
+    }
+   ],
+   "expected": {
+    "folder": true,
+    "opened": [
+     "others"
+    ],
+    "selection": [
+     {
+      "atMs": 0,
+      "me": true,
+      "others": true,
+      "reason": "start"
+     }
+    ],
+    "othersFrom": "system",
+    "state": "completed",
+    "problemKind": null,
+    "refusals": [
+     {
+      "atMs": 0,
+      "side": "me",
+      "code": "permissionDenied"
+     }
+    ],
+    "banner": null
+   }
+  },
+  {
+   "name": "others-unavailable-me-keeps-recording",
+   "request": {
+    "me": true,
+    "others": "system"
+   },
+   "steps": [
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "others",
+     "code": "deviceUnavailable",
+     "message": "AudioHardwareCreateProcessTap: -50"
+    },
+    {
+     "op": "stop",
+     "atMs": 60000
+    }
+   ],
+   "expected": {
+    "folder": true,
+    "opened": [
+     "me"
+    ],
+    "selection": [
+     {
+      "atMs": 0,
+      "me": true,
+      "others": true,
+      "reason": "start"
+     }
+    ],
+    "othersFrom": "system",
+    "state": "completed",
+    "problemKind": null,
+    "refusals": [
+     {
+      "atMs": 0,
+      "side": "others",
+      "code": "deviceUnavailable",
+      "message": "AudioHardwareCreateProcessTap: -50"
+     }
+    ],
+    "banner": null
+   }
+  },
+  {
+   "name": "nothing-opens-no-folder",
+   "request": {
+    "me": true,
+    "others": "system"
+   },
+   "steps": [
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "me",
+     "code": "deviceUnavailable",
+     "message": "Native audio capture did not produce a sample"
+    },
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "others",
+     "code": "deviceUnavailable"
+    }
+   ],
+   "expected": {
+    "folder": false,
+    "opened": [],
+    "selection": null,
+    "othersFrom": null,
+    "state": null,
+    "problemKind": null,
+    "refusals": null,
+    "banner": {
+     "id": "errors.recordFailed.line",
+     "refusals": [
+      {
+       "atMs": 0,
+       "side": "me",
+       "code": "deviceUnavailable",
+       "message": "Native audio capture did not produce a sample"
+      },
+      {
+       "atMs": 0,
+       "side": "others",
+       "code": "deviceUnavailable"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "start-rejected-falls-back-to-computer-sound",
+   "profile": "fallback",
+   "request": {
+    "me": true,
+    "others": "browser"
+   },
+   "steps": [
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "browser",
+     "code": "startRejected",
+     "detail": "noSources",
+     "message": "No audio is available from that meeting yet."
+    },
+    {
+     "op": "stop",
+     "atMs": 30000
+    }
+   ],
+   "expected": {
+    "folder": true,
+    "opened": [
+     "me",
+     "others"
+    ],
+    "selection": [
+     {
+      "atMs": 0,
+      "me": true,
+      "others": true,
+      "reason": "start"
+     }
+    ],
+    "othersFrom": "system",
+    "state": "completed",
+    "problemKind": null,
+    "refusals": [
+     {
+      "atMs": 0,
+      "side": "browser",
+      "code": "startRejected",
+      "detail": "noSources",
+      "message": "No audio is available from that meeting yet."
+     }
+    ],
+    "banner": null
+   }
+  },
+  {
+   "name": "start-rejected-without-code-falls-back",
+   "profile": "fallback",
+   "request": {
+    "me": true,
+    "others": "browser"
+   },
+   "steps": [
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "browser",
+     "code": "startRejected",
+     "message": "Recording could not start."
+    },
+    {
+     "op": "stop",
+     "atMs": 30000
+    }
+   ],
+   "expected": {
+    "folder": true,
+    "opened": [
+     "me",
+     "others"
+    ],
+    "selection": [
+     {
+      "atMs": 0,
+      "me": true,
+      "others": true,
+      "reason": "start"
+     }
+    ],
+    "othersFrom": "system",
+    "state": "completed",
+    "problemKind": null,
+    "refusals": [
+     {
+      "atMs": 0,
+      "side": "browser",
+      "code": "startRejected",
+      "message": "Recording could not start."
+     }
+    ],
+    "banner": null
+   }
+  },
+  {
+   "name": "start-rejected-without-fallback-records-nothing",
+   "profile": "noFallback",
+   "request": {
+    "me": true,
+    "others": "browser"
+   },
+   "steps": [
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "browser",
+     "code": "startRejected",
+     "detail": "noSources",
+     "message": "No audio is available from that meeting yet."
+    }
+   ],
+   "expected": {
+    "folder": false,
+    "opened": [],
+    "selection": null,
+    "othersFrom": null,
+    "state": null,
+    "problemKind": null,
+    "refusals": null,
+    "banner": {
+     "id": "errors.recordFailed.line",
+     "refusals": [
+      {
+       "atMs": 0,
+       "side": "browser",
+       "code": "startRejected",
+       "detail": "noSources",
+       "message": "No audio is available from that meeting yet."
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "start-failed-timeout-never-falls-back",
+   "request": {
+    "me": true,
+    "others": "browser"
+   },
+   "steps": [
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "browser",
+     "code": "startFailed",
+     "detail": "timeout"
+    }
+   ],
+   "expected": {
+    "folder": false,
+    "opened": [],
+    "selection": null,
+    "refusals": null,
+    "banner": {
+     "id": "errors.recordFailed.line",
+     "refusals": [
+      {
+       "atMs": 0,
+       "side": "browser",
+       "code": "startFailed",
+       "detail": "timeout"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "late-turn-on-refused-is-appended",
+   "request": {
+    "me": true,
+    "others": "system"
+   },
+   "steps": [
+    {
+     "op": "select",
+     "atMs": 10000,
+     "others": false
+    },
+    {
+     "op": "select",
+     "atMs": 45000,
+     "others": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 45000,
+     "side": "others",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "stop",
+     "atMs": 90000
+    }
+   ],
+   "expected": {
+    "folder": true,
+    "opened": [
+     "me",
+     "others"
+    ],
+    "selection": [
+     {
+      "atMs": 0,
+      "me": true,
+      "others": true,
+      "reason": "start"
+     },
+     {
+      "atMs": 10000,
+      "me": true,
+      "others": false,
+      "reason": "user"
+     }
+    ],
+    "othersFrom": null,
+    "state": "completed",
+    "problemKind": null,
+    "refusals": [
+     {
+      "atMs": 45000,
+      "side": "others",
+      "code": "deviceUnavailable"
+     }
+    ],
+    "banner": null
+   }
+  },
+  {
+   "name": "mid-call-failure-is-not-a-refusal",
+   "request": {
+    "me": true,
+    "others": "system"
+   },
+   "steps": [
+    {
+     "op": "fail",
+     "atMs": 30000,
+     "side": "others"
+    },
+    {
+     "op": "stop",
+     "atMs": 60000
+    }
+   ],
+   "expected": {
+    "folder": true,
+    "opened": [
+     "me",
+     "others"
+    ],
+    "selection": [
+     {
+      "atMs": 0,
+      "me": true,
+      "others": true,
+      "reason": "start"
+     }
+    ],
+    "refusals": null,
+    "banner": null
+   }
+  },
+  {
+   "name": "host-setup-broken-is-not-a-refusal",
+   "companion": "failed/buildMissing",
+   "request": {
+    "me": true,
+    "others": "system"
+   },
+   "steps": [
+    {
+     "op": "stop",
+     "atMs": 60000
+    }
+   ],
+   "expected": {
+    "folder": true,
+    "opened": [
+     "me",
+     "others"
+    ],
+    "selection": [
+     {
+      "atMs": 0,
+      "me": true,
+      "others": true,
+      "reason": "start"
+     }
+    ],
+    "othersFrom": "system",
+    "state": "completed",
+    "problemKind": null,
+    "refusals": null,
+    "banner": null
+   }
+  },
+  {
+   "name": "start-rejected-busy-no-fallback",
+   "request": {
+    "me": true,
+    "others": "browser"
+   },
+   "steps": [
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "browser",
+     "code": "startRejected",
+     "detail": "busy",
+     "message": "A recording is already running. Stop it before starting another."
+    }
+   ],
+   "expected": {
+    "folder": false,
+    "opened": [],
+    "selection": null,
+    "othersFrom": null,
+    "state": null,
+    "problemKind": null,
+    "refusals": null,
+    "banner": {
+     "id": "errors.recordFailed.line",
+     "refusals": [
+      {
+       "atMs": 0,
+       "side": "browser",
+       "code": "startRejected",
+       "detail": "busy",
+       "message": "A recording is already running. Stop it before starting another."
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "start-rejected-then-mic-refused",
+   "profile": "fallback",
+   "request": {
+    "me": true,
+    "others": "browser"
+   },
+   "steps": [
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "browser",
+     "code": "startRejected",
+     "detail": "pageUnreachable",
+     "message": "Cassini cannot reach this page yet. Reload the meeting tab, then try again."
+    },
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "me",
+     "code": "deviceUnavailable",
+     "message": "gst-resource-error-quark:3: pulsesrc0: Could not open audio device for recording. pulsesrc.c(1088): gst_pulsesrc_open"
+    },
+    {
+     "op": "stop",
+     "atMs": 30000
+    }
+   ],
+   "expected": {
+    "folder": true,
+    "opened": [
+     "others"
+    ],
+    "selection": [
+     {
+      "atMs": 0,
+      "me": true,
+      "others": true,
+      "reason": "start"
+     }
+    ],
+    "othersFrom": "system",
+    "state": "completed",
+    "problemKind": null,
+    "refusals": [
+     {
+      "atMs": 0,
+      "side": "browser",
+      "code": "startRejected",
+      "detail": "pageUnreachable",
+      "message": "Cassini cannot reach this page yet. Reload the meeting tab, then try again."
+     },
+     {
+      "atMs": 0,
+      "side": "me",
+      "code": "deviceUnavailable",
+      "message": "gst-resource-error-quark:3: pulsesrc0: Could not open audio device for recording. pulsesrc.c(1088): gst_pulsesrc_open"
+     }
+    ],
+    "banner": null
+   }
+  },
+  {
+   "name": "start-rejected-and-both-native-refused",
+   "profile": "fallback",
+   "request": {
+    "me": true,
+    "others": "browser"
+   },
+   "steps": [
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "browser",
+     "code": "startRejected",
+     "message": "Recording could not start."
+    },
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "others",
+     "code": "deviceUnavailable"
+    }
+   ],
+   "expected": {
+    "folder": false,
+    "opened": [],
+    "selection": null,
+    "othersFrom": null,
+    "state": null,
+    "problemKind": null,
+    "refusals": null,
+    "banner": {
+     "id": "errors.recordFailed.line",
+     "refusals": [
+      {
+       "atMs": 0,
+       "side": "browser",
+       "code": "startRejected",
+       "message": "Recording could not start."
+      },
+      {
+       "atMs": 0,
+       "side": "me",
+       "code": "deviceUnavailable"
+      },
+      {
+       "atMs": 0,
+       "side": "others",
+       "code": "deviceUnavailable"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "start-rejected-and-mic-refused-without-fallback",
+   "profile": "noFallback",
+   "request": {
+    "me": true,
+    "others": "browser"
+   },
+   "steps": [
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "browser",
+     "code": "startRejected",
+     "message": "Recording could not start."
+    },
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "me",
+     "code": "permissionDenied"
+    }
+   ],
+   "expected": {
+    "folder": false,
+    "opened": [],
+    "selection": null,
+    "othersFrom": null,
+    "state": null,
+    "problemKind": null,
+    "refusals": null,
+    "banner": {
+     "id": "errors.recordFailed.line",
+     "refusals": [
+      {
+       "atMs": 0,
+       "side": "browser",
+       "code": "startRejected",
+       "message": "Recording could not start."
+      },
+      {
+       "atMs": 0,
+       "side": "me",
+       "code": "permissionDenied"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "cap-keeps-first-15-and-latest",
+   "request": {
+    "me": true,
+    "others": "system"
+   },
+   "steps": [
+    {
+     "op": "select",
+     "atMs": 1000,
+     "me": false
+    },
+    {
+     "op": "select",
+     "atMs": 2000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 2000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 3000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 3000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 4000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 4000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 5000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 5000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 6000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 6000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 7000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 7000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 8000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 8000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 9000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 9000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 10000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 10000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 11000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 11000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 12000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 12000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 13000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 13000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 14000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 14000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 15000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 15000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 16000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 16000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 17000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 17000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 18000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 18000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 19000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 19000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 20000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 20000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "select",
+     "atMs": 21000,
+     "me": true
+    },
+    {
+     "op": "refuse",
+     "atMs": 21000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "op": "stop",
+     "atMs": 30000
+    }
+   ],
+   "expected": {
+    "folder": true,
+    "opened": [
+     "me",
+     "others"
+    ],
+    "selection": [
+     {
+      "atMs": 0,
+      "me": true,
+      "others": true,
+      "reason": "start"
+     },
+     {
+      "atMs": 1000,
+      "me": false,
+      "others": true,
+      "reason": "user"
+     }
+    ],
+    "othersFrom": "system",
+    "state": "completed",
+    "problemKind": null,
+    "refusals": [
+     {
+      "atMs": 2000,
+      "side": "me",
+      "code": "deviceUnavailable"
+     },
+     {
+      "atMs": 3000,
+      "side": "me",
+      "code": "deviceUnavailable"
+     },
+     {
+      "atMs": 4000,
+      "side": "me",
+      "code": "deviceUnavailable"
+     },
+     {
+      "atMs": 5000,
+      "side": "me",
+      "code": "deviceUnavailable"
+     },
+     {
+      "atMs": 6000,
+      "side": "me",
+      "code": "deviceUnavailable"
+     },
+     {
+      "atMs": 7000,
+      "side": "me",
+      "code": "deviceUnavailable"
+     },
+     {
+      "atMs": 8000,
+      "side": "me",
+      "code": "deviceUnavailable"
+     },
+     {
+      "atMs": 9000,
+      "side": "me",
+      "code": "deviceUnavailable"
+     },
+     {
+      "atMs": 10000,
+      "side": "me",
+      "code": "deviceUnavailable"
+     },
+     {
+      "atMs": 11000,
+      "side": "me",
+      "code": "deviceUnavailable"
+     },
+     {
+      "atMs": 12000,
+      "side": "me",
+      "code": "deviceUnavailable"
+     },
+     {
+      "atMs": 13000,
+      "side": "me",
+      "code": "deviceUnavailable"
+     },
+     {
+      "atMs": 14000,
+      "side": "me",
+      "code": "deviceUnavailable"
+     },
+     {
+      "atMs": 15000,
+      "side": "me",
+      "code": "deviceUnavailable"
+     },
+     {
+      "atMs": 16000,
+      "side": "me",
+      "code": "deviceUnavailable"
+     },
+     {
+      "atMs": 21000,
+      "side": "me",
+      "code": "deviceUnavailable"
+     }
+    ],
+    "banner": null
+   }
+  },
+  {
+   "name": "message-cut-at-200-code-points",
+   "request": {
+    "me": true,
+    "others": "system"
+   },
+   "steps": [
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "me",
+     "code": "deviceUnavailable",
+     "message": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\ud83d\ude00e\u0301z"
+    },
+    {
+     "op": "stop",
+     "atMs": 60000
+    }
+   ],
+   "expected": {
+    "folder": true,
+    "opened": [
+     "others"
+    ],
+    "selection": [
+     {
+      "atMs": 0,
+      "me": true,
+      "others": true,
+      "reason": "start"
+     }
+    ],
+    "othersFrom": "system",
+    "state": "completed",
+    "problemKind": null,
+    "refusals": [
+     {
+      "atMs": 0,
+      "side": "me",
+      "code": "deviceUnavailable",
+      "message": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\ud83d\ude00e"
+     }
+    ],
+    "banner": null
+   }
+  },
+  {
+   "name": "empty-message-is-omitted",
+   "request": {
+    "me": true,
+    "others": "system"
+   },
+   "steps": [
+    {
+     "op": "refuse",
+     "atMs": 0,
+     "side": "me",
+     "code": "deviceUnavailable",
+     "message": ""
+    },
+    {
+     "op": "stop",
+     "atMs": 60000
+    }
+   ],
+   "expected": {
+    "folder": true,
+    "opened": [
+     "others"
+    ],
+    "selection": [
+     {
+      "atMs": 0,
+      "me": true,
+      "others": true,
+      "reason": "start"
+     }
+    ],
+    "othersFrom": "system",
+    "state": "completed",
+    "problemKind": null,
+    "refusals": [
+     {
+      "atMs": 0,
+      "side": "me",
+      "code": "deviceUnavailable"
+     }
+    ],
+    "banner": null
+   }
+  }
+ ],
+ "wire": [
+  {
+   "name": "result-code-becomes-detail",
+   "result": {
+    "type": "result",
+    "requestId": "r1",
+    "ok": false,
+    "error": "No audio is available from that meeting yet.",
+    "code": "noSources"
+   },
+   "expected": {
+    "side": "browser",
+    "code": "startRejected",
+    "detail": "noSources",
+    "message": "No audio is available from that meeting yet."
+   }
+  },
+  {
+   "name": "unknown-result-code-is-kept",
+   "result": {
+    "type": "result",
+    "requestId": "r2",
+    "ok": false,
+    "error": "Quota reached.",
+    "code": "quotaExceeded"
+   },
+   "expected": {
+    "side": "browser",
+    "code": "startRejected",
+    "detail": "quotaExceeded",
+    "message": "Quota reached."
+   }
+  },
+  {
+   "name": "result-without-code",
+   "result": {
+    "type": "result",
+    "requestId": "r3",
+    "ok": false,
+    "error": "Recording could not start."
+   },
+   "expected": {
+    "side": "browser",
+    "code": "startRejected",
+    "message": "Recording could not start."
+   }
+  },
+  {
+   "name": "malformed-code-is-dropped",
+   "result": {
+    "type": "result",
+    "requestId": "r4",
+    "ok": false,
+    "error": "Choose a meeting to record.",
+    "code": "not a code!"
+   },
+   "expected": {
+    "side": "browser",
+    "code": "startRejected",
+    "message": "Choose a meeting to record."
+   }
+  },
+  {
+   "name": "code-with-a-trailing-newline-is-dropped",
+   "note": "Match the whole string: in Python, re.match('^...$') and jsonschema accept a final newline.",
+   "result": {
+    "type": "result",
+    "requestId": "r5",
+    "ok": false,
+    "error": "Choose a meeting to record.",
+    "code": "invalid\n"
+   },
+   "expected": {
+    "side": "browser",
+    "code": "startRejected",
+    "message": "Choose a meeting to record."
+   }
+  },
+  {
+   "name": "code-longer-than-32-letters-is-dropped",
+   "result": {
+    "type": "result",
+    "requestId": "r6",
+    "ok": false,
+    "error": "Recording could not start.",
+    "code": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expected": {
+    "side": "browser",
+    "code": "startRejected",
+    "message": "Recording could not start."
+   }
+  },
+  {
+   "name": "same-tab-busy-result-is-detail-busy",
+   "note": "The extension answers busy before any other check for a tab that is recording or starting; with detail busy no app falls back (D58 #11).",
+   "result": {
+    "type": "result",
+    "requestId": "r9",
+    "ok": false,
+    "error": "A recording is already running. Stop it before starting another.",
+    "code": "busy"
+   },
+   "expected": {
+    "side": "browser",
+    "code": "startRejected",
+    "detail": "busy",
+    "message": "A recording is already running. Stop it before starting another."
+   }
+  },
+  {
+   "name": "empty-error-is-omitted",
+   "result": {
+    "type": "result",
+    "requestId": "r8",
+    "ok": false,
+    "error": "",
+    "code": "busy"
+   },
+   "expected": {
+    "side": "browser",
+    "code": "startRejected",
+    "detail": "busy"
+   }
+  },
+  {
+   "name": "non-string-code-is-dropped",
+   "result": {
+    "type": "result",
+    "requestId": "r7",
+    "ok": false,
+    "error": "Recording could not start.",
+    "code": 7
+   },
+   "expected": {
+    "side": "browser",
+    "code": "startRejected",
+    "message": "Recording could not start."
+   }
+  }
+ ]
+}

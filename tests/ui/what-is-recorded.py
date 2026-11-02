@@ -262,6 +262,95 @@ with tempfile.TemporaryDirectory() as temporary:
         window.monitor.callback = delivered
     app.stop_native()
     until(lambda: early.pipeline is None and not early.stopping)
+
+    # D58 (R79 §3): a side refused at start has one line on the Recording
+    # page, and Try again reopens it as a turn-on. A start where nothing
+    # opens leaves no folder and shows the start banner, never raw text.
+    class Refusing(Gst.Bin):
+        __gtype_name__ = "CassiniUiRefusingBin"
+
+        def do_change_state(self, transition):
+            if transition == Gst.StateChange.READY_TO_PAUSED:
+                return Gst.StateChangeReturn.FAILURE
+            return Gst.Bin.do_change_state(self, transition)
+
+    def texts(widget):
+        found, child = [], widget.get_first_child()
+        while child is not None:
+            if isinstance(child, (Gtk.Label, Gtk.Button)) and child.get_visible():
+                found.append(child.get_label())
+            found += texts(child)
+            child = child.get_next_sibling()
+        return found
+
+    def button(widget, label):
+        child = widget.get_first_child()
+        while child is not None:
+            if isinstance(child, Gtk.Button) and child.get_label() == label:
+                return child
+            match = button(child, label)
+            if match is not None:
+                return match
+            child = child.get_next_sibling()
+        return None
+
+    with patch.object(
+        NativeRecorder, "_branch", lambda recorder, kind: Refusing() if kind == "microphone" else branch(recorder, kind)
+    ):
+        app.start_native(test=True)
+        refused = app.recorder
+        until(
+            lambda: (
+                not refused.starting
+                and window.recording_page is not None
+                and window.recording_page.meeting.directory == refused.session.directory
+            )
+        )
+    page = window.recording_page
+    assert [r["side"] for r in refused.session.manifest["refusals"]] == ["me"]
+    until(lambda: text("errors.deviceUnavailable.me") in texts(page.lines))
+    shot(window, "-refused-me")
+    button(page.lines, text("common.tryAgain")).emit("clicked")
+    until(lambda: "microphone" in refused._track_ids and not app._source_changes)
+    page.update_status()
+    assert text("errors.deviceUnavailable.me") not in texts(page.lines)
+    assert len(refused.session.manifest["refusals"]) == 1  # A successful turn-on is no refusal.
+    app.stop_native()
+    until(lambda: refused.pipeline is None and not refused.stopping)
+
+    # Computer sound refused: never the line that says it records the others.
+    with patch.object(
+        NativeRecorder, "_branch", lambda recorder, kind: Refusing() if kind == "system" else branch(recorder, kind)
+    ):
+        app.start_native(test=True)
+        no_system = app.recorder
+        until(
+            lambda: (
+                not no_system.starting
+                and window.recording_page is not None
+                and window.recording_page.meeting.directory == no_system.session.directory
+            )
+        )
+    page = window.recording_page
+    until(lambda: text("errors.deviceUnavailable.others") in texts(page.lines))
+    assert text("errors.othersFallback.line") not in texts(page.lines)
+    app.stop_native()
+    until(lambda: no_system.pipeline is None and not no_system.stopping)
+
+    library = Path(os.environ["CASSINI_LIBRARY_DIR"])
+    before = set(library.rglob("Recording-*"))
+    with patch.object(NativeRecorder, "_branch", lambda recorder, kind: Refusing()):
+        app.start_native(test=True)
+        nothing = app.recorder
+        until(lambda: nothing.discarded and nothing.pipeline is None and not nothing._finishing)
+    assert set(library.rglob("Recording-*")) == before, "No folder when nothing opens"
+    assert app.recording_failure is not None, "Nothing opened: the start banner is shown"
+    assert app.recording_failure["refusals"] == nothing.refusals and len(nothing.refusals) == 2
+    window.back_to_library()
+    window._recording_line(None)
+    until(lambda: text("errors.recordFailed.line") in texts(window.first_recording_lines))
+    assert text("common.tryAgain") in texts(window.first_recording_lines)
+    assert not app.recording_error
     window.close()
     app.do_shutdown()
 print(

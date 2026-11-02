@@ -78,9 +78,13 @@ def test_stop_during_replacement_first_sample_keeps_the_confirmed_tracks(tmp_pat
     entered, release = threading.Event(), threading.Event()
     try:
         recorder.start(tmp_path, test=True)
+        # Each side's track is added only when it opens (R79 §1), and no source
+        # change is available until the start has finished: wait for both.
         spin_until(
             lambda: (
-                recorder.session is not None and all(t["frames"] >= 9600 for t in recorder.session.manifest["tracks"])
+                not recorder.starting
+                and len(recorder._track_ids) == 2
+                and all(t["frames"] >= 9600 for t in recorder.session.manifest["tracks"])
             )
         )
         first = recorder.select(True, False)
@@ -119,11 +123,13 @@ def test_stop_during_replacement_first_sample_keeps_the_confirmed_tracks(tmp_pat
         recorder._executor.shutdown()
 
 
-def test_preparation_stop_end_time_uses_this_start_not_an_old_recorder_clock(tmp_path):
+def test_preparation_stop_end_time_uses_this_start_not_an_old_recorder_clock(tmp_path, monkeypatch):
     from test_recorder import spin_until
 
     from cassini_talk.native_recorder import NativeRecorder
 
+    # A folder kept for typed content (D58 discardBlank) is finished as before.
+    monkeypatch.setattr(RecordingSession, "discard", lambda _session: False)
     recorder = NativeRecorder()
     recorder._start_us = 0
     recorder.start(tmp_path, test=True)

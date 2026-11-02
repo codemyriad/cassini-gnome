@@ -109,8 +109,8 @@ class RecordingDetailsDialog(Adw.Dialog):
                     values[("span", side, index, name)] = getattr(span, name)
         for index, note in enumerate(report.notes):
             values[("note", index)] = note
-        for index, source in enumerate(report.sources):
-            values[("source", index)] = source.line
+        for index, source in enumerate(report.audio):
+            values[("source", index)] = source.text
             for gap_index, line in enumerate(source.gap_lines):
                 values[("source-gap", index, gap_index)] = line
         for group, rows in (("health", report.health), ("writing", report.writing)):
@@ -121,7 +121,7 @@ class RecordingDetailsDialog(Adw.Dialog):
             len(report.notes),
             tuple(k for k, _ in report.health),
             tuple(k for k, _ in report.writing),
-            tuple((source.problem, len(source.gap_lines)) for source in report.sources),
+            tuple((source.warning, len(source.gap_lines)) for source in report.audio),
         )
         return shape, values
 
@@ -219,11 +219,10 @@ class RecordingDetailsDialog(Adw.Dialog):
         self.body.append(captured)
         inventory = column(6)
         inventory.append(label(text("details.sources.title"), "heading"))
-        if not report.sources:
-            inventory.append(label(text("details.sources.empty"), "dim-label"))
-        for index, source in enumerate(report.sources):
+        for index, source in enumerate(report.audio):
             row = column(2)
-            row.append(self._bound(("source", index), source.line, "warning" if source.problem else "body"))
+            style = "warning" if source.warning else "dim-label" if source.id == "details.sources.empty" else "body"
+            row.append(self._bound(("source", index), source.text, style))
             for gap_index, line in enumerate(source.gap_lines):
                 row.append(self._bound(("source-gap", index, gap_index), line, "small", "warning"))
             inventory.append(row)

@@ -484,8 +484,12 @@ with tempfile.TemporaryDirectory() as tmp:
         assert app.recorder.pipeline is None and app.recorder.session is None
     else:
         assert app.recorder.pipeline is None
-        assert all(t["frames"] == 0 for t in app.recorder.session.manifest["tracks"])
-        assert read_metadata(app.recorder.session.directory)["transcript"]["status"] == "none"
+        if app.recorder.discarded:
+            # D58: stopped before any side opened, so no recording and no folder.
+            assert not app.recorder.session.directory.exists()
+        else:
+            assert all(t["frames"] == 0 for t in app.recorder.session.manifest["tracks"])
+            assert read_metadata(app.recorder.session.directory)["transcript"]["status"] == "none"
     assert not errors, errors
     faulthandler.cancel_dump_traceback_later()
     print(json.dumps(dict(mode=mode, exitSeconds=time.monotonic() - closing_at, holds=app._transcription_holds)))

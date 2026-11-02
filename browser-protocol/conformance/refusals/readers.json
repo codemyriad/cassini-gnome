@@ -1,0 +1,452 @@
+{
+ "version": 1,
+ "readers": [
+  {
+   "name": "unknown-code-uses-sources-failed",
+   "stored": [
+    {
+     "atMs": 0,
+     "side": "browser",
+     "code": "quotaExceeded"
+    }
+   ],
+   "expectedLines": [
+    {
+     "id": "details.sources.failed",
+     "source": "details.source.browser"
+    }
+   ]
+  },
+  {
+   "name": "unknown-side-is-not-shown",
+   "stored": [
+    {
+     "atMs": 0,
+     "side": "camera",
+     "code": "deviceUnavailable"
+    }
+   ],
+   "expectedLines": [
+    {
+     "id": "details.sources.empty"
+    }
+   ]
+  },
+  {
+   "name": "refusal-replaces-not-selected-and-empty",
+   "stored": [
+    {
+     "atMs": 45000,
+     "side": "others",
+     "code": "deviceUnavailable"
+    }
+   ],
+   "sources": [],
+   "notSelected": [
+    "others"
+   ],
+   "expectedLines": [
+    {
+     "id": "details.sources.refused.deviceUnavailable",
+     "source": "details.source.system"
+    }
+   ]
+  },
+  {
+   "name": "unknown-detail-is-ignored",
+   "stored": [
+    {
+     "atMs": 0,
+     "side": "browser",
+     "code": "startRejected",
+     "detail": "quotaExceeded",
+     "message": "Quota reached."
+    }
+   ],
+   "expectedLines": [
+    {
+     "id": "details.sources.refused.startRejected",
+     "source": "details.source.browser"
+    }
+   ]
+  },
+  {
+   "name": "each-known-code-has-its-line",
+   "stored": [
+    {
+     "atMs": 0,
+     "side": "me",
+     "code": "permissionDenied"
+    },
+    {
+     "atMs": 0,
+     "side": "browser",
+     "code": "startRejected"
+    },
+    {
+     "atMs": 1500.5,
+     "side": "others",
+     "code": "deviceUnavailable",
+     "futureMember": true
+    }
+   ],
+   "notSelected": [
+    "me"
+   ],
+   "expectedLines": [
+    {
+     "id": "details.sources.refused.permissionDenied",
+     "source": "details.source.microphone"
+    },
+    {
+     "id": "details.sources.refused.startRejected",
+     "source": "details.source.browser"
+    },
+    {
+     "id": "details.sources.refused.deviceUnavailable",
+     "source": "details.source.system"
+    }
+   ]
+  },
+  {
+   "name": "not-selected-stays-for-a-side-without-a-refusal",
+   "stored": [
+    {
+     "atMs": 0,
+     "side": "me",
+     "code": "deviceUnavailable"
+    }
+   ],
+   "notSelected": [
+    "others"
+   ],
+   "expectedLines": [
+    {
+     "id": "details.sources.refused.deviceUnavailable",
+     "source": "details.source.microphone"
+    },
+    {
+     "id": "details.sources.notSelected",
+     "source": "details.source.system"
+    }
+   ]
+  },
+  {
+   "name": "a-non-list-member-is-ignored",
+   "stored": {
+    "atMs": 0,
+    "side": "me",
+    "code": "deviceUnavailable"
+   },
+   "expectedLines": [
+    {
+     "id": "details.sources.empty"
+    }
+   ]
+  },
+  {
+   "name": "a-bad-entry-is-skipped",
+   "stored": [
+    7,
+    {
+     "atMs": 0,
+     "side": "me"
+    },
+    {
+     "atMs": 0,
+     "side": 3,
+     "code": "deviceUnavailable"
+    },
+    {
+     "atMs": 0,
+     "side": "others",
+     "code": "deviceUnavailable"
+    }
+   ],
+   "expectedLines": [
+    {
+     "id": "details.sources.refused.deviceUnavailable",
+     "source": "details.source.system"
+    }
+   ]
+  },
+  {
+   "name": "an-entry-without-a-valid-atMs-is-skipped",
+   "stored": [
+    {
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "atMs": "0",
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "atMs": true,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "atMs": -1,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "atMs": 86460001,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "atMs": null,
+     "side": "me",
+     "code": "deviceUnavailable"
+    }
+   ],
+   "expectedLines": [
+    {
+     "id": "details.sources.empty"
+    }
+   ]
+  },
+  {
+   "name": "an-entry-with-a-pattern-invalid-field-is-skipped",
+   "stored": [
+    {
+     "atMs": 0,
+     "side": "me",
+     "code": "device unavailable"
+    },
+    {
+     "atMs": 0,
+     "side": "me",
+     "code": "deviceUnavailable\n"
+    },
+    {
+     "atMs": 0,
+     "side": "me",
+     "code": "deviceUnavailable",
+     "detail": "not a code!"
+    },
+    {
+     "atMs": 0,
+     "side": "me",
+     "code": "deviceUnavailable",
+     "detail": 7
+    },
+    {
+     "atMs": 0,
+     "side": "me",
+     "code": "deviceUnavailable",
+     "message": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+     "atMs": 0,
+     "side": "me",
+     "code": "deviceUnavailable",
+     "message": 7
+    }
+   ],
+   "expectedLines": [
+    {
+     "id": "details.sources.empty"
+    }
+   ]
+  },
+  {
+   "name": "null-detail-and-message-are-absent",
+   "stored": [
+    {
+     "atMs": 86460000,
+     "side": "me",
+     "code": "deviceUnavailable",
+     "detail": null,
+     "message": null
+    }
+   ],
+   "expectedLines": [
+    {
+     "id": "details.sources.refused.deviceUnavailable",
+     "source": "details.source.microphone"
+    }
+   ]
+  },
+  {
+   "name": "identical-lines-are-shown-once",
+   "stored": [
+    {
+     "atMs": 0,
+     "side": "me",
+     "code": "deviceUnavailable"
+    },
+    {
+     "atMs": 0,
+     "side": "browser",
+     "code": "quotaExceeded"
+    },
+    {
+     "atMs": 2000,
+     "side": "me",
+     "code": "deviceUnavailable",
+     "message": "second"
+    },
+    {
+     "atMs": 3000,
+     "side": "others",
+     "code": "deviceUnavailable"
+    },
+    {
+     "atMs": 3000,
+     "side": "browser",
+     "code": "otherUnknown"
+    },
+    {
+     "atMs": 4000,
+     "side": "me",
+     "code": "permissionDenied"
+    },
+    {
+     "atMs": 5000,
+     "side": "me",
+     "code": "deviceUnavailable"
+    }
+   ],
+   "expectedLines": [
+    {
+     "id": "details.sources.refused.deviceUnavailable",
+     "source": "details.source.microphone"
+    },
+    {
+     "id": "details.sources.failed",
+     "source": "details.source.browser"
+    },
+    {
+     "id": "details.sources.refused.deviceUnavailable",
+     "source": "details.source.system"
+    },
+    {
+     "id": "details.sources.refused.permissionDenied",
+     "source": "details.source.microphone"
+    }
+   ]
+  },
+  {
+   "name": "a-stored-start-failed-uses-sources-failed",
+   "stored": [
+    {
+     "atMs": 0,
+     "side": "browser",
+     "code": "startFailed",
+     "detail": "timeout"
+    }
+   ],
+   "expectedLines": [
+    {
+     "id": "details.sources.failed",
+     "source": "details.source.browser"
+    }
+   ]
+  },
+  {
+   "name": "copy-details-keeps-messages-exactly-as-stored",
+   "note": "Around the 200-code-point bound: 199 a + U+1F600 (200 code points, 201 UTF-16 units); 197 a + e U+0301 + U+00E9 (200 code points, 199 graphemes; not NFC-normalized); 200 a + U+0301 (201 code points, 200 graphemes: malformed); 200 x U+00E9 (200 code points, 400 UTF-8 bytes).",
+   "stored": [
+    {
+     "atMs": 0,
+     "side": "me",
+     "code": "deviceUnavailable",
+     "message": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\ud83d\ude00"
+    },
+    {
+     "atMs": 0,
+     "side": "browser",
+     "code": "startRejected",
+     "detail": "noSources",
+     "message": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaae\u0301\u00e9"
+    },
+    {
+     "atMs": 1000,
+     "side": "others",
+     "code": "deviceUnavailable",
+     "message": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\u0301"
+    },
+    {
+     "atMs": 2000,
+     "side": "me",
+     "code": "permissionDenied",
+     "message": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9"
+    }
+   ],
+   "expectedLines": [
+    {
+     "id": "details.sources.refused.deviceUnavailable",
+     "source": "details.source.microphone"
+    },
+    {
+     "id": "details.sources.refused.startRejected",
+     "source": "details.source.browser"
+    },
+    {
+     "id": "details.sources.refused.permissionDenied",
+     "source": "details.source.microphone"
+    }
+   ],
+   "expectedCopy": [
+    {
+     "atMs": 0,
+     "side": "me",
+     "code": "deviceUnavailable",
+     "message": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\ud83d\ude00"
+    },
+    {
+     "atMs": 0,
+     "side": "browser",
+     "code": "startRejected",
+     "detail": "noSources",
+     "message": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaae\u0301\u00e9"
+    },
+    {
+     "atMs": 2000,
+     "side": "me",
+     "code": "permissionDenied",
+     "message": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9"
+    }
+   ]
+  },
+  {
+   "name": "browser-refusal-replaces-not-selected-for-the-others",
+   "stored": [
+    {
+     "atMs": 0,
+     "side": "browser",
+     "code": "startRejected",
+     "detail": "busy"
+    }
+   ],
+   "sources": [],
+   "notSelected": [
+    "others"
+   ],
+   "expectedLines": [
+    {
+     "id": "details.sources.refused.startRejected",
+     "source": "details.source.browser"
+    }
+   ]
+  },
+  {
+   "name": "not-selected-alone-hides-empty",
+   "stored": [],
+   "sources": [],
+   "notSelected": [
+    "me"
+   ],
+   "expectedLines": [
+    {
+     "id": "details.sources.notSelected",
+     "source": "details.source.microphone"
+    }
+   ]
+  }
+ ]
+}

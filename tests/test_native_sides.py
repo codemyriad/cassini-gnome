@@ -63,8 +63,8 @@ class Sides:
     "ok" admits a first buffer then, "error" posts a bus error and ends its
     stream then, "fail" fails its state change, "never" stays silent, and
     "block" holds its state change until release is set. The recorder's
-    bounded open wait first waits for every other side's state change to
-    return, then advances the fake clock to the next scripted event, fires
+    bounded open wait first waits for a "block" side's state change to begin
+    and every other side's to return, then advances the fake clock to the next scripted event, fires
     it, and waits for the recorder to signal that it saw it. causes names an
     "error" side's cause, by kind. With frozen set, the clock never advances
     without a scripted event; overshoot lets the wait wake that much late;
@@ -110,7 +110,8 @@ class Sides:
         if self.plan[kind][0] == "error":
             # A failing source reports its cause, then a stream error, then ends.
             for problem in (self.causes.get(kind, "Fake device went away"), "Internal data stream error."):
-                source.post_message(Gst.Message.new_error(source, GLib.Error(problem), "scripted"))
+                error = GLib.Error.new_literal(Gst.ResourceError.quark(), problem, int(Gst.ResourceError.OPEN_READ))
+                source.post_message(Gst.Message.new_error(source, error, "scripted"))
             return source.emit("end-of-stream")
         return source.emit("push-buffer", Gst.Buffer.new_wrapped(FRAME))
 
@@ -119,18 +120,25 @@ class Sides:
             assert self.sources[kind].emit("push-buffer", Gst.Buffer.new_wrapped(FRAME)) == Gst.FlowReturn.OK
 
     def _inflight(self):
-        pending = dict(self.recorder._pending_sources)
-        changing = any(
-            not attempt.get("settled", True) and self.plan.get(kind, ("",))[0] != "block"
-            for kind, attempt in pending.items()
-        )
-        return changing or any(kind in pending and not pending[kind]["ready"].is_set() for kind in self.fired)
+        # Under the recorder's lock: a side marks itself settled and sets the
+        # open wake in one hold, so a settled side's wake is already set.
+        with self.recorder._lock:
+            pending = dict(self.recorder._pending_sources)
+            changing = any(
+                not attempt.get("settled", True) and self.plan.get(kind, ("",))[0] != "block"
+                for kind, attempt in pending.items()
+            )
+            return changing or any(kind in pending and not pending[kind]["ready"].is_set() for kind in self.fired)
 
     def wait(self, event, timeout):
-        if event.is_set():
-            return True  # Like a real wait: no time passes for an event already set.
+        for branch in self.blocked.values():
+            # A stuck side is stuck from the start: its state change begins
+            # before any time passes, however late its thread is scheduled.
+            branch.entered.wait(5)  # Bound only: its state-change thread enters it.
         if self._inflight():
             return event.wait(5)  # Bound only: the recorder signals admission.
+        if event.is_set():
+            return True  # Like a real wait: no time passes for an event already set.
         scripted = {
             kind: self.built[kind] + delay
             for kind, (behaviour, delay) in self.plan.items()
@@ -223,6 +231,15 @@ def test_one_refused_side_gets_no_track_while_the_other_records(tmp_path, caplog
         assert refusals(caplog) == [
             f"Native {SIDE[refused]} side ({refused}) did not open at start: {REASONS[behaviour]}"
         ]
+        # D58: the stored message is raw: a GStreamer error's domain, code and debug string.
+        raw = {
+            "error": f"gst-resource-error-quark:{int(Gst.ResourceError.OPEN_READ)}: scripted",
+            "fail": "Could not start native audio capture",
+            "never": "Native audio capture did not produce a sample",
+        }
+        assert session.manifest["refusals"] == [
+            dict(atMs=0, side=SIDE[refused], code="deviceUnavailable", message=raw[behaviour])
+        ]
         sides.feed(opened, 10)
         spin_until(lambda: session.writers[opened].frames >= 4800)
         assert recorder.levels[0 if refused == "microphone" else 1] == 0
@@ -272,23 +289,20 @@ CAUSES = {"microphone": "Fake microphone is held by another application", "syste
         ({"microphone": ("fail", 0), "system": ("fail", 0)}, START_FAILURE),
     ],
 )
-def test_both_sides_refused_keeps_todays_start_failure(tmp_path, caplog, plan, problem):
+def test_both_sides_refused_leaves_no_folder_and_shows_the_cause(tmp_path, caplog, plan, problem):
     caplog.set_level(logging.WARNING, logger="cassini_talk.native_recorder")
     recorder, _sides, signals = start(tmp_path, plan, CAUSES)
     try:
         spin_until(lambda: any(name == "finished" for name, _ in signals))
-        session = recorder.session
-        # Today's failure path: no started, the device's error, then the folder.
-        assert signals == [("error", problem), ("finished", str(session.directory))]
-        assert session.directory.is_dir() and session.finished
-        assert session.manifest["state"] == "interrupted"
-        assert session.manifest["problem"] == problem and session.manifest["problemKind"] == "capture"
-        assert session.manifest["events"][-1]["type"] == "end" and session.manifest["events"][-1]["reason"] == "error"
-        assert start_selection(session) == [
-            dict(atMs=0, type="othersSource", source="system", reason="missing"),
-            dict(atMs=0, type="selection", me=True, others=True, reason="start"),
+        # D58 point 2: nothing opened, so there is no recording and no folder.
+        # The error still names the device's cause; the banner lists the refusals.
+        assert signals == [("error", problem), ("finished", "")]
+        assert recorder.discarded and not recorder.session.directory.exists()
+        assert not list(tmp_path.iterdir())
+        assert [(r["side"], r["code"]) for r in recorder.refusals] == [
+            ("me", "deviceUnavailable"),
+            ("others", "deviceUnavailable"),
         ]
-        assert session.manifest["tracks"] == [] and not list(session.directory.glob("track-*.wav"))
         assert len(refusals(caplog)) == 2
         assert recorder.pipeline is None and not recorder.starting
     finally:
@@ -451,6 +465,25 @@ def test_a_selection_of_only_a_refused_side_reopens_it_or_is_rejected(tmp_path):
             future.result()
         assert session.manifest["events"] == events and kinds_of(session) == ["system"]
         assert set(recorder._track_ids) == {"system"} and session.manifest["state"] == "recording"
+    finally:
+        close(recorder)
+
+
+def test_a_stop_before_any_side_opened_leaves_no_folder(tmp_path):
+    recorder = NativeRecorder()
+    Sides(recorder, {"microphone": ("never", 0), "system": ("never", 0)})
+    recorder._open_wait = lambda event, timeout: event.wait(5)  # Only the stop wakes it.
+    signals = []
+    for name in ("started", "error", "finished"):
+        recorder.connect(name, lambda _r, value, name=name: signals.append((name, value)))
+    recorder.start(tmp_path, test=True)
+    try:
+        spin_until(lambda: len(recorder._pending_sources) == 2)
+        recorder.stop()
+        spin_until(lambda: any(name == "finished" for name, _ in signals))
+        # The user cancelled this start: no recording, no folder, no banner.
+        assert signals == [("finished", "")] and recorder.discarded
+        assert not list(tmp_path.iterdir()) and recorder.refusals == []
     finally:
         close(recorder)
 
@@ -728,15 +761,17 @@ def test_browser_native_taps_open_in_parallel(tmp_path):
         capture.stop()
 
 
-def test_every_refused_browser_native_tap_keeps_todays_start_failure(tmp_path, caplog):
+def test_every_refused_browser_native_tap_leaves_no_folder(tmp_path, caplog):
+    from cassini_talk.refusals import NothingOpened
+
     caplog.set_level(logging.WARNING, logger="cassini_talk.browser_capture")
     taps = Taps(refuse={"microphone": 1, "system": 1})
-    with pytest.raises(OSError, match="Fake microphone refused"):
+    with pytest.raises(NothingOpened, match="Fake microphone refused") as raised:
         browser_start(tmp_path, taps, others_source="system")
-    (directory,) = [path for path in tmp_path.iterdir() if path.is_dir()]
-    saved = json.loads((directory / "session.json").read_text())
-    assert saved["state"] == "interrupted" and saved["problem"] == "Fake microphone refused"
-    assert saved["problemKind"] == "capture" and saved["events"][-1] == dict(
-        type="end", atMs=saved["events"][-1]["atMs"], reason="error"
-    )
-    assert saved["tracks"] == [] and len(refusals(caplog)) == 2
+    # D58 point 2: no folder; the start banner gets every refusal, in order.
+    assert not list(tmp_path.iterdir())
+    assert raised.value.refusals == [
+        dict(atMs=0, side="me", code="deviceUnavailable", message="Fake microphone refused"),
+        dict(atMs=0, side="others", code="deviceUnavailable", message="Fake system refused"),
+    ]
+    assert len(refusals(caplog)) == 2

@@ -105,6 +105,9 @@ class NativeRecorder(GObject.Object):
         self._mute_observer = None
         self.output_muted = False
         self._open_wake = threading.Event()
+        # D58: the start's refusals, for the start banner when nothing opened.
+        self.refusals = []
+        self._discard = self.discarded = False
         # The start's open phase reads these; tests replace them with a fake clock.
         self._open_clock = time.monotonic
         self._open_wait = threading.Event.wait
@@ -143,6 +146,8 @@ class NativeRecorder(GObject.Object):
         self._mute_observer = None
         self.output_muted = False
         self._open_wake = threading.Event()
+        self.refusals = []
+        self._discard = self.discarded = False
         future = self._executor.submit(self._prepare, Path(parent) if parent is not None else None)
         future.add_done_callback(lambda f: GLib.idle_add(self._prepared, f, test))
 
@@ -168,7 +173,9 @@ class NativeRecorder(GObject.Object):
         try:
             self.session, (self.minutes_left, reserve) = future.result()
             if self._stop_requested:
+                # Stopped before any side opened: the blank folder goes (D58).
                 self.starting = False
+                self._discard = True
                 self._begin_finish()
                 return False
             self._test_sources = test
@@ -220,6 +227,7 @@ class NativeRecorder(GObject.Object):
                     committed=False,
                     settled=False,
                     retired=False,
+                    message=None,
                 )
                 attempts[kind] = attempt
                 sink = branch.get_by_name(kind)
@@ -241,7 +249,7 @@ class NativeRecorder(GObject.Object):
                     for kind in tuple(undecided):
                         attempt = attempts[kind]
                         if not attempt["committed"] and not attempt["error"] and now >= attempt["deadline"]:
-                            attempt["error"] = NO_SAMPLE
+                            attempt["error"] = attempt["message"] = NO_SAMPLE
                         if attempt["error"]:
                             refused[kind] = attempt["error"]
                         if attempt["committed"] or attempt["error"]:
@@ -269,6 +277,12 @@ class NativeRecorder(GObject.Object):
         committed = [kind for kind in kinds if attempts.get(kind, {}).get("committed")]
         for kind, error in refused.items():
             LOG.warning("Native %s side (%s) did not open at start: %s", SIDES[kind], kind, error)
+        # D58: start refusals use atMs 0, in the order the sides are requested.
+        self.refusals = [self._refusal(0, kind, attempts[kind]) for kind in kinds if kind in refused]
+        if committed and self.refusals:
+            with self._lock:
+                if not self._start_cancelled(pipeline):
+                    self.session.refuse(*self.refusals)
         return committed, refused
 
     def _change_side_state(self, kind, attempt):
@@ -279,6 +293,7 @@ class NativeRecorder(GObject.Object):
             retired = attempt["retired"]
             if not ok and not attempt["committed"] and not attempt["error"]:
                 attempt["error"] = STATE_FAILURE
+                attempt["message"] = attempt["message"] or STATE_FAILURE
             failed_committed = not ok and attempt["committed"]
             # ready means decided: a state change that worked decides nothing.
             if attempt["error"]:
@@ -289,6 +304,17 @@ class NativeRecorder(GObject.Object):
             attempt["branch"].set_state(Gst.State.NULL)
         elif failed_committed:
             GLib.idle_add(self._begin_finish, STATE_FAILURE)
+
+    def _refusal(self, at_ms, kind, attempt):
+        """The refusal a side that never opened records: GNOME knows only deviceUnavailable."""
+        from .refusals import entry
+
+        code, message = self._classify(kind, attempt)
+        return entry(at_ms, SIDES[kind], code, message=message)
+
+    @staticmethod
+    def _classify(_kind, attempt):
+        return "deviceUnavailable", attempt.get("message") or attempt.get("error")
 
     @staticmethod
     def _hold_eos(_pad, info):
@@ -313,11 +339,17 @@ class NativeRecorder(GObject.Object):
         if attempt["error"] or attempt["retired"] or self._start_cancelled(attempt["pipeline"]):
             return False
         if self._open_clock() >= attempt["deadline"]:
-            attempt["error"] = NO_SAMPLE
+            attempt["error"] = attempt["message"] = NO_SAMPLE
         else:
             self._commit_side(kind, attempt, pts_ms)
         self._signal(attempt)
         return attempt["committed"]
+
+    @staticmethod
+    def _elapsed_ms(pipeline):
+        """Session time on the pipeline clock; the shared vectors replay it."""
+        clock = pipeline.get_clock()
+        return max(0, (clock.get_time() - pipeline.get_base_time()) / Gst.MSECOND) if clock is not None else 0
 
     def _commit_side(self, kind, attempt, at_ms):
         """Commit a start side at its first admitted buffer (lock held)."""
@@ -351,12 +383,20 @@ class NativeRecorder(GObject.Object):
             committed, refused = future.result()
             if not committed:
                 if self._stop_requested:
+                    # Stopped before any side opened: no recording either. The
+                    # blank folder goes (unless typed into), with no banner and
+                    # no refusals: the user cancelled this start.
+                    self.refusals = []
+                    self._discard = True
                     self._begin_finish()
                     return False
-                # Nothing opened: today's start failure, folder included. Keep
-                # the device's own cause, the microphone's first.
+                # Nothing opened (D58 point 2): no recording. The folder is
+                # removed unless the user already typed into it; the start
+                # banner shows the refusals. Keep the device's own cause.
                 causes = [refused[kind] for kind in SIDES if refused.get(kind, STATE_FAILURE) != STATE_FAILURE]
-                raise RuntimeError(causes[0] if causes else START_FAILURE)
+                self._discard = True
+                self._begin_finish(causes[0] if causes else START_FAILURE)
+                return False
             if self.minutes_left < 10:
                 self.line = "errors.diskLow.line"
             if not test:
@@ -458,27 +498,32 @@ class NativeRecorder(GObject.Object):
         pipeline = self.pipeline
         prepared = {}
         committed = False
+        opening = None
         try:
             for kind in sorted(added):
+                opening = kind
                 branch = self._branch(kind)
-                attempt = dict(branch=branch, ready=threading.Event(), error=None)
+                attempt = dict(branch=branch, ready=threading.Event(), error=None, message=None)
                 prepared[kind] = attempt
                 with self._lock:
                     self._pending_sources[kind] = attempt
                 pipeline.add(branch)
                 if not branch.sync_state_with_parent():
-                    raise OSError("Could not start native audio capture")
+                    attempt["message"] = attempt["message"] or STATE_FAILURE
+                    raise OSError(STATE_FAILURE)
                 if not attempt["ready"].wait(3):
-                    raise OSError("Native audio capture did not produce a sample")
+                    attempt["message"] = attempt["message"] or NO_SAMPLE
+                    raise OSError(NO_SAMPLE)
                 if attempt["error"]:
                     raise OSError(attempt["error"])
-            clock = pipeline.get_clock()
-            elapsed = (clock.get_time() - pipeline.get_base_time()) / Gst.MSECOND
+            opening = None
+            elapsed = self._elapsed_ms(pipeline)
             with self._lock:
                 if self.pipeline is not pipeline or self.stopping or self._finishing or self._stop_requested:
                     raise ValueError("No source change is available")
-                for attempt in prepared.values():
+                for kind, attempt in prepared.items():
                     if attempt["error"]:
+                        opening = kind
                         raise OSError(attempt["error"])
                 at = change_time(self.session, elapsed)
                 events = [dict(atMs=at, type="selection", me=me, others=others, reason="user")]
@@ -521,6 +566,10 @@ class NativeRecorder(GObject.Object):
                 branch.set_state(Gst.State.NULL)
                 pipeline.remove(branch)
             return source_state(self.session.manifest.get("events"))
+        except OSError:
+            if opening in prepared:
+                self._turn_on_refused(pipeline, opening, prepared[opening])
+            raise
         finally:
             if not committed:
                 for attempt in prepared.values():
@@ -533,6 +582,21 @@ class NativeRecorder(GObject.Object):
                 with self._lock:
                     for kind in prepared:
                         self._pending_sources.pop(kind, None)
+
+    def _turn_on_refused(self, pipeline, kind, attempt):
+        """D58 (R79 §6.6): a refused turn-on is appended at its real time.
+
+        It writes no selection event and leaves the selection unchanged.
+        """
+        item = self._refusal(self._elapsed_ms(pipeline), kind, attempt)
+        LOG.warning("Native %s side (%s) did not open when turned on: %s", SIDES[kind], kind, item.get("message"))
+        with self._lock:
+            if self.pipeline is not pipeline or self._finishing or self.session.finished:
+                return
+            try:
+                self.session.refuse(item)
+            except Exception:
+                LOG.exception("Could not record a refused turn-on")
 
     def _sources_changed(self, future):
         self._changing_sources = False
@@ -671,7 +735,8 @@ class NativeRecorder(GObject.Object):
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
                 if attempt is not None:
-                    attempt["error"] = str(error)
+                    attempt["error"] = attempt["error"] or str(error)
+                    attempt["message"] = attempt.get("message") or str(error)
                     self._signal(attempt)
                 else:
                     GLib.idle_add(self._begin_finish, str(error))
@@ -686,13 +751,17 @@ class NativeRecorder(GObject.Object):
 
     def _message(self, _bus, message):
         if message.type == Gst.MessageType.ERROR:
-            problem = message.parse_error()[0].message
+            error, debug = message.parse_error()
+            problem = error.message
             with self._lock:
                 for attempt in self._pending_sources.values():
                     branch = attempt["branch"]
                     if message.src == branch or message.src.has_as_ancestor(branch):
                         # The first error names the cause; a stream error follows it.
-                        attempt["error"] = attempt["error"] or problem
+                        if not attempt["error"]:
+                            from .refusals import gst_message
+
+                            attempt["error"], attempt["message"] = problem, gst_message(error, debug)
                         self._signal(attempt)
                         return
                 if any(message.src == b or message.src.has_as_ancestor(b) for b in self._retired_branches):
@@ -784,6 +853,14 @@ class NativeRecorder(GObject.Object):
             if pipeline is not None:
                 pipeline.set_state(Gst.State.NULL)
             try:
+                if self._discard:
+                    with self._lock:
+                        self.discarded = session.discard()
+                        if not self.discarded:
+                            session.refuse(*self.refusals)  # A folder kept for typed content.
+                    if self.discarded:
+                        self.spectrogram.finish()
+                        return
                 try:
                     with self._lock:
                         session.finish(problem, reason=reason, at_ms=at_ms, retain_lease=True)
@@ -829,7 +906,7 @@ class NativeRecorder(GObject.Object):
         self.emit("changed")
         if problem:
             self.emit("error", problem)
-        self.emit("finished", str(self.session.directory))
+        self.emit("finished", "" if self.discarded else str(self.session.directory))
         return False
 
     def _check_disk(self):
