@@ -87,11 +87,17 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
     transport.capture = capture
     service._audio_transports.add(transport)
 
+    # The runner's own account of the current transport, never read back
+    # from the broker: whether a span got PCM on it, and its last frame.
+    fed = dict(pcm=False, last=None)
+
     def deliver(packet):
         capture.handle(packet)
-        transport.last_inbound = now[0]
+        transport.last_inbound = fed["last"] = now[0]
         if packet["type"] == "track":
             transport.spans.add(packet["id"])
+        else:
+            fed["pcm"] = True  # The runner never ends a span: this one stays open.
 
     first = case["steps"][0]
     if (
@@ -142,13 +148,15 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
             asked = len(sent)
             if not step.get("transportAlive", True) and not transport_closed:
                 # D52.4: the transport closed by EOF, error or the watchdog.
-                # Armed and quiet for PCM_STALE_AFTER, it is the app's own
-                # watchdog that must close it (SPEC.md), on a fallback too
-                # (D57): the runner never forces that close. Either way the
-                # broker's real teardown runs.
+                # When the runner fed an open span PCM on it and then nothing
+                # for PCM_STALE_AFTER, the vector means the app's own watchdog
+                # (SPEC.md), on a fallback too (D57): the broker must find it
+                # armed and stale by itself. Only otherwise does the runner
+                # emulate an EOF. Either way the broker's real teardown runs.
                 transport_closed = True
                 lost = capture.browser_lost
-                if capture.remote_open() and now[0] - transport.last_inbound >= PCM_STALE_AFTER:
+                if case.get("multistream") and fed["pcm"] and now[0] - fed["last"] >= PCM_STALE_AFTER:
+                    assert capture.remote_open(), (case["name"], step, "an open span with PCM is armed")
                     assert transport.expired(now[0]) == "stopped sending audio", (case["name"], step)
                 service._audio_closed(transport, capture)
                 if capture.browser_lost and not lost:
@@ -159,6 +167,7 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
                 # not require an ask first: cases without resumeCapture model
                 # a transport that came back by other means.
                 transport = AudioTransport(None, service.clock)
+                fed.update(pcm=False, last=None)
                 service._audio_transports.add(transport)
                 target, proof = service._resume_attach(
                     dict(

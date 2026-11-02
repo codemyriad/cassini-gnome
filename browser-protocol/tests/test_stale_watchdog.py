@@ -81,6 +81,7 @@ class StaleWatchdogTests(unittest.TestCase):
         same = 'same-document-status-after-navigating-keeps-the-departing-window-open'
         unchanged = 'unchanged-document-status-keeps-its-spans-armed'
         without_present = 'a-new-document-without-present-closes-the-departing-window'
+        first_new_span = 'a-missed-reloads-first-new-span-stays-armed'
         mutants = {
             'navigating keeps the open spans': (
                 '                open_spans.clear()\n                departing = True', '                departing = True', reload),
@@ -106,6 +107,10 @@ class StaleWatchdogTests(unittest.TestCase):
             'an unchanged generation retires spans': (
                 'if changed and generation is not None:', 'if document is not None and generation is not None:', unchanged),
             'only present closes the window': ("elif page == 'present' or changed:", "elif page == 'present':", without_present),
+            # The first span declared after the last confirmation is the new
+            # document's, and live: never retire one past the confirmation.
+            'retirement reaches one span past the confirmation': (
+                'difference_update(declared[:confirmed])', 'difference_update(declared[:confirmed + 1])', first_new_span),
         }
         for name, (old, new, case) in mutants.items():
             with self.subTest(mutant=name):

@@ -1,21 +1,15 @@
-tree a2a259fce777977b568135110d702d48eb3523cf
-parent 4d8c8010426e2487416170fad779d9dd28d5fae2
-author Silvio Tomatis <silviot@gmail.com> 1793606116 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793606116 +0100
+tree 85f61a473d2586ad6dd123acefcf41b14808c1b0
+parent 604c957d7356bc31db2906b9916ad8316e468082
+author Silvio Tomatis <silviot@gmail.com> 1793606627 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793606627 +0100
 
-Close the departing window only on present or a new generation (review)
+Pin that retirement stops at the last confirmation
 
-Codex review of #34:
-- The oracle closed the departing window on any reported documentGeneration,
-  so a status still on the departing document (closed/doc-1 after
-  navigating/doc-1) armed the old document's late span. The window now
-  closes only on present or on a generation different from the stored one,
-  and every reported generation (the navigating frame's too) is the latest
-  confirmation.
-- Three cases pin what the first one left open: a same-document status after
-  navigating keeps the window open; an unchanged generation retires nothing;
-  a new generation closes the window even when present was missed (pageState
-  may be absent from a documentChanged frame).
-- test_stale_watchdog asserts the three matching oracle mutants fail.
+A mutant retiring one span past the last confirmation (declared[:confirmed + 1])
+passed every vector: the reload case's first new span only gets PCM after
+navigating has already cleared it. The new case is a missed reload whose new
+document declares and sends PCM before its generation is reported; that span
+is live and must stay armed (close at 47000). test_stale_watchdog asserts the
+off-by-one mutant fails it.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
