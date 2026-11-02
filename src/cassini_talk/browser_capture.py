@@ -411,10 +411,12 @@ class BrowserCapture:
                 with contextlib.suppress(Exception):
                     tap.stop()
 
-    def select(self, me, others):
+    def select(self, me, others, *, retry=False):
+        """Change what is recorded. `retry` (R82 1c) also reopens a selected side
+        that was refused, as Try again does; it writes no selection event."""
         if type(me) is not bool or type(others) is not bool or not (me or others):
             raise ValueError("Select at least one recording source")
-        return self._change(me, others)
+        return self._change(me, others, retry=retry)
 
     def fallback(self, reason="lost"):
         if reason not in ("missing", "lost"):
@@ -669,8 +671,8 @@ class BrowserCapture:
         """Whether this loss's restore already failed on the track limit."""
         return self.restore_refused is not None and self.restore_refused == self.loss_serial
 
-    def _change(self, me, others, *, fallback=None):
-        return self._apply_change(me, others, fallback=fallback)
+    def _change(self, me, others, *, fallback=None, retry=False):
+        return self._apply_change(me, others, fallback=fallback, retry=retry)
 
     def _events(self, me, others, lost, fallback, at):
         old = source_state(self.host.session.manifest.get("events"))
@@ -700,7 +702,7 @@ class BrowserCapture:
             )
         return events
 
-    def _apply_change(self, me, others, *, fallback=None, restore=False):
+    def _apply_change(self, me, others, *, fallback=None, restore=False, retry=False):
         if self.starting and not self.ready.wait(12):
             raise TimeoutError("Native capture did not finish starting")
         with self.transition:
@@ -712,10 +714,11 @@ class BrowserCapture:
                 if restore and (not self.browser_lost or not self.browser_ready):
                     return self.snapshot()
                 lost = False if restore else self.browser_lost or fallback is not None
-                if (me, others, lost) == (self.me, self.others, self.browser_lost):
-                    return self.snapshot()
                 desired = {kind for kind, enabled in (("microphone", me), ("system", others and lost)) if enabled}
-                kinds = desired - self.native_taps.keys() - self.refused_sides
+                retrying = desired & self.refused_sides - self.native_taps.keys() if retry else set()
+                if (me, others, lost) == (self.me, self.others, self.browser_lost) and not retrying:
+                    return self.snapshot()
+                kinds = (desired - self.native_taps.keys() - self.refused_sides) | retrying
                 if not (kinds or desired & self.native_taps.keys() or others and not lost):
                     # Every side this change keeps was refused at start. Recording
                     # nothing is never committed: the change asks for them again,

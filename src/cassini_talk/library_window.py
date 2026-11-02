@@ -796,7 +796,12 @@ class LibraryWindow(Adw.ApplicationWindow):
         for item in refused:
             if item["side"] == "browser":
                 continue
-            retry = self._turn_on(item["side"], meeting or self.selected)
+            # Try again only for deviceUnavailable: GNOME never classifies a permission.
+            retry = (
+                None
+                if item["id"] == "errors.micPermission.line"
+                else self._turn_on(item["side"], meeting or self.selected)
+            )
             box.append(InlineLine(item["id"], action="common.tryAgain" if retry else None, callback=retry))
         if browser is not None:
             # A browser refusal: its caption, if any, instead of Why? (R79 §3).
@@ -817,10 +822,15 @@ class LibraryWindow(Adw.ApplicationWindow):
             )
 
     def _turn_on(self, side, meeting):
-        """Try again for a refused native side: a turn-on, where the recorder can retry it."""
+        """Try again for a refused native side: a turn-on.
+
+        The native recorder reopens a selected side without a track. A browser
+        capture reopens it through selection {retry: true} (R82 1c).
+        """
         app = self.get_application()
-        if meeting is None or app.comfort._native_for(meeting) is None:
+        if meeting is None:
             return None
+        native = app.comfort._native_for(meeting) is not None
         current = app.comfort.sources(meeting)
 
         def retry():

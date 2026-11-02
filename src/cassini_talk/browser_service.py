@@ -2812,7 +2812,9 @@ class BrowserService:
                                 )
                             if capture is None:
                                 raise ValueError("This meeting is no longer recording")
-                            result = capture.select(packet.get("me"), packet.get("others"))
+                            result = capture.select(
+                                packet.get("me"), packet.get("others"), retry=packet.get("retry") is True
+                            )
                         else:
                             result = self.command(
                                 packet.get("id"),

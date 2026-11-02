@@ -774,7 +774,7 @@ class CassiniApplication(Adw.Application):
             self._native_held = True
         recorder.start(test=test)
 
-    def change_recording_sources(self, meeting, me, others):
+    def change_recording_sources(self, meeting, me, others, *, retry=False):
         from . import browser_service
 
         key = str(meeting.directory)
@@ -788,7 +788,13 @@ class CassiniApplication(Adw.Application):
                 native.select(me, others)
                 if native
                 else self._record_start_executor.submit(
-                    browser_service.request, "selection", directory=key, me=me, others=others
+                    browser_service.request,
+                    "selection",
+                    directory=key,
+                    me=me,
+                    others=others,
+                    # R82 1c: Try again on a side refused at start; no selection event.
+                    **({"retry": True} if retry else {}),
                 )
             )
         except Exception:
