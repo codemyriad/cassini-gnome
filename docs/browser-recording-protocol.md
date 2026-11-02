@@ -3,7 +3,7 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `e8701460`, ships companion 0.2.11, whose `ok:false` results carry a
+The current pin, `4ff01c17`, ships companion 0.2.11, whose `ok:false` results carry a
 D58 result `code` and whose native resume packet carries the command's `requestId`, so
 a refused resume is keyed to its own ask. It keeps authoritative page-state
 publication and a coherent multi-tab inventory. Call identity and the hook
@@ -47,7 +47,7 @@ An active capture's ended physical span returns `state/source/retired:true`;
 its cleanup and in-flight chunks cannot mean the whole capture was saved.
 Capture finalization returns `state/command`. Failed spans are fenced locally,
 healthy sources and the microphone continue, and a live source retries a new ID.
-The pin is protocol commit e8701460 (PR #37: the native resume packet carries the ask's `requestId`, a fresh UUID per ask), on top of
+The pin is protocol commit 4ff01c17 (PR #37: the native resume packet carries the ask's `requestId`, a fresh UUID per ask), on top of
 the merge commit of protocol PR #36, d789cf30 (the D58 refusal vector follow-ups), on top of
 protocol PR #35, 71d9bc4 (D58 classified refusals: the session `refusals` member, optional
 `ok:false` result codes and the `conformance/refusals` vectors), on top of protocol PR #34,

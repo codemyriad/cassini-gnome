@@ -520,10 +520,10 @@ Since extension 0.2.11 the resume packet also carries the control command's
 requestId as `requestId` (same domain as the control requestId), so a host can
 tell which ask a refused resume answers. Hosts that do not use it ignore it.
 A host that keys on it gives every resume ask a fresh requestId and never
-reuses it for another ask, across control connections and reconnects, for as
-long as a native packet of that ask could still arrive: the audio pipe names no
-connection, and a late packet can follow a timeout or a closed connection. A
-UUID per ask is the simple way. A late refusal whose ask is already answered or
+reuses it for another ask, on the same or another control connection, after a
+reconnect or an app restart: the audio pipe names no connection, and a late
+packet can follow a timeout or a closed connection. A UUID per ask is the
+simple way. A late refusal whose ask is already answered or
 unknown records nothing.
 
 

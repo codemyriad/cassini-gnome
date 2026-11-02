@@ -373,10 +373,6 @@ def ask_on(service, tasks, sent, capture, browser):
     return asks(sent)[-1]
 
 
-def first_answer(case, ask):
-    return next(s for s in case["steps"] if s.get("ask") == ask and s["op"] in ("native", "reply"))
-
-
 @pytest.mark.parametrize("case", VECTORS["askAttribution"]["cases"], ids=lambda case: case["name"])
 def test_the_shared_ask_attribution_vectors_hold_with_a_fresh_id_per_ask(policy, case):  # noqa: F811
     """Codex #37: a late native refusal answers only its own ask, across reconnects."""
@@ -412,18 +408,9 @@ def test_the_shared_ask_attribution_vectors_hold_with_a_fresh_id_per_ask(policy,
                 refuse_native(service, capture, requestId=str(uuid.uuid4()))
         assert len(set(ids.values())) == len(ids), "every ask has its own id"
         assert all(uuid.UUID(value).version == 4 and str(uuid.UUID(value)) == value for value in ids.values())
-        # The vector's message is the first answer's native message or reply
-        # error; GNOME records the reply's code, so a reply-first entry maps to it.
-        expected = []
-        for item in case["expect"]["entries"]:
-            step = first_answer(case, item["ask"])
-            assert item["message"] == step.get("message", step.get("error"))
-            message = step["message"] if step["op"] == "native" else step["code"]
-            expected.append(
-                dict(
-                    atMs=at[item["ask"]], side="browser", code="startRejected", detail="resumeRefused", message=message
-                )
-            )
+        # R82 1b: the native message, or the reply's code, at the ask's own time.
+        entry = VECTORS["askAttribution"]["entry"]
+        expected = [dict(atMs=at[item["ask"]], **entry, message=item["message"]) for item in case["expect"]["entries"]]
         assert resume_refusals(capture) == expected
         assert list(capture.resume_asks) == [ids[name] for name in case["expect"]["pending"]]
     finally:

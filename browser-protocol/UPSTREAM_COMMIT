@@ -1,18 +1,15 @@
-tree 0beeecbee60215efd8145589c5f53da5f73ac354
-parent 5d95ac7aae2874a194a1415008c9a4f3e3eae2a0
-author Silvio Tomatis <silviot@gmail.com> 1793647275 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793647275 +0100
+tree 660d5736cc9da28ed855ee1c89445ffd9d1d8efd
+parent e8701460f36b684aeba896003952e5fb1e1ce037
+author Silvio Tomatis <silviot@gmail.com> 1793648954 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793648954 +0100
 
-Resume requestId: a fresh id per ask, never recycled while a native packet can arrive
+askAttribution: the code is a reply's message (R82 1b), a same-connection finished ask, bounded memory, restarts
 
-Codex review of #37: uniqueness only while asks are pending lets ask A finish
-(reply/timeout or a closed connection), B reuse A's id on another connection,
-and A's late native refusal land on B. An app now gives every resume ask a
-fresh requestId (a UUID per ask) and never reuses it across connections and
-reconnects while that ask's native packet could still arrive. A closed
-connection records nothing by itself; its ask stays answerable by its own
-native refusal only. Shared askAttribution vectors pin the orders, with a
-reference ledger that fails on a recycled id, and an extension VM regression
-holds A's native packet across a reconnect and a fresh ask B.
+Review follow-ups. A reply-first entry carries the result code as its message,
+as R82 1b decided, and every entry pins side, code and detail. A new case reuses
+a finished ask's connection for the next ask, so a per-connection recycler
+fails too. The note and RESUME-CAPTURE.md say an attach answers every pending
+ask, a Stop forgets them, and an app may forget its oldest unanswered asks past
+a bound. Ids are never reused after an app restart either.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

@@ -33,7 +33,7 @@ def attribute(steps, ids=None):
             times[step['ask']] = at; pending[ids[step['ask']]] = step['ask']
         elif op == 'reply':
             assert connections[step['ask']] not in closed, 'a reply needs its open connection'
-            answer(ids[step['ask']], step['error'])
+            answer(ids[step['ask']], step['code'])  # R82 1b: the code is the message.
         elif op == 'close':
             closed.add(step['connection'])
         elif op == 'native':
@@ -46,7 +46,8 @@ def attribute(steps, ids=None):
 class ResumeTests(unittest.TestCase):
     def test_ask_attribution_vectors_hold_with_a_fresh_id_per_ask(self):
         # R82 1b: one entry per ask, from its first answer, at its own time.
-        self.assertGreaterEqual(len(ATTRIBUTION['cases']), 8)
+        self.assertGreaterEqual(len(ATTRIBUTION['cases']), 9)
+        self.assertEqual(ATTRIBUTION['entry'], dict(side='browser', code='startRejected', detail='resumeRefused'))
         for case in ATTRIBUTION['cases']:
             with self.subTest(case=case['name']):
                 actual, ids, times = attribute(case['steps'])
@@ -58,7 +59,8 @@ class ResumeTests(unittest.TestCase):
     def test_a_recycled_request_id_breaks_the_finished_ask_vectors(self):
         # The codex case: A finished, B on a new connection reuses A's id, then
         # A's late native refusal would be written as B's entry.
-        for name in ('finished-ask-late-native-never-answers-a-fresh-ask', 'finished-ask-late-native-then-the-fresh-ask-reply'):
+        for name in ('finished-ask-late-native-never-answers-a-fresh-ask', 'finished-ask-late-native-then-the-fresh-ask-reply',
+                     'finished-ask-late-native-never-answers-the-next-ask-on-its-connection'):
             with self.subTest(case=name):
                 case = next(c for c in ATTRIBUTION['cases'] if c['name'] == name)
                 shared = str(uuid.uuid4())

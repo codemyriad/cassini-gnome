@@ -25,11 +25,14 @@ real retained microphone/system capture (private generated audio):
   if it arrives. A late refusal whose ask is already answered or unknown
   records nothing. A closed control connection records nothing by itself: its
   unanswered ask stays answerable by its own native refusal, never by another
-  ask's. Whichever answer arrives first records the ask once; the other adds
-  nothing. The app gives every resume ask a fresh requestId and never reuses it
-  for another ask, across control connections and reconnects, for as long as a
-  native packet of that ask could still arrive (a late packet can follow a
-  timeout or a closed connection); a UUID per ask is the simple way. It refuses
+  ask's. An app may forget its oldest unanswered asks past a bound (GNOME keeps
+  8); a forgotten ask records nothing. Whichever answer arrives first records
+  the ask once; the other adds nothing. The entry is startRejected/resumeRefused
+  with the native message, or the reply's code (R82 1b). The app gives every
+  resume ask a fresh requestId and never reuses it for another ask, on the same
+  or another control connection, after a reconnect or an app restart (a late
+  packet can follow a timeout or a closed connection); a UUID per ask is the
+  simple way. It refuses
   a resume whose present requestId is outside the control requestId domain.
   `askAttribution` in `resume-capture-vectors.json` pins these orders.
 - Use seam events/physical tracks exactly as written. Actual playback, export
