@@ -78,7 +78,13 @@ def run(tracks, options, notify, *, statvfs=os.statvfs):
                     group["durationMs"], scratch=options.get("scratch"), statvfs=statvfs, recordings=live
                 ):
                     diagnostics.append(
-                        dict(code="diarization-kept-d11", group=identifier, message="Not enough disk space", **short)
+                        dict(
+                            code="diarization-kept-d11",
+                            group=identifier,
+                            reason="lowDisk",
+                            message="Not enough disk space",
+                            **short,
+                        )
                     )
                     continue
 

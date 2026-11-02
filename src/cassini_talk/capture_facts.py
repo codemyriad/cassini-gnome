@@ -147,8 +147,15 @@ def separation_result(result, groups, reused):
     from .diarization import usable
     from .nemotron_model import MODEL_ID, MODEL_TAG, REVISION
 
-    if not isinstance(result, dict) or result.get("model") != MODEL_TAG or not groups:
+    if not isinstance(result, dict) or result.get("model") != MODEL_TAG:
         return dict(status="failed", reason="processingFailed")
+    # D56 (R75 Q2): groups the worker skipped for disk space carry reason lowDisk.
+    diagnostics = result.get("diagnostics") if isinstance(result.get("diagnostics"), list) else []
+    low_disk = bool(diagnostics) and all(isinstance(d, dict) and d.get("reason") == "lowDisk" for d in diagnostics)
+    if not groups:
+        return (
+            dict(status="skipped", reason="lowDisk") if low_disk else dict(status="failed", reason="processingFailed")
+        )
     if all(group["durationMs"] < 200 for group in groups):
         return dict(status="skipped", reason="tooShort", modelId=MODEL_ID, modelRevision=REVISION)
     voices = {(group["id"], turn["speaker"]) for group in groups for turn in group["turns"] if usable(turn)}
@@ -163,5 +170,5 @@ def separation_result(result, groups, reused):
         reused=all(group["id"] in reused for group in groups),
     )
     if partial:
-        facts["reason"] = "processingFailed"
+        facts["reason"] = "lowDisk" if low_disk else "processingFailed"
     return facts

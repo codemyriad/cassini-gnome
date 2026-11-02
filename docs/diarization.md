@@ -35,7 +35,11 @@ as the job starts, the recorder's reserve, max(1 GiB, 2 %), applies instead. A
 recording that starts mid-job is covered only by the floor and by the recorder's
 own low-disk handling; that gap is accepted. Without the space, that group keeps
 D11 (or gets no print), nothing is written, the transcript is kept and the
-numbers go to the app log.
+numbers go to the app log. D56: when no group could be separated and every skip
+was for disk space, `speakerSeparation` records `skipped` with reason `lowDisk`;
+when other groups were separated it is `partial`, with reason `lowDisk` unless a
+group also failed for another reason (`processingFailed`). A skipped voice step
+is only logged.
 
 The pure word assignment follows the shared S-11 vectors. Stable IDs use the
 original group followed by `~n`; display numbering follows speaking word order.

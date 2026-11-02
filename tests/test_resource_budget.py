@@ -327,6 +327,7 @@ def test_low_disk_diarization_keeps_d11_without_a_temp_file(tmp_path, monkeypatc
         dict(
             code="diarization-kept-d11",
             group="others",
+            reason="lowDisk",
             message="Not enough disk space",
             freeBytes=1 << 30,
             neededBytes=(HOURS_2 * 1000 + 1000) * 64,
@@ -340,8 +341,11 @@ def test_low_disk_diarization_still_writes_the_transcript(tmp_path, monkeypatch,
     """The queue passes the recordings live at job start; one on this volume raises the reserve."""
     from test_diarization_queue import Models
 
+    from cassini_talk.capture_details import read_details
+    from cassini_talk.library import LibraryScanner
     from cassini_talk.meeting_store import read_metadata
     from cassini_talk.recording_session import RecordingSession
+    from cassini_talk.strings import text
     from cassini_talk.transcription import TranscriptionQueue
 
     session = RecordingSession(tmp_path, source="gnome")
@@ -392,7 +396,10 @@ def test_low_disk_diarization_still_writes_the_transcript(tmp_path, monkeypatch,
         body = json.loads((session.directory / "transcript.json").read_bytes())
         assert [(w["text"], w["speaker"]) for w in body["items"]] == [("One", "others"), ("Two", "others")]
         separation = metadata["recordingDetails"]["writingDown"]["speakerSeparation"]
-        assert separation == dict(status="failed", reason="processingFailed")
+        assert separation == dict(status="skipped", reason="lowDisk")  # D56, R75 Q2.
+        (meeting,) = LibraryScanner(tmp_path).scan().meetings
+        shown = dict(read_details(meeting).writing)[text("details.writing.separation")]
+        assert shown == text("details.separation.lowDisk")
         assert meter.created == 0 and not (session.directory / "speaker-turns.json").exists()
         reserve = (2 << 30) if recording else 1 << 30  # 2 % of 100 GiB, or the floor.
         assert any(
@@ -400,6 +407,26 @@ def test_low_disk_diarization_still_writes_the_transcript(tmp_path, monkeypatch,
         )
     finally:
         queue.close()
+
+
+def test_a_low_disk_skip_beside_a_diarized_group_is_partial_for_low_disk():
+    """One group separated, one skipped for space: partial, and the reason says why."""
+    from cassini_talk.capture_facts import separation_result
+    from cassini_talk.nemotron_model import MODEL_TAG
+
+    group = dict(id="others", durationMs=3000, turns=[dict(startMs=0, endMs=1000, speaker=0)])
+    skipped = dict(code="diarization-kept-d11", group="tab", reason="lowDisk", freeBytes=1)
+    failed = dict(code="diarization-kept-d11", group="media", message="Native error")
+    result = dict(model=MODEL_TAG, diagnostics=[skipped])
+    assert separation_result(result, [group], set())["status"] == "partial"
+    assert separation_result(result, [group], set())["reason"] == "lowDisk"
+    assert (
+        separation_result(dict(result, diagnostics=[skipped, failed]), [group], set())["reason"] == "processingFailed"
+    )
+    assert separation_result(result, [], set()) == dict(status="skipped", reason="lowDisk")
+    assert separation_result(dict(result, diagnostics=[skipped, failed]), [], set()) == dict(
+        status="failed", reason="processingFailed"
+    )
 
 
 def test_voice_diagnostics_reach_the_app_log(caplog):
