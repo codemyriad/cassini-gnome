@@ -3,6 +3,7 @@
 """Private real Pulse: independent source stop/restart, new WAV spans and offsets."""
 
 import json
+import logging
 import math
 import os
 import struct
@@ -146,6 +147,50 @@ try:
         evidence["browserFailedChangeKeepsSource"] = True
     finally:
         capture.stop()
+
+    # R79 §1: a real microphone that cannot open at start is refused on its
+    # own. The system side records, and the refused side gets no track or WAV.
+    refusing = NativeRecorder()
+    refusing_signals, refusing_logs = [], []
+
+    class Refusals(logging.Handler):
+        def emit(self, record):
+            refusing_logs.append(record.getMessage())
+
+    logging.getLogger("cassini_talk.native_recorder").addHandler(Refusals(logging.WARNING))
+    refusing.connect("started", lambda _r, path: refusing_signals.append(("started", path)))
+    refusing.connect("error", lambda _r, message: refusing_signals.append(("error", message)))
+    parse = Gst.parse_bin_from_description
+    with patch.object(
+        Gst,
+        "parse_bin_from_description",
+        side_effect=lambda description, ghost: parse(
+            description.replace("device=@DEFAULT_SOURCE@", "device=cassini-device-does-not-exist"), ghost
+        ),
+    ):
+        refusing.start(artifacts)
+        wait_until(lambda: refusing_signals, "each side decided at start")
+    refused = refusing.session
+    assert refusing_logs == [
+        "Native me side (microphone) did not open at start: Failed to connect stream: No such entity"
+    ], refusing_logs
+    assert [name for name, _ in refusing_signals] == ["started"], (
+        refusing_signals,
+        refusing._problem,
+        refused.manifest if refused else None,
+    )
+    assert [t["kind"] for t in refused.manifest["tracks"]] == ["system"], refused.manifest
+    assert not (refused.directory / "track-microphone.wav").exists()
+    assert [e for e in refused.manifest["events"] if e["type"] == "selection"] == [
+        dict(atMs=0, type="selection", me=True, others=True, reason="start")
+    ]
+    wait_until(lambda: refused.writers["system"].frames >= 96000, "system records beside a refused microphone")
+    refusing.stop()
+    wait_until(lambda: refusing.pipeline is None and not refusing._finishing, "refused-side recording saves")
+    assert refused.manifest["state"] == "completed" and [name for name, _ in refusing_signals] == ["started"]
+    assert power(refused.directory / "track-system.wav", 880) > 0.001
+    refusing.close()
+    evidence["nativeStartRefusesOnlyTheMissingSide"] = True
 
     native.start(artifacts)
     wait_until(

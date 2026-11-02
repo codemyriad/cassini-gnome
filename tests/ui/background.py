@@ -269,7 +269,14 @@ with tempfile.TemporaryDirectory() as temporary:
     # This is the exact app.quit action used by GNOME Background Apps. It must
     # finalize audio and quit without presenting an invisible confirmation.
     app.start_native(test=True)
-    until(lambda: app.recorder and app.recorder.pipeline and app.recorder.session.manifest["tracks"][0]["frames"] > 0)
+    until(
+        lambda: (
+            app.recorder
+            and app.recorder.pipeline
+            and not app.recorder.starting
+            and any(track["frames"] > 0 for track in app.recorder.session.manifest["tracks"])
+        )
+    )
     native = app.recorder
     services.app_action(app, "quit")
     until(lambda: app._quitting and not native.pipeline and not native._finishing)

@@ -147,7 +147,7 @@ try:
         dialog.dont_show.set_active(True)
         dialog.start_button.emit("clicked")
         wait_until(
-            lambda: app.recorder and app.recorder.pipeline is not None,
+            lambda: app.recorder and app.recorder.pipeline is not None and not app.recorder.starting,
             "native recording starts",
             diagnostics=diagnostics,
         )
@@ -155,7 +155,8 @@ try:
 
         def captured():
             assert not app.recording_error, app.recording_error
-            return all(w.frames >= 48000 * 0.4 for w in recorder.session.writers.values())
+            writers = recorder.session.writers.values()
+            return len(writers) == 2 and all(w.frames >= 48000 * 0.4 for w in writers)
 
         wait_until(captured, "both native tracks capture actual PCM", diagnostics=diagnostics)
         wait_until(
@@ -217,7 +218,11 @@ try:
         import wave
 
         tones = []
-        for track, frequency, other in zip(manifest["tracks"], (440, 880), (880, 440), strict=True):
+        # Sides open in parallel (R79 §1): match each track by kind, not order.
+        by_kind = {track["kind"]: track for track in manifest["tracks"]}
+        assert sorted(by_kind) == ["microphone", "system"] and len(manifest["tracks"]) == 2
+        tracks = (by_kind["microphone"], by_kind["system"])
+        for track, frequency, other in zip(tracks, (440, 880), (880, 440), strict=True):
             with wave.open(str(saved / track["file"])) as audio:
                 assert audio.getnchannels() == 1 and audio.getframerate() == 48000
                 assert audio.getnframes() >= 48000 * 0.4
@@ -258,7 +263,7 @@ try:
         app.on_record()
         assert not window.player.playing, "Recording must pause Cassini playback before capturing system sound"
         wait_until(
-            lambda: app.recorder is not recorder and app.recorder.pipeline is not None,
+            lambda: app.recorder is not recorder and app.recorder.pipeline is not None and not app.recorder.starting,
             "skip-first preference starts recording",
             diagnostics=diagnostics,
         )

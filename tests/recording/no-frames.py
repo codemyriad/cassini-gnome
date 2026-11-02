@@ -95,13 +95,22 @@ try:
     producer.set_state(Gst.State.PLAYING)
     app.start_native()
     wait_until(
-        lambda: app.recorder and app.recorder.session and app.recorder.session.writers["system"].frames >= 24000,
+        lambda: (
+            app.recorder
+            and app.recorder.session
+            and "system" in app.recorder.session.writers
+            and app.recorder.session.writers["system"].frames >= 24000
+        ),
         "healthy system PCM alongside a no-frame microphone",
         diagnostics=diagnostics,
     )
     recorder = app.recorder
     session = recorder.session
-    assert session.writers["microphone"].frames == 0
+    # R79 §1: a microphone without a first frame within 3 s is refused at
+    # start. It gets no track or WAV, and the system side keeps recording.
+    assert not recorder.starting and "microphone" not in session.writers
+    assert [track["kind"] for track in session.manifest["tracks"]] == ["system"]
+    assert not (session.directory / "track-microphone.wav").exists()
     path = session.directory / "track-system.wav"
     before = path.read_bytes()[44:]
     frames = session.writers["system"].frames
@@ -122,7 +131,7 @@ try:
     assert not recorder._problem and not app.recording_error and not errors, diagnostics()
     assert session.manifest.get("problemKind") in (None, "gap"), session.manifest
     assert all(track["ended"] for track in session.manifest["tracks"])
-    assert session.writers["microphone"].frames == 0
+    assert "microphone" not in session.writers
     assert path.read_bytes()[44:].startswith(before), "Quit lost already captured PCM"
     with wave.open(str(path), "rb") as audio:
         assert audio.getnframes() >= frames

@@ -133,7 +133,9 @@ with tempfile.TemporaryDirectory() as temporary:
     app.start_native(test=True)
     until(
         lambda: (
-            app.recorder.pipeline is not None and all(w.frames >= 9600 for w in app.recorder.session.writers.values())
+            app.recorder.pipeline is not None
+            and not app.recorder.starting
+            and all(w.frames >= 9600 for w in app.recorder.session.writers.values())
         )
     )
     live = app.recorder.session.directory

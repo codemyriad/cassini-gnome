@@ -166,7 +166,10 @@ try:
     shortcut = app.global_shortcut = GlobalShortcut(app.on_global_record, connection=services.bus)
     until(lambda: shortcut.bound, "portal shortcut bound")
     services.activate()
-    until(lambda: app.recorder and app.recorder.pipeline is not None, "portal activation starts real native recording")
+    until(
+        lambda: app.recorder and app.recorder.pipeline is not None and not app.recorder.starting,
+        "portal activation starts real native recording",
+    )
     native = app.recorder
     until(lambda: all(w.frames >= 24000 for w in native.session.writers.values()), "both source WAVs grow")
     until(
@@ -267,7 +270,7 @@ try:
     space[0] = (9, False)
     services.activate()
     until(
-        lambda: app.recorder is not native and app.recorder.pipeline is not None,
+        lambda: app.recorder is not native and app.recorder.pipeline is not None and not app.recorder.starting,
         "global shortcut starts next recording",
     )
     native = app.recorder
@@ -286,7 +289,10 @@ try:
     assert window.meeting_page.meeting.directory != first_saved
     space[0] = (90, False)
     services.activate()
-    until(lambda: app.recorder is not native and app.recorder.pipeline is not None, "last-edit close capture starts")
+    until(
+        lambda: app.recorder is not native and app.recorder.pipeline is not None and not app.recorder.starting,
+        "last-edit close capture starts",
+    )
     native = app.recorder
     until(
         lambda: window.recording_page is not None and all(w.frames >= 9600 for w in native.session.writers.values()),

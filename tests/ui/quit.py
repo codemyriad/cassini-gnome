@@ -377,6 +377,7 @@ with tempfile.TemporaryDirectory() as tmp:
         elif (
             phase == 1
             and app.recorder.session
+            and not app.recorder.starting
             and all(t["frames"] >= 9600 for t in app.recorder.session.manifest["tracks"])
         ):
             if mode in ("indicator-quit-visible", "indicator-quit-dialog"):

@@ -146,7 +146,7 @@ def test_stop_keeps_healthy_pcm_when_an_empty_source_never_acknowledges_eos(tmp_
     Gst.init(None)
     recorder = NativeRecorder()
     branch = recorder._branch
-    errors, finished = [], []
+    errors, finished, devices = [], [], {}
     recorder.connect("error", lambda _r, value: errors.append(value))
     recorder.connect("finished", lambda _r, value: finished.append(value))
 
@@ -154,10 +154,12 @@ def test_stop_keeps_healthy_pcm_when_an_empty_source_never_acknowledges_eos(tmp_
         if kind not in empty:
             return branch(kind)
         result = Gst.parse_bin_from_description(
-            'appsrc name=unresponsive is-live=true format=time caps="audio/x-raw,format=S16LE,rate=48000,channels=1" '
+            "appsrc name=unresponsive is-live=true format=time do-timestamp=true "
+            'caps="audio/x-raw,format=S16LE,rate=48000,channels=1" '
             f"! queue ! appsink name={kind} emit-signals=true sync=false async=false",
             False,
         )
+        devices[kind] = result.get_by_name("unresponsive")
 
         # Model a source that never emits a frame or acknowledges the EOS.
         def no_end(_pad, info):
@@ -174,7 +176,13 @@ def test_stop_keeps_healthy_pcm_when_an_empty_source_never_acknowledges_eos(tmp_
 
     try:
         recorder.start(tmp_path, test=True)
-        spin_until(lambda: recorder.pipeline is not None)
+        # The source opens with one first buffer, then never emits another
+        # frame: its side commits with an empty track (R79 §1).
+        spin_until(lambda: all(kind in recorder._pending_sources for kind in empty))
+        for kind in empty:
+            assert devices[kind].emit("push-buffer", Gst.Buffer.new_wrapped(bytes(960))) == Gst.FlowReturn.OK
+        spin_until(lambda: not recorder.starting)
+        assert sorted(recorder._track_ids) == ["microphone", "system"]
         healthy = set(("microphone", "system")) - set(empty)
         if healthy:
             spin_until(lambda: all(recorder.session.writers[kind].frames >= 9600 for kind in healthy))
