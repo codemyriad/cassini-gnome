@@ -36,6 +36,16 @@ class ResumeTests(unittest.TestCase):
         schema('request').validate(dict(type='start',version=1))
         schema('response').validate(dict(type='started',path='/fresh'))
 
+    def test_spec_example_keeps_navigation_and_the_ask_waits_for_the_tab_release(self):
+        # D57: the documented resume Start keeps the session across a reload,
+        # and the app asks only once the extension released that tab.
+        text = (ROOT/'SPEC-CONTROL.md').read_text()
+        example = next(json.loads(line) for line in text.splitlines() if '"requestId":"join-stand-in"' in line)
+        schema('control-host').validate(example)
+        self.assertIs(example['keepOnNavigation'], True)
+        self.assertIn('resumeCapture', example)
+        self.assertIn("The app asks to resume only after the extension's status no longer reports a session for that tab.", text)
+
     def test_literal_resumed_seam_retains_mic_without_double_recording_the_others(self):
         spec = importlib.util.spec_from_file_location('resume_owner', ROOT/'conformance/multistream/ownership.py')
         owner = importlib.util.module_from_spec(spec); spec.loader.exec_module(owner)

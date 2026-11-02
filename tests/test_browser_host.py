@@ -191,3 +191,52 @@ def test_installed_host_supplies_player_environment(tmp_path):
     assert values["schemas"] == str(schemas)
     assert values["data"].split(":")[0] == str(share)
     assert values["app_path"] == str(bindir / "cassini-talk")
+
+
+RESUME = dict(
+    type="resume",
+    version=1,
+    independent=True,
+    captureId="stand-in-F",
+    timelineOriginMs=1000,
+    callGeneration="call-A",
+    features=["source-outcomes-v1", "resume-capture-v1"],
+)
+
+
+def test_a_native_resume_is_relayed_to_the_broker_without_spawning_one(tmp_path, monkeypatch):
+    from cassini_talk import browser_audio_proxy
+
+    built, handled = [], []
+
+    class Recorder:
+        def __init__(self, *, path=None, spawn=True):
+            built.append(spawn)
+            self.session = None
+
+        def handle(self, message):
+            handled.append(message)
+            return dict(type="started", path="/broker/F", resumed=True)
+
+        def watch(self, _closed):
+            pass
+
+        def close(self, *_args, **_kwargs):
+            pass
+
+    monkeypatch.setattr(browser_audio_proxy, "BrowserAudioProxy", Recorder)
+    code, replies = invoke(tmp_path, [RESUME], launcher=lambda *a, **k: pytest.fail("unexpected launch"))
+    assert code == 0 and built == [False] and handled == [RESUME]
+    assert replies == [dict(type="started", path="/broker/F", resumed=True)]
+    assert not list(tmp_path.iterdir())
+
+
+def test_a_resume_without_a_running_broker_refuses_before_any_folder(tmp_path, monkeypatch):
+    from cassini_talk import browser_service
+
+    monkeypatch.setattr(browser_service, "service_path", lambda: tmp_path / "no-broker/browser.sock")
+    monkeypatch.setattr(browser_service, "ensure_service", lambda *_a, **_k: pytest.fail("spawned a broker"))
+    code, replies = invoke(tmp_path, [RESUME], launcher=lambda *a, **k: pytest.fail("unexpected launch"))
+    assert code == 0
+    assert [(r["type"], r["code"], r["scope"]) for r in replies] == [("error", "state", "command")]
+    assert not list(tmp_path.iterdir())

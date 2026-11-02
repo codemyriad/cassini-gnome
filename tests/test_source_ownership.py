@@ -12,9 +12,38 @@ from cassini_talk.source_ownership import FrameMask, windows
 CASES = json.loads((Path(__file__).parents[1] / "browser-protocol/conformance/multistream/ownership.json").read_text())[
     "cases"
 ]
+RESUME = json.loads(
+    (Path(__file__).parents[1] / "browser-protocol/conformance/control/resume-capture-vectors.json").read_text()
+)
 
 
-@pytest.mark.parametrize("case", CASES, ids=lambda case: case["name"])
+def resume_seam(name):
+    """R67/D52.4: a resume seam in ownership.json's shape, so it takes the same path.
+
+    The resume vectors list the others' owners only; the native microphone
+    keeps recording across the seam and owns every instant of its own track.
+    """
+    seam = RESUME[name]
+    return dict(
+        name=name,
+        events=seam["events"],
+        tracks=seam["tracks"],
+        expected=seam["expectedWindows"],
+        ownershipAt=[
+            dict(
+                atMs=row["atMs"],
+                ids=sorted(["microphone", *row["others"]], key=[t["id"] for t in seam["tracks"]].index),
+            )
+            for row in seam["ownershipAt"]
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [*CASES, resume_seam("seam"), resume_seam("lostSeam")],
+    ids=lambda case: case["name"],
+)
 def test_shared_literal_half_open_ownership(case):
     for track in case["tracks"]:
         intervals = windows(track["kind"], case["events"])

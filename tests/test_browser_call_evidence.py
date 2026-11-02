@@ -205,6 +205,9 @@ def seed_recordings(service, browser, vector, parent):
         )
         capture.close()
         assert capture.browser_lost and not capture.finished
+        # The extension saw its native port close and deleted that session
+        # (background.js stop()); until then it would refuse a resume Start.
+        service.update(peer, dict(type="status", recording=False, sessions=[]))
         if recording.get("controlPeer", "current") == "earlier":
             with service.lock:
                 peer.closed = True
@@ -216,6 +219,19 @@ def seed_recordings(service, browser, vector, parent):
         service.browsers[peer.id] = peer
         service.update(peer, dict(type="status", recording=False, sessions=[]))
     return peer
+
+
+def row(vector):
+    """The vector's meeting row, sent exactly as written (it carries pageState, D57)."""
+    return vector["meeting"]
+
+
+def resume_packets(packets):
+    return [packet for packet in packets if "resumeCapture" in packet]
+
+
+def drop_automatic(tasks, service):
+    tasks[:] = [item for item in tasks if item[0] != service._automatic]
 
 
 def starts(tasks, service):
@@ -239,16 +255,22 @@ def test_shared_auto_start_vectors_schedule_and_dispatch(policy, command_packets
     service.auto_record = False
     browser = seed_recordings(service, browser, vector, tmp_path / "Library")
     service.auto_record = True
-    tasks.clear()
+    # Seeding queues no automatic Start (auto-record is off). Its lifecycle
+    # work, such as a resume ask once the extension released the tab, stays
+    # queued for the worker pool, as it would in production.
+    drop_automatic(tasks, service)
     service.update(browser, dict(type="hello", version=1, capabilities=vector["capabilities"]))
-    service.update(browser, dict(type="meetings", meetings=[vector["meeting"]]))
+    service.update(browser, dict(type="meetings", meetings=[row(vector)]))
     settle(service, tasks)
     scheduled = starts(tasks, service)
     assert bool(scheduled) is vector["expect"]["automatic"]
     if scheduled:
         assert len(scheduled) == 1
         service._automatic(*scheduled[0])
-    started = [packet for packet in command_packets if packet["action"] == "start"]
+    # settle() also ran the lifecycle's one resume ask; it is not a Start.
+    resumes = resume_packets(command_packets)
+    assert len(resumes) == (1 if vector["expect"].get("resume") else 0)
+    started = [packet for packet in command_packets if packet["action"] == "start" and packet not in resumes]
     assert bool(started) is vector["expect"]["automatic"]
     for packet in started:
         assert packet["tabId"] == vector["meeting"]["tabId"]
@@ -258,33 +280,44 @@ def test_shared_auto_start_vectors_schedule_and_dispatch(policy, command_packets
     assert not starts(tasks, service), "replayed inventory cannot duplicate a scheduled start"
 
 
-@pytest.mark.parametrize(
-    "vector",
-    [
-        pytest.param(
-            vector,
-            marks=pytest.mark.xfail(strict=True, reason="D52.3 resume-capture-v1 host side not implemented"),
-        )
-        if vector["expect"].get("resume")
-        else vector
-        for vector in SHARED_AUTO_START_CASES
-    ],
-    ids=lambda case: case["name"],
-)
+@pytest.mark.parametrize("vector", SHARED_AUTO_START_CASES, ids=lambda case: case["name"])
 def test_shared_auto_start_vectors_resume_a_lost_recording_once(policy, command_packets, vector, tmp_path):
     service, browser, tasks = policy
     service.auto_record = False
     browser = seed_recordings(service, browser, vector, tmp_path / "Library")
     service.auto_record = True
     service.update(browser, dict(type="hello", version=1, capabilities=vector["capabilities"]))
-    service.update(browser, dict(type="meetings", meetings=[vector["meeting"]]))
-    service.policy()
-    for function, arguments in tasks:
-        if function == service._automatic:
-            function(*arguments)
-    resumes = [packet["resumeCapture"]["captureId"] for packet in command_packets if "resumeCapture" in packet]
+    service.update(browser, dict(type="meetings", meetings=[row(vector)]))
+    # Replayed inventory, a re-hello on the same peer and repeated ticks: the
+    # worker pool runs the queued automatic and lifecycle work each time.
+    for _ in range(3):
+        service.policy()
+        while work := [item for item in tasks if item[0] in (service._automatic, service._capture_lifecycle)]:
+            for item in work:
+                tasks.remove(item)
+                item[0](*item[1])
+        service.update(browser, dict(type="meetings", meetings=[row(vector)]))
+        service.update(browser, dict(type="hello", version=1, capabilities=vector["capabilities"]))
+    resumes = [packet["resumeCapture"]["captureId"] for packet in resume_packets(command_packets)]
     expected = [r["captureId"] for r in vector.get("recordings", [])][:1] if vector["expect"].get("resume") else []
     assert resumes == expected
+    fresh = [packet for packet in command_packets if packet["action"] == "start" and "resumeCapture" not in packet]
+    assert not fresh or vector["expect"]["automatic"], "a lost call is never started a second time"
+    for packet in resume_packets(command_packets):
+        capture = service.captures[packet["resumeCapture"]["captureId"]]
+        assert packet == dict(
+            type="command",
+            requestId=packet["requestId"],
+            action="start",
+            mode="tracks",
+            tabId=vector["meeting"]["tabId"],
+            independent=True,
+            captureLocal=False,
+            callGeneration=vector["meeting"]["callGeneration"],
+            keepOnNavigation=True,
+            resumeCapture=dict(captureId=capture.capture_id, timelineOriginMs=capture.origin_ms),
+        )
+        assert capture.browser_lost and not capture.finished
 
 
 @pytest.mark.parametrize("vector", SHARED_AUTO_START_CASES, ids=lambda case: case["name"])
@@ -292,10 +325,11 @@ def test_shared_manual_start_vectors_use_record_candidates_and_dispatch(policy, 
     service, browser, tasks = policy
     service.auto_record = False
     browser = seed_recordings(service, browser, vector, tmp_path / "Library")
-    tasks.clear()
+    drop_automatic(tasks, service)
     service.update(browser, dict(type="hello", version=1, capabilities=vector["capabilities"]))
-    service.update(browser, dict(type="meetings", meetings=[vector["meeting"]]))
+    service.update(browser, dict(type="meetings", meetings=[row(vector)]))
     settle(service, tasks)
+    command_packets[:] = [packet for packet in command_packets if "resumeCapture" not in packet]
     # Record uses the production candidate filter; zero-source entries are not
     # candidates. Explicit starts for eligible tabs must also bypass heard.
     result = service.start_all()
@@ -305,6 +339,12 @@ def test_shared_manual_start_vectors_use_record_candidates_and_dispatch(policy, 
     if result["attempted"]:
         service.command(f"{browser.id}:{vector['meeting']['tabId']}", "start")
         assert len(command_packets) == 2
+    elif vector.get("recordings"):
+        # D52.5: the row shows Stop, and an explicit Start of that call is
+        # refused before anything reaches the browser.
+        with pytest.raises(ValueError):
+            service.command(f"{browser.id}:{vector['meeting']['tabId']}", "start", user=True)
+        assert not command_packets
     for packet in command_packets:
         assert packet["action"] == "start" and packet["tabId"] == vector["meeting"]["tabId"]
         assert packet["independent"] is True

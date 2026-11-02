@@ -457,8 +457,11 @@ how often an app may ask to resume a system/lost fallback (once per loss and
 control connection, D52.5) is under "Control heartbeat" below.
 
 ```json
-{"type":"command","requestId":"join-stand-in","action":"start","mode":"tracks","tabId":2,"independent":true,"callGeneration":"call-A","captureLocal":false,"resumeCapture":{"captureId":"stand-in-F","timelineOriginMs":1793500000000}}
+{"type":"command","requestId":"join-stand-in","action":"start","mode":"tracks","tabId":2,"independent":true,"callGeneration":"call-A","captureLocal":false,"keepOnNavigation":true,"resumeCapture":{"captureId":"stand-in-F","timelineOriginMs":1793500000000}}
 ```
+
+`keepOnNavigation:true` (page-state-v1) applies to a resume Start as to any
+independent Start: without it, a reload ends the resumed extension session.
 
 `resumeCapture` requires independent Start, a selected callGeneration, a nonempty
 captureId of at most128 UTF-8 bytes and an integer original timelineOriginMs in
@@ -588,7 +591,9 @@ These are app-side rules; the extension and the wire are unchanged.
   callGeneration equals the recording's callGeneration; and heard:true has
   been seen at any time during this recording on a row of that same
   callGeneration (another call's heard never counts, and it never arms this
-  recording's restore or OTHERS_GONE_GRACE either). After that resume is
+  recording's restore or OTHERS_GONE_GRACE either).
+  The app asks to resume only after the extension's status no longer reports a session for that tab.
+  After that resume is
   refused or fails (error result, refused native resume, missing or
   mismatched proof), and while it is still pending, the app MUST NOT ask
   again on the same control connection: there is no retry on later ticks and

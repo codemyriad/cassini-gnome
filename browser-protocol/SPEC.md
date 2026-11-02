@@ -490,7 +490,15 @@ relay that keeps the transport open but silent. Times are monotonic.
   armed and `now - lastAudioTransportFrame >= 45 s` (so 44.999 s after the
   last frame it is still open and at 45.000 s it is closed), never earlier,
   and SHOULD close it within one policy tick. A frame arriving at or after
-  that deadline is too late. Literal cases with an independent oracle:
+  that deadline is too late. A span whose document is gone does not arm this
+  watchdog (D57): when the recording tab's status reports pageState
+  `navigating`, every open span is retired, and so is any span declared before
+  the tab is next reported `present` or with a new documentGeneration; when the
+  documentGeneration changes without navigating, the spans declared up to the
+  last status that still reported the old generation are retired; a retired
+  span's PCM is still recorded but never re-arms it, and a span declared after
+  those points, even before its own documentGeneration is reported, stays
+  armed (`documentChanged` frames). Literal cases with an independent oracle:
   `conformance/multistream/stale-watchdog.json` (`stale_watchdog.py`).
   Closing uses the app's existing EOF path, so
   the recording keeps running and falls back to computer sound with

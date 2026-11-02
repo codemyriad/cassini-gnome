@@ -48,7 +48,7 @@ class StaleWatchdogTests(unittest.TestCase):
                 self.assertTrue(case['probes'])
         self.assertEqual(failing(oracle), set())
         kinds = {f['frame'] for case in VECTORS['cases'] for f in case['frames']}
-        self.assertEqual(kinds, {'track', 'audio', 'sources', 'trackEnd', 'stop', 'control'})
+        self.assertEqual(kinds, {'track', 'audio', 'sources', 'trackEnd', 'stop', 'control', 'documentChanged'})
 
     def test_mutants_fail(self):
         boundary = {'pcm-then-silence-closes-at-exactly-45-seconds', 'control-frames-do-not-count',
@@ -74,6 +74,47 @@ class StaleWatchdogTests(unittest.TestCase):
         self.assertIn('last-armed-span-ended-disarms', sticky)
         self.assertIn('stop-disarms', sticky)
 
+    def test_document_retirement_is_normative_and_mutants_fail(self):
+        # D57: a gone document's spans never arm the watchdog; the next one's do.
+        self.assertIn('`documentChanged` frames', (ROOT / 'SPEC.md').read_text())
+        reload = 'gone-documents-spans-are-retired-and-the-next-documents-spans-arm'
+        same = 'same-document-status-after-navigating-keeps-the-departing-window-open'
+        unchanged = 'unchanged-document-status-keeps-its-spans-armed'
+        without_present = 'a-new-document-without-present-closes-the-departing-window'
+        first_new_span = 'a-missed-reloads-first-new-span-stays-armed'
+        mutants = {
+            'navigating keeps the open spans': (
+                '                open_spans.clear()\n                departing = True', '                departing = True', reload),
+            'no departing window': (
+                "            if not departing:\n                open_spans.add(frame['id'])", "            open_spans.add(frame['id'])", reload),
+            'only a generation closes the window': ("elif page == 'present' or changed:", 'elif changed:', reload),
+            'the window never closes': (
+                'departing = False  # the next document is here; the same one is not', 'pass', reload),
+            'a new generation retires nothing': ('open_spans.difference_update(declared[:confirmed])', 'pass', reload),
+            "a new generation retires the next document's spans": (
+                'difference_update(declared[:confirmed])', 'difference_update(declared)', reload),
+            'confirmation never moves': ('generation, confirmed = document, len(declared)', 'generation = document', reload),
+            'documentChanged is activity': ('            continue  # a control frame: never activity',
+                                            "            last = frame['atMs']\n            continue", reload),
+            'a retired span re-arms on its PCM': (
+                "elif kind == 'audio' and frame['id'] in open_spans:",
+                "elif kind == 'audio':\n            open_spans.add(frame['id'])", reload),
+            # Review of #34: the same document never closes the window, an
+            # unchanged generation never retires, and a new one closes the
+            # window even when present was missed.
+            'any reported generation closes the window': (
+                "elif page == 'present' or changed:", "elif page == 'present' or document is not None:", same),
+            'an unchanged generation retires spans': (
+                'if changed and generation is not None:', 'if document is not None and generation is not None:', unchanged),
+            'only present closes the window': ("elif page == 'present' or changed:", "elif page == 'present':", without_present),
+            # The first span declared after the last confirmation is the new
+            # document's, and live: never retire one past the confirmation.
+            'retirement reaches one span past the confirmation': (
+                'difference_update(declared[:confirmed])', 'difference_update(declared[:confirmed + 1])', first_new_span),
+        }
+        for name, (old, new, case) in mutants.items():
+            with self.subTest(mutant=name):
+                self.assertIn(case, failing(mutant(old, new)))
 
 if __name__ == '__main__':
     unittest.main()

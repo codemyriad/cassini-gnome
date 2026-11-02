@@ -1,6 +1,6 @@
 # Browser call lifetime (D33)
 
-Shared protocol pin: `941a82cb9aa9acf70e1c9ed3c698caa222a218fc` (protocol PR #33, vectors on top of the D52.5 PR #32).
+Shared protocol pin: `95b647aa867c931ee9eb99d8fc5e42555671729e` (protocol PR #34, D57 resume host clarifications and the documentChanged vectors, on top of #33 and the D52.5 PR #32).
 Companion 0.2.9 replaces older local installs; no Chrome Web Store packaging or upload is performed.
 
 The broker owns every independent capture and its Library folder. With the

@@ -22,10 +22,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
-from .call_lifecycle import BROWSER_RETURN_GRACE, CALL_END_GRACE, CONTROL_RECONNECT_GRACE, CallLifecycle
+from .call_lifecycle import (
+    BROWSER_RETURN_GRACE,
+    CALL_END_GRACE,
+    CONTROL_RECONNECT_GRACE,
+    CallLifecycle,
+    ResumeInputs,
+)
 from .session_events import source_state
 
 MAX_PACKET = 512 * 1024
+RESUME_CAPTURE = "resume-capture-v1"
+# Bounded correlation of in-flight resume asks per control connection.
+RESUME_HISTORY = 64
 # A call the user stopped stays stopped beyond the control link that carried
 # the stop, so a reconnect does not start it again automatically.
 STOPPED_CALL_GRACE = 10 * 60
@@ -185,6 +194,8 @@ class AudioTransport(Transport):
         # While the reader handles a packet, a quiet peer is the broker's own
         # stall (a disk write under the capture lock), never the browser's.
         self.handling = False
+        # Wire span ids declared on this transport; they end when it closes.
+        self.spans = set()
 
     def expired(self, now):
         capture = self.capture
@@ -193,12 +204,14 @@ class AudioTransport(Transport):
             and not self.handling
             and capture.multistream_capable
             and now - self.last_inbound >= PCM_STALE_AFTER
-            and not (capture.finished or capture.stopping or capture.stop_requested.is_set() or capture.browser_lost)
+            and not (capture.finished or capture.stopping or capture.stop_requested.is_set())
             and capture.remote_open()
         ):
             # Only a running remote recorder must keep sending. Before the first
             # PCM, or after every span ended (a guest left, the receiver dropped
             # out during a network blip), a quiet transport is still healthy.
+            # A control-loss fallback is no exception (D57): a frozen
+            # companion's attached transport is closed, so a resume can follow.
             return "stopped sending audio"
         return super().expired(now)
 
@@ -241,6 +254,12 @@ class BrowserConnection(Transport):
         self.page_states = {}
         self.status_pages = {}
         self.capabilities = set()
+        # tab -> captureId of the extension's own sessions in its latest raw
+        # inventory, retained or stale-generation rows included. A lost
+        # recording's tab is released only once its session is gone (D52.5).
+        self.reported = {}
+        # requestId -> captureId of resume-capture-v1 asks on this connection.
+        self.resumes = {}
         self.closed = False
 
     def expired(self, now):
@@ -481,6 +500,18 @@ class BrowserService:
 
     def _command_result(self, browser, packet):
         request_id = packet.get("requestId")
+        asked = browser.resumes.pop(request_id, None) if isinstance(request_id, str) else None
+        if asked is not None:
+            # D52.5: a resume result is informational. Success is only ever the
+            # native attach plus PCM; a refusal changes nothing and is never
+            # retried here, nor turned into a fresh Start. Its status is not
+            # this connection's inventory, and a stale-result cancel would
+            # cancel the very recording it named.
+            if packet.get("ok") is not True:
+                logging.getLogger(__name__).info(
+                    "The browser did not resume recording %s: %s", asked, str(packet.get("error"))[:500]
+                )
+            return
         pending = browser.pending.get(request_id)
         metadata = pending or browser.commands.get(request_id)
         if metadata is None:
@@ -518,10 +549,13 @@ class BrowserService:
                         continue
                     state = dict(state)
                     state.pop("pageState", None)
+                    # A retained generation is not news about that document.
+                    state.pop("documentGeneration", None)
                     if other_tab in browser.page_states:
                         state["pageState"] = browser.page_states[other_tab]
                     preserved.append(state)
-                self._status(browser, dict(status, sessions=[*preserved, target]))
+                # GNOME's own retained rows: not the extension's inventory.
+                self._status(browser, dict(status, sessions=[*preserved, target]), inventory=False)
         if pending is not None:
             pending["result"] = packet
             pending["event"].set()
@@ -802,8 +836,61 @@ class BrowserService:
             recording = dict(path=path, title=title, message=message or "Recording saved")
             self.recordings = [recording] + [r for r in self.recordings if r["path"] != path][:19]
 
+    def _resume_attach(self, packet, transport):
+        """D52.3c: attach this new audio transport to an active recording.
+
+        Returns (target, proof). Every check passes, or ResumeRefused is raised
+        and nothing changed: the caller's capture stays None, so its teardown
+        can neither stop nor close the target.
+        """
+        from .browser_capture import RESUME_FEATURE, ResumeRefused, generation_value, utf8_length
+
+        identifier = packet.get("captureId")
+        origin = packet.get("timelineOriginMs")
+        features = packet.get("features")
+        if (
+            type(packet.get("version")) is not int
+            or packet["version"] != 1
+            or packet.get("independent") is not True
+            or not isinstance(identifier, str)
+            or not 0 < utf8_length(identifier) <= 128
+            or type(origin) is not int
+            or not 0 <= origin <= 253402300799000
+            or generation_value(packet.get("callGeneration")) is None
+            or not isinstance(features, list)
+            or len(features) > 8
+            or any(not isinstance(f, str) or len(f) > 64 for f in features)
+            or len(set(features)) != len(features)
+            or RESUME_FEATURE not in features
+        ):
+            raise ResumeRefused("Invalid resume request")
+        with self.lock:
+            target = self.captures.get(identifier)
+            if (
+                target is None
+                or identifier in self._cancelled_captures
+                or self._stopping_all.is_set()
+                or any(
+                    capture_id == identifier and self.stopped_calls.get(key, (None,))[0] == url
+                    for key, (capture_id, url) in self.call_captures.items()
+                    if url is not None
+                )
+                or any(t.capture is target for t in self._audio_transports if t is not transport)
+            ):
+                raise ResumeRefused()
+        # Lock order is service, then capture: never wait on the capture's
+        # transition (a committing fallback) while holding the inventory lock.
+        proof = target.resume(packet)
+        try:
+            with self.lock:
+                transport.capture = target
+        except BaseException:
+            target.close()  # Never leave an attachment nothing owns.
+            raise
+        return target, proof
+
     def _audio(self, stream, connection=None):
-        from .browser_capture import BrowserCapture
+        from .browser_capture import BrowserCapture, ResumeRefused
         from .recording_session import ProtocolError
 
         capture = None
@@ -831,7 +918,9 @@ class BrowserService:
                 transport.last_inbound = self.clock()
                 transport.handling = True
                 try:
-                    if capture is None:
+                    if capture is None and packet.get("type") == "resume":
+                        capture, result = self._resume_attach(packet, transport)
+                    elif capture is None:
                         if packet.get("type") != "start" or packet.get("independent") is not True:
                             raise ProtocolError("state", "Expected an independent recording start")
                         identifier = packet.get("captureId")
@@ -858,6 +947,8 @@ class BrowserService:
                         result = capture.start(packet)
                     else:
                         result = capture.handle(packet)
+                        if packet.get("type") == "track" and isinstance(packet.get("id"), str):
+                            transport.spans.add(packet["id"])
                 except Exception as error:
                     problem = str(error)
                     code = (
@@ -867,9 +958,14 @@ class BrowserService:
                         if isinstance(error, OSError)
                         else "state"
                     )
+                    failure = dict(type="error", code=code, message=str(error))
+                    if isinstance(error, ResumeRefused):
+                        # Command scoped: the extension closes only this attempt
+                        # and never reports it as the target's failure.
+                        failure["scope"] = "command"
                     # Keep the original failure if its error reply is lost.
                     with contextlib.suppress(ConnectionError):
-                        reply(dict(type="error", code=code, message=str(error)))
+                        reply(failure)
                     break
                 try:
                     reply(result)
@@ -882,21 +978,34 @@ class BrowserService:
                 transport.last_inbound = self.clock()
                 transport.handling = False
         finally:
-            with self.lock:
-                self._audio_transports.discard(transport)
-            if capture is not None:
+            self._audio_closed(transport, capture, problem)
+
+    def _audio_closed(self, transport, capture, problem=None):
+        """An audio transport ended (EOF, error, or a deadline shut it down).
+
+        A clean loss keeps the recording on its native fallback (D33/D52.4);
+        a protocol failure or the broker's own exit finalizes it.
+        """
+        with self.lock:
+            self._audio_transports.discard(transport)
+        if capture is None:
+            return
+        try:
+            if problem or self.closed.is_set():
+                capture.stop(problem, reason="error" if problem else "appQuit")
+            else:
                 try:
-                    if problem or self.closed.is_set():
-                        capture.stop(problem, reason="error" if problem else "appQuit")
-                    else:
-                        capture.close()
-                finally:
-                    with self.lock:
-                        if capture.directory is None:
-                            self.captures = {key: c for key, c in self.captures.items() if c is not capture}
-                        finished = [key for key, c in self.captures.items() if c.finished]
-                        for key in finished[:-19]:
-                            self.captures.pop(key, None)
+                    capture.retire_transport_spans(transport.spans)
+                except Exception:
+                    logging.getLogger(__name__).exception("Could not retire a closed transport's spans")
+                capture.close()
+        finally:
+            with self.lock:
+                if capture.directory is None:
+                    self.captures = {key: c for key, c in self.captures.items() if c is not capture}
+                finished = [key for key, c in self.captures.items() if c.finished]
+                for key in finished[:-19]:
+                    self.captures.pop(key, None)
 
     def configure(self, enabled):
         if type(enabled) is not bool:
@@ -917,12 +1026,13 @@ class BrowserService:
         self.policy()
         return self.snapshot()
 
-    def _status(self, browser, value):
+    def _status(self, browser, value, *, inventory=True):
         if type(value.get("recording")) is not bool:
             return
         browser.status_seen = True
         previous = browser.states
         received_pages = {}
+        received_documents = {}
         browser.status = {
             key: value[key]
             for key in (
@@ -958,6 +1068,8 @@ class BrowserService:
                     continue
                 if item.get("pageState") in ("present", "navigating", "closed"):
                     received_pages[tab] = item["pageState"]
+                if "documentGeneration" in item:
+                    received_documents[tab] = item["documentGeneration"]
                 if tab in states or not 0 <= tab <= 9007199254740991:
                     raise ValueError("Invalid or duplicate recording tab")
                 states[tab] = {
@@ -976,12 +1088,29 @@ class BrowserService:
                     )
                     if key in item
                 }
+            # Every raw session counts, stale-generation rows included: the
+            # extension still holds that tab until its session is deleted. A
+            # synthesized inventory (a retired command's late result, merged
+            # with GNOME's retained rows) says nothing about that.
+            if inventory:
+                browser.reported = {item["tabId"]: item.get("captureId") for item in items if item["recording"]}
         else:
             tab = value.get("tabId")
+            if not inventory:
+                pass
+            elif type(tab) is int and "independent-sessions-v1" in browser.capabilities:
+                if value["recording"]:
+                    browser.reported[tab] = value.get("captureId")
+                else:
+                    browser.reported.pop(tab, None)
+            else:
+                browser.reported = {tab: value.get("captureId")} if value["recording"] and type(tab) is int else {}
             if type(tab) is int and self._stale_call_generation(browser, tab, value):
                 return
             if type(tab) is int and value.get("pageState") in ("present", "navigating", "closed"):
                 received_pages[tab] = value["pageState"]
+            if type(tab) is int and "documentGeneration" in value:
+                received_documents[tab] = value["documentGeneration"]
             if type(tab) is int and "independent-sessions-v1" in browser.capabilities:
                 # An independent tab status is a delta, not a full inventory.
                 states = dict(previous)
@@ -1051,10 +1180,15 @@ class BrowserService:
                     # audio socket. Preserve that association across an early
                     # control disconnect, including the original call address.
                     self._bind_capture(browser, tab, capture_id)
+        self._adopt_by_call(browser, states)
         for tab, state in states.items():
             owner = self.captures.get(state.get("captureId"))
             if owner is not None and not owner.finished and state.get("recording"):
                 owner.call_tab = tab  # Under any peer, with or without browserInstance.
+        for tab in received_pages.keys() | received_documents.keys():
+            owner = self.captures.get(states.get(tab, previous.get(tab, {})).get("captureId"))
+            if owner is not None and not owner.finished:
+                self._observe_document(owner, received_pages.get(tab), received_documents.get(tab))
         for tab, state in tuple(states.items()):
             if tab not in received_pages and "pageState" in state:
                 states[tab] = {key: value for key, value in state.items() if key != "pageState"}
@@ -1088,7 +1222,43 @@ class BrowserService:
                         path, browser.meetings.get(tab, {}).get("title", "Recorded meeting"), value.get("message")
                     )
 
-    def _generation_recording(self, tab, meeting):
+    def _adopt_by_call(self, browser, states):
+        """D52.5: a peer's call row finds its unfinished recording by call identity.
+
+        callGeneration is browser-generated and unguessable, so (tabId,
+        callGeneration) names one call under any control peer, past or
+        present, with or without browserInstance. The adopted row shows Stop,
+        Record all and Start skip it, and policy finds this peer for it.
+        """
+        for key, capture in self.captures.items():
+            tab = getattr(capture, "call_tab", None)
+            generation = getattr(capture, "call_generation", None)
+            if (
+                tab is None
+                or generation is None
+                or capture.finished
+                or capture.directory is None
+                or key in self._cancelled_captures
+                or browser.meetings.get(tab, {}).get("callGeneration") != generation
+            ):
+                continue
+            state = states.setdefault(tab, dict(recording=True, tabId=tab, captureId=key, path=str(capture.directory)))
+            if state.get("captureId") == key:
+                browser.attempted.add(tab)
+
+    def _observe_document(self, owner, page, document):
+        """T1 (navigating) and T2 (a new documentGeneration) for a recording's tab.
+
+        The same rules as the shared oracle's documentChanged frame, for any
+        reported pageState (closed included) and generation.
+        """
+        if page not in ("navigating", "present") and document is None:
+            return
+        retired = owner.observe_document(document, navigating=page == "navigating", present=page == "present")
+        if retired:
+            logging.getLogger(__name__).debug("Retired %d spans of a gone document from the PCM watchdog", retired)
+
+    def _generation_recording(self, tab, meeting, *, active=False):
         """Whether an unfinished capture already records this row's call.
 
         Peer matching falls back to the connection id when a companion sends
@@ -1108,6 +1278,9 @@ class BrowserService:
             and (capture := self.captures.get(capture_id)) is not None
             and capture.call_generation == generation
             and not capture.finished
+            # A recording the user stopped no longer blocks a fresh manual
+            # Record (R67) while it saves.
+            and not (active and (capture.stopping or capture.stop_requested.is_set()))
             for capture_id, bound in bindings
         )
 
@@ -1172,6 +1345,7 @@ class BrowserService:
                 if not isinstance(values, list) or len(values) > 100:
                     raise ValueError("Invalid meeting inventory")
                 meetings = {}
+                fresh = set()
                 for value in values:
                     if (
                         not isinstance(value, dict)
@@ -1189,6 +1363,7 @@ class BrowserService:
                             meetings[tab] = dict(browser.meetings[tab])
                         continue
                     meetings[tab] = {key: value[key] for key in ("tabId", "title", "url", "sourceCount")}
+                    fresh.add(tab)
                     for key in ("callGeneration", "documentGeneration"):
                         generation = value.get(key)
                         if isinstance(generation, str) and 0 < len(generation.encode("utf-8")) <= 200:
@@ -1243,6 +1418,20 @@ class BrowserService:
                                 tab, dict(recording=True, tabId=tab, captureId=capture_id, path=str(owner.directory))
                             )
                             browser.attempted.add(tab)
+                self._adopt_by_call(browser, browser.states)
+                for tab in fresh:
+                    meeting = meetings[tab]
+                    owner = self.captures.get(browser.states.get(tab, {}).get("captureId"))
+                    if owner is None or owner.finished:
+                        continue
+                    # A row names its tab's top document. Its generation is
+                    # only compared for the recording's own call.
+                    same_call = (
+                        owner.call_generation is not None and meeting.get("callGeneration") == owner.call_generation
+                    )
+                    self._observe_document(
+                        owner, meeting.get("pageState"), meeting.get("documentGeneration") if same_call else None
+                    )
                 browser.attempted.intersection_update(meetings)
             elif kind == "status":
                 if "heartbeat-v1" in browser.capabilities and browser.last_ping is None:
@@ -1384,6 +1573,16 @@ class BrowserService:
                 if tab not in browser.meetings:
                     raise ValueError("This meeting is no longer available")
                 self._validate_call(browser, tab, expected, version=call_version)
+                # D52.5/R67: never a second folder for a call being recorded,
+                # also for a manual Start; one the user stopped no longer counts.
+                owner = self.captures.get(browser.states.get(tab, {}).get("captureId"))
+                if (
+                    owner is not None
+                    and not owner.finished
+                    and not owner.stopping
+                    and not owner.stop_requested.is_set()
+                ) or self._generation_recording(tab, browser.meetings[tab], active=True):
+                    raise ValueError("This meeting is already being recorded")
             if expected_capture is not None and browser.states.get(tab, {}).get("captureId") != expected_capture:
                 raise ValueError("This meeting is no longer available")
             capture = self.captures.get(browser.states.get(tab, {}).get("captureId"))
@@ -1622,6 +1821,8 @@ class BrowserService:
                 if owners.get((b.browser_instance or b.id, tab)) is b
                 and meeting.get("sourceCount", 0) > 0
                 and not b.states.get(tab, {}).get("recording")
+                # D52.5: a call already being recorded, under any peer.
+                and not self._generation_recording(tab, meeting, active=True)
             ]
             self._record_groups[token] = group
         deadline = time.monotonic() + self.batch_timeout
@@ -1991,13 +2192,33 @@ class BrowserService:
                             continue  # Rediscovery is not evidence that the page navigated.
                         elif lifecycle.missing is None and lifecycle.ended is None:
                             lifecycle.missing = reconnect.since
+                    current = source_state(capture.host.session.manifest.get("events"))
+                    resume = None
+                    if peer is not None:
+                        attached = capture.audio_connected or any(t.capture is capture for t in self._audio_transports)
+                        resume = ResumeInputs(
+                            # D52.5 C1-C3, C7-C9; page, count and control are
+                            # checked in the lifecycle's present-row branch.
+                            ready=RESUME_CAPTURE in peer[0].capabilities
+                            and (current.source, current.reason) == ("system", "lost")
+                            and not attached
+                            and capture.call_generation is not None
+                            and meeting.get("callGeneration") == capture.call_generation
+                            # The extension's teardown of the old session must
+                            # finish first, or it refuses the only ask.
+                            and peer[1] not in peer[0].reported
+                            # A decision that cannot be queued must not spend it.
+                            and key not in self._capture_policy_pending,
+                            loss=capture.loss_serial,
+                            connection=peer[0].id,
+                        )
                     action = lifecycle.decide(
                         now,
                         page,
                         count,
                         fallback=capture.browser_lost,
                         others=capture.others,
-                        restore_ready=capture.browser_ready,
+                        restore_ready=capture.browser_ready and not capture.restore_blocked,
                         multistream=capture.multistream_capable,
                         # D52.5: another call's heard never arms this recording's
                         # restore or OTHERS_GONE grace; it latches only on rows
@@ -2009,7 +2230,8 @@ class BrowserService:
                         and meeting.get("sourceCountKnown", True),
                         control_alive=peer is not None,
                         pcm_live=capture.multistream_capable and capture.browser_ready_since(recorded=True),
-                        initial_missing=source_state(capture.host.session.manifest.get("events")).reason == "missing",
+                        initial_missing=current.reason == "missing",
+                        resume=resume,
                     )
                     if reconnect is not None and page == "present" and count > 0 and lifecycle.missing is None:
                         self._control_reconnects.pop(key, None)
@@ -2129,6 +2351,9 @@ class BrowserService:
                     capture.fallback()
             elif action in ("restore", "switch:browser:callConnected"):
                 capture.restore()
+            elif action == "askResume":
+                # Never a Stop: the catch-all below treats unknown actions so.
+                self._ask_resume(key, capture, identifier)
             else:
                 # Save before waiting for a potentially unreachable extension.
                 reason = action.partition(":")[2] or "user"
@@ -2140,6 +2365,96 @@ class BrowserService:
         finally:
             with self.lock:
                 self._capture_policy_pending.discard(key)
+
+    def _resume_still_eligible(self, key, capture, browser, tab):
+        """Every D52.5 ask condition, read again at send time (caller holds self.lock).
+
+        The decision was taken on an earlier tick; the page may have navigated,
+        the row's count become unknown or zero, the call changed, the extension
+        reported the tab again, the loss ended or the connection gone since.
+        """
+        lifecycle = self._capture_lifecycles.get(key)
+        state = browser.states.get(tab, {})
+        meeting = browser.meetings.get(tab)
+        if lifecycle is None or meeting is None:
+            return False
+        page = browser.page_states.get(tab) or state.get("pageState") or meeting.get("pageState")
+        current = source_state(capture.host.session.manifest.get("events"))
+        return bool(
+            self.browsers.get(browser.id) is browser  # the same control connection, still open
+            and not browser.closed
+            and not browser.shut_down.is_set()
+            and browser.status_seen
+            and RESUME_CAPTURE in browser.capabilities
+            and state.get("recording")
+            and state.get("captureId") == key
+            and page == "present"
+            and meeting.get("sourceCountKnown", True) is True
+            and meeting.get("sourceCount", 0) > 0
+            and capture.call_generation is not None
+            and meeting.get("callGeneration") == capture.call_generation
+            and lifecycle.heard
+            and tab not in browser.reported  # the extension released the tab
+            and (current.source, current.reason) == ("system", "lost")
+            and capture.browser_lost
+            and capture.others
+            and not (capture.finished or capture.stopping or capture.stop_requested.is_set())
+            and not capture.audio_connected
+            and not any(t.capture is capture for t in self._audio_transports)
+            and lifecycle.asked_loss == capture.loss_serial  # the loss the ask was decided for
+            and browser.id in lifecycle.asked_on
+            and not self._stopping_all.is_set()
+        )
+
+    def _ask_resume(self, key, capture, identifier):
+        """D52.5: send one resume-capture-v1 Start naming this lost recording.
+
+        Not through command(): a recording tab is refused there, a rejection
+        would become a fresh Start fallback (forbidden after a failed resume),
+        a stale result would cancel the very target, and it would wait up to
+        the command timeout. Nothing here retries.
+
+        The ask was decided on an earlier tick. It is revalidated and queued
+        under the inventory lock that guards the decision; when it no longer
+        holds, nothing is sent and the reservation is released, so this loss
+        and connection can still ask once it is eligible again. Queueing is
+        not socket I/O: one writer thread owns the stream.
+        """
+        browser_id, _, raw_tab = (identifier or "").partition(":")
+        with self.lock:
+            browser = self.browsers.get(browser_id)
+            if (
+                browser is None
+                or not raw_tab.isdecimal()
+                or not self._resume_still_eligible(key, capture, browser, int(raw_tab))
+            ):
+                lifecycle = self._capture_lifecycles.get(key)
+                if lifecycle is not None:
+                    lifecycle.asked_on.discard(browser_id)
+                return
+            request_id = str(uuid4())
+            packet = dict(
+                type="command",
+                requestId=request_id,
+                action="start",
+                mode="tracks",
+                tabId=int(raw_tab),
+                independent=True,
+                captureLocal=False,
+                callGeneration=capture.call_generation,
+                resumeCapture=dict(captureId=key, timelineOriginMs=capture.origin_ms),
+            )
+            if "page-state-v1" in browser.capabilities:
+                # As for any GNOME Start: a reload must not end the resumed session.
+                packet["keepOnNavigation"] = True
+            browser.resumes[request_id] = key
+            while len(browser.resumes) > RESUME_HISTORY:
+                browser.resumes.pop(next(iter(browser.resumes)))
+            try:
+                browser.send(packet)
+            except (OSError, ValueError) as error:
+                browser.resumes.pop(request_id, None)
+                logging.getLogger(__name__).info("Could not ask the browser to resume recording %s: %s", key, error)
 
     def _fallback(self, identifier, capture):
         try:
