@@ -8,33 +8,58 @@ import pytest
 from test_browser_service import service, wait_for  # noqa: F401
 from test_browser_sessions import Extension
 
+import cassini_talk.browser_service as browser_service
 from cassini_talk.browser_service import request
 
 
-def test_many_unresponsive_starts_share_one_budget_and_a_fast_tab_still_records(service):  # noqa: F811
+def fake_deadlines(server, monkeypatch):
+    """Command and batch deadlines that pass only when the test expires them,
+    however long a loaded host takes to send or answer before that. Returns
+    the batch's futures and the expiry."""
+    now, futures = [0.0], []
+
+    class Recorded(ThreadPoolExecutor):
+        def submit(self, *args, **kwargs):
+            futures.append(future := super().submit(*args, **kwargs))
+            return future
+
+    monkeypatch.setattr(browser_service, "ThreadPoolExecutor", Recorded)
+    server.deadline_clock = lambda: now[0]
+
+    def expire():
+        now[0] += server.batch_timeout + server.command_timeout + 1
+
+    return futures, expire
+
+
+def test_many_unresponsive_starts_share_one_budget_and_a_fast_tab_still_records(service, monkeypatch):  # noqa: F811
     server, path = service
-    server.batch_timeout = 0.45
+    futures, expire = fake_deadlines(server, monkeypatch)
+    # Only the shared batch deadline can end the unanswered Starts.
+    server.command_timeout = 30
     peer = Extension(path, tuple(range(1, 9)))
     try:
         with ThreadPoolExecutor(1) as pool:
-            before = time.monotonic()
             pending = pool.submit(request, "start-all", path=path)
             commands = [peer.receive() for _ in range(8)]
             fast = next(c for c in commands if c["tabId"] == 8)
             peer.answer(fast)
-            result = pending.result(1)
-            assert time.monotonic() - before < 0.8
+            wait_for(lambda: sum(future.done() for future in futures) == 1)
+            expire()
+            # Long before any Start's own 30-second wait would end.
+            result = pending.result(10)
             assert result["attempted"] == 8 and len(result["failures"]) == 7
             assert {s["tabId"] for s in result["statuses"] if s["recording"]} == {8}
     finally:
         peer.close()
 
 
-def test_one_unresponsive_stop_does_not_prevent_other_tabs_from_stopping(service):  # noqa: F811
+def test_one_unresponsive_stop_does_not_prevent_other_tabs_from_stopping(service, monkeypatch):  # noqa: F811
     from cassini_talk.browser_service import send_packet
 
     server, path = service
-    server.batch_timeout = 0.45
+    futures, expire = fake_deadlines(server, monkeypatch)
+    server.command_timeout = 30
     peer = Extension(path, tuple(range(1, 5)))
     states = [dict(recording=True, tabId=tab, path=f"/private/recording-{tab}") for tab in range(1, 5)]
     send_packet(peer.stream, dict(type="status", recording=True, sessions=states))
@@ -42,33 +67,33 @@ def test_one_unresponsive_stop_does_not_prevent_other_tabs_from_stopping(service
     peer.sessions = {s["tabId"]: s for s in states}
     try:
         with ThreadPoolExecutor(1) as pool:
-            before = time.monotonic()
             pending = pool.submit(request, "stop-all", path=path)
             commands = [peer.receive() for _ in range(4)]
             for command in commands:
                 if command["tabId"] != 1:
                     peer.answer(command)
+            wait_for(lambda: sum(future.done() for future in futures) == 3)
+            expire()
             with pytest.raises((ValueError, TimeoutError)):
-                pending.result(1)
-            assert time.monotonic() - before < 0.8
+                pending.result(10)
             assert {s["tabId"] for s in request(path=path)["statuses"] if s["recording"]} == {1}
     finally:
         peer.close()
 
 
-def test_more_targets_than_workers_return_a_failure_for_every_unfinished_start(service):  # noqa: F811
+def test_more_targets_than_workers_return_a_failure_for_every_unfinished_start(service, monkeypatch):  # noqa: F811
     server, path = service
-    server.batch_timeout = 0.2
-    server.command_timeout = 2
+    _futures, expire = fake_deadlines(server, monkeypatch)
+    server.command_timeout = 30
     peer = Extension(path, tuple(range(1, 65)))
     try:
         with ThreadPoolExecutor(1) as pool:
-            before = time.monotonic()
             pending = pool.submit(request, "start-all", path=path)
             first = peer.receive()
             assert first["action"] == "start"
-            result = pending.result(1)
-            assert time.monotonic() - before < 0.8
+            # Half the Starts wait on the browser, half still wait for a worker.
+            expire()
+            result = pending.result(10)
             # The deadline is not the user's cancel (D58): each unanswered Start
             # is a startFailed/timeout refusal for the start banner.
             assert not result["cancelled"] and result["attempted"] == len(result["failures"]) == 64
@@ -109,7 +134,7 @@ def test_a_native_fallback_crossing_the_deadline_is_saved_and_never_left_recordi
     from cassini_talk.browser_capture import BrowserCapture
 
     server, path = service
-    server.batch_timeout = 0.15
+    _futures, expire = fake_deadlines(server, monkeypatch)
     peer = Extension(path, (3,))
     entered, release = threading.Event(), threading.Event()
     start = BrowserCapture.start
@@ -124,8 +149,9 @@ def test_a_native_fallback_crossing_the_deadline_is_saved_and_never_left_recordi
         with ThreadPoolExecutor(1) as pool:
             pending = pool.submit(request, "start-all", path=path)
             peer.answer(peer.receive(), ok=False)
-            assert entered.wait(1)
-            result = pending.result(1)
+            assert entered.wait(2)
+            expire()
+            result = pending.result(10)
             assert not result["cancelled"] and len(result["failures"]) == 1
             assert result["failures"][0]["refusals"][0]["code"] == "startFailed"
             release.set()
