@@ -360,16 +360,17 @@ class BrowserCapture:
     def remote_open(self):
         """Whether a browser track that has delivered PCM is still open.
 
-        Its recorder posts frames, silent ones included, until it ends. A
-        navigated or reloaded frame's spans never get trackEnd. Two things
-        disarm them: fallback marks them unavailable (only their own PCM would
-        make them available again), and document retirement marks them
-        dormant for good, even when the page returns before any fallback.
+        Its recorder posts frames, silent ones included, until it ends
+        (SPEC.md: declared, not yet ended by trackEnd or stop, has delivered
+        PCM). That holds on a fallback too (D57): a frozen companion keeps an
+        attached transport whose spans stopped, and the watchdog closes it. A
+        navigated or reloaded frame's spans never get trackEnd; document
+        retirement marks them dormant for good, and a closed transport's spans
+        are ended, so neither arms it.
         """
         with self.lock:
             return any(
                 track.kind not in ("microphone", "local")
-                and track.available
                 and not track.ended
                 and not track.dormant
                 and track.received_at is not None

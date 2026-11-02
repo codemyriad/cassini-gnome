@@ -204,12 +204,14 @@ class AudioTransport(Transport):
             and not self.handling
             and capture.multistream_capable
             and now - self.last_inbound >= PCM_STALE_AFTER
-            and not (capture.finished or capture.stopping or capture.stop_requested.is_set() or capture.browser_lost)
+            and not (capture.finished or capture.stopping or capture.stop_requested.is_set())
             and capture.remote_open()
         ):
             # Only a running remote recorder must keep sending. Before the first
             # PCM, or after every span ended (a guest left, the receiver dropped
             # out during a network blip), a quiet transport is still healthy.
+            # A control-loss fallback is no exception (D57): a frozen
+            # companion's attached transport is closed, so a resume can follow.
             return "stopped sending audio"
         return super().expired(now)
 
@@ -976,25 +978,34 @@ class BrowserService:
                 transport.last_inbound = self.clock()
                 transport.handling = False
         finally:
-            with self.lock:
-                self._audio_transports.discard(transport)
-            if capture is not None:
+            self._audio_closed(transport, capture, problem)
+
+    def _audio_closed(self, transport, capture, problem=None):
+        """An audio transport ended (EOF, error, or a deadline shut it down).
+
+        A clean loss keeps the recording on its native fallback (D33/D52.4);
+        a protocol failure or the broker's own exit finalizes it.
+        """
+        with self.lock:
+            self._audio_transports.discard(transport)
+        if capture is None:
+            return
+        try:
+            if problem or self.closed.is_set():
+                capture.stop(problem, reason="error" if problem else "appQuit")
+            else:
                 try:
-                    if problem or self.closed.is_set():
-                        capture.stop(problem, reason="error" if problem else "appQuit")
-                    else:
-                        try:
-                            capture.retire_transport_spans(transport.spans)
-                        except Exception:
-                            logging.getLogger(__name__).exception("Could not retire a closed transport's spans")
-                        capture.close()
-                finally:
-                    with self.lock:
-                        if capture.directory is None:
-                            self.captures = {key: c for key, c in self.captures.items() if c is not capture}
-                        finished = [key for key, c in self.captures.items() if c.finished]
-                        for key in finished[:-19]:
-                            self.captures.pop(key, None)
+                    capture.retire_transport_spans(transport.spans)
+                except Exception:
+                    logging.getLogger(__name__).exception("Could not retire a closed transport's spans")
+                capture.close()
+        finally:
+            with self.lock:
+                if capture.directory is None:
+                    self.captures = {key: c for key, c in self.captures.items() if c is not capture}
+                finished = [key for key, c in self.captures.items() if c.finished]
+                for key in finished[:-19]:
+                    self.captures.pop(key, None)
 
     def configure(self, enabled):
         if type(enabled) is not bool:

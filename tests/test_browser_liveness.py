@@ -419,13 +419,35 @@ def test_a_recorder_waiting_out_its_longest_retry_is_not_cut_over(broker):
 def test_a_navigated_frames_dead_spans_do_not_keep_the_watchdog_armed(broker):
     service, path, clock, _lost = broker
     client = Settled(BrowserAudioProxy(path=path), service)
+    peer = Extension(path, (3,))
     try:
         capture = negotiated(client, service, "reloaded")
         assert client.handle(declare("old-frame", "receiver")) == ACK
         assert client.handle(pcm("old-frame", 480)) == ACK
-        # The page reloads: the old document's recorder dies without trackEnd,
-        # policy falls back, and the new document's span restores the browser.
+        # The page reloads: the old document's recorder dies without trackEnd.
+        # navigating retires its span; policy falls back, and the new
+        # document's span restores the browser. A fallback alone no longer
+        # disarms a span (D57): only its end or its document's retirement.
+        send_packet(
+            peer.stream,
+            dict(
+                type="status",
+                recording=True,
+                sessions=[dict(recording=True, tabId=3, captureId="reloaded", pageState="navigating")],
+            ),
+        )
+        wait_for(lambda: capture.streams.tracks["old-frame"].dormant)
         capture.fallback()
+        send_packet(
+            peer.stream,
+            dict(
+                type="status",
+                recording=True,
+                sessions=[dict(recording=True, tabId=3, captureId="reloaded", pageState="present")],
+            ),
+        )
+        peer.inventory((3,))
+        wait_for(lambda: not capture.streams.departing)
         assert client.handle(declare("new-frame", "receiver-reloaded")) == ACK
         assert client.handle(pcm("new-frame", 480, offset=1000)) == ACK
         capture.restore()
@@ -441,6 +463,7 @@ def test_a_navigated_frames_dead_spans_do_not_keep_the_watchdog_armed(broker):
         capture.stop()
     finally:
         client.close()
+        peer.close()
 
 
 def test_the_brokers_own_stall_is_not_blamed_on_the_peer(broker):
@@ -873,3 +896,33 @@ def test_a_span_the_departing_document_declares_after_navigating_is_retired(brok
     finally:
         client.close()
         peer.close()
+
+
+def test_a_frozen_companions_transport_is_closed_on_a_control_loss_fallback(broker):
+    """D57: the stale-PCM watchdog keeps running on a control-loss fallback.
+    The frozen companion's transport stays attached, so without the close no
+    resume could ever be asked."""
+    service, path, clock, lost = broker
+    client = Settled(BrowserAudioProxy(path=path), service)
+    try:
+        capture = negotiated(client, service, "frozen-on-fallback")
+        assert client.handle(declare("guest", "receiver")) == ACK
+        assert client.handle(pcm("guest", 480)) == ACK
+        # Control was lost and policy committed computer sound; the audio
+        # transport is still attached but nothing arrives on it any more.
+        capture.fallback()
+        assert lost.wait(5) and capture.browser_lost and capture.audio_connected
+        (transport,) = service._audio_transports
+        clock.now = PCM_STALE_AFTER - 0.001
+        service.tick()
+        assert not transport.shut_down.is_set()
+        clock.now = PCM_STALE_AFTER
+        service.tick()
+        assert transport.shut_down.is_set()
+        # The broker's ordinary EOF teardown: detached, still on the fallback.
+        wait_for(lambda: not service._audio_transports and not capture.audio_connected)
+        assert capture.browser_lost and not capture.finished and len(lost_events(capture)) == 1
+        assert capture.streams.tracks["guest"].ended, "the closed transport's span is retired"
+        capture.stop()
+    finally:
+        client.close()

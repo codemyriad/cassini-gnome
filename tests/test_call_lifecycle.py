@@ -10,7 +10,7 @@ import pytest
 from test_browser_capture import Tap
 
 from cassini_talk.browser_capture import BrowserCapture
-from cassini_talk.browser_service import AudioTransport, BrowserConnection, BrowserService
+from cassini_talk.browser_service import PCM_STALE_AFTER, AudioTransport, BrowserConnection, BrowserService
 from cassini_talk.call_lifecycle import BROWSER_RETURN_GRACE, CALL_END_GRACE
 
 VECTORS = Path(__file__).resolve().parents[1] / "browser-protocol/conformance/control/call-lifecycle-vectors.json"
@@ -81,6 +81,32 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
 
     monkeypatch.setattr(service, "_capture_lifecycle", record)
     folder, microphone = capture.directory, capture.microphone
+    # The recording's audio transport, as _audio registers it. The runner only
+    # emulates the peer's socket; deadlines and teardown are the broker's own.
+    transport = AudioTransport(None, service.clock)
+    transport.capture = capture
+    service._audio_transports.add(transport)
+
+    def deliver(packet):
+        capture.handle(packet)
+        transport.last_inbound = now[0]
+        if packet["type"] == "track":
+            transport.spans.add(packet["id"])
+
+    first = case["steps"][0]
+    if (
+        case.get("multistream")
+        and case.get("source", "browser") == "browser"
+        and first.get("heard")
+        and first.get("sourceCount", 0) > 0
+    ):
+        # A heard call's receiver has delivered PCM on the transport: its open
+        # span arms the PCM_STALE_AFTER watchdog from this frame on. Without
+        # pcmLive the first row is not a live sample, so the frame is the
+        # latest one outside the 2 s PCM_FRESH window.
+        now[0] = first["atMs"] / 1000 - PCM_FRESH - 0.001
+        deliver(dict(type="track", id="original", kind="remote", sampleRate=48000, channels=1))
+        deliver(dict(type="audio", id="original", sequence=0, offsetMs=first["atMs"], pcm="AQACAA=="))
     # Once its audio transport closed, only a native resume (D52.3c) attaches
     # a new one: a new start with its captureId is refused.
     transport_closed = False
@@ -115,12 +141,16 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
             actions.clear()
             asked = len(sent)
             if not step.get("transportAlive", True) and not transport_closed:
-                # D52.4: the real closed-transport path (EOF, error or the
-                # PCM_STALE_AFTER watchdog) is _audio's capture.close().
+                # D52.4: the transport closed by EOF, error or the watchdog.
+                # Armed and quiet for PCM_STALE_AFTER, it is the app's own
+                # watchdog that must close it (SPEC.md), on a fallback too
+                # (D57): the runner never forces that close. Either way the
+                # broker's real teardown runs.
                 transport_closed = True
                 lost = capture.browser_lost
-                if not capture.finished:
-                    capture.close()
+                if capture.remote_open() and now[0] - transport.last_inbound >= PCM_STALE_AFTER:
+                    assert transport.expired(now[0]) == "stopped sending audio", (case["name"], step)
+                service._audio_closed(transport, capture)
                 if capture.browser_lost and not lost:
                     actions.append("fallback")
             if step.get("pcmLive") and transport_closed and not capture.finished:
@@ -128,6 +158,8 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
                 # native resume attaches one, to the same folder and clock. Do
                 # not require an ask first: cases without resumeCapture model
                 # a transport that came back by other means.
+                transport = AudioTransport(None, service.clock)
+                service._audio_transports.add(transport)
                 target, proof = service._resume_attach(
                     dict(
                         type="resume",
@@ -138,9 +170,9 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
                         callGeneration=capture.call_generation,
                         features=["source-outcomes-v1", "resume-capture-v1"],
                     ),
-                    AudioTransport(None, service.clock),
+                    transport,
                 )
-                assert target is capture
+                assert target is capture and transport.capture is capture
                 assert proof == dict(
                     type="started",
                     path=str(folder),
@@ -156,8 +188,8 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
                 # the latest packet time a not-live row 1 ms later still allows.
                 now[0] = step["atMs"] / 1000 - PCM_FRESH + 0.0005
                 wire = "live-" + str(index)
-                capture.handle(dict(type="track", id=wire, kind="remote", sampleRate=48000, channels=1))
-                capture.handle(dict(type="audio", id=wire, sequence=0, offsetMs=step["atMs"], pcm="AQACAA=="))
+                deliver(dict(type="track", id=wire, kind="remote", sampleRate=48000, channels=1))
+                deliver(dict(type="audio", id=wire, sequence=0, offsetMs=step["atMs"], pcm="AQACAA=="))
                 now[0] = step["atMs"] / 1000
             # Only real PCM on the retained live transport makes restore ready.
             if (
@@ -168,8 +200,8 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
                 and step.get("restoreReady", True)
             ):
                 wire = "return-" + str(index)
-                capture.handle(dict(type="track", id=wire, kind="remote", sampleRate=48000, channels=1))
-                capture.handle(dict(type="audio", id=wire, sequence=0, offsetMs=step["atMs"], pcm="AQACAA=="))
+                deliver(dict(type="track", id=wire, kind="remote", sampleRate=48000, channels=1))
+                deliver(dict(type="audio", id=wire, sequence=0, offsetMs=step["atMs"], pcm="AQACAA=="))
             if step.get("resumeRefused"):
                 # The extension's answer to this connection's pending ask.
                 (pending,) = [packet for packet in sent if "resumeCapture" in packet][-1:]
