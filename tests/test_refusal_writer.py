@@ -663,3 +663,25 @@ def test_only_a_refused_resume_of_a_waiting_recording_is_recorded(broker, name):
         broker.service._stopping_all.clear()
         broker.service._cancelled_captures.pop(capture.capture_id, None)
         capture.stop()
+
+
+def test_a_new_browser_record_clears_an_earlier_start_error(application_class):  # noqa: F811
+    """R82: a stale D17 partial-start error never survives a later Record."""
+    from concurrent.futures import Future
+    from types import SimpleNamespace
+
+    submitted = []
+    app = SimpleNamespace(
+        _record_start_future=None,
+        _quitting=False,
+        recording_failure=dict(id="errors.recordFailed.line"),
+        recording_error="Recording could not start.",
+        browser_companion_available=True,
+        _record_start_generation=0,
+        _record_start_group=None,
+        get_windows=lambda: [],
+        hold=lambda: None,
+        _record_start_executor=SimpleNamespace(submit=lambda function: submitted.append(function) or Future()),
+    )
+    application_class.start_recordings(app)
+    assert submitted and app.recording_error is None and app.recording_failure is None

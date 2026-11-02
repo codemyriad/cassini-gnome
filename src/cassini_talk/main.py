@@ -684,7 +684,10 @@ class CassiniApplication(Adw.Application):
 
         if self._record_start_future is not None or self._quitting:
             return
+        # A new Record replaces any earlier start error, including a D17
+        # partial start's, on the browser path too.
         self.recording_failure = None
+        self.recording_error = None
         if not self.browser_companion_available:
             self.start_native()
             return
