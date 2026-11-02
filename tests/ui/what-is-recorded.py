@@ -210,6 +210,58 @@ with tempfile.TemporaryDirectory() as temporary:
     assert window.recording_page.meeting.directory == late.session.directory
     app.stop_native()
     until(lambda: late.pipeline is None and not late.stopping)
+
+    # The row can even be scanned before the recorder is active: the scan
+    # shows an ordinary meeting. The one-second activity tick replays that
+    # stale snapshot after the start is reported. It must not open that row
+    # as a meeting page (the GNOME 50 indicator gate saw this, #172): the
+    # Recording page opens from a live scan. Hold the recorder's preparation
+    # until the Library has scanned the stale row; no timing guess.
+    held, prepared = {}, NativeRecorder._prepared
+    delivered = window.monitor.callback
+
+    def stale(directory):
+        return any(
+            m.directory == directory and m.lifecycle not in ("recording", "saving") for m in window.snapshot.meetings
+        )
+
+    def scanned(*args):
+        delivered(*args)
+        if "args" in held and stale(held["args"][1].result()[0].directory):
+            prepared(*held.pop("args"))
+
+    def gated(recorder, future, test):
+        held["args"] = (recorder, future, test)
+        window.monitor.refresh_now()
+        return False
+
+    window.back_to_library()  # The stopped recording's own meeting page closes.
+    window.monitor.callback = scanned
+    try:
+        with patch.object(NativeRecorder, "_prepared", gated):
+            app.start_native(test=True)
+            early = app.recorder
+            replayed = []
+
+            def started(*_):
+                # The activity tick's replay of the snapshot it already has.
+                window._updated(window._source_snapshot or window.snapshot)
+                page = window.meeting_page
+                replayed.append(page is None or page.meeting.directory != early.session.directory)
+
+            early.connect("started", started)
+            until(lambda: bool(replayed))
+        assert replayed == [True], "A stale, non-live row never opens as a meeting page"
+        until(
+            lambda: (
+                window.recording_page is not None and window.recording_page.meeting.directory == early.session.directory
+            )
+        )
+        assert window.meeting_page is None or window.meeting_page.meeting.directory != early.session.directory
+    finally:
+        window.monitor.callback = delivered
+    app.stop_native()
+    until(lambda: early.pipeline is None and not early.stopping)
     window.close()
     app.do_shutdown()
 print(

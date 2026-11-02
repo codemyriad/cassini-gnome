@@ -609,19 +609,22 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.split.set_content(Adw.NavigationPage.new(content, text("library.previewPane.a11y")))
         self.root_box.add_named(self.split, "library")
 
-    def open_pending_recording(self, *, live=False):
-        """Open the recording the application just started, once this Library has it.
+    def open_pending_recording(self):
+        """Open the recording the application just started, once this Library has it live.
 
-        `live` (when the start is reported) accepts only a row already scanned
-        as recording. Sides open after the folder exists (R79 §1), so the row
-        can be scanned before the start is reported.
+        Only a row scanned as recording (or saving) opens it: its Recording
+        page. Sides open after the folder exists (R79 §1), so a scan made
+        before the recorder was active can show the row as an ordinary
+        meeting, and the activity tick replays that snapshot: opening that
+        row would show a meeting page instead. A recording that ends before
+        any live scan clears its pending path when it finishes.
         """
         app = self.get_application()
         pending = app._pending_recording
         if not pending or self.snapshot is None:
             return False
         current = next((m for m in self.snapshot.meetings if str(m.directory) == pending), None)
-        if current is None or live and current.lifecycle != "recording":
+        if current is None or current.lifecycle not in ("recording", "saving"):
             return False
         app._pending_recording = None
         self.open_meeting(current)

@@ -805,7 +805,7 @@ class CassiniApplication(Adw.Application):
         for window in self.get_windows():
             if self._pending_recording is None:
                 return
-            if not hasattr(window, "open_pending_recording") or window.open_pending_recording(live=True):
+            if not hasattr(window, "open_pending_recording") or window.open_pending_recording():
                 continue
             if getattr(window, "monitor", None) is not None and not window.monitor._closed:
                 window.monitor.refresh_now()
