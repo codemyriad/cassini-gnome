@@ -128,6 +128,8 @@ with tempfile.TemporaryDirectory() as temporary:
     until(
         lambda: (
             window.recording_page is not None
+            and not app.recorder.starting  # Each side opens on its own (R79 §1).
+            and len(app.recorder.session.manifest["tracks"]) == 2
             and all(t["frames"] >= 9600 for t in app.recorder.session.manifest["tracks"])
         )
     )
@@ -163,6 +165,51 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: native.pipeline is None and not native.stopping)
     assert native.session.manifest["state"] == "completed"
     assert not app._source_changes
+
+    # R79 §1: sides open after the folder exists, so the Library can scan the
+    # live row before the start is reported. The Recording page must still open
+    # when it is reported (the GNOME 50 indicator gate lost it, #172). Hold the
+    # system side's first buffer until that scan has happened: no timing guess.
+    from gi.repository import Gst
+
+    from cassini_talk.native_recorder import NativeRecorder
+
+    held, branch = {}, NativeRecorder._branch
+
+    def slow(recorder, kind):
+        if kind != "system":
+            return branch(recorder, kind)
+        result = Gst.parse_bin_from_description(
+            "appsrc name=held is-live=true format=time do-timestamp=true "
+            'caps="audio/x-raw,format=S16LE,rate=48000,channels=1,layout=interleaved" ! '
+            "appsink name=system emit-signals=true sync=false async=false",
+            False,
+        )
+        result.get_by_name("system").connect("new-sample", recorder._sample, "system")
+        held["source"] = result.get_by_name("held")
+        return result
+
+    with patch.object(NativeRecorder, "_branch", slow):
+        app.start_native(test=True)
+        late = app.recorder
+        until(
+            lambda: (
+                late.starting
+                and "source" in held
+                and any(
+                    m.directory == late.session.directory and m.lifecycle == "recording"
+                    for m in window.snapshot.meetings
+                )
+            )
+        )
+        reported = []
+        late.connect("started", lambda *_: reported.append(window.recording_page is not None))
+        assert held["source"].emit("push-buffer", Gst.Buffer.new_wrapped(bytes(960))) == Gst.FlowReturn.OK
+        until(lambda: bool(reported))
+    assert reported == [True], "The Recording page opens when the start is reported"
+    assert window.recording_page.meeting.directory == late.session.directory
+    app.stop_native()
+    until(lambda: late.pipeline is None and not late.stopping)
     window.close()
     app.do_shutdown()
 print(

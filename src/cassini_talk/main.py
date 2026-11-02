@@ -712,6 +712,7 @@ class CassiniApplication(Adw.Application):
             elif active and any(w.get_visible() for w in self.get_windows()):
                 self._pending_recording = active[0]["path"]
             self._native_changed()
+            self._show_pending_recording()
         except CancelledError:
             pass
         except (OSError, ValueError, TimeoutError) as error:
@@ -796,6 +797,18 @@ class CassiniApplication(Adw.Application):
                 self.get_active_window(), Gtk.ApplicationInhibitFlags.SUSPEND, _("Recording a meeting")
             )
         self._native_changed()
+        self._show_pending_recording()
+
+    def _show_pending_recording(self):
+        """A Library may already have scanned the recording while its sides opened
+        (R79 §1): open it now, or rescan so the next snapshot opens it."""
+        for window in self.get_windows():
+            if self._pending_recording is None:
+                return
+            if not hasattr(window, "open_pending_recording") or window.open_pending_recording(live=True):
+                continue
+            if getattr(window, "monitor", None) is not None and not window.monitor._closed:
+                window.monitor.refresh_now()
 
     def _native_changed(self, *_):
         for recorder in tuple(self.native_captures.values()) + ((self._last_native,) if self._last_native else ()):
