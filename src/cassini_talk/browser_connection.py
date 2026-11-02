@@ -151,14 +151,15 @@ class BrowserConnection:
         phase = (
             "connected"
             if self.connected
-            else "appTooOld"
-            if self.app_too_old
             else "settingUp"
             if self.future is not None
             else "needsBrowser"
             if self.error and self.error.reason == "noBrowser"
             else "failed"
             if self.error
+            # A real setup failure keeps its Retry; appTooOld comes after it.
+            else "appTooOld"
+            if self.app_too_old
             else "waiting"
             if self.succeeded
             else "settingUp"

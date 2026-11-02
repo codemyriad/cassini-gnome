@@ -84,6 +84,10 @@ class StartRefused(ValueError):
         self.refusals = list(refusals)
 
 
+# A newer companion reconnects within 1–30 s and on a one-minute alarm; past
+# that without another newer hello, it went away.
+APP_TOO_OLD_S = 65
+
 # D58 startFailed details for local refusals and unanswered Starts (banner only).
 LOCAL_DETAILS = {
     "The browser disconnected": "disconnected",
@@ -412,8 +416,8 @@ class BrowserService:
         self.notifier = notifier
         self.workers = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cassini-browser")
         self.closed = threading.Event()
-        # D58 point 5: the last hello asked for a newer control version than ours.
-        self.app_too_old = False
+        # D58 point 5: when a hello last asked for a newer control version than ours.
+        self.app_too_old = None
 
     def _owners(self):
         owners = {}
@@ -833,7 +837,7 @@ class BrowserService:
                 browsers=len(self.browsers),
                 protocol=2,
                 connectedBrowsers=sum(b.hello_seen and b.status_seen for b in self.browsers.values()),
-                appTooOld=self.app_too_old,
+                appTooOld=self.app_too_old is not None and self.clock() - self.app_too_old <= APP_TOO_OLD_S,
                 browserNames=sorted(
                     {
                         b.browser_name
@@ -1496,8 +1500,10 @@ class BrowserService:
             elif kind == "hello":
                 version = packet.get("version")
                 if type(version) is int and version > 1:
-                    # D58 point 5: a newer companion is visible as appTooOld, not a silent close.
-                    self.app_too_old = True
+                    # D58 point 5: a newer companion is visible as appTooOld, not a
+                    # silent close. It retries at most every minute; once it stops
+                    # (removed or downgraded) the state expires on its own.
+                    self.app_too_old = self.clock()
                     logging.getLogger(__name__).warning(
                         "Browser companion speaks control version %d; update Cassini", version
                     )
@@ -1507,7 +1513,7 @@ class BrowserService:
                         "Closing a browser control connection with hello version %r", str(version)[:32]
                     )
                     raise ValueError("Unsupported browser control version")
-                self.app_too_old = False
+                self.app_too_old = None
                 browser.hello_seen = True
                 capabilities = packet.get("capabilities", [])
                 browser.capabilities = (
