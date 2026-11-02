@@ -298,7 +298,11 @@ class SpeakersDialog(Adw.Dialog):
             valid = False
         else:
             valid = True
-        enough = bool(self.voice_data and self.voice_data["seconds"] >= 4 and self.identifier != "me")
+        # A queued or running transcription job may re-diarize this id and
+        # restamp it (G12); remember() would then refuse the print, so wait.
+        transcriber = getattr(self.window.get_application(), "transcriber", None)
+        pending = transcriber is not None and transcriber.transcribing(self.meeting.directory)
+        enough = bool(self.voice_data and self.voice_data["seconds"] >= 4 and self.identifier != "me" and not pending)
         writable = not self.voice_state["readOnly"]
         app = self.window.get_application()
         ready = all(
@@ -315,7 +319,7 @@ class SpeakersDialog(Adw.Dialog):
             else text("speakers.rememberVoice.modelsNeeded")
             if not ready
             else text("speakers.rememberVoice.notPrepared")
-            if not self.voice_prepared
+            if not self.voice_prepared or pending
             else text("speakers.rememberVoice.tooShort")
         )
         self.voice_settings.set_visible(writable and not enough and not ready)

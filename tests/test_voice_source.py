@@ -373,12 +373,12 @@ def test_rename_clear_and_merge_keep_the_stamp_byte_identical(root):
     [(X, TURNS_A), (X, TURNS_B), (Y, TURNS_A), (Y, TURNS_B)],
     ids=["equal", "turns-differ", "input-differs", "both-differ"],
 )
-def test_voice_cache_carries_confirmed_data_only_for_an_equal_stamp(tmp_path, sha, turns):
+def test_voice_cache_carries_confirmed_data_only_for_an_equal_stamp(root, tmp_path, sha, turns):
     """§6.8 at the store: confirmed match, embedding and rejections."""
     store = VoiceStore(tmp_path / "private")
     store.refresh()
-    key = "Recording-12345678-1234-4234-8234-123456789abc"
     old, new = stamp(X, TURNS_A), stamp(sha, turns)
+    key = stamped_meeting(root, old)
     store.commit_job(key, {"others~2": dict(embedding=embedding(0), seconds=8)}, 0, voice_sources={"others~2": old})
     store.remember(key, "others~2", "Mira")
     rejected = store.snapshot()["voices"][0]["id"]
@@ -386,6 +386,7 @@ def test_voice_cache_carries_confirmed_data_only_for_an_equal_stamp(tmp_path, sh
     item = store.meeting(key)["speakers"]["others~2"]
     assert item["match"]["state"] == "confirmed" and item["rejected"] == [rejected]
     assert item["voiceSource"] == old
+    restamp(key, "others~2", new)  # The rerun's metadata write precedes its commit.
     store.commit_job(key, {"others~2": dict(embedding=embedding(1), seconds=9)}, 0, voice_sources={"others~2": new})
     after = store.meeting(key)["speakers"]["others~2"]
     if new == old:
@@ -600,6 +601,23 @@ def test_stale_cache_item_is_absent_for_remember_and_preparation(root, tmp_path,
     assert [v["name"] for v in store.snapshot()["voices"]] == ([] if reset else ["Bob"])
     assert store.remember(directory, "others", "Room")
     assert "Room" in [v["name"] for v in store.snapshot()["voices"]]
+
+
+def test_missing_meeting_json_never_skips_the_stamp_gate(root, tmp_path):
+    """No meeting.json means no stamps: a stamped print is absent, a D11 one is not."""
+    store = VoiceStore(tmp_path / "private")
+    store.refresh()
+    old = stamp(X, TURNS_A)
+    directory = stamped_meeting(root, old)
+    prints = {"others~2": dict(embedding=embedding(0), seconds=8), "others": dict(embedding=embedding(3), seconds=8)}
+    store.commit_job(directory, prints, 0, voice_sources={"others~2": old})
+    (directory / "meeting.json").unlink()
+    cache, prepared = store.preparation(directory)
+    assert not prepared and set(cache["speakers"]) == {"others"}
+    assert set(store.meeting(directory)["speakers"]) == {"others"}
+    assert "others~2" in store.meeting(directory, raw=True)["speakers"]
+    assert not store.remember(directory, "others~2", "Bob")
+    assert store.snapshot()["voices"] == []
 
 
 def test_background_preparation_replaces_a_print_stamped_for_another_voice(root, tmp_path, monkeypatch):

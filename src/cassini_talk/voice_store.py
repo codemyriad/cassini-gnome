@@ -70,12 +70,10 @@ def _vector(value):
 def _library_stamps(directory):
     """G12: `{id: voiceSource}` from meeting.json, which is the truth.
 
-    None for a bare key without a Library folder (nothing to compare). An
-    unreadable meeting.json counts every stamped cache item as different.
+    A missing or unreadable meeting.json gives no stamps, so every stamped
+    cache item counts as different and never skips the gate.
     """
     path = Path(directory)
-    if not (path / "meeting.json").is_file():
-        return None
     try:
         speakers = read_metadata(path)["speakers"]
     except (OSError, ValueError, KeyError, TypeError):
@@ -85,8 +83,6 @@ def _library_stamps(directory):
 
 def _drop_stale(cache, stamps):
     """Treat items made on another voice of the same id as absent; True if any."""
-    if stamps is None:
-        return False
     stale = [s for s, item in cache["speakers"].items() if item.get("voiceSource") != stamps.get(s)]
     for speaker in stale:
         del cache["speakers"][speaker]
@@ -398,7 +394,8 @@ class VoiceStore:
             people = self._people()
             result = self._meeting(key, people["generation"])
             self._publish(people)
-            _drop_stale(result, stamps)
+            if stamps is not None:
+                _drop_stale(result, stamps)
             return result
 
     def preparation(self, directory):
@@ -501,7 +498,7 @@ class VoiceStore:
             meeting = self._meeting(key, people["generation"])
             item = meeting["speakers"].get(speaker)
             # G12: never enrol a print made on another voice of this id.
-            if item is None or stamps is not None and item.get("voiceSource") != stamps.get(speaker):
+            if item is None or item.get("voiceSource") != stamps.get(speaker):
                 return False
             voices = {v["id"]: v for v in people["voices"]}
             old = item.get("match") or {}
@@ -596,8 +593,7 @@ class VoiceStore:
                         meeting["speakers"].pop(speaker, None)
             replacements = {s: copy.deepcopy(prints[s]) for s in affected if s in prints}
             for speaker, item in replacements.items():
-                item.pop("voiceSource", None)
-                if stamps and stamps.get(speaker) is not None:
+                if stamps.get(speaker) is not None:
                     item["voiceSource"] = copy.deepcopy(stamps[speaker])
             confirmed = {}
             for speaker in replacements:

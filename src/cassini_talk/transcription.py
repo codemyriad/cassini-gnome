@@ -315,6 +315,11 @@ class TranscriptionQueue:
         self._prepare_futures, self._job_futures, self._voice_futures = {}, {}, {}
         self.closed = False
 
+    def transcribing(self, directory):
+        """Whether a job for this meeting is queued or running (it may re-diarize)."""
+        with self.lock:
+            return Path(directory).absolute() in self.pending
+
     def enqueue(self, directory, *, resume=False):
         directory = Path(directory).absolute()
         with self.lock:

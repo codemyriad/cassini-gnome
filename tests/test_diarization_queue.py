@@ -320,3 +320,42 @@ def test_cancelled_attribution_remains_running_and_restart_redoes_missing_turns(
         assert len(completed_flushes) == 1
     finally:
         resumed.close()
+
+
+def test_transcribing_reports_a_queued_or_running_job_until_it_finishes(tmp_path):
+    """G12: the Speakers dialog holds Remember while a job may re-diarize the meeting."""
+    session = RecordingSession(tmp_path, source="gnome")
+    session.add_track("room", "The others", "system", 16000, 1)
+    session.append("room", b"\x01\x00" * 32000, 0)
+    session.finish()
+    entered, release, finished = threading.Event(), threading.Event(), []
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            entered.set()
+            assert release.wait(10)
+            notify(dict(type="recognised", summary=dict(language="en", diagnostics=[]), etaMinutes=0))
+            return dict(diagnostics=[])
+
+    queue = TranscriptionQueue(lambda _: None, finished.append, bundle=tmp_path, root=tmp_path, client_factory=Client)
+    try:
+        assert not queue.transcribing(session.directory)
+        assert queue.enqueue(session.directory)
+        assert queue.transcribing(session.directory)
+        assert entered.wait(10)
+        assert queue.transcribing(session.directory)
+        release.set()
+        until(lambda: len(finished) == 1)
+        assert not queue.transcribing(session.directory)
+    finally:
+        release.set()
+        queue.close()
