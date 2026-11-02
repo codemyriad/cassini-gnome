@@ -382,36 +382,38 @@ class NativeRecorder(GObject.Object):
         """
         pipeline = self.pipeline
         if pipeline is None:
-            return pts, 0
-        shift = self._pts_shifts.get(sink)
-        if shift is None:
+            return pts, 0, None
+        cached = self._pts_shifts.get(sink)
+        if cached is None:
             clock = pipeline.get_clock()
             if clock is None:
-                return pts, 0
+                return pts, 0, None
             now = clock.get_time() - pipeline.get_base_time()
-            shift = self._pts_shifts[sink] = self._pts_shift(sink, identifier, pts, frames, now)
-        return pts - shift, shift
+            cached = self._pts_shifts[sink] = self._pts_shift(sink, identifier, pts, frames, now)
+        shift, path = cached
+        return pts - shift, shift, path
 
     @staticmethod
     def _pts_shift(sink, identifier, pts, frames, now):
+        """(shift in ns, D57 clockSlaving path or None for an in-range stamp)."""
         if pts <= now + FUTURE_PTS_SLACK_NS:
-            return 0
+            return 0, None
         latency = pulse_latency(sink)
         wrap = segment_wrap_ns(*latency) if latency else None
         if wrap is not None and abs(pts - now - wrap) <= WRAP_TOLERANCE_NS:
-            shift, path = wrap, "removed the exact 2^32-segment wrap"
+            shift, path, how = wrap, "exactWrap", "removed the exact 2^32-segment wrap"
         else:
             # Unknown cause: this buffer began one source latency before it
             # reached the appsink; without pulsesrc facts, use its duration.
             before = latency[0] * 1000 if latency else frames * NS // RATE
-            shift, path = pts - max(0, now - before), f"re-anchored at running time - {before} ns"
+            shift, path, how = pts - max(0, now - before), "runningTime", f"re-anchored at running time - {before} ns"
         LOG.warning(
             "Native %s input stamp %d ns leads running time %d ns (2^32-segment wrap: %s ns); %s, shift %d ns",
             identifier,
             pts,
             now,
             wrap,
-            path,
+            how,
             shift,
         )
         # The wrapped segment counter keeps segment_skew near -2^32, so this
@@ -422,19 +424,19 @@ class NativeRecorder(GObject.Object):
             "no clock anchors are saved for it",
             identifier,
         )
-        return shift
+        return shift, path
 
     def _sample(self, sink, identifier):
         sample = sink.emit("pull-sample")
         if sample is None:
             return Gst.FlowReturn.EOS
         buffer = sample.get_buffer()
-        raw, shift = buffer.pts, 0
+        raw, shift, path = buffer.pts, 0, None
         try:
             if raw == Gst.CLOCK_TIME_NONE:
                 raise ValueError("Audio source has no clock timestamp")
             data = buffer.extract_dup(0, buffer.get_size())
-            pts, shift = self._input_pts(sink, identifier, raw, len(data) // 2)
+            pts, shift, path = self._input_pts(sink, identifier, raw, len(data) // 2)
             picture = None
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
@@ -458,7 +460,9 @@ class NativeRecorder(GObject.Object):
                         offset, gap = timeline.map(host_ns, frames, offset)
                         # A shifted source has no clock observations (see _pts_shift).
                         absolute = None
-                        if self.pipeline is not None and not shift:
+                        if path is not None:
+                            self.session.clock_slaving_lost(stored, path, shift)
+                        elif self.pipeline is not None:
                             absolute = self.pipeline.get_base_time() + host_ns
                         self.session.append_native(stored, data, offset, gap_frames=gap, host_ns=absolute)
                         start = self._spectro_starts.get(stored)

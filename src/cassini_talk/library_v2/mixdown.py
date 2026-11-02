@@ -149,8 +149,9 @@ class Timeline:
 
 
 SPAN_COPY = ("codec", "decodedRate", "sourceFile", "clockAnchors")
-# D52.2: the file keeps absence facts with each logical track.
-TRACK_COPY = ("kind", "sourceTrackId", "gaps", "gapFrames", "droppedFrames")
+# D52.2: the file keeps absence facts with each logical track; D57/R77: and why
+# a native track has no clockAnchors.
+TRACK_COPY = ("kind", "sourceTrackId", "gaps", "gapFrames", "droppedFrames", "clockSlaving")
 
 
 def session_spans(directory, manifest):

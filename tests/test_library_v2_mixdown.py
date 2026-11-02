@@ -120,6 +120,23 @@ def test_x_tracks_keep_the_span_map_and_zero_sample_sources_are_reported(tmp_pat
     ]  # fmt: skip
 
 
+def test_a_lost_clock_slaving_fact_is_published_with_its_track(tmp_path):
+    from cassini_talk.library_v2 import xschema
+
+    slaving = dict(state="lost", path="exactWrap", shiftNs=42949672960000000)
+    tracks = [
+        dict(id="system", kind="system", file="track-system.wav", sampleRate=RATE, channels=1, frames=RATE,
+             startOffsetMs=0, gaps=[], clockSlaving=slaving, write={"track-system.wav": (track_audio(RATE, 1.0), RATE, 1)}),
+        dict(id="mic", kind="microphone", file="track-mic.wav", sampleRate=RATE, channels=1, frames=RATE,
+             startOffsetMs=0, gaps=[], write={"track-mic.wav": (track_audio(RATE, 1.0), RATE, 1)}),
+    ]  # fmt: skip
+    _sid, directory = new_session(tmp_path, tracks)
+    published = mixdown.session_spans(directory, json.loads((directory / "session.json").read_text())).tracks
+    # D57/R77: it explains the missing clockAnchors wherever the span map goes.
+    assert published[0]["clockSlaving"] == slaving and "clockSlaving" not in published[1]
+    assert xschema.valid(published, xschema.SCHEMA["properties"]["tracks"])
+
+
 def test_presence_reads_the_published_track_entries_like_the_session(tmp_path):
     from cassini_talk.source_ownership import presence, samples
 

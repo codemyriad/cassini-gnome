@@ -436,6 +436,17 @@ class RecordingSession:
         finally:
             self._changing = False
 
+    def clock_slaving_lost(self, identifier, path, shift_ns):
+        """D57/R77: this native track's stamps were re-anchored and are sample counts.
+
+        Recorded once, before the track's next PCM, so the next checkpoint
+        carries it; no UI shows it.
+        """
+        if path not in ("exactWrap", "runningTime") or type(shift_ns) is not int:
+            raise ValueError("Invalid clock slaving diagnostic")
+        track = next(t for t in self.manifest["tracks"] if t["id"] == identifier)
+        track.setdefault("clockSlaving", dict(state="lost", path=path, shiftNs=shift_ns))
+
     def end_track(self, identifier):
         track = next((t for t in self.manifest["tracks"] if t["id"] == identifier), None)
         if self.finished or track is None:
