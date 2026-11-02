@@ -60,3 +60,15 @@ threshold rounding, backward skew, long gaps, selection alignment and a partial
 WAV-limit failure. Browser fallback tests independently exercise raw host stamps
 and concurrent sessions. The private Pulse harness retains its existing sample,
 duration, tone and bleed thresholds; it never connects to desktop audio.
+
+A first native stamp more than 10 s ahead of the pipeline's running time is
+re-anchored once per branch. When the lead is within 2 s of exactly 2^32
+ring-buffer segments (from the pulsesrc's `actual-latency-time` and negotiated
+rate, and only when that is a whole number of nanoseconds), that constant is
+removed and GStreamer's own first stamp is kept. Otherwise the buffer is placed
+one source latency (`actual-latency-time`, else the buffer duration) before the
+running time at which it reached the appsink. Either way the wrapped segment
+counter stops that source's skew resyncs for the rest of the recording, so its
+stamps are sample counts rather than clock observations: no `clockAnchors` are
+saved for it, and the app logs the shift, the path and the lost drift slaving.
+The desktop CI job copies those lines into its job summary.

@@ -353,19 +353,34 @@ def test_late_spectrogram_subscription_keeps_the_original_sample_grid(tmp_path):
 WRAPPED_NS = 2**32 * 480 * NS // 48000
 
 
-def start_with_a_wrapped_system_stamp(tmp_path, monkeypatch, source, system_pts):
+class CountingClock:
+    def __init__(self, base, now):
+        self.base, self.now, self.lookups = base, now, 0
+
+    def pipeline(self):
+        def get_clock():
+            self.lookups += 1
+            return SimpleNamespace(get_time=lambda: self.base + self.now)
+
+        return SimpleNamespace(get_base_time=lambda: self.base, get_clock=get_clock)
+
+
+def start_with_a_wrapped_system_stamp(tmp_path, monkeypatch, source, system_pts, *, fail_second=False):
     """CI desktop-mic-149/159: the monitor's first stamp lay ~497 days ahead; Record ended at 80 ms."""
     NativeRecorder, Gst = recorder_class()
-    session = RecordingSession(tmp_path)
+    # A Library session saves native clock anchors (S-12).
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path / "Library"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "private-config"))
+    session = RecordingSession(None, source="gnome")
+    session._native_clock_origin_ns = NS
     session.add_track("microphone", "Me", "microphone", 48000, 1)
     session.add_track("system", "The others", "system", 48000, 1)
     session.manifest["tracks"][-1]["startOffsetMs"] = 0
     recorder = NativeRecorder()
     recorder.session = session
     problems = scheduled_problems(monkeypatch, recorder)
-    base, now = 5 * NS, [80_000_000]
-    clock = SimpleNamespace(get_time=lambda: base + now[0])
-    recorder.pipeline = SimpleNamespace(get_base_time=lambda: base, get_clock=lambda: clock)
+    clock = CountingClock(5 * NS, 80_000_000)
+    recorder.pipeline = clock.pipeline()
     mic, system = Sink(pulse_source(10000, 48000)), Sink(source)
     pcm = (1000).to_bytes(2, "little", signed=True) * 480
     try:
@@ -373,15 +388,32 @@ def start_with_a_wrapped_system_stamp(tmp_path, monkeypatch, source, system_pts)
             feed(recorder, "microphone", pcm, 70_000_000, mic),
             feed(recorder, "system", pcm, system_pts, system),
         ]
-        now[0] = 90_000_000
+        clock.now = 90_000_000
+        if fail_second:
+            append = session.append_native
+
+            def failing(identifier, *args, **kwargs):
+                if identifier == "system":
+                    raise OSError("synthetic disk failure")
+                return append(identifier, *args, **kwargs)
+
+            monkeypatch.setattr(session, "append_native", failing)
         results += [
             feed(recorder, "system", pcm, system_pts + 10_000_000, system),
             feed(recorder, "microphone", pcm, 80_000_000, mic),
         ]
+        if fail_second:
+            return results, problems()
         assert problems() == []
         assert results == [Gst.FlowReturn.OK] * 4
+        # One clock read per branch, at its first buffer; later buffers use the cached shift.
+        assert clock.lookups == 2
+        session.finish()
         me, others = session.manifest["tracks"]
         assert me["startOffsetMs"] == 70 and me["frames"] == 960 and not me["gaps"]
+        # Only a drift-slaved source's stamps are clock observations.
+        assert me["clockAnchors"] == [[0, 5 * NS + 70_000_000 - NS], [480, 5 * NS + 80_000_000 - NS]]
+        assert "clockAnchors" not in others
         return others
     finally:
         recorder.pipeline = None
@@ -402,38 +434,58 @@ def test_wrapped_first_input_stamp_keeps_its_exact_gstreamer_anchor(tmp_path, mo
 
 
 @pytest.mark.parametrize(
-    ("source", "system_pts"),
+    ("source", "system_pts", "prefix"),
     [
-        (None, WRAPPED_NS + 60_000_000),
-        # 1024 samples at 48 kHz: 2^32 segments are not whole nanoseconds.
-        ((21333, 48000), 2**32 * 1024 * NS // 48000 + 60_000_000),
-        # Far ahead, but not by 2^32 segments.
-        ((10000, 48000), 3600 * NS),
+        # Without pulsesrc facts, the 10 ms buffer itself is the latency.
+        (None, WRAPPED_NS + 60_000_000, 3360),
+        # 1024 samples at 48 kHz: 2^32 segments are not whole nanoseconds; 21.333 ms latency.
+        ((21333, 48000), 2**32 * 1024 * NS // 48000 + 60_000_000, 2816),
+        # Far ahead, but not by 2^32 segments; the reported 20 ms latency, not the 10 ms buffer.
+        ((20000, 48000), 3600 * NS, 2880),
     ],
     ids=["no-pulsesrc", "fractional-segment", "not-a-wrap"],
 )
-def test_unexplained_future_first_stamp_is_reanchored_at_running_time(
-    tmp_path, monkeypatch, caplog, source, system_pts
+def test_unexplained_future_first_stamp_starts_one_source_latency_before_running_time(
+    tmp_path, monkeypatch, caplog, source, system_pts, prefix
 ):
     source = pulse_source(*source) if source else None
     with caplog.at_level("WARNING", logger="cassini_talk.native_recorder"):
         others = start_with_a_wrapped_system_stamp(tmp_path, monkeypatch, source, system_pts)
-    # Ends at the 80 ms running time when it arrived; the second buffer stays contiguous.
-    assert others["frames"] == 3360 + 960
-    assert others["gaps"] == [dict(atMs=0, durationMs=70, frames=3360, kind="prefix")]
+    # The second buffer stays contiguous with the re-anchored first one.
+    assert others["frames"] == prefix + 960
+    assert [(gap["kind"], gap["frames"]) for gap in others["gaps"]] == [("prefix", prefix)]
     assert "re-anchored at running time" in caplog.text
     assert "Native system input has no GStreamer drift slaving" in caplog.text
 
 
+def test_shifted_source_failure_logs_the_raw_stamp_and_its_shift(tmp_path, monkeypatch, caplog):
+    _NativeRecorder, Gst = recorder_class()
+    with caplog.at_level("WARNING", logger="cassini_talk.native_recorder"):
+        results, problems = start_with_a_wrapped_system_stamp(
+            tmp_path, monkeypatch, pulse_source(10000, 48000), WRAPPED_NS + 60_000_000, fail_second=True
+        )
+    assert results[2] == Gst.FlowReturn.ERROR and problems == ["synthetic disk failure"]
+    raw = WRAPPED_NS + 70_000_000
+    assert f"Native system capture failed at raw input stamp {raw} ns (shift {WRAPPED_NS} ns)" in caplog.text
+
+
 @pytest.mark.parametrize(
     ("latency_us", "rate", "wrap"),
-    [(10000, 48000, WRAPPED_NS), (10000, 44100, WRAPPED_NS), (21333, 48000, None), (0, 48000, None)],
+    [(10000, 48000, WRAPPED_NS), (10000, 44100, WRAPPED_NS), (21333, 48000, None)],
 )
 def test_segment_wrap_is_exact_or_absent(latency_us, rate, wrap):
     recorder_class()  # Skips where GStreamer's Python bindings are absent.
     from cassini_talk.native_recorder import segment_wrap_ns
 
-    assert segment_wrap_ns(Sink(pulse_source(latency_us, rate))) == wrap
+    assert segment_wrap_ns(latency_us, rate) == wrap
+
+
+@pytest.mark.parametrize(("source", "facts"), [((10000, 48000), (10000, 48000)), ((0, 48000), None), (None, None)])
+def test_pulse_latency_needs_a_negotiated_pulsesrc(source, facts):
+    recorder_class()
+    from cassini_talk.native_recorder import pulse_latency
+
+    assert pulse_latency(Sink(pulse_source(*source) if source else None)) == facts
 
 
 def test_native_buffer_beyond_the_wire_chunk_limit_is_split_not_rejected(tmp_path, monkeypatch):

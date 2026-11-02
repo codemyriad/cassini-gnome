@@ -340,7 +340,10 @@ def test_delayed_device_query_does_not_block_pcm_or_error_handling(tmp_path, mon
         sample = Gst.Sample.new(buffer, None, None, None)
 
         def pcm_and_error():
-            assert capture._sample(SimpleNamespace(emit=lambda _: sample), "system") == Gst.FlowReturn.OK
+            class Sink:  # Hashable, like the real branch appsink.
+                emit = staticmethod(lambda _: sample)
+
+            assert capture._sample(Sink(), "system") == Gst.FlowReturn.OK
             progressed.set()
 
         def retire():
