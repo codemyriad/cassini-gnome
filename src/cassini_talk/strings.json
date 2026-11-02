@@ -19134,6 +19134,246 @@
      "text": "{source}: o navegador não iniciou a gravação."
     }
    }
+  },
+  {
+   "id": "test.action",
+   "en": "Test recording",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D60",
+   "note": "Coordinator (D60, R83). Settings › Recording row and first-run step button.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Prova di registrazione"
+    },
+    "fr": {
+     "text": "Tester l’enregistrement"
+    },
+    "es": {
+     "text": "Probar la grabación"
+    },
+    "pt-BR": {
+     "text": "Testar gravação"
+    },
+    "pt-PT": {
+     "text": "Testar a gravação"
+    }
+   }
+  },
+  {
+   "id": "test.intro",
+   "en": "Records 8 seconds from your microphone and this computer’s sound, then deletes it. Nothing leaves this computer.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "D60",
+   "note": "Coordinator (D60, R83). Under the Test recording action.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Registra 8 secondi dal microfono e dall’audio di questo computer, poi li elimina. Nulla lascia questo computer."
+    },
+    "fr": {
+     "text": "Enregistre 8 secondes de votre microphone et du son de cet ordinateur, puis les supprime. Rien ne quitte cet ordinateur."
+    },
+    "es": {
+     "text": "Graba 8 segundos de tu micrófono y del sonido de este equipo y luego los borra. Nada sale de este equipo."
+    },
+    "pt-BR": {
+     "text": "Grava 8 segundos do seu microfone e do som deste computador e depois os apaga. Nada sai deste computador."
+    },
+    "pt-PT": {
+     "text": "Grava 8 segundos do seu microfone e do som deste computador e depois apaga-os. Nada sai deste computador."
+    }
+   }
+  },
+  {
+   "id": "test.running",
+   "en": "Testing… Say something and play a sound.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D60",
+   "note": "Coordinator (D60, R83). While the 8 s test records.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Prova in corso… Di’ qualcosa e riproduci un suono."
+    },
+    "fr": {
+     "text": "Test en cours… Dites quelque chose et faites jouer un son."
+    },
+    "es": {
+     "text": "Probando… Di algo y reproduce un sonido."
+    },
+    "pt-BR": {
+     "text": "Testando… Diga algo e toque um som."
+    },
+    "pt-PT": {
+     "text": "A testar… Diga algo e reproduza um som."
+    }
+   }
+  },
+  {
+   "id": "test.result.working",
+   "en": "{stream}: working",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D60",
+   "note": "Coordinator (D60, R83). Result line; {stream} is common.yourMicrophone or recordFirst.sound.title.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{stream}: funziona"
+    },
+    "fr": {
+     "text": "{stream} : fonctionne"
+    },
+    "es": {
+     "text": "{stream}: funciona"
+    },
+    "pt-BR": {
+     "text": "{stream}: funcionando"
+    },
+    "pt-PT": {
+     "text": "{stream}: a funcionar"
+    }
+   }
+  },
+  {
+   "id": "test.result.silent",
+   "en": "{stream}: no sound heard",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D60",
+   "note": "Coordinator (D60, R83). Result line when audio arrived but none was above the activity floor (a hint, not a failure).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{stream}: nessun suono rilevato"
+    },
+    "fr": {
+     "text": "{stream} : aucun son détecté"
+    },
+    "es": {
+     "text": "{stream}: no se oyó ningún sonido"
+    },
+    "pt-BR": {
+     "text": "{stream}: nenhum som detectado"
+    },
+    "pt-PT": {
+     "text": "{stream}: nenhum som detetado"
+    }
+   }
+  },
+  {
+   "id": "test.playBack",
+   "en": "Play back",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D60",
+   "note": "Coordinator (D60, R83). Plays both test streams together.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Riascolta"
+    },
+    "fr": {
+     "text": "Réécouter"
+    },
+    "es": {
+     "text": "Reproducir"
+    },
+    "pt-BR": {
+     "text": "Reproduzir"
+    },
+    "pt-PT": {
+     "text": "Reproduzir"
+    }
+   }
+  },
+  {
+   "id": "test.again",
+   "en": "Test again",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D60",
+   "note": "Coordinator (D60, R83). Runs another test.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Ripeti la prova"
+    },
+    "fr": {
+     "text": "Refaire le test"
+    },
+    "es": {
+     "text": "Repetir la prueba"
+    },
+    "pt-BR": {
+     "text": "Testar novamente"
+    },
+    "pt-PT": {
+     "text": "Testar novamente"
+    }
+   }
+  },
+  {
+   "id": "test.note",
+   "en": "Play it back to check that it sounds right.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "D60",
+   "note": "Coordinator (D60, R83). Under the result: a file does not prove you can hear it.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Riascoltala per verificare che suoni bene."
+    },
+    "fr": {
+     "text": "Réécoutez-le pour vérifier que le son est correct."
+    },
+    "es": {
+     "text": "Reprodúcela para comprobar que suena bien."
+    },
+    "pt-BR": {
+     "text": "Reproduza para verificar se o som está bom."
+    },
+    "pt-PT": {
+     "text": "Reproduza para verificar se o som está bom."
+    }
+   }
   }
  ]
 }
