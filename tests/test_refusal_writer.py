@@ -687,8 +687,9 @@ def test_a_new_browser_record_clears_an_earlier_start_error(application_class): 
     assert submitted and app.recording_error is None and app.recording_failure is None
 
 
+@pytest.mark.parametrize("typed", [False, True], ids=["blank", "typed"])
 @pytest.mark.parametrize("refused", [(), ("microphone",)], ids=["both-cancelled", "one-refused-one-cancelled"])
-def test_a_stop_during_fallback_startup_leaves_no_folder_and_no_banner(tmp_path, refused):
+def test_a_stop_during_fallback_startup_leaves_no_folder_and_no_banner(tmp_path, refused, typed):
     import threading
     import time
     from concurrent.futures import ThreadPoolExecutor
@@ -697,6 +698,7 @@ def test_a_stop_during_fallback_startup_leaves_no_folder_and_no_banner(tmp_path,
 
     from cassini_talk.browser_capture import BrowserCapture
     from cassini_talk.browser_service import start_refusals
+    from cassini_talk.meeting_store import update_metadata
     from cassini_talk.refusals import StartCancelled, from_result
 
     release = threading.Event()
@@ -724,13 +726,27 @@ def test_a_stop_during_fallback_startup_leaves_no_folder_and_no_banner(tmp_path,
         assert all(event.wait(5) for event in entered.values())  # Bound only: both sides are opening.
         stopping = pool.submit(capture.stop)
         assert capture.stop_requested.wait(5)  # Bound only: the user's Stop has arrived.
+        directory = capture.host.session.directory
+        if typed:
+            # The user typed a title while the sides opened: discardBlank keeps it.
+            update_metadata(directory, title="Weekly", titleSource="user")
         release.set()
         with pytest.raises(StartCancelled) as raised:
             starting.result(10)
-        assert stopping.result(10) == dict(type="stopped", path=None)
-    # Nothing opened because of the Stop: no folder, no banner, no refusals.
-    assert capture.discarded and capture.finished and not list(tmp_path.iterdir())
-    assert start_refusals(raised.value) == []
+        assert stopping.result(10) == dict(type="stopped", path=str(directory) if typed else None)
+    # Nothing opened because of the Stop: no banner, and no refusal for any
+    # native side. A blank folder goes; a typed one stays, with only the
+    # browser's refusal from before the stand-in.
+    assert start_refusals(raised.value) == [] and capture.finished
+    if typed:
+        assert not capture.discarded and list(tmp_path.iterdir()) == [directory]
+        saved = json.loads((directory / "session.json").read_text())
+        assert saved["refusals"] == [browser], saved
+        # A user Stop of a recording that holds no audio, as any such Stop.
+        assert (saved["state"], saved["problemKind"], saved["events"][-1]["reason"]) == ("interrupted", "empty", "user")
+        assert saved["tracks"] == []
+    else:
+        assert capture.discarded and not list(tmp_path.iterdir())
     assert all(tap.stopped for tap in taps.made if tap.started)
 
 
