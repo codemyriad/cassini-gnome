@@ -1,15 +1,26 @@
 tree 660d5736cc9da28ed855ee1c89445ffd9d1d8efd
-parent e8701460f36b684aeba896003952e5fb1e1ce037
-author Silvio Tomatis <silviot@gmail.com> 1793648954 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793648954 +0100
+parent d789cf30a6611de7020893502f3be927e4f8e51d
+parent 4ff01c17ff9f556facb235d04986bd767d65d033
+author Silvio Tomatis <silviot@gmail.com> 1793649900 +0100
+committer GitHub <noreply@github.com> 1793649900 +0100
+gpgsig -----BEGIN PGP SIGNATURE-----
+ 
+ wsFcBAABCAAQBQJq6OzsCRC1aQ7uu5UhlAAA4wIQAKf4crl0ktycMTRLkOQnuV+B
+ 3aqHfd2gjj7ppjB9552/y3ELvOjww1IPQNipN+p3OhvLS2k4v57V6hDLdK13jRgc
+ RDmkZ4kg7LUk8fSCWfDyCZctPszLVUun15/PTHqdWAmhT5yplapTz+8qKaTfFDCm
+ KFcGZQ41iWgKTXaIF8S1ibKASGSyebRf/VGoSPXgAmlzBOrB7qdzqrq8qyNm1M+D
+ P/jadhCMl+ZIZqgsq65nvRYxYgI87iPb1KGrjpFhFwKJxqmmU3lhqxlSa1vxmIUW
+ 2efxYK6gTqmNHjTeQ2biqhM9A8biNdj4uknGwKeF41yny1ZfzhoGbSpJmOHvuKN3
+ 1JtdXUKbhTXAgY23AOzCwQX+kTVw/hY8mmjanaMtj8CVvaFvNmPW6lEy6trjKbrR
+ 6qJI56x9IMyzoBWeM1Hsjv4ulGwqnZTvgweGVqDZbSAXx1OkgmzTW6a5YIVLffy4
+ 1pqzDakRx6u252mNBCtW+ZsXspSrur8K4+0GMex/Ntc2ZlBWk0VXLIGm+kv6XnTh
+ Z636Ke7vLErgm1d/xSOqkq6D3ATPANGiTcd8CgbAPqJYP/KH1CDaxVLY2u4pSnRE
+ Y3xxhIZAahtnUqFmNH7fRVq7Sig1tOfT8eF9BYO1dgnB6gak6j3KnZJnAg/Bi0wU
+ DDQXHQL5TYeIYLbiUJMP
+ =KqnF
+ -----END PGP SIGNATURE-----
+ 
 
-askAttribution: the code is a reply's message (R82 1b), a same-connection finished ask, bounded memory, restarts
+Merge pull request #37 from codemyriad/feat/resume-ask-id
 
-Review follow-ups. A reply-first entry carries the result code as its message,
-as R82 1b decided, and every entry pins side, code and detail. A new case reuses
-a finished ask's connection for the next ask, so a per-connection recycler
-fails too. The note and RESUME-CAPTURE.md say an attach answers every pending
-ask, a Stop forgets them, and an app may forget its oldest unanswered asks past
-a bound. Ids are never reused after an app restart either.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Carry the control requestId on native resume packets (extension 0.2.11)
