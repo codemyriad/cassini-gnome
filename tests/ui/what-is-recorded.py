@@ -379,6 +379,10 @@ with tempfile.TemporaryDirectory() as temporary:
     assert text("errors.othersFallback.line") in shown and text("errors.refusal.noSources") in shown
     assert buttons(box, text("common.tryAgain")) == 1, shown  # Only the microphone's line.
     assert button(box, text("common.tryAgain")).get_sensitive()
+    retries = []
+    with patch.object(app, "change_recording_sources", lambda *args, **kwargs: retries.append((args, kwargs))):
+        button(box, text("common.tryAgain")).emit("clicked")
+    assert retries == [((meeting, True, app.comfort.sources(meeting).others), dict(retry=True))], retries
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
     window.append_refusal_lines(box, [dict(side="me", id="errors.micPermission.line", caption=None)], False, meeting)
     assert buttons(box, text("common.tryAgain")) == 0
