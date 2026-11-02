@@ -50,8 +50,10 @@ removed in the same write. A dropped name is only logged (`voiceNameReset`).
 Entries without a stamp count as different; D11 ids such as `me`, `others` and
 `track-<id>` are unchanged. Renames and merges keep the stamp. The private voice
 cache carries a confirmed match, its print and rejections only for an equal
-stamp, and voice preparation labels saved ids from turns only for an equal
-stamp. The field name and shape are provisional until coordinator decision R74.
+stamp. Remember, preparation checks and Merge/Undo or background recomputation
+treat a cached print whose stamp differs from the same id in `meeting.json` as
+absent, and recomputed prints take their stamp from `meeting.json`. Voice
+preparation labels saved ids from turns only for an equal stamp. The field name and shape are provisional until coordinator decision R74.
 
 ## Verification
 

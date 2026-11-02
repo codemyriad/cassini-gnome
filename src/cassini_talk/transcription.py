@@ -904,7 +904,8 @@ class TranscriptionQueue:
             if background:
                 # No re-matching or transcript/name writes for historical meetings.
                 # Only missing prints are added; existing confirmed data/rejections stay.
-                cache = self.voice_store.meeting(directory)
+                # An item stamped for another voice of its id counts as missing (G12).
+                cache, _prepared = self.voice_store.preparation(directory)
                 affected = prints.keys() - cache["speakers"].keys()
             self.voice_store.recompute(directory, prints, affected, state["generation"], check_active=current)
             self.changed(directory)

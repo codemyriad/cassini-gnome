@@ -206,9 +206,13 @@ def test_resumed_rerun_keeps_a_name_only_on_an_equal_stamp(root, case, sha, turn
         assert mira["name"] == "Mira" and mira["provenance"] == "user"
         assert "Mira" in visible(root).speaker_names
         return
-    assert {key: value for key, value in mira.items() if key != "colourIndex"} == dict(
-        id="others~2", name=None, provenance="unnamed", voiceSource=stamp(sha, turns)
+    # A planned voice takes the planned colour (One speaks first: 0, not the
+    # stale 1). An orphan of the group (inconclusive run) keeps its own colour.
+    colour = 1 if turns is TURNS_C else 0 if turns is TURNS_B else 1
+    assert mira == dict(
+        id="others~2", name=None, provenance="unnamed", colourIndex=colour, voiceSource=stamp(sha, turns)
     )
+    assert speaker(second, "others~1")["colourIndex"] == 0
     assert "Mira" not in visible(root).speaker_names
     assert all(s["name"] != "Mira" for s in second["speakers"])
     if turns is TURNS_C:
@@ -287,7 +291,17 @@ def test_recognised_name_and_cleared_flag_follow_the_right_voice(root, tmp_path)
     assert cache["others~3"]["match"]["state"] == "auto"
 
 
-def test_merges_of_reset_voices_are_pruned_and_other_groups_keep_names(root):
+@pytest.mark.parametrize(
+    ("merges", "kept"),
+    [
+        # Both ends reset; a merge between two kept ids stays.
+        ([("others~1", "others~2"), ("track-tab7~2", "track-tab7~1")], [("track-tab7~2", "track-tab7~1")]),
+        ([("others~2", "track-tab7~1")], []),  # Only `from` is reset.
+        ([("track-tab7~2", "others~2")], []),  # Only `into` is reset.
+    ],
+    ids=["both-ends", "from-only", "into-only"],
+)
+def test_merges_of_reset_voices_are_pruned_and_other_groups_keep_names(root, merges, kept):
     """§6.7 and §6.9: only the `others` input changes; track-tab7 is reused."""
     directory = capture(root, tab=True)
     tab_words = [dict(text="Three", startMs=100, endMs=800), dict(text="Four", startMs=1100, endMs=1900)]
@@ -297,8 +311,8 @@ def test_merges_of_reset_voices_are_pruned_and_other_groups_keep_names(root):
     save_name(directory, "track-tab7~1", "Tara")
     save_name(directory, "track-tab7~2", "Theo")
     save_name(directory, "others~2", "Mira")
-    merge_into(directory, "others~1", "others~2")
-    merge_into(directory, "track-tab7~2", "track-tab7~1")
+    for source, target in merges:
+        merge_into(directory, source, target)
     interrupted(directory)
 
     second = run(
@@ -307,7 +321,7 @@ def test_merges_of_reset_voices_are_pruned_and_other_groups_keep_names(root):
         scripted({"others": (Y, TURNS_B, False), "track-tab7": (X, TURNS_A, True)}, words),
         resume=True,
     )
-    assert second["speakerMerges"] == [{"from": "track-tab7~2", "into": "track-tab7~1"}]
+    assert second["speakerMerges"] == [{"from": source, "into": target} for source, target in kept]
     assert speaker(second, "track-tab7~1")["name"] == "Tara"
     assert speaker(second, "track-tab7~2")["name"] == "Theo"
     assert speaker(second, "track-tab7~1")["voiceSource"] == stamp(X, TURNS_A)
@@ -322,16 +336,17 @@ def test_stampless_entries_are_reset_but_d11_names_stay(root):
         directory,
         speakers=[
             dict(id="others", name="The room", provenance="user", colourIndex=0),
-            dict(id="others~1", name=None, provenance="unnamed", colourIndex=0, nameCleared=True),
-            dict(id="others~2", name="Mira", provenance="user", colourIndex=1),
+            dict(id="others~1", name=None, provenance="unnamed", colourIndex=4, nameCleared=True),
+            dict(id="others~2", name="Mira", provenance="user", colourIndex=9),
+            dict(id="others~3", name="Old", provenance="recognised", colourIndex=7),
         ],
     )
     metadata = run(root, directory, scripted({"others": (X, TURNS_A, False)}))
     assert speaker(metadata, "others") == dict(id="others", name="The room", provenance="user", colourIndex=0)
-    for identifier in ("others~1", "others~2"):
-        entry = speaker(metadata, identifier)
-        assert {k: v for k, v in entry.items() if k != "colourIndex"} == dict(
-            id=identifier, name=None, provenance="unnamed", voiceSource=stamp(X, TURNS_A)
+    # Returning voices take the planned colours 0 and 1; the orphan keeps 7.
+    for identifier, colour in (("others~1", 0), ("others~2", 1), ("others~3", 7)):
+        assert speaker(metadata, identifier) == dict(
+            id=identifier, name=None, provenance="unnamed", colourIndex=colour, voiceSource=stamp(X, TURNS_A)
         )
 
 
@@ -353,13 +368,17 @@ def test_rename_clear_and_merge_keep_the_stamp_byte_identical(root):
     assert json.dumps(stamp(X, TURNS_A), separators=(",", ":")) == before["others~2"]
 
 
-@pytest.mark.parametrize("matched", [False, True])
-def test_voice_cache_carries_confirmed_data_only_for_an_equal_stamp(tmp_path, matched):
+@pytest.mark.parametrize(
+    ("sha", "turns"),
+    [(X, TURNS_A), (X, TURNS_B), (Y, TURNS_A), (Y, TURNS_B)],
+    ids=["equal", "turns-differ", "input-differs", "both-differ"],
+)
+def test_voice_cache_carries_confirmed_data_only_for_an_equal_stamp(tmp_path, sha, turns):
     """§6.8 at the store: confirmed match, embedding and rejections."""
     store = VoiceStore(tmp_path / "private")
     store.refresh()
     key = "Recording-12345678-1234-4234-8234-123456789abc"
-    old, new = stamp(X, TURNS_A), stamp(Y, TURNS_B)
+    old, new = stamp(X, TURNS_A), stamp(sha, turns)
     store.commit_job(key, {"others~2": dict(embedding=embedding(0), seconds=8)}, 0, voice_sources={"others~2": old})
     store.remember(key, "others~2", "Mira")
     rejected = store.snapshot()["voices"][0]["id"]
@@ -367,18 +386,23 @@ def test_voice_cache_carries_confirmed_data_only_for_an_equal_stamp(tmp_path, ma
     item = store.meeting(key)["speakers"]["others~2"]
     assert item["match"]["state"] == "confirmed" and item["rejected"] == [rejected]
     assert item["voiceSource"] == old
-    sources = {"others~2": old if matched else new}
-    store.commit_job(key, {"others~2": dict(embedding=embedding(1), seconds=9)}, 0, voice_sources=sources)
+    store.commit_job(key, {"others~2": dict(embedding=embedding(1), seconds=9)}, 0, voice_sources={"others~2": new})
     after = store.meeting(key)["speakers"]["others~2"]
-    if matched:
+    if new == old:
         assert after == item
     else:
         assert after["embedding"] == embedding(1) and after["voiceSource"] == new
         assert after["match"]["state"] != "confirmed" and "rejected" not in after
 
 
-@pytest.mark.parametrize("matched", [False, True])
-def test_background_preparation_labels_saved_ids_only_from_their_own_turns(root, tmp_path, monkeypatch, matched):
+@pytest.mark.parametrize(
+    ("current_input", "saved_turns"),
+    [(True, TURNS_B), (True, TURNS_A), (False, TURNS_B), (False, TURNS_A)],
+    ids=["equal", "turns-differ", "input-differs", "both-differ"],
+)
+def test_background_preparation_labels_saved_ids_only_from_their_own_turns(
+    root, tmp_path, monkeypatch, current_input, saved_turns
+):
     """§6.12: re-inferred turns' ordinals never label saved `others~n` words."""
     pytest.importorskip("numpy")
     from cassini_talk import campplus, nemotron, worker_voices
@@ -405,7 +429,9 @@ def test_background_preparation_labels_saved_ids_only_from_their_own_turns(root,
             groups=[dict(id="others", durationMs=2000, inputSHA256=X, turns=TURNS_A)],
         ),
     )
-    source = stamp(current, TURNS_B) if matched else stamp(X, TURNS_A)
+    # The turns used are the re-inferred TURNS_B on the current input.
+    source = stamp(current if current_input else X, saved_turns)
+    matched = current_input and saved_turns is TURNS_B
     update_metadata(
         directory,
         transcript=dict(status="done", reference=REFERENCE),
@@ -455,3 +481,162 @@ def test_background_preparation_labels_saved_ids_only_from_their_own_turns(root,
     # TURNS_B ordinals would label others~1 as native 0 and others~2 as native 1,
     # although the saved "One" on others~1 lies in native 1's turn.
     assert labels == [{"others~1": {0}, "others~2": {1}} if matched else {}]
+
+
+def stamped_meeting(root, source):
+    directory = capture(root)
+    update_metadata(
+        directory,
+        speakers=[
+            dict(id=f"others~{n}", name=None, provenance="unnamed", colourIndex=n - 1, voiceSource=source)
+            for n in (1, 2, 3)
+        ],
+    )
+    return directory
+
+
+def restamp(directory, identifier, source):
+    speakers = read_metadata(directory)["speakers"]
+    for entry in speakers:
+        if entry["id"] == identifier:
+            entry["voiceSource"] = source
+    update_metadata(directory, speakers=speakers)
+
+
+@pytest.mark.parametrize("operation", ["merge", "undo", "missing"])
+@pytest.mark.parametrize("rerun", ["equal", "different"])
+def test_recompute_stamps_from_meeting_json_so_a_rerun_gates_on_it(root, tmp_path, operation, rerun):
+    """Merge/Undo and background "missing prints" recompute stamp from the file."""
+    store = VoiceStore(tmp_path / "private")
+    store.refresh()
+    old, new = stamp(X, TURNS_A), stamp(Y, TURNS_B)
+    directory = stamped_meeting(root, old)
+    first = {"others~1": dict(embedding=embedding(1), seconds=8), "others~2": dict(embedding=embedding(0), seconds=8)}
+    store.commit_job(directory, first, 0, voice_sources={"others~1": old, "others~2": old})
+    assert store.remember(directory, "others~2", "Mira")
+    mira = store.snapshot()["voices"][0]["id"]
+    if operation == "missing":
+        assert store.recompute(directory, {"others~3": dict(embedding=embedding(3), seconds=8)}, {"others~3"}, 0)
+        assert store.meeting(directory)["speakers"]["others~3"]["voiceSource"] == old
+    else:
+        # others~1 merged into others~2: one combined print, the person is kept.
+        merged = {"others~2": dict(embedding=embedding(2), seconds=10)}
+        assert store.recompute(directory, merged, {"others~1", "others~2"}, 0)
+        if operation == "undo":
+            assert store.recompute(directory, first, {"others~1", "others~2"}, 0)
+    item = store.meeting(directory)["speakers"]["others~2"]
+    assert item["voiceSource"] == old and item["match"] == dict(item["match"], voiceId=mira, state="confirmed")
+
+    # The interrupted job resumes and commits again.
+    source = old if rerun == "equal" else new
+    for identifier in ("others~1", "others~2"):
+        restamp(directory, identifier, source)
+    again = {"others~2": dict(embedding=embedding(4), seconds=9)}
+    store.commit_job(directory, again, 0, voice_sources={"others~2": source})
+    after = store.meeting(directory)["speakers"]["others~2"]
+    if rerun == "equal":
+        assert after == item
+    else:
+        assert after["embedding"] == embedding(4) and after["voiceSource"] == new
+        assert after["match"]["state"] != "confirmed"
+
+
+def test_recompute_never_moves_a_confirmed_person_onto_another_voice(root, tmp_path):
+    """A merge recompute after the run-2 reset must not re-enrol Mira from others~2's new print."""
+    from cassini_talk.voices_logic import cosine
+
+    store = VoiceStore(tmp_path / "private")
+    store.refresh()
+    old, new = stamp(X, TURNS_A), stamp(Y, TURNS_B)
+    directory = stamped_meeting(root, old)
+    store.commit_job(
+        directory, {"others~2": dict(embedding=embedding(0), seconds=8)}, 0, voice_sources={"others~2": old}
+    )
+    assert store.remember(directory, "others~2", "Mira")
+    restamp(directory, "others~2", new)
+    assert store.recompute(directory, {"others~2": dict(embedding=embedding(1), seconds=8)}, {"others~2"}, 0)
+    item = store.meeting(directory)["speakers"]["others~2"]
+    assert item["voiceSource"] == new and item["match"]["state"] == "none"
+    (mira,) = store.snapshot()["voices"]
+    assert mira["name"] == "Mira" and cosine(mira["mean"], embedding(0)) > 0.99
+
+
+@pytest.mark.parametrize("reset", [False, True])
+def test_stale_cache_item_is_absent_for_remember_and_preparation(root, tmp_path, reset):
+    """Run 1 cached Mira's print on others~2, run 2 reset others~2 in meeting.json."""
+    store = VoiceStore(tmp_path / "private")
+    store.refresh()
+    old, new = stamp(X, TURNS_A), stamp(Y, TURNS_B)
+    directory = stamped_meeting(root, old)
+    prints = {"others~2": dict(embedding=embedding(0), seconds=8), "others": dict(embedding=embedding(3), seconds=8)}
+    store.commit_job(directory, prints, 0, voice_sources={"others~2": old})
+    if reset:
+        restamp(directory, "others~2", new)
+    cache, prepared = store.preparation(directory)
+    assert prepared is not reset
+    assert ("others~2" in cache["speakers"]) is not reset
+    assert "others" in cache["speakers"]  # D11: no stamp on either side.
+    assert store.remember(directory, "others~2", "Bob") is not reset
+    assert [v["name"] for v in store.snapshot()["voices"]] == ([] if reset else ["Bob"])
+    assert store.remember(directory, "others", "Room")
+    assert "Room" in [v["name"] for v in store.snapshot()["voices"]]
+
+
+def test_background_preparation_replaces_a_print_stamped_for_another_voice(root, tmp_path, monkeypatch):
+    """A done meeting whose last commit never ran: the stale item counts as missing."""
+    from cassini_talk import voice_models
+
+    store = VoiceStore(tmp_path / "private")
+    store.refresh()
+    old, new = stamp(X, TURNS_A), stamp(Y, TURNS_B)
+    directory = stamped_meeting(root, new)
+    store.commit_job(
+        directory, {"others~2": dict(embedding=embedding(0), seconds=8)}, 0, voice_sources={"others~2": old}
+    )
+    items = [dict(w, speaker=s) for w, s in zip(WORDS, ("others~2", "others~3"), strict=True)]
+    (directory / "transcript.json").write_text(json.dumps(dict(format="cassini.words.v1", language="en", items=items)))
+    update_metadata(directory, transcript=dict(status="done", reference=REFERENCE))
+
+    class Ready(Models):
+        def snapshot(self):
+            return dict(ready=True)
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            pass
+
+        def close(self):
+            pass
+
+        def cancel(self):
+            pass
+
+        def voiceprints(self, _tracks, options, _heartbeat):
+            assert options["prepareMissing"]
+            return {
+                "others~2": dict(embedding=embedding(1), seconds=8),
+                "others~3": dict(embedding=embedding(2), seconds=8),
+            }
+
+    monkeypatch.setattr(voice_models, "VoiceJobClient", Client)
+    done = threading.Event()
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _directory: None,
+        root=root,
+        diarization_models=Ready(),
+        voice_models=Ready(),
+        voice_store=store,
+    )
+    try:
+        assert queue.backfill_voices(directory, lambda *_args: done.set())
+        assert done.wait(10), "Background preparation did not finish"
+    finally:
+        queue.close()
+    cache, prepared = store.preparation(directory)
+    assert prepared
+    assert cache["speakers"]["others~2"]["embedding"] == embedding(1)
+    assert cache["speakers"]["others~2"]["voiceSource"] == cache["speakers"]["others~3"]["voiceSource"] == new
