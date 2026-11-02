@@ -331,12 +331,17 @@ def test_a_first_buffer_is_judged_by_its_admission_time_against_the_bound(tmp_pa
         close(recorder)
 
 
+@pytest.mark.parametrize("stop", ["opening", "started"])
 @pytest.mark.parametrize("blocked", ["microphone", "system"])
-def test_a_side_stuck_in_its_state_change_blocks_neither_the_other_side_nor_stop(tmp_path, blocked):
+def test_a_side_stuck_in_its_state_change_blocks_neither_the_other_side_nor_stop(tmp_path, caplog, blocked, stop):
+    caplog.set_level(logging.WARNING, logger="cassini_talk.native_recorder")
     healthy = OTHER[blocked]
     recorder = NativeRecorder()
     sides = Sides(recorder, {blocked: ("block", 0), healthy: ("ok", 0.1)})
-    sides.frozen = True  # The start stays open: no deadline passes.
+    # "opening": the clock never passes the deadline, so the user stops while
+    # the start is still opening. "started": the stuck side's own deadline,
+    # taken before its state change, refuses it at the bound.
+    sides.frozen = stop == "opening"
     signals = []
     recorder.connect("started", lambda _r, path: signals.append("started"))
     recorder.connect("finished", lambda _r, path: signals.append("finished"))
@@ -348,7 +353,15 @@ def test_a_side_stuck_in_its_state_change_blocks_neither_the_other_side_nor_stop
         spin_until(lambda: healthy in recorder._track_ids)
         session = recorder.session
         spin_until(lambda: session.writers[healthy].frames == 480)
-        assert recorder.starting and not sides.release.is_set()
+        if stop == "opening":
+            assert recorder.starting and not refusals(caplog)
+        else:
+            spin_until(lambda: signals == ["started"])
+            assert sides.now == BOUND and sides.started_at == BOUND
+            assert refusals(caplog) == [
+                f"Native {SIDE[blocked]} side ({blocked}) did not open at start: {REASONS['never']}"
+            ]
+        assert not sides.release.is_set()
         sides.feed(healthy, 9)
         spin_until(lambda: session.writers[healthy].frames == 4800)
         # Stop does not wait on the stuck state change either.
