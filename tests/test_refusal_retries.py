@@ -144,7 +144,7 @@ def test_an_adopted_stand_in_switches_at_the_seam_and_a_later_loss_asks_again(po
         ticks(service, tasks, browser)
         assert len(asks(sent)) == 1
         attach(service, capture)
-        assert capture.resume_ask is None, "an attach answers the ask"
+        assert capture.resume_asks == {}, "an attach answers the ask"
         capture.handle(dict(type="track", id="back", kind="remote", label="Guest", sampleRate=48000, channels=1))
         capture.handle(dict(type="audio", id="back", sequence=0, offsetMs=capture.elapsed_ms(), pcm="AQACAA=="))
         ticks(service, tasks, browser, count=1)
@@ -179,7 +179,7 @@ def test_an_ok_false_resume_is_one_refusal_with_its_code_at_the_ask(policy):  # 
     try:
         ticks(service, tasks, browser)
         (packet,) = asks(sent)
-        at = capture.resume_ask["atMs"]
+        at = capture.resume_asks[packet["requestId"]]
         answer(service, browser, packet, ok=False, error="Target is no longer active.", code="gone")
         assert resume_refusals(capture) == [
             dict(atMs=at, side="browser", code="startRejected", detail="resumeRefused", message="gone")
@@ -214,6 +214,58 @@ def test_a_native_refusal_and_an_ok_false_reply_give_one_entry(policy, order):  
             message = "resumeRefused"
         (item,) = resume_refusals(capture)
         assert item["message"] == message
+    finally:
+        capture.stop()
+
+
+def test_two_open_connections_keep_one_ask_each(policy):  # noqa: F811
+    service, tasks, sent, parent = policy
+    first = peer(service)
+    capture = stand_in(service, parent, first)
+    try:
+        ticks(service, tasks, first)
+        (a,) = asks(sent)
+        at_a = capture.resume_asks[a["requestId"]]
+        # A second hello while the first connection is still open asks too.
+        second = peer(service)
+        ticks(service, tasks, second)
+        assert len(asks(sent)) == 2 and sent[-1][0] is second
+        b = asks(sent)[-1]
+        at_b = capture.resume_asks[b["requestId"]]
+        # The first ask's reply is still its own: exactly one entry, at its time.
+        answer(service, first, a, ok=False, code="gone")
+        assert resume_refusals(capture) == [
+            dict(atMs=at_a, side="browser", code="startRejected", detail="resumeRefused", message="gone")
+        ]
+        assert list(capture.resume_asks) == [b["requestId"]]
+        # The second ask's outcome is handled on its own.
+        answer(service, second, b, ok=False, code="resumeRefused")
+        assert resume_refusals(capture)[1:] == [
+            dict(atMs=at_b, side="browser", code="startRejected", detail="resumeRefused", message="resumeRefused")
+        ]
+        assert capture.resume_asks == {}
+    finally:
+        capture.stop()
+
+
+def test_a_native_refusal_answers_the_newest_unanswered_ask(policy):  # noqa: F811
+    service, tasks, sent, parent = policy
+    first = peer(service)
+    capture = stand_in(service, parent, first)
+    try:
+        ticks(service, tasks, first)
+        second = peer(service)
+        ticks(service, tasks, second)
+        a, b = asks(sent)
+        at_a, at_b = capture.resume_asks[a["requestId"]], capture.resume_asks[b["requestId"]]
+        capture.refuse_resume(dict(callGeneration="call-A"), "Target is no longer active.")
+        assert list(capture.resume_asks) == [a["requestId"]], "the newest ask was answered"
+        answer(service, second, b, ok=False, code="gone")  # Already answered: nothing more.
+        answer(service, first, a, ok=False, code="gone")
+        assert [(r["atMs"], r["message"]) for r in resume_refusals(capture)] == [
+            (at_b, "Target is no longer active."),
+            (at_a, "gone"),
+        ]
     finally:
         capture.stop()
 

@@ -20,6 +20,7 @@ RESUME_FEATURE = "resume-capture-v1"
 # D52.3c: a resume may join a system-sound stand-in (D49, seam callConnected) or
 # a system/lost fallback after its audio transport closed (D52.4, seam restored).
 RESUME_TARGETS = (("system", "missing"), ("system", "lost"))
+RESUME_ASKS = 8
 LOG = logging.getLogger(__name__)
 
 
@@ -57,7 +58,9 @@ class BrowserCapture:
         # fallback or restore does not reopen them; turning one off forgets it.
         self.refused_sides = set()
         self.discarded = False  # D58: nothing opened, and the folder was removed.
-        self.resume_ask = None  # R82 1b: an unanswered resume ask, {requestId, atMs}.
+        # R82 1b: unanswered resume asks, {requestId: atMs}, oldest first; one per
+        # open control connection that asked, so a small bound is enough.
+        self.resume_asks = {}
         self.me, self.others = True, True
         self.browser_lost = False
         self.browser_lost_since = None
@@ -589,7 +592,7 @@ class BrowserCapture:
                 # Another transport is still attached: never two on one capture.
                 raise ResumeRefused()
             self.audio_connected = True
-            self.resume_ask = None  # Attached: the ask is answered.
+            self.resume_asks.clear()  # Attached: every ask is answered.
             return dict(
                 type="started",
                 path=str(self.directory),
@@ -603,27 +606,37 @@ class BrowserCapture:
     def mark_resume_ask(self, request_id):
         """R82 1b: this recording asked the browser to resume it (one entry per ask)."""
         with self.lock:
-            self.resume_ask = dict(requestId=request_id, atMs=self.elapsed_ms())
+            self.resume_asks.pop(request_id, None)
+            self.resume_asks[request_id] = self.elapsed_ms()
+            while len(self.resume_asks) > RESUME_ASKS:
+                self.resume_asks.pop(next(iter(self.resume_asks)))
 
     def clear_resume_ask(self, request_id=None):
+        """Forget one ask, or every ask without a requestId."""
         with self.lock:
-            if self.resume_ask is not None and request_id in (None, self.resume_ask["requestId"]):
-                self.resume_ask = None
+            if request_id is None:
+                self.resume_asks.clear()
+            else:
+                self.resume_asks.pop(request_id, None)
 
     def refuse_resume(self, packet, message, *, request_id=None):
         """D58 #10 (R82 1b): a refused resume is startRejected/resumeRefused here.
 
         One entry per ask: the native host's refusal (on the audio pipe, with
         no requestId) or the browser's ok:false reply, whichever comes first,
-        writes it at the ask's time and clears the marker; the other writes
-        nothing. Only while this recording still waits on system sound for
+        writes it at the ask's time and forgets that ask; the other writes
+        nothing. A reply answers its own requestId; a native refusal answers
+        the newest unanswered ask. Only while this recording still waits on system sound for
         that call: live (not stopping, stopped or starting), its others from a
         resume target, no transport attached, and a native resume naming its
         call generation. A refusal never changes the recording itself.
         """
         with self.lock:
-            ask, session = self.resume_ask, self.host.session
-            if ask is None or request_id is not None and request_id != ask["requestId"]:
+            session = self.host.session
+            if request_id is None:
+                request_id = next(reversed(self.resume_asks), None)
+            at = self.resume_asks.get(request_id)
+            if at is None:
                 return
             if (
                 session is None
@@ -642,8 +655,8 @@ class BrowserCapture:
             current = source_state(session.manifest.get("events"))
             if (current.source, current.reason) not in RESUME_TARGETS:
                 return
-            self.resume_ask = None
-            item = entry(ask["atMs"], "browser", "startRejected", detail="resumeRefused", message=message)
+            del self.resume_asks[request_id]
+            item = entry(at, "browser", "startRejected", detail="resumeRefused", message=message)
             try:
                 session.refuse(item)
             except Exception:
@@ -882,7 +895,7 @@ class BrowserCapture:
         with self.lock:
             self.end_reason = self.end_reason or reason or ("error" if problem else "user")
             self.stop_requested.set()
-            self.resume_ask = None  # A result after Stop writes nothing.
+            self.resume_asks.clear()  # A result after Stop writes nothing.
         if self.starting and not self.ready.wait(12):
             raise TimeoutError("Native capture did not finish starting")
         with self.lock:
