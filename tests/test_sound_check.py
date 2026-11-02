@@ -10,6 +10,7 @@ import os
 import random
 import stat
 import sys
+import threading
 import types
 import wave
 from array import array
@@ -335,6 +336,55 @@ class FakeRecorder(GObject.Object):
         self.closed = True
 
 
+class PreparingRecorder(FakeRecorder):
+    """NativeRecorder's start: _prepare writes Recording-<id>/session.json on its
+    own worker, and a Stop while it runs takes effect once it returns."""
+
+    def start(self, parent, **kwargs):
+        super().start(parent, **kwargs)
+        self.entered, self.release = threading.Event(), threading.Event()
+        self.preparing = threading.Thread(target=self._prepare)
+        self.preparing.start()
+
+    def _prepare(self):
+        self.entered.set()
+        assert self.release.wait(10), "The test did not release the preparation"
+        directory = self.parent / f"Recording-{uuid4()}"
+        directory.mkdir(mode=0o700, parents=True)  # As RecordingSession does.
+        (directory / "session.json").write_text("{}")
+        GLib.idle_add(self._prepared)
+
+    def _prepared(self):
+        if self._stop_requested:
+            self.starting = False
+            self.emit("finished", "")
+        return False
+
+    def stop(self):
+        self.stops += 1
+        self._stop_requested = True
+
+
+class Application:
+    """Gio.Application's hold count; each release notes what the test root holds."""
+
+    def __init__(self, root):
+        self.root, self.holds, self.left = root, 0, []
+
+    def hold(self):
+        self.holds += 1
+
+    def release(self):
+        assert self.holds > 0, "Released more than held"
+        self.holds -= 1
+        self.left.append(sorted(str(p.relative_to(self.root)) for p in self.root.rglob("*")))
+
+
+def exited(application):
+    """GTK runs only while the app is held: iterate until the release, then never again."""
+    spin_until(lambda: application.holds == 0)
+
+
 @pytest.fixture
 def check(tmp_path):
     FakeRecorder.made.clear()
@@ -344,6 +394,20 @@ def check(tmp_path):
     check.connect("finished", lambda c: c.signals.append(("finished", c.state)))
     yield check
     check.shutdown()
+    spin_until(lambda: not check.held)
+
+
+@pytest.fixture
+def off_gtk(monkeypatch):
+    """Every deletion's thread: none may run on GTK (the main thread)."""
+    threads = []
+
+    def removing(folder, root):
+        threads.append(threading.current_thread())
+        return remove(folder, root)
+
+    monkeypatch.setattr(sound_check, "remove", removing)
+    return threads
 
 
 def started(check):
@@ -450,26 +514,130 @@ def test_one_test_at_a_time_and_test_again_deletes_the_last_result(check):
     assert check.running and again.parent.exists()
 
 
-def test_shutdown_deletes_at_once(check):
+def test_a_discard_holds_the_app_until_its_folder_is_gone(tmp_path, off_gtk):
+    FakeRecorder.made.clear()
+    application = Application(tmp_path / "cache/cassini-talk/test")
+    check = SoundCheck(FakeRecorder, root=application.root, application=application, duration_ms=60_000)
     recorder = started(check)
-    check.duration_ms = 60_000
+    recorder.open(microphone=tone(-20), system=tone(-20))
+    check.cancel()
+    assert application.holds == 1 and check.held and recorder.parent.exists()
+    exited(application)
+    assert application.left == [[]] and recorder.closed and not check.held
+    assert off_gtk and threading.main_thread() not in off_gtk
+    check.shutdown()
+    assert application.holds == 0 and not check.flush(lambda: None)  # Nothing left to wait for.
+
+
+def test_quit_holds_the_app_until_the_recorder_finishes_then_deletes(tmp_path, off_gtk):
+    FakeRecorder.made.clear()
+    application = Application(tmp_path / "cache/cassini-talk/test")
+    check = SoundCheck(FakeRecorder, root=application.root, application=application, duration_ms=60_000)
+    recorder = started(check)
     recorder.open(microphone=tone(-20), system=tone(-20))
     folder = recorder.parent
     check.shutdown()
-    check._executor.shutdown(wait=True)
-    assert not folder.exists() and recorder.stops == 1
-    spin_until(lambda: recorder.closed)
+    quitting = []
+    assert check.flush(lambda: quitting.append(recorder.closed))
+    assert recorder.stops == 1 and recorder.stopping and folder.exists(), "Never deleted while the recorder writes"
+    assert application.holds == 1 and not quitting
+    exited(application)
+    assert application.left == [[]] and quitting == [True]
+    assert threading.main_thread() not in off_gtk
     with pytest.raises(RuntimeError):
         check.start()
 
 
-def test_shutdown_deletes_a_folder_made_after_it(check):
+def test_quit_while_the_folder_is_made_waits_for_it(tmp_path, monkeypatch, off_gtk):
+    made, release = threading.Event(), threading.Event()
+
+    def gated(root):
+        made.set()
+        assert release.wait(10), "The test did not release the folder's creation"
+        return make_folder(root)
+
+    monkeypatch.setattr(sound_check, "make_folder", gated)
+    FakeRecorder.made.clear()
+    application = Application(tmp_path / "cache/cassini-talk/test")
+    check = SoundCheck(FakeRecorder, root=application.root, application=application)
     check.start()
+    assert made.wait(10)
+    check.shutdown()  # Quit while the worker makes the folder.
+    quitting = []
+    assert check.flush(lambda: quitting.append(True)) and application.holds == 1
+    release.set()
+    exited(application)
+    assert application.left == [[]] and quitting == [True]
     (recorder,) = FakeRecorder.made
-    check.shutdown()  # Before the worker made the folder.
-    spin_until(lambda: recorder.closed)
-    check._executor.shutdown(wait=True)
-    assert recorder.parent is None and not any(check.root.iterdir())
+    assert recorder.parent is None and recorder.closed  # Never started.
+    assert off_gtk and threading.main_thread() not in off_gtk
+
+
+def test_quit_while_the_recorder_prepares_waits_for_it(tmp_path, off_gtk):
+    FakeRecorder.made.clear()
+    application = Application(tmp_path / "cache/cassini-talk/test")
+    check = SoundCheck(PreparingRecorder, root=application.root, application=application)
+    check.start()
+    spin_until(lambda: FakeRecorder.made and FakeRecorder.made[-1].parent is not None)
+    (recorder,) = FakeRecorder.made
+    assert recorder.entered.wait(10)
+    check.shutdown()  # Quit while the recorder prepares its session.
+    check._executor.submit(lambda: None).result()  # The worker ran whatever the quit queued.
+    assert recorder.stops == 1 and recorder.parent.exists() and application.holds == 1
+    recorder.release.set()
+    exited(application)
+    recorder.preparing.join(10)
+    assert application.left == [[]] and not recorder.parent.exists()
+    assert threading.main_thread() not in off_gtk
+
+
+def test_quit_while_the_real_recorder_prepares_leaves_no_folder(tmp_path, monkeypatch, off_gtk):
+    """The real NativeRecorder: its _prepare would make Recording-*/session.json in a deleted folder."""
+    from cassini_talk.native_recorder import NativeRecorder
+
+    entered, release = threading.Event(), threading.Event()
+    prepare = NativeRecorder._prepare
+
+    def gated(parent):
+        entered.set()
+        assert release.wait(10), "The test did not release the preparation"
+        return prepare(parent)
+
+    monkeypatch.setattr(NativeRecorder, "_prepare", staticmethod(gated))
+    application = Application(tmp_path / "cache/cassini-talk/test")
+    check = SoundCheck(root=application.root, application=application)
+    check.start(test=True)
+    spin_until(entered.is_set)
+    folder = check.folder
+    check.shutdown()
+    assert application.holds == 1 and folder.exists()
+    release.set()
+    exited(application)
+    assert application.left == [[]] and not folder.exists()
+    assert threading.main_thread() not in off_gtk
+
+
+def test_a_recorder_stuck_past_the_exit_bound_leaves_its_folder_for_the_sweep(tmp_path, caplog, off_gtk):
+    FakeRecorder.made.clear()
+    application = Application(tmp_path / "cache/cassini-talk/test")
+    check = SoundCheck(
+        FakeRecorder, root=application.root, application=application, duration_ms=60_000, exit_bound_ms=50
+    )
+    recorder = started(check)
+    recorder.open(microphone=tone(-20), system=tone(-20))
+    recorder.stop = lambda: setattr(recorder, "stopping", True)  # It never finishes.
+    folder = recorder.parent
+    check.shutdown()
+    quitting = []
+    assert check.flush(lambda: quitting.append(True))
+    exited(application)  # The bound released the hold.
+    assert quitting == [True] and folder.exists() and application.left[0]
+    assert f"Left the test recording {folder} for the next start's sweep" in caplog.messages
+    # A finish after the exit bound deletes nothing on GTK: the next start sweeps it.
+    recorder.stopping, recorder.pipeline = False, None
+    recorder.emit("finished", str(recorder.session.directory))
+    assert folder.exists() and not off_gtk and application.holds == 0
+    assert sweep(application.root) == 1 and not folder.exists()
 
 
 @pytest.mark.parametrize("observe", [True, False])
@@ -528,8 +696,9 @@ class Order:
         self.events = []  # "test stopped" and "start", in the order they happen.
 
 
-def running_test(tmp_path, order):
-    check = SoundCheck(FakeRecorder, root=tmp_path / "cache/cassini-talk/test", duration_ms=60_000)
+def running_test(tmp_path, order, application=None):
+    root = tmp_path / "cache/cassini-talk/test"
+    check = SoundCheck(FakeRecorder, root=root, duration_ms=60_000, application=application)
     check.start()
     spin_until(lambda: FakeRecorder.made and FakeRecorder.made[-1].parent is not None)
     recorder = FakeRecorder.made[-1]
@@ -703,8 +872,9 @@ def test_closing_the_last_window_discards_the_test(application_class, tmp_path, 
     assert not folder.exists()
 
 
-def test_exiting_deletes_a_running_test_at_once(application_class, tmp_path, order):  # noqa: F811
-    check, folder = running_test(tmp_path, order)
+def test_exiting_holds_the_app_until_the_running_test_is_deleted(application_class, tmp_path, order):  # noqa: F811
+    application = Application(tmp_path / "cache/cassini-talk/test")
+    check, folder = running_test(tmp_path, order, application)
     app = SimpleNamespace(
         sound_check=check,
         _quitting=False,
@@ -725,12 +895,35 @@ def test_exiting_deletes_a_running_test_at_once(application_class, tmp_path, ord
         _transcription_holds=0,
     )
     application_class.begin_exit(app)
-    check._executor.shutdown(wait=True)  # The deletion was queued before the exit.
-    assert not folder.exists() and order.events == ["test stopped"]
+    assert order.events == ["test stopped"] and application.holds == 1 and folder.exists()
+    exited(application)
+    assert application.left == [[]] and check.closed
+
+
+def test_quit_waits_for_the_discarded_test_before_quitting(application_class, tmp_path, order):  # noqa: F811
+    """quit() ignores holds: finish_quit quits once the test is deleted."""
+    application = Application(tmp_path / "cache/cassini-talk/test")
+    check, folder = running_test(tmp_path, order, application)
+    quits = []
+    app = SimpleNamespace(
+        sound_check=check,
+        meeting_trash=SimpleNamespace(flush=lambda _callback: False),
+        begin_exit=check.shutdown,
+        get_windows=lambda: [],
+        quit=lambda: quits.append(sorted(application.root.rglob("*"))),
+    )
+    app.finish_quit = types.MethodType(application_class.finish_quit, app)
+    app.finish_quit()
+    assert not quits and application.holds == 1
+    exited(application)
+    assert quits == [[]] and application.left == [[]]
+    app.finish_quit()  # Nothing left: it quits at once.
+    assert quits == [[], []]
 
 
 def test_exit_as_the_last_window_closes_deletes_the_test(application_class, tmp_path, order):  # noqa: F811
-    check, folder = running_test(tmp_path, order)
+    application = Application(tmp_path / "cache/cassini-talk/test")
+    check, folder = running_test(tmp_path, order, application)
     window = SimpleNamespace(get_visible=lambda: True)
     app = fake_app(
         application_class,
@@ -745,10 +938,9 @@ def test_exit_as_the_last_window_closes_deletes_the_test(application_class, tmp_
     application_class.window_closing(app, window)  # Discards the test, then exits.
     assert order.events == ["test stopped", "exit"]
     (recorder,) = FakeRecorder.made
-    check._executor.shutdown(wait=True)
-    assert recorder.stopping and not folder.exists()  # Gone before the recorder finished.
-    spin_until(lambda: recorder.closed)
-    assert not folder.exists()
+    assert recorder.stopping and folder.exists() and application.holds == 1  # Held while it stops.
+    exited(application)
+    assert application.left == [[]] and recorder.closed
 
 
 def test_no_test_after_exit_even_if_the_app_is_activated_again(application_class, tmp_path, order):  # noqa: F811

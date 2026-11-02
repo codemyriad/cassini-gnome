@@ -219,7 +219,7 @@ class CassiniApplication(Adw.Application):
         threading.Thread(target=self._load_voices, name="cassini-voices-startup", daemon=True).start()
         from .sound_check import SoundCheck
 
-        self.sound_check = SoundCheck()
+        self.sound_check = SoundCheck(application=self)  # Held while a discarded test is deleted.
         self.sound_check.sweep()  # A crash can leave a test folder behind.
         from .voice_backfill import VoiceBackfill
 
@@ -424,6 +424,9 @@ class CassiniApplication(Adw.Application):
 
         self.begin_exit()
         finish_close(self, list(self.get_windows()))
+        # D60: quit() ignores holds, so wait until a discarded test is deleted.
+        if self.sound_check and self.sound_check.flush(self.quit):
+            return
         self.quit()
 
     @property

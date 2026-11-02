@@ -32,6 +32,9 @@ WORKING, SILENT, REFUSED = "working", "silent", "refused"
 # recognition_fallback's ACTIVE_DBFS, FRAME (512 at 16 kHz) and MIN_RUN_FRAMES;
 # that module needs numpy, so the values are repeated here and tested equal.
 ACTIVE_DBFS, FRAME_MS, MIN_RUN_FRAMES = -50.0, 32, 5
+# How long an exit waits for a discarded test's recorder: past NativeRecorder's
+# 10 s stop deadline. A folder still in use then is left for the next sweep.
+EXIT_BOUND_MS = 15_000
 LOG = logging.getLogger(__name__)
 
 
@@ -199,7 +202,8 @@ class SoundCheck(GObject.Object):
 
     changed: on every state change; finished: when a result is ready.
     cancel() and close() both discard: the recorder stops and its result is
-    ignored, and the folder goes once the recorder has finished with it.
+    ignored, and the folder goes once it is made and the recorder has
+    finished with it. Until then the application is held, so an exit waits.
     """
 
     __gsignals__ = {
@@ -207,7 +211,9 @@ class SoundCheck(GObject.Object):
         "finished": (GObject.SignalFlags.RUN_LAST, None, ()),
     }
 
-    def __init__(self, recorder=None, *, root=None, duration_ms=DURATION_MS):
+    def __init__(
+        self, recorder=None, *, root=None, duration_ms=DURATION_MS, application=None, exit_bound_ms=EXIT_BOUND_MS
+    ):
         super().__init__()
         if recorder is None:
             from .native_recorder import NativeRecorder
@@ -220,8 +226,12 @@ class SoundCheck(GObject.Object):
         self.outcomes = None
         self._run = None
         self._timer = 0
-        self._pending = 0  # Discarded runs not yet deleted.
-        self._stopping = set()  # Their folders while the recorder stops.
+        self._discarded = set()  # Discarded runs not yet deleted.
+        self._application = application  # Held while any is.
+        self._held = False
+        self._waiters = []  # flush() callbacks, run on the release.
+        self.exit_bound_ms = exit_bound_ms
+        self._bound = 0
         self._closed = False
         # One worker: a sweep, a folder's creation, judging and deletion run in order.
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-sound-check")
@@ -237,7 +247,12 @@ class SoundCheck(GObject.Object):
     @property
     def busy(self):
         """A test runs, or a discarded one is still stopping or being deleted."""
-        return self.running or self._pending > 0
+        return self.running or bool(self._discarded)
+
+    @property
+    def held(self):
+        """The application is held until every discarded test is deleted."""
+        return self._held
 
     @property
     def closed(self):
@@ -276,11 +291,11 @@ class SoundCheck(GObject.Object):
             if run is self._run:
                 self._result({kind: self._unavailable(kind, str(error)) for kind in KINDS})
             else:
-                self._finish_pending()
+                self._done(run)
             return False
         if run is not self._run:
             run.recorder.close()  # Discarded before it started.
-            self._delete(run.folder)
+            self._delete(run)
             return False
         run.recorder.start(run.folder, test=test, observe_output=False)
         return False
@@ -305,8 +320,7 @@ class SoundCheck(GObject.Object):
     def _finished(self, recorder, path, run):
         recorder.close()
         if run is not self._run:
-            self._stopping.discard(run.folder)
-            self._delete(run.folder)
+            self._delete(run)
             return
         self._stop_timer()
         session = recorder.session
@@ -366,56 +380,94 @@ class SoundCheck(GObject.Object):
         self._discard()
 
     def shutdown(self):
-        """App exit: discard, and delete now even if the recorder is still
-        stopping, also a test discarded just before (the last window closed);
-        the next start sweeps anything the exit leaves."""
+        """App exit: discard. The hold keeps GTK running until every discarded
+        test, also one discarded just before (the last window closed), is
+        deleted; after exit_bound_ms the hold goes and the next start sweeps
+        what is left."""
+        if self._closed:
+            return
         self._discard()
         self._closed = True
-        for folder in self._stopping:
-            self._delete(folder, counted=False)
-        self._stopping.clear()
-        self._executor.shutdown(wait=False)
+        if self._discarded:
+            self._bound = GLib.timeout_add(self.exit_bound_ms, self._expired)
+        else:
+            self._executor.shutdown(wait=False)
+
+    def flush(self, callback):
+        """Whether a discarded test is still being deleted; if so, callback
+        runs once it is and the hold is released (Quit waits for it)."""
+        if not self._held:
+            return False
+        self._waiters.append(callback)
+        return True
+
+    def _expired(self):
+        self._bound = 0
+        for run in self._discarded:
+            LOG.warning("Left the test recording %s for the next start's sweep", run.folder or "still being made")
+        self._executor.shutdown(wait=False)  # Deletions already queued still run.
+        self._release()
+        return False
 
     def _discard(self):
         run, changed = self._run, self.state != "idle"
         self._stop_timer()
         self._run, self.outcomes, self.state = None, None, "idle"
         if run is not None:
-            # busy stays True until the folder is gone (_deleted).
-            self._pending += 1
+            # busy and the hold stay until the folder is gone (_done).
+            self._discarded.add(run)
+            self._hold()
             if run.folder is None:
                 pass  # Still being made: _made deletes it.
             elif recorder_busy(run.recorder):
-                self._stopping.add(run.folder)
                 run.recorder.stop()  # _finished deletes it.
             else:
-                self._delete(run.folder)
+                self._delete(run)
         if changed:
             self.emit("changed")
 
-    def _delete(self, folder, counted=True):
-        """Delete off GTK, after any judging of it on the same worker; after
-        shutdown(), here, as the recorder may write until it finishes."""
+    def _delete(self, run):
+        """Delete off GTK, never on it, after any judging of it on the same worker."""
         try:
-            future = self._executor.submit(remove, folder, self.root)
-        except RuntimeError:
-            try:
-                remove(folder, self.root)
-            except (OSError, ValueError) as error:  # The next start sweeps it.
-                LOG.warning("Could not delete the test recording %s: %s", folder, error)
+            future = self._executor.submit(remove, run.folder, self.root)
+        except RuntimeError:  # Finished past the exit bound.
+            LOG.warning("Left the test recording %s for the next start's sweep", run.folder)
             return
-        future.add_done_callback(lambda f: GLib.idle_add(self._deleted, f, folder, counted))
+        future.add_done_callback(lambda f: GLib.idle_add(self._deleted, f, run))
 
-    def _deleted(self, future, folder, counted):
+    def _deleted(self, future, run):
         if error := future.exception():
-            LOG.warning("Could not delete the test recording %s: %s", folder, error)
-        if counted:
-            self._finish_pending()
+            LOG.warning("Could not delete the test recording %s: %s", run.folder, error)
+        self._done(run)
         return False
 
-    def _finish_pending(self):
-        self._pending -= 1
+    def _done(self, run):
+        self._discarded.discard(run)
         self.emit("changed")
+        if self._discarded:
+            return
+        if self._closed:
+            self._executor.shutdown(wait=False)
+            if self._bound:
+                GLib.source_remove(self._bound)
+                self._bound = 0
+        self._release()
+
+    def _hold(self):
+        if not self._held:
+            self._held = True
+            if self._application is not None:
+                self._application.hold()
+
+    def _release(self):
+        if not self._held:
+            return
+        self._held = False
+        if self._application is not None:
+            self._application.release()
+        waiters, self._waiters = self._waiters, []
+        for callback in waiters:
+            callback()
 
     def _stop_timer(self):
         if self._timer:
