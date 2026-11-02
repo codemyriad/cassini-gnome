@@ -10,9 +10,11 @@ import pytest
 from test_browser_capture import Tap
 from test_browser_resume_policy import asks, close, peer, policy, row, run, scheduled_asks  # noqa: F401
 from test_refusal_vectors import broker as served  # noqa: F401
+from test_resume_capture_host import broker as wire  # noqa: F401
 from test_voice_application import application_class  # noqa: F401
 
 from cassini_talk import refusals
+from cassini_talk.browser_capture import ResumeRefused
 from cassini_talk.browser_service import AudioTransport
 
 NO_SOURCES = dict(ok=False, error="No audio is available from that meeting yet.", code="noSources")
@@ -186,13 +188,29 @@ def test_an_ok_false_resume_is_one_refusal_with_its_code_at_the_ask(policy):  # 
         ]
         # The same reply again, or a late native refusal, writes nothing more.
         answer(service, browser, packet, ok=False, code="gone")
-        capture.refuse_resume(dict(callGeneration="call-A"), "Target is no longer active.")
+        refuse_native(service, capture, requestId=packet["requestId"])
         assert len(resume_refusals(capture)) == 1
         saved = json.loads((capture.directory / "session.json").read_text())
         assert [r.get("detail") for r in saved["refusals"]] == ["noSources", "resumeRefused"]
         assert sources(capture) == [("system", "missing")], "a refusal changes nothing else"
     finally:
         capture.stop()
+
+
+def refuse_native(service, capture, **request):
+    """A native resume on the audio pipe that the target refuses (a wrong origin)."""
+    packet = dict(
+        type="resume",
+        version=1,
+        independent=True,
+        captureId=capture.capture_id,
+        timelineOriginMs=capture.origin_ms + 1,
+        callGeneration="call-A",
+        features=["resume-capture-v1"],
+        **request,
+    )
+    with pytest.raises(ResumeRefused, match="Target is no longer active."):
+        service._resume_attach(packet, AudioTransport(None, service.clock))
 
 
 @pytest.mark.parametrize("order", ["native-first", "reply-first"])
@@ -203,14 +221,13 @@ def test_a_native_refusal_and_an_ok_false_reply_give_one_entry(policy, order):  
     try:
         ticks(service, tasks, browser)
         (packet,) = asks(sent)
-        native = dict(callGeneration="call-A")
         if order == "native-first":
-            capture.refuse_resume(native, "Target is no longer active.")
+            refuse_native(service, capture, requestId=packet["requestId"])
             answer(service, browser, packet, ok=False, code="resumeRefused")
             message = "Target is no longer active."
         else:
             answer(service, browser, packet, ok=False, code="resumeRefused")
-            capture.refuse_resume(native, "Target is no longer active.")
+            refuse_native(service, capture, requestId=packet["requestId"])
             message = "resumeRefused"
         (item,) = resume_refusals(capture)
         assert item["message"] == message
@@ -248,24 +265,161 @@ def test_two_open_connections_keep_one_ask_each(policy):  # noqa: F811
         capture.stop()
 
 
-def test_a_native_refusal_answers_the_newest_unanswered_ask(policy):  # noqa: F811
-    service, tasks, sent, parent = policy
+def overlapping(service, tasks, sent, parent):
+    """Asks A and B pending at once, from two open control connections."""
     first = peer(service)
     capture = stand_in(service, parent, first)
+    ticks(service, tasks, first)
+    second = peer(service)
+    ticks(service, tasks, second)
+    a, b = asks(sent)
+    assert sent[-1][0] is second
+    return capture, dict(A=(first, a), B=(second, b))
+
+
+NATIVE = "Target is no longer active."
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        "A-native,A-reply,B-native,B-reply",
+        "B-native,A-native,B-reply,A-reply",
+        "A-native,B-reply,A-reply",
+        "A-reply,A-native,B-native,B-reply",  # The extension timed A out before its native resume.
+        "B-reply,A-reply,B-native,A-native",
+    ],
+)
+def test_overlapping_asks_get_one_entry_each_in_any_order(policy, steps):  # noqa: F811
+    service, tasks, sent, parent = policy
+    capture, pending = overlapping(service, tasks, sent, parent)
     try:
-        ticks(service, tasks, first)
-        second = peer(service)
-        ticks(service, tasks, second)
-        a, b = asks(sent)
-        at_a, at_b = capture.resume_asks[a["requestId"]], capture.resume_asks[b["requestId"]]
-        capture.refuse_resume(dict(callGeneration="call-A"), "Target is no longer active.")
-        assert list(capture.resume_asks) == [a["requestId"]], "the newest ask was answered"
-        answer(service, second, b, ok=False, code="gone")  # Already answered: nothing more.
-        answer(service, first, a, ok=False, code="gone")
-        assert [(r["atMs"], r["message"]) for r in resume_refusals(capture)] == [
-            (at_b, "Target is no longer active."),
-            (at_a, "gone"),
+        at = {name: capture.resume_asks[packet["requestId"]] for name, (_, packet) in pending.items()}
+        first = {}
+        for step in steps.split(","):
+            name, kind = step.split("-")
+            browser, packet = pending[name]
+            if kind == "native":
+                refuse_native(service, capture, requestId=packet["requestId"])
+            else:
+                answer(service, browser, packet, ok=False, code="gone" + name)
+            first.setdefault(name, NATIVE if kind == "native" else "gone" + name)
+            # Each answer only ever settles its own ask.
+            assert set(capture.resume_asks) == {pending[n][1]["requestId"] for n in pending if n not in first}
+        assert resume_refusals(capture) == [
+            dict(atMs=at[name], side="browser", code="startRejected", detail="resumeRefused", message=message)
+            for name, message in first.items()
         ]
+    finally:
+        capture.stop()
+
+
+def test_a_native_refusal_never_answers_another_pending_ask(policy):  # noqa: F811
+    """Codex #174: A's native refusal while A and B are pending is A's alone."""
+    service, tasks, sent, parent = policy
+    capture, pending = overlapping(service, tasks, sent, parent)
+    try:
+        (first, a), (second, b) = pending["A"], pending["B"]
+        at_a, at_b = capture.resume_asks[a["requestId"]], capture.resume_asks[b["requestId"]]
+        refuse_native(service, capture, requestId=a["requestId"])
+        assert [(r["atMs"], r["message"]) for r in resume_refusals(capture)] == [(at_a, NATIVE)]
+        assert list(capture.resume_asks) == [b["requestId"]], "B is still pending"
+        answer(service, first, a, ok=False, code="gone")  # Already answered: nothing more.
+        assert len(resume_refusals(capture)) == 1
+        answer(service, second, b, ok=False, code="resumeRefused")
+        assert [(r["atMs"], r["message"]) for r in resume_refusals(capture)] == [
+            (at_a, NATIVE),
+            (at_b, "resumeRefused"),
+        ]
+        assert capture.resume_asks == {}
+    finally:
+        capture.stop()
+
+
+@pytest.mark.parametrize(
+    "identity", [{}, dict(requestId="unknown"), dict(requestId=7)], ids=["absent", "unknown", "integer"]
+)
+def test_a_native_refusal_without_a_known_ask_writes_nothing(policy, identity):  # noqa: F811
+    service, tasks, sent, parent = policy
+    capture, pending = overlapping(service, tasks, sent, parent)
+    try:
+        before = dict(capture.resume_asks)
+        refuse_native(service, capture, **identity)
+        assert resume_refusals(capture) == []
+        assert capture.resume_asks == before and len(before) == 2, "both asks stay pending"
+        # Each ask's own reply still records it.
+        for browser, packet in pending.values():
+            answer(service, browser, packet, ok=False, code="gone")
+        assert [r["atMs"] for r in resume_refusals(capture)] == list(before.values())
+    finally:
+        capture.stop()
+
+
+def test_a_native_refusal_on_the_audio_socket_is_keyed_on_its_request_id(wire):  # noqa: F811
+    from test_capture_record import declare, pcm
+    from test_resume_capture_host import ACK, lose, proxy, resume, started
+
+    client, capture = started(wire)
+    try:
+        assert client.handle(declare("guest", "doc-1:source:1")) == ACK
+        assert client.handle(pcm("guest", 480)) == ACK
+        lose(wire, client, capture)
+        capture.mark_resume_ask("ask-A")
+        capture.mark_resume_ask("ask-B")
+        at_a, at_b = capture.resume_asks["ask-A"], capture.resume_asks["ask-B"]
+        attempt = proxy(wire)
+        try:
+            reply = attempt.handle(resume(capture, timelineOriginMs=capture.origin_ms + 1, requestId="ask-A"))
+            assert reply["type"] == "error" and reply["message"] == NATIVE
+        finally:
+            attempt.close()
+        saved = json.loads((capture.directory / "session.json").read_text())
+        assert [r for r in saved["refusals"] if r.get("detail") == "resumeRefused"] == [
+            dict(atMs=at_a, side="browser", code="startRejected", detail="resumeRefused", message=NATIVE)
+        ]
+        assert capture.resume_asks == {"ask-B": at_b}
+    finally:
+        capture.stop()
+
+
+@pytest.mark.parametrize(
+    "request_id",
+    ["", "x" * 129, True, -1, 1.5, 2**53, None],
+    ids=["empty", "129-code-points", "bool", "negative", "float", "unsafe", "null"],
+)
+def test_a_malformed_resume_request_id_is_an_invalid_resume(wire, request_id):  # noqa: F811
+    from test_resume_capture_host import lose, proxy, resume, started
+
+    client, capture = started(wire)
+    try:
+        lose(wire, client, capture)
+        capture.mark_resume_ask("ask-A")
+        before = dict(capture.resume_asks)
+        attempt = proxy(wire)
+        try:
+            # Otherwise a valid resume: only the requestId refuses it.
+            reply = attempt.handle(dict(resume(capture), requestId=request_id))
+            assert reply["type"] == "error" and reply["message"] == "Invalid resume request"
+        finally:
+            attempt.close()
+        assert not capture.audio_connected and capture.resume_asks == before
+        assert "refusals" not in json.loads((capture.directory / "session.json").read_text())
+    finally:
+        capture.stop()
+
+
+@pytest.mark.parametrize("request_id", ["é" * 128, 0, 2**53 - 1], ids=["128-code-points", "zero", "max-safe"])
+def test_a_valid_resume_request_id_is_accepted(wire, request_id):  # noqa: F811
+    from test_resume_capture_host import lose, proxy, resume, started
+
+    client, capture = started(wire)
+    try:
+        lose(wire, client, capture)
+        attempt = proxy(wire)
+        try:
+            assert attempt.handle(resume(capture, requestId=request_id))["resumed"] is True
+        finally:
+            attempt.close()
     finally:
         capture.stop()
 

@@ -622,19 +622,20 @@ class BrowserCapture:
     def refuse_resume(self, packet, message, *, request_id=None):
         """D58 #10 (R82 1b): a refused resume is startRejected/resumeRefused here.
 
-        One entry per ask: the native host's refusal (on the audio pipe, with
-        no requestId) or the browser's ok:false reply, whichever comes first,
-        writes it at the ask's time and forgets that ask; the other writes
-        nothing. A reply answers its own requestId; a native refusal answers
-        the newest unanswered ask. Only while this recording still waits on system sound for
-        that call: live (not stopping, stopped or starting), its others from a
-        resume target, no transport attached, and a native resume naming its
-        call generation. A refusal never changes the recording itself.
+        One entry per ask: the native host's refusal (on the audio pipe) or the
+        browser's ok:false reply, whichever comes first, writes it at the ask's
+        time and forgets that ask; the other writes nothing. Both answer only
+        the requestId they carry; a native refusal without a known one writes
+        nothing (its ask's own reply records it). Only while this recording
+        still waits on system sound for that call: live (not stopping, stopped
+        or starting), its others from a resume target, no transport attached,
+        and a native resume naming its call generation. A refusal never changes
+        the recording itself.
         """
         with self.lock:
             session = self.host.session
-            if request_id is None:
-                request_id = next(reversed(self.resume_asks), None)
+            if not isinstance(request_id, str):
+                return
             at = self.resume_asks.get(request_id)
             if at is None:
                 return

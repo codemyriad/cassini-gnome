@@ -916,6 +916,8 @@ class BrowserService:
         identifier = packet.get("captureId")
         origin = packet.get("timelineOriginMs")
         features = packet.get("features")
+        # R82 1b: the control command's requestId, copied onto the native resume.
+        request_id = packet.get("requestId")
         if (
             type(packet.get("version")) is not int
             or packet["version"] != 1
@@ -930,6 +932,13 @@ class BrowserService:
             or any(not isinstance(f, str) or len(f) > 64 for f in features)
             or len(set(features)) != len(features)
             or RESUME_FEATURE not in features
+            or "requestId" in packet
+            and not (
+                isinstance(request_id, str)
+                and 0 < len(request_id) <= 128
+                or type(request_id) is int
+                and 0 <= request_id <= 2**53 - 1
+            )
         ):
             raise ResumeRefused("Invalid resume request")
         with self.lock:
@@ -954,7 +963,7 @@ class BrowserService:
             if target is not None and not refused:
                 # D58 #10: in the existing folder, at its real time, when the
                 # recording still waits on system for that call (refuse_resume).
-                target.refuse_resume(packet, str(error))
+                target.refuse_resume(packet, str(error), request_id=request_id)
             raise
         try:
             with self.lock:
