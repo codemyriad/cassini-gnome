@@ -49,6 +49,26 @@ def blocked_workers(broker):
         release.set()
 
 
+@contextmanager
+def policy_after(broker):
+    """Hold lifecycle policy until the block ends, then run it once.
+
+    The serve loop's tick runs policy at any moment. Between a capture's
+    finish and its control link's loss, a tick may auto-start the still
+    announced call on the link that is about to drop; that unanswered Start is
+    lost with the link, and a lost auto-start is retried only after its real
+    grace. Fix the interleaving under test: policy next runs with the link gone.
+    """
+    held = []
+    broker.policy = lambda: held.append(True)
+    try:
+        yield
+    finally:
+        del broker.policy
+    if held:
+        broker.policy()
+
+
 def test_queued_heard_loss_can_later_auto_record_a_real_instance(service):  # noqa: F811
     broker, path = service
     extension = peer(path)
@@ -166,12 +186,16 @@ def test_a_retained_finished_capture_does_not_suppress_the_reconnecting_call(ser
         send_packet(extension.stream, dict(type="status", recording=True, sessions=list(extension.sessions.values())))
         announce(extension)
         identifier = request(path=path)["meetings"][0]["id"]
-        assert identifier in broker._attempted_calls
-        if finish_before_disconnect:
-            capture.stop(reason=reason)
-        lose(broker, extension)
-        if not finish_before_disconnect:
-            capture.stop(reason=reason)
+        # live()'s inventory already satisfies announce()'s predicate, so it
+        # cannot show that this status and inventory were handled: wait for
+        # their effect, the recording call's remembered attempt.
+        wait_for(lambda: identifier in broker._attempted_calls)
+        with policy_after(broker):
+            if finish_before_disconnect:
+                capture.stop(reason=reason)
+            lose(broker, extension)
+            if not finish_before_disconnect:
+                capture.stop(reason=reason)
         assert capture.finished and capture.capture_id in broker.captures
         replacement = peer(path, ())
         announce(replacement, heard=False)
