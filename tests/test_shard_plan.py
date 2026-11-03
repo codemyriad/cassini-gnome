@@ -97,10 +97,15 @@ def check_meson_tests():
     return module
 
 
-def introspected(shards=4, suite="cassini-talk:pytest", extra=()):
-    """`meson introspect --tests` entries, as every Meson from 1.3 writes them."""
-    tests = [{"name": name, "suite": ["cassini-talk"]} for name in check_meson_tests().REQUIRED]
-    tests += [{"name": f"pytest-{index}", "suite": [suite]} for index in range(1, shards + 1)]
+def introspected(shards=4, suite="cassini-talk:pytest", extra=(), runs=None):
+    """`meson introspect --tests` entries, as every Meson from 1.3 writes them;
+    pytest-i runs shard runs(i) (i/shards by default)."""
+    runs = runs or (lambda index: f"{index}/{shards}")
+    tests = [{"name": name, "suite": ["cassini-talk"], "env": {}} for name in check_meson_tests().REQUIRED]
+    tests += [
+        {"name": f"pytest-{index}", "suite": [suite], "env": {"CASSINI_TEST_SHARD": runs(index)}}
+        for index in range(1, shards + 1)
+    ]
     return tests + [*extra]
 
 
@@ -121,6 +126,9 @@ def test_check_distros_reads_the_test_list_from_meson_introspection():
         introspected(5),  # A shard src/meson.build does not declare.
         introspected(suite="cassini-talk"),  # The shards outside the pytest suite.
         introspected()[1:],  # A tool's test missing.
+        introspected(runs=lambda index: "1/4"),  # Every shard runs shard 1: 2-4 never run.
+        introspected(runs=lambda index: f"{index}/3"),  # A shard count other than pytest_shards.
+        [{**test, "env": {}} for test in introspected()],  # No shard selected: each runs the whole suite.
     ],
 )
 def test_check_meson_tests_refuses_an_incomplete_build(tests, tmp_path):
@@ -136,8 +144,10 @@ def test_check_meson_tests_refuses_an_incomplete_build(tests, tmp_path):
 def test_this_build_registers_every_shard():
     # meson-info/intro-tests.json is what `meson introspect --tests` prints.
     tests = json.loads((Path(os.environ["CASSINI_TEST_BUILD"]) / "meson-info/intro-tests.json").read_text())
-    shards = sorted(test["name"] for test in tests if "pytest" in check_meson_tests().suites(test))
+    check = check_meson_tests()
+    shards = sorted(test["name"] for test in tests if "pytest" in check.suites(test))
     assert shards == sorted(f"pytest-{index}" for index in range(1, meson_shards() + 1))
+    assert [line for line in check.problems(tests, meson_shards()) if "missing test" not in line] == []
 
 
 def collect(cwd, shards):
