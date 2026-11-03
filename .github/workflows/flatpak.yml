@@ -10,14 +10,36 @@ jobs:
   flatpak:
     name: Flatpak
     runs-on: ubuntu-26.04
+    timeout-minutes: 25
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
-      options: --privileged
+      # gnome-50 as of 2026-11-03 (multi-arch index, image created 2026-09-22).
+      image: ghcr.io/flathub-infra/flatpak-github-actions@sha256:1de59efef01a946d9f28f1ec3458bf6f61dcee3507d7fecdd473f8134da4ec77
+      # G4: /var/lib/flatpak gets an anonymous volume, which Docker fills
+      # from the image's preinstalled SDK. The volume sits on the host
+      # filesystem, not overlayfs, so ostree's renames during the SDK update
+      # do not fail with EXDEV ("Invalid cross-device link") on the AWS
+      # ubuntu-26.04 runner pool.
+      options: --privileged -v /var/lib/flatpak
     steps:
       - uses: actions/checkout@v7
+      # G4: update the system SDK on its own, before anything else, so an
+      # infra failure is named as such instead of surfacing as xvfb-run exit
+      # 139 inside the builder (whose --install-deps-from runs the same
+      # `flatpak --system update`). Never retried: the EXDEV failure is
+      # deterministic per runner pool. The first two checks fail if the volume
+      # is missing or Docker did not fill it from the image, since every
+      # later step needs the image's system SDK and flathub remote there.
+      - name: Update the system GNOME 50 SDK (fails fast on infra errors)
+        run: |
+          grep -E '^([^ ]+ ){4}/var/lib/flatpak ' /proc/self/mountinfo || { echo '::error::infra: /var/lib/flatpak is not a separate mount; the container lost its -v /var/lib/flatpak volume'; exit 1; }
+          { flatpak info --system org.gnome.Sdk//50 && flatpak info --system org.gnome.Platform//50; } >/dev/null || { echo '::error::infra: the /var/lib/flatpak volume was not filled from the image (no system GNOME 50 SDK)'; exit 1; }
+          flatpak update --system -y --noninteractive org.gnome.Sdk//50 org.gnome.Platform//50 || { echo '::error::infra: Flatpak SDK update failed; "Invalid cross-device link" above is overlayfs EXDEV on this runner pool; rerun'; exit 1; }
       - name: Prepare the pinned host Trash portal in the SDK
         run: python3 tests/flatpak/prepare_trash_portal.py --output "$PWD/_ci-trash-portal"
-      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
+      # Pinned (G4). flathub-infra/flatpak-github-actions has no tags and was
+      # archived on 2025-04-24; this is the master SHA @master resolved to on
+      # 2026-11-03 (last commit "Close this branch", README only).
+      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@933e9e8ca36e85046ebca8e211f0785c6becac40 # master, 2026-11-03
         with:
           bundle: cassini-talk-devel.flatpak
           manifest-path: build-aux/flatpak/io.codemyriad.CassiniTalk.Devel.json
@@ -41,9 +63,12 @@ jobs:
         run: build-aux/flatpak/smoke.sh cassini-talk-devel.flatpak io.codemyriad.CassiniTalk.Devel
       # Keep stable-profile build/install coverage; D51 removes only old-ID
       # rebase/migration work, not validation of the release package itself.
+      # It builds against the system SDK the steps above already updated (G4
+      # volume), instead of a second --user copy downloaded from Flathub.
+      # smoke.sh still installs the bundle per-user, as for the devel bundle.
       - name: Build and freshly install the stable Cassini talk profile
         run: |
-          flatpak-builder --user --install-deps-from=flathub --force-clean --disable-rofiles-fuse \
+          flatpak-builder --install-deps-from=flathub --force-clean --disable-rofiles-fuse \
             --repo="$RUNNER_TEMP/talk-stable-repo" "$RUNNER_TEMP/talk-stable-build" \
             build-aux/flatpak/io.codemyriad.CassiniTalk.json
           flatpak build-bundle \
