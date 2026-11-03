@@ -25,6 +25,7 @@ jobs:
   metadata:
     name: Version and release metadata
     runs-on: ubuntu-26.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       - name: Check every package version and the proposed tag name without creating it
