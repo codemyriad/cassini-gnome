@@ -20,3 +20,17 @@ def energy(samples, hz, rate):
         magnitude += math.hypot(real, imaginary)
     count = max(1, len(samples))
     return dict(rms=math.sqrt(power / count), tone=2 * magnitude / count)
+
+
+def stereo_tones(samples, rate, first, last, tones):
+    """Per-channel windowed tone magnitude of interleaved stereo frames [first, last).
+
+    The native stereo proof's measurement: Pulse skew slaving, in a producer's
+    pulsesink or the recorder's pulsesrc, can move a stream by one 20 ms segment
+    mid-interval, so one coherent coefficient over the interval can cancel a
+    full-level tone. Returns {"left440": ..., "right880": ...} for each tone.
+    """
+    channels = {side: samples[first * 2 + index : last * 2 : 2] for side, index in (("left", 0), ("right", 1))}
+    result = {f"{side}{hz}": energy(data, hz, rate)["tone"] for side, data in channels.items() for hz in tones}
+    result.update({f"{side}Rms": energy(data, tones[0], rate)["rms"] for side, data in channels.items()})
+    return result
