@@ -20,8 +20,8 @@ jobs:
       - run: ruff format --check src tests build-aux/ci
       - name: Install system Python audio test dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc libc6-dev python3-pytest python3-jsonschema python3-rfc3339-validator python3-gi gir1.2-gstreamer-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y gcc libc6-dev python3-pytest python3-jsonschema python3-rfc3339-validator python3-gi gir1.2-gstreamer-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good
       - name: Require the approved native ABI layout check
         run: |
           command -v cc
