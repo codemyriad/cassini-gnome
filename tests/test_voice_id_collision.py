@@ -2,7 +2,10 @@
 """D64: a group whose `<group>~n` voice would reuse another speaker id stays undiarized."""
 
 import copy
+import hashlib
+import json
 import logging
+from uuid import uuid4
 
 import pytest
 from test_voice_source import TURNS_A, TURNS_B, WORDS, X, Y, interrupted, run, scripted, speaker, stamp, words_of
@@ -32,6 +35,17 @@ def capture(root, sources, *, silent=()):
         session.append(f"tab{n}", (b"\x00\x00" if source in silent else b"\x01\x00") * 32000, 0)
     session.finish()
     return session.directory
+
+
+def break_audio(directory, sources, how):
+    """Every track of `sources` loses its file (`missing`) or holds bytes that are not a WAV (`unreadable`)."""
+    for track in json.loads((directory / "session.json").read_text())["tracks"]:
+        if track.get("sourceTrackId") in sources:
+            path = directory / track["file"]
+            if how == "missing":
+                path.unlink()
+            else:
+                path.write_bytes(b"not a wav")
 
 
 def check_speakers(metadata, expected, *, apart=()):
@@ -168,7 +182,7 @@ def voice_step(root, tmp_path, monkeypatch, directory, background):
     pytest.importorskip("numpy")
     from cassini_talk import campplus, nemotron, worker_voices
     from cassini_talk.library import LibraryScanner
-    from cassini_talk.transcription import prepare_tracks
+    from cassini_talk.transcription import prepare_tracks, reserved_speakers
 
     (meeting,) = LibraryScanner(root).scan().meetings
     tracks, _speakers = prepare_tracks(meeting)
@@ -209,6 +223,8 @@ def voice_step(root, tmp_path, monkeypatch, directory, background):
         runtimePath="r",
         origin="own",
         scratch=str(tmp_path / "scratch"),
+        # As the app sends it (TranscriptionQueue._run and _voice_job_body).
+        reservedSpeakers=sorted(reserved_speakers(meeting, tracks)),
     )
     worker_voices.run(tracks, options, lambda kind, **_values: events.append(kind))
     assert events[-1] == "voices-complete"
@@ -236,3 +252,103 @@ def test_voice_step_reads_the_voices_of_a_colliding_source(root, tmp_path, monke
     calls, embedded = voice_step(root, tmp_path, monkeypatch, directory, background)
     assert [selected for selected, _labels in calls] == [{"track-s"}, voices]
     assert set(embedded) <= {s["id"] for s in read_metadata(directory)["speakers"]}
+
+
+def options_spy(client, seen):
+    """The scripted client, keeping the options of each voice request."""
+
+    class Client(client):
+        def voiceprints(self, tracks, options, heartbeat):
+            seen.append(options)
+            return super().voiceprints(tracks, options, heartbeat)
+
+    return Client
+
+
+@pytest.mark.parametrize("how", ["missing", "unreadable"])
+def test_a_source_whose_audio_is_gone_keeps_its_id_and_its_name(root, tmp_path, caplog, how):
+    """Codex #185: s~1's file goes; re-diarizing s must not write track-s~1 as its voice over Sam's row."""
+    from cassini_talk.voice_store import VoiceStore
+
+    directory = capture(root, ["s", "s~1"])
+    words = {"track-s": WORDS, "track-s~1": THREE}
+    run(root, directory, scripted({"track-s": (X, TURNS_A, False)}, words))
+    save_name(directory, "track-s~1", "Sam")
+    sam = speaker(read_metadata(directory), "track-s~1")
+    interrupted(directory)
+    break_audio(directory, {"s~1"}, how)
+
+    store, seen = VoiceStore(tmp_path / "private"), []
+    store.refresh()
+    with caplog.at_level(logging.WARNING):
+        client = options_spy(scripted({"track-s": (X, TURNS_A, False)}, words), seen)
+        metadata = run(root, directory, client, resume=True, store=store)
+    assert {w: s for w, s in words_of(directory).items() if s != "track-s~1"} == {"One": "track-s", "Two": "track-s"}
+    check_speakers(metadata, ["track-s", "track-s~1"])
+    assert speaker(metadata, "track-s~1") == sam and sam["name"] == "Sam" and "voiceSource" not in sam
+    assert "voiceIdCollision group=track-s ids=track-s~1" in caplog.text
+    assert "voiceNameReset" not in caplog.text
+    # The voice step gets the same reservations.
+    assert "track-s~1" in seen[-1]["reservedSpeakers"]
+
+
+@pytest.mark.parametrize("how", ["missing", "unreadable"])
+def test_a_missing_lane_track_keeps_its_lane_id_in_the_write_down_and_the_voice_step(
+    root, tmp_path, monkeypatch, caplog, how
+):
+    """s~1's two overlapping tracks hold track-s~1 and lane track-s~1:overlap:1; both files go."""
+    directory = capture(root, ["s", "s~1", "s~1"])
+    lane = "track-s~1:overlap:1"
+    words = {"track-s": WORDS, "track-s~1": THREE, lane: OTHER}
+    run(root, directory, scripted({"track-s": (X, TURNS_A, False)}, words))
+    assert set(words_of(directory).values()) == {"track-s", "track-s~1", lane}
+    save_name(directory, "track-s~1", "Sam")
+    save_name(directory, lane, "Lia")
+    before = read_metadata(directory)
+    break_audio(directory, {"s~1"}, how)
+
+    # The background voice step reads the saved words: only group s's own come from its audio.
+    calls, embedded = voice_step(root, tmp_path, monkeypatch, directory, True)
+    assert calls == [({"track-s"}, set())]
+    assert set(embedded) <= {"track-s"}
+
+    interrupted(directory)
+    with caplog.at_level(logging.WARNING):
+        metadata = run(root, directory, scripted({"track-s": (X, TURNS_A, False)}, words), resume=True)
+    assert {w: s for w, s in words_of(directory).items() if s == "track-s"} == {"One": "track-s", "Two": "track-s"}
+    check_speakers(metadata, ["track-s", "track-s~1", lane])
+    for identifier in ("track-s~1", lane):
+        assert speaker(metadata, identifier) == speaker(before, identifier)
+    assert "voiceIdCollision group=track-s ids=track-s~1" in caplog.text
+    assert "voiceNameReset" not in caplog.text
+
+
+def received_meeting(root, tracks):
+    """A Received folder whose original's x["codemyriad.io"] lists `tracks` and no session.json."""
+    from test_library import write_metadata
+    from test_turn_breaks import foreign_file
+
+    folder = root / f"Received-{uuid4()}"
+    folder.mkdir(parents=True)
+    original = foreign_file(folder / "original.opus", tracks)
+    digest = hashlib.sha256(original.read_bytes()).hexdigest()
+    write_metadata(folder, received=dict(originalName=original.name, sha256=digest, importedAtMs=1793107080000))
+    return folder
+
+
+def test_a_received_files_listed_track_keeps_its_id(root, caplog):
+    """The file's x tracks list `original~1`: its id is track-original~1, the one group's would-be voice."""
+    from test_turn_breaks import stored_track
+
+    directory = received_meeting(root, [dict(stored_track("a"), sourceTrackId="original~1")])
+    rows = read_metadata(directory)["speakers"]
+    sam = dict(id="track-original~1", name="Sam", provenance="user", colourIndex=1)
+    update_metadata(directory, speakers=[*rows, sam])
+    with caplog.at_level(logging.WARNING):
+        metadata = run(root, directory, scripted({"track-original": (X, TURNS_A, False)}, {"track-original": WORDS}))
+    assert words_of(directory) == {"One": "track-original", "Two": "track-original"}
+    assert speaker(metadata, "track-original~1") == sam
+    ids = [s["id"] for s in metadata["speakers"]]
+    assert len(set(ids)) == len(ids) and not any("voiceSource" in s for s in metadata["speakers"])
+    assert "voiceIdCollision group=track-original ids=track-original~1" in caplog.text
+    assert "voiceNameReset" not in caplog.text

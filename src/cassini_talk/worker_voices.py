@@ -47,17 +47,21 @@ def of_group(speaker, group):
     return speaker == group or bool(separator) and head == group and ordinal.isdigit()
 
 
-def group_words(group, words, turns, merges, *, all_words=False, excluded_groups=(), labelled=None, reserved=()):
+def group_words(
+    group, words, turns, merges, *, all_words=False, excluded_groups=(), labelled=None, reserved=(), taken=()
+):
     """`labelled` limits ordinal labels to saved ids made from these turns (G12).
 
     D64: an id in `reserved` (another track's, lane's or group's) is that
-    speaker's own, never one of this group's voices.
+    speaker's own, never one of this group's voices, and its words are not in
+    this group's audio. An id in `taken` is never one of its voices either, but
+    its words stay readable: a received file's listed tracks all sound in its original.
     """
     ordinals = voice_ordinals(turns)
     native_ids = {
         f"{group['id']}~{ordinal}": native
         for native, ordinal in ordinals.items()
-        if f"{group['id']}~{ordinal}" not in reserved
+        if f"{group['id']}~{ordinal}" not in reserved and f"{group['id']}~{ordinal}" not in taken
     }
     selected = [
         w
@@ -152,8 +156,15 @@ def run(tracks, options, notify, *, statvfs=None):
         model = stack.enter_context(contextlib.closing(SpeakerExtractor(options["modelPath"], options["runtimePath"])))
         diarizer = None
         groups = group_tracks(tracks, origin=options.get("origin", "own"))
-        # D64: the write-down never gave a voice an id that is a speaker here.
+        # D64: the write-down never gave a voice an id that is a speaker here, or
+        # that any track the meeting lists holds, readable or not (reservedSpeakers).
+        listed = options.get("reservedSpeakers", [])
+        if not isinstance(listed, list) or not all(isinstance(identifier, str) for identifier in listed):
+            raise ValueError("Invalid reserved speakers")
+        listed = set(listed)
         speaker_ids = {g["id"] for g in groups} | {t["speaker"] for t in tracks if isinstance(t.get("speaker"), str)}
+        if options.get("origin") != "received":
+            speaker_ids |= listed
 
         def group_audio(index):
             """The group's rejoin. Without the space nothing is committed, as on ENOSPC before G14."""
@@ -212,6 +223,7 @@ def run(tracks, options, notify, *, statvfs=None):
                 excluded_groups=tuple(g["id"] for g in groups if g["id"] != group["id"]) if background else (),
                 labelled=labelled,
                 reserved=speaker_ids - {group["id"]},
+                taken=listed - {group["id"]},
                 all_words=background
                 and (
                     options.get("origin") == "received"
