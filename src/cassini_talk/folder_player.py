@@ -63,6 +63,8 @@ class PCMSource:
         self.ownership = FrameMask(
             getattr(track, "ownership_windows", None), self.rate, getattr(track, "ownership_offset_ms", 0)
         )
+        # Each placed span is masked by its own windows on the 48 kHz timeline, also when its track is unplaced.
+        self.span_masks = [FrameMask(getattr(child.track, "ownership_windows", None), 48000) for child in self.children]
         self.cursor = 0
         self.lock = threading.Lock()
         self.src = Gst.ElementFactory.make("appsrc", None)
@@ -181,14 +183,13 @@ class PCMSource:
         output_rate = output_rate or self.rate
         if self.children:
             output = np.zeros((count, self.channels), dtype=np.float64)
-            for child in self.children:
+            for child, mask in zip(self.children, self.span_masks, strict=True):
                 first = child.track.start_offset_ms * 48
                 end = child.end_frame * 48000 / child.rate
                 if cursor + count > first and cursor < end:
                     child._open()
-                    output += np.frombuffer(child._mapped_data(cursor, count, output_rate=48000), dtype="<f4").reshape(
-                        -1, self.channels
-                    )
+                    data = mask.pcm(child._mapped_data(cursor, count, output_rate=48000), cursor, 4 * self.channels)
+                    output += np.frombuffer(data, dtype="<f4").reshape(-1, self.channels)
                 else:
                     child._release_input()
             return output.astype("<f4").tobytes()

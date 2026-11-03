@@ -168,12 +168,13 @@ def test_readers_mask_actual_overlapping_wavs_for_export_speech_diarization_and_
 def published_and_exported(meeting):
     np = pytest.importorskip("numpy")
     from cassini_talk.export_audio import mixed_pcm
+    from cassini_talk.exporting import assumed_zero
     from cassini_talk.library_v2 import mixdown
 
     session = json.loads((meeting.directory / "session.json").read_text())
     timeline = mixdown.session_spans(meeting.directory, session)
     published = np.concatenate(list(mixdown.mixed(timeline.spans, mixdown.total_samples(timeline.spans))))
-    return published, np.concatenate(list(mixed_pcm(meeting.tracks))), timeline
+    return published, np.concatenate(list(mixed_pcm(assumed_zero(meeting.tracks)))), timeline
 
 
 def test_published_mix_masks_a_16_khz_span_before_resampling_as_export_does(tmp_path):
@@ -189,31 +190,139 @@ def test_published_mix_masks_a_16_khz_span_before_resampling_as_export_does(tmp_
     assert not np.any(published[common:]) and not np.any(exported[common:])
 
 
-def test_published_mix_gives_no_ownership_to_a_track_with_an_unplaced_empty_span(tmp_path):
+def rotated_with_unplaced_span(root, frames):
+    """CASES[1] with "after" rotated into a second file whose offset GNOME never set."""
     import wave
 
-    pytest.importorskip("numpy")
+    import numpy as np
+
     from cassini_talk.library import LibraryScanner
 
-    meeting = meeting_fixture(tmp_path, CASES[1])
+    meeting = meeting_fixture(root, CASES[1])
     manifest = meeting.directory / "session.json"
     value = json.loads(manifest.read_text())
     (after,) = (track for track in value["tracks"] if track["id"] == "after")
-    # A rotation whose last span never received audio, so GNOME never set its offset.
-    with wave.open(str(meeting.directory / "track-after-2.wav"), "wb") as empty:
-        empty.setnchannels(1)
-        empty.setsampwidth(2)
-        empty.setframerate(48000)
+    with wave.open(str(meeting.directory / "track-after-2.wav"), "wb") as second:
+        second.setnchannels(1)
+        second.setsampwidth(2)
+        second.setframerate(48000)
+        second.writeframes(np.full(frames, 8192, dtype="<i2").tobytes())
     first = {key: after[key] for key in ("file", "frames", "sampleRate", "channels", "startOffsetMs") if key in after}
-    after["spans"] = [first, dict(first, file="track-after-2.wav", frames=0, startOffsetMs=None)]
+    after["spans"] = [first, dict(first, file="track-after-2.wav", frames=frames, startOffsetMs=None)]
     manifest.write_text(json.dumps(value))
-    meeting = LibraryScanner(tmp_path).scan().meetings[0]
-    scanned = {track.id: track.ownership_windows for track in meeting.tracks}
-    assert scanned["after"] is None
+    return LibraryScanner(root).scan().meetings[0]
+
+
+@pytest.mark.parametrize("frames", [0, 48000], ids=["empty", "audio"])
+def test_an_unplaced_span_never_unmasks_its_placed_sibling_in_any_reader(tmp_path, frames):
+    np = pytest.importorskip("numpy")
+    gi = pytest.importorskip("gi")
+    gi.require_version("Gst", "1.0")
+    from test_folder_player import capture
+
+    from cassini_talk.diarization_audio import rejoin
+    from cassini_talk.folder_player import FolderPlayer
+    from cassini_talk.speech_pipeline import audio_chunks
+    from cassini_talk.transcription import prepare_tracks
+
+    meeting = rotated_with_unplaced_span(tmp_path, frames)
+    (after,) = (track for track in meeting.tracks if track.id == "after")
+    # The placed span sounds from 5000 ms but owns only [6000, 10000): the system track owns [3000, 6000).
+    owned = ((0, 3000), (6000, None))
+    placed = [span for span in after.spans or [after] if span.start_offset_ms is not None]
+    assert [span.ownership_windows for span in placed] == [owned]
+    # An unplaced span with audio is mixed at its assumed zero (D19) and never clipped there.
+    assert [span.ownership_windows for span in after.spans if span.start_offset_ms is None] == [None] * bool(frames)
+    expected = np.full(10000 * 48, 0.25, dtype="<f4")
+    expected[:frames] += 0.25
+    published, exported, timeline = published_and_exported(meeting)
+    assert [(span.offset_assumed, span.ownership) for span in timeline.spans if span.track == "after"] == [
+        (False, owned)
+    ] + [(True, None)] * bool(frames)
+    assert np.array_equal(exported, expected)
+    assert np.array_equal(published, expected)
+    # Playback needs every offset; the empty span no longer blocks it.
+    assert FolderPlayer.can_play(meeting) is not frames
+    if not frames:
+        samples, _pts, _duration = capture(meeting.tracks)
+        assert max(samples) <= 8193 and len(samples) >= 10000 * 48
+    jobs, _speakers = prepare_tracks(meeting)
+    (job,) = (job for job in jobs if job.get("captureTrackId") == "after")
+    speech = np.concatenate(list(audio_chunks(job)))
+    speech = np.pad(speech, (int((job["offsetMs"] or 0) * 16), 0))
+    assert not np.any(speech[5000 * 16 : 6000 * 16])
+    assert np.allclose(speech[6100 * 16 : 9900 * 16], 0.25, atol=0.0001)
+    assert np.allclose(speech[100 * 16 : 900 * 16], 0.25 if frames else 0, atol=0.0001)
+    with rejoin(jobs, scratch=tmp_path / "scratch") as (stream, _frames, _sha):
+        joined = np.frombuffer(stream.read(), dtype="<f4")
+    assert np.allclose(joined[100 * 16 : 900 * 16], 0.5 if frames else 0.25, atol=0.0001)
+    # Masked before its FIR, the rotated span starts at 6000 ms with the FIR's step response.
+    assert np.allclose(joined[1100 * 16 : 5990 * 16], 0.25, atol=0.0001)
+    assert np.allclose(joined[6010 * 16 : 9900 * 16], 0.25, atol=0.0001)
+    assert np.max(joined[1100 * 16 : 9900 * 16]) < 0.3, "a seam is never doubled"
+
+
+def anchored_meeting(root, anchors, edge, owned_first):
+    """One 16 kHz remote track, silent for 16000 source frames then loud, with clock anchors.
+
+    The remote side owns [0, edge) when `owned_first`, else [edge, end).
+    """
+    import numpy as np
+
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.recording_session import RecordingSession
+
+    session = RecordingSession(root, source="chromium")
+    session.add_track("remote", "remote", "remote", 16000, 1)
+    session.append("remote", np.zeros(16000, dtype="<i2").tobytes(), 0)
+    session.append("remote", np.full(16000, 8192, dtype="<i2").tobytes(), 1000)
+    session.finish()
+    start = dict(atMs=0, type="selection", me=True, others=True, reason="start")
+    if owned_first:
+        changes = [dict(source="browser", reason="start", atMs=0), dict(source="system", reason="lost", atMs=edge)]
+    else:
+        changes = [
+            dict(source="system", reason="missing", atMs=0),
+            dict(source="browser", reason="callConnected", atMs=edge),
+        ]
+    session.manifest["events"] = [start, *(dict(change, type="othersSource") for change in changes)]
+    session.manifest["tracks"][0]["clockAnchors"] = anchors
+    session.checkpoint()
+    return LibraryScanner(root).scan().meetings[0]
+
+
+@pytest.mark.parametrize(
+    "anchors,edge",
+    [([[0, 0], [32000, 2000000000]], 1000), ([[0, 0], [16000, 1005000000], [32000, 2000000000]], 1005)],
+    ids=["nominal", "warped"],
+)
+def test_published_mix_masks_a_clock_mapped_span_before_resampling(tmp_path, anchors, edge):
+    np = pytest.importorskip("numpy")
+    gi = pytest.importorskip("gi")
+    gi.require_version("Gst", "1.0")
+    from dataclasses import replace
+
     from cassini_talk.library_v2 import mixdown
 
-    timeline = mixdown.session_spans(meeting.directory, value)
-    assert {span.track: span.ownership for span in timeline.spans} == scanned
+    # Source frame 16000, the first loud one, sounds exactly at the ownership edge.
+    meeting = anchored_meeting(tmp_path / "silent-owned", anchors, edge, owned_first=True)
+    published, exported, timeline = published_and_exported(meeting)
+    assert [span.ownership for span in timeline.spans] == [((0, edge),)]
+    assert np.max(np.abs(published)) == 0, "unowned audio must not ring through the resampler into owned time"
+    if edge == 1000:
+        assert not np.any(exported)
+    # Owned audio itself is unchanged.
+    meeting = anchored_meeting(tmp_path / "loud-owned", anchors, edge, owned_first=False)
+    published, exported, timeline = published_and_exported(meeting)
+    spans = [replace(span, ownership=None) for span in timeline.spans]
+    whole = np.concatenate(list(mixdown.mixed(spans, mixdown.total_samples(spans))))
+    assert not np.any(published[: edge * 48]) and np.max(np.abs(whole[: edge * 48])) > 0.001
+    assert np.array_equal(published[edge * 48 :], whole[edge * 48 :])
+    assert np.max(published) > 0.2
+    if edge == 1000:
+        common = min(len(published), len(exported))
+        assert np.array_equal(published[:common], exported[:common])
+        assert not np.any(published[common:]) and not np.any(exported[common:])
 
 
 def test_unknown_offset_is_reported_and_never_used_as_alignment_zero(tmp_path):

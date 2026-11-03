@@ -39,6 +39,18 @@ def windows(kind, events):
     return None if result == [(0, None)] else tuple(result)
 
 
+def union(*sets):
+    """Merged half-open windows covering any of `sets`; a None end is open."""
+    result = []
+    for left, right in sorted((window for windows in sets for window in windows), key=lambda window: window[0]):
+        if result and (result[-1][1] is None or left <= result[-1][1]):
+            if result[-1][1] is not None and (right is None or right > result[-1][1]):
+                result[-1] = (result[-1][0], right)
+        else:
+            result.append((left, right))
+    return tuple(result)
+
+
 class FrameMask:
     """Convert absolute half-open windows once, then mask bounded PCM blocks."""
 

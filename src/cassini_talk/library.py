@@ -643,6 +643,9 @@ class LibraryScanner:
                     )
                 except (OSError, ValueError, TypeError):
                     diagnostics.append(Diagnostic(directory, "capture-track-unreadable"))
+            # An empty span without an offset has no audio and no place, so it cannot unplace its siblings.
+            kept = [span for span in tracks[start:] if span.frames or span.start_offset_ms is not None]
+            tracks[start:] = kept or tracks[start : start + 1]
             if len(tracks) - start > 1:
                 from dataclasses import replace
 
@@ -745,10 +748,16 @@ class LibraryScanner:
         placed = []
         for track in tracks:
             ownership = windows(track.kind, events)
+            # Each placed span sounds only inside its windows; an unplaced one is never clipped at a guessed zero.
+            spans = tuple(
+                replace(span, ownership_windows=ownership) if span.start_offset_ms is not None else span
+                for span in track.spans
+            )
             if ownership is not None and track.start_offset_ms is None:
                 diagnostics.append(Diagnostic(track.path, "ownership-start-offset-unknown"))
+                track = replace(track, spans=spans)
             else:
-                track = replace(track, ownership_windows=ownership)
+                track = replace(track, ownership_windows=ownership, spans=spans)
             placed.append(track)
         tracks = tuple(placed)
         return Meeting(

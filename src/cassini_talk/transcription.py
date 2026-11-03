@@ -173,8 +173,23 @@ def prepare_tracks(meeting, *, diagnostics=None, silent=None):
             tracks[-1]["silent"] = True
         if not track.frames:
             continue
+        owned = [span.ownership_windows for span in track.spans if span.ownership_windows is not None]
         if track.ownership_windows is not None:
             tracks[-1]["ownershipWindows"] = [list(window) for window in track.ownership_windows]
+        elif owned:
+            from dataclasses import replace
+
+            from .source_ownership import union
+
+            # D19: an unplaced span sounds unclipped from its assumed zero; its placed siblings
+            # are masked by their own windows (below) and here, after the 16 kHz FIR. The
+            # display end is floored to whole ms, so one more ms covers its last samples.
+            assumed = [
+                (0, replace(span, start_offset_ms=0).display_end_ms + 1)
+                for span in track.spans
+                if span.start_offset_ms is None
+            ]
+            tracks[-1]["ownershipWindows"] = [list(window) for window in union(owned[0], assumed)]
         # D52.2: the G10 fallback measures and windows only present or unknown time.
         if (presence := track_presence(track)) is not None:
             tracks[-1]["presence"] = presence
@@ -188,6 +203,11 @@ def prepare_tracks(meeting, *, diagnostics=None, silent=None):
                     startOffsetMs=span.start_offset_ms,
                     **({"clockAnchors": [list(point) for point in span.clock_anchors]} if span.clock_anchors else {}),
                     **({"codec": "opus", "decodedRate": 48000} if span.codec == "opus" else {}),
+                    **(
+                        {"ownershipWindows": [list(window) for window in span.ownership_windows]}
+                        if span.ownership_windows is not None and track.ownership_windows is None
+                        else {}
+                    ),
                 )
                 for span in track.spans
             ]

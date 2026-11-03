@@ -42,6 +42,19 @@ def _publish(stage, directory, stem, suffix):
         return candidate
 
 
+def assumed_zero(tracks):
+    """D19's export-only copies: an unknown track or span offset is mixed at zero."""
+
+    def placed(track):
+        spans = getattr(track, "spans", ())
+        if track.start_offset_ms is not None and all(span.start_offset_ms is not None for span in spans):
+            return track
+        offset = 0 if track.start_offset_ms is None else track.start_offset_ms
+        return replace(track, start_offset_ms=offset, spans=tuple(placed(span) for span in spans))
+
+    return tuple(placed(track) for track in tracks)
+
+
 def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
     directory = Path(directory).expanduser().absolute()
     from .companion import in_flatpak
@@ -68,9 +81,7 @@ def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
                 if meeting.origin == "own" and meeting.audio_file is None:
                     # D19's export-only recovery policy does not alter the
                     # Library model, capture metadata or playback alignment.
-                    tracks = tuple(
-                        replace(t, start_offset_ms=0) if t.start_offset_ms is None else t for t in meeting.tracks
-                    )
+                    tracks = assumed_zero(meeting.tracks)
                     policy = encode_choice(
                         [
                             dict(

@@ -22,12 +22,14 @@ Timeline contract (§4.3), as GNOME reads session.json:
   A segment is valid when both coordinates increase and its rate is within 1 % of
   the nominal rate; with fewer than two valid anchors the nominal rate applies.
   GNOME's capture writes no anchors yet; this format is provisional (§10 REPLIES).
-- D52/P8 source ownership: a span sounds only inside its track's ownership
+- D52/P8 source ownership: a placed span sounds only inside its track's ownership
   windows (source_ownership.windows over the session events, as the Library
   scanner computes them), masked on the timeline as export, speech and rejoin
-  mask it; a span without clock anchors is also masked at its source rate before
-  resampling, as export's reader does. A D49 or seam overlap is mixed once. The
-  PCM and the x track map are unchanged.
+  mask it, and also at its source rate before resampling, as export's reader does;
+  a clock-mapped span's windows reach its source frames through the inverse map.
+  A span with a null offset is mixed unclipped at its assumed zero, and never
+  changes how its placed siblings are masked. A D49 or seam overlap is mixed once.
+  The PCM and the x track map are unchanged.
 
 Mixdown (§4.4): each span is decoded to mono 48 kHz float by the export's reader
 (export_audio.track_pcm: one GStreamer audioconvert/audioresample path for WAV and
@@ -150,6 +152,20 @@ class Mapping:
     def end(self, length):
         return round(float(self.position([length])[0]))
 
+    def local(self, windows):
+        """Timeline ms windows as ms of this span's own decoded frames (from its first sample)."""
+        import numpy as np
+
+        result = []
+        for left, right in windows:
+            edges = self.source(np.array([left, 0 if right is None else right], dtype=np.float64) * RATE / 1000)
+            # Anchors are whole ns: round the float noise off there, so an edge on a frame stays on it.
+            low, high = (round(float(edge) * 1000 / RATE, 6) for edge in edges)
+            low = max(0.0, low)
+            if right is None or high > low:
+                result.append((low, None if right is None else high))
+        return tuple(result)
+
 
 @dataclass(frozen=True)
 class Timeline:
@@ -197,11 +213,10 @@ def session_spans(directory, manifest):
         if not isinstance(track, dict) or not isinstance(track.get("id"), str):
             raise ValueError("invalid-session-track")
         values = track["spans"] if isinstance(track.get("spans"), list) else [track]
-        found, map_spans, unplaced = [], [], False
+        found, map_spans = [], []
         for value in values:
             info = track_source.inspect(directory, value)
             offset = value.get("startOffsetMs")
-            unplaced = unplaced or offset is None
             if offset is not None and (
                 type(offset) not in (int, float) or not math.isfinite(offset) or not 0 <= offset <= MAX_OFFSET_MS
             ):
@@ -234,10 +249,9 @@ def session_spans(directory, manifest):
             entry.update({key: track[key] for key in TRACK_COPY if key in track})
             records.append(dict(entry, spans=map_spans))
         if found:
-            # Like the scanner, a track with an unplaced span, even an empty one, gets no ownership.
+            # Like the scanner: each placed span gets its track's windows; an unplaced one is never clipped.
             ownership = windows(_kind(track, found[0].info), events)
-            if ownership is not None and not unplaced:
-                found = [replace(span, ownership=ownership) for span in found]
+            found = [span if span.offset_assumed else replace(span, ownership=ownership) for span in found]
             spans.extend(found)
         else:
             empty.append(track["id"])
@@ -266,9 +280,14 @@ class Reader:
             channels=info.channels,
             start_offset_ms=0,
         )
-        if span.ownership is not None and Mapping(span).knots is None:
-            # Export masks at the source rate before resampling; do the same in span time.
-            track.ownership_windows, track.ownership_offset_ms = span.ownership, span.start_ms
+        if span.ownership is not None:
+            # Export masks at the source rate before resampling; do the same in span time,
+            # through the clock map when the span has one, so the resampler sees no unowned sample.
+            mapping = Mapping(span)
+            if mapping.knots is None:
+                track.ownership_windows, track.ownership_offset_ms = span.ownership, span.start_ms
+            else:
+                track.ownership_windows, track.ownership_offset_ms = mapping.local(span.ownership), 0
         self.np = np
         self.length = span.length
         self.blocks = blocks if blocks is not None else track_pcm(track, cancel)

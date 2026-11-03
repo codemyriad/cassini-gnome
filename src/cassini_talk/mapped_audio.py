@@ -69,6 +69,17 @@ def end_ms(track):
     return mixdown.total_samples(result.spans) * 1000 // mixdown.RATE
 
 
+def _local(windows, offset):
+    """Absolute session-ms windows on a timeline that starts at `offset`."""
+    if windows is None:
+        return None
+    return tuple(
+        (max(0, left - offset), None if right is None else right - offset)
+        for left, right in windows
+        if right is None or right > offset
+    )
+
+
 def chunks(track):
     """Continuous, bounded 16 kHz source PCM; offset is applied by the consumer once."""
     import numpy as np
@@ -76,7 +87,14 @@ def chunks(track):
     from .speech_pipeline import resampled_stream
 
     result, offset = timeline(track)
-    spans = [replace(span, start_ms=span.start_ms - offset) for span in result.spans]
+    # A span's own ownership windows (set when its logical track is unplaced) mask it before the FIR.
+    owned = {
+        span.get("file"): span.get("ownershipWindows") for span in track.get("spans") or () if isinstance(span, dict)
+    }
+    spans = [
+        replace(span, start_ms=span.start_ms - offset, ownership=_local(owned.get(span.info.relative), offset))
+        for span in result.spans
+    ]
     if any(span.start_ms < 0 for span in spans):
         raise ValueError("A physical span starts before its logical track")
     total = mixdown.total_samples(spans)
