@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """D52 G10: a VAD-free windowed decode for a track whose VAD pass found too few words.
 
-Per track, never the mix: attribution stays with the track's own audio. The
+Per track, never the mix: attribution stays with the track's own audio; only
+the gate pools a speaker's tracks (D63 #1). The
 seam policy is ported from gocassini 5a5d77bb (stt.go dedupMergedFallbackWords),
 the word energy gate from filterWordsByEnergy. Activity is energy inside the
 decoded audio; padding and ownership masking are zeros, so they are inactive.
@@ -125,7 +126,7 @@ class ActivityMeter:
 
     def active_seconds(self, active=None):
         active = self.active() if active is None else active
-        return sum(active) * FRAME / RATE
+        return seconds(sum(active))
 
 
 def window_bounds(total):
@@ -346,3 +347,57 @@ def merge_seam(previous, following, window_start_ms, overlap_ms):
 def need(vad_words):
     """gocassini margin: the fallback must clearly beat the VAD pass to replace it."""
     return 1 if vad_words == 0 else vad_words + max(2, math.ceil(vad_words / 5))
+
+
+def seconds(frames):
+    return frames * FRAME / RATE
+
+
+def holds(active_frames):
+    """R71: whole active frames reaching MIN_ACTIVE_SECONDS (469 frames, 15.008 s; 468 do not)."""
+    return active_frames * FRAME >= MIN_ACTIVE_SECONDS * RATE
+
+
+def fires(active_frames, vad_words):
+    """The G10 gate for one speaker, on its pooled active frames and VAD words."""
+    return vad_words < FEW_WORDS and holds(active_frames)
+
+
+def pooled(tracks):
+    """D63 #1: per speaker id, the summed active frames and VAD words of its non-silent tracks.
+
+    The key is the stored speaker id (me, others, track-<source>), so rejoins
+    pool and an R64 overlap lane is its own speaker; D56 silent tracks are left out.
+    """
+    totals = {}
+    for track in tracks:
+        if track.get("silent") is True:
+            continue
+        frames, words = totals.get(track["speaker"], (0, 0))
+        totals[track["speaker"]] = (frames + track["activeFrames"], words + track["vadWords"])
+    return totals
+
+
+def decide(tracks):
+    """D63 #1 on per-track facts, in track order.
+
+    Each fact is {trackId, speaker, activeFrames, vadWords, fallbackWords} and
+    `silent` for a D56 track. Returns {speaker: fires} and the D52.4 provenance:
+    one entry per non-silent track of a firing speaker, a track without a
+    window included. The margin stays per track.
+    """
+    totals = pooled(tracks)
+    verdict = {speaker: fires(*value) for speaker, value in totals.items()}
+    entries = [
+        dict(
+            trackId=track["trackId"],
+            vadWords=track["vadWords"],
+            fallbackWords=track["fallbackWords"],
+            activeSeconds=seconds(track["activeFrames"]),
+            personActiveSeconds=seconds(totals[track["speaker"]][0]),
+            used=track["fallbackWords"] >= need(track["vadWords"]),
+        )
+        for track in tracks
+        if track.get("silent") is not True and verdict[track["speaker"]]
+    ]
+    return verdict, entries

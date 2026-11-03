@@ -113,7 +113,7 @@ def silent_tracks(tracks):
 
 
 def recognition_fallback(value):
-    """D52.4 (R71): this attempt's G10 decisions, validated child output, or None."""
+    """D52.4 (R71, D63 #1): this attempt's G10 decisions, validated child output, or None."""
     if not isinstance(value, dict) or value.get("method") != "vadFreeWindows":
         return None
     windows = {key: value.get(key) for key in ("windowMs", "overlapMs")}
@@ -124,11 +124,12 @@ def recognition_fallback(value):
         if not isinstance(entry, dict) or not isinstance(entry.get("trackId"), str) or not entry["trackId"]:
             continue
         counts = [entry.get(key) for key in ("vadWords", "fallbackWords")]
-        seconds = entry.get("activeSeconds")
+        # D63 #1: the track's own active seconds and its speaker's, pooled over its tracks.
+        seconds = [entry.get(key) for key in ("activeSeconds", "personActiveSeconds")]
         if (
             any(type(c) is not int or not 0 <= c <= 9007199254740991 for c in counts)
-            or type(seconds) not in (int, float)
-            or not 0 <= seconds <= 86400
+            or any(type(s) not in (int, float) or not 0 <= s <= 86400 for s in seconds)
+            or seconds[0] > seconds[1]
             or type(entry.get("used")) is not bool
         ):
             continue
@@ -137,7 +138,8 @@ def recognition_fallback(value):
                 trackId=entry["trackId"][:200],
                 vadWords=counts[0],
                 fallbackWords=counts[1],
-                activeSeconds=seconds,
+                activeSeconds=seconds[0],
+                personActiveSeconds=seconds[1],
                 used=entry["used"],
             )
         )

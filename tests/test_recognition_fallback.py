@@ -103,13 +103,15 @@ class TimedModel:
         return dict(text=" ".join(w["word"] for w in words), language="en", words=words)
 
 
-def run(tmp_path, monkeypatch, samples, model, probability, offset=0, presence=None):
+def run(tmp_path, monkeypatch, samples, model, probability, offset=0, presence=None, session_presence=None):
     monkeypatch.setattr(pipeline, "SpeechDetector", detector(probability))
     path = write(tmp_path / "track.wav", samples)
     events = []
     job = dict(id="one", path=str(path), offsetMs=offset, frames=len(samples), sampleRate=RATE)
     if presence is not None:
         job["presence"] = presence
+    if session_presence is not None:
+        job["sessionPresence"] = session_presence
     result = pipeline.process_tracks(
         model,
         [job],
@@ -329,7 +331,9 @@ def test_the_summary_reports_each_gated_track_for_provenance(tmp_path, monkeypat
         method="vadFreeWindows",
         windowMs=15000,
         overlapMs=500,
-        tracks=[dict(trackId="one", vadWords=0, fallbackWords=20, activeSeconds=16.64, used=True)],
+        tracks=[
+            dict(trackId="one", vadWords=0, fallbackWords=20, activeSeconds=16.64, personActiveSeconds=16.64, used=True)
+        ],
     )
     quiet, _progress, _words = run(tmp_path, monkeypatch, speech(10), ScriptModel([1]), 1.0)
     assert "fallback" not in quiet
@@ -354,6 +358,31 @@ def test_fallback_windows_and_words_never_cross_a_gap_range(tmp_path, monkeypatc
     assert not [w for w in words if 20000 <= w["startMs"] < 30000 or 20000 < w["endMs"] <= 30000]
     # Bursts each side of the gap are still found, including the one at 30 s.
     assert {18000, 30000} <= {w["startMs"] for w in words}
+
+
+def test_a_fallback_word_clamped_to_the_end_of_presence_is_not_written(tmp_path, monkeypatch):
+    # D63 #3: G11 clamps the overrun to [38500, 38500], whose midpoint is the presence end.
+    presence = [[0, 38 * RATE + RATE // 2]]
+    model = TimedModel([[], [], [("two", 7.0, 7.5), ("over", 9.6, 9.9)]])
+    result, _progress, words = run(
+        tmp_path, monkeypatch, speech(40), model, 0.0, presence=presence, session_presence=presence
+    )
+    assert diagnostic(result, "few-words-fallback")["used"] and model.calls == 3
+    assert [(w["text"], w["startMs"], w["endMs"]) for w in words] == [("two", 36000, 36500)]
+
+
+def test_vad_words_outside_presence_are_not_written_or_counted(tmp_path, monkeypatch):
+    from corpus_support import scripted
+
+    # D63 #3: the twelve VAD words in the gap range are dropped before FEW_WORDS, so the fallback still fires.
+    presence = [[0, 21 * RATE], [22 * RATE, 40 * RATE]]
+    scripted(monkeypatch, {"track.wav": [[21000 + 80 * n, 21050 + 80 * n] for n in range(12)]})
+    result, _progress, words = run(
+        tmp_path, monkeypatch, speech(40), RunModel(), 1.0, presence=presence, session_presence=presence
+    )
+    row = diagnostic(result, "few-words-fallback")
+    assert row["vadWords"] == 0 and row["used"]
+    assert words and not [w for w in words if 21000 <= w["startMs"] < 22000]
 
 
 def test_presence_restricts_the_activity_floor_and_runs():

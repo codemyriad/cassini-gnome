@@ -6,9 +6,10 @@ it disagrees with the corpus's `expected` block and `constants`; no corpus time
 is written here. The mutant tests at the end patch one rule and require the same
 check to fail.
 
-G10 on this corpus: with the VAD rejecting everything, only the microphone
-reaches MIN_ACTIVE_SECONDS, so no remote span gets fallback words. The checks
-pin what the fallback does produce; pooling per person is G10's own fix.
+G10 on this corpus (D63 #1): with the VAD rejecting everything, the speakers
+in expected.fallback fall back. Me does in session 1. source-d does in session 3,
+whose two spans each fall short of MIN_ACTIVE_SECONDS but not pooled; source-b's
+pooled band stays under it.
 """
 
 import json
@@ -23,17 +24,20 @@ from corpus_support import (
     CALL,
     CORPUS,
     EXPECTED,
-    OTHER,
     RATE,
+    REJOINED,
     SESSIONS,
     C,
+    Mute,
     copy_meeting,
     corpus,  # noqa: F401 (module fixture)
     expected,
     job_id,
+    label,
     overlaps,
     person,
     run_pipeline,
+    scripted,
     speaker,
     tracks,
 )
@@ -156,8 +160,73 @@ def check_presence(jobs, meeting, session=CALL):
 
 
 def test_prepared_jobs_carry_the_expected_presence_and_ownership(corpus):  # noqa: F811
-    for session in (CALL, OTHER):
+    for session in SESSIONS:
         check_presence(corpus.jobs[session], corpus.meetings[session], session)
+        # D63 #3 compares in session samples: the same presence from the session origin.
+        for name, job in corpus.jobs[session].items():
+            wanted = expected(session)["tracks"][by_job(session)[name]["id"]]["presence16k"]
+            assert job["sessionPresence"] == wanted, name
+
+
+# Activity and the fallback decision (G10, D63 #1) -------------------------------------------------
+
+
+def metered(job):
+    """GNOME's ActivityMeter on one prepared job, fed the child's own FIR chunks."""
+    from cassini_talk import recognition_fallback as fallback
+    from cassini_talk.speech_pipeline import audio_chunks
+
+    meter = fallback.ActivityMeter(job.get("presence"))
+    for _block in meter.wrap(audio_chunks(job)):
+        pass
+    return meter
+
+
+def within(value, band):
+    return band[0] <= value <= band[1]
+
+
+def check_activity(jobs, session=CALL):
+    """Per track: activeSeconds in its band, the windows exactly; per person: the pooled band and decision."""
+    from cassini_talk import recognition_fallback as fallback
+
+    rows = expected(session)
+    facts = []
+    for name, job in jobs.items():
+        track = by_job(session)[name]
+        meter = metered(job)
+        active = meter.active()
+        seconds = meter.active_seconds(active)
+        assert within(seconds, rows["tracks"][track["id"]]["activeSeconds"]), f"{track['id']} active {seconds}"
+        windows = [
+            [job["offsetMs"] + a * 1000 // RATE, job["offsetMs"] + b * 1000 // RATE]
+            for a, b in fallback.active_windows(meter.samples, active, meter.presence)
+        ]
+        assert windows == rows["tracks"][track["id"]]["fallbackWindowsMs"], f"{track['id']} windows {windows}"
+        facts.append(
+            dict(trackId=track["id"], speaker=job["speaker"], activeFrames=sum(active), vadWords=0, fallbackWords=0)
+        )
+    pooled = fallback.pooled(facts)
+    for key, band in rows["personActiveSeconds"].items():
+        value = fallback.seconds(pooled[speaker(key)][0])
+        assert within(value, band), f"{key} pooled active {value}"
+    verdict, _entries = fallback.decide(facts)
+    assert verdict == {speaker(key): value for key, value in rows["fallback"].items()}, "fallback per person"
+    return facts
+
+
+def test_activity_windows_and_the_pooled_decision_match_the_vectors(corpus):  # noqa: F811
+    from cassini_talk import recognition_fallback as fallback
+
+    only_pooled = set()
+    for session in SESSIONS:
+        facts = check_activity(corpus.jobs[session], session)
+        for key, value in expected(session)["fallback"].items():
+            mine = [f for f in facts if f["speaker"] == speaker(key)]
+            if value and not any(fallback.holds(f["activeFrames"]) for f in mine):
+                only_pooled.add((session, key))
+    # Neither span of source-d reaches the gate alone; my session 1 track does.
+    assert only_pooled == {(REJOINED, "source-d")}
 
 
 # Capture record and details (G2, D47) -------------------------------------------------------------
@@ -223,10 +292,12 @@ def test_capture_record_and_details_report_the_corpus_sources(corpus, tmp_path):
 
 
 @contextmanager
-def pipeline_run(tmp_path_factory, name, **values):
+def pipeline_run(tmp_path_factory, name, script=None, **values):
     directory = tmp_path_factory.mktemp(name)
     # The fake child's patches end with its run, so a later run neither stacks on them nor reports into this one.
     with pytest.MonkeyPatch.context() as monkeypatch:
+        if script is not None:
+            scripted(monkeypatch, script)
         run = run_pipeline(values.pop("corpus"), monkeypatch, directory, **values)
     yield run
     shutil.rmtree(directory.absolute(), ignore_errors=True)
@@ -236,6 +307,13 @@ def pipeline_run(tmp_path_factory, name, **values):
 def reject_all(corpus, tmp_path_factory):  # noqa: F811
     """G10: a VAD that hears nothing, so only the VAD-free fallback can find words."""
     with pipeline_run(tmp_path_factory, "reject", corpus=corpus, probability=0.0) as run:
+        yield run
+
+
+@pytest.fixture(scope="module")
+def reject_rejoined(corpus, tmp_path_factory):  # noqa: F811
+    """Session 3: a guest who left and rejoined, again with a VAD that hears nothing."""
+    with pipeline_run(tmp_path_factory, "rejoined", corpus=corpus, probability=0.0, session=REJOINED) as run:
         yield run
 
 
@@ -275,43 +353,55 @@ def check_no_words(run, session=CALL):
 
 
 def check_fallback(run, session=CALL):
-    """G10 with the VAD rejecting everything: activity, floors and fallback words per track."""
+    """G10 with the VAD rejecting everything: activity, floors and fallback words per track, the gate per person."""
     from cassini_talk import recognition_fallback as fallback
 
-    rows = expected(session)["tracks"]
+    rows = expected(session)
     breakdown = run.diagnostics("no-words-breakdown")
     used = run.diagnostics("few-words-fallback")
     assert breakdown, "no breakdown diagnostics"
-    # Without VAD words, a track can only have words through the fallback, which reports its breakdown.
-    assert set(run.words) <= set(breakdown), f"words without a breakdown: {set(run.words) - set(breakdown)}"
     floor_ms = fallback.FLOOR_FRAMES * fallback.FRAME * 1000 // fallback.RATE
     for name, row in breakdown.items():
         track = by_job(session)[name]
         # Steady noise and silence are never activity; speech and bleeds may be.
         assert row["activeSeconds"] * 1000 <= total(sounding_ms(track["id"], session=session)), f"{track['id']} active"
+        assert within(row["activeSeconds"], rows["tracks"][track["id"]]["activeSeconds"]), f"{track['id']} band"
         # GNOME has a per-track floor only with FLOOR_FRAMES audible frames; compare there.
         audible = total(sounding_ms(track["id"], noise=True, session=session))
         assert (row["floorDb"] is not None) == (audible >= floor_ms), f"{track['id']} has a floor"
         if row["floorDb"] is not None:
-            low, high = rows[track["id"]]["floorDb"]
+            low, high = rows["tracks"][track["id"]]["floorDb"]
             assert low <= row["floorDb"] <= high, f"{track['id']} floor {row['floorDb']} not in {low}..{high}"
-        gate = row["activeSeconds"] >= fallback.MIN_ACTIVE_SECONDS
-        assert (name in used) == gate, f"{track['id']} fallback gate"
-        if gate:
-            assert used[name]["used"] and used[name]["fallbackWords"] == len(run.words.get(name, [])) > 0, track["id"]
-            assert used[name]["floorDb"] == row["floorDb"], f"{track['id']} one floor"
-        else:
-            assert not run.words.get(name), f"{track['id']} words without VAD or fallback"
+    # D63 #1: every audible track of a firing person has its entry, in track order, and only those.
+    decoded = [i for i in tracks(session) if run.keep is None or i in run.keep]
+    firing = [job_id(i) for i in decoded if rows["fallback"][person(tracks(session)[i])]]
+    assert sorted(used) == sorted(firing), f"fallback per person: {sorted(used)}"
+    entries = run.summary.get("fallback", {}).get("tracks", [])
+    assert [e["trackId"] for e in entries] == [by_job(session)[name]["id"] for name in firing], "provenance"
+    for name, entry in zip(firing, entries, strict=True):
+        row, track = used[name], by_job(session)[name]
+        assert within(row["activeSeconds"], rows["tracks"][track["id"]]["activeSeconds"]), f"{track['id']} band"
+        assert within(row["personActiveSeconds"], rows["personActiveSeconds"][person(track)]), f"{track['id']} pooled"
+        assert entry["personActiveSeconds"] == row["personActiveSeconds"] >= fallback.MIN_ACTIVE_SECONDS
+        assert row["vadWords"] == 0 and (row["used"] == (row["fallbackWords"] > 0)), track["id"]
+        assert row["fallbackWords"] == len(run.words.get(name, [])), track["id"]
+        if name in breakdown:
+            assert row["floorDb"] == breakdown[name]["floorDb"], f"{track['id']} one floor"
+    # Without VAD words, a track can only have words through the fallback.
+    assert all(used.get(name, {}).get("used") for name, words in run.words.items() if words), "words without fallback"
     speaking = {person(t) for t in tracks(session).values() if run.words.get(job_id(t["id"]))}
-    assert speaking <= {key for key, ms in expected(session)["speechMs"].items() if ms}, "who speaks"
+    assert speaking <= {key for key, ms in rows["speechMs"].items() if ms}, "who speaks"
 
 
-def test_vad_rejecting_everything_falls_back_only_where_the_track_is_active(reject_all):
-    check_fallback(reject_all)
-    check_no_words(reject_all)
-    fallen = {name for name, row in reject_all.diagnostics("few-words-fallback").items() if row["used"]}
-    # G10 gap (not fixed here): no remote span reaches MIN_ACTIVE_SECONDS, so only my track falls back.
-    assert {by_job()[name]["kind"] for name in fallen} == {"microphone"}
+def test_vad_rejecting_everything_falls_back_per_person(reject_all, reject_rejoined):
+    for run, session in ((reject_all, CALL), (reject_rejoined, REJOINED)):
+        check_fallback(run, session)
+        check_no_words(run, session)
+        fallen = {person(by_job(session)[name]) for name, row in run.diagnostics("few-words-fallback").items()}
+        assert fallen == {key for key, value in expected(session)["fallback"].items() if value}
+        # D52.4: the stored provenance keeps each entry and its pooled seconds.
+        stored = run.meeting.metadata["recordingDetails"]["writingDown"]["recognitionFallback"]["tracks"]
+        assert stored == run.summary["fallback"]["tracks"]
 
 
 def test_the_fallback_check_fails_without_breakdown_diagnostics(reject_all):
@@ -325,6 +415,45 @@ def test_vad_accepting_everything_gives_words_only_in_owned_presence(accept_all)
     check_no_words(accept_all)
     speaking = {person(by_job()[name]) for name, words in accept_all.words.items() if words}
     assert speaking == {key for key, ms in expected()["speechMs"].items() if ms}
+
+
+@pytest.fixture(scope="module", params=list(SESSIONS))
+def midpoints(corpus, tmp_path_factory, request):  # noqa: F811
+    """D63 #3: each session's wordMidpoints words, recognised on the VAD path of their track."""
+    session = request.param
+    script = {}
+    for row in expected(session)["wordMidpoints"]:
+        script.setdefault(job_id(row["track"]), []).append(row["ms"])
+    keep = {row["track"] for row in expected(session)["wordMidpoints"]}
+    values = dict(corpus=corpus, model=Mute, keep=keep, session=session, script=script)
+    with pipeline_run(tmp_path_factory, "midpoints", **values) as run:
+        yield session, run
+
+
+def test_words_are_written_only_with_their_midpoint_in_presence(midpoints):
+    session, run = midpoints
+    written = {word.text for word in run.meeting.words}
+    for row in expected(session)["wordMidpoints"]:
+        text = label(job_id(row["track"]), row["ms"])
+        assert (text in written) == row["keep"], f"{row['track']} {row['ms']} keep {row['keep']}"
+    assert written == {label(job_id(r["track"]), r["ms"]) for r in expected(session)["wordMidpoints"] if r["keep"]}
+
+
+def test_words_outside_presence_never_count_towards_few_words(corpus, tmp_path_factory):  # noqa: F811
+    """D63 #1 and #3: ten VAD words in d-return's gap are never written, so source-d still falls back."""
+    rows = expected(REJOINED)
+    (gap,) = rows["tracks"]["d-return"]["gaps"]
+    words = [[gap[0] + 150 * n, gap[0] + 150 * n + 100] for n in range(C["FEW_WORDS"])]
+    assert all(gap[0] <= w[0] and w[1] <= gap[1] for w in words)
+    keep = [i for i, t in tracks(REJOINED).items() if person(t) == "source-d"]
+    values = dict(corpus=corpus, keep=keep, session=REJOINED, script={job_id("d-return"): words})
+    with pipeline_run(tmp_path_factory, "gap-words", **values) as run:
+        used = run.diagnostics("few-words-fallback")
+        assert sorted(used) == sorted(job_id(i) for i in keep), "source-d falls back"
+        assert all(row["vadWords"] == 0 and row["used"] for row in used.values())
+        written = {word.text for word in run.meeting.words}
+        assert written and not written & {label(job_id("d-return"), w) for w in words}, "gap words written"
+        check_no_words(run, REJOINED)
 
 
 def shared_calls(session=CALL):
@@ -437,7 +566,7 @@ def test_rejoin_keeps_each_group_silent_outside_its_presence(accept_all, corpus)
     check_rejoin(accept_all, corpus)
 
 
-def test_module_runs_leave_no_fake_child_patched_behind(reject_all, accept_all, overrun):
+def test_module_runs_leave_no_fake_child_patched_behind(reject_all, reject_rejoined, accept_all, overrun):
     import os
     import sys
     import types
@@ -445,10 +574,11 @@ def test_module_runs_leave_no_fake_child_patched_behind(reject_all, accept_all, 
     from cassini_talk import diarization_audio
     from cassini_talk import speech_pipeline as pipeline
 
-    for value in (pipeline.SpeechDetector, pipeline.resampled_chunks, diarization_audio.rejoin):
+    patched = (pipeline.SpeechDetector, pipeline.resampled_chunks, pipeline.recognise_segment, diarization_audio.rejoin)
+    for value in patched:
         assert "<locals>" not in value.__qualname__, f"{value.__qualname__} still patched"
     assert not isinstance(sys.modules.get("cassini_talk.nemotron"), types.SimpleNamespace), "fake diarizer"
-    for run in (reject_all, accept_all, overrun):
+    for run in (reject_all, reject_rejoined, accept_all, overrun):
         assert os.environ.get("XDG_CACHE_HOME") != str(run.meeting.directory.parents[1] / "cache")
 
 

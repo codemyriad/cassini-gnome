@@ -52,13 +52,13 @@ STALE_FALLBACK = dict(
     method="vadFreeWindows",
     windowMs=15000,
     overlapMs=500,
-    tracks=[dict(trackId="old", vadWords=0, fallbackWords=9, activeSeconds=20.0, used=True)],
+    tracks=[dict(trackId="old", vadWords=0, fallbackWords=9, activeSeconds=20.0, personActiveSeconds=20.0, used=True)],
 )
 FALLBACK = dict(
     method="vadFreeWindows",
     windowMs=15000,
     overlapMs=500,
-    tracks=[dict(trackId="mic", vadWords=3, fallbackWords=12, activeSeconds=31.5, used=True)],
+    tracks=[dict(trackId="mic", vadWords=3, fallbackWords=12, activeSeconds=31.5, personActiveSeconds=40.0, used=True)],
 )
 
 
@@ -237,6 +237,8 @@ def test_optional_details_schema_rejects_false_measurements_but_accepts_absence(
         dict(FALLBACK, tracks=[]),
         dict(FALLBACK, tracks=[dict(FALLBACK["tracks"][0], used="yes")]),
         dict(FALLBACK, tracks=[dict(FALLBACK["tracks"][0], vadWords=-1)]),
+        dict(FALLBACK, tracks=[{k: v for k, v in FALLBACK["tracks"][0].items() if k != "personActiveSeconds"}]),
+        dict(FALLBACK, tracks=[dict(FALLBACK["tracks"][0], personActiveSeconds=30.0)]),
         dict(FALLBACK, tracks="not a list"),
     ],
 )
