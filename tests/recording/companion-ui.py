@@ -111,7 +111,9 @@ def dispatch(packet):
             copyReady=bool(guide and guide.copy_button.get_sensitive()),
         )
     except Exception as error:
-        result = dict(error=str(error))
+        # Never an empty error (str() of a bare assert is ""): the caller
+        # rejects on any "error" key.
+        result = dict(error=f"{type(error).__name__}: {error}")
     print(json.dumps(result), flush=True)
     return GLib.SOURCE_REMOVE
 
