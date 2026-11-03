@@ -21,7 +21,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - base: fedora:latest
+          # fedora:latest ships Python 3.15, and onnxruntime has no cp315 wheel
+          # yet (1.31.1 stops at cp314), so the pinned private ORT the package
+          # bundles cannot be fetched (whistle/pins.json). Fedora 44 has Python
+          # 3.14 and is supported until 2027-06 (43 ends 2026-12-02). The nightly
+          # rpm-canary.yml builds fedora:latest outside the merge gate: when it
+          # turns green, move this back to fedora:latest.
+          - base: fedora:44
             name: fedora
           - base: registry.opensuse.org/opensuse/tumbleweed:latest
             name: opensuse
