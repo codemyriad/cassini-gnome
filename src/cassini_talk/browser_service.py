@@ -395,6 +395,9 @@ class BrowserService:
         self._capture_missing_since = {}
         self._capture_observed = set()
         self._capture_policy_pending = set()
+        # Keys whose uncommitted fallback a return is cancelling; that fallback's
+        # own task keeps _capture_policy_pending until its device answers.
+        self._capture_cancels = set()
         self._capture_lifecycles = {}
         self._control_reconnects = {}
         self._call_aliases = {}
@@ -2397,6 +2400,7 @@ class BrowserService:
                         fallback=capture.browser_lost,
                         others=capture.others,
                         restore_ready=capture.browser_ready and not capture.restore_blocked,
+                        fallback_pending=capture.fallback_pending,
                         multistream=capture.multistream_capable,
                         # D52.5: another call's heard never arms this recording's
                         # restore or OTHERS_GONE grace; it latches only on rows
@@ -2414,7 +2418,13 @@ class BrowserService:
                     if reconnect is not None and page == "present" and count > 0 and lifecycle.missing is None:
                         self._control_reconnects.pop(key, None)
                     identifier = f"{peer[0].id}:{peer[1]}" if peer is not None else None
-                    if action and key not in self._capture_policy_pending:
+                    if action == "restore" and capture.fallback_pending:
+                        # The pending fallback's task holds the policy gate while
+                        # its device opens; cancelling it must not wait behind it.
+                        if key not in self._capture_cancels:
+                            self._capture_cancels.add(key)
+                            capture_tasks.append((key, capture, identifier, action))
+                    elif action and key not in self._capture_policy_pending:
                         self._capture_policy_pending.add(key)
                         capture_tasks.append((key, capture, identifier, action))
                     continue
@@ -2521,8 +2531,14 @@ class BrowserService:
             self.workers.submit(self._capture_lifecycle, key, capture, identifier, action)
 
     def _capture_lifecycle(self, key, capture, identifier, action):
+        with self.lock:
+            cancel = action == "restore" and key in self._capture_cancels
         try:
-            if action == "fallback":
+            if cancel:
+                # D52: the call returned before its fallback committed. Writes
+                # nothing; a fallback that committed meanwhile stays (heard rule).
+                capture.cancel_fallback()
+            elif action == "fallback":
                 if identifier is not None:
                     self._fallback(identifier, capture)
                 else:
@@ -2542,7 +2558,10 @@ class BrowserService:
             logging.getLogger(__name__).exception("Browser capture lifecycle: %s", action)
         finally:
             with self.lock:
-                self._capture_policy_pending.discard(key)
+                if cancel:
+                    self._capture_cancels.discard(key)
+                else:
+                    self._capture_policy_pending.discard(key)
 
     def _resume_still_eligible(self, key, capture, browser, tab):
         """Every D52.5 ask condition, read again at send time (caller holds self.lock).

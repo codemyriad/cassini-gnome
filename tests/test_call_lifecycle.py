@@ -48,6 +48,25 @@ class Inline:
         return future
 
 
+class HeldWorkers(Inline):
+    """Inline, except a page loss's fallback whose device is held runs on its own thread.
+
+    It blocks opening that device, as on a real worker, while the policy keeps
+    ticking: a return can then cancel it before it commits (D52).
+    """
+
+    def __init__(self, held):
+        self.held = held
+
+    def submit(self, function, *args):
+        if args and args[-1] == "fallback" and self.held["next"] and self.held["closer"] is None:
+            self.held["closer"] = threading.Thread(target=function, args=args, daemon=True)
+            self.held["closer"].start()
+            assert self.held["opening"].wait(HOLD_BOUND), "The page loss's fallback never opened its device"
+            return Future()
+        return super().submit(function, *args)
+
+
 @pytest.mark.parametrize("case", json.loads(VECTORS.read_text())["cases"], ids=lambda case: case["name"])
 def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monkeypatch, case):
     assert json.loads(VECTORS.read_text())["constants"] == dict(
@@ -58,9 +77,9 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
     monkeypatch.setattr("time.monotonic", lambda: now[0])
     service = BrowserService(tmp_path / "settings.json", notifier=lambda *_: None)
     service.workers.shutdown()
-    service.workers = Inline()
     # fallbackCommitted:false: the next system tap holds its first buffer.
-    held = dict(next=False, tap=None, closer=None, opening=None)
+    held = dict(next=False, tap=None, closer=None, opening=None, cancelled=False)
+    service.workers = HeldWorkers(held)
 
     def taps(kind, *args, **kwargs):
         if kind == "system" and held["next"]:
@@ -112,6 +131,8 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
 
     def record(*args):
         actions.append(args[-1])
+        if args[-1] == "restore" and held["closer"] is not None:
+            held["cancelled"] = True  # A return before the held fallback commits.
         return lifecycle(*args)
 
     monkeypatch.setattr(service, "_capture_lifecycle", record)
@@ -157,15 +178,22 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
             committed = step.get("fallbackCommitted", True)
             if held["closer"] is not None and committed:
                 # The fallback device delivers its first buffer now: the
-                # broker's own fallback commits and writes system/lost.
+                # broker's own fallback commits and writes system/lost, unless
+                # the call returned first and cancelled it (D52).
                 held["tap"].first_buffer.set()
                 held["closer"].join(HOLD_BOUND)
                 assert not held["closer"].is_alive(), (case["name"], step)
                 held["closer"] = None
-                assert capture.browser_lost and lost_written(), (case["name"], step, capture.error)
-                # Written at the commit, not when the transport closed.
-                *_, event = (e for e in capture.host.session.manifest["events"] if e.get("reason") == "lost")
-                assert event["atMs"] >= step["atMs"], (case["name"], step, event)
+                if held["cancelled"]:
+                    # Cancelled: nothing is committed, the written source is kept.
+                    assert not capture.browser_lost and not lost_written(), (case["name"], step)
+                    assert not capture.fallback_pending, (case["name"], step)
+                    held["cancelled"] = False
+                else:
+                    assert capture.browser_lost and lost_written(), (case["name"], step, capture.error)
+                    # Written at the commit, not when the transport closed.
+                    *_, event = (e for e in capture.host.session.manifest["events"] if e.get("reason") == "lost")
+                    assert event["atMs"] >= step["atMs"], (case["name"], step, event)
             if step.get("controlConnection", connection) != connection:
                 # A new hello is a new control peer; the recording is matched
                 # by its call, never by the connection it started under.
@@ -218,10 +246,6 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
                     actions.append("fallback")
                 if capture.browser_lost and not lost:
                     actions.append("fallback")
-            if not committed:
-                # Decided, not committed: the recorded source is unchanged.
-                assert held["closer"] is not None and held["closer"].is_alive(), (case["name"], step)
-                assert not capture.browser_lost and not lost_written(), (case["name"], step)
             if step.get("pcmLive") and transport_closed and not capture.finished:
                 # pcmLive implies a live transport: after a close only the real
                 # native resume attaches one, to the same folder and clock. Do
@@ -265,7 +289,7 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
             if (
                 not capture.finished
                 and count
-                and capture.browser_lost
+                and (capture.browser_lost or capture.fallback_pending)
                 and not transport_closed
                 and step.get("restoreReady", True)
             ):
@@ -279,7 +303,16 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
                     browser,
                     dict(type="result", requestId=pending["requestId"], ok=False, error="Target is no longer active."),
                 )
+            if not committed and held["closer"] is None:
+                # A page loss's fallback decided at this tick holds its device.
+                held["next"], held["opening"] = True, threading.Event()
             service.policy()
+            if held["closer"] is None:
+                held["next"] = False
+            if not committed:
+                # Decided, not committed: the recorded source is unchanged.
+                assert held["closer"] is not None and held["closer"].is_alive(), (case["name"], step)
+                assert not capture.browser_lost and not lost_written(), (case["name"], step)
             assert actions == step["expect"], (case["name"], step, capture.error)
             # Exactly one resume Start per askResume, and none otherwise: a
             # pending or refused ask is never repeated on a later tick.
@@ -307,9 +340,18 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
             assert ends[0]["reason"] == stops[0]["expect"][0].split(":")[1]
         if case["name"] == "closed-tab-never-starts-computer-sound":
             assert not any(t["kind"] == "system" for t in capture.host.session.manifest["tracks"])
-        if any(s["expect"] == ["restore"] for s in case["steps"]):
+        restores = [s for s in case["steps"] if s["expect"] == ["restore"]]
+        if restores:
             restored = [e for e in capture.host.session.manifest["events"] if e.get("reason") == "restored"]
-            assert len(restored) == 1
+            if all(s.get("fallbackCommitted", True) is False for s in restores):
+                # D52, kept-source form: the return cancelled the uncommitted
+                # fallback. No system track, no lost or restored event: the
+                # written othersSource never changed (protocol session-events
+                # uncommitted-return-kept).
+                assert restored == [] and not lost_written()
+                assert not any(t["kind"] == "system" for t in capture.host.session.manifest["tracks"])
+            else:
+                assert len(restored) == 1
             assert capture.host.session.manifest["tracks"][0]["kind"] == "microphone"
         assert len(list((tmp_path / "Library").iterdir())) == 1
         assert all(args[1] == "stop" for args, _kwargs in commands)

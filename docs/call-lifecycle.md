@@ -1,6 +1,6 @@
 # Browser call lifetime (D33)
 
-Shared protocol pin: `c0284a6fa9ac7859513d9152e2649b2195059f4e` (protocol PR #43, Mac #113: the host joins only a committed fallback, so the D52.5 ask waits for the written system/lost (`fallbackCommitted` in lifecycle.json), and session.schema.json takes an empty gap (`durationMs` and `frames` both 0) and refuses a mixed one; on protocol PR #42, 981fb4d5, the D63 corpus vectors: fallback per person, turn breaks at gap ranges, words outside presence; on protocol PR #41, e6d39987, multistream corpus v2, on the protocol PR #40 merge 032e98fc, Mac's D61 follow-ups, on the PR #39 merge, D61: browser clock facts and a span's `documentGeneration` on `track`, the departed-generation watchdog rule; on top of protocol PR #38: Mac's #37 follow-ups, a forget vector; on top of the PR #37 merge: resume packets carry the ask's `requestId`, a fresh UUID per ask that is never reused, on top of protocol PR #36, the D58 refusal vector follow-ups, #35's classified refusals and result codes, #34's D57 resume host clarifications and the D52.5 PR #32).
+Shared protocol pin: `dba4a327cd76baa5b73a217f3465f53c109bd4a5` (protocol PR #44, Mac #134: a call that returns before its fallback commits restores at once, heard or not: none/lost -> browser/restored is legal, with lifecycle and session-events vectors; on protocol PR #43, c0284a6f, Mac #113: the host joins only a committed fallback, so the D52.5 ask waits for the written system/lost (`fallbackCommitted` in lifecycle.json), and session.schema.json takes an empty gap (`durationMs` and `frames` both 0) and refuses a mixed one; on protocol PR #42, 981fb4d5, the D63 corpus vectors: fallback per person, turn breaks at gap ranges, words outside presence; on protocol PR #41, e6d39987, multistream corpus v2, on the protocol PR #40 merge 032e98fc, Mac's D61 follow-ups, on the PR #39 merge, D61: browser clock facts and a span's `documentGeneration` on `track`, the departed-generation watchdog rule; on top of protocol PR #38: Mac's #37 follow-ups, a forget vector; on top of the PR #37 merge: resume packets carry the ask's `requestId`, a fresh UUID per ask that is never reused, on top of protocol PR #36, the D58 refusal vector follow-ups, #35's classified refusals and result codes, #34's D57 resume host clarifications and the D52.5 PR #32).
 Companion 0.2.12 replaces older local installs; no Chrome Web Store packaging or upload is performed.
 
 The broker owns every independent capture and its Library folder. With the
@@ -150,7 +150,15 @@ and are enforced by its periodic `tick()`, which keeps running during Stop.
   only then is `othersSource` system/lost written. Until then the recorded
   source is unchanged, the call still counts as recording, and no resume is
   asked on any control connection (protocol PR #43). The vector runner holds the
-  real fallback device before its first buffer for `fallbackCommitted:false`.
+  real fallback device before its first buffer for `fallbackCommitted:false`,
+  for a page loss's fallback as for a closed transport's.
+- A call that returns before its fallback commits (page present, control alive,
+  a known positive sourceCount, returning PCM on the live transport) cancels it,
+  heard or not (protocol PR #44, Mac #134). GNOME keeps its written othersSource
+  until a fallback commits, so the cancel writes nothing: no system track, no
+  lost and no restored event. The Others are absent between their spans over the
+  loss (D47, D52.2), as protocol session-events `uncommitted-return-kept`
+  describes. A fallback that committed first still restores only after heard.
 - A row's heard evidence latches a recording's lifecycle only when the row's
   callGeneration is the recording's own, so another call's heard never arms its
   restore or the 30-second call-end grace (D52.5).
