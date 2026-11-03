@@ -48,7 +48,10 @@ class Policy:
                 self.source, self.reason, self.asked_on = 'browser', 'restored', None
                 return [action]
             connection = row.get('controlConnection', 0)
+            # The host joins only a committed system/lost: an earlier ask is refused
+            # and spends this loss's only ask on this connection.
             if (self.resume and not transport and self.source == 'system' and self.reason == 'lost'
+                    and row.get('fallbackCommitted', True)
                     and generation == self.generation and self.heard and self.asked_on != connection):
                 # D52.5: ask once per loss and control connection; never on a timer.
                 self.asked_on = connection

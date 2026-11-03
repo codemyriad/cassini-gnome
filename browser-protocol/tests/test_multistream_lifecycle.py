@@ -55,7 +55,8 @@ class LifecycleTests(unittest.TestCase):
 D52_5={'D52.5-transport-lost-asks-resume-once-then-restores','D52.5-refused-resume-is-not-retried-on-a-timer-only-on-a-new-hello',
     'D52.5-frozen-companion-asks-once-per-new-control-connection','D52.5-ask-waits-for-control-present-page-row-known-positive-count-and-same-call',
     'D52.5-ask-needs-heard-in-the-same-call-generation','D52.5-a-new-loss-after-restore-asks-again',
-    'D52.5-other-call-heard-does-not-arm-grace-or-restore'}
+    'D52.5-other-call-heard-does-not-arm-grace-or-restore','D52.5-ask-waits-for-the-committed-fallback',
+    'D52.5-a-new-hello-before-the-commit-waits-for-it'}
 def mutated(old,new):
     source=(ROOT/'conformance/multistream/lifecycle.py').read_text()
     assert source.count(old)==1,old
@@ -128,6 +129,49 @@ class ResumeOnceTests(unittest.TestCase):
                 if 'askResume' in actions: self.ever.add(connection)
                 return actions
         self.assertIn('D52.5-a-new-loss-after-restore-asks-again',failing_cases(OncePerRecording))
+    def test_an_ask_before_the_fallback_commits_fails(self):
+        # Mac #113: the host joins only a committed system/lost, so an ask in the
+        # fallback's own tick is refused and spends the connection's only ask.
+        cases={c['name']:c for c in json.loads((ROOT/'conformance/multistream/lifecycle.json').read_text())['cases']}
+        for name,case in cases.items():
+            pending=False  # between a fallback step and the step it commits on
+            for step in case['steps']:
+                if 'fallback' in step['expect']: pending=True
+                if step.get('fallbackCommitted') is False:
+                    self.assertTrue(case.get('resumeCapture') and step.get('transportAlive') is False,(name,step))
+                    self.assertNotIn('askResume',step['expect'],(name,step))
+                    self.assertTrue(pending,(name,step))
+                else: pending=False
+        gate="                    and row.get('fallbackCommitted', True)\n"
+        both={'D52.5-ask-waits-for-the-committed-fallback','D52.5-a-new-hello-before-the-commit-waits-for-it'}
+        self.assertEqual(failing_cases(mutated(gate,"")),both)
+        # A new hello before the commit must wait for it too, not only the first connection.
+        first_only=mutated(gate,"                    and (row.get('fallbackCommitted', True) or connection != 0)\n")
+        self.assertEqual(failing_cases(first_only),{'D52.5-a-new-hello-before-the-commit-waits-for-it'})
+    def test_spec_makes_the_commit_an_ask_condition_scoped_to_the_loss(self):
+        # The commit is one of the Ask-once conditions, so "first tick" and the
+        # new-hello re-ask include it; an early ask spends only that loss's ask.
+        def flat(path): return ' '.join((ROOT/path).read_text().split())
+        control=flat('SPEC-CONTROL.md')
+        conditions=control.split('at the first policy tick where all of these hold:',1)[1].split('The app asks to resume only after',1)[0]
+        self.assertIn("the recording's othersSource system/lost has been written (the fallback committed)",conditions)
+        shared=("The host joins only a committed fallback: the recording's othersSource system/lost is written once "
+                "the fallback device delivers audio (its first buffer is admitted), not when the transport closes.")
+        spent='one sent earlier is refused and uses up the only ask for that loss on that connection'
+        for path in ('SPEC.md','SPEC-CONTROL.md','conformance/control/RESUME-CAPTURE.md'):
+            with self.subTest(path=path):
+                text=flat(path)
+                self.assertIn(shared,text)
+                self.assertIn(spent,text)
+                self.assertNotIn("that connection's only ask",text)
+        self.assertEqual(control.count(shared),2)
+        self.assertIn('A fallback that fails before it commits writes no system/lost, so the app never asks to resume it.',control)
+        self.assertIn('or has decided that fallback and not committed it yet, that call is recording',control)
+        spec=flat('SPEC.md')
+        self.assertIn('A lost fallback commits when the fallback device\'s first buffer is admitted, not when the transport closes',spec)
+        self.assertIn('A fallback that fails before it commits writes no system/lost',spec)
+        note=json.loads((ROOT/'conformance/multistream/lifecycle.json').read_text())['note']
+        self.assertIn('It is emitted at the first tick with the fallback committed',note)
 class StaleAfterTests(unittest.TestCase):
     def test_transport_stale_cases_close_at_pcm_stale_after_45_seconds(self):
         # D52.5 amendment: PCM_STALE_AFTER is 45 s (40 s = 30 s retry + 10 s ACK left
@@ -139,6 +183,7 @@ class StaleAfterTests(unittest.TestCase):
                 'transport-lost-with-present-page-stays-on-fallback','transport-lost-then-new-transport-restores',
                 'transport-lost-with-unknown-count-falls-back-at-once','D52.5-transport-lost-asks-resume-once-then-restores',
                 'D52.5-refused-resume-is-not-retried-on-a-timer-only-on-a-new-hello','D52.5-frozen-companion-asks-once-per-new-control-connection',
-                'D52.5-ask-needs-heard-in-the-same-call-generation','D52.5-a-new-loss-after-restore-asks-again']:
+                'D52.5-ask-needs-heard-in-the-same-call-generation','D52.5-a-new-loss-after-restore-asks-again',
+                'D52.5-ask-waits-for-the-committed-fallback','D52.5-a-new-hello-before-the-commit-waits-for-it']:
             with self.subTest(case=name):
                 self.assertEqual(next(s['atMs'] for s in cases[name]['steps'] if s.get('transportAlive') is False),45000)

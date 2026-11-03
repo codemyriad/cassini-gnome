@@ -217,12 +217,12 @@
                 },
                 "durationMs": {
                   "type": "number",
-                  "exclusiveMinimum": 0,
+                  "minimum": 0,
                   "maximum": 86460000
                 },
                 "frames": {
                   "type": "integer",
-                  "minimum": 1,
+                  "minimum": 0,
                   "maximum": 2147483629
                 },
                 "kind": {
@@ -259,10 +259,32 @@
                 "required": [
                   "durationMs",
                   "frames"
+                ],
+                "anyOf": [
+                  {
+                    "properties": {
+                      "durationMs": {
+                        "const": 0
+                      },
+                      "frames": {
+                        "const": 0
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "durationMs": {
+                        "exclusiveMinimum": 0
+                      },
+                      "frames": {
+                        "minimum": 1
+                      }
+                    }
+                  }
                 ]
               }
             },
-            "$comment": "D52.2/P7: half-open, sorted, never coalesced absence ranges on the session timeline. Missing or null means unknown; [] means none. Readers treat every kind as absence; overflow (atMs and kind only) means unknown to the track end."
+            "$comment": "D52.2/P7: half-open, sorted, never coalesced absence ranges on the session timeline. Missing or null means unknown; [] means none. Readers treat every kind as absence; overflow (atMs and kind only) means unknown to the track end. An empty entry (durationMs 0, frames 0) is valid and is no range; otherwise both are positive."
           },
           "captureOutcome": {
             "enum": [

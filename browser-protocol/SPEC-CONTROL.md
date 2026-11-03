@@ -491,6 +491,11 @@ after the recording's audio transport closed (D52.4). It
 attaches the new transport to that recording. It never creates another folder,
 resets its clock or replaces its microphone/selection. Title/microphone defaults
 from a fresh Start do not modify the target. A refused resume has no side effect.
+The host joins only a committed fallback: the recording's othersSource system/lost
+is written once the fallback device delivers audio (its first buffer is admitted),
+not when the transport closes. An app MUST wait for that commit before it sends the
+resume; one sent earlier is refused and uses up the only ask for that loss on that
+connection (D52.5, below).
 
 ```json
 {"type":"started","path":"/Library/.sessions/Recording-example","features":["source-outcomes-v1","resume-capture-v1"],"resumed":true,"captureId":"stand-in-F","timelineOriginMs":1793500000000,"callGeneration":"call-A"}
@@ -593,7 +598,8 @@ These are app-side rules; the extension and the wire are unchanged.
 - *Ask once.* For a recording on a `system/lost` fallback whose browser's
   hello lists `resume-capture-v1`, the app MUST send one resume-capture-v1
   Start (`resumeCapture` naming that recording) at the first policy tick where
-  all of these hold: the recording's audio transport is closed; control is
+  all of these hold: the recording's othersSource system/lost has been written
+  (the fallback committed); the recording's audio transport is closed; control is
   alive; the page is present (pageState `present`, not navigating or closed);
   the call's row is present with a known positive sourceCount; the row's
   callGeneration equals the recording's callGeneration; and heard:true has
@@ -601,6 +607,12 @@ These are app-side rules; the extension and the wire are unchanged.
   callGeneration (another call's heard never counts, and it never arms this
   recording's restore or OTHERS_GONE_GRACE either).
   The app asks to resume only after the extension's status no longer reports a session for that tab.
+  The host joins only a committed fallback: the recording's othersSource system/lost
+  is written once the fallback device delivers audio (its first buffer is admitted),
+  not when the transport closes. The app MUST wait for that commit before it sends
+  the resume; one sent earlier is refused and uses up the only ask for that loss on
+  that connection. A fallback that fails before it commits writes no system/lost,
+  so the app never asks to resume it.
   After that resume is
   refused or fails (error result, refused native resume, missing or
   mismatched proof), and while it is still pending, the app MUST NOT ask
@@ -621,7 +633,8 @@ These are app-side rules; the extension and the wire are unchanged.
   A frozen companion that returns as a new control peer with a fresh hello
   therefore still finds its lost recording.
 - *No second recording.* While a recording of (tabId, callGeneration) is on
-  `system/lost`, that call is recording: its row shows Stop (the live
+  `system/lost`, or has decided that fallback and not committed it yet, that call
+  is recording: its row shows Stop (the live
   indicator, not Record), and Record all skips it. The app MUST NOT
   automatically Start that call, even when the `call-evidence-v1` auto-start
   rule would otherwise start it, including after a frozen companion returns

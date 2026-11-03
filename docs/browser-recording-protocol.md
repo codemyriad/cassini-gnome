@@ -3,7 +3,7 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `981fb4d5` (the D63 corpus vectors), ships companion 0.2.12, whose browser `track` packets carry
+The current pin, `c0284a6f` (protocol PR #43: the resume ask waits for the committed fallback; empty gaps), ships companion 0.2.12, whose browser `track` packets carry
 the D61 clock facts (copied into session.json and x["codemyriad.io"].tracks, record-only)
 and the span's `documentGeneration` (a live watchdog hint, never written to files). Its
 `ok:false` results carry a D58 result `code`, and its native resume packet carries the
@@ -49,7 +49,12 @@ An active capture's ended physical span returns `state/source/retired:true`;
 its cleanup and in-flight chunks cannot mean the whole capture was saved.
 Capture finalization returns `state/command`. Failed spans are fenced locally,
 healthy sources and the microphone continue, and a live source retries a new ID.
-The pin is protocol commit 981fb4d5 (PR #42, the D63 corpus vectors: `activeSeconds` bands,
+The pin is protocol commit c0284a6f (PR #43, Mac #113: the host joins only a committed
+fallback, whose othersSource system/lost is written once the fallback device admits its first
+buffer, so the app asks to resume only after that commit, on every control connection; the
+`fallbackCommitted` lifecycle step field and two D52.5 cases; an empty gap entry, `durationMs`
+and `frames` both 0, is valid and is no range, a mixed one is invalid), on top of protocol
+commit 981fb4d5 (PR #42, the D63 corpus vectors: `activeSeconds` bands,
 `personActiveSeconds`, `fallback`, `turnCases` and `wordMidpoints` in corpus.json, with
 fallback.json, writedown.json and their oracles), on top of protocol commit e6d39987 (PR #41, multistream corpus v2: named `constants`
 and a hand-written `expected` block in corpus.json, a third voice, real D49 and seam overlaps,

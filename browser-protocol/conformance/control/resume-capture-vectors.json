@@ -20,7 +20,7 @@
     "ownershipAt":[{"atMs":5999.999,"others":["system"]},{"atMs":6000,"others":["browser"]},{"atMs":7000,"others":["browser"]}]
   },
   "targets": {
-    "note": "D52.4: which current othersSource a resume may attach to, and the reason its committed seam writes. Any other current source refuses the resume without side effects.",
+    "note": "D52.4: which current othersSource a resume may attach to, and the reason its committed seam writes. Any other current source refuses the resume without side effects. Only a committed source counts: a fallback the app decided but whose system/lost is not written yet is not a target (the app waits for the commit before it asks, D52.5).",
     "eligible":[{"source":"system","reason":"missing","seamReason":"callConnected"},{"source":"system","reason":"lost","seamReason":"restored"}],
     "ineligible":[{"source":"browser","reason":"start"},{"source":"browser","reason":"restored"},{"source":"none","reason":"user"}]
   },
