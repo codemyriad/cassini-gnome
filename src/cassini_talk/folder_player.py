@@ -34,7 +34,7 @@ class PCMSource:
             or bool(getattr(track, "clock_anchors", ()))
             and required(dict(sampleRate=track.sample_rate, clockAnchors=track.clock_anchors))
         )
-        self.mapping = None
+        self.mapping = self.source_mask = None
         self._mapped_cache = None
         self.path = track.path
         self.fd = None
@@ -201,6 +201,7 @@ class PCMSource:
             self.mapping = Mapping(
                 Span(getattr(track, "id", "source"), self.path, info, track.start_offset_ms, track.clock_anchors)
             )
+            self.source_mask = self._source_mask()
         output = np.zeros((count, self.channels), dtype=np.float64)
         source = self.mapping.source(np.arange(cursor, cursor + count, dtype=np.float64) * 48000 / output_rate)
         source *= self.rate / 48000
@@ -210,11 +211,28 @@ class PCMSource:
             low = np.floor(positions).astype(np.int64)
             first, end = int(low.min()), min(self.frames, int(low.max()) + 2)
             segment = self._mapped_segment(first, end)
+            if self.source_mask is not None:
+                # Interpolation must not blend an unowned native sample into owned time.
+                keep = np.zeros(len(segment), dtype=bool)
+                for left, right in self.source_mask.sections(first, len(segment)):
+                    keep[left:right] = True
+                segment = segment * keep[:, None]
             segment = np.concatenate((segment, np.zeros((1, self.channels))))
             fraction = (positions - low)[:, None]
             index = low - first
             output[inside] = segment[index] * (1 - fraction) + segment[index + 1] * fraction
         return output.astype("<f4").tobytes()
+
+    def _source_mask(self):
+        """Ownership in native frames, through the inverse clock map, as the publisher masks before resampling."""
+        from .source_ownership import FrameMask
+
+        intervals = getattr(self.track, "ownership_windows", None)
+        if intervals is None:
+            return None
+        shift = getattr(self.track, "ownership_offset_ms", 0)
+        timeline = tuple((left - shift, None if right is None else right - shift) for left, right in intervals)
+        return FrameMask(self.mapping.local(timeline), self.rate)
 
     def close(self):
         for child in self.children:

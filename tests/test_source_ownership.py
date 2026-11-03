@@ -309,8 +309,8 @@ def test_published_mix_masks_a_clock_mapped_span_before_resampling(tmp_path, anc
     published, exported, timeline = published_and_exported(meeting)
     assert [span.ownership for span in timeline.spans] == [((0, edge),)]
     assert np.max(np.abs(published)) == 0, "unowned audio must not ring through the resampler into owned time"
-    if edge == 1000:
-        assert not np.any(exported)
+    # Export interpolates the native samples only after masking them through the same clock map.
+    assert not np.any(exported)
     # Owned audio itself is unchanged.
     meeting = anchored_meeting(tmp_path / "loud-owned", anchors, edge, owned_first=False)
     published, exported, timeline = published_and_exported(meeting)
@@ -323,6 +323,78 @@ def test_published_mix_masks_a_clock_mapped_span_before_resampling(tmp_path, anc
         common = min(len(published), len(exported))
         assert np.array_equal(published[:common], exported[:common])
         assert not np.any(published[common:]) and not np.any(exported[common:])
+
+
+def rotated_16_khz(root, owned_first, first_ms):
+    """One 16 kHz remote track rotated into two files: 2000 ms at `first_ms`, then 1000 loud ms at 3000 ms.
+
+    The remote side owns [0, 1000) when `owned_first`, else [1000, end). The
+    first file is silent where it is owned and loud where it is not, so any
+    sound in [0, 2000) ms is a leak; the second file is owned only in the latter case.
+    """
+    import wave
+
+    import numpy as np
+
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.recording_session import RecordingSession
+
+    loud, silent = np.full(16000, 8192, dtype="<i2"), np.zeros(16000, dtype="<i2")
+    session = RecordingSession(root, source="chromium")
+    session.add_track("remote", "remote", "remote", 16000, 1)
+    session.append("remote", np.concatenate((silent, loud) if owned_first else (loud, silent)).tobytes(), 0)
+    session.finish()
+    start = dict(atMs=0, type="selection", me=True, others=True, reason="start")
+    if owned_first:
+        changes = [dict(source="browser", reason="start", atMs=0), dict(source="system", reason="lost", atMs=1000)]
+    else:
+        changes = [
+            dict(source="system", reason="missing", atMs=0),
+            dict(source="browser", reason="callConnected", atMs=1000),
+        ]
+    session.manifest["events"] = [start, *(dict(change, type="othersSource") for change in changes)]
+    session.checkpoint()
+    meeting = LibraryScanner(root).scan().meetings[0]
+    manifest = meeting.directory / "session.json"
+    value = json.loads(manifest.read_text())
+    (track,) = value["tracks"]
+    with wave.open(str(meeting.directory / "track-remote-2.wav"), "wb") as second:
+        second.setnchannels(1)
+        second.setsampwidth(2)
+        second.setframerate(16000)
+        second.writeframes(loud.tobytes())
+    first = {key: track[key] for key in ("file", "frames", "sampleRate", "channels") if key in track}
+    track["spans"] = [
+        dict(first, startOffsetMs=first_ms),
+        dict(first, file="track-remote-2.wav", frames=16000, startOffsetMs=3000),
+    ]
+    manifest.write_text(json.dumps(value))
+    return LibraryScanner(root).scan().meetings[0]
+
+
+@pytest.mark.parametrize(
+    "owned_first,first_ms", [(True, 0), (False, 0.0209), (False, 0.0417)], ids=["right", "left-1", "left-2"]
+)
+def test_rotated_16_khz_spans_mask_native_samples_before_interpolating(tmp_path, owned_first, first_ms):
+    np = pytest.importorskip("numpy")
+    gi = pytest.importorskip("gi")
+    gi.require_version("Gst", "1.0")
+    from test_folder_player import capture
+
+    meeting = rotated_16_khz(tmp_path, owned_first, first_ms)
+    (track,) = meeting.tracks
+    owned = ((0, 1000),) if owned_first else ((1000, None),)
+    assert [span.ownership_windows for span in track.spans] == [owned, owned]
+    published, exported, _timeline = published_and_exported(meeting)
+    played, _pts, _duration = capture(meeting.tracks)
+    played = np.asarray(played, dtype=np.float64) / 32768
+    for name, mix in (("published", published), ("exported", exported), ("played", played)):
+        # The owned sample next to the edge used to take a share of the first unowned native sample.
+        assert not np.any(mix[: 2000 * 48]), f"{name}: unowned audio leaks into owned time"
+        if owned_first:
+            assert not np.any(mix), name
+        else:
+            assert np.allclose(mix[3010 * 48 : 3990 * 48], 0.25, atol=0.0001), f"{name}: owned audio is kept"
 
 
 def test_unknown_offset_is_reported_and_never_used_as_alignment_zero(tmp_path):
