@@ -46,11 +46,23 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.source != 'false') }}
     uses: ./.github/workflows/source.yml
-  packages:
-    name: Packaging
+  # The three package workflows are called directly, so Desktop waits only for
+  # the deb and Flatpak it installs, not for the RPM and Arch builds (G2).
+  deb:
+    name: Debian package
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.packages != 'false') }}
-    uses: ./.github/workflows/packaging.yml
+    uses: ./.github/workflows/deb.yml
+  rpm-arch:
+    name: RPM and Arch packages
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.packages != 'false') }}
+    uses: ./.github/workflows/packages.yml
+  flatpak:
+    name: Flatpak
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.packages != 'false') }}
+    uses: ./.github/workflows/flatpak.yml
   recording:
     name: Recording
     needs: [changes, build]
@@ -79,8 +91,8 @@ jobs:
       product: ci-offline
   desktop:
     name: Desktop
-    needs: packages
-    if: ${{ !cancelled() && needs.packages.result == 'success' }}
+    needs: [deb, flatpak]
+    if: ${{ !cancelled() && needs.deb.result == 'success' && needs.flatpak.result == 'success' }}
     permissions:
       contents: read
       actions: read
