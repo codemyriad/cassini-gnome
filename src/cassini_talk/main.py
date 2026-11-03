@@ -636,16 +636,42 @@ class CassiniApplication(Adw.Application):
             for window in self.get_windows()
         )
 
+    def recording_to_stop(self):
+        """What Record stops, named: a recording that runs or starts. A browser
+        capture that only saves (stopped, still publishing) is not one: Record
+        then starts a new recording (D18) instead of a silent Stop, while the
+        top bar already shows the app as ready. A test recording never counts."""
+        from .capture_guard import recorder_busy
+
+        reasons = []
+        if self._record_start_future:
+            reasons.append("start")
+        statuses = [*self._browser_snapshot.get("statuses", [])]
+        for window in self.get_windows():
+            statuses.extend(getattr(window, "_browser_snapshot", {}).get("statuses", []))
+            source = getattr(window, "_activity_source", None)
+            if source and "recording" in (source.snapshot or {}).values():
+                reasons.append("browser activity")
+        if any(s.get("recording") for s in statuses):
+            reasons.append("browser")
+        if any(recorder_busy(r) for r in self.native_captures.values()):
+            reasons.append("native")
+        return reasons
+
     def retry_recording(self):
         """The start banner's Try again: Record again, unless something records."""
         self.recording_failure = None
-        if not self.recording_active():
+        if not self.recording_to_stop():
             self.on_record()
         self._native_changed()
 
     def on_record(self, *_args):
         # A test recording is not a recording: Record starts one (D60).
-        if self.recording_active():
+        if reasons := self.recording_to_stop():
+            from .installed_build import lifecycle_log
+
+            # A Stop is silent otherwise: name what it stopped.
+            lifecycle_log("Record stops the current recording (%s)", ", ".join(dict.fromkeys(reasons)))
             self.on_stop_recording()
             return
 
@@ -668,7 +694,7 @@ class CassiniApplication(Adw.Application):
             self.record_first.connect("closed", lambda *_: setattr(self, "record_first", None))
 
     def on_global_record(self, *_):
-        active = self.recording_active()
+        active = bool(self.recording_to_stop())
         if active and not any(w.is_active() for w in self.get_windows()):
             from pathlib import Path
 
