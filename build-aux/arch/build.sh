@@ -22,7 +22,10 @@ mkdir -p dist
 # Per base image, so parallel builds do not swap names.
 name_file=.pkg-name-$(image_slug "$BASE")
 logs=$(test_log_dir "arch-$(image_slug "$BASE")")
+container_pull "$BASE"
+# Only the package installs reach the network; each is retried (retry.sh).
 container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z ${logs:+-v "$logs:/logs:rw$Z"} "$BASE" sh -ec '
+  . /in/build-aux/ci/retry.sh
   # Keep the Meson test logs, also when check() fails (test_log_dir).
   save_logs() {
     [ -d /logs ] || return 0
@@ -33,7 +36,7 @@ container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:r
   # The minimal image excludes non-English MO files. Preserve Cassini
   # catalogs for the real installed-language smoke test.
   printf "\nNoExtract = !usr/share/locale/*/LC_MESSAGES/cassini-talk.mo\n" >> /etc/pacman.conf
-  pacman -Syu --noconfirm --needed base-devel
+  retry pacman -Syu --noconfirm --needed base-devel
   useradd -m builder
   echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
 
@@ -52,19 +55,24 @@ container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:r
   chown -R builder: /build/pkg
 
   cd /build/pkg
+  # Install the PKGBUILD dependencies first, retried, so makepkg -s (which
+  # also builds and runs check()) finds them all and never downloads.
+  deps=$(su builder -c "makepkg --printsrcinfo" | sed -n "s/^\t\(make\|check\)\{0,1\}depends = //p")
+  # Word splitting is wanted: one argument per dependency.
+  retry pacman -S --noconfirm --needed --asdeps $deps
   su builder -c "makepkg -s --noconfirm"
   # The exact file this PKGBUILD produces, not whatever matches a glob.
   pkg=$(su builder -c "makepkg --packagelist" | grep -v -- "-debug-")
   [ "$(echo "$pkg" | wc -l)" = 1 ] && [ -f "$pkg" ] || { echo "unexpected package list: $pkg" >&2; exit 1; }
 
-  if pacman -S --noconfirm --needed namcap >/dev/null 2>&1; then
+  if retry pacman -S --noconfirm --needed namcap >/dev/null; then
     namcap PKGBUILD "$pkg" || true
   else
     echo "namcap not available; skipping"
   fi
 
   # Install and smoke-test.
-  pacman -U --noconfirm "$pkg"
+  retry pacman -U --noconfirm "$pkg"
   test -x /usr/bin/cassini-talk
   cassini-talk --help >/dev/null   # runs the installed launcher headless
   python3 -I /in/build-aux/smoke-installed.py
@@ -81,9 +89,10 @@ pkg_name=$(cat "dist/$name_file") && rm -f "dist/$name_file"
 # hide a missing dependency; install the package in a fresh container, then
 # check it there with no network, writing the D11 goldens down offline.
 container_offline_smoke "$BASE" '
+  . /ci/retry.sh
   printf "\nNoExtract = !usr/share/locale/*/LC_MESSAGES/cassini-talk.mo\n" >> /etc/pacman.conf
-  pacman -Syu --noconfirm --noprogressbar -q >/dev/null
-  pacman -U --noconfirm --noprogressbar "/d/$PKG" >/dev/null
+  retry pacman -Syu --noconfirm --noprogressbar -q >/dev/null
+  retry pacman -U --noconfirm --noprogressbar "/d/$PKG" >/dev/null
   pacman -Scc --noconfirm >/dev/null
-' -v "$PWD/dist":/d:ro$Z -e PKG="$pkg_name"
+' -v "$PWD/dist":/d:ro$Z -v "$PWD/build-aux/ci":/ci:ro$Z -e PKG="$pkg_name"
 ls -l "dist/$pkg_name"
