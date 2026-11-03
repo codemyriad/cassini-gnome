@@ -5,6 +5,9 @@
 #
 # Uses podman or docker, whichever is installed (podman first).
 # Set CONTAINER_ENGINE=docker or CONTAINER_ENGINE=podman to choose.
+# Sourced from the source root. Defines retry (build-aux/ci/retry.sh).
+
+. build-aux/ci/retry.sh
 
 if [ -z "${CONTAINER_ENGINE:-}" ]; then
   if command -v podman >/dev/null 2>&1; then
@@ -33,6 +36,12 @@ fi
 
 container_build() {
   "$CONTAINER_ENGINE" build --network host "$@"
+}
+
+# Pull IMAGE unless it is already local, as a run would, but retried:
+# registries occasionally time out. Call it before running or building FROM it.
+container_pull() {
+  "$CONTAINER_ENGINE" image inspect "$1" >/dev/null 2>&1 || retry "$CONTAINER_ENGINE" pull -q "$1"
 }
 
 # A tag-safe name for an image reference: fedora:43 -> fedora-43

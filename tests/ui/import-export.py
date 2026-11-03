@@ -36,6 +36,7 @@ gi.require_version("Gst", "1.0")
 gi.require_version("Gsk", "4.0")
 gi.require_version("Graphene", "1.0")
 from gi.repository import Gdk, Gio, GLib, Graphene, Gst, Gtk  # noqa: E402
+from painted import painted_node  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk import portable  # noqa: E402
@@ -200,11 +201,10 @@ with tempfile.TemporaryDirectory() as temporary:
     window.add_tick_callback(lambda *_: (ticks.append(True), len(ticks) < 3)[1])
     window.queue_draw()
     until(lambda: len(ticks) >= 3)
-    paintable, snapshot = Gtk.WidgetPaintable.new(window), Gtk.Snapshot.new()
-    paintable.snapshot(snapshot, window.get_width(), window.get_height())
+    node = painted_node(window)
     viewport = Graphene.Rect()
     viewport.init(5, 5, 1120, 720)
-    texture = window.get_renderer().render_texture(snapshot.to_node(), viewport)
+    texture = window.get_renderer().render_texture(node, viewport)
     assert texture.save_to_png(os.environ["CASSINI_SCREENSHOT_OUT"])
     exported = portable.read_meeting(str(dialog.output))
     assert portable.verify_audio(str(dialog.output), exported).state == portable.State.OK

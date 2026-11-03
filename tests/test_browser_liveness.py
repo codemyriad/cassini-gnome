@@ -110,9 +110,13 @@ def lost_events(capture):
     return [e for e in manifest["events"] if e["type"] == "othersSource" and e.get("reason") == "lost"]
 
 
-def me_frames(capture):
+def me_track(capture):
     identifier = capture.native_taps["microphone"][0]
-    return next(t["frames"] for t in capture.host.session.manifest["tracks"] if t["id"] == identifier)
+    return next(t for t in capture.host.session.manifest["tracks"] if t["id"] == identifier)
+
+
+def me_frames(capture):
+    return me_track(capture)["frames"]
 
 
 def jam(browser):
@@ -235,7 +239,11 @@ def test_frozen_audio_transport_falls_back_and_keeps_me(broker):
         assert client.handle(declare("guest", "receiver")) == ACK
         assert client.handle(pcm("guest", 480)) == ACK
         tap = capture.microphone
-        tap.append(b"\x01\x00" * 480, 200)
+        # The side commits at its real open time, which a loaded machine
+        # delays; PCM stamped before that commit is readiness PCM (R79 1).
+        # Stamp the device's PCM from the committed start, as stream() does.
+        start = me_track(capture)["startOffsetMs"]
+        tap.append(b"\x01\x00" * 480, start)
         before = me_frames(capture)
         # Freeze: the companion neither sends nor reads; its socket stays open.
         clock.now = PCM_STALE_AFTER - 0.5
@@ -247,7 +255,7 @@ def test_frozen_audio_transport_falls_back_and_keeps_me(broker):
         (event,) = lost_events(capture)
         assert event["source"] == "system"
         assert capture.native_taps.keys() == {"microphone", "system"}
-        tap.append(b"\x02\x00" * 480, 300)
+        tap.append(b"\x02\x00" * 480, start + 10)  # The next 10 ms (480 frames).
         assert me_frames(capture) > before
         assert not capture.finished
         service.command("capture:frozen", "stop")

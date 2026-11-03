@@ -25,6 +25,7 @@ from cassini_talk.native_recorder import START_FAILURE, NativeRecorder  # noqa: 
 
 Gst.init(None)
 FRAME = bytes(960)  # 10 ms of mono S16LE at 48 kHz.
+FRAME_NS = 10 * Gst.MSECOND
 BOUND = 3  # R79 §1: a side has opened when its first buffer arrives within 3 s.
 CAPS = "audio/x-raw,format=S16LE,rate=48000,channels=1,layout=interleaved"
 
@@ -69,6 +70,9 @@ class Sides:
     "error" side's cause, by kind. With frozen set, the clock never advances
     without a scripted event; overshoot lets the wait wake that much late;
     stop_on_commit names a side whose commit the user follows with a Stop.
+    feed() continues a side's PCM right after its last buffer, as a device
+    that kept delivering does: the fake open clock never lets the real time
+    a loaded test spent in between become a recorded gap.
     """
 
     def __init__(self, recorder, plan, causes=None):
@@ -78,6 +82,7 @@ class Sides:
         self.started_at = None
         self.frozen, self.overshoot, self.stop_on_commit = False, 0.0, None
         self.release, self.blocked = threading.Event(), {}
+        self.next_pts = {}  # kind -> where its device's next buffer starts
         self.real_branch = recorder._branch
         recorder._open_clock = lambda: self.now
         recorder._open_wait = self.wait
@@ -102,7 +107,15 @@ class Sides:
         )
         branch.get_by_name(kind).connect("new-sample", self.recorder._sample, kind)
         self.sources[kind] = branch.get_by_name("device")
+        self.next_pts.pop(kind, None)
+        branch.get_by_name("device").get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, self._sent, kind)
         return branch
+
+    def _sent(self, _pad, info, kind):
+        buffer = info.get_buffer()
+        if buffer.pts != Gst.CLOCK_TIME_NONE:
+            self.next_pts[kind] = max(self.next_pts.get(kind, 0), buffer.pts + FRAME_NS)
+        return Gst.PadProbeReturn.OK
 
     def fire(self, kind):
         self.fired.add(kind)
@@ -116,8 +129,15 @@ class Sides:
         return source.emit("push-buffer", Gst.Buffer.new_wrapped(FRAME))
 
     def feed(self, kind, count):
-        for _ in range(count):
-            assert self.sources[kind].emit("push-buffer", Gst.Buffer.new_wrapped(FRAME)) == Gst.FlowReturn.OK
+        # Only after a side committed on its first buffer: that buffer has
+        # passed the source pad, so its stamp is known here.
+        assert kind in self.next_pts, f"{kind} has delivered no buffer yet"
+        start = self.next_pts[kind]
+        self.next_pts[kind] = start + count * FRAME_NS
+        for index in range(count):
+            buffer = Gst.Buffer.new_wrapped(FRAME)
+            buffer.pts, buffer.duration = start + index * FRAME_NS, FRAME_NS
+            assert self.sources[kind].emit("push-buffer", buffer) == Gst.FlowReturn.OK
 
     def _inflight(self):
         # Under the recorder's lock: a side marks itself settled and sets the

@@ -20,6 +20,7 @@ from array import array  # noqa: E402
 from types import SimpleNamespace  # noqa: E402
 
 from gi.repository import Adw, Gdk, GLib, Graphene, Gtk  # noqa: E402
+from painted import painted_node  # noqa: E402
 
 from cassini_talk.spectro_source import SpectroSource  # noqa: E402
 from cassini_talk.spectro_view_model import DisplayModel  # noqa: E402
@@ -111,10 +112,7 @@ window.queue_draw()
 until(lambda: len(frames) >= 2)
 scale = window.get_scale_factor()
 assert scale == int(os.environ.get("CASSINI_SCREENSHOT_SCALE", "1"))
-paintable, snapshot = Gtk.WidgetPaintable.new(window), Gtk.Snapshot.new()
-snapshot.scale(scale, scale)
-paintable.snapshot(snapshot, window.get_width(), window.get_height())
-node = snapshot.to_node()
+node = painted_node(window, scale=scale)
 viewport = Graphene.Rect()
 viewport.init(5 * scale, 5 * scale, 1120 * scale, 720 * scale)
 texture = window.get_renderer().render_texture(node, viewport)

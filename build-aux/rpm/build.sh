@@ -23,7 +23,10 @@ mkdir -p dist
 # Per base image, so parallel builds (make -j packages) do not swap names.
 name_file=.rpm-name-$(image_slug "$BASE")
 logs=$(test_log_dir "rpm-$(image_slug "$BASE")")
+container_pull "$BASE"
+# Only the package installs reach the network; each is retried (retry.sh).
 container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z ${logs:+-v "$logs:/logs:rw$Z"} "$BASE" sh -ec '
+  . /in/build-aux/ci/retry.sh
   top=/build/rpmbuild src=/build/cassini-talk-$VERSION
   # Keep the Meson test logs (test_log_dir). After a successful build rpm
   # >= 4.20 removes the build directory, so %check copies them itself
@@ -43,16 +46,18 @@ container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z
     # The minimal Fedora image otherwise installs only en_US translations.
     mkdir -p /etc/rpm
     printf "%%_install_langs en:it:fr:es:pt_BR:pt_PT\n" > /etc/rpm/macros.zz-cassini-languages
-    dnf -y install rpm-build tar xz "dnf-command(builddep)"
-    dnf -y --setopt=install_weak_deps=False builddep "$spec"
-    dnf -y install rpmlint || true
-    install_rpm() { dnf -y --setopt=install_weak_deps=False install "$@"; }
+    retry dnf -y install rpm-build tar xz "dnf-command(builddep)"
+    retry dnf -y --setopt=install_weak_deps=False builddep "$spec"
+    retry dnf -y install rpmlint || true
+    install_rpm() { retry dnf -y --setopt=install_weak_deps=False install "$@"; }
   elif command -v zypper >/dev/null 2>&1; then
-    sh /in/build-aux/ci/prepare_tumbleweed.sh
-    zypper -n install rpm-build tar xz
-    rpmspec -q --buildrequires "$spec" | tr -d " " | xargs zypper -n install
-    zypper -n install rpmlint || true
-    install_rpm() { zypper -n install --allow-unsigned-rpm "$@"; }
+    retry sh /in/build-aux/ci/prepare_tumbleweed.sh
+    retry zypper -n install rpm-build tar xz
+    requires=$(rpmspec -q --buildrequires "$spec" | tr -d " ")
+    # Word splitting is wanted: one argument per BuildRequires.
+    retry zypper -n install $requires
+    retry zypper -n install rpmlint || true
+    install_rpm() { retry zypper -n install --allow-unsigned-rpm "$@"; }
   else
     echo "error: no dnf or zypper in this image" >&2; exit 1
   fi
@@ -107,15 +112,16 @@ rpm_name=$(cat "dist/$name_file") && rm -f "dist/$name_file"
 # missing Requires; install the package in a fresh container, then check it
 # there with no network, writing the D11 goldens down offline.
 container_offline_smoke "$BASE" '
+  . /ci/retry.sh
   if command -v dnf >/dev/null 2>&1; then
     mkdir -p /etc/rpm
     printf "%%_install_langs en:it:fr:es:pt_BR:pt_PT\n" > /etc/rpm/macros.zz-cassini-languages
     # Without weak deps: this checks that Requires alone are enough.
-    dnf -y -q --setopt=install_weak_deps=False install "/d/$RPM"
+    retry dnf -y -q --setopt=install_weak_deps=False install "/d/$RPM"
     dnf clean all >/dev/null
   else
-    sh /ci/prepare_tumbleweed.sh
-    zypper -n -q install --allow-unsigned-rpm "/d/$RPM"
+    retry sh /ci/prepare_tumbleweed.sh
+    retry zypper -n -q install --allow-unsigned-rpm "/d/$RPM"
     zypper -n clean -a >/dev/null
   fi
 ' -v "$PWD/dist":/d:ro$Z -v "$PWD/build-aux/ci":/ci:ro$Z -e RPM="$rpm_name"

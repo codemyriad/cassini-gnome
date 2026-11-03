@@ -68,7 +68,8 @@ def download(name, info, target):
             except (OSError, http.client.HTTPException) as error:
                 if attempt == ATTEMPTS:
                     raise RuntimeError(f"Could not download {name} from {info['url']}: {error}") from error
-                print(f"{name}: attempt {attempt} failed ({error}); retrying", file=sys.stderr)
+                # D66: every retry is a GitHub annotation, so a flaky host stays visible.
+                print(f"::warning::{name}: attempt {attempt} of {ATTEMPTS} failed ({error}); retrying", file=sys.stderr)
             finally:
                 temporary.unlink(missing_ok=True)
         time.sleep(5 * attempt)

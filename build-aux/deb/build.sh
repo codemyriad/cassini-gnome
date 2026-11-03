@@ -28,10 +28,14 @@ TAG=cassini-talk-deb:$(image_slug "$BASE")
 # The pinned writing-down artifacts; the package build itself is offline.
 build-aux/whistle-cache.sh
 build-aux/sherpa-cache.sh
-container_build -q -f build-aux/deb/Dockerfile --build-arg BASE="$BASE" -t "$TAG" debian
+container_pull "$BASE"
+# The image only installs the build dependencies (no build, no test), so a
+# mirror failure while building it is retried as a whole (retry.sh).
+retry container_build -q -f build-aux/deb/Dockerfile --build-arg BASE="$BASE" -t "$TAG" debian
 mkdir -p dist
 logs=$(test_log_dir "deb-$(image_slug "$BASE")")
 container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" ${logs:+-v "$logs:/logs:rw$Z"} -e DEB="$DEB" -e OUT="$OUT" "$TAG" sh -ec '
+  . /in/build-aux/ci/retry.sh
   # Keep the Meson test logs, also when a test fails (test_log_dir).
   save_logs() {
     [ -d /logs ] || return 0
@@ -50,8 +54,8 @@ container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" ${logs:+-v "$logs:/log
   dpkg-buildpackage -us -uc -b
   test -f "../$DEB"
   lintian --info --fail-on error "../$DEB"
-  apt-get update -qq
-  apt-get install -y --no-install-recommends "../$DEB"
+  retry apt-get update -qq
+  retry apt-get install -y --no-install-recommends "../$DEB"
   cassini-talk --help >/dev/null
   python3 -I /in/build-aux/smoke-installed.py
   python3 -I /in/build-aux/ci/validate_installed.py "$1"
@@ -65,10 +69,11 @@ container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" ${logs:+-v "$logs:/log
 # missing Depends; install the package in a fresh container, then check it
 # there with no network, writing the D11 goldens down offline.
 container_offline_smoke "$BASE" '
+  . /ci/retry.sh
   printf "path-include=/usr/share/locale/*/LC_MESSAGES/cassini-talk.mo\n" > /etc/dpkg/dpkg.cfg.d/zz-cassini-locales
   printf "Acquire::Retries \"3\";\nAcquire::http::Timeout \"15\";\n" > /etc/apt/apt.conf.d/80retries
-  apt-get update -qq
-  apt-get install -y -qq --no-install-recommends "/d/$OUT" >/dev/null
+  retry apt-get update -qq
+  retry apt-get install -y -qq --no-install-recommends "/d/$OUT" >/dev/null
   rm -rf /var/lib/apt/lists/*
-' -v "$PWD/dist:/d:ro$Z" -e OUT="$OUT" -e DEBIAN_FRONTEND=noninteractive
+' -v "$PWD/dist:/d:ro$Z" -v "$PWD/build-aux/ci":/ci:ro$Z -e OUT="$OUT" -e DEBIAN_FRONTEND=noninteractive
 ls -l "dist/$OUT"

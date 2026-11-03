@@ -23,6 +23,7 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 gi.require_version("Gsk", "4.0")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+from painted import painted_node  # noqa: E402
 from test_model_download import remote  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
@@ -51,14 +52,11 @@ def until(check):
 def capture(window, suffix):
     target = Path(os.environ["CASSINI_SCREENSHOT_OUT"])
     target.parent.mkdir(parents=True, exist_ok=True)
-    paintable = Gtk.WidgetPaintable.new(window)
     ticks = []
     window.add_tick_callback(lambda *_: (ticks.append(True), len(ticks) < 3)[1])
     window.queue_draw()
     until(lambda: len(ticks) >= 3)
-    snapshot = Gtk.Snapshot.new()
-    paintable.snapshot(snapshot, window.get_width(), window.get_height())
-    texture = window.get_renderer().render_texture(snapshot.to_node(), None)
+    texture = window.get_renderer().render_texture(painted_node(window), None)
     assert texture.save_to_png(str(target.with_name(target.stem + suffix + ".png")))
 
 
