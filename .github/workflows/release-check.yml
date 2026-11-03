@@ -42,12 +42,29 @@ jobs:
     needs: metadata
     if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'release/')
     runs-on: ubuntu-26.04
+    timeout-minutes: 30
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
-      options: --privileged
+      # gnome-50 as of 2026-11-03 (multi-arch index, image created 2026-09-22).
+      image: ghcr.io/flathub-infra/flatpak-github-actions@sha256:1de59efef01a946d9f28f1ec3458bf6f61dcee3507d7fecdd473f8134da4ec77
+      # G4: /var/lib/flatpak gets an anonymous volume, which Docker fills
+      # from the image's preinstalled SDK. The volume sits on the host
+      # filesystem, not overlayfs, so ostree's renames during the SDK update
+      # do not fail with EXDEV ("Invalid cross-device link") on the AWS
+      # ubuntu-26.04 runner pool.
+      options: --privileged -v /var/lib/flatpak
     steps:
       - uses: actions/checkout@v7
-      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
+      # G4: update the system SDK on its own first, so an infra failure is
+      # named as such instead of surfacing as xvfb-run exit 139 inside the
+      # builder. Never retried: the EXDEV failure is deterministic per runner.
+      - name: Update the system GNOME 50 SDK (fails fast on infra errors)
+        run: |
+          grep -F ' /var/lib/flatpak ' /proc/self/mountinfo || echo '/var/lib/flatpak is not a separate mount'
+          flatpak update --system -y --noninteractive org.gnome.Sdk//50 org.gnome.Platform//50 || { echo '::error::infra: Flatpak SDK update failed (overlayfs EXDEV on this runner pool); rerun'; exit 1; }
+      # Pinned (G4). flathub-infra/flatpak-github-actions has no tags and was
+      # archived on 2025-04-24; this is the master SHA @master resolved to on
+      # 2026-11-03 (last commit "Close this branch", README only).
+      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@933e9e8ca36e85046ebca8e211f0785c6becac40 # master, 2026-11-03
         with:
           bundle: cassini-talk.flatpak
           manifest-path: build-aux/flatpak/io.codemyriad.CassiniTalk.json
