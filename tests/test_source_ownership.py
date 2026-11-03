@@ -106,12 +106,13 @@ def meeting_fixture(root, case):
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case["name"])
-def test_readers_mask_actual_overlapping_wavs_for_export_speech_and_diarization(tmp_path, case):
+def test_readers_mask_actual_overlapping_wavs_for_export_speech_diarization_and_publication(tmp_path, case):
     np = pytest.importorskip("numpy")
     gi = pytest.importorskip("gi")
     gi.require_version("Gst", "1.0")
     from cassini_talk.diarization_audio import rejoin
     from cassini_talk.export_audio import mixed_pcm, track_pcm
+    from cassini_talk.library_v2 import mixdown
     from cassini_talk.speech_pipeline import audio_chunks, audio_segments
     from cassini_talk.transcription import prepare_tracks
 
@@ -140,6 +141,12 @@ def test_readers_mask_actual_overlapping_wavs_for_export_speech_and_diarization(
     mixed = np.concatenate(list(mixed_pcm(meeting.tracks)))
     assert np.array_equal(mixed, expected_mix)
     assert np.max(mixed) == 0.25, "two physically overlapping sources must never be summed"
+    # The published Library mix (finalize) masks each span as export does.
+    session = json.loads((meeting.directory / "session.json").read_text())
+    timeline = mixdown.session_spans(meeting.directory, session)
+    published = np.concatenate(list(mixdown.mixed(timeline.spans, mixdown.total_samples(timeline.spans))))
+    assert np.array_equal(published, mixed[: len(published)]) and not np.any(mixed[len(published) :])
+    assert np.max(published) == 0.25, "the published mix must never sum an overlap"
     with rejoin(jobs, scratch=tmp_path / "scratch") as (stream, frames, _sha):
         joined = np.frombuffer(stream.read(), dtype="<f4")
         assert frames == len(expected_speech)
