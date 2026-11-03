@@ -642,6 +642,7 @@ class CassiniApplication(Adw.Application):
         then starts a new recording (D18) instead of a silent Stop, while the
         top bar already shows the app as ready. A test recording never counts."""
         from .capture_guard import recorder_busy
+        from .library import meeting_id
 
         reasons = []
         if self._record_start_future:
@@ -649,11 +650,17 @@ class CassiniApplication(Adw.Application):
         statuses = [*self._browser_snapshot.get("statuses", [])]
         for window in self.get_windows():
             statuses.extend(getattr(window, "_browser_snapshot", {}).get("statuses", []))
-            source = getattr(window, "_activity_source", None)
-            if source and "recording" in (source.snapshot or {}).values():
-                reasons.append("browser activity")
         if any(s.get("recording") for s in statuses):
             reasons.append("browser")
+        # The broker's status for a capture wins over the Library's 1 s
+        # BrowserActivity cache of it: a cached "recording" for a capture the
+        # broker already reports stopping must not turn Record into Stop.
+        reported = {meeting_id(Path(s["path"])) for s in statuses if isinstance(s.get("path"), str)}
+        for window in self.get_windows():
+            source = getattr(window, "_activity_source", None)
+            for identifier, state in ((source and source.snapshot) or {}).items():
+                if state == "recording" and identifier not in reported:
+                    reasons.append("browser activity")
         if any(recorder_busy(r) for r in self.native_captures.values()):
             reasons.append("native")
         return reasons
