@@ -739,7 +739,13 @@ def fake_app(application, check, order, **values):
         get_windows=lambda: [],
         **values,
     )
-    for name in ("discard_test_recording", "recording_active", "browser_capture_active", "can_test_recording"):
+    for name in (
+        "discard_test_recording",
+        "recording_active",
+        "recording_to_stop",
+        "browser_capture_active",
+        "can_test_recording",
+    ):
         setattr(app, name, types.MethodType(getattr(application, name), app))
     return app
 

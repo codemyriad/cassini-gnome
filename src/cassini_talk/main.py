@@ -636,16 +636,51 @@ class CassiniApplication(Adw.Application):
             for window in self.get_windows()
         )
 
+    def recording_to_stop(self):
+        """What Record stops, named: a recording that runs or starts. A browser
+        capture that only saves (stopped, still publishing) is not one: Record
+        then starts a new recording (D18) instead of a silent Stop, while the
+        top bar already shows the app as ready. A test recording never counts."""
+        from .capture_guard import recorder_busy
+        from .library import meeting_id
+
+        reasons = []
+        if self._record_start_future:
+            reasons.append("start")
+        statuses = [*self._browser_snapshot.get("statuses", [])]
+        for window in self.get_windows():
+            statuses.extend(getattr(window, "_browser_snapshot", {}).get("statuses", []))
+        # The broker's per-capture phase is the one start_all uses: a capture
+        # that is stopping never blocks a new session.
+        if any(s.get("phase") == "recording" if "phase" in s else s.get("recording") for s in statuses):
+            reasons.append("browser")
+        # The broker's status for a capture wins over the Library's 1 s
+        # BrowserActivity cache of it: a cached "recording" for a capture the
+        # broker already reports stopping must not turn Record into Stop.
+        reported = {meeting_id(Path(s["path"])) for s in statuses if isinstance(s.get("path"), str)}
+        for window in self.get_windows():
+            source = getattr(window, "_activity_source", None)
+            for identifier, state in ((source and source.snapshot) or {}).items():
+                if state == "recording" and identifier not in reported:
+                    reasons.append("browser activity")
+        if any(recorder_busy(r) for r in self.native_captures.values()):
+            reasons.append("native")
+        return reasons
+
     def retry_recording(self):
         """The start banner's Try again: Record again, unless something records."""
         self.recording_failure = None
-        if not self.recording_active():
+        if not self.recording_to_stop():
             self.on_record()
         self._native_changed()
 
     def on_record(self, *_args):
         # A test recording is not a recording: Record starts one (D60).
-        if self.recording_active():
+        if reasons := self.recording_to_stop():
+            from .installed_build import lifecycle_log
+
+            # A Stop is silent otherwise: name what it stopped.
+            lifecycle_log("Record stops the current recording (%s)", ", ".join(dict.fromkeys(reasons)))
             self.on_stop_recording()
             return
 
@@ -668,7 +703,7 @@ class CassiniApplication(Adw.Application):
             self.record_first.connect("closed", lambda *_: setattr(self, "record_first", None))
 
     def on_global_record(self, *_):
-        active = self.recording_active()
+        active = bool(self.recording_to_stop())
         if active and not any(w.is_active() for w in self.get_windows()):
             from pathlib import Path
 
@@ -854,6 +889,17 @@ class CassiniApplication(Adw.Application):
                 # and every distinct caption of the meetings that failed (R82 decision 6).
                 lists = [f.get("refusals") if isinstance(f.get("refusals"), list) else [] for f in snapshot["failures"]]
                 self.recording_failure = banner(*lists)
+            elif snapshot.get("skipped") and not snapshot.get("attempted"):
+                from .installed_build import lifecycle_log
+                from .refusals import banner, entry
+
+                # The broker started nothing because every call already
+                # records: say so, never a Record that silently does nothing.
+                lifecycle_log(
+                    "Record started nothing: %s",
+                    ", ".join(f"{s.get('id')} ({s.get('reason')})" for s in snapshot["skipped"]),
+                )
+                self.recording_failure = banner([entry(0, "browser", "startFailed", detail="busy")])
             elif active and any(w.get_visible() for w in self.get_windows()):
                 self._pending_recording = active[0]["path"]
             self._native_changed()
