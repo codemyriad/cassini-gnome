@@ -1,26 +1,26 @@
-tree 03cfbc426e16263f8b762afeb7960263e9f1bf3a
-parent 82c241935c2cbb639ce4d3c03a0862579d092b9d
-parent f5333f507e817580cf61336c37eddc6ae84eb3d3
-author Silvio Tomatis <silviot@gmail.com> 1793660718 +0100
-committer GitHub <noreply@github.com> 1793660718 +0100
+tree 1d771150e7991b0d280bfc8b1e921eb3cc5c1a96
+parent 032e98fc5d6e96059a077b60c6d40f3d3290bd76
+parent 0c9370da1d930f6c62d286d2c4600b26a15d431f
+author Silvio Tomatis <silviot@gmail.com> 1793669835 +0100
+committer GitHub <noreply@github.com> 1793669835 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq6RcuCRC1aQ7uu5UhlAAAOkEQAIP18Qf5NjCrL1aTgcU2Zs4/
- j8aqQsUzQPax8SLdUNVXiUomhcSWp4PSkivIVglFV17+SNprs9fPy9Ug97GhqMSh
- /Gui4AifbVY9pc7hEtq1xoHtsaEEImF4Cg6798j4Axno4/x3fOnxafRjhFdemLhw
- skLC+HAVK5Xce3lrLYjQskyZ9/ptcyZB/y34+cU78XSYdNvHeMY7AQ8kGTX5jioC
- 7GHcGTGhBKUr2NX9lnLEeX7iNXotaSzIW8uzTXZyycBylKda45rxKwB0yRc6cFoH
- bTczc3ZYTx0OkGrT+g88iDOkuw/+GuOW1XW99wPOyhHiRkKnf4d5uSC3K6eUzsH9
- cDs5+LA1Iy2iVWO7DLFNDLxyOemIRzFJ/3INZp4H82zRn5xmeKZQVWbXeSeCMdBR
- RokBKPgvbz88fEdiB4oemCEBHKA1eTO6DNRgNQ0yinKNv7CrwKNSaR6srVXU4VrH
- I7OGpcE1tNr4OvSEeJvy/wFRRV9ZQywvxi/9GM38ao1UR0G6AphEef1xscTKHmdC
- wKqD/ZeHwUfFCx+xle++Jakc5pycfQjplLl+IDHZFT+ipEIkHNRKKVYl/rF8T4mG
- jzsWA+/hvewLUYzNa1bDVrw+Ru1knuOaE+Yp6/3+35AqF1CyRlclfag7sXLP0QLr
- KBvoL9tDXp6sDvbmz7O/
- =hd0C
+ wsFcBAABCAAQBQJq6TrLCRC1aQ7uu5UhlAAA1vIQACZ3yCYk8D1V/zLtOtVNPA/7
+ 2J+Fe/yJElTGYFVpbu+VAqbdnzEJ6y70jaTI2MmqonFbZ6uMxVFNxTnIAiLqQy+B
+ +XspkuUzjIcxMUnvOrBdz7QXOIlilXL0lCmvyVxMx0Ctp/oxU7a8FCDLjV2YJbem
+ 9VlUCBfQHeQ1Ue7/Vkumr5P77tzM3/gwjBrlZEygbMl2XtntTjjhlPJvllZ0ogJ+
+ 3ey35GMNZrXZAlpdBvWvFt9Fo8ts5APG8oi9CxPDri9WJwjNMZWRJnH9uM20XYjH
+ mXrjO8kfLPz52coenANc9jxHDrL7JwxGY7FiI9fh/ZyMrMcbyy0TCa56leQW8kVr
+ PMUaMlxHGboFMXuoWcNeqd0fsRYpersVM5N5RP5bj3z5uxe5cX8SGyca4SIHTX0U
+ 9OrDyaPMNMFZ6puS1EGiK57CoLp59cE5ztynUzC2EKipEuLeKn5pZEV+IJCvE1vG
+ 1IKpB4NyoQmtrdMGB1CHrfLOfj+R5U4mZlKLQowIBqfYU1FbfljKTBq3KXM3lW5k
+ LQE17fdZODWaU3MoZV/M18NsZgx/Yuv68FloCUcZTlyaxExeS04P6pIRVtdN2AFd
+ la0xn1I065qEILxYQew+U08z242NIpDtLxaLkYDS1aVhNIyJIzX7EXAATgJcRJms
+ 8joIrv3x6FZr5QPwL9b+
+ =cSNH
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #40 from codemyriad/chore/clock-facts-followups
+Merge pull request #41 from codemyriad/feat/corpus-v2
 
-D61 follow-ups from Mac's review of #39
+Corpus v2: the production-shaped corpus meets D52 shared test 1 (G15/M17)

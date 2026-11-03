@@ -39,7 +39,7 @@ def track_pcm(track, cancel=None):
     sink = pipeline.get_by_name("pcm")
     from .source_ownership import FrameMask
 
-    ownership = FrameMask(getattr(track, "ownership_windows", None), RATE)
+    ownership = FrameMask(getattr(track, "ownership_windows", None), RATE, getattr(track, "ownership_offset_ms", 0))
     cursor = 0
     remaining = array.array("f")
     try:

@@ -30,3 +30,9 @@ actual opaque remote source ID, and the final single `end` explains callEnded.
 The hand-written expected file checks timeline, roles and final end. Schema and
 semantic checks reject illegal restoration, duplicate/nonterminal end and unsaved
 state with end. Policy deadlines live in `control/call-lifecycle-vectors.json`.
+
+Production-shaped speech lives elsewhere. `../multistream/` holds the D52 corpus,
+`corpus.json` plus `make.py`. It has real pinned speech, a late remote, sparse and
+gapped spans, a real D49 switch and lost/restored seams with physical overlap, bleed in
+both directions, overlapping voices and two concurrent folders. That corpus has named
+`constants` and hand-written `expected` literals. These S-6 cases stay metadata-only.

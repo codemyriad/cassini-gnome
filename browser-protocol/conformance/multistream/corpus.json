@@ -1,15 +1,76 @@
 {
-  "version": 1,
+  "version": 2,
   "rate": 48000,
-  "speech": {
-    "A": {
-      "file": "speech/a.wav",
-      "sha256": "0b1785dba56f22af426ccb25d318f7e103558fd40e1c3ab064b455dba2afae12"
+  "constants": {
+    "LATE_REMOTE_MS": 30000,
+    "SPARSE_DENSITY_MAX": 0.5,
+    "SPAN_RATIO_MIN": 5,
+    "BLEED_DB": -35,
+    "D49_OVERLAP_MS": 2000,
+    "SEAM_OVERLAP_MS": 1000,
+    "OVERLAP_MIN_MS": 2000,
+    "VOICES_MIN": 3,
+    "CONCURRENT_MIN_MS": 20000,
+    "NOISE_BED_DBFS": -45,
+    "FLOOR_TOLERANCE_DB": 3
+  },
+  "expected": {
+    "concurrency": {
+      "sessions": ["05200000-0000-4000-8000-000000000001", "05200000-0000-4000-8000-000000000002"],
+      "wallClock": ["2026-10-31T12:00:20Z", "2026-10-31T12:01:00Z"]
     },
-    "B": {
-      "file": "speech/b.wav",
-      "sha256": "b705182467706b101089465062b82f3086ba99dc77d52ae7aabd6c58b8ba6bcb"
+    "sessions": {
+      "05200000-0000-4000-8000-000000000001": {
+        "tracks": {
+          "mic": {"ownership": [[0, 90000]], "presence16k": [[0, 1440000]], "gaps": [], "noWords": [], "floorDb": [-71, -65]},
+          "system": {"ownership": [[0, 20000]], "presence16k": [[0, 320000]], "gaps": [], "noWords": [[20000, 22000]], "floorDb": [-55, -49]},
+          "a-short": {"ownership": [[30000, 32000]], "presence16k": [[480000, 512000]], "gaps": [], "noWords": [], "floorDb": [-57, -51]},
+          "a-long": {"ownership": [[40000, 50000]], "presence16k": [[640000, 656000], [768000, 800000]], "gaps": [[41000, 48000]], "noWords": [[41000, 48000]], "floorDb": [-58, -52]},
+          "a-return": {"ownership": [[60000, 62000]], "presence16k": [[960000, 992000]], "gaps": [], "noWords": [], "floorDb": [-58, -52]},
+          "b": {"ownership": [[20000, 50000]], "presence16k": [[320000, 800000]], "gaps": [], "noWords": [[18000, 20000]], "floorDb": [-83, -77]},
+          "system-fallback": {"ownership": [[50000, 60000]], "presence16k": [[800000, 864000], [888000, 960000]], "gaps": [[54000, 55500]], "noWords": [[49000, 50000], [54000, 55500], [60000, 61000]], "floorDb": [-70, -64]},
+          "b-return": {"ownership": [[60000, 90000]], "presence16k": [[960000, 1120000], [1152000, 1440000]], "gaps": [[70000, 72000]], "noWords": [[70000, 72000]], "floorDb": [-48, -42]}
+        },
+        "voices": {"me": "A", "others": "B", "source-a": "C", "source-b": "B"},
+        "speechMs": {"me": 30000, "others": 8500, "source-a": 7000, "source-b": 29000},
+        "overlaps": [
+          {"ms": [49000, 50000], "people": ["source-a", "source-b"]},
+          {"ms": [60000, 62000], "people": ["me", "source-a", "source-b"]},
+          {"ms": [62000, 68000], "people": ["me", "source-b"]}
+        ],
+        "personFloorDb": {"me": [-71, -65], "others": [-70, -64], "source-a": [-58, -52], "source-b": [-83, -77]},
+        "d49Overlap": [18000, 22000],
+        "seamOverlaps": [[49000, 50000], [60000, 61000]],
+        "bleeds": [
+          {"from": "b", "into": "mic", "ms": [20000, 28000]},
+          {"from": "mic", "into": "b", "ms": [32000, 38000]},
+          {"from": "b-return", "into": "mic", "ms": [60000, 68000]}
+        ],
+        "noiseBed": {"track": "b-return", "ms": [[60000, 70000], [72000, 90000]]},
+        "captureOutcome": {"source-a": {"captureOutcome": "captured", "audioMs": 7000}, "source-b": {"captureOutcome": "captured", "audioMs": 60000}},
+        "droppedFrames": {"a-short": 4800, "a-long": 336000}
+      },
+      "05200000-0000-4000-8000-000000000002": {
+        "tracks": {
+          "independent": {"ownership": [[0, 40000]], "presence16k": [[0, 640000]], "gaps": [], "noWords": [], "floorDb": [-66, -60]}
+        },
+        "voices": {"other-call-source": "A"},
+        "speechMs": {"other-call-source": 16000},
+        "overlaps": [],
+        "personFloorDb": {"other-call-source": [-66, -60]},
+        "d49Overlap": null,
+        "seamOverlaps": [],
+        "bleeds": [],
+        "noiseBed": null,
+        "captureOutcome": {"other-call-source": {"captureOutcome": "captured", "audioMs": 40000}},
+        "droppedFrames": {}
+      }
     }
+  },
+  "speech": {
+    "A": {"file": "speech/a.wav", "sha256": "0b1785dba56f22af426ccb25d318f7e103558fd40e1c3ab064b455dba2afae12"},
+    "B": {"file": "speech/b.wav", "sha256": "b705182467706b101089465062b82f3086ba99dc77d52ae7aabd6c58b8ba6bcb"},
+    "C": {"file": "speech/c.wav", "sha256": "08c932d132f7a1293cb8675f2589c01f1738fde12e2ece03850cbace19a92008"}
   },
   "sessions": [
     {
@@ -18,223 +79,71 @@
       "title": "Production-shaped call A",
       "durationMs": 90000,
       "events": [
-        {
-          "type": "selection",
-          "atMs": 0,
-          "me": true,
-          "others": true,
-          "reason": "start"
-        },
-        {
-          "type": "othersSource",
-          "atMs": 0,
-          "source": "system",
-          "reason": "missing"
-        },
-        {
-          "type": "othersSource",
-          "atMs": 20000,
-          "source": "browser",
-          "reason": "callConnected"
-        },
-        {
-          "type": "othersSource",
-          "atMs": 50000,
-          "source": "system",
-          "reason": "lost"
-        },
-        {
-          "type": "othersSource",
-          "atMs": 60000,
-          "source": "browser",
-          "reason": "restored"
-        },
-        {
-          "type": "end",
-          "atMs": 90000,
-          "reason": "user"
-        }
+        {"type": "selection", "atMs": 0, "me": true, "others": true, "reason": "start"},
+        {"type": "othersSource", "atMs": 0, "source": "system", "reason": "missing"},
+        {"type": "othersSource", "atMs": 20000, "source": "browser", "reason": "callConnected"},
+        {"type": "othersSource", "atMs": 50000, "source": "system", "reason": "lost"},
+        {"type": "othersSource", "atMs": 60000, "source": "browser", "reason": "restored"},
+        {"type": "end", "atMs": 90000, "reason": "user"}
       ],
       "tracks": [
         {
-          "id": "mic",
-          "kind": "microphone",
-          "startMs": 0,
-          "endMs": 90000,
+          "id": "mic", "kind": "microphone", "startMs": 0, "endMs": 90000,
           "speech": "A",
-          "speechWindows": [
-            [
-              0,
-              8000
-            ],
-            [
-              12000,
-              20000
-            ],
-            [
-              60000,
-              68000
-            ]
-          ],
-          "bleed": {
-            "speech": "B",
-            "db": -35,
-            "windows": [
-              [
-                20000,
-                28000
-              ],
-              [
-                60000,
-                68000
-              ]
-            ],
-            "startMs": 20000,
-            "sourceTrackId": "source-b"
-          }
-        },
-        {
-          "id": "system",
-          "kind": "system",
-          "startMs": 0,
-          "endMs": 20000,
-          "speech": "B",
-          "speechWindows": [
-            [
-              0,
-              8000
-            ]
+          "speechWindows": [[0, 8000], [10000, 18000], [32000, 38000], [60000, 68000]],
+          "bleeds": [
+            {"from": "b", "db": -35, "windows": [[20000, 28000]]},
+            {"from": "b-return", "db": -35, "windows": [[60000, 68000]]}
           ]
         },
         {
-          "id": "a-short",
-          "kind": "remote",
-          "sourceTrackId": "source-a",
-          "startMs": 30000,
-          "endMs": 32000,
+          "id": "system", "kind": "system", "startMs": 0, "endMs": 22000,
           "speech": "B",
-          "speechWindows": [
-            [
-              30000,
-              32000
-            ]
+          "speechWindows": [[18000, 22000, 17500]]
+        },
+        {
+          "id": "a-short", "kind": "remote", "sourceTrackId": "source-a", "startMs": 30000, "endMs": 32000,
+          "speech": "C",
+          "speechWindows": [[30000, 32000]],
+          "droppedFrames": 4800
+        },
+        {
+          "id": "a-long", "kind": "remote", "sourceTrackId": "source-a", "startMs": 40000, "endMs": 50000,
+          "speech": "C",
+          "speechWindows": [[40000, 41000], [48000, 50000]],
+          "presenceWindows": [[40000, 41000], [48000, 50000]],
+          "gaps": [{"atMs": 41000, "durationMs": 7000, "frames": 336000, "kind": "jump"}],
+          "droppedFrames": 336000
+        },
+        {
+          "id": "a-return", "kind": "remote", "sourceTrackId": "source-a", "startMs": 60000, "endMs": 62000,
+          "speech": "C",
+          "speechWindows": [[60000, 62000, 57000]]
+        },
+        {
+          "id": "b", "kind": "application", "sourceTrackId": "source-b", "startMs": 18000, "endMs": 50000,
+          "speech": "B",
+          "speechWindows": [[18000, 28000, 17500], [49000, 50000, 48500]],
+          "presenceWindows": [[18000, 50000]],
+          "bleeds": [
+            {"from": "mic", "db": -35, "windows": [[32000, 38000]]}
           ]
         },
         {
-          "id": "a-long",
-          "kind": "remote",
-          "sourceTrackId": "source-a",
-          "startMs": 40000,
-          "endMs": 50000,
+          "id": "system-fallback", "kind": "system", "startMs": 49000, "endMs": 61000,
           "speech": "B",
-          "speechWindows": [
-            [
-              40000,
-              41000
-            ],
-            [
-              48000,
-              50000
-            ]
-          ],
-          "presenceWindows": [
-            [
-              40000,
-              41000
-            ],
-            [
-              48000,
-              50000
-            ]
-          ],
-          "gaps": [
-            {
-              "atMs": 41000,
-              "durationMs": 7000,
-              "frames": 336000,
-              "kind": "jump"
-            }
-          ]
+          "speechWindows": [[49000, 58000, 48500], [60000, 61000, 20000]],
+          "presenceWindows": [[49000, 54000], [55500, 61000]],
+          "gaps": [{"atMs": 54000, "durationMs": 1500, "frames": 72000, "kind": "input"}],
+          "noise": {"dbfs": -45, "seed": "b-return", "originMs": 60000, "windows": [[60000, 61000]]}
         },
         {
-          "id": "a-return",
-          "kind": "remote",
-          "sourceTrackId": "source-a",
-          "startMs": 60000,
-          "endMs": 62000,
+          "id": "b-return", "kind": "application", "sourceTrackId": "source-b", "startMs": 60000, "endMs": 90000,
           "speech": "B",
-          "speechWindows": [
-            [
-              60000,
-              62000
-            ]
-          ]
-        },
-        {
-          "id": "b",
-          "kind": "application",
-          "sourceTrackId": "source-b",
-          "startMs": 20000,
-          "endMs": 50000,
-          "speech": "B",
-          "speechWindows": [
-            [
-              20000,
-              28000
-            ]
-          ],
-          "presenceWindows": [
-            [
-              20000,
-              50000
-            ]
-          ]
-        },
-        {
-          "id": "system-fallback",
-          "kind": "system",
-          "startMs": 50000,
-          "endMs": 60000,
-          "speech": "B",
-          "speechWindows": [
-            [
-              50000,
-              58000
-            ]
-          ]
-        },
-        {
-          "id": "b-return",
-          "kind": "application",
-          "sourceTrackId": "source-b",
-          "startMs": 60000,
-          "endMs": 90000,
-          "speech": "B",
-          "speechWindows": [
-            [
-              60000,
-              68000
-            ]
-          ],
-          "presenceWindows": [
-            [
-              60000,
-              70000
-            ],
-            [
-              72000,
-              90000
-            ]
-          ],
-          "gaps": [
-            {
-              "atMs": 70000,
-              "durationMs": 2000,
-              "frames": 96000,
-              "kind": "jump"
-            }
-          ],
-          "speechStartMs": 20000
+          "speechWindows": [[60000, 68000, 20000], [72000, 84000, 20000]],
+          "presenceWindows": [[60000, 70000], [72000, 90000]],
+          "gaps": [{"atMs": 70000, "durationMs": 2000, "frames": 96000, "kind": "jump"}],
+          "noise": {"dbfs": -45, "seed": "b-return", "originMs": 60000, "windows": [[60000, 70000], [72000, 90000]]}
         }
       ]
     },
@@ -244,43 +153,15 @@
       "title": "Concurrent call B",
       "durationMs": 40000,
       "events": [
-        {
-          "type": "selection",
-          "atMs": 0,
-          "me": true,
-          "others": true,
-          "reason": "start"
-        },
-        {
-          "type": "othersSource",
-          "atMs": 0,
-          "source": "browser",
-          "reason": "start"
-        },
-        {
-          "type": "end",
-          "atMs": 40000,
-          "reason": "user"
-        }
+        {"type": "selection", "atMs": 0, "me": true, "others": true, "reason": "start"},
+        {"type": "othersSource", "atMs": 0, "source": "browser", "reason": "start"},
+        {"type": "end", "atMs": 40000, "reason": "user"}
       ],
       "tracks": [
         {
-          "id": "independent",
-          "kind": "remote",
-          "sourceTrackId": "other-call-source",
-          "startMs": 0,
-          "endMs": 40000,
+          "id": "independent", "kind": "remote", "sourceTrackId": "other-call-source", "startMs": 0, "endMs": 40000,
           "speech": "A",
-          "speechWindows": [
-            [
-              0,
-              8000
-            ],
-            [
-              12000,
-              20000
-            ]
-          ]
+          "speechWindows": [[0, 8000], [12000, 20000]]
         }
       ]
     }

@@ -34,7 +34,7 @@ class PCMSource:
             or bool(getattr(track, "clock_anchors", ()))
             and required(dict(sampleRate=track.sample_rate, clockAnchors=track.clock_anchors))
         )
-        self.mapping = None
+        self.mapping = self.source_mask = None
         self._mapped_cache = None
         self.path = track.path
         self.fd = None
@@ -60,7 +60,11 @@ class PCMSource:
             self.end_frame = max(0, round(end * self.rate / 48000))
         from .source_ownership import FrameMask
 
-        self.ownership = FrameMask(getattr(track, "ownership_windows", None), self.rate)
+        self.ownership = FrameMask(
+            getattr(track, "ownership_windows", None), self.rate, getattr(track, "ownership_offset_ms", 0)
+        )
+        # Each placed span is masked by its own windows on the 48 kHz timeline, also when its track is unplaced.
+        self.span_masks = [FrameMask(getattr(child.track, "ownership_windows", None), 48000) for child in self.children]
         self.cursor = 0
         self.lock = threading.Lock()
         self.src = Gst.ElementFactory.make("appsrc", None)
@@ -179,14 +183,13 @@ class PCMSource:
         output_rate = output_rate or self.rate
         if self.children:
             output = np.zeros((count, self.channels), dtype=np.float64)
-            for child in self.children:
+            for child, mask in zip(self.children, self.span_masks, strict=True):
                 first = child.track.start_offset_ms * 48
                 end = child.end_frame * 48000 / child.rate
                 if cursor + count > first and cursor < end:
                     child._open()
-                    output += np.frombuffer(child._mapped_data(cursor, count, output_rate=48000), dtype="<f4").reshape(
-                        -1, self.channels
-                    )
+                    data = mask.pcm(child._mapped_data(cursor, count, output_rate=48000), cursor, 4 * self.channels)
+                    output += np.frombuffer(data, dtype="<f4").reshape(-1, self.channels)
                 else:
                     child._release_input()
             return output.astype("<f4").tobytes()
@@ -198,6 +201,7 @@ class PCMSource:
             self.mapping = Mapping(
                 Span(getattr(track, "id", "source"), self.path, info, track.start_offset_ms, track.clock_anchors)
             )
+            self.source_mask = self._source_mask()
         output = np.zeros((count, self.channels), dtype=np.float64)
         source = self.mapping.source(np.arange(cursor, cursor + count, dtype=np.float64) * 48000 / output_rate)
         source *= self.rate / 48000
@@ -207,11 +211,28 @@ class PCMSource:
             low = np.floor(positions).astype(np.int64)
             first, end = int(low.min()), min(self.frames, int(low.max()) + 2)
             segment = self._mapped_segment(first, end)
+            if self.source_mask is not None:
+                # Interpolation must not blend an unowned native sample into owned time.
+                keep = np.zeros(len(segment), dtype=bool)
+                for left, right in self.source_mask.sections(first, len(segment)):
+                    keep[left:right] = True
+                segment = segment * keep[:, None]
             segment = np.concatenate((segment, np.zeros((1, self.channels))))
             fraction = (positions - low)[:, None]
             index = low - first
             output[inside] = segment[index] * (1 - fraction) + segment[index + 1] * fraction
         return output.astype("<f4").tobytes()
+
+    def _source_mask(self):
+        """Ownership in native frames, through the inverse clock map, as the publisher masks before resampling."""
+        from .source_ownership import FrameMask
+
+        intervals = getattr(self.track, "ownership_windows", None)
+        if intervals is None:
+            return None
+        shift = getattr(self.track, "ownership_offset_ms", 0)
+        timeline = tuple((left - shift, None if right is None else right - shift) for left, right in intervals)
+        return FrameMask(self.mapping.local(timeline), self.rate)
 
     def close(self):
         for child in self.children:

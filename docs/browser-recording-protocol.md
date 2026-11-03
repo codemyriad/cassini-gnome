@@ -3,7 +3,7 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `032e98fc`, ships companion 0.2.12, whose browser `track` packets carry
+The current pin, `e6d39987` (multistream corpus v2), ships companion 0.2.12, whose browser `track` packets carry
 the D61 clock facts (copied into session.json and x["codemyriad.io"].tracks, record-only)
 and the span's `documentGeneration` (a live watchdog hint, never written to files). Its
 `ok:false` results carry a D58 result `code`, and its native resume packet carries the
@@ -49,7 +49,10 @@ An active capture's ended physical span returns `state/source/retired:true`;
 its cleanup and in-flight chunks cannot mean the whole capture was saved.
 Capture finalization returns `state/command`. Failed spans are fenced locally,
 healthy sources and the microphone continue, and a live source retries a new ID.
-The pin is protocol commit 032e98fc (the PR #40 merge with Mac's follow-ups, on the PR #39 merge, D61: browser clock facts on `track`,
+The pin is protocol commit e6d39987 (PR #41, multistream corpus v2: named `constants`
+and a hand-written `expected` block in corpus.json, a third voice, real D49 and seam overlaps,
+bleeds both ways, a noisy gapped remote, `captureOutcome`, floor oracle), on top of
+protocol commit 032e98fc (the PR #40 merge with Mac's follow-ups, on the PR #39 merge, D61: browser clock facts on `track`,
 a span's `documentGeneration` and the departed-generation watchdog rule), on top of
 protocol commit 364c87b9 (PR #38, Mac's follow-ups to #37, on the PR #37 merge: the native resume packet carries the ask's `requestId`, a fresh UUID per ask), on top of
 the merge commit of protocol PR #36, d789cf30 (the D58 refusal vector follow-ups), on top of

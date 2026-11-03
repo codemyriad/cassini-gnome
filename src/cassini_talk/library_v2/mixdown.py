@@ -22,6 +22,14 @@ Timeline contract (§4.3), as GNOME reads session.json:
   A segment is valid when both coordinates increase and its rate is within 1 % of
   the nominal rate; with fewer than two valid anchors the nominal rate applies.
   GNOME's capture writes no anchors yet; this format is provisional (§10 REPLIES).
+- D52/P8 source ownership: a placed span sounds only inside its track's ownership
+  windows (source_ownership.windows over the session events, as the Library
+  scanner computes them), masked on the timeline as export, speech and rejoin
+  mask it, and also at its source rate before resampling, as export's reader does;
+  a clock-mapped span's windows reach its source frames through the inverse map.
+  A span with a null offset is mixed unclipped at its assumed zero, and never
+  changes how its placed siblings are masked. A D49 or seam overlap is mixed once.
+  The PCM and the x track map are unchanged.
 
 Mixdown (§4.4): each span is decoded to mono 48 kHz float by the export's reader
 (export_audio.track_pcm: one GStreamer audioconvert/audioresample path for WAV and
@@ -33,12 +41,15 @@ release), vectorized; the encoder is export's D8 path (export_audio.encode_block
 
 import array
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
 
 from .. import track_source
 from ..export_audio import check_cancel
+from ..recording_session import KINDS
+from ..session_events import read_events
+from ..source_ownership import FrameMask, windows
 
 RATE = 48000
 CHUNK = RATE  # <= 1 s per mixed block (G23)
@@ -59,6 +70,7 @@ class Span:
     start_ms: float
     anchors: tuple = ()
     offset_assumed: bool = False
+    ownership: tuple | None = None  # absolute session-ms windows; None owns every instant
 
     @property
     def length(self):
@@ -140,6 +152,20 @@ class Mapping:
     def end(self, length):
         return round(float(self.position([length])[0]))
 
+    def local(self, windows):
+        """Timeline ms windows as ms of this span's own decoded frames (from its first sample)."""
+        import numpy as np
+
+        result = []
+        for left, right in windows:
+            edges = self.source(np.array([left, 0 if right is None else right], dtype=np.float64) * RATE / 1000)
+            # Anchors are whole ns: round the float noise off there, so an edge on a frame stays on it.
+            low, high = (round(float(edge) * 1000 / RATE, 6) for edge in edges)
+            low = max(0.0, low)
+            if right is None or high > low:
+                result.append((low, None if right is None else high))
+        return tuple(result)
+
 
 @dataclass(frozen=True)
 class Timeline:
@@ -164,6 +190,14 @@ TRACK_COPY = (
 )
 
 
+def _kind(track, info):
+    """The scanner's track kind (library.py): a known kind, else the legacy file name."""
+    kind = track.get("kind")
+    if isinstance(kind, str) and kind in KINDS:
+        return kind
+    return {"track-microphone.wav": "microphone", "track-system.wav": "system"}.get(info.relative, "unknown")
+
+
 def session_spans(directory, manifest):
     """The §4.3 timeline of a stopped session.
 
@@ -173,6 +207,7 @@ def session_spans(directory, manifest):
     tracks = manifest.get("tracks") if isinstance(manifest, dict) else None
     if not isinstance(tracks, list) or len(tracks) > 64:
         raise ValueError("invalid-session-tracks")
+    events = read_events(manifest.get("events"))
     spans, empty, records = [], [], []
     for track in tracks:
         if not isinstance(track, dict) or not isinstance(track.get("id"), str):
@@ -214,6 +249,9 @@ def session_spans(directory, manifest):
             entry.update({key: track[key] for key in TRACK_COPY if key in track})
             records.append(dict(entry, spans=map_spans))
         if found:
+            # Like the scanner: each placed span gets its track's windows; an unplaced one is never clipped.
+            ownership = windows(_kind(track, found[0].info), events)
+            found = [span if span.offset_assumed else replace(span, ownership=ownership) for span in found]
             spans.extend(found)
         else:
             empty.append(track["id"])
@@ -242,6 +280,14 @@ class Reader:
             channels=info.channels,
             start_offset_ms=0,
         )
+        if span.ownership is not None:
+            # Export masks at the source rate before resampling; do the same in span time,
+            # through the clock map when the span has one, so the resampler sees no unowned sample.
+            mapping = Mapping(span)
+            if mapping.knots is None:
+                track.ownership_windows, track.ownership_offset_ms = span.ownership, span.start_ms
+            else:
+                track.ownership_windows, track.ownership_offset_ms = mapping.local(span.ownership), 0
         self.np = np
         self.length = span.length
         self.blocks = blocks if blocks is not None else track_pcm(track, cancel)
@@ -292,47 +338,64 @@ class Reader:
             close()
 
 
+def _add(out, reader, mapping, start, count):
+    """Add one span's samples for output [start, start + count) into `out`."""
+    import numpy as np
+
+    if mapping.knots is None:
+        first = start - mapping.shift
+        lo, hi = max(first, 0), min(first + count, reader.length)
+        if lo < hi:
+            out[lo - first : hi - first] += reader.get(lo, hi)
+            reader.release(hi)
+        if first + count >= reader.length:
+            reader.close()  # the span ended: its pipeline, fd and buffer go now
+        return
+    if reader.done and not len(reader.buffer):
+        return
+    j = mapping.source(np.arange(start, start + count + 1, dtype=np.float64))
+    ended = j[-1] > reader.length - 1
+    j = j[:-1]
+    inside = (j >= 0) & (j <= reader.length - 1)
+    if not inside.any():
+        if ended:
+            reader.close()
+        return
+    j = j[inside]
+    low = np.floor(j).astype(np.int64)
+    weight = j - low
+    first = int(low.min())
+    segment = reader.get(first, int(low.max()) + 2)
+    index = low - first
+    out[inside] += segment[index] * (1 - weight) + segment[index + 1] * weight
+    reader.release(int(low.max()))
+    if ended:
+        reader.close()
+
+
 def mixed(spans, total, cancel=None, readers=None):
     """Mono float64 blocks of at most CHUNK samples covering [0, total)."""
     import numpy as np
 
     readers = readers or [Reader(span, cancel) for span in spans]
     mappings = [Mapping(span) for span in spans]
+    # Ownership is on the output timeline, so a clock-mapped span is masked where it sounds.
+    masks = [FrameMask(span.ownership, RATE) for span in spans]
     try:
         for start in range(0, total, CHUNK):
             check_cancel(cancel)
             count = min(CHUNK, total - start)
             out = np.zeros(count, dtype=np.float64)
-            for reader, mapping in zip(readers, mappings, strict=True):
-                if mapping.knots is None:
-                    first = start - mapping.shift
-                    lo, hi = max(first, 0), min(first + count, reader.length)
-                    if lo < hi:
-                        out[lo - first : hi - first] += reader.get(lo, hi)
-                        reader.release(hi)
-                    if first + count >= reader.length:
-                        reader.close()  # the span ended: its pipeline, fd and buffer go now
+            for reader, mapping, mask in zip(readers, mappings, masks, strict=True):
+                sections = mask.sections(start, count)
+                if sections == [(0, count)]:
+                    _add(out, reader, mapping, start, count)
                     continue
-                if reader.done and not len(reader.buffer):
-                    continue
-                j = mapping.source(np.arange(start, start + count + 1, dtype=np.float64))
-                ended = j[-1] > reader.length - 1
-                j = j[:-1]
-                inside = (j >= 0) & (j <= reader.length - 1)
-                if not inside.any():
-                    if ended:
-                        reader.close()
-                    continue
-                j = j[inside]
-                low = np.floor(j).astype(np.int64)
-                weight = j - low
-                first = int(low.min())
-                segment = reader.get(first, int(low.max()) + 2)
-                index = low - first
-                out[inside] += segment[index] * (1 - weight) + segment[index + 1] * weight
-                reader.release(int(low.max()))
-                if ended:
-                    reader.close()
+                # Keep reading outside ownership, so the reader stays bounded and in order.
+                part = np.zeros(count, dtype=np.float64)
+                _add(part, reader, mapping, start, count)
+                for left, right in sections:
+                    out[left:right] += part[left:right]
             yield out
     finally:
         for reader in readers:

@@ -243,14 +243,19 @@ class Diarizer:
         pass
 
 
-def in_process_child(monkeypatch, decoded, rejoined, sent):
-    """A speech client running the real child code here: recognition, then diarization."""
+def in_process_child(monkeypatch, decoded, rejoined, sent, *, model=None, probability=1.0, keep=None, events=None):
+    """A speech client running the real child code here: recognition, then diarization.
+
+    `model` makes the fake recognizer (RunModel by default) and `probability` is the
+    fake VAD's answer. Tracks whose captureTrackId is not in `keep` take the D56
+    silent path. `events` collects every child event and the summary.
+    """
     from test_recognition_fallback import RunModel, detector
 
     from cassini_talk import diarization_audio, worker_diarization
     from cassini_talk import speech_pipeline as pipeline
 
-    monkeypatch.setattr(pipeline, "SpeechDetector", detector(1.0))
+    monkeypatch.setattr(pipeline, "SpeechDetector", detector(probability))
     monkeypatch.setitem(sys.modules, "cassini_talk.nemotron", types.SimpleNamespace(Nemotron=Diarizer))
     Diarizer.inputs = []
     original_chunks, original_rejoin = pipeline.resampled_chunks, diarization_audio.rejoin
@@ -278,11 +283,17 @@ def in_process_child(monkeypatch, decoded, rejoined, sent):
 
         def process_tracks(self, tracks, notify):
             sent.append(json.loads(json.dumps(tracks)))  # Exactly what crosses the worker pipe.
+            if keep is not None:
+                tracks = [t if t.get("captureTrackId") in keep else dict(t, silent=True) for t in tracks]
 
             def emit(kind, **value):
+                if events is not None:
+                    events.append(dict(type=kind, **value))
                 notify(dict(type=kind, **value))
 
-            summary = pipeline.process_tracks(RunModel(), tracks, None, emit)
+            summary = pipeline.process_tracks((model or RunModel)(), tracks, None, emit)
+            if events is not None:
+                events.append(dict(type="summary", **summary))
             return dict(type="complete", **worker_diarization.complete(summary, tracks, self.diarization, emit))
 
     return Client
