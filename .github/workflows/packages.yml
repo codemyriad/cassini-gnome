@@ -32,15 +32,15 @@ jobs:
           echo "CASSINI_TEST_LOGS=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"
       # The pinned writing-down artifacts (whistle/pins.json), downloaded once
       # per pin set; the package builds read them and never download.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .whistle-cache
           key: whistle-${{ hashFiles('whistle/pins.json') }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .sherpa-cache
           key: sherpa-${{ hashFiles('src/cassini_talk/sherpa-pins.json') }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/parakeet-models
           key: parakeet-ultra-18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
@@ -78,15 +78,15 @@ jobs:
           echo "CASSINI_TEST_LOGS=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"
       # The pinned writing-down artifacts (whistle/pins.json), downloaded once
       # per pin set; the package builds read them and never download.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .whistle-cache
           key: whistle-${{ hashFiles('whistle/pins.json') }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .sherpa-cache
           key: sherpa-${{ hashFiles('src/cassini_talk/sherpa-pins.json') }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/parakeet-models
           key: parakeet-ultra-18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
