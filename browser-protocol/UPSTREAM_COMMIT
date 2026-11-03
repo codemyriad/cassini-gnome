@@ -1,23 +1,26 @@
 tree 1d771150e7991b0d280bfc8b1e921eb3cc5c1a96
-parent 9f511afc6afbff9267383b2d47dac51f4172f008
-author Silvio Tomatis <silviot@gmail.com> 1793669023 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793669023 +0100
+parent 032e98fc5d6e96059a077b60c6d40f3d3290bd76
+parent 0c9370da1d930f6c62d286d2c4600b26a15d431f
+author Silvio Tomatis <silviot@gmail.com> 1793669835 +0100
+committer GitHub <noreply@github.com> 1793669835 +0100
+gpgsig -----BEGIN PGP SIGNATURE-----
+ 
+ wsFcBAABCAAQBQJq6TrLCRC1aQ7uu5UhlAAA1vIQACZ3yCYk8D1V/zLtOtVNPA/7
+ 2J+Fe/yJElTGYFVpbu+VAqbdnzEJ6y70jaTI2MmqonFbZ6uMxVFNxTnIAiLqQy+B
+ +XspkuUzjIcxMUnvOrBdz7QXOIlilXL0lCmvyVxMx0Ctp/oxU7a8FCDLjV2YJbem
+ 9VlUCBfQHeQ1Ue7/Vkumr5P77tzM3/gwjBrlZEygbMl2XtntTjjhlPJvllZ0ogJ+
+ 3ey35GMNZrXZAlpdBvWvFt9Fo8ts5APG8oi9CxPDri9WJwjNMZWRJnH9uM20XYjH
+ mXrjO8kfLPz52coenANc9jxHDrL7JwxGY7FiI9fh/ZyMrMcbyy0TCa56leQW8kVr
+ PMUaMlxHGboFMXuoWcNeqd0fsRYpersVM5N5RP5bj3z5uxe5cX8SGyca4SIHTX0U
+ 9OrDyaPMNMFZ6puS1EGiK57CoLp59cE5ztynUzC2EKipEuLeKn5pZEV+IJCvE1vG
+ 1IKpB4NyoQmtrdMGB1CHrfLOfj+R5U4mZlKLQowIBqfYU1FbfljKTBq3KXM3lW5k
+ LQE17fdZODWaU3MoZV/M18NsZgx/Yuv68FloCUcZTlyaxExeS04P6pIRVtdN2AFd
+ la0xn1I065qEILxYQew+U08z242NIpDtLxaLkYDS1aVhNIyJIzX7EXAATgJcRJms
+ 8joIrv3x6FZr5QPwL9b+
+ =cSNH
+ -----END PGP SIGNATURE-----
+ 
 
-Corpus v2 review: seams need one call, bleeds need audible windows, one voice per person
+Merge pull request #41 from codemyriad/feat/corpus-v2
 
-shape() R4 now counts a system/browser pair only when both carry the same call over
-the overlap (voice, phase, noise bed, bleeds), and the D49 overlap must carry it on
-both sides of callConnected. R6 checks every bleed's windows (source speaking,
-target present) and needs an echo audible where the target is quiet in each
-direction; each person speaks one pinned voice. New data mutations cover the review
-probes (wrong seam partner, phase/seed mutants, system stopping at callConnected,
-empty/silent/masked bleeds, two voices for source-a); each passed the old shape().
-
-The stored-WAV checks derive the identical-overlap pairs from shape()'s seam() and
-check every expected bleed as target minus its own carrier, b-return into the mic
-under my speech included. Floor mutants the corpus cannot show (gap masking over
-non-zero samples, mean removal) must fail synthetic oracle checks; span ignoring
-ownership joins the corpus mutants. The schema checker loads lazily, so the digest
-pin runs on a bare python3, and Noise.held asserts windows start at their origin.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Corpus v2: the production-shaped corpus meets D52 shared test 1 (G15/M17)
