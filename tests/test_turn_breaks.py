@@ -148,7 +148,7 @@ def test_turn_gaps_read_session_tracks_or_else_the_files_x_tracks():
     assert turn_gaps((), {}, x) == {"track-b": ((160000, 164800),)}
     merges = dict(speakerMerges=[{"from": "track-b", "into": "me"}])
     assert turn_gaps((), merges, x, ["me", "track-b"])["me"] == ((160000, 164800),)
-    assert turn_gaps((), {}, {"codemyriad.io": {"tracks": [dict(stored, spans="bad")]}}) == {}
+    assert turn_gaps((), {}, {"codemyriad.io": {"tracks": [dict(stored, spans="bad")]}}) == {"track-b": ()}
     assert turn_gaps((), {}, {}) == turn_gaps((), {}, None) == {}
 
 
@@ -356,6 +356,71 @@ def test_a_lane_without_gaps_keeps_an_empty_entry():
     for speaker in ("track-s:overlap:1", "track-s:overlap:1~2"):
         assert grouped(speaker, words_of(speaker, pairs), gaps) == ([2],) * 3
     assert grouped("track-s", words_of("track-s", pairs), gaps) == ([1, 1],) * 3
+
+
+def test_an_unreadable_track_keeps_its_speakers_empty_entry(tmp_path):
+    # A track ending in ~1 that this reader drops must not take source s's gap as a voice.
+    pairs = [(9700, 9950), (10300, 10600)]
+    unreadable = {
+        "text offset": stored_track("b", gaps=[], startOffsetMs="0"),
+        "text frames": stored_track("b", gaps=[], frames="1"),
+        "spans object": dict(stored_track("b", gaps=[]), spans={"file": "b.wav"}),
+        "number id": dict(stored_track("b", gaps=[]), id=7),
+    }
+    for name, bad in unreadable.items():
+        stored = [stored_track("a"), dict(bad, sourceTrackId="s~1")]
+        gaps = turn_gaps((), {}, {"codemyriad.io": {"tracks": stored}})
+        assert gaps == {"track-s": ((160000, 164800),), "track-s~1": ()}, name
+        assert grouped("track-s~1", words_of("track-s~1", pairs), gaps) == ([2],) * 3, name
+        assert grouped("track-s~2", words_of("track-s~2", pairs), gaps) == ([1, 1],) * 3, name
+    # A recorded folder whose s~1 track file is gone: session.json still lists the track.
+    from test_library import write_metadata
+
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.recording_session import RecordingSession
+
+    session = RecordingSession(tmp_path, "Tilde")
+    session.add_track("a", "S", "remote", 16000, 1, source_track_id="s")
+    session.add_track("b", "S1", "remote", 16000, 1, source_track_id="s~1")
+    session.append("a", b"\x01\x00" * 1600, 0)
+    session.append("a", b"\x01\x00" * 1600, 1000)
+    session.append("b", b"\x01\x00" * 3200, 0)
+    session.finish()
+    write_metadata(session.directory)
+    (session.directory / session.manifest["tracks"][1]["file"]).unlink()
+    (meeting,) = LibraryScanner(tmp_path).scan().meetings
+    assert meeting.turn_gaps == {"track-s": ((1600, 16000),), "track-s~1": ()}
+    words = words_of("track-s~1", [(50, 90), (1010, 1050)])
+    assert grouped("track-s~1", words, meeting.turn_gaps) == ([2],) * 3
+    assert grouped("track-s", words_of("track-s", [(50, 90), (1010, 1050)]), meeting.turn_gaps) == ([1, 1],) * 3
+
+
+def test_merges_read_the_unmerged_map_in_any_order():
+    def jump(at):
+        return [dict(atMs=at, durationMs=1000, frames=0, kind="jump")]
+
+    rows = [track("a", gaps=JUMP), track("b", source="b", gaps=jump(30000)), track("c", source="c", gaps=jump(50000))]
+    s, b, c = (160000, 164800), (480000, 496000), (800000, 816000)
+    across_b = [(29000, 29500), (31500, 32000)]
+    for merges in (
+        {"track-b": "track-s", "track-c": "track-s~2"},
+        {"track-c": "track-s~2", "track-b": "track-s"},
+    ):
+        gaps = speaker_gap_ranges(rows, merges=merges, speakers=["track-s~2", "track-s~3"])
+        assert gaps["track-s"] == (s, b) and gaps["track-s~2"] == (s, c), merges
+        # A voice of the merge target still has only its group's own ranges.
+        assert gaps["track-s~3"] == (s,), merges
+        for voice in ("track-s~2", "track-s~3"):
+            assert grouped(voice, words_of(voice, across_b), gaps) == ([2],) * 3, merges
+        assert grouped("track-s", words_of("track-s", across_b), gaps) == ([1, 1],) * 3, merges
+    for merges in ({"track-b": "track-s", "track-s~2": "track-c"}, {"track-s~2": "track-c", "track-b": "track-s"}):
+        assert speaker_gap_ranges(rows, merges=merges)["track-c"] == (s, c), merges
+    # Through the meeting's speakerMerges and its known speakers.
+    stored = [stored_track("a"), dict(stored_track("b", gaps=jump(30000)), sourceTrackId="b")]
+    metadata = dict(speakerMerges=[{"from": "track-b", "into": "track-s"}])
+    gaps = turn_gaps((), metadata, {"codemyriad.io": {"tracks": stored}}, ["track-s", "track-b", "track-s~1"])
+    assert gaps["track-s"] == (s, b) and gaps["track-s~1"] == (s,)
+    assert grouped("track-s~1", words_of("track-s~1", across_b), gaps) == ([2],) * 3
 
 
 def test_merged_ranges_are_joined_without_changing_a_break():

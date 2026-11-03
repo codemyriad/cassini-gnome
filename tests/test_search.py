@@ -394,6 +394,29 @@ def test_a_source_id_ending_in_a_voice_suffix_keeps_its_phrases(index):
         assert len(search(index, "budget plan")) == (1 if turns == 1 else 0), speaker
 
 
+def test_an_unreadable_track_and_a_merge_keep_a_voices_phrases(index):
+    # An s~1 x track this reader drops, and a merge into s, leave s~1 and s~2 whole across s's and b's gaps.
+    from cassini_talk.library import turn_gaps
+
+    def stored(identifier, source, at, **span):
+        span = dict(dict(file=f"{identifier}.wav", sampleRate=16000, frames=1920000, startOffsetMs=0), **span)
+        gaps = [dict(atMs=at, durationMs=300, frames=4800, kind="jump")]
+        return dict(id=identifier, kind="browser", sourceTrackId=source, spans=[span], gaps=gaps)
+
+    x = {"codemyriad.io": {"tracks": [stored("a", "s", 10000), stored("u", "s~1", 0, startOffsetMs="0")]}}
+    gaps = turn_gaps((), {}, x)
+    x["codemyriad.io"]["tracks"].append(stored("b", "b", 30000))
+    metadata = dict(speakerMerges=[{"from": "track-b", "into": "track-s"}])
+    merged = turn_gaps((), metadata, x, ["track-s", "track-b", "track-s~2"])
+    meeting = next(m for m in index.current.values() if m.title == "Budget review")
+    cases = [(gaps, "track-s~1", 10000, 1), (gaps, "track-s", 10000, 2), (merged, "track-s~2", 30000, 1)]
+    for ranges, speaker, at, turns in [*cases, (merged, "track-s", 30000, 2)]:
+        words = (Word(speaker, at - 300, at - 50, "budget"), Word(speaker, at + 300, at + 600, "plan"))
+        index.sync(LibrarySnapshot(meetings=(replace(meeting, words=words, turn_gaps=ranges),)))
+        assert len(index.turns[meeting.key]) == turns, speaker
+        assert len(search(index, "budget plan")) == (1 if turns == 1 else 0), speaker
+
+
 def test_a_hit_after_a_gap_seeks_with_the_runs_quote_pairing(index):
     # Quotes pair over the whole run, so the lone closing quote after the gap is
     # no part of its own; "I" seeks to I, not to agree.
