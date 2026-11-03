@@ -679,6 +679,35 @@ class BrowserService:
             None,
         )
 
+    def _capture_phase(self, browser, tab):
+        """One per-capture state for the app's Record toggle and for start_all.
+
+        'recording', 'stopping' or None. A capture that stops (Stop requested
+        or sent, PCM ending, publication running) is 'stopping': a new session
+        may start beside it (D18). A raw row with no capture of ours still
+        counts as recording unless its Stop is pending (D52.5: never twice).
+        Caller holds self.lock.
+        """
+        raw = browser.states.get(tab) or {}
+        owner = self.captures.get(raw.get("captureId"))
+        if owner is not None and not owner.finished:
+            return "stopping" if owner.stopping or owner.stop_requested.is_set() else "recording"
+        if not raw.get("recording"):
+            return None
+        if raw.get("stopping") is True or any(
+            p.get("action") == "stop" and p.get("tabId") == tab for p in browser.pending.values()
+        ):
+            return "stopping"
+        return "recording"
+
+    def _stop_pending(self, identifier):
+        """Whether a Stop for this meeting, or a Stop-all, is still unanswered. Caller holds self.lock."""
+        return self._stopping_all.is_set() or any(
+            p.get("action") == "stop" and self._meeting_id(b, p["tabId"]) == identifier
+            for b in self.browsers.values()
+            for p in b.pending.values()
+        )
+
     def _meeting_id(self, browser, tab):
         meeting = browser.meetings.get(tab)
         binding = self.call_captures.get((browser.browser_instance, tab))
@@ -837,6 +866,7 @@ class BrowserService:
                         value.update(capture)
                         seen.add(capture["captureId"])
                     value["id"] = self._meeting_id(browser, tab)
+                    value["phase"] = self._capture_phase(browser, tab)
                     statuses.append(value)
                 for meeting in browser.meetings.values():
                     if owners[(browser.browser_instance or browser.id, meeting["tabId"])] is not browser:
@@ -1934,23 +1964,38 @@ class BrowserService:
             if token in self._cancelled_groups:
                 group.set()
             owners = self._owners()
-            targets = [
-                (self._meeting_id(b, tab), dict(meeting))
-                for b in self.browsers.values()
-                if b.status_seen
-                for tab, meeting in b.meetings.items()
-                if owners.get((b.browser_instance or b.id, tab)) is b
-                and meeting.get("sourceCount", 0) > 0
-                and not b.states.get(tab, {}).get("recording")
-                # D52.5: a call already being recorded, under any peer.
-                and not self._generation_recording(tab, meeting, active=True)
-            ]
+            targets, skipped = [], []
+            for b in self.browsers.values():
+                if not b.status_seen:
+                    continue
+                for tab, meeting in b.meetings.items():
+                    if owners.get((b.browser_instance or b.id, tab)) is not b or meeting.get("sourceCount", 0) <= 0:
+                        continue
+                    # A stopping capture does not block a new session; the
+                    # Start waits for its Stop below. D52.5: a call already
+                    # being recorded, under any peer, is never started twice.
+                    if self._capture_phase(b, tab) == "recording":
+                        reason = "recording"
+                    elif self._generation_recording(tab, meeting, active=True):
+                        reason = "sameCall"
+                    else:
+                        targets.append((self._meeting_id(b, tab), dict(meeting)))
+                        continue
+                    skipped.append(
+                        dict(
+                            id=self._meeting_id(b, tab),
+                            title=meeting.get("title"),
+                            callGeneration=meeting.get("callGeneration"),
+                            reason=reason,
+                        )
+                    )
             if only is not None:
                 targets = [
                     (identifier, meeting)
                     for identifier, meeting in targets
                     if identifier == only["id"] and meeting.get("callGeneration") == only.get("callGeneration")
                 ]
+                skipped = [s for s in skipped if s["id"] == only["id"]]
             self._record_groups[token] = group
         deadline = self.deadline_clock() + self.batch_timeout
 
@@ -1958,6 +2003,15 @@ class BrowserService:
         expected = {} if only is None else dict(call_generation=only.get("callGeneration"))
 
         def start_one(identifier, meeting):
+            # Record right after Stop: the browser answers that Stop only when
+            # its PCM ends, and refuses a Start for the tab until then. A later
+            # Stop cancels this group, so the wait never outlives the user.
+            while not group.is_set() and self.deadline_clock() < deadline:
+                with self.lock:
+                    if not self._stop_pending(identifier):
+                        break
+                if self.closed.wait(0.02):
+                    break
             if group.is_set() or self._stopping_all.is_set() or self.deadline_clock() >= deadline:
                 raise ValueError("Recording start was cancelled")
             cleanup_sent = False
@@ -2036,7 +2090,9 @@ class BrowserService:
                 )
                 for identifier, error in ((i, reported(e)) for i, _result, e in results if e is not None)
             ]
-            return dict(self.snapshot(), attempted=len(targets), cancelled=cancelled, failures=failures)
+            return dict(
+                self.snapshot(), attempted=len(targets), skipped=skipped, cancelled=cancelled, failures=failures
+            )
         finally:
             with self.lock:
                 self._record_groups.pop(token, None)

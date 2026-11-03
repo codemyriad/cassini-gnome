@@ -650,7 +650,9 @@ class CassiniApplication(Adw.Application):
         statuses = [*self._browser_snapshot.get("statuses", [])]
         for window in self.get_windows():
             statuses.extend(getattr(window, "_browser_snapshot", {}).get("statuses", []))
-        if any(s.get("recording") for s in statuses):
+        # The broker's per-capture phase is the one start_all uses: a capture
+        # that is stopping never blocks a new session.
+        if any(s.get("phase") == "recording" if "phase" in s else s.get("recording") for s in statuses):
             reasons.append("browser")
         # The broker's status for a capture wins over the Library's 1 s
         # BrowserActivity cache of it: a cached "recording" for a capture the
@@ -887,6 +889,17 @@ class CassiniApplication(Adw.Application):
                 # and every distinct caption of the meetings that failed (R82 decision 6).
                 lists = [f.get("refusals") if isinstance(f.get("refusals"), list) else [] for f in snapshot["failures"]]
                 self.recording_failure = banner(*lists)
+            elif snapshot.get("skipped") and not snapshot.get("attempted"):
+                from .installed_build import lifecycle_log
+                from .refusals import banner, entry
+
+                # The broker started nothing because every call already
+                # records: say so, never a Record that silently does nothing.
+                lifecycle_log(
+                    "Record started nothing: %s",
+                    ", ".join(f"{s.get('id')} ({s.get('reason')})" for s in snapshot["skipped"]),
+                )
+                self.recording_failure = banner([entry(0, "browser", "startFailed", detail="busy")])
             elif active and any(w.get_visible() for w in self.get_windows()):
                 self._pending_recording = active[0]["path"]
             self._native_changed()
