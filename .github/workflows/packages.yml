@@ -52,10 +52,10 @@ jobs:
           key: parakeet-ultra-18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
       - run: build-aux/whistle-cache.sh
       # Builds in a container, installs in a fresh one and, with no network,
-      # smoke-tests and writes the D11 goldens down. Retried once, with a
-      # warning annotation, so a flaky test or mirror timeout on the first
-      # attempt stays visible (G5 step 0).
-      - run: build-aux/rpm/build.sh "${{ matrix.base }}" || { echo "::warning::first attempt failed; retrying (possible flaky test, see log)"; build-aux/rpm/build.sh "${{ matrix.base }}"; }
+      # smoke-tests and writes the D11 goldens down. Run once (D66): the
+      # script retries only its package installs and image pulls
+      # (build-aux/ci/retry.sh), never the build or its tests.
+      - run: build-aux/rpm/build.sh "${{ matrix.base }}"
       # G3: the Meson test logs (testlog.txt with each shard's --durations,
       # testlog.json, the pytest junit XML), also on success, to track creep;
       # a shard over half its timeout becomes a warning annotation here.
@@ -98,8 +98,8 @@ jobs:
           path: ${{ runner.temp }}/parakeet-models
           key: parakeet-ultra-18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
       - run: build-aux/whistle-cache.sh
-      # Retried once, with a warning annotation (G5 step 0).
-      - run: build-aux/arch/build.sh || { echo "::warning::first attempt failed; retrying (possible flaky test, see log)"; build-aux/arch/build.sh; }
+      # Run once (D66): only package installs and image pulls are retried.
+      - run: build-aux/arch/build.sh
       # G3: the Meson test logs (testlog.txt with each shard's --durations,
       # testlog.json, the pytest junit XML), also on success, to track creep;
       # a shard over half its timeout becomes a warning annotation here.

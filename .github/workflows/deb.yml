@@ -49,9 +49,9 @@ jobs:
       # The same script as `make deb`: checks the version, builds, runs
       # lintian, installs the package in a fresh container and, with no
       # network, smoke-tests it and writes the D11 goldens down with it.
-      # Retried once, with a warning annotation, so a flaky test or mirror
-      # timeout on the first attempt stays visible (G5 step 0).
-      - run: build-aux/deb/build.sh "${{ matrix.base }}" || { echo "::warning::first attempt failed; retrying (possible flaky test, see log)"; build-aux/deb/build.sh "${{ matrix.base }}"; }
+      # Run once (D66): the script retries only its package installs and
+      # image pulls (build-aux/ci/retry.sh), never the build or its tests.
+      - run: build-aux/deb/build.sh "${{ matrix.base }}"
       # G3: the Meson test logs (testlog.txt with each shard's --durations,
       # testlog.json, the pytest junit XML), also on success, to track creep;
       # a shard over half its timeout becomes a warning annotation here.
