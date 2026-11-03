@@ -118,6 +118,7 @@ def test_auto_record_adds_later_calls_without_restarting_a_stopped_call(service)
 
 def test_stop_cancels_a_batch_while_its_first_start_is_pending(service):  # noqa: F811
     server, path = service
+    server.command_timeout = 30  # Only the Stop-all ends these Starts, never their own clock.
     peer = Extension(path)
     try:
         with ThreadPoolExecutor(2) as executor:
@@ -134,34 +135,77 @@ def test_stop_cancels_a_batch_while_its_first_start_is_pending(service):  # noqa
                 peer.answer(command)
             assert started.result(2)["cancelled"]
             assert not stopped.result(2)["statuses"]
-            assert not next(iter(server.browsers.values())).pending
+            # Start-all can answer before a cancelled worker drops its entry.
+            wait_for(lambda: not next(iter(server.browsers.values())).pending)
     finally:
         peer.close()
 
 
 def test_stop_all_still_stops_a_start_that_unwound_before_its_stop_was_collected(service, monkeypatch):  # noqa: F811
-    """Stop-all cancels the pending Starts, then looks again for whom to stop.
+    """CI's signature: one cancelled Start unwinds before Stop-all collects whom to stop.
 
-    A cancelled Start's worker can unwind in between and drop its pending
-    entry; that browser must still get its Stop. Here the first snapshot of
-    the Stop-all waits until one cancelled Start has unwound.
+    Stop-all cancels both pending Starts, then looks again for the Starts to
+    stop. The tab-3 Start unwinds in between and drops its pending entry; the
+    tab-4 Start is held after it wakes until Stop-all has collected its Stops.
+    Both browsers must still get a Stop. Only the Stop-all thread is gated.
     """
+    import threading
+
+    import cassini_talk.browser_service as broker
     from cassini_talk.browser_service import BrowserService
 
-    server, _path = service
-    server.command_timeout = 30  # Only the Stop-all ends these Starts.
-    original, held = BrowserService.snapshot, []
+    snapshot, command, stop_all, batch = (
+        BrowserService.snapshot,
+        BrowserService.command,
+        BrowserService.stop_all,
+        BrowserService._batch,
+    )
+    plain = threading.Event
+    local = threading.local()
+    unwound, collected, gated, batches = plain(), plain(), plain(), []
 
-    def snapshot(self):
-        if self._stopping_all.is_set() and not held:
-            held.append(True)
-            browser = next(iter(self.browsers.values()))
-            wait_for(lambda: sum(p["action"] == "start" for p in browser.pending.values()) <= 1)
-        return original(self)
+    class HeldEvent(plain):
+        def wait(self, timeout=None):
+            woke = super().wait(timeout)
+            if woke and getattr(local, "hold", False):
+                assert collected.wait(5), "Stop-all never collected its Stops"
+            return woke
 
-    monkeypatch.setattr(BrowserService, "snapshot", snapshot)
+    def held_command(self, identifier, action, **values):
+        local.hold = action == "start" and identifier.endswith(":4")
+        try:
+            return command(self, identifier, action, **values)
+        finally:
+            local.hold = False
+            if action == "start" and identifier.endswith(":3"):
+                unwound.set()
+
+    def stopping(self, *args, **values):
+        local.stopping = True
+        try:
+            return stop_all(self, *args, **values)
+        finally:
+            local.stopping = False
+
+    def gated_snapshot(self):
+        if getattr(local, "stopping", False) and not gated.is_set():
+            gated.set()
+            assert unwound.wait(5), "Stop-all did not wake the tab-3 Start"
+        return snapshot(self)
+
+    def seen_batch(self, jobs, *args, **values):
+        if getattr(local, "stopping", False):
+            batches.append(sorted(identifier.rpartition(":")[2] for identifier, _job in jobs))
+            collected.set()
+        return batch(self, jobs, *args, **values)
+
+    monkeypatch.setattr(broker.threading, "Event", HeldEvent)
+    monkeypatch.setattr(BrowserService, "command", held_command)
+    monkeypatch.setattr(BrowserService, "snapshot", gated_snapshot)
+    monkeypatch.setattr(BrowserService, "stop_all", stopping)
+    monkeypatch.setattr(BrowserService, "_batch", seen_batch)
     test_stop_cancels_a_batch_while_its_first_start_is_pending(service)
-    assert held, "the Stop-all never took its snapshot"
+    assert gated.is_set() and batches == [["3", "4"]], batches
 
 
 def test_stop_before_start_rpc_keeps_its_cancellation_tombstone(service):  # noqa: F811
