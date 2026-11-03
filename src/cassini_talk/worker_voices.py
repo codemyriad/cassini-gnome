@@ -47,28 +47,50 @@ def of_group(speaker, group):
     return speaker == group or bool(separator) and head == group and ordinal.isdigit()
 
 
+def owner(speaker, ids):
+    """D64: the speaker of `ids` that `speaker` is, or is a `~n` voice or an R64 lane of; None for none.
+
+    The longest id wins, so `s~1~2` is `s~1`'s. A lane `<id>:overlap:n`, and its
+    voices, are the lane's own, never `<id>`'s.
+    """
+    best = None
+    for identifier in ids:
+        if speaker == identifier or speaker.startswith(identifier + "~"):
+            found = identifier
+        elif speaker.startswith(identifier + ":overlap:"):
+            found = identifier + ":overlap:" + speaker[len(identifier) + len(":overlap:") :].split("~", 1)[0]
+        else:
+            continue
+        if best is None or len(identifier) > len(best[0]):
+            best = (identifier, found)
+    return best and best[1]
+
+
 def group_words(
-    group, words, turns, merges, *, all_words=False, excluded_groups=(), labelled=None, reserved=(), taken=()
+    group, words, turns, merges, *, all_words=False, excluded_groups=(), labelled=None, reserved=None, taken=()
 ):
     """`labelled` limits ordinal labels to saved ids made from these turns (G12).
 
     D64: an id in `reserved` (another track's, lane's or group's) is that
-    speaker's own, never one of this group's voices, and its words are not in
-    this group's audio. An id in `taken` is never one of its voices either, but
-    its words stay readable: a received file's listed tracks all sound in its original.
+    speaker's own, never one of this group's voices. Its words, its voices' and
+    its lanes' are not in this group's audio, nor are a lane's of the group
+    itself, even when their track can no longer be read. An id in `taken` is
+    never one of its voices either, but its words stay readable: a received
+    file's listed tracks all sound in its original, which passes no `reserved`.
     """
     ordinals = voice_ordinals(turns)
+    ids = None if reserved is None else {*reserved, group["id"]}
     native_ids = {
         f"{group['id']}~{ordinal}": native
         for native, ordinal in ordinals.items()
-        if f"{group['id']}~{ordinal}" not in reserved and f"{group['id']}~{ordinal}" not in taken
+        if f"{group['id']}~{ordinal}" not in (ids or ()) and f"{group['id']}~{ordinal}" not in taken
     }
     selected = [
         w
         for w in words
         if w["speaker"] == group["id"]
         or (
-            w["speaker"] not in reserved
+            (ids is None or owner(w["speaker"], ids) in (None, group["id"]))
             and (all_words or w["speaker"] in native_ids)
             and not any(of_group(w["speaker"], other) for other in excluded_groups)
         )
@@ -162,8 +184,9 @@ def run(tracks, options, notify, *, statvfs=None):
         if not isinstance(listed, list) or not all(isinstance(identifier, str) for identifier in listed):
             raise ValueError("Invalid reserved speakers")
         listed = set(listed)
+        own = options.get("origin") != "received"
         speaker_ids = {g["id"] for g in groups} | {t["speaker"] for t in tracks if isinstance(t.get("speaker"), str)}
-        if options.get("origin") != "received":
+        if own:
             speaker_ids |= listed
 
         def group_audio(index):
@@ -222,7 +245,7 @@ def run(tracks, options, notify, *, statvfs=None):
                 merges,
                 excluded_groups=tuple(g["id"] for g in groups if g["id"] != group["id"]) if background else (),
                 labelled=labelled,
-                reserved=speaker_ids - {group["id"]},
+                reserved=speaker_ids - {group["id"]} if own else None,
                 taken=listed - {group["id"]},
                 all_words=background
                 and (

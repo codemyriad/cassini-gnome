@@ -5,6 +5,7 @@ import copy
 import hashlib
 import json
 import logging
+import threading
 from uuid import uuid4
 
 import pytest
@@ -177,15 +178,11 @@ def test_old_voice_row_of_a_source_id_is_reset(root, caplog):
     assert "voiceNameReset id=track-s~1 old=user named=True" in caplog.text
 
 
-def voice_step(root, tmp_path, monkeypatch, directory, background):
-    """Run the voice step on fake models; return the words each print read and what was embedded."""
+def fake_voice_models(monkeypatch):
+    """Fake diarizer and extractor; return the words each print plan read and what it embedded."""
     pytest.importorskip("numpy")
     from cassini_talk import campplus, nemotron, worker_voices
-    from cassini_talk.library import LibraryScanner
-    from cassini_talk.transcription import prepare_tracks, reserved_speakers
 
-    (meeting,) = LibraryScanner(root).scan().meetings
-    tracks, _speakers = prepare_tracks(meeting)
     calls, embedded = [], []
 
     class Diarizer:
@@ -214,6 +211,18 @@ def voice_step(root, tmp_path, monkeypatch, directory, background):
     monkeypatch.setattr(campplus, "SpeakerExtractor", Extractor)
     monkeypatch.setattr(worker_voices, "select_windows", spy)
     monkeypatch.setattr(worker_voices.os, "nice", lambda _n: 0)
+    return calls, embedded
+
+
+def voice_step(root, tmp_path, monkeypatch, directory, background):
+    """Run the voice step on fake models; return the words each print read and what was embedded."""
+    calls, embedded = fake_voice_models(monkeypatch)
+    from cassini_talk import worker_voices
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.transcription import prepare_tracks, reserved_speakers
+
+    (meeting,) = LibraryScanner(root).scan().meetings
+    tracks, _speakers = prepare_tracks(meeting)
     events = []
     options = dict(
         directory=str(directory),
@@ -321,6 +330,126 @@ def test_a_missing_lane_track_keeps_its_lane_id_in_the_write_down_and_the_voice_
         assert speaker(metadata, identifier) == speaker(before, identifier)
     assert "voiceIdCollision group=track-s ids=track-s~1" in caplog.text
     assert "voiceNameReset" not in caplog.text
+
+
+def test_a_words_speaker_belongs_to_the_longest_id_and_a_lane_to_itself():
+    from cassini_talk.worker_voices import owner
+
+    ids = {"track-s", "track-s~1"}
+    assert owner("track-s~2", ids) == "track-s"
+    assert owner("track-s~1~2", ids) == "track-s~1"
+    assert owner("track-s~1:overlap:1~2", ids) == "track-s~1:overlap:1"
+    assert owner("track-s:overlap:1", ids) == "track-s:overlap:1"
+    assert owner("track-sa", ids) is None and owner("guest", ids) is None
+
+
+def unplace(directory, identifiers):
+    """The tracks `identifiers` lose their file, and session.json their frames: no lane can be placed for them."""
+    path = directory / "session.json"
+    manifest = json.loads(path.read_text())
+    for track in manifest["tracks"]:
+        if track["id"] in identifiers:
+            (directory / track["file"]).unlink()
+            del track["frames"]
+    path.write_text(json.dumps(manifest))
+
+
+@pytest.mark.parametrize(
+    ("sources", "own"),
+    [(["s", "s~1"], {"track-s"}), (["a", "b"], {"track-a~1", "track-a~2"})],
+)
+def test_a_gone_sources_voices_are_not_read_from_another_groups_audio(root, tmp_path, monkeypatch, sources, own):
+    """The second source was diarized into its own voices; its audio goes, and the one group left reads all words."""
+    kept, gone = (f"track-{source}" for source in sources)
+    directory = capture(root, sources)
+    groups = {kept: (X, TURNS_A, False), gone: (Y, TURNS_A, False)}
+    run(root, directory, scripted(groups, {kept: WORDS, gone: OTHER}))
+    assert set(words_of(directory).values()) == own | {f"{gone}~1", f"{gone}~2"}
+    break_audio(directory, {sources[1]}, "missing")
+    calls, _embedded = voice_step(root, tmp_path, monkeypatch, directory, True)
+    assert [selected for selected, _labels in calls] == [own]
+
+
+@pytest.mark.parametrize(
+    ("sources", "lane", "gone", "own"),
+    [
+        # s~1's lane, all of whose tracks go; and a lane of s itself, beside s's own readable track.
+        (["s", "s~1", "s~1"], "track-s~1:overlap:1", {"tab1", "tab2"}, {"track-s"}),
+        (["s", "s"], "track-s:overlap:1", {"tab1"}, {"track-s~1", "track-s~2"}),
+    ],
+)
+def test_a_lane_that_cannot_be_placed_is_not_read_from_another_groups_audio(
+    root, tmp_path, monkeypatch, sources, lane, gone, own
+):
+    """Without its file or stated frames no lane id is computed for it; its saved words are still not group s's."""
+    directory = capture(root, sources)
+    words = {"track-s": WORDS, "track-s~1": THREE, lane: OTHER}
+    run(root, directory, scripted({"track-s": (X, TURNS_A, False)}, words))
+    assert lane in words_of(directory).values() and own <= set(words_of(directory).values())
+    unplace(directory, gone)
+    calls, _embedded = voice_step(root, tmp_path, monkeypatch, directory, True)
+    assert [selected for selected, _labels in calls] == [own]
+
+
+def test_background_preparation_sends_the_write_downs_reservations(root, tmp_path, monkeypatch):
+    """_voice_job_body: s~1's audio is gone, so only its reservation keeps Sam's words out of group s's print."""
+    from test_voice_source import Models
+
+    from cassini_talk import voice_models, worker_voices
+    from cassini_talk.transcription import TranscriptionQueue
+    from cassini_talk.voice_store import VoiceStore
+
+    directory = capture(root, ["s", "s~1"])
+    run(root, directory, scripted({"track-s": (X, TURNS_A, False)}, {"track-s": WORDS, "track-s~1": THREE}))
+    assert words_of(directory) == {"One": "track-s", "Two": "track-s", "Three": "track-s~1"}
+    break_audio(directory, {"s~1"}, "missing")
+    calls, _embedded = fake_voice_models(monkeypatch)
+    seen, events = [], []
+
+    class Ready(Models):
+        def snapshot(self):
+            return dict(ready=True)
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            pass
+
+        def close(self):
+            pass
+
+        def cancel(self):
+            pass
+
+        def voiceprints(self, tracks, options, _heartbeat):
+            # The real worker in process, on the options the app built.
+            seen.append(options)
+            options = dict(options, scratch=str(tmp_path / "scratch"))
+            worker_voices.run(tracks, options, lambda kind, **_values: events.append(kind))
+            return {}
+
+    monkeypatch.setattr(voice_models, "VoiceJobClient", Client)
+    store = VoiceStore(tmp_path / "private")
+    store.refresh()
+    done = threading.Event()
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _directory: None,
+        root=root,
+        diarization_models=Ready(),
+        voice_models=Ready(),
+        voice_store=store,
+    )
+    try:
+        assert queue.backfill_voices(directory, lambda *_args: done.set())
+        assert done.wait(10), "Background preparation did not finish"
+    finally:
+        queue.close()
+    assert events[-1] == "voices-complete"
+    assert seen[0]["prepareMissing"] and "track-s~1" in seen[0]["reservedSpeakers"]
+    assert calls == [({"track-s"}, set())]
 
 
 def received_meeting(root, tracks):
