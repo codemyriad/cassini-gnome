@@ -10,10 +10,15 @@ from pathlib import Path
 source = Path(__file__).resolve().parent
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("library", type=Path)
-parser.add_argument("--case", choices=("fallback", "browser-off-on", "call-return", "uncommitted-return"), default="fallback")
+parser.add_argument(
+    "--case",
+    choices=("fallback", "browser-off-on", "call-return", "uncommitted-return", "uncommitted-return-kept"),
+    default="fallback",
+)
 args = parser.parse_args()
 filename = {"fallback": "session.json", "browser-off-on": "browser-off-on.session.json", "call-return": "call-return.session.json",
-            "uncommitted-return": "uncommitted-return.session.json"}[args.case]
+            "uncommitted-return": "uncommitted-return.session.json",
+            "uncommitted-return-kept": "uncommitted-return-kept.session.json"}[args.case]
 manifest = json.loads((source / filename).read_text())
 folder = args.library / ("Recording-" + manifest["id"])
 folder.mkdir(mode=0o700, parents=True)

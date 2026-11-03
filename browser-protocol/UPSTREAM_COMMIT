@@ -1,26 +1,26 @@
-tree 54214bac304a3f72cbecc616948c43e87de82984
-parent c0284a6fa9ac7859513d9152e2649b2195059f4e
-parent 1ed8bd7af437aed0f7965e8a88b29e167c607312
-author Silvio Tomatis <silviot@gmail.com> 1793741245 +0100
-committer GitHub <noreply@github.com> 1793741245 +0100
+tree c6bad7b456ec379acf9f461de1e199674af74d7b
+parent dba4a327cd76baa5b73a217f3465f53c109bd4a5
+parent d2a23274fa887f3817a8b74a17c2ea82a0adfc19
+author Silvio Tomatis <silviot@gmail.com> 1793743031 +0100
+committer GitHub <noreply@github.com> 1793743031 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq6lG9CRC1aQ7uu5UhlAAAvakQAHsCgXfPCkftISTDeztQFHVP
- Fw/1jzS4hYLt44MQQzaq/DpjtkFRsodiTK34zJchRri/tuITYUl2gd0kIyVw6Zod
- kAFvHLFZBe1yr3YBnoulZVChYMt8L+k/IDa3tiTngWbOrMMFsTJldmnpKKbMjJ8T
- 9pa0PmPHY10sQh5ta+Mc6xAyTWhkUAj7fAqsZFMwqyq/3uqrez4STODskNNfDB8T
- LNwJar7nUTcjxcjwzJHQk7zFA8lp1tR254H2swUzvyap5iPdrcU8cNrJopwWbe29
- NU/tPuEy3lHsOLCGKumz45tPWPVYrwy7JEidb6YN4cvYDzYu3E1Ht6Tb7qGNeOvR
- JGwXpH70K1P8IQT6CTsu6g2ad5z2ztDC2RP5C7lpdniVHYd5ae0lflDGcEvVAqYB
- 8sqAMgsOAGim2fI+Kadq+HcpzyIb7K+OYWTAUR6Vs/9hE+jgknrCUXgCVWx1sV1h
- Z65GEgJCt99OGfiCH/gWMs7k5N/S+JG2gzRhvo3Hb/p0zuQo9obpbdqJXx9/X1mp
- P8TqmF6Fi222fimu9/Ssy/KAMIfbpytidoCNG9E4eBc/Kq7vcE6q+zsoYF9CyC6b
- ExGFonlnMkde8fVzhSkI61oBmdt6+iFvHxgqR+0YWfz2gycS90/PXH6mjpJUOa2V
- oqy2VEutD8re6ERSmg0+
- =rlrB
+ wsFcBAABCAAQBQJq6li3CRC1aQ7uu5UhlAAAL7sQAE6sQ32aOhRBlwp3Mj1IlOGN
+ rwJZDnbYr87ISj2W7l/aiiZud71dQaAF2QYx7RVWejMF5OfONjQyTly7vM7e4fNv
+ BHVosbv8u7P6YJlH/a8LugrI9kmOk9xEPWTZqvtHILoaIV5LKjNgF69nYGT3320b
+ 5em6D4EFe0JbT8w/jSGxrhOTDhL18oqaI7xVPC3fU6xP1DjoeiOyAGe+MlS/NXMj
+ 93vpd5fXEt5vd4cAadDhuImA8Egt96ypZRb6LLVruIXT7ZuBTREKhJTCh+nBfYCQ
+ +Rw5uJcHCvC07ZJvABlHCOakOnTggX7QIcodPYw1M/KtQwcXjCtkQnCGNA+V8Plj
+ HrMzfd0YwfhZ+nk+vKjJAVGi6jspHsnr23QbWO8P/Ogp2lWpQxBOtPb6/IskSAEt
+ GtyCA9SK00Oy7/XItSWY6OVAC7IDszINFiW8A8fEmeFWm52WTgzbtm18zXavFfc6
+ Ww1+lS57Q64h1W7HPchOxAQ7RTG9RNBBVcnqznzDhH2q0J3kw6zV6+fmEkd62OzI
+ dK9AtGpzF6rzDFBW0eI9mok56x5QHgtgqQsJJzUh7creZOE0+NdfxN73qggENesc
+ yUmmbId0s54wKte3V+24U9QgaTAeqUmkgGiceB17iLscs7g5BsV0DeUKDKjEXKqs
+ 9A6aY8x5z1jw4O2ZK0+m
+ =2dHu
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #44 from codemyriad/feat/restore-before-fallback-commit
+Merge pull request #45 from codemyriad/feat/uncommitted-return-either-file
 
-D52: a return before the fallback commits restores at once, heard or not
+D52: an uncommitted return is valid in either writer form, with the absence in the file

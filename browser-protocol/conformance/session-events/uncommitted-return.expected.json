@@ -65,5 +65,15 @@
   "me": true,
   "others": true,
   "source": "browser",
-  "fallback": false
+  "fallback": false,
+  "othersPresenceMs": [
+    [
+      0,
+      1000
+    ],
+    [
+      3500,
+      5000
+    ]
+  ]
 }

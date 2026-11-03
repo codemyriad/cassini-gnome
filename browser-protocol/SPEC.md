@@ -231,7 +231,10 @@ is legal only while The others is selected, after system/missing or system/lost,
 or after none/lost: a browser loss whose fallback never committed (not asked
 for yet, or still starting) because the call returned first (SPEC-CONTROL
 "Return before the fallback commits"); no system track lies between those two
-events.
+events. A writer that keeps its written othersSource until a fallback commits (it
+writes no none/lost at the loss) writes nothing at such a return: no system track
+and no restored. In either form the Others are absent over the loss in the file
+(span extents minus gap ranges, D52.2); the missing audio is never zero-filled.
 The folder, original capture clock and microphone choice remain unchanged. Reuse
 sourceTrackId only where the browser actually reports the same opaque source ID;
 labels, titles and URLs never establish identity. See SPEC-CONTROL call lifecycle.

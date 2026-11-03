@@ -601,7 +601,11 @@ transport), the return cancels the pending fallback, and the app MUST restore
 the browser source as soon as the returning PCM is ready, whether or not heard
 was seen: otherwise the Others would record nothing until Stop. Once the
 fallback has committed `system/lost`, restoring still needs heard. The vectors
-mark that window with `fallbackCommitted:false` on a live transport.
+mark that window with `fallbackCommitted:false` on a live transport. A writer
+that wrote none/lost at the loss appends browser/restored; one that kept its
+written othersSource appends nothing, since its source never changed. Both leave
+the Others absent over the loss (SPEC.md, session-events `uncommitted-return` and
+`uncommitted-return-kept`).
 
 **Resuming a lost recording: ask once, never a second recording (D52.5).**
 These are app-side rules; the extension and the wire are unchanged.
