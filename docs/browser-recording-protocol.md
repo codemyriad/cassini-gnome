@@ -3,7 +3,7 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `e6d39987` (multistream corpus v2), ships companion 0.2.12, whose browser `track` packets carry
+The current pin, `981fb4d5` (the D63 corpus vectors), ships companion 0.2.12, whose browser `track` packets carry
 the D61 clock facts (copied into session.json and x["codemyriad.io"].tracks, record-only)
 and the span's `documentGeneration` (a live watchdog hint, never written to files). Its
 `ok:false` results carry a D58 result `code`, and its native resume packet carries the
@@ -49,7 +49,9 @@ An active capture's ended physical span returns `state/source/retired:true`;
 its cleanup and in-flight chunks cannot mean the whole capture was saved.
 Capture finalization returns `state/command`. Failed spans are fenced locally,
 healthy sources and the microphone continue, and a live source retries a new ID.
-The pin is protocol commit e6d39987 (PR #41, multistream corpus v2: named `constants`
+The pin is protocol commit 981fb4d5 (PR #42, the D63 corpus vectors: `activeSeconds` bands,
+`personActiveSeconds`, `fallback`, `turnCases` and `wordMidpoints` in corpus.json, with
+fallback.json, writedown.json and their oracles), on top of protocol commit e6d39987 (PR #41, multistream corpus v2: named `constants`
 and a hand-written `expected` block in corpus.json, a third voice, real D49 and seam overlaps,
 bleeds both ways, a noisy gapped remote, `captureOutcome`, floor oracle), on top of
 protocol commit 032e98fc (the PR #40 merge with Mac's follow-ups, on the PR #39 merge, D61: browser clock facts on `track`,

@@ -105,7 +105,7 @@ def check_rows(snapshot):
     sessions = [SESSIONS[identifier] for identifier in EXPECTED["concurrency"]["sessions"]]
     meetings = {meeting.id: meeting for meeting in snapshot.meetings}
     # Newest first; the two concurrent calls stay two independent folders and rows.
-    order = sorted(sessions, key=lambda session: session["createdAt"], reverse=True)
+    order = sorted(SESSIONS.values(), key=lambda session: session["createdAt"], reverse=True)
     assert [meeting.id for meeting in snapshot.meetings] == [session["id"] for session in order], "row order"
     assert len({meetings[session["id"]].directory for session in sessions}) == len(sessions), "one folder per call"
     starts = [meetings[session["id"]].started_at_ms for session in sessions]

@@ -12,7 +12,17 @@
     "VOICES_MIN": 3,
     "CONCURRENT_MIN_MS": 20000,
     "NOISE_BED_DBFS": -45,
-    "FLOOR_TOLERANCE_DB": 3
+    "FLOOR_TOLERANCE_DB": 3,
+    "MIN_ACTIVE_SECONDS": 15,
+    "FEW_WORDS": 10,
+    "ACTIVE_DBFS": -50,
+    "FLOOR_MARGIN_DB": 12,
+    "FLOOR_MIN_FRAMES": 312,
+    "MIN_RUN_MS": 160,
+    "WINDOW_MS": 15000,
+    "OVERLAP_MS": 500,
+    "MIN_WINDOW_ACTIVE_MS": 500,
+    "ACTIVE_TOLERANCE_DB": 3
   },
   "expected": {
     "concurrency": {
@@ -22,23 +32,70 @@
     "sessions": {
       "05200000-0000-4000-8000-000000000001": {
         "tracks": {
-          "mic": {"ownership": [[0, 90000]], "presence16k": [[0, 1440000]], "gaps": [], "noWords": [], "floorDb": [-71, -65]},
-          "system": {"ownership": [[0, 20000]], "presence16k": [[0, 320000]], "gaps": [], "noWords": [[20000, 22000]], "floorDb": [-55, -49]},
-          "a-short": {"ownership": [[30000, 32000]], "presence16k": [[480000, 512000]], "gaps": [], "noWords": [], "floorDb": [-57, -51]},
-          "a-long": {"ownership": [[40000, 50000]], "presence16k": [[640000, 656000], [768000, 800000]], "gaps": [[41000, 48000]], "noWords": [[41000, 48000]], "floorDb": [-58, -52]},
-          "a-return": {"ownership": [[60000, 62000]], "presence16k": [[960000, 992000]], "gaps": [], "noWords": [], "floorDb": [-58, -52]},
-          "b": {"ownership": [[20000, 50000]], "presence16k": [[320000, 800000]], "gaps": [], "noWords": [[18000, 20000]], "floorDb": [-83, -77]},
-          "system-fallback": {"ownership": [[50000, 60000]], "presence16k": [[800000, 864000], [888000, 960000]], "gaps": [[54000, 55500]], "noWords": [[49000, 50000], [54000, 55500], [60000, 61000]], "floorDb": [-70, -64]},
-          "b-return": {"ownership": [[60000, 90000]], "presence16k": [[960000, 1120000], [1152000, 1440000]], "gaps": [[70000, 72000]], "noWords": [[70000, 72000]], "floorDb": [-48, -42]}
+          "mic": {"ownership": [[0, 90000]], "presence16k": [[0, 1440000]], "gaps": [], "noWords": [], "floorDb": [-71, -65], "activeSeconds": [18.0, 21.6], "fallbackWindowsMs": [[0, 15000], [14500, 29500], [29000, 44000], [58000, 73000]]},
+          "system": {"ownership": [[0, 20000]], "presence16k": [[0, 320000]], "gaps": [], "noWords": [[20000, 22000]], "floorDb": [-55, -49], "activeSeconds": [1.1, 1.6], "fallbackWindowsMs": [[14500, 20000]]},
+          "a-short": {"ownership": [[30000, 32000]], "presence16k": [[480000, 512000]], "gaps": [], "noWords": [], "floorDb": [-57, -51], "activeSeconds": [1.6, 1.7], "fallbackWindowsMs": [[30000, 32000]]},
+          "a-long": {"ownership": [[40000, 50000]], "presence16k": [[640000, 656000], [768000, 800000]], "gaps": [[41000, 48000]], "noWords": [[41000, 48000]], "floorDb": [-58, -52], "activeSeconds": [2.1, 2.3], "fallbackWindowsMs": [[40000, 41000], [48000, 50000]]},
+          "a-return": {"ownership": [[60000, 62000]], "presence16k": [[960000, 992000]], "gaps": [], "noWords": [], "floorDb": [-58, -52], "activeSeconds": [1.2, 1.5], "fallbackWindowsMs": [[60000, 62000]]},
+          "b": {"ownership": [[20000, 50000]], "presence16k": [[320000, 800000]], "gaps": [], "noWords": [[18000, 20000]], "floorDb": [-83, -77], "activeSeconds": [5.9, 6.9], "fallbackWindowsMs": [[20000, 35000], [49000, 50000]]},
+          "system-fallback": {"ownership": [[50000, 60000]], "presence16k": [[800000, 864000], [888000, 960000]], "gaps": [[54000, 55500]], "noWords": [[49000, 50000], [54000, 55500], [60000, 61000]], "floorDb": [-70, -64], "activeSeconds": [4.0, 4.4], "fallbackWindowsMs": [[50000, 54000], [55500, 60000]]},
+          "b-return": {"ownership": [[60000, 90000]], "presence16k": [[960000, 1120000], [1152000, 1440000]], "gaps": [[70000, 72000]], "noWords": [[70000, 72000]], "floorDb": [-48, -42], "activeSeconds": [3.6, 7.2], "fallbackWindowsMs": [[60000, 70000], [72000, 87000]]}
         },
         "voices": {"me": "A", "others": "B", "source-a": "C", "source-b": "B"},
-        "speechMs": {"me": 30000, "others": 8500, "source-a": 7000, "source-b": 29000},
+        "speechMs": {"me": 30000, "others": 8500, "source-a": 7000, "source-b": 25000},
         "overlaps": [
           {"ms": [49000, 50000], "people": ["source-a", "source-b"]},
           {"ms": [60000, 62000], "people": ["me", "source-a", "source-b"]},
           {"ms": [62000, 68000], "people": ["me", "source-b"]}
         ],
         "personFloorDb": {"me": [-71, -65], "others": [-70, -64], "source-a": [-58, -52], "source-b": [-83, -77]},
+        "personActiveSeconds": {"me": [18.0, 21.6], "others": [5.1, 6.0], "source-a": [4.9, 5.5], "source-b": [9.5, 14.1]},
+        "fallback": {"me": true, "others": false, "source-a": false, "source-b": false},
+        "turnBreaksMs": {"me": [], "others": [[54000, 55500]], "source-a": [[41000, 48000]], "source-b": [[70000, 72000]]},
+        "turnCases": [
+          {"speaker": "source-a", "words": [[40240, 40500], [40530, 41010], [48440, 48700], [48730, 49690]], "turns": [2, 2]},
+          {"speaker": "source-a", "words": [[40500, 40900], [47990, 48300]], "turns": [1, 1]},
+          {"speaker": "source-a", "words": [[47995, 48005], [48440, 48700]], "turns": [2]},
+          {"speaker": "source-b", "words": [[67000, 67500], [69500, 69990], [72000, 72400], [72500, 73000]], "turns": [2, 2]},
+          {"speaker": "source-b", "words": [[60000, 60500], [61200, 61700], [64000, 64400]], "turns": [3]},
+          {"speaker": "others", "words": [[53500, 53900], [55600, 56000]], "turns": [1, 1]},
+          {"speaker": "others", "words": [[19500, 19900], [50100, 50500]], "turns": [2]},
+          {"speaker": "source-a", "words": [[31000, 31500], [40200, 40500]], "turns": [2]},
+          {"speaker": "me", "words": [[7000, 7500], [10500, 11000]], "turns": [2]}
+        ],
+        "wordMidpoints": [
+          {"track": "a-long", "ms": [40500, 41000], "keep": true},
+          {"track": "a-long", "ms": [40530, 41010], "keep": true},
+          {"track": "a-long", "ms": [40980, 41010], "keep": true},
+          {"track": "a-long", "ms": [40999, 41000], "keep": true},
+          {"track": "a-long", "ms": [40990, 41010], "keep": false},
+          {"track": "a-long", "ms": [41000, 41001], "keep": false},
+          {"track": "a-long", "ms": [41000, 41000], "keep": false},
+          {"track": "a-long", "ms": [44000, 45000], "keep": false},
+          {"track": "a-long", "ms": [47999, 48000], "keep": false},
+          {"track": "a-long", "ms": [47990, 48010], "keep": true},
+          {"track": "a-long", "ms": [48000, 48000], "keep": true},
+          {"track": "a-long", "ms": [49990, 50030], "keep": false},
+          {"track": "system", "ms": [19980, 20010], "keep": true},
+          {"track": "system", "ms": [19999, 20000], "keep": true},
+          {"track": "system", "ms": [19990, 20010], "keep": false},
+          {"track": "system", "ms": [20500, 21000], "keep": false},
+          {"track": "b", "ms": [19990, 20010], "keep": true},
+          {"track": "b", "ms": [18500, 19500], "keep": false},
+          {"track": "b", "ms": [49980, 50000], "keep": true},
+          {"track": "b", "ms": [49990, 50010], "keep": false},
+          {"track": "system-fallback", "ms": [49990, 50010], "keep": true},
+          {"track": "system-fallback", "ms": [53990, 54010], "keep": false},
+          {"track": "system-fallback", "ms": [55490, 55510], "keep": true},
+          {"track": "system-fallback", "ms": [59990, 60010], "keep": false},
+          {"track": "b-return", "ms": [59990, 60010], "keep": true},
+          {"track": "b-return", "ms": [69990, 70010], "keep": false},
+          {"track": "b-return", "ms": [71990, 72010], "keep": true},
+          {"track": "a-short", "ms": [29990, 30010], "keep": true},
+          {"track": "a-short", "ms": [31990, 32030], "keep": false},
+          {"track": "mic", "ms": [0, 0], "keep": true},
+          {"track": "mic", "ms": [89990, 90010], "keep": false}
+        ],
         "d49Overlap": [18000, 22000],
         "seamOverlaps": [[49000, 50000], [60000, 61000]],
         "bleeds": [
@@ -52,17 +109,55 @@
       },
       "05200000-0000-4000-8000-000000000002": {
         "tracks": {
-          "independent": {"ownership": [[0, 40000]], "presence16k": [[0, 640000]], "gaps": [], "noWords": [], "floorDb": [-66, -60]}
+          "independent": {"ownership": [[0, 40000]], "presence16k": [[0, 640000]], "gaps": [], "noWords": [], "floorDb": [-66, -60], "activeSeconds": [9.2, 11.2], "fallbackWindowsMs": [[0, 15000], [14500, 29500]]}
         },
         "voices": {"other-call-source": "A"},
         "speechMs": {"other-call-source": 16000},
         "overlaps": [],
         "personFloorDb": {"other-call-source": [-66, -60]},
+        "personActiveSeconds": {"other-call-source": [9.2, 11.2]},
+        "fallback": {"other-call-source": false},
+        "turnBreaksMs": {"other-call-source": []},
+        "turnCases": [],
+        "wordMidpoints": [
+          {"track": "independent", "ms": [39990, 40010], "keep": false}
+        ],
         "d49Overlap": null,
         "seamOverlaps": [],
         "bleeds": [],
         "noiseBed": null,
         "captureOutcome": {"other-call-source": {"captureOutcome": "captured", "audioMs": 40000}},
+        "droppedFrames": {}
+      },
+      "05200000-0000-4000-8000-000000000003": {
+        "tracks": {
+          "mic3": {"ownership": [[0, 60000]], "presence16k": [[0, 960000]], "gaps": [], "noWords": [], "floorDb": [-67, -61], "activeSeconds": [3.0, 3.8], "fallbackWindowsMs": [[43500, 58500]]},
+          "d-first": {"ownership": [[0, 20000]], "presence16k": [[0, 320000]], "gaps": [], "noWords": [], "floorDb": [-65, -59], "activeSeconds": [8.7, 10.0], "fallbackWindowsMs": [[0, 15000], [14500, 20000]]},
+          "d-return": {"ownership": [[24000, 50000]], "presence16k": [[384000, 544000], [576000, 800000]], "gaps": [[34000, 36000]], "noWords": [[34000, 36000]], "floorDb": [-65, -59], "activeSeconds": [10.4, 11.7], "fallbackWindowsMs": [[24000, 34000], [36000, 50000]]}
+        },
+        "voices": {"me": "A", "source-d": "B"},
+        "speechMs": {"me": 6000, "source-d": 30000},
+        "overlaps": [],
+        "personFloorDb": {"me": [-67, -61], "source-d": [-65, -59]},
+        "personActiveSeconds": {"me": [3.0, 3.8], "source-d": [19.1, 21.7]},
+        "fallback": {"me": false, "source-d": true},
+        "turnBreaksMs": {"me": [], "source-d": [[34000, 36000]]},
+        "turnCases": [
+          {"speaker": "source-d", "words": [[31000, 31500], [36500, 37000]], "turns": [1, 1]},
+          {"speaker": "source-d", "words": [[15000, 15500], [24500, 25000]], "turns": [2]}
+        ],
+        "wordMidpoints": [
+          {"track": "d-first", "ms": [19980, 20000], "keep": true},
+          {"track": "d-first", "ms": [19990, 20010], "keep": false},
+          {"track": "d-return", "ms": [33990, 34010], "keep": false},
+          {"track": "d-return", "ms": [35990, 36010], "keep": true},
+          {"track": "d-return", "ms": [23990, 24010], "keep": true}
+        ],
+        "d49Overlap": null,
+        "seamOverlaps": [],
+        "bleeds": [],
+        "noiseBed": null,
+        "captureOutcome": {"source-d": {"captureOutcome": "captured", "audioMs": 44000}},
         "droppedFrames": {}
       }
     }
@@ -140,7 +235,7 @@
         {
           "id": "b-return", "kind": "application", "sourceTrackId": "source-b", "startMs": 60000, "endMs": 90000,
           "speech": "B",
-          "speechWindows": [[60000, 68000, 20000], [72000, 84000, 20000]],
+          "speechWindows": [[60000, 68000, 20000], [72000, 80000, 20000]],
           "presenceWindows": [[60000, 70000], [72000, 90000]],
           "gaps": [{"atMs": 70000, "durationMs": 2000, "frames": 96000, "kind": "jump"}],
           "noise": {"dbfs": -45, "seed": "b-return", "originMs": 60000, "windows": [[60000, 70000], [72000, 90000]]}
@@ -162,6 +257,36 @@
           "id": "independent", "kind": "remote", "sourceTrackId": "other-call-source", "startMs": 0, "endMs": 40000,
           "speech": "A",
           "speechWindows": [[0, 8000], [12000, 20000]]
+        }
+      ]
+    },
+    {
+      "id": "05200000-0000-4000-8000-000000000003",
+      "createdAt": "2026-10-31T13:00:00Z",
+      "title": "Rejoined guest",
+      "durationMs": 60000,
+      "events": [
+        {"type": "selection", "atMs": 0, "me": true, "others": true, "reason": "start"},
+        {"type": "othersSource", "atMs": 0, "source": "browser", "reason": "start"},
+        {"type": "end", "atMs": 60000, "reason": "user"}
+      ],
+      "tracks": [
+        {
+          "id": "mic3", "kind": "microphone", "startMs": 0, "endMs": 60000,
+          "speech": "A",
+          "speechWindows": [[50000, 56000]]
+        },
+        {
+          "id": "d-first", "kind": "remote", "sourceTrackId": "source-d", "startMs": 0, "endMs": 20000,
+          "speech": "B",
+          "speechWindows": [[0, 8000], [10000, 16000, 0]]
+        },
+        {
+          "id": "d-return", "kind": "remote", "sourceTrackId": "source-d", "startMs": 24000, "endMs": 50000,
+          "speech": "B",
+          "speechWindows": [[24000, 32000], [36000, 44000, 24000]],
+          "presenceWindows": [[24000, 34000], [36000, 50000]],
+          "gaps": [{"atMs": 34000, "durationMs": 2000, "frames": 96000, "kind": "jump"}]
         }
       ]
     }

@@ -20,7 +20,7 @@ ROOT = Path(__file__).parents[1] / "browser-protocol/conformance/multistream"
 CORPUS = json.loads((ROOT / "corpus.json").read_text())
 C = CORPUS["constants"]
 SESSIONS = {session["id"]: session for session in CORPUS["sessions"]}
-CALL, OTHER = SESSIONS
+CALL, OTHER, REJOINED = SESSIONS
 EXPECTED = CORPUS["expected"]
 RATE = 16000
 
