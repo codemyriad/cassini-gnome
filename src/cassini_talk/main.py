@@ -298,7 +298,7 @@ class CassiniApplication(Adw.Application):
 
         def callback():
             window = self._activate_current(background=background)
-            if record and not self._exit_begun:
+            if record and not self._exit_held():
                 self._record_current()
             return window
 
@@ -307,10 +307,15 @@ class CassiniApplication(Adw.Application):
         else:
             callback()
 
+    def _exit_held(self):
+        """The exit began and a discarded test still holds the app (D60)."""
+        return self._exit_begun and self.sound_check is not None and self.sound_check.held
+
     def _activate_current(self, *, background=False):
-        if self._exit_begun:
-            # A launch while a hold delays the exit (D60): a window now would
-            # have no recorder, test or models behind it. The next launch opens.
+        if self._exit_held():
+            # A launch while that hold delays the exit: a window now would have
+            # no recorder, test or models behind it. The next launch opens. A
+            # launch after any other exit still reopens (pushed playback).
             logging.getLogger(__name__).info("Ignored an activation during exit")
             return None
         self._quitting = False
