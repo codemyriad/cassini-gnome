@@ -21,7 +21,14 @@ jobs:
         with:
           bundle: cassini-talk-devel.flatpak
           manifest-path: build-aux/flatpak/io.codemyriad.CassiniTalk.Devel.json
-          cache-key: flatpak-builder-${{ github.sha }}
+          # G8: keyed on the manifest, which pins every downloaded source, so
+          # a run restores the last build of the same manifest (numpy and the
+          # downloads; the app module is rebuilt from the checkout anyway).
+          # The action saves only when nothing restored under this key, so
+          # a pull request with main's manifest reuses main's entry and adds
+          # none. Not `cache: false` on PRs: in this action that also turns
+          # off the restore.
+          cache-key: flatpak-builder-devel-${{ hashFiles('build-aux/flatpak/io.codemyriad.CassiniTalk.Devel.json') }}
       - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/parakeet-models
