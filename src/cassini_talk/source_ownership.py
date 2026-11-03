@@ -233,7 +233,9 @@ def speaker_gap_ranges(tracks, *, silent=(), merges=None):
     offsets on the spans). Speaker ids and R64 overlap lanes are the ones the
     write-down gives (transcription.prepare_tracks); a D56 silent track has no
     words and adds no ranges. `merges` maps a merged-away speaker to the one
-    its words now carry, which then splits on both speakers' ranges.
+    its words now carry, which then splits on both speakers' ranges. Every
+    track and lane id has an entry, an empty one too, so a source id that ends
+    in `~1` never takes another source's ranges as a voice (own_gap_ranges).
     """
     from .source_spans import separate
 
@@ -253,7 +255,7 @@ def speaker_gap_ranges(tracks, *, silent=(), merges=None):
     sources = {}
     for row in audible:
         sources.setdefault(row["speaker"], []).append(row)
-    result = {}
+    result = {speaker: [] for speaker in reserved}
     for group in sources.values():
         # R64 lanes are per source, so one at a time gives the same ids; a
         # source whose lane id is over the limit loses only its own breaks.
@@ -266,7 +268,7 @@ def speaker_gap_ranges(tracks, *, silent=(), merges=None):
     for source, target in (merges or {}).items():
         # A `<group>~n` target keeps its group's ranges as well.
         result[target] = [*own_gap_ranges(result, target), *own_gap_ranges(result, source)]
-    return {speaker: _union(ranges) for speaker, ranges in result.items() if ranges}
+    return {speaker: _union(ranges) for speaker, ranges in result.items()}
 
 
 def _count(value, low):
@@ -317,7 +319,7 @@ def _union(ranges):
 
 
 def own_gap_ranges(ranges, speaker):
-    """The gap ranges of `speaker`; a D24 `<group>~n` voice has its group's."""
+    """The gap ranges of `speaker`; a D24 `<group>~n` voice with no entry of its own has its group's."""
     if speaker in ranges:
         return ranges[speaker]
     group, separator, ordinal = speaker.rpartition("~")
