@@ -26,7 +26,9 @@ jobs:
         run: |
           command -v cc
           /usr/bin/python3 -m pytest -q tests/test_parakeet.py::test_all_used_struct_sizes_and_every_field_offset_match_the_approved_fork_header
-      - run: /usr/bin/python3 -m pytest -q
+      # The full suite is not run here (G9): Recording runs it on every PR in a
+      # superset of this environment on the same image, and alpine:edge covers
+      # the no-NumPy path.
 
   distros:
     name: Build and test on ${{ matrix.image }}
