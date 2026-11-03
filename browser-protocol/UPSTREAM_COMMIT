@@ -1,26 +1,26 @@
-tree dcf7cba76b91e86bcdef4de84dd93cc64d64dd88
-parent e6d399871de26090cc780c4f9e60aa53961ed99e
-parent e8e78f98441881f53b8cd425f7b7f1d4dc926e2f
-author Silvio Tomatis <silviot@gmail.com> 1793677597 +0100
-committer GitHub <noreply@github.com> 1793677597 +0100
+tree c33b0be98883629e6ed1d1a842b08a9193075357
+parent 981fb4d515605a41e768d4e32831382d01085bc2
+parent 2ded09eb5102a26c2a11db7053fc17fd8f6331e7
+author Silvio Tomatis <silviot@gmail.com> 1793693251 +0100
+committer GitHub <noreply@github.com> 1793693251 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq6VkdCRC1aQ7uu5UhlAAAm64QAGoPHWO6LhyZ3Csm4kYhzZP2
- s4yU2rBLwqk5xtaZvc7qrhj9b7uhewkCwPvqYkehmW4KEhOpa012Q1ksKSrcSbVY
- WYBuH3rrvNGFeE0EAjNDFYYwGdRyGC5srzfJjj4+j7H5BWdmrmX7zDYXaZ9blXnb
- kjqrsQePHxe+SGfGiLq+HHSvKjAUuf1Sar+b+abp8Wg5rsI9enISe/lseD/1USjW
- 9twnBnmh69gD6NV8LxVZOFprx1hzCtvDuZEK1RpdNntlYggpZtYfkKfR+hCQZSH6
- DbhiMqLvnzDo+UsB04bkPXMinukZhCHnmhV4aWyzhIlRO1slffdua1NtACOm+81K
- v53J1dlwEW+dq/FfS7zl3iwAX3O0XtMgg6cyGvvaT+EqPBsCAF/LZt4xOgc8Wbey
- 4xJQKfpptNZbQfbo8pe9QCeia50oHRQGkhLuRFD4xSIcHBRek0/DuX1+TW1krUt9
- qRoaFIj1zDgldJq2K+cxRYoQlmcE+qrFJu9Pd/oct5D6vZHqe+zBZrOq13m45Tqk
- yszmjnWoUr19k9nRTkCrOCLzRKvflL4SeesJ+RkgIZTTa+WRjS2pqKZnmAAcbpSi
- zGUPDaEHEbNJBwnVqgtSs2MuFGjfge1MyjPsrkx2Nzl4m0T5VnyiqEQxvmtJ/IAh
- uRqRDXe93c80JlM8ULJG
- =pZcA
+ wsFcBAABCAAQBQJq6ZZDCRC1aQ7uu5UhlAAAVR0QAJp/Sdy3UGAVKt+o6WnESETX
+ 2acCt0hVRAhgTxuc+5RsDTT3K4j5i4Zv+0/yiuKkiqNCa9pU1Ge6EJ9iKP/LN0e1
+ COIkUD+rVCHJl9EYN0A7Nvs+iQ+gpB8Me+nwQDzGlAv31oYmRCX6448PRvVwUcNI
+ ZzC6RlspnsKWFyzBxISLfnV/5Hkq38rLsXSYHAQsyYGIZz+QksX925uL/bETgCBY
+ dAOtlE0Vyhd0YbSnjQs5ugrfgaX9+uU64tcSji2eOTP0NnKCjtEYglyygYBLW5WZ
+ anTTtYKpup0jii48RqCCmFFc0PH0fBCAn7Xa6/k5HkJPut+w3bzU2WBJy7mdqa0U
+ 0/LwSbCd6Tt18uPnFhewsUzXQZsihYuRzw3KPHQCzLJ0OW3gB/BaG9oLTgeBfcLL
+ h5HpsLeczca7alQl7IaJ1PZeYcbcDIPr8vn9BfB6oCeJ4O/FxXhWucI1k05gPZeM
+ GUaixmAAjnO1aCUdN61fmYOFnMPLhccGMwwjw6s+og7pZsSFimSG68FsvAyS9BWy
+ 5ljmCxHQja9qMrvyjxOGnDjCECtI7r2YShyafsVeopiGTqkBlOdVMC40B7Qx7BMs
+ XJdFn07fb5INigXOO0bNGkrg4log9AXAUG6kYK18dStPiqXM7MmprCsqHPHZ/McE
+ l+ytKbeMrMeUeRdhYsWK
+ =lGAk
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #42 from codemyriad/feat/d63-corpus-vectors
+Merge pull request #43 from codemyriad/chore/resume-after-fallback-commit
 
-D63 corpus vectors: fallback per person, turn breaks at gap ranges, words outside presence
+Resume only after the fallback commits (Mac #113); an empty gap is valid in session.json

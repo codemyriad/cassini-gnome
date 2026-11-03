@@ -1,6 +1,6 @@
 # Browser call lifetime (D33)
 
-Shared protocol pin: `981fb4d515605a41e768d4e32831382d01085bc2` (protocol PR #42, the D63 corpus vectors: fallback per person, turn breaks at gap ranges, words outside presence; on protocol PR #41, e6d39987, multistream corpus v2, on the protocol PR #40 merge 032e98fc, Mac's D61 follow-ups, on the PR #39 merge, D61: browser clock facts and a span's `documentGeneration` on `track`, the departed-generation watchdog rule; on top of protocol PR #38: Mac's #37 follow-ups, a forget vector; on top of the PR #37 merge: resume packets carry the ask's `requestId`, a fresh UUID per ask that is never reused, on top of protocol PR #36, the D58 refusal vector follow-ups, #35's classified refusals and result codes, #34's D57 resume host clarifications and the D52.5 PR #32).
+Shared protocol pin: `c0284a6fa9ac7859513d9152e2649b2195059f4e` (protocol PR #43, Mac #113: the host joins only a committed fallback, so the D52.5 ask waits for the written system/lost (`fallbackCommitted` in lifecycle.json), and session.schema.json takes an empty gap (`durationMs` and `frames` both 0) and refuses a mixed one; on protocol PR #42, 981fb4d5, the D63 corpus vectors: fallback per person, turn breaks at gap ranges, words outside presence; on protocol PR #41, e6d39987, multistream corpus v2, on the protocol PR #40 merge 032e98fc, Mac's D61 follow-ups, on the PR #39 merge, D61: browser clock facts and a span's `documentGeneration` on `track`, the departed-generation watchdog rule; on top of protocol PR #38: Mac's #37 follow-ups, a forget vector; on top of the PR #37 merge: resume packets carry the ask's `requestId`, a fresh UUID per ask that is never reused, on top of protocol PR #36, the D58 refusal vector follow-ups, #35's classified refusals and result codes, #34's D57 resume host clarifications and the D52.5 PR #32).
 Companion 0.2.12 replaces older local installs; no Chrome Web Store packaging or upload is performed.
 
 The broker owns every independent capture and its Library folder. With the
@@ -146,6 +146,11 @@ and are enforced by its periodic `tick()`, which keeps running during Stop.
   connection adopts it as that tab's recording, so no second folder is created.
   A different callGeneration in that tab ends the old call's recording as
   `callEnded` (the existing call boundary) and then follows the ordinary rules.
+- The fallback commits when its computer-sound device admits a first buffer:
+  only then is `othersSource` system/lost written. Until then the recorded
+  source is unchanged, the call still counts as recording, and no resume is
+  asked on any control connection (protocol PR #43). The vector runner holds the
+  real fallback device before its first buffer for `fallbackCommitted:false`.
 - A row's heard evidence latches a recording's lifecycle only when the row's
   callGeneration is the recording's own, so another call's heard never arms its
   restore or the 30-second call-end grace (D52.5).

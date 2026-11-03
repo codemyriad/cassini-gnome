@@ -300,6 +300,31 @@
      ]
     ]
    }
+  },
+  {
+   "name": "an-empty-gap-is-no-range",
+   "track": {
+    "startOffsetMs": 0,
+    "sampleRate": 48000,
+    "frames": 96000,
+    "gaps": [
+     {
+      "atMs": 1000,
+      "durationMs": 0,
+      "frames": 0,
+      "kind": "jump"
+     }
+    ]
+   },
+   "expected": {
+    "present": [
+     [
+      0,
+      32000
+     ]
+    ],
+    "unknown": []
+   }
   }
  ]
 }

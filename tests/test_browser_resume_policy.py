@@ -2,13 +2,15 @@
 """D52.5 ask-once resume, app side: the real policy, control handler and capture."""
 
 import logging
+import threading
 import time
 
 import pytest
 from test_browser_capture import Tap
 
 from cassini_talk.browser_capture import BrowserCapture
-from cassini_talk.browser_service import BrowserConnection, BrowserService
+from cassini_talk.browser_service import AudioTransport, BrowserConnection, BrowserService
+from cassini_talk.session_events import source_state
 
 CAPABILITIES = ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1"]
 
@@ -498,4 +500,84 @@ def test_once_eligible_again_the_same_connection_asks_exactly_once(policy, chang
         assert sent[-1][0] is browser
         assert packet["resumeCapture"] == dict(captureId="F", timelineOriginMs=capture.origin_ms)
     finally:
+        capture.stop()
+
+
+class HeldFallback:
+    """Native taps whose next system device holds its first buffer, then delivers or fails."""
+
+    def __init__(self, fails):
+        self.fails, self.armed = fails, False
+        self.opening, self.first_buffer = threading.Event(), threading.Event()
+
+    def __call__(self, kind, *args, **kwargs):
+        tap = Tap(kind, *args, **kwargs)
+        if kind == "system" and self.armed:
+            self.armed, opened = False, tap.start
+
+            def start():
+                self.opening.set()
+                if not self.first_buffer.wait(10) or self.fails:
+                    raise OSError("The fallback device failed before its first buffer")
+                opened()
+
+            tap.start = start
+        return tap
+
+
+@pytest.mark.parametrize("instance", ["resume-browser", None])
+@pytest.mark.parametrize("hello", [False, True], ids=["same-connection", "new-hello"])
+@pytest.mark.parametrize("fails", [False, True], ids=["commits", "fails"])
+def test_no_ask_before_the_fallback_commits_or_after_it_fails(policy, instance, hello, fails):
+    """D52.5: the transport's teardown decides the fallback; only its commit makes an ask."""
+    service, tasks, sent, parent = policy
+    browser = peer(service, instance=instance)
+    capture = recording(service, parent, browser)
+    held = capture.tap_factory = HeldFallback(fails)
+    transport = AudioTransport(None, service.clock)
+    transport.capture = capture
+    service._audio_transports.add(transport)
+    held.armed = True
+    # As on the transport's reader thread, while control keeps running.
+    closer = threading.Thread(target=service._audio_closed, args=(transport, capture))
+    closer.start()
+
+    def lost():
+        current = source_state(capture.host.session.manifest.get("events"))
+        return (current.source, current.reason) == ("system", "lost")
+
+    def ticks(connection):
+        for _ in range(3):
+            released(service, connection)
+            service.update(connection, dict(type="meetings", meetings=[row()]))
+            service.policy()
+            run(tasks)
+
+    try:
+        assert held.opening.wait(10)
+        ticks(browser)
+        if hello:
+            close(service, browser)
+            browser = peer(service, instance=instance)
+            ticks(browser)
+        assert closer.is_alive() and not capture.browser_lost and not lost()
+        assert not asks(sent), "asked before the fallback committed"
+        # Decided, not committed: the call is still being recorded.
+        (shown,) = service.snapshot()["meetings"]
+        assert shown["recording"] is True and service.start_all()["attempted"] == 0
+        held.first_buffer.set()
+        closer.join(10)
+        assert not closer.is_alive()
+        ticks(browser)
+        if fails:
+            assert capture.finished and capture.end_reason == "error" and not lost()
+            assert not asks(sent), "a fallback that never committed is never asked to resume"
+        else:
+            assert capture.browser_lost and lost()
+            (packet,) = asks(sent)
+            assert sent[-1][0] is browser and packet["resumeCapture"]["captureId"] == "F"
+        assert not fresh_starts(sent) and list(service.captures) == ["F"]
+    finally:
+        held.first_buffer.set()
+        closer.join(10)
         capture.stop()

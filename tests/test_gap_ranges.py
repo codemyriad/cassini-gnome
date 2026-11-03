@@ -4,6 +4,7 @@
 import base64
 import json
 import math
+import shutil
 from pathlib import Path
 
 import pytest
@@ -284,6 +285,56 @@ def test_an_empty_gap_is_no_range_and_later_gaps_still_count(gaps, present, unkn
     shared = oracle.presence(track)
     # The oracle may split a window at an empty gap; the instants are the same.
     assert (merged(shared["present"]), merged(shared["unknown"])) == (present, unknown)
+
+
+def gap_schema():
+    """The pinned session.schema.json rule for one stored gap entry."""
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = json.loads((VECTORS.parents[1] / "schemas/session.schema.json").read_text())
+    return jsonschema.Draft202012Validator(schema["properties"]["tracks"]["items"]["properties"]["gaps"]["items"])
+
+
+def test_the_pinned_schema_takes_an_empty_gap_and_refuses_a_mixed_one():
+    validator = gap_schema()
+    for entry in (jump(1000, 0, 0), jump(1000, 20.833333333333332, 1000), dict(atMs=1000, kind="overflow")):
+        assert validator.is_valid(entry), entry
+    for entry in (jump(1000, 0, 5), jump(1000, 10, 0), jump(1000, -1, 0), jump(1000, 0, -1)):
+        assert not validator.is_valid(entry), entry
+
+
+@pytest.mark.parametrize("case", WRITER, ids=lambda case: case["name"])
+def test_the_real_writers_store_only_gaps_the_pinned_schema_takes(tmp_path, case):
+    validator = gap_schema()
+    replay = Replay(tmp_path, case)
+    try:
+        for step in case["steps"]:
+            getattr(replay, step["op"])(**{key: value for key, value in step.items() if key != "op"})
+        saved = replay.stop()
+    finally:
+        replay.host.close()
+        # The suite's shared temporary space is small: keep only the facts.
+        shutil.rmtree(tmp_path.absolute(), ignore_errors=True)
+    for track in saved["tracks"]:
+        for entry in track.get("gaps") or ():
+            assert validator.is_valid(entry), (track["id"], entry)
+
+
+def test_a_padding_write_that_writes_nothing_stores_no_entry(tmp_path, monkeypatch):
+    """A range stays only for padding that reached the WAV: never an empty or mixed entry."""
+    from cassini_talk.recording_session import RecordingSession
+
+    session = RecordingSession(tmp_path, "Nothing written")
+    session.add_track("a", "Guest", "remote", 48000, 1, label_source="browser")
+    session.append("a", b"\x01\x00" * 48000, 0)
+
+    def failing(_frames):
+        raise OSError(28, "Generated ENOSPC")
+
+    monkeypatch.setattr(session.writers["a"], "silence", failing)
+    with pytest.raises(OSError):
+        session.append("a", b"\x01\x00" * 48000, 3000)
+    assert session.manifest["tracks"][0]["gaps"] == []
+    session.finish()
 
 
 def test_null_gaps_read_as_an_older_writer_in_the_library(tmp_path):

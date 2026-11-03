@@ -39,7 +39,8 @@ Native gap kinds assume an unwarped clock, so nominal and mapped positions agree
 Stored track facts (`startOffsetMs`, `sampleRate`, `frames`, optional `gaps`) plus optional
 ownership windows go in; integer half-open 16 kHz session-sample ranges `present` and
 `unknown` come out. A window [a,b) ms covers samples [ceil(16a - 1e-6), ceil(16b - 1e-6)).
-A missing or null `gaps` is unknown. Presence never reads PCM and never uses `droppedFrames`.
+A missing or null `gaps` is unknown. An empty gap (`durationMs` 0, `frames` 0) is no range.
+Presence never reads PCM and never uses `droppedFrames`.
 
 `tests/test_gap_ranges.py` checks the oracle against every literal case. It also checks
 that coalescing ranges, truncating without an overflow marker, storing drops only on the live

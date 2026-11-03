@@ -45,6 +45,14 @@ real retained microphone/system capture (private generated audio):
   audio transport closed) is eligible like the D49 system/missing stand-in; its
   seam writes browser/restored instead of browser/callConnected. Run `lostSeam`
   through the same placement path as `seam`.
+  The host joins only a committed fallback: the recording's othersSource system/lost
+  is written once the fallback device delivers audio (its first buffer is admitted),
+  not when the transport closes. An app MUST wait for that commit before it sends
+  the resume; one sent earlier is refused and uses up the only ask for that loss on
+  that connection.
+  `D52.5-ask-waits-for-the-committed-fallback` and
+  `D52.5-a-new-hello-before-the-commit-waits-for-it` in
+  `../multistream/lifecycle.json` pin the order (`fallbackCommitted`).
 - D52.5: the app asks to resume a system/lost recording (its audio transport
   closed) once per loss and control connection, once more on each new hello,
   and never auto-starts a second recording of that call, matched by

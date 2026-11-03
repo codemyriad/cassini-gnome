@@ -178,6 +178,7 @@ def presence(track, ownership=None):
                 unknown = [(max(a, at), b) for a, b in present if b > at]
                 present = _subtract(present, at, extent[0][1])
                 break
-            present = _subtract(present, at, at + Fraction(str(gap['durationMs'])))
+            if gap['durationMs'] > 0:  # an empty gap is no range
+                present = _subtract(present, at, at + Fraction(str(gap['durationMs'])))
     return dict(present=[_samples(a, b) for a, b in _intersect(present, ownership)],
                 unknown=[_samples(a, b) for a, b in _intersect(unknown, ownership)])

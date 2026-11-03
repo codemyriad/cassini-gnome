@@ -2,6 +2,7 @@
 """Run shared literal D33 actions through the real broker and session writer."""
 
 import json
+import threading
 import time
 from concurrent.futures import Future
 from pathlib import Path
@@ -12,9 +13,29 @@ from test_browser_capture import Tap
 from cassini_talk.browser_capture import BrowserCapture
 from cassini_talk.browser_service import PCM_STALE_AFTER, AudioTransport, BrowserConnection, BrowserService
 from cassini_talk.call_lifecycle import BROWSER_RETURN_GRACE, CALL_END_GRACE
+from cassini_talk.session_events import source_state
 
 VECTORS = Path(__file__).resolve().parents[1] / "browser-protocol/conformance/control/call-lifecycle-vectors.json"
 PCM_FRESH = 2  # browser_capture.browser_ready_since's window (SPEC.md)
+HOLD_BOUND = 10  # seconds; only a bound on waiting for a held fallback's thread
+
+
+class HeldTap(Tap):
+    """A fallback device that has not delivered its first buffer yet.
+
+    NativeTap.start returns once the device admits a first buffer, so the
+    fallback is decided but not committed while this start waits.
+    """
+
+    def __init__(self, opening, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.opening, self.first_buffer = opening, threading.Event()
+
+    def start(self):
+        self.opening.set()
+        if not self.first_buffer.wait(HOLD_BOUND):
+            raise OSError("The held fallback device was never released")
+        super().start()
 
 
 class Inline:
@@ -38,7 +59,21 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
     service = BrowserService(tmp_path / "settings.json", notifier=lambda *_: None)
     service.workers.shutdown()
     service.workers = Inline()
-    capture = BrowserCapture(service._capture_changed, parent=tmp_path / "Library", tap_factory=Tap)
+    # fallbackCommitted:false: the next system tap holds its first buffer.
+    held = dict(next=False, tap=None, closer=None, opening=None)
+
+    def taps(kind, *args, **kwargs):
+        if kind == "system" and held["next"]:
+            held["next"] = False
+            held["tap"] = HeldTap(held["opening"], kind, *args, **kwargs)
+            return held["tap"]
+        return Tap(kind, *args, **kwargs)
+
+    def lost_written():
+        current = source_state(capture.host.session.manifest.get("events"))
+        return (current.source, current.reason) == ("system", "lost")
+
+    capture = BrowserCapture(service._capture_changed, parent=tmp_path / "Library", tap_factory=taps)
     capture.start(
         dict(
             type="start",
@@ -119,6 +154,18 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
     try:
         for index, step in enumerate(case["steps"]):
             now[0] = step["atMs"] / 1000
+            committed = step.get("fallbackCommitted", True)
+            if held["closer"] is not None and committed:
+                # The fallback device delivers its first buffer now: the
+                # broker's own fallback commits and writes system/lost.
+                held["tap"].first_buffer.set()
+                held["closer"].join(HOLD_BOUND)
+                assert not held["closer"].is_alive(), (case["name"], step)
+                held["closer"] = None
+                assert capture.browser_lost and lost_written(), (case["name"], step, capture.error)
+                # Written at the commit, not when the transport closed.
+                *_, event = (e for e in capture.host.session.manifest["events"] if e.get("reason") == "lost")
+                assert event["atMs"] >= step["atMs"], (case["name"], step, event)
             if step.get("controlConnection", connection) != connection:
                 # A new hello is a new control peer; the recording is matched
                 # by its call, never by the connection it started under.
@@ -158,9 +205,23 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
                 if case.get("multistream") and fed["pcm"] and now[0] - fed["last"] >= PCM_STALE_AFTER:
                     assert capture.remote_open(), (case["name"], step, "an open span with PCM is armed")
                     assert transport.expired(now[0]) == "stopped sending audio", (case["name"], step)
-                service._audio_closed(transport, capture)
+                if committed:
+                    service._audio_closed(transport, capture)
+                else:
+                    # The broker's real teardown decides the fallback and
+                    # blocks opening its device, as on the reader thread.
+                    # A fresh event per hold: a later loss's wait proves its own tap.
+                    held["next"], held["opening"] = True, threading.Event()
+                    held["closer"] = threading.Thread(target=service._audio_closed, args=(transport, capture))
+                    held["closer"].start()
+                    assert held["opening"].wait(HOLD_BOUND), (case["name"], step, capture.error)
+                    actions.append("fallback")
                 if capture.browser_lost and not lost:
                     actions.append("fallback")
+            if not committed:
+                # Decided, not committed: the recorded source is unchanged.
+                assert held["closer"] is not None and held["closer"].is_alive(), (case["name"], step)
+                assert not capture.browser_lost and not lost_written(), (case["name"], step)
             if step.get("pcmLive") and transport_closed and not capture.finished:
                 # pcmLive implies a live transport: after a close only the real
                 # native resume attaches one, to the same folder and clock. Do
@@ -253,6 +314,10 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
         assert len(list((tmp_path / "Library").iterdir())) == 1
         assert all(args[1] == "stop" for args, _kwargs in commands)
     finally:
+        if held["tap"] is not None:
+            held["tap"].first_buffer.set()
+        if held["closer"] is not None:
+            held["closer"].join(HOLD_BOUND)
         capture.stop()
 
 
@@ -464,4 +529,22 @@ def d52(case):
 
 @pytest.mark.parametrize("case", D52_CASES, ids=lambda case: case["name"])
 def test_d52_shared_lifecycle_on_actual_capture(tmp_path, monkeypatch, case):
+    test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monkeypatch, d52(case))
+
+
+def test_d52_each_new_loss_waits_for_its_own_committed_fallback(tmp_path, monkeypatch):
+    """Two losses of one recording, each fallback decided before it commits."""
+    pending = dict(sourceCount=1, callGeneration="call-A", transportAlive=False)
+    steps = [
+        dict(atMs=0, sourceCount=1, callGeneration="call-A", heard=True, expect=[]),
+        dict(pending, atMs=45000, fallbackCommitted=False, expect=["fallback"]),
+        dict(pending, atMs=45400, expect=["askResume"]),
+        dict(atMs=46000, sourceCount=1, callGeneration="call-A", pcmLive=True, expect=["restore"]),
+        dict(pending, atMs=91000, fallbackCommitted=False, expect=["fallback"]),
+        dict(pending, atMs=91200, fallbackCommitted=False, expect=[]),
+        dict(pending, atMs=91400, expect=["askResume"]),
+        dict(pending, atMs=92000, resumeRefused=True, expect=[]),
+        dict(pending, atMs=150000, expect=[]),
+    ]
+    case = dict(name="each-loss-waits-for-its-commit", resumeCapture=True, callGeneration="call-A", steps=steps)
     test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monkeypatch, d52(case))
