@@ -63,17 +63,19 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.packages != 'false') }}
     uses: ./.github/workflows/flatpak.yml
+  # Recording, Boards and Offline test Build's product: after a failed Build
+  # they are skipped, not failed at the artifact download (G7).
   recording:
     name: Recording
     needs: [changes, build]
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.recording != 'false') }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.recording != 'false') }}
     uses: ./.github/workflows/recording.yml
     with:
       product: ci-core
   boards:
     name: Boards
     needs: [changes, build]
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.boards != 'false') }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.boards != 'false') }}
     uses: ./.github/workflows/ux-shot.yml
     with:
       product: ci-boards
@@ -85,7 +87,7 @@ jobs:
   offline:
     name: Offline
     needs: [changes, build]
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.offline != 'false') }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.offline != 'false') }}
     uses: ./.github/workflows/whistle.yml
     with:
       product: ci-offline
