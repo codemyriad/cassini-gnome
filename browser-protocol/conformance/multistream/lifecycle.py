@@ -43,6 +43,11 @@ class Policy:
             # D52.4 Q3: a visibly ongoing call stays on fallback without a
             # pageGone deadline; restoring needs a live audio transport.
             self.missing = self.ended = None
+            if transport and self.source == 'system' and self.reason == 'lost' and row.get('fallbackCommitted', True) is False:
+                # The call returns before its fallback commits (the host's source is still
+                # none/lost): the return cancels that fallback, so it restores, heard or not.
+                self.source, self.reason, self.asked_on = 'browser', 'restored', None
+                return ['restore']
             if transport and self.source == 'system' and self.heard:
                 action = 'switch:browser:callConnected' if self.reason == 'missing' else 'restore'
                 self.source, self.reason, self.asked_on = 'browser', 'restored', None

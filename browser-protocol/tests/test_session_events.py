@@ -18,6 +18,20 @@ class SessionEventsTests(unittest.TestCase):
     def test_shared_fixtures_materialised_timelines_and_reserved_reader_vector(self):
         annotations.check_fixtures()
 
+    def test_an_uncommitted_return_is_true_only_with_the_absence_in_the_file(self):
+        """Either writer form passes; a zero-filled loss never does (D47, D52.2)."""
+        kept = json.loads((annotations.FIXTURES / 'uncommitted-return-kept.session.json').read_text())
+        expected = json.loads((annotations.FIXTURES / 'uncommitted-return-kept.expected.json').read_text())
+        tracks = {track['id']: track for track in kept['tracks']}
+        one = dict(tracks['remote-before'], id='remote', file='track-remote.wav', frames=40000, endOffsetMs=5000)
+        for gaps, present in [
+            ([dict(atMs=1000, durationMs=2500, frames=20000, kind='jump')], True),  # One span, the loss as a range.
+            ([], False),  # The same span zero-filled: it would claim the Others were there.
+        ]:
+            session = dict(kept, tracks=[tracks['mic'], dict(one, gaps=gaps)])
+            annotations.validate(session)
+            self.assertEqual(annotations.others_presence(session) == expected['othersPresenceMs'], present)
+
     def test_legacy_and_null_annotations_do_not_infer_a_fallback(self):
         for value in [None, []]:
             self.session['events'] = value
@@ -142,6 +156,19 @@ class SessionEventsTests(unittest.TestCase):
                        [fallback, dict(type='selection',atMs=1,me=True,others=False,reason='user'),restore]]:
             self.session['events'] = events
             with self.assertRaises((ValueError,ValidationError)): annotations.validate(self.session)
+
+    def test_restore_after_a_fallback_that_never_committed(self):
+        # The call returned before its fallback committed (SPEC-CONTROL "Return before the
+        # fallback commits"): none/lost, then browser/restored with no system track between.
+        restore = dict(type='othersSource', atMs=2, source='browser', reason='restored')
+        lost = dict(type='othersSource', atMs=0, source='none', reason='lost')
+        self.session['events'] = [lost, restore]
+        annotations.validate(self.session)
+        # Only a loss: Others turned off (none/user) is not a fallback, nor is a lost Others side.
+        for events in [[dict(lost, reason='user'), restore],
+                       [lost, dict(type='selection',atMs=1,me=True,others=False,reason='user'),restore]]:
+            self.session['events'] = events
+            with self.assertRaises(ValueError): annotations.validate(self.session)
 
 
 if __name__ == '__main__':

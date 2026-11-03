@@ -138,7 +138,10 @@ class ResumeOnceTests(unittest.TestCase):
             for step in case['steps']:
                 if 'fallback' in step['expect']: pending=True
                 if step.get('fallbackCommitted') is False:
-                    self.assertTrue(case.get('resumeCapture') and step.get('transportAlive') is False,(name,step))
+                    # Either a resume case with the transport closed, or a return on a live
+                    # transport before the commit, which restores (ReturnBeforeCommitTests).
+                    live=step.get('transportAlive',True) is not False
+                    self.assertTrue(case.get('resumeCapture') and not live or live and step['expect'] in (['fallback'],['restore']),(name,step))
                     self.assertNotIn('askResume',step['expect'],(name,step))
                     self.assertTrue(pending,(name,step))
                 else: pending=False
@@ -187,3 +190,15 @@ class StaleAfterTests(unittest.TestCase):
                 'D52.5-ask-waits-for-the-committed-fallback','D52.5-a-new-hello-before-the-commit-waits-for-it']:
             with self.subTest(case=name):
                 self.assertEqual(next(s['atMs'] for s in cases[name]['steps'] if s.get('transportAlive') is False),45000)
+class ReturnBeforeCommitTests(unittest.TestCase):
+    """A return before the fallback commits (source still none/lost) restores at once, heard or not."""
+    def test_waiting_for_heard_before_the_commit_fails(self):
+        # The earlier rule restored only a heard call, so an unheard return left the Others silent.
+        old=mutated("row.get('fallbackCommitted', True) is False","False")
+        self.assertEqual(failing_cases(old),{'unheard-return-before-the-fallback-commits-restores'})
+    def test_a_committed_fallback_still_waits_for_heard(self):
+        eager=mutated("if transport and self.source == 'system' and self.heard:","if transport and self.source == 'system':")
+        self.assertIn('unheard-return-after-the-fallback-commits-waits-for-heard',failing_cases(eager))
+    def test_spec_states_the_rule(self):
+        spec=' '.join((ROOT/'SPEC-CONTROL.md').read_text().split())
+        self.assertIn('the app MUST restore the browser source as soon as the returning PCM is ready, whether or not heard was seen',spec)

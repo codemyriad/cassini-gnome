@@ -64,6 +64,11 @@ class BrowserCapture:
         self.me, self.others = True, True
         self.browser_lost = False
         self.browser_lost_since = None
+        # D52 "Return before the fallback commits": a fallback decided but not
+        # committed (its device has not admitted a first buffer). The recording
+        # keeps its written othersSource meanwhile (SPEC.md); a return cancels it.
+        self.fallback_pending = False
+        self._fallback_cancelled = False
         # D52.5: each transition into a browser loss is a new loss, so a
         # resume is asked again once per loss and control connection.
         self.loss_serial = 0
@@ -697,7 +702,22 @@ class BrowserCapture:
             except Exception:
                 LOG.exception("Could not record a refused resume")
 
+    def cancel_fallback(self):
+        """A return before the fallback commits: drop it, writing nothing.
+
+        No system track and no restored event: the written othersSource never
+        changed, and the missing Others are already absent between their spans
+        (D47, D52.2). Never waits for the device the fallback is opening.
+        """
+        with self.lock:
+            if not self.fallback_pending:
+                return False
+            self._fallback_cancelled = True
+        return True
+
     def restore(self):
+        if self.cancel_fallback():
+            return self.snapshot()
         try:
             return self._apply_change(self.me, self.others, restore=True)
         except ProtocolError as error:
@@ -775,6 +795,9 @@ class BrowserCapture:
                 needed = self.streams.additions(me, others, browser=not lost) + len(kinds)
                 if len(self.host.session.writers) + needed > 64:
                     raise ProtocolError("limit", "A session supports at most 64 sources")
+                pending = fallback is not None and not self.browser_lost
+                if pending:
+                    self.fallback_pending, self._fallback_cancelled = True, False
             prepared = {}
             committed = False
             opening = None
@@ -793,6 +816,8 @@ class BrowserCapture:
                         raise ProtocolError("state", "No active recording")
                     if self.tab_closed and (fallback is not None or restore):
                         return self.snapshot()  # A tab may close while a fallback device gets ready.
+                    if pending and self._fallback_cancelled:
+                        return self.snapshot()  # The call returned first: nothing is committed.
                     for kind, (_identifier, _tap, state) in prepared.items():
                         if state["error"]:
                             opening = kind
@@ -844,6 +869,9 @@ class BrowserCapture:
                     self._turn_on_refused(opening, error)
                 raise
             finally:
+                if pending:
+                    with self.lock:
+                        self.fallback_pending = self._fallback_cancelled = False
                 if not committed:
                     for _identifier, tap, _state in prepared.values():
                         with contextlib.suppress(Exception):

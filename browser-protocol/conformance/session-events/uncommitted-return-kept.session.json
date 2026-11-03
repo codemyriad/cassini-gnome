@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "id": "d3300000-0000-4000-8000-000000000003",
+  "createdAt": "2026-10-30T00:00:00Z",
+  "source": "chromium",
+  "title": "Same call returns before its fallback commits; the writer keeps its othersSource",
+  "state": "completed",
+  "tracks": [
+    {
+      "id": "mic",
+      "file": "track-mic.wav",
+      "kind": "microphone",
+      "label": "Synthetic source",
+      "labelSource": "device",
+      "sampleRate": 8000,
+      "channels": 1,
+      "frames": 40000,
+      "startOffsetMs": 0,
+      "endOffsetMs": 5000,
+      "ended": true
+    },
+    {
+      "id": "remote-before",
+      "file": "track-remote-before.wav",
+      "kind": "remote",
+      "label": "Synthetic source",
+      "labelSource": "browser",
+      "sampleRate": 8000,
+      "channels": 1,
+      "frames": 8000,
+      "startOffsetMs": 0,
+      "endOffsetMs": 1000,
+      "ended": true,
+      "sourceTrackId": "remote-a"
+    },
+    {
+      "id": "remote-after",
+      "file": "track-remote-after.wav",
+      "kind": "remote",
+      "label": "Synthetic source",
+      "labelSource": "browser",
+      "sampleRate": 8000,
+      "channels": 1,
+      "frames": 12000,
+      "startOffsetMs": 3500,
+      "endOffsetMs": 5000,
+      "ended": true,
+      "sourceTrackId": "remote-a"
+    }
+  ],
+  "events": [
+    {
+      "type": "othersSource",
+      "atMs": 0,
+      "source": "browser",
+      "reason": "start"
+    },
+    {
+      "type": "selection",
+      "atMs": 0,
+      "me": true,
+      "others": true,
+      "reason": "start"
+    },
+    {
+      "type": "end",
+      "atMs": 5000,
+      "reason": "callEnded"
+    }
+  ]
+}

@@ -2348,7 +2348,7 @@ class BrowserService:
         if self.closed.is_set() or self._stopping_all.is_set():
             return
         tasks = []
-        capture_tasks = []
+        capture_tasks, cancels = [], []
         with self.lock:
             generation = self._stop_generation
             now = time.monotonic()
@@ -2464,6 +2464,7 @@ class BrowserService:
                         fallback=capture.browser_lost,
                         others=capture.others,
                         restore_ready=capture.browser_ready and not capture.restore_blocked,
+                        fallback_pending=capture.fallback_pending,
                         multistream=capture.multistream_capable,
                         # D52.5: another call's heard never arms this recording's
                         # restore or OTHERS_GONE grace; it latches only on rows
@@ -2481,7 +2482,12 @@ class BrowserService:
                     if reconnect is not None and page == "present" and count > 0 and lifecycle.missing is None:
                         self._control_reconnects.pop(key, None)
                     identifier = f"{peer[0].id}:{peer[1]}" if peer is not None else None
-                    if action and key not in self._capture_policy_pending:
+                    if action == "restore" and capture.fallback_pending:
+                        # Cancelled on this thread below, never queued: the
+                        # fallback may hold a worker while its device opens,
+                        # and a full pool would run a queued cancel too late.
+                        cancels.append((key, capture))
+                    elif action and key not in self._capture_policy_pending:
                         self._capture_policy_pending.add(key)
                         capture_tasks.append((key, capture, identifier, action))
                     continue
@@ -2584,8 +2590,18 @@ class BrowserService:
                                 break
         for identifier, action, version in tasks:
             self.workers.submit(self._automatic, identifier, action, generation, version)
+        for key, capture in cancels:
+            self._cancel_fallback(key, capture)
         for key, capture, identifier, action in capture_tasks:
             self.workers.submit(self._capture_lifecycle, key, capture, identifier, action)
+
+    def _cancel_fallback(self, key, capture):
+        """D52: the call returned before its fallback committed; write nothing.
+
+        Sets the capture's cancel flag under the lock its commit checks, on the
+        policy thread. A fallback that committed first stays (heard rule).
+        """
+        capture.cancel_fallback()
 
     def _capture_lifecycle(self, key, capture, identifier, action):
         try:

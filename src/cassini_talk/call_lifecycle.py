@@ -48,6 +48,7 @@ class CallLifecycle:
         fallback,
         others,
         restore_ready,
+        fallback_pending=False,
         multistream=False,
         heard=False,
         inventory_known=True,
@@ -77,6 +78,7 @@ class CallLifecycle:
                 fallback=fallback,
                 others=others,
                 restore_ready=restore_ready,
+                fallback_pending=fallback_pending,
                 inventory_known=inventory_known,
                 control_alive=control_alive,
                 initial_missing=initial_missing,
@@ -84,7 +86,7 @@ class CallLifecycle:
             )
         if page == "present" and count > 0:
             self.missing = self.ended = None
-            return "restore" if fallback and others and restore_ready else None
+            return "restore" if (fallback or fallback_pending) and others and restore_ready else None
         if page != "present" or self.missing is not None:
             self.ended = None
             if self.missing is None:
@@ -107,9 +109,14 @@ class CallLifecycle:
         control_alive,
         initial_missing,
         resume=None,
+        fallback_pending=False,
     ):
         if page == "present" and control_alive and inventory_known and count > 0:
             self.missing = self.ended = None
+            if fallback_pending and others and restore_ready:
+                # D52: the call returned before its fallback committed. The
+                # return cancels it, heard or not: nothing else would record.
+                return "restore"
             if self.heard and fallback and others and restore_ready:
                 return "switch:browser:callConnected" if initial_missing else "restore"
             if resume is not None and resume.ready and fallback and others and self.heard:
