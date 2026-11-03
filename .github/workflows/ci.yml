@@ -8,7 +8,12 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-# No automatic cancellation: superseded heads are cancelled manually.
+# D66: a newer push to a pull request cancels that PR's older run. Other runs
+# (main pushes, the nightly schedule, dispatch) get their own group by run id,
+# so they never queue behind or cancel each other.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   changes:
     name: Changed areas
