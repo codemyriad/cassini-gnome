@@ -205,6 +205,8 @@ class Meeting(MeetingState):
     metadata: dict = field(default_factory=dict, compare=False, repr=False)
     notes: tuple[dict, ...] = ()
     extensions: dict = field(default_factory=dict, compare=False, repr=False)
+    # D63 #2: speaker id -> its own 16 kHz gap ranges (library.turn_gaps).
+    turn_gaps: dict = field(default_factory=dict, compare=False, repr=False)
 
     collection_key: str | None = None
 
@@ -718,6 +720,12 @@ class LibraryScanner:
         known = [s["id"] for s in metadata.get("speakers", [])]
         if embedded:
             known.extend(s.id for s in embedded.speakers)
+        gaps = turn_gaps(
+            tracks,
+            metadata,
+            embedded.manifest.get("x") if embedded and embedded.manifest else None,
+            [*known, *(word.speaker for word in words)],
+        )
         words = apply_merges(words, metadata.get("speakerMerges", []), known)
         received_name = metadata.get("received", {}).get("originalName") if origin == "received" else None
         title_values = [
@@ -774,8 +782,9 @@ class LibraryScanner:
             started_at_ms=started,
             duration_ms=duration,
             words=tuple(words),
-            preview_turns=self._preview(directory.name, words),
+            preview_turns=self._preview(directory.name, words, gaps),
             turns=self._preview_cache.get(directory.name, (None, None, ()))[2],
+            turn_gaps=gaps,
             speakers=_speakers(words, metadata.get("speakers", []), embedded if origin == "received" else None),
             quote_line=_quote(words, metadata.get("quoteOverride"))
             if transcript in ("done", "queued", "running")
@@ -804,12 +813,12 @@ class LibraryScanner:
             else {},
         )
 
-    def _preview(self, name, words):
+    def _preview(self, name, words, gaps=None):
         if not words:
             self._preview_cache.pop(name, None)
             return ()
         cached = self._preview_cache.get(name)
-        if cached is not None and cached[0] is words:
+        if cached is not None and cached[0] is words and cached[3] == gaps:
             return cached[1]
         # Reader tuples are stat-keyed and immutable to consumers. Group once in
         # the scanner worker; retain only three visible turns for the GTK pane.
@@ -825,9 +834,9 @@ class LibraryScanner:
                 if fragments > 32:
                     limit = index
                     break
-        turns = tuple(build_turns(ordered[:limit]))
+        turns = tuple(build_turns(ordered[:limit], gaps=gaps))
         result = tuple(PreviewTurn(t.speaker, t.start_ms, t.text) for t in visible_turns(turns)[:3])
-        self._preview_cache[name] = words, result, reading_turns(ordered)
+        self._preview_cache[name] = words, result, reading_turns(ordered, gaps=gaps), gaps
         return result
 
     def _transcript(self, fd, directory, metadata, origin, embedded, trusted, embedded_words, diagnostics):
@@ -931,6 +940,57 @@ def _sidecar_words(body):
             raise ValueError("invalid-transcript-time")
         words.append(portable.Word(item["speaker"], start, end, item["text"], item.get("lowConfidenceSpeaker") is True))
     return tuple(words)
+
+
+def turn_gaps(tracks, metadata, extensions, known=()):
+    """D63 #2: each speaker's own gap ranges, which turns never span (presentation, D47).
+
+    From the session.json tracks when the folder has them, else from the file's
+    x["codemyriad.io"].tracks. A file without `gaps` gives no ranges, so no breaks.
+    `known` lists the speaker ids its speakerMerges resolve against.
+    """
+    from .source_ownership import speaker_gap_ranges
+    from .speaker_merges import resolve_merges
+    from .transcription import recorded_silent_tracks
+
+    merges = resolve_merges(metadata.get("speakerMerges", []), known)
+    try:
+        rows = [_track_row(track) for track in tracks]
+        if not rows:
+            ours = extensions.get("codemyriad.io") if isinstance(extensions, dict) else None
+            stored = ours.get("tracks") if isinstance(ours, dict) else None
+            rows = [_stored_row(track) for track in stored or () if isinstance(track, dict)]
+        return speaker_gap_ranges(rows, silent=recorded_silent_tracks(metadata), merges=merges)
+    except (KeyError, TypeError, ValueError):
+        # Rows this reader cannot place only cost the breaks.
+        return {}
+
+
+def _track_row(track):
+    def placed(value):
+        return dict(
+            startOffsetMs=value.start_offset_ms,
+            sampleRate=value.sample_rate,
+            frames=value.frames,
+            **({"clockAnchors": [list(point) for point in value.clock_anchors]} if value.clock_anchors else {}),
+        )
+
+    row = dict(placed(track), id=track.id, kind=track.kind, sourceTrackId=track.source_track_id, gaps=track.gaps)
+    if track.spans:
+        row["spans"] = [placed(span) for span in track.spans]
+    return row
+
+
+def _stored_row(track):
+    # x tracks keep their offsets on the spans; the logical start is the earliest, unknown if any is.
+    spans = [span for span in track.get("spans") or () if isinstance(span, dict)]
+    offsets = [span.get("startOffsetMs") for span in spans]
+    return dict(
+        track,
+        spans=spans,
+        startOffsetMs=min(offsets) if offsets and None not in offsets else None,
+        frames=sum(span.get("frames") or 0 for span in spans),
+    )
 
 
 def _speakers(words, values, embedded, *, stored_labels=False):

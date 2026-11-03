@@ -379,9 +379,15 @@ def test_word_ends_are_clamped_to_their_span(overrun):
 
 
 def check_turns(run, session=CALL):
-    from cassini_talk.transcript import build_turns
+    from cassini_talk.transcript import build_turns, gap_break
 
-    turns = build_turns(list(run.meeting.words))
+    gaps = run.meeting.turn_gaps
+    turns = build_turns(list(run.meeting.words), gaps=gaps)
+    # D63 #2: neither grouper joins two words across a gap range of their speaker.
+    for grouped in (turns, run.meeting.turns):
+        for turn in grouped:
+            for first, second in zip(turn.words, turn.words[1:], strict=False):
+                assert not gap_break(gaps, first, second), f"{turn.speaker} turn spans a gap at {first}, {second}"
     rows = expected(session)
     for overlap in rows["overlaps"]:
         window = overlap["ms"]
@@ -444,6 +450,83 @@ def test_module_runs_leave_no_fake_child_patched_behind(reject_all, accept_all, 
     assert not isinstance(sys.modules.get("cassini_talk.nemotron"), types.SimpleNamespace), "fake diarizer"
     for run in (reject_all, accept_all, overrun):
         assert os.environ.get("XDG_CACHE_HOME") != str(run.meeting.directory.parents[1] / "cache")
+
+
+# Turns at gap ranges (D63 #2) --------------------------------------------------------------------
+
+
+def reading_sizes(sizes, pairs):
+    """The expected turn sizes, cut again where reading_turns starts a 30 s paragraph."""
+    result, at = [], 0
+    for size in sizes:
+        start = None
+        for begin, _end in pairs[at : at + size]:
+            if start is None or begin - start >= 30000:
+                result.append(0)
+                start = begin
+            result[-1] += 1
+        at += size
+    return result
+
+
+def markdown_sizes(meeting, words):
+    from dataclasses import replace
+
+    from cassini_talk.export_model import markdown, model_projection
+
+    value = dict(model_projection(replace(meeting, words=tuple(words), transcript="done")), verbatim=True)
+    return [len(line.split()) for line in markdown(value).split("\n") if line.startswith("w")]
+
+
+def check_turn_cases(meetings):
+    from cassini_talk.meeting_text import reading_turns
+    from cassini_talk.portable import Word
+    from cassini_talk.transcript import build_turns
+
+    for session, meeting in meetings.items():
+        rows = expected(session)
+        ranges = {speaker(key): tuple((16 * a, 16 * b) for a, b in ms) for key, ms in rows["turnBreaksMs"].items()}
+        assert meeting.turn_gaps == {key: value for key, value in ranges.items() if value}, "gap ranges"
+        for case in rows["turnCases"]:
+            key = speaker(case["speaker"])
+            words = [Word(key, a, b, f"w{i}") for i, (a, b) in enumerate(case["words"])]
+            assert [len(t.words) for t in build_turns(words, gaps=meeting.turn_gaps)] == case["turns"], case
+            read = [len(t.words) for t in reading_turns(words, gaps=meeting.turn_gaps)]
+            assert read == reading_sizes(case["turns"], case["words"]), case
+            assert markdown_sizes(meeting, words) == case["turns"], case
+
+
+def test_turn_cases_split_only_at_gap_ranges(corpus):  # noqa: F811
+    check_turn_cases(corpus.meetings)
+
+
+def test_scanned_meeting_splits_a_long_at_its_gap_in_every_grouper(corpus, tmp_path):  # noqa: F811
+    from test_library import write_metadata
+
+    from cassini_talk.export_model import markdown, model_projection
+    from cassini_talk.library import LibraryScanner, turn_gaps
+
+    (case,) = (c for c in expected()["turnCases"] if c["speaker"] == "source-a" and len(c["words"]) == 4)
+    folder = copy_meeting(corpus, tmp_path / "library").directory
+    items = [dict(speaker="track-source-a", startMs=a, endMs=b, text=f"w{i}") for i, (a, b) in enumerate(case["words"])]
+    (folder / "transcript.json").write_text(json.dumps(dict(language="en", items=items)))
+    reference = dict(kind="sidecar", file="transcript.json", format="cassini.words.v1")
+    write_metadata(folder, transcript=dict(status="done", reference=reference))
+    (meeting,) = LibraryScanner(tmp_path / "library").scan().meetings
+    assert case["turns"] == [2, 2]
+    assert [len(turn.words) for turn in meeting.turns] == case["turns"], "reading"
+    assert [turn.text for turn in meeting.preview_turns] == ["w0 w1", "w2 w3"], "preview"
+    body = markdown(model_projection(meeting))
+    assert [line for line in body.split("\n") if line.startswith("w")] == ["w0 w1", "w2 w3"], "markdown"
+    # A file read without its session folder takes the same ranges from x["codemyriad.io"].tracks.
+    stored = [
+        dict(
+            {key: track[key] for key in ("id", "kind", "sourceTrackId", "gaps") if key in track},
+            spans=[{key: track[key] for key in ("file", "sampleRate", "frames", "startOffsetMs")}],
+        )
+        for track in json.loads((folder / "session.json").read_text())["tracks"]
+    ]
+    assert turn_gaps((), {}, {"codemyriad.io": {"tracks": stored}}) == meeting.turn_gaps
 
 
 # Published mix and export (G8) --------------------------------------------------------------------

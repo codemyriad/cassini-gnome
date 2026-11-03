@@ -372,9 +372,9 @@ def test_preview_filters_asides_before_limit_and_reuses_grouping_on_metadata_cha
     calls = []
     original = library.build_turns
 
-    def grouped(words):
+    def grouped(words, **kwargs):
         calls.append(True)
-        return original(words)
+        return original(words, **kwargs)
 
     monkeypatch.setattr(library, "build_turns", grouped)
     metadata("Before")
@@ -419,10 +419,10 @@ def test_long_preview_bounds_legacy_grouping_and_retains_full_reading_body(tmp_p
     original = library.build_turns
     observed = []
 
-    def bounded(words):
+    def bounded(words, **kwargs):
         observed.append(len(words))
         assert sum(i == 0 or word.speaker != words[i - 1].speaker for i, word in enumerate(words)) <= 32
-        return original(words)
+        return original(words, **kwargs)
 
     monkeypatch.setattr(library, "build_turns", bounded)
     words = tuple(portable.Word(str(index % 2), index * 1000, index * 1000 + 900, "word") for index in range(20000))

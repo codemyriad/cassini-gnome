@@ -205,7 +205,7 @@ class PublishedIndex:
         )
 
     def _meeting(self, path, audio, raw, activity, safe_sessions):
-        from .library import Meeting, _date, _quote, _speakers
+        from .library import Meeting, _date, _quote, _speakers, turn_gaps
         from .speaker_merges import apply_merges
 
         embedded = audio.embedded
@@ -260,6 +260,9 @@ class PublishedIndex:
         words = audio.words if transcript not in ("none", "failed", "damaged") else ()
         known_speakers = [speaker["id"] for speaker in metadata.get("speakers", [])]
         known_speakers.extend(speaker.id for speaker in embedded.speakers)
+        gaps = turn_gaps(
+            working.tracks if working else (), metadata, extension, [*known_speakers, *(w.speaker for w in words)]
+        )
         words = apply_merges(words, metadata.get("speakerMerges", []), known_speakers)
         title = manifest.get("meeting", {}).get("title") or embedded.tags.get("TITLE") or path.stem
         title = title.strip() if isinstance(title, str) else ""
@@ -268,7 +271,7 @@ class PublishedIndex:
         if transcript == "damaged":
             error = MeetingError("transcript-damaged", None)
         preview_key = "v2:" + "/".join(identity)
-        preview = self.scanner._preview(preview_key, words)
+        preview = self.scanner._preview(preview_key, words, gaps)
         lifecycle = activity.get(identifier, "saved") if origin == "Recording" else "saved"
         if lifecycle not in ("recording", "saving"):
             lifecycle = "saved"
@@ -293,6 +296,7 @@ class PublishedIndex:
                 speakers=_speakers(words, metadata.get("speakers", []), embedded, stored_labels=True),
                 preview_turns=preview,
                 turns=self.scanner._preview_cache.get(preview_key, (None, None, ()))[2],
+                turn_gaps=gaps,
                 quote_line=_quote(words, metadata.get("quoteOverride"))
                 if transcript in ("done", "queued", "running")
                 else None,

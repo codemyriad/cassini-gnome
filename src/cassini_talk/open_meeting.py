@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
 from . import portable
-from .library import LibraryScanner, Meeting, _date, _opus, _speakers, library_root
+from .library import LibraryScanner, Meeting, _date, _opus, _speakers, library_root, turn_gaps
 from .meeting_text import reading_turns
 from .portable_context import embedded_notes, empty_word_transcripts
 
@@ -54,6 +54,9 @@ def load_open_meeting(path, root=None):
             state = "done"
         except ValueError:
             pass
+    extensions = embedded.manifest.get("x") if embedded.manifest else None
+    extensions = extensions if isinstance(extensions, dict) else {}
+    gaps = turn_gaps((), {}, extensions)
     return Meeting(
         id=str(uuid5(NAMESPACE_URL, path.as_uri())),
         directory=path.parent,
@@ -66,11 +69,10 @@ def load_open_meeting(path, root=None):
         audio_size_bytes=audio_size,
         has_audio=duration is not None,
         words=words,
-        turns=reading_turns(sorted(words, key=lambda w: w.start_ms)),
+        turns=reading_turns(sorted(words, key=lambda w: w.start_ms), gaps=gaps),
+        turn_gaps=gaps,
         speakers=_speakers(words, [], embedded, stored_labels=True),
         metadata_editable=False,
         notes=embedded_notes(embedded),
-        extensions=embedded.manifest.get("x", {})
-        if embedded.manifest and isinstance(embedded.manifest.get("x"), dict)
-        else {},
+        extensions=extensions,
     )
