@@ -105,3 +105,37 @@ def written(tmp_path, monkeypatch, case):
 def test_written_words_follow_the_shared_keep_cases(tmp_path, monkeypatch, case):
     pytest.importorskip("numpy")
     assert written(tmp_path, monkeypatch, case) == {tuple(word["ms"]): word["keep"] for word in case["words"]}
+
+
+# Codex #181: an empty gap before a real one; the real gap still drops its word.
+EMPTY_THEN_GAP = dict(
+    name="an-empty-gap-then-a-real-gap",
+    track=dict(
+        startOffsetMs=0,
+        sampleRate=48000,
+        frames=240000,
+        gaps=[
+            dict(atMs=1000, durationMs=0, frames=0, kind="jump"),
+            dict(atMs=2000, durationMs=1000, frames=48000, kind="jump"),
+        ],
+    ),
+    words=[
+        dict(ms=[800, 900], keep=True),
+        dict(ms=[1100, 1200], keep=True),
+        dict(ms=[2200, 2300], keep=False),
+        dict(ms=[3500, 3600], keep=True),
+    ],
+)
+
+
+def test_an_empty_gap_never_hides_a_later_gap_from_the_write_down(tmp_path, monkeypatch):
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.transcription import prepare_tracks, session_presence
+
+    stored_session(tmp_path / "prepared", EMPTY_THEN_GAP)
+    (meeting,) = LibraryScanner(tmp_path / "prepared").scan().meetings
+    assert session_presence(meeting.tracks[0]) == [[0, 32000], [48000, 80000]]
+    (job,), _speakers = prepare_tracks(meeting)
+    assert job["sessionPresence"] == [[0, 32000], [48000, 80000]]
+    wanted = {tuple(word["ms"]): word["keep"] for word in EMPTY_THEN_GAP["words"]}
+    assert written(tmp_path / "written", monkeypatch, EMPTY_THEN_GAP) == wanted

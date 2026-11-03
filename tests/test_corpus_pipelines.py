@@ -166,6 +166,48 @@ def test_prepared_jobs_carry_the_expected_presence_and_ownership(corpus):  # noq
 # Activity and the fallback decision (G10, D63 #1) -------------------------------------------------
 
 
+def oracle():
+    """The pinned independent activity oracle (stdlib only)."""
+    import importlib.util
+
+    from corpus_support import ROOT
+
+    spec = importlib.util.spec_from_file_location("shared_activity", ROOT / "activity.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def check_constants(fallback, shared):
+    """GNOME's G10 constants against corpus.json and the oracle, in frames and in time."""
+    from fractions import Fraction
+
+    assert (fallback.RATE, fallback.FRAME) == (RATE, 512) and shared.FRAME_16K == fallback.FRAME, "frame"
+    assert shared.FRAME == fallback.FRAME * shared.HOLD, "frame at 48 kHz"
+    assert Fraction(fallback.FRAME * 1000, fallback.RATE) == shared.FRAME_MS == 32, "frame ms"
+    assert fallback.FLOOR_FRAMES == C["FLOOR_MIN_FRAMES"] == shared.FLOOR_MIN_FRAMES == 312, "floor frames"
+    assert Fraction(fallback.FLOOR_FRAMES * fallback.FRAME, fallback.RATE) == Fraction("9.984"), "floor time"
+    assert fallback.MIN_RUN_FRAMES == shared.MIN_RUN_FRAMES == C["MIN_RUN_MS"] // shared.FRAME_MS == 5, "run"
+    assert fallback.MIN_ACTIVE_SECONDS * 1000 == C["MIN_ACTIVE_SECONDS"] * 1000 == shared.MIN_ACTIVE_MS, "active"
+    boundary = -(-shared.MIN_ACTIVE_MS // shared.FRAME_MS)
+    assert boundary == 469 and fallback.holds(boundary) and not fallback.holds(boundary - 1), "pooled boundary"
+    assert fallback.FEW_WORDS == C["FEW_WORDS"] == shared.FEW_WORDS, "few words"
+    assert fallback.ACTIVE_DBFS == C["ACTIVE_DBFS"] == shared.ACTIVE_DBFS, "active dBFS"
+    assert fallback.FLOOR_MARGIN_DB == C["FLOOR_MARGIN_DB"] == shared.FLOOR_MARGIN_DB, "floor margin"
+    assert fallback.FLOOR_PERCENTILE == shared.PERCENTILE, "floor percentile"
+    assert fallback.WINDOW == C["WINDOW_MS"] * RATE // 1000 == shared.WINDOW, "window"
+    assert fallback.OVERLAP == C["OVERLAP_MS"] * RATE // 1000 == shared.OVERLAP, "overlap"
+    assert Fraction(str(fallback.MIN_WINDOW_ACTIVE_SECONDS)) * 1000 == C["MIN_WINDOW_ACTIVE_MS"], "window active"
+    needed = math.ceil(fallback.MIN_WINDOW_ACTIVE_SECONDS * fallback.RATE / fallback.FRAME)
+    assert needed == shared.MIN_WINDOW_FRAMES == 16, "window active frames"
+
+
+def test_gnome_fallback_constants_match_the_corpus_and_the_oracle():
+    from cassini_talk import recognition_fallback as fallback
+
+    check_constants(fallback, oracle())
+
+
 def metered(job):
     """GNOME's ActivityMeter on one prepared job, fed the child's own FIR chunks."""
     from cassini_talk import recognition_fallback as fallback

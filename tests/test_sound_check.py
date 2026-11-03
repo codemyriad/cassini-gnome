@@ -122,6 +122,21 @@ def test_a_steady_sound_over_10_s_is_still_working(tmp_path, signal):
     assert judge(tmp_path / "a.wav") == WORKING
 
 
+def test_the_judge_constants_match_the_corpus_and_the_oracle():
+    """Without numpy too: sound_check's repeated G10 rule against corpus.json and activity.py."""
+    import importlib.util
+    import json
+
+    root = Path(__file__).parents[1] / "browser-protocol/conformance/multistream"
+    constants = json.loads((root / "corpus.json").read_text())["constants"]
+    spec = importlib.util.spec_from_file_location("shared_activity", root / "activity.py")
+    shared = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(shared)
+    assert sound_check.ACTIVE_DBFS == constants["ACTIVE_DBFS"] == shared.ACTIVE_DBFS
+    assert sound_check.FRAME_MS == shared.FRAME_MS == shared.FRAME_16K * 1000 // 16000 == 32
+    assert sound_check.MIN_RUN_FRAMES == shared.MIN_RUN_FRAMES == constants["MIN_RUN_MS"] // sound_check.FRAME_MS
+
+
 @pytest.mark.parametrize(
     "signal",
     [tone(-20), tone(-49), tone(-51), noise(-40), noise(-62), [0.0] * RATE],
