@@ -732,7 +732,8 @@ class TranscriptionQueue:
                 if identifier in result["groupIds"] and g["final"] and valid_group(g)
             ]
             if groups:
-                words, voices = apply_transcript(publisher.words, groups)
+                # D64: every track, lane and silent-track speaker id is taken.
+                words, voices = apply_transcript(publisher.words, groups, reserved=speakers)
                 with transaction(directory):
                     if self.closed:
                         raise CancelledError()
