@@ -226,14 +226,18 @@ def gap_ranges(gaps):
     return result
 
 
-def speaker_gap_ranges(tracks, *, silent=(), merges=None):
+def speaker_gap_ranges(tracks, *, silent=(), merges=None, speakers=()):
     """D63 #2: {speaker id: sorted gap ranges of that speaker's own tracks}.
 
     `tracks` are stored track rows (session.json, or x["codemyriad.io"] with
     offsets on the spans). Speaker ids and R64 overlap lanes are the ones the
     write-down gives (transcription.prepare_tracks); a D56 silent track has no
     words and adds no ranges. `merges` maps a merged-away speaker to the one
-    its words now carry, which then splits on both speakers' ranges.
+    its words now carry, which then splits on both speakers' ranges. Every
+    track and lane id has an entry, an empty one too, so a source id that ends
+    in `~1` never takes another source's ranges as a voice (own_gap_ranges).
+    A voice in `speakers` whose group is a merge target keeps its group's own
+    ranges, not the merged speaker's.
     """
     from .source_spans import separate
 
@@ -253,7 +257,7 @@ def speaker_gap_ranges(tracks, *, silent=(), merges=None):
     sources = {}
     for row in audible:
         sources.setdefault(row["speaker"], []).append(row)
-    result = {}
+    result = {speaker: [] for speaker in reserved}
     for group in sources.values():
         # R64 lanes are per source, so one at a time gives the same ids; a
         # source whose lane id is over the limit loses only its own breaks.
@@ -263,10 +267,16 @@ def speaker_gap_ranges(tracks, *, silent=(), merges=None):
             continue
         for row in separated:
             result.setdefault(row["speaker"], []).extend(gap_ranges(row.get("gaps")))
+    # Merges read the unmerged map, so their order changes nothing. A
+    # `<group>~n` target keeps its group's ranges as well.
+    merged = {}
     for source, target in (merges or {}).items():
-        # A `<group>~n` target keeps its group's ranges as well.
-        result[target] = [*own_gap_ranges(result, target), *own_gap_ranges(result, source)]
-    return {speaker: _union(ranges) for speaker, ranges in result.items() if ranges}
+        merged.setdefault(target, [*own_gap_ranges(result, target)]).extend(own_gap_ranges(result, source))
+    for speaker in speakers:
+        if isinstance(speaker, str) and speaker not in result and _voice_group(speaker) in merged:
+            merged.setdefault(speaker, own_gap_ranges(result, speaker))
+    result.update(merged)
+    return {speaker: _union(ranges) for speaker, ranges in result.items()}
 
 
 def _count(value, low):
@@ -317,11 +327,16 @@ def _union(ranges):
 
 
 def own_gap_ranges(ranges, speaker):
-    """The gap ranges of `speaker`; a D24 `<group>~n` voice has its group's."""
+    """The gap ranges of `speaker`; a D24 `<group>~n` voice with no entry of its own has its group's."""
     if speaker in ranges:
         return ranges[speaker]
+    group = _voice_group(speaker)
+    return () if group is None else ranges.get(group, ())
+
+
+def _voice_group(speaker):
     group, separator, ordinal = speaker.rpartition("~")
-    return ranges.get(group, ()) if separator and ordinal.isdigit() else ()
+    return group if separator and ordinal.isdigit() else None
 
 
 def turn_break(ranges, first, second):

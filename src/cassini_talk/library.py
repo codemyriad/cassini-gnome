@@ -725,6 +725,7 @@ class LibraryScanner:
             metadata,
             embedded.manifest.get("x") if embedded and embedded.manifest else None,
             [*known, *(word.speaker for word in words)],
+            capture.get("tracks"),
         )
         words = apply_merges(words, metadata.get("speakerMerges", []), known)
         received_name = metadata.get("received", {}).get("originalName") if origin == "received" else None
@@ -942,13 +943,16 @@ def _sidecar_words(body):
     return tuple(words)
 
 
-def turn_gaps(tracks, metadata, extensions, known=()):
+def turn_gaps(tracks, metadata, extensions, known=(), listed=()):
     """D63 #2: each speaker's own gap ranges, which turns never span (presentation, D47).
 
     From the session.json tracks when the folder has them, else from the file's
     x["codemyriad.io"].tracks, whose D56 silent tracks the file's own
     x["codemyriad.io"].meeting lists. A file without `gaps` gives no ranges, so
     no breaks. `known` lists the speaker ids its speakerMerges resolve against.
+    A track this reader cannot read, among session.json's `listed` rows or the
+    x tracks, gives no ranges but keeps its speaker's empty entry, so it never
+    takes another source's ranges as a voice.
     """
     from .source_ownership import speaker_gap_ranges
     from .speaker_merges import resolve_merges
@@ -957,15 +961,19 @@ def turn_gaps(tracks, metadata, extensions, known=()):
     merges = resolve_merges(metadata.get("speakerMerges", []), known)
     silent = recorded_silent_tracks(metadata)
     try:
+        ours = extensions.get("codemyriad.io") if isinstance(extensions, dict) else None
+        stored = ours.get("tracks") if isinstance(ours, dict) else None
+        stored = [track for track in stored if isinstance(track, dict)] if isinstance(stored, list) else []
         rows = [_track_row(track) for track in tracks]
-        if not rows:
-            ours = extensions.get("codemyriad.io") if isinstance(extensions, dict) else None
-            stored = ours.get("tracks") if isinstance(ours, dict) else None
-            rows = [row for track in stored or () if (row := _stored_row(track)) is not None]
+        if rows:
+            stored = [_unplaced(track) for track in stored]
+        else:
+            stored = [_stored_row(track) for track in stored]
             stored_meeting = ours.get("meeting") if isinstance(ours, dict) else None
             if isinstance(stored_meeting, dict):
                 silent |= recorded_silent_tracks(stored_meeting)
-        return speaker_gap_ranges(rows, silent=silent, merges=merges)
+        listed = [_unplaced(track) for track in listed if isinstance(track, dict)] if isinstance(listed, list) else []
+        return speaker_gap_ranges([*rows, *stored, *listed], silent=silent, merges=merges, speakers=known)
     except (AttributeError, KeyError, TypeError, ValueError, ArithmeticError):
         # Rows are checked one at a time (source_ownership._placeable); this only keeps the meeting.
         return {}
@@ -986,11 +994,16 @@ def _track_row(track):
     return row
 
 
+def _unplaced(track):
+    # No frames: source_ownership._placeable refuses it, so only its speaker's entry is kept.
+    return dict(track, frames=None)
+
+
 def _stored_row(track):
     # x tracks keep their offsets on the spans; the logical start is the earliest, unknown if any is.
-    # A row this reader cannot read is None, and costs only its own breaks.
-    if not isinstance(track, dict) or not isinstance(track.get("id"), str):
-        return None
+    # A row this reader cannot read is unplaced, and costs only its own breaks.
+    if not isinstance(track.get("id"), str):
+        return _unplaced(track)
     spans = track.get("spans") or ()
     spans = [span for span in spans if isinstance(span, dict)] if isinstance(spans, (list, tuple)) else None
     offsets = [span.get("startOffsetMs") for span in spans or ()]
@@ -1000,7 +1013,7 @@ def _stored_row(track):
         or not all(type(value) in (int, float) for value in offsets if value is not None)
         or not all(type(value) is int for value in frames)
     ):
-        return None
+        return _unplaced(track)
     return dict(
         track,
         spans=spans,

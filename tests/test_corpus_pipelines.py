@@ -486,7 +486,11 @@ def check_turn_cases(meetings):
     for session, meeting in meetings.items():
         rows = expected(session)
         ranges = {speaker(key): tuple((16 * a, 16 * b) for a, b in ms) for key, ms in rows["turnBreaksMs"].items()}
-        assert meeting.turn_gaps == {key: value for key, value in ranges.items() if value}, "gap ranges"
+        # Every track and lane id has an entry, an empty one too (source_ownership.speaker_gap_ranges).
+        assert {key: value for key, value in meeting.turn_gaps.items() if value} == {
+            key: value for key, value in ranges.items() if value
+        }, "gap ranges"
+        assert set(ranges) <= set(meeting.turn_gaps), "gap range ids"
         for case in rows["turnCases"]:
             key = speaker(case["speaker"])
             words = [Word(key, a, b, f"w{i}") for i, (a, b) in enumerate(case["words"])]
