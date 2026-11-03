@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "note": "Hand-written D63 #1 decision cases, no audio. Each track gives its speaker id as the app stores it (D11, R64 overlap lanes), its R71 active frames (32 ms each, already measured), and the word counts its VAD pass and its fallback windows would write. The 15 s and 10-word tests pool every non-silent track of one speaker; the gocassini margin stays per track. expected.fires is per speaker; expected.entries is recordingDetails.writingDown.recognitionFallback.tracks in track order. activity.py decide() reproduces every case.",
+  "cases": [
+    {
+      "name": "pooled-469-frames-fires",
+      "tracks": [
+        {"trackId": "x-first", "kind": "remote", "sourceTrackId": "x", "speaker": "track-x", "activeFrames": 234, "vadWords": 0, "fallbackWords": 3},
+        {"trackId": "x-return", "kind": "remote", "sourceTrackId": "x", "speaker": "track-x", "activeFrames": 235, "vadWords": 0, "fallbackWords": 0}
+      ],
+      "expected": {
+        "fires": {"track-x": true},
+        "entries": [
+          {"trackId": "x-first", "vadWords": 0, "fallbackWords": 3, "activeSeconds": 7.488, "personActiveSeconds": 15.008, "used": true},
+          {"trackId": "x-return", "vadWords": 0, "fallbackWords": 0, "activeSeconds": 7.52, "personActiveSeconds": 15.008, "used": false}
+        ]
+      }
+    },
+    {
+      "name": "pooled-468-frames-does-not-fire",
+      "tracks": [
+        {"trackId": "x-first", "kind": "remote", "sourceTrackId": "x", "speaker": "track-x", "activeFrames": 234, "vadWords": 0, "fallbackWords": 3},
+        {"trackId": "x-return", "kind": "remote", "sourceTrackId": "x", "speaker": "track-x", "activeFrames": 234, "vadWords": 0, "fallbackWords": 3}
+      ],
+      "expected": {"fires": {"track-x": false}, "entries": []}
+    },
+    {
+      "name": "pooled-ten-vad-words-never-fires",
+      "tracks": [
+        {"trackId": "x-first", "kind": "remote", "sourceTrackId": "x", "speaker": "track-x", "activeFrames": 300, "vadWords": 5, "fallbackWords": 40},
+        {"trackId": "x-return", "kind": "remote", "sourceTrackId": "x", "speaker": "track-x", "activeFrames": 300, "vadWords": 5, "fallbackWords": 40}
+      ],
+      "expected": {"fires": {"track-x": false}, "entries": []}
+    },
+    {
+      "name": "pooled-nine-vad-words-fire-and-the-margin-stays-per-track",
+      "tracks": [
+        {"trackId": "x-first", "kind": "remote", "sourceTrackId": "x", "speaker": "track-x", "activeFrames": 300, "vadWords": 5, "fallbackWords": 7},
+        {"trackId": "x-return", "kind": "remote", "sourceTrackId": "x", "speaker": "track-x", "activeFrames": 300, "vadWords": 4, "fallbackWords": 5}
+      ],
+      "expected": {
+        "fires": {"track-x": true},
+        "entries": [
+          {"trackId": "x-first", "vadWords": 5, "fallbackWords": 7, "activeSeconds": 9.6, "personActiveSeconds": 19.2, "used": true},
+          {"trackId": "x-return", "vadWords": 4, "fallbackWords": 5, "activeSeconds": 9.6, "personActiveSeconds": 19.2, "used": false}
+        ]
+      }
+    },
+    {
+      "name": "different-speakers-never-pool",
+      "tracks": [
+        {"trackId": "x", "kind": "remote", "sourceTrackId": "x", "speaker": "track-x", "activeFrames": 300, "vadWords": 0, "fallbackWords": 9},
+        {"trackId": "y", "kind": "remote", "sourceTrackId": "y", "speaker": "track-y", "activeFrames": 300, "vadWords": 0, "fallbackWords": 9}
+      ],
+      "expected": {"fires": {"track-x": false, "track-y": false}, "entries": []}
+    },
+    {
+      "name": "an-overlap-lane-is-its-own-speaker",
+      "tracks": [
+        {"trackId": "x-one", "kind": "remote", "sourceTrackId": "x", "speaker": "track-x", "activeFrames": 300, "vadWords": 0, "fallbackWords": 9},
+        {"trackId": "x-two", "kind": "remote", "sourceTrackId": "x", "speaker": "track-x:overlap:1", "activeFrames": 300, "vadWords": 0, "fallbackWords": 9}
+      ],
+      "expected": {"fires": {"track-x": false, "track-x:overlap:1": false}, "entries": []}
+    },
+    {
+      "name": "others-pools-across-system-spans",
+      "tracks": [
+        {"trackId": "system", "kind": "system", "speaker": "others", "activeFrames": 250, "vadWords": 0, "fallbackWords": 6},
+        {"trackId": "system-fallback", "kind": "system", "speaker": "others", "activeFrames": 250, "vadWords": 0, "fallbackWords": 6}
+      ],
+      "expected": {
+        "fires": {"others": true},
+        "entries": [
+          {"trackId": "system", "vadWords": 0, "fallbackWords": 6, "activeSeconds": 8.0, "personActiveSeconds": 16.0, "used": true},
+          {"trackId": "system-fallback", "vadWords": 0, "fallbackWords": 6, "activeSeconds": 8.0, "personActiveSeconds": 16.0, "used": true}
+        ]
+      }
+    },
+    {
+      "name": "me-pools-across-microphone-spans",
+      "tracks": [
+        {"trackId": "mic", "kind": "microphone", "speaker": "me", "activeFrames": 250, "vadWords": 1, "fallbackWords": 4},
+        {"trackId": "mic-again", "kind": "microphone", "speaker": "me", "activeFrames": 250, "vadWords": 0, "fallbackWords": 1},
+        {"trackId": "guest", "kind": "remote", "sourceTrackId": "g", "speaker": "track-g", "activeFrames": 900, "vadWords": 30, "fallbackWords": 0}
+      ],
+      "expected": {
+        "fires": {"me": true, "track-g": false},
+        "entries": [
+          {"trackId": "mic", "vadWords": 1, "fallbackWords": 4, "activeSeconds": 8.0, "personActiveSeconds": 16.0, "used": true},
+          {"trackId": "mic-again", "vadWords": 0, "fallbackWords": 1, "activeSeconds": 8.0, "personActiveSeconds": 16.0, "used": true}
+        ]
+      }
+    },
+    {
+      "name": "a-silent-track-gets-no-entry",
+      "tracks": [
+        {"trackId": "x-silent", "kind": "remote", "sourceTrackId": "x", "speaker": "track-x", "activeFrames": 0, "vadWords": 0, "fallbackWords": 0, "silent": true},
+        {"trackId": "x-return", "kind": "remote", "sourceTrackId": "x", "speaker": "track-x", "activeFrames": 469, "vadWords": 0, "fallbackWords": 12}
+      ],
+      "expected": {
+        "fires": {"track-x": true},
+        "entries": [
+          {"trackId": "x-return", "vadWords": 0, "fallbackWords": 12, "activeSeconds": 15.008, "personActiveSeconds": 15.008, "used": true}
+        ]
+      }
+    },
+    {
+      "name": "a-track-with-no-activity-of-a-firing-speaker-still-gets-an-entry",
+      "tracks": [
+        {"trackId": "x-first", "kind": "remote", "sourceTrackId": "x", "speaker": "track-x", "activeFrames": 500, "vadWords": 0, "fallbackWords": 20},
+        {"trackId": "x-quiet", "kind": "remote", "sourceTrackId": "x", "speaker": "track-x", "activeFrames": 0, "vadWords": 0, "fallbackWords": 0}
+      ],
+      "expected": {
+        "fires": {"track-x": true},
+        "entries": [
+          {"trackId": "x-first", "vadWords": 0, "fallbackWords": 20, "activeSeconds": 16.0, "personActiveSeconds": 16.0, "used": true},
+          {"trackId": "x-quiet", "vadWords": 0, "fallbackWords": 0, "activeSeconds": 0.0, "personActiveSeconds": 16.0, "used": false}
+        ]
+      }
+    }
+  ]
+}

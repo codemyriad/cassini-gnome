@@ -1,14 +1,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Shared Markdown bytes, safe names and D8 encode choice; no GTK or audio IO."""
 
+import itertools
 import re
 import unicodedata
 from contextlib import nullcontext
 
 from . import ux_formats as fmt
 from .i18n import using_language
+from .source_ownership import own_gap_ranges, turn_break
 from .strings import text
-from .transcript import turn_text
+from .transcript import quote_items
 
 BANDS = ((4000, 12000, 16000), (6000, 12000, 20000), (8000, 16000, 32000), (12000, 20000, 48000), (20000, 24000, 64000))
 
@@ -85,19 +87,28 @@ def _markdown(value):
             "",
         ]
     lines += ["## " + text("export.markdown.transcriptHeading"), ""]
-    turns = []
+    # D38.5 pairs quotes over each consecutive speaker run; a paragraph also
+    # ends at a gap range of the speaker's own tracks (D63 #2).
+    gaps = value.get("turnGaps") or {}
+    runs = []
     for item in items:
-        if turns and turns[-1][0] == item["speaker"]:
-            turns[-1][2].append(item["text"])
+        if runs and runs[-1][-1]["speaker"] == item["speaker"]:
+            runs[-1].append(item)
         else:
-            turns.append([item["speaker"], item["startMs"], [item["text"]]])
-    for identifier, start, texts in turns:
+            runs.append([item])
+    for run in runs:
+        identifier = run[0]["speaker"]
         name = names.get(identifier, text("common.speaker.unnamed", n=order.index(identifier) + 1))
-        lines += [
-            f"**{escaped(name)}** · {fmt.position(start)}",
-            escaped(" ".join(texts) if value.get("verbatim") else turn_text(texts)),
-            "",
-        ]
+        texts = [item["text"] for item in run]
+        values = texts if value.get("verbatim") else quote_items(texts)
+        edges = [0, *(i for i in range(1, len(run)) if _gap_break(gaps, run[i - 1], run[i])), len(run)]
+        for first, end in itertools.pairwise(edges):
+            shown = values[first:end]
+            lines += [
+                f"**{escaped(name)}** · {fmt.position(run[first]['startMs'])}",
+                escaped(" ".join(shown) if value.get("verbatim") else " ".join(v for v in shown if v)),
+                "",
+            ]
     if value.get("notes"):
         lines += ["## " + text("export.markdown.notesHeading"), ""]
         lines += [
@@ -106,6 +117,11 @@ def _markdown(value):
         ]
         lines.append("")
     return "\n".join(lines).rstrip("\n") + "\n"
+
+
+def _gap_break(gaps, first, second):
+    ranges = own_gap_ranges(gaps, first["speaker"])
+    return turn_break(ranges, (first["startMs"], first["endMs"]), (second["startMs"], second["endMs"]))
 
 
 def model_projection(meeting, *, tz=None):
@@ -119,5 +135,6 @@ def model_projection(meeting, *, tz=None):
         if meeting.transcript == "done"
         else [],
         notes=list(meeting.notes),
+        turnGaps={speaker: [list(r) for r in ranges] for speaker, ranges in meeting.turn_gaps.items()},
         **({"verbatim": True} if meeting.words and all(w.text_is_stored for w in meeting.words) else {}),
     )

@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "note": "Hand-written D63 #2 and #3 cases on synthetic stored tracks. Words are integer session ms; a word's midpoint is 8 * (startMs + endMs) in 16 kHz session samples. keep: the word is written. turns: sizes of the turns the consecutive words of one speaker form. writedown.py reproduces every case.",
+  "keep": [
+    {
+      "name": "no-gaps-field-is-unknown-and-keeps",
+      "track": {"startOffsetMs": 1000, "sampleRate": 48000, "frames": 192000},
+      "words": [
+        {"ms": [990, 1010], "keep": true},
+        {"ms": [2000, 2500], "keep": true},
+        {"ms": [4990, 5000], "keep": true},
+        {"ms": [4990, 5010], "keep": false},
+        {"ms": [980, 1010], "keep": false}
+      ]
+    },
+    {
+      "name": "unknown-after-overflow-keeps",
+      "track": {"startOffsetMs": 0, "sampleRate": 48000, "frames": 240000,
+                "gaps": [{"atMs": 1000, "durationMs": 500, "frames": 24000, "kind": "jump"}, {"atMs": 3000, "kind": "overflow"}]},
+      "words": [
+        {"ms": [1200, 1300], "keep": false},
+        {"ms": [1490, 1510], "keep": true},
+        {"ms": [2900, 3100], "keep": true},
+        {"ms": [3500, 3600], "keep": true},
+        {"ms": [4990, 5010], "keep": false}
+      ]
+    },
+    {
+      "name": "unknown-presence-still-obeys-ownership",
+      "track": {"startOffsetMs": 0, "sampleRate": 48000, "frames": 240000},
+      "ownership": [[0, 2000]],
+      "words": [
+        {"ms": [1990, 2008], "keep": true},
+        {"ms": [1990, 2010], "keep": false},
+        {"ms": [3000, 3500], "keep": false}
+      ]
+    },
+    {
+      "name": "fractional-gap-edges-use-the-presence-conversion",
+      "track": {"startOffsetMs": 0, "sampleRate": 48000, "frames": 240000,
+                "gaps": [{"atMs": 2000.5, "durationMs": 1000, "frames": 48000, "kind": "input"}]},
+      "words": [
+        {"ms": [1999, 2001], "keep": true},
+        {"ms": [1999, 2002], "keep": false},
+        {"ms": [3000, 3000], "keep": false},
+        {"ms": [3000, 3001], "keep": true}
+      ]
+    },
+    {
+      "name": "a-fractional-start-offset-compares-in-session-samples",
+      "note": "Convert the ranges with the session origin, never track-relative: subtracting startOffsetMs (16000.48 samples) before the ceil keeps [2000, 2001] and drops [3000, 3001].",
+      "track": {"startOffsetMs": 1000.03, "sampleRate": 48000, "frames": 192000,
+                "gaps": [{"atMs": 2000.5, "durationMs": 1000, "frames": 48000, "kind": "jump"}]},
+      "words": [
+        {"ms": [1000, 1000], "keep": false},
+        {"ms": [1000, 1001], "keep": true},
+        {"ms": [1999, 2001], "keep": true},
+        {"ms": [2000, 2001], "keep": false},
+        {"ms": [3000, 3000], "keep": false},
+        {"ms": [3000, 3001], "keep": true},
+        {"ms": [5000, 5000], "keep": true},
+        {"ms": [5000, 5001], "keep": false}
+      ]
+    },
+    {
+      "name": "prefix-padding-is-absence",
+      "track": {"startOffsetMs": 8000, "sampleRate": 48000, "frames": 96000,
+                "gaps": [{"atMs": 8000, "durationMs": 500, "frames": 24000, "kind": "prefix"}]},
+      "words": [
+        {"ms": [8100, 8300], "keep": false},
+        {"ms": [8490, 8510], "keep": true}
+      ]
+    },
+    {
+      "name": "an-empty-gap-drops-no-word",
+      "track": {"startOffsetMs": 0, "sampleRate": 48000, "frames": 96000,
+                "gaps": [{"atMs": 1000, "durationMs": 0, "frames": 0, "kind": "jump"}]},
+      "words": [
+        {"ms": [800, 900], "keep": true},
+        {"ms": [995, 1005], "keep": true},
+        {"ms": [1000, 1000], "keep": true},
+        {"ms": [1100, 1200], "keep": true}
+      ]
+    }
+  ],
+  "turns": [
+    {
+      "name": "a-300-ms-gap-splits-even-inside-the-400-ms-seam-rejoin",
+      "gaps": [{"atMs": 10000, "durationMs": 300, "frames": 14400, "kind": "jump"}],
+      "words": [[9700, 9950], [10300, 10600]],
+      "turns": [1, 1]
+    },
+    {
+      "name": "a-long-word-straddling-a-short-gap-splits-on-midpoints-not-edges",
+      "gaps": [{"atMs": 10000, "durationMs": 300, "frames": 14400, "kind": "jump"}],
+      "words": [[9400, 10400], [10450, 10800]],
+      "turns": [1, 1]
+    },
+    {
+      "name": "overlapping-words-split-on-midpoints",
+      "gaps": [{"atMs": 10000, "durationMs": 300, "frames": 14400, "kind": "jump"}],
+      "words": [[9500, 10350], [10200, 10700]],
+      "turns": [1, 1]
+    },
+    {
+      "name": "a-gap-after-both-midpoints-joins",
+      "gaps": [{"atMs": 10000, "durationMs": 300, "frames": 14400, "kind": "jump"}],
+      "words": [[9000, 9400], [9500, 10400]],
+      "turns": [2]
+    },
+    {
+      "name": "an-overflow-marker-never-splits",
+      "gaps": [{"atMs": 10000, "kind": "overflow"}],
+      "words": [[9000, 9500], [11000, 11500]],
+      "turns": [2]
+    },
+    {
+      "name": "a-prefix-between-two-spans-splits",
+      "gaps": [{"atMs": 8000, "durationMs": 500, "frames": 24000, "kind": "prefix"}],
+      "words": [[4000, 4500], [9000, 9500]],
+      "turns": [1, 1]
+    },
+    {
+      "name": "a-long-pause-without-a-gap-range-joins",
+      "gaps": [],
+      "words": [[1000, 1500], [9000, 9500], [9600, 9900]],
+      "turns": [3]
+    },
+    {
+      "name": "an-empty-gap-never-splits",
+      "gaps": [{"atMs": 1000, "durationMs": 0, "frames": 0, "kind": "jump"}],
+      "words": [[800, 900], [1100, 1200]],
+      "turns": [2]
+    }
+  ]
+}

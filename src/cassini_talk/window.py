@@ -27,6 +27,7 @@ from . import ux_formats as fmt
 from .colors import SpeakerPalette, hex_color
 from .i18n import gettext as _
 from .i18n import ngettext, number
+from .library import turn_gaps
 from .player import Player
 from .portable import State
 from .strings import text
@@ -441,7 +442,10 @@ class CassiniWindow(Adw.ApplicationWindow):
 
     def _set_words(self, words, error=None):
         self.transcript_error = error
-        self.turns = transcript.build_turns(words or [])
+        # D63 #2: the file's own track map gives each speaker's gap ranges.
+        manifest = self.meeting.manifest if self.meeting else None
+        gaps = turn_gaps((), {}, manifest.get("x")) if manifest else None
+        self.turns = transcript.build_turns(words or [], gaps=gaps)
         known = {s.id for s in self.meeting.speakers} if self.meeting else set()
         for turn in self.turns:
             if turn.speaker not in known and turn.speaker not in self.extra_speakers:

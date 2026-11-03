@@ -4,6 +4,7 @@
 import hashlib
 import importlib.util
 import json
+import shutil
 import threading
 from pathlib import Path
 
@@ -25,6 +26,13 @@ def absent(present, end, margin):
     return [(left + margin, right - margin) for left, right in pairs if right - left > 2 * margin]
 
 
+@pytest.fixture
+def tmp_path(tmp_path):
+    """Removed after the test, so later tests keep the tmpfs."""
+    yield tmp_path
+    shutil.rmtree(tmp_path.absolute(), ignore_errors=True)
+
+
 def test_shared_public_corpus_keeps_source_spans_calls_and_word_attribution_separate(tmp_path):
     np = pytest.importorskip("numpy")
     from cassini_talk.diarization_audio import rejoin
@@ -35,7 +43,7 @@ def test_shared_public_corpus_keeps_source_spans_calls_and_word_attribution_sepa
     corpus.make(tmp_path)
     snapshot = LibraryScanner(tmp_path).scan()
     meetings = {meeting.id: meeting for meeting in snapshot.meetings}
-    call, other = CORPUS["sessions"]
+    call, other, *_rest = CORPUS["sessions"]
     first, second = meetings[call["id"]], meetings[other["id"]]
     assert (first.duration_ms, second.duration_ms) == (call["durationMs"], other["durationMs"])
     assert first.directory != second.directory

@@ -19,12 +19,14 @@
   The Python policy is an independent oracle, not production code for either app.
 - `ownership.json`: literal half-open D49 and lost/restored seams. Desktop
   adoption must exercise its actual mix/recognition/export path against them.
-- `corpus.json`, `make.py`, `floor.py`, `speech/`: the production-shaped two-call
+- `corpus.json`, `make.py`, `floor.py`, `speech/`: the production-shaped
   corpus v2, using pinned public LibriSpeech speech. See "Corpus v2" below.
+- `activity.py`, `fallback.json`, `writedown.py`, `writedown.json`: the D63 vectors
+  (fallback per person, turn breaks at gap ranges, words outside presence). See "D63" below.
 
 ## Corpus v2
 
-`python3 make.py DESTINATION` materializes two Library folders in about 2 s. It is
+`python3 make.py DESTINATION` materializes three Library folders in about 2 s. It is
 stdlib only, so `/usr/bin/python3` on macOS works. The output is byte-identical on
 Linux and macOS, and `materialized.sha256` pins it. Apps read `constants` and `expected`
 from `corpus.json`. They never hard-code the numbers.
@@ -44,6 +46,15 @@ from `corpus.json`. They never hard-code the numbers.
 | `CONCURRENT_MIN_MS` | 20000 | wall-clock overlap of the two folders |
 | `NOISE_BED_DBFS` | -45 | the noise bed on b-return |
 | `FLOOR_TOLERANCE_DB` | 3 | app floors against the oracle bands (16 kHz/512 vs 48 kHz/1536) |
+| `MIN_ACTIVE_SECONDS` | 15 | R71/D63: pooled active audio a speaker needs before the fallback fires |
+| `FEW_WORDS` | 10 | R71/D63: the fallback fires only below this many pooled VAD words |
+| `ACTIVE_DBFS` | -50 | R71: the fixed part of the active threshold |
+| `FLOOR_MARGIN_DB` | 12 | R71: the active threshold is at least floor + this |
+| `FLOOR_MIN_FRAMES` | 312 | R71: fewer audible 32 ms frames than this, and -50 dBFS applies alone |
+| `MIN_RUN_MS` | 160 | R71: shorter loud runs are not active |
+| `WINDOW_MS`, `OVERLAP_MS` | 15000, 500 | R71: fallback windows |
+| `MIN_WINDOW_ACTIVE_MS` | 500 | R71: a window is decoded with at least this much activity (16 frames) |
+| `ACTIVE_TOLERANCE_DB` | 3 | app active seconds against the oracle bands |
 
 **Voices.** A is speaker 1089 (me), B is speaker 260 (source-b, and the system
 path, which carries the same call) and C is speaker 1221 (source-a). The two remotes that
@@ -61,13 +72,15 @@ system/lost@50000, browser/restored@60000 and end/user@90000.
 | a-return | 60000–62000 | C | |
 | b | 18000–50000 | B 18–28 s, 49–50 s | A (my echo) bleeds in over 32–38 s at BLEED_DB; owned from 20000 |
 | system-fallback | 49000–61000 | B 49–58 s, 60–61 s | input gap 54000+1500 ms; owned 50000–60000 |
-| b-return | 60000–90000 | B 60–68 s, 72–84 s | jump gap 70000+2000 ms; noise bed inside presence |
+| b-return | 60000–90000 | B 60–68 s, 72–80 s | jump gap 70000+2000 ms; noise bed inside presence |
 
 - **The D49 switch.** Over 18–22 s, system and b hold identical bytes: one call captured twice.
 - **The seams.** b and system-fallback are identical over 49–50 s. system-fallback and
   b-return are identical over 60–61 s, including the noise.
-- **b-return** is the noisy, gapped, fallback-sized remote. b stays clean. That gives source-b
-  two spans whose floors are far apart, which is the shape per-person pooling needs.
+- **b-return** is the noisy, gapped remote. b stays clean. That gives source-b two spans whose
+  floors are far apart, which is the shape per-person floor pooling needs. With the VAD
+  rejecting everything, only the mic falls back in this session: source-b stays well under
+  MIN_ACTIVE_SECONDS even pooled (b-return's speech ends at 80 s for that reason).
 - **Capture facts.** Per D52.2, every track records `gaps`. Browser tracks also carry
   `receivedFrames` (frames minus gapFrames) and `captureOutcome`, and `captureOutcome.sources`
   lists source-a and source-b, both captured. State and problemKind come from the gaps
@@ -75,6 +88,15 @@ system/lost@50000, browser/restored@60000 and end/user@90000.
 
 **Session 2** (`…0002`, "Concurrent call B") starts at 12:00:20 and runs 40 s. Its one
 remote track carries A. It overlaps session 1 in wall time from 12:00:20 to 12:01:00.
+
+**Session 3** (`…0003`, "Rejoined guest") starts at 13:00 and runs 60 s. It is the D63
+pooling vector: source-d speaks over two spans, and neither reaches MIN_ACTIVE_SECONDS alone.
+
+| Track | Span (ms) | Speech | Other content |
+|---|---|---|---|
+| mic3 | 0–60000 | A 50–56 s | |
+| d-first | 0–20000 | B 0–8 s, 10–16 s | source-d |
+| d-return | 24000–50000 | B 24–32 s, 36–44 s | source-d; jump gap 34000+2000 ms |
 
 **Generator format.**
 - `speechWindows` entries are `[a, b]` or `[a, b, phaseMs]`. Voice position 0 plays at
@@ -100,9 +122,15 @@ remote track carries A. It overlaps session 1 in wall time from 12:00:20 to 12:0
   - `noWords` is the span minus owned presence: gaps plus non-owned overlap. No word may
     land there.
   - `floorDb` is the band for the span floor.
+  - `activeSeconds` is the band for the span's R71 active seconds (see D63).
+  - `fallbackWindowsMs` lists the windows the span decodes when its speaker falls back.
 - **Per session:**
   - `speechMs` and `overlaps` (with the people in each) are computed over owned presence.
   - `personFloorDb` gives the per-person bands.
+  - `personActiveSeconds` gives the pooled active-seconds bands, and `fallback` says, per
+    person, whether the fallback fires when the VAD finds no words at all.
+  - `turnBreaksMs` gives each speaker's gap ranges, `turnCases` the turns that consecutive
+    words of one speaker form, and `wordMidpoints` which words are written (see D63).
   - The rest are `voices`, `d49Overlap`, `seamOverlaps`, `bleeds`, `noiseBed`,
     `captureOutcome` and `droppedFrames`.
 - **Floor bands.** Each is the oracle floor rounded to a whole dB, ± FLOOR_TOLERANCE_DB.
@@ -144,6 +172,85 @@ remote track carries A. It overlaps session 1 in wall time from 12:00:20 to 12:0
   - the oracle floors inside their bands
   - the pinned digests. Without the repo's Python test deps, `/usr/bin/python3 make.py
     DEST && (cd DEST && shasum -a 256 -c PATH/TO/materialized.sha256)` checks the same pin.
+
+## D63
+
+D63 (coordination 5160f37) changes three write-down rules. Apps run these vectors through
+their own meters, recognisers and transcript builders. `activity.py` and `writedown.py`
+are independent oracles, never production code.
+
+**1. The fallback counts active seconds per person.** The R71 tests, at least
+MIN_ACTIVE_SECONDS of active audio and fewer than FEW_WORDS VAD words, pool every
+non-silent track of one speaker id: the same `me`, `others` or `track-<sourceTrackId>`
+across rejoins. An R64 overlap lane (`…:overlap:n`) is its own speaker, and D56 silent tracks
+are left out. Everything else in R71 stays per track:
+- the active frames of each track are measured on that track, inside its own presence;
+- the windows run per track, inside each presence range;
+- the gocassini margin (`vad + max(2, ceil(vad/5))`, or 1 when vad is 0) is per track.
+
+Provenance keeps one entry per track of a firing speaker, and adds `personActiveSeconds`:
+`{trackId, vadWords, fallbackWords, activeSeconds, personActiveSeconds, used}`.
+Compare whole frames: 469 frames of 32 ms (15.008 s) fire, 468 (14.976 s) do not.
+
+The R71 active rule, as `activity.py` implements it on the stored 48 kHz PCM:
+- 32 ms frames from the span's first sample, never overlapping; a trailing partial frame
+  never counts. A frame is inside when it lies wholly inside one present-or-unknown range.
+- The level is the mean-removed RMS in dBFS. The floor is the 10th percentile (index
+  `int(0.1 * (n - 1))`) of inside frames above -90 dBFS, digital silence excluded. With fewer
+  than FLOOR_MIN_FRAMES of them, the threshold is ACTIVE_DBFS alone; otherwise it is
+  max(ACTIVE_DBFS, floor + FLOOR_MARGIN_DB).
+- Loud frames in runs of at least MIN_RUN_MS are active.
+- A window is decoded when it holds at least 16 active frames, counting the partial frames at
+  its edges.
+
+`activeSeconds` is a band per track: the oracle at threshold +ACTIVE_TOLERANCE_DB, floored
+to 0.1 s, and at -ACTIVE_TOLERANCE_DB, ceiled to 0.1 s. It covers the D11.2 16 kHz FIR,
+whole-dB level codes and other meter details. `personActiveSeconds` is the sum of its
+tracks' bands, so an app whose track values lie in their bands lies in the pooled band too.
+An app's own values must fall inside. No person's band straddles MIN_ACTIVE_SECONDS, so `fallback` is
+exact, and the windows do not change across the band, so `fallbackWindowsMs` is exact too.
+In session 3 source-d falls back only when pooled. In session 1 only the mic falls back.
+
+`fallback.json` holds the decision cases without audio: the 468/469-frame edge, pooled
+10 vs 9 VAD words, the margin per track, different speakers, overlap lanes, `others` and
+`me` across spans, silent tracks, and an entry for a quiet track of a firing speaker.
+
+**2. A turn never spans a gap range of its own track.** A word is [startMs, endMs] in
+integer session ms, and its midpoint is M = 8 × (startMs + endMs) in 16 kHz session samples.
+A speaker's gap ranges are the non-overflow gap ranges of its tracks (prefix included), as
+[G0, G1) with the presence conversion. Two consecutive words of one speaker are in different
+turns when G0 < G1, G0 < max(M1, M2) and min(M1, M2) < G1 for one of them; an empty gap
+(durationMs 0) is no range, so it splits no turn and drops no word. This applies to every way
+words join, including the 400 ms seam rejoin, where the two words are the last word of the
+open turn and the first word of the fragment that would join it. Pauses inside presence still join. So do the
+time between two spans of one speaker and non-owned time, since neither is a gap range.
+An overflow marker never splits. Turn grouping stays presentation (D47).
+
+**3. Words outside a track's presence are not written.** On every path (VAD and fallback),
+a word is written only when its M lies in one of its track's present-or-unknown ranges
+[a, b) (gaps.presence with that track's ownership), compared in session samples: never
+subtract a fractional startOffsetMs before rounding. A track without `gaps` is unknown, and
+so is the time after an overflow marker: words there are kept, still only inside the span
+extent and ownership. At a seam, every word is
+written by exactly one of the two tracks that carry the call. Use the exact M: rounding the
+midpoint to whole ms, half up, gets `[40999, 41000]` and `[47999, 48000]` on a-long wrong.
+A word clamped to zero length at the end of presence (G11) is not written. It is a
+write-time rule, not a display filter (D47).
+
+`writedown.json` adds synthetic tracks for what the corpus does not have: no `gaps`, an
+overflow marker, ownership over unknown presence, fractional gap edges, a fractional
+startOffsetMs, a prefix, a 300 ms gap inside the seam rejoin, and words that overlap or
+straddle a gap.
+
+**Tests.** `tests/test_fallback_corpus.py` checks every literal against the oracles, the
+seam property, and a guard that some person falls back only when pooled while another
+multi-track person does not, with one failing data mutation per guard message. Code mutants
+of the oracles must fail the same literals: pooling per track, presence, ownership or gap
+ranges ignored, no run-length filter, no floor margin, no 10 s floor minimum, a midpoint
+rounded half up, a closed range, unknown presence dropped, presence compared track-relative,
+turns split on word edges, on an overflow or on a gap range closed at its end, and a margin
+pooled or without its minimum. Rules the corpus cannot show
+(near-silence and the floor, mean removal) have synthetic checks.
 
 ## Adoption and browser tests
 

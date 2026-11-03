@@ -92,6 +92,14 @@ and seam overlaps for the pairs `shape()` finds, the noise bed, the floors, and 
 pinned digests. Only the schema check needs jsonschema; the rest of the guard runs
 on a bare `/usr/bin/python3`.
 
+`test_fallback_corpus.py` holds the D63 vectors. It checks the per-track and pooled
+active-seconds bands, the fallback windows and the per-person fallback against
+`activity.py` on the stored WAVs, `fallback.json` against `activity.decide()`, and the
+turn and word keep/drop cases in `corpus.json` and `writedown.json` against
+`writedown.py`. A guard requires a person who falls back only when pooled; each guard
+message has a failing data mutation, and code mutants of both oracles must fail the
+same literals or, for rules the corpus cannot show, synthetic checks.
+
 `npm test` includes injected-clock retry/long-suspension cases and real Chromium
 pre-join, source-switch, call-generation, worker-recovery and independent-session
 cases. A receiver switch waits for the actual replacement waveform with unchanged

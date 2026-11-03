@@ -15,6 +15,7 @@ import bisect
 from dataclasses import dataclass, field
 
 from .portable import Word
+from .source_ownership import own_gap_ranges, turn_break
 
 # How long a turn stays highlighted after its last word, so short gaps
 # between words do not make the highlight flicker.
@@ -142,25 +143,40 @@ def _touches(left, right):
     return any(max(a, c) - min(b, d) <= TOUCH_TOLERANCE_MS for a, b in left for c, d in right)
 
 
-def build_turns(words: list[Word]) -> list[Turn]:
+def gap_break(gaps, first, second):
+    """D63 #2: two words of one speaker never share a turn across one of its gap ranges."""
+    return bool(gaps) and turn_break(
+        own_gap_ranges(gaps, first.speaker), (first.start_ms, first.end_ms), (second.start_ms, second.end_ms)
+    )
+
+
+def build_turns(words: list[Word], gaps: dict | None = None) -> list[Turn]:
     """Rejoin interrupted speaker runs without reordering their words.
 
     The portable format supplies words rather than Nextcloud's display blocks;
     consecutive same-speaker items are the fragment boundaries available here.
+    `gaps` (library.turn_gaps) also ends a fragment, and stops a rejoin, at a
+    gap range of the speaker's own tracks (D63 #2).
     """
-    fragments = []
+    fragments, runs = [], []  # runs: fragment slices of each consecutive speaker run
     for i, word in enumerate(words):
-        if fragments and fragments[-1].speaker == word.speaker:
+        if fragments and fragments[-1].speaker == word.speaker and not gap_break(gaps, words[i - 1], word):
             fragment = fragments[-1]
             fragment.words.append(word)
             fragment.end_ms = max(fragment.end_ms, word.end_ms)
+            continue
+        if fragments and fragments[-1].speaker == word.speaker:
+            runs[-1][1] += 1
         else:
-            fragments.append(Turn(len(fragments), word.speaker, [word], i, word.start_ms, word.end_ms))
+            runs.append([len(fragments), len(fragments) + 1])
+        fragments.append(Turn(len(fragments), word.speaker, [word], i, word.start_ms, word.end_ms))
     # D38.5 pairs quotes within each consecutive speaker run, like Search,
     # Markdown and the Meeting page; rejoining must never pair across a
-    # speaker change.
-    for fragment in fragments:
-        fragment.display = display_items(fragment.words)
+    # speaker change, and a gap break never changes the pairing.
+    for first, end in runs:
+        values = display_items(word for fragment in fragments[first:end] for word in fragment.words)
+        for fragment in fragments[first:end]:
+            fragment.display, values = values[: len(fragment.words)], values[len(fragment.words) :]
     spans = [_spans(fragment.words) for fragment in fragments]
     turns = []
     opened = {}
@@ -175,6 +191,7 @@ def build_turns(words: list[Word]) -> list[Turn]:
                 bool(previous_spans)
                 and abs(spans[position][0][0] - run.end_ms) <= SEAM_GAP_MS
                 and (not intervening or _touches(intervening, previous_spans + spans[position]))
+                and not gap_break(gaps, run.words[-1], fragment.words[0])
             )
         if join:
             start = len(run.words)

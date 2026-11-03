@@ -42,9 +42,12 @@ def item_markup(words, position, *, dark=False, values=None):
     return " ".join(parts)
 
 
-def reading_turns(words):
-    """Bound paragraph work without changing or synthesising any timed item."""
-    from .transcript import Turn
+def reading_turns(words, gaps=None):
+    """Bound paragraph work without changing or synthesising any timed item.
+
+    A paragraph also ends at a gap range of the speaker's own tracks (D63 #2).
+    """
+    from .transcript import Turn, gap_break
 
     turns = []
     for word in words:
@@ -53,6 +56,7 @@ def reading_turns(words):
             or turns[-1].speaker != word.speaker
             or len(turns[-1].words) >= 100
             or word.start_ms - turns[-1].start_ms >= 30000
+            or gap_break(gaps, turns[-1].words[-1], word)
         ):
             turns.append(Turn(len(turns), word.speaker, [word], 0, word.start_ms, word.end_ms))
         else:

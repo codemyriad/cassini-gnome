@@ -207,3 +207,131 @@ EPSILON = Fraction(1, 1_000_000)
 def samples(windows, rate=16000):
     """Half-open ms windows as [ceil(a*rate/1000 - eps), ceil(b*rate/1000 - eps)) sample ranges."""
     return [[math.ceil(Fraction(edge) * rate / 1000 - EPSILON) for edge in window] for window in windows]
+
+
+def gap_ranges(gaps):
+    """D63 #2: one track's stored gap ranges as 16 kHz session [G0, G1) samples.
+
+    A prefix counts. An empty gap is no range. From an overflow marker (or an
+    entry this reader cannot place) on, the time is unknown, so nothing there is
+    a gap range; without a ``gaps`` list there are none.
+    """
+    result = []
+    for gap in gaps if isinstance(gaps, list) else ():
+        at = _time(gap.get("atMs")) if isinstance(gap, dict) else None
+        duration = _time(gap.get("durationMs")) if isinstance(gap, dict) else None
+        if at is None or duration is None or gap.get("kind") == "overflow":
+            break
+        result.extend((left, right) for left, right in samples([(at, at + duration)]) if left < right)
+    return result
+
+
+def speaker_gap_ranges(tracks, *, silent=(), merges=None):
+    """D63 #2: {speaker id: sorted gap ranges of that speaker's own tracks}.
+
+    `tracks` are stored track rows (session.json, or x["codemyriad.io"] with
+    offsets on the spans). Speaker ids and R64 overlap lanes are the ones the
+    write-down gives (transcription.prepare_tracks); a D56 silent track has no
+    words and adds no ranges. `merges` maps a merged-away speaker to the one
+    its words now carry, which then splits on both speakers' ranges.
+    """
+    from .source_spans import separate
+
+    rows = []
+    for track in tracks:
+        identity = track.get("sourceTrackId") or track.get("id")
+        if track.get("kind") in ("microphone", "local"):
+            speaker = "me"
+        elif track.get("kind") == "system":
+            speaker = "others"
+        else:
+            speaker = f"track-{identity}"
+        rows.append(dict(track, id=track.get("id"), captureTrackId=track.get("id"), speaker=speaker))
+    # A row this reader cannot place gives no ranges; its source's other rows keep theirs.
+    audible = [row for row in rows if _placeable(row) and row.get("frames") and row["id"] not in silent]
+    reserved = [row["speaker"] for row in rows]
+    sources = {}
+    for row in audible:
+        sources.setdefault(row["speaker"], []).append(row)
+    result = {}
+    for group in sources.values():
+        # R64 lanes are per source, so one at a time gives the same ids; a
+        # source whose lane id is over the limit loses only its own breaks.
+        try:
+            separated, _diagnostics = separate(group, reserved=reserved)
+        except ValueError:
+            continue
+        for row in separated:
+            result.setdefault(row["speaker"], []).extend(gap_ranges(row.get("gaps")))
+    for source, target in (merges or {}).items():
+        # A `<group>~n` target keeps its group's ranges as well.
+        result[target] = [*own_gap_ranges(result, target), *own_gap_ranges(result, source)]
+    return {speaker: _union(ranges) for speaker, ranges in result.items() if ranges}
+
+
+def _count(value, low):
+    return type(value) is int and low <= value <= 2**63
+
+
+def _placeable(row):
+    """Whether source_spans.bounds and separate can read a stored row; a foreign file's may not."""
+    from .source_spans import bounds
+
+    spans = row.get("spans")
+    if (
+        not isinstance(row.get("id"), str)
+        or not isinstance(row.get("sourceTrackId") or "", str)
+        or not _count(row.get("frames"), 0)
+        or spans is not None
+        and not isinstance(spans, (list, tuple))
+    ):
+        return False
+    for span in spans or [row]:
+        if not isinstance(span, dict) or not _count(span.get("sampleRate"), 1) or not _count(span.get("frames"), 0):
+            return False
+        at = span.get("offsetMs", span.get("startOffsetMs"))
+        if at is not None and (type(at) not in (int, float) or not math.isfinite(at)):
+            return False
+    # R64 sorts by UTF-8 ids and extents: collapsed clock anchors divide by
+    # zero, a huge offset goes NaN, a lone surrogate does not encode.
+    try:
+        row["id"].encode("utf-8")
+        row["speaker"].encode("utf-8")
+        bounds(row)
+    except (ArithmeticError, ValueError):
+        return False
+    return True
+
+
+def _union(ranges):
+    # Sorted ranges that do not overlap; turn_break bisects them. Joining
+    # overlapping ones changes no break (touching ones stay apart: two equal
+    # midpoints on the shared edge are in neither).
+    result = []
+    for left, right in sorted(ranges):
+        if result and left < result[-1][1]:
+            result[-1] = (result[-1][0], max(result[-1][1], right))
+        else:
+            result.append((left, right))
+    return tuple(result)
+
+
+def own_gap_ranges(ranges, speaker):
+    """The gap ranges of `speaker`; a D24 `<group>~n` voice has its group's."""
+    if speaker in ranges:
+        return ranges[speaker]
+    group, separator, ordinal = speaker.rpartition("~")
+    return ranges.get(group, ()) if separator and ordinal.isdigit() else ()
+
+
+def turn_break(ranges, first, second):
+    """D63 #2: whether a gap range lies between two words' midpoints.
+
+    Words are (startMs, endMs) in session ms; a midpoint is 8 × (start + end)
+    in 16 kHz session samples, so it is exact. `ranges` are sorted and never
+    overlap (speaker_gap_ranges), so the first one ending after the lower
+    midpoint decides.
+    """
+    low, high = sorted((8 * (first[0] + first[1]), 8 * (second[0] + second[1])))
+    index = bisect_right(ranges, low, key=lambda value: value[1])
+    return index < len(ranges) and ranges[index][0] < high

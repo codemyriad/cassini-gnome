@@ -231,7 +231,7 @@ def shape(data, C):
         'R6 voices: fewer than VOICES_MIN distinct pinned voices'
 
     sessions = data['sessions']
-    assert len({s['id'] for s in sessions}) >= 2, 'R7 sessions: fewer than two sessions with distinct ids'
+    assert len({s['id'] for s in sessions}) == len(sessions) >= 2, 'R7 sessions: fewer than two sessions, or two with one id'
     assert any(min(wall(x)[1], wall(y)[1]) - max(wall(x)[0], wall(y)[0]) >= C['CONCURRENT_MIN_MS']
                for i, x in enumerate(sessions) for y in sessions[i + 1:]), \
         'R7 concurrent folders: no two sessions overlap by CONCURRENT_MIN_MS of wall clock'

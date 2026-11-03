@@ -361,3 +361,29 @@ def test_search_context_omits_duration_of_meeting_whose_audio_is_missing(shared_
         )
     finally:
         value.close()
+
+
+def test_search_turns_split_at_the_speakers_own_gap_ranges(index):
+    # D63 #2: like the other groupers, a phrase never matches across a gap break.
+    meeting = next(m for m in index.current.values() if m.title == "Budget review")
+    words = (Word("me", 1000, 1500, "budget"), Word("me", 9000, 9500, "plan"))
+    joined = replace(meeting, words=words, turn_gaps={})
+    index.sync(LibrarySnapshot(meetings=(joined,)))
+    assert len(index.turns[meeting.key]) == 1 and len(search(index, "budget plan")) == 1
+    split = replace(joined, turn_gaps={"me": ((80000, 128000),)})
+    index.sync(LibrarySnapshot(meetings=(split,)))
+    assert [t.text for t in index.turns[meeting.key]] == ["budget", "plan"]
+    assert search(index, "budget plan") == () and len(search(index, "plan")) == 1
+
+
+def test_a_hit_after_a_gap_seeks_with_the_runs_quote_pairing(index):
+    # Quotes pair over the whole run, so the lone closing quote after the gap is
+    # no part of its own; "I" seeks to I, not to agree.
+    meeting = next(m for m in index.current.values() if m.title == "Budget review")
+    timed = ((1000, 'say "hello'), (2000, '"'), (2200, "I"), (2400, "agree"))
+    words = tuple(Word("me", start, start + 100, value) for start, value in timed)
+    split = replace(meeting, words=words, turn_gaps={"me": ((16 * 1500, 16 * 1900),)})
+    index.sync(LibrarySnapshot(meetings=(split,)))
+    assert [len(t.words) for t in index.turns[meeting.key]] == [1, 3]
+    assert [h.position_ms for h in search(index, "I")] == [2200]
+    assert [h.position_ms for h in search(index, "agree")] == [2400]
