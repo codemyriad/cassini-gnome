@@ -60,7 +60,7 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
     service.workers.shutdown()
     service.workers = Inline()
     # fallbackCommitted:false: the next system tap holds its first buffer.
-    held = dict(next=False, tap=None, closer=None, opening=threading.Event())
+    held = dict(next=False, tap=None, closer=None, opening=None)
 
     def taps(kind, *args, **kwargs):
         if kind == "system" and held["next"]:
@@ -164,7 +164,7 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
                 held["closer"] = None
                 assert capture.browser_lost and lost_written(), (case["name"], step, capture.error)
                 # Written at the commit, not when the transport closed.
-                event = next(e for e in capture.host.session.manifest["events"] if e.get("reason") == "lost")
+                *_, event = (e for e in capture.host.session.manifest["events"] if e.get("reason") == "lost")
                 assert event["atMs"] >= step["atMs"], (case["name"], step, event)
             if step.get("controlConnection", connection) != connection:
                 # A new hello is a new control peer; the recording is matched
@@ -210,7 +210,8 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
                 else:
                     # The broker's real teardown decides the fallback and
                     # blocks opening its device, as on the reader thread.
-                    held["next"] = True
+                    # A fresh event per hold: a later loss's wait proves its own tap.
+                    held["next"], held["opening"] = True, threading.Event()
                     held["closer"] = threading.Thread(target=service._audio_closed, args=(transport, capture))
                     held["closer"].start()
                     assert held["opening"].wait(HOLD_BOUND), (case["name"], step, capture.error)
@@ -528,4 +529,22 @@ def d52(case):
 
 @pytest.mark.parametrize("case", D52_CASES, ids=lambda case: case["name"])
 def test_d52_shared_lifecycle_on_actual_capture(tmp_path, monkeypatch, case):
+    test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monkeypatch, d52(case))
+
+
+def test_d52_each_new_loss_waits_for_its_own_committed_fallback(tmp_path, monkeypatch):
+    """Two losses of one recording, each fallback decided before it commits."""
+    pending = dict(sourceCount=1, callGeneration="call-A", transportAlive=False)
+    steps = [
+        dict(atMs=0, sourceCount=1, callGeneration="call-A", heard=True, expect=[]),
+        dict(pending, atMs=45000, fallbackCommitted=False, expect=["fallback"]),
+        dict(pending, atMs=45400, expect=["askResume"]),
+        dict(atMs=46000, sourceCount=1, callGeneration="call-A", pcmLive=True, expect=["restore"]),
+        dict(pending, atMs=91000, fallbackCommitted=False, expect=["fallback"]),
+        dict(pending, atMs=91200, fallbackCommitted=False, expect=[]),
+        dict(pending, atMs=91400, expect=["askResume"]),
+        dict(pending, atMs=92000, resumeRefused=True, expect=[]),
+        dict(pending, atMs=150000, expect=[]),
+    ]
+    case = dict(name="each-loss-waits-for-its-commit", resumeCapture=True, callGeneration="call-A", steps=steps)
     test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monkeypatch, d52(case))
