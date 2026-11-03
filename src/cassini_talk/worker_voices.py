@@ -41,6 +41,12 @@ def historical_words(directory):
     return [dict(speaker=w.speaker, startMs=w.start_ms, endMs=w.end_ms) for w in meeting.words]
 
 
+def of_group(speaker, group):
+    """Whether `speaker` is `group` or one of its `<group>~n` voices (`s~1~2` is a voice of `s~1`, not of `s`)."""
+    head, separator, ordinal = speaker.rpartition("~")
+    return speaker == group or bool(separator) and head == group and ordinal.isdigit()
+
+
 def group_words(group, words, turns, merges, *, all_words=False, excluded_groups=(), labelled=None, reserved=()):
     """`labelled` limits ordinal labels to saved ids made from these turns (G12).
 
@@ -60,7 +66,7 @@ def group_words(group, words, turns, merges, *, all_words=False, excluded_groups
         or (
             w["speaker"] not in reserved
             and (all_words or w["speaker"] in native_ids)
-            and not any(w["speaker"] == other or w["speaker"].startswith(other + "~") for other in excluded_groups)
+            and not any(of_group(w["speaker"], other) for other in excluded_groups)
         )
     ]
     labels = {}

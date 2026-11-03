@@ -269,6 +269,7 @@ def update_progress_metadata(
     same id keeps its name only when its stamp is equal; otherwise it becomes
     unassigned, as does any other `<group>~*` entry of a re-diarized group whose
     stamp differs. `voice_sources` adds groups that produced no voice this run.
+    D64: a planned track or lane row never inherits an old voice row of its id.
     """
     with mutation(directory):
         if check_active is not None:
@@ -285,6 +286,11 @@ def update_progress_metadata(
             previous = existing.get(identifier, {})
             if "voiceSource" in planned and previous and previous.get("voiceSource") != planned["voiceSource"]:
                 merged[identifier] = unassigned_voice(identifier, planned["colourIndex"], planned["voiceSource"])
+                reset[identifier] = previous
+                continue
+            if "voiceSource" in previous and "voiceSource" not in planned:
+                # D64: the id was a voice and is now a track or lane speaker; it keeps nothing of the voice.
+                merged[identifier] = dict(planned)
                 reset[identifier] = previous
                 continue
             merged[identifier] = dict(previous, **planned)

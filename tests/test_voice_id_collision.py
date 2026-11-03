@@ -8,6 +8,7 @@ import pytest
 from test_voice_source import TURNS_A, TURNS_B, WORDS, X, Y, interrupted, run, scripted, speaker, stamp, words_of
 
 from cassini_talk.diarization import voice_id_collisions
+from cassini_talk.meeting_store import read_metadata, update_metadata
 from cassini_talk.recording_session import RecordingSession
 from cassini_talk.speaker_edits import save_name
 
@@ -145,19 +146,30 @@ def test_rediarization_that_starts_colliding_keeps_the_source_and_resets_old_voi
     assert "voiceIdCollision group=track-s ids=track-s~3" in caplog.text
 
 
-@pytest.mark.parametrize("background", [False, True])
-def test_voice_step_reads_each_source_only_from_its_own_audio(root, tmp_path, monkeypatch, background):
-    """No print for `track-s~1` from group s's audio: only written voices are embedded."""
+def test_old_voice_row_of_a_source_id_is_reset(root, caplog):
+    """meeting.json still holds track-s~1 as group s's named voice; now a source owns that id."""
+    directory = capture(root, ["s", "s~1"])
+    rows = [s for s in read_metadata(directory)["speakers"] if s["id"] != "track-s~1"]
+    rows.append(dict(id="track-s~1", name="Mira", provenance="user", colourIndex=1, voiceSource=stamp(X, TURNS_A)))
+    update_metadata(directory, speakers=rows, speakerMerges=[{"from": "track-s~1", "into": "track-s"}])
+    words = {"track-s": WORDS, "track-s~1": THREE}
+    with caplog.at_level(logging.WARNING):
+        metadata = run(root, directory, scripted({"track-s": (X, TURNS_A, False)}, words))
+    assert words_of(directory) == {"One": "track-s", "Two": "track-s", "Three": "track-s~1"}
+    source = speaker(metadata, "track-s~1")
+    assert source["name"] is None and source["provenance"] == "unnamed" and "voiceSource" not in source
+    # The old voice's merge would show the source's words as group s.
+    assert metadata.get("speakerMerges", []) == []
+    assert "voiceNameReset id=track-s~1 old=user named=True" in caplog.text
+
+
+def voice_step(root, tmp_path, monkeypatch, directory, background):
+    """Run the voice step on fake models; return the words each print read and what was embedded."""
     pytest.importorskip("numpy")
     from cassini_talk import campplus, nemotron, worker_voices
     from cassini_talk.library import LibraryScanner
-    from cassini_talk.meeting_store import read_metadata
     from cassini_talk.transcription import prepare_tracks
 
-    directory = capture(root, ["s", "s~1"])
-    words = {"track-s": WORDS, "track-s~1": THREE}
-    run(root, directory, scripted({"track-s": (X, TURNS_A, False)}, words))
-    written = {s["id"] for s in read_metadata(directory)["speakers"]}
     (meeting,) = LibraryScanner(root).scan().meetings
     tracks, _speakers = prepare_tracks(meeting)
     calls, embedded = [], []
@@ -200,5 +212,27 @@ def test_voice_step_reads_each_source_only_from_its_own_audio(root, tmp_path, mo
     )
     worker_voices.run(tracks, options, lambda kind, **_values: events.append(kind))
     assert events[-1] == "voices-complete"
+    return calls, embedded
+
+
+@pytest.mark.parametrize("background", [False, True])
+def test_voice_step_reads_each_source_only_from_its_own_audio(root, tmp_path, monkeypatch, background):
+    """No print for `track-s~1` from group s's audio: only written voices are embedded."""
+    directory = capture(root, ["s", "s~1"])
+    run(root, directory, scripted({"track-s": (X, TURNS_A, False)}, {"track-s": WORDS, "track-s~1": THREE}))
+    written = {s["id"] for s in read_metadata(directory)["speakers"]}
+    calls, embedded = voice_step(root, tmp_path, monkeypatch, directory, background)
     assert calls == [({"track-s"}, set()), ({"track-s~1"}, set())]
     assert set(embedded) <= written
+
+
+@pytest.mark.parametrize("background", [False, True])
+def test_voice_step_reads_the_voices_of_a_colliding_source(root, tmp_path, monkeypatch, background):
+    """`track-s~1~2` is a voice of group s~1, never of group s, so preparation never drops it."""
+    directory = capture(root, ["s", "s~1"])
+    groups = {"track-s": (X, TURNS_A, False), "track-s~1": (Y, TURNS_A, False)}
+    run(root, directory, scripted(groups, {"track-s": WORDS, "track-s~1": OTHER}))
+    voices = {"track-s~1~1", "track-s~1~2"}
+    calls, embedded = voice_step(root, tmp_path, monkeypatch, directory, background)
+    assert [selected for selected, _labels in calls] == [{"track-s"}, voices]
+    assert set(embedded) <= {s["id"] for s in read_metadata(directory)["speakers"]}
