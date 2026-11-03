@@ -187,8 +187,10 @@ def presence(track, ownership=None):
     for gap in gaps:
         at = _time(gap.get("atMs")) if isinstance(gap, dict) else None
         duration = _time(gap.get("durationMs")) if isinstance(gap, dict) else None
-        if at is not None and duration and gap.get("kind") != "overflow":
-            present = _subtract(present, at, at + duration)
+        if at is not None and duration is not None and gap.get("kind") != "overflow":
+            # An empty gap is no range: it removes nothing, and later gaps still count.
+            if duration:
+                present = _subtract(present, at, at + duration)
             continue
         # Overflow, or an entry this reader cannot place: unknown from its
         # start, or the whole track when even that is unusable.

@@ -234,12 +234,56 @@ def test_spans_are_one_logical_extent_and_unplaced_or_empty_spans_add_nothing():
         (["not a gap"], [], [[0, 32000]]),
         ([jump(500, 250, 12000), dict(atMs=1000, kind="jump")], [[0, 8000], [12000, 16000]], [[16000, 32000]]),
         ([jump(500, 250, 12000), dict(atMs="1000", durationMs=10, kind="jump")], [], [[0, 8000], [12000, 32000]]),
+        ([jump(1000, -1, 0), jump(1500, 100, 4800)], [[0, 16000]], [[16000, 32000]]),
     ],
-    ids=["no-duration", "no-position", "not-an-object", "after-a-valid-range", "unusable-position-after-a-range"],
+    ids=[
+        "no-duration",
+        "no-position",
+        "not-an-object",
+        "after-a-valid-range",
+        "unusable-position-after-a-range",
+        "negative-duration",
+    ],
 )
 def test_a_malformed_gap_entry_makes_the_rest_unknown(gaps, present, unknown):
     result = presence(dict(startOffsetMs=0, sampleRate=48000, frames=96000, gaps=gaps))
     assert (samples(result.present), samples(result.unknown), result.complete) == (present, unknown, False)
+
+
+def merged(ranges):
+    result = []
+    for left, right in ranges:
+        if result and left <= result[-1][1]:
+            result[-1][1] = max(result[-1][1], right)
+        elif left < right:
+            result.append([left, right])
+    return result
+
+
+@pytest.mark.parametrize(
+    "gaps,present,unknown",
+    [
+        ([jump(1000, 0, 0), jump(2000, 1000, 48000)], [[0, 32000], [48000, 80000]], []),
+        ([jump(0, 0, 0), jump(5000, 0, 0), jump(2000, 1000, 48000)], [[0, 32000], [48000, 80000]], []),
+        ([jump(1000, 0, 0), jump(1000, 0, 0), jump(4000, 500, 24000)], [[0, 64000], [72000, 80000]], []),
+        ([jump(1000, 0, 0), dict(atMs=3000, kind="overflow")], [[0, 48000]], [[48000, 80000]]),
+    ],
+    ids=["then-a-range", "at-both-ends", "repeated", "then-overflow"],
+)
+def test_an_empty_gap_is_no_range_and_later_gaps_still_count(gaps, present, unknown):
+    """The shared rule (gaps.py, writedown.json an-empty-gap-drops-no-word): durationMs 0 removes nothing."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("shared_gaps", VECTORS / "gaps.py")
+    oracle = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(oracle)
+    track = dict(startOffsetMs=0, sampleRate=48000, frames=240000, gaps=gaps)
+    result = presence(track)
+    assert (samples(result.present), samples(result.unknown)) == (present, unknown)
+    assert result.complete == all(gap["kind"] != "overflow" for gap in gaps)
+    shared = oracle.presence(track)
+    # The oracle may split a window at an empty gap; the instants are the same.
+    assert (merged(shared["present"]), merged(shared["unknown"])) == (present, unknown)
 
 
 def test_null_gaps_read_as_an_older_writer_in_the_library(tmp_path):

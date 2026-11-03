@@ -111,6 +111,7 @@ class Run:
     words: dict  # job id -> words the child sent for that track
     summary: dict  # the child's process_tracks result
     rejoined: list  # captureTrackIds of every diarization rejoin
+    keep: set | None = None  # the decoded corpus track ids; None decodes every track
 
     def diagnostics(self, code):
         return {d["track"]: d for d in self.summary["diagnostics"] if d["code"] == code}
@@ -140,4 +141,38 @@ def run_pipeline(corpus, monkeypatch, destination, *, model=None, probability=1.
             words.setdefault(event["trackId"], []).extend(event["words"])
     (summary,) = (event for event in events if event["type"] == "summary")
     (after,) = LibraryScanner(destination / "library").scan().meetings
-    return Run(after, words, summary, rejoined)
+    return Run(after, words, summary, rejoined, keep)
+
+
+class Mute:
+    """A recognizer that hears nothing, so only scripted words are written."""
+
+    def transcribe(self, samples, language, word_timestamps):
+        return dict(text="", language="en", words=[])
+
+
+def label(job, word):
+    return f"{job}:{word[0]}-{word[1]}"
+
+
+def scripted(monkeypatch, script):
+    """VAD segments recognise `script[job id]`: session-ms words, all in the track's first segment.
+
+    The words reach the child's write-down as an engine reports them, past
+    G11; the track's later segments find nothing. Fallback windows still
+    decode with the run's model.
+    """
+    from cassini_talk import speech_pipeline as pipeline
+
+    original, sent = pipeline.recognise_segment, set()
+
+    def recognise(model, path, segment, offset_ms=0, **kwargs):
+        value, words, language, digest = original(model, path, segment, offset_ms, **kwargs)
+        if segment.get("reason") == "noVadWindow":
+            return value, words, language, digest
+        job = Path(path).name
+        words = [dict(startMs=a, endMs=b, text=label(job, (a, b))) for a, b in script.get(job, []) if job not in sent]
+        sent.add(job)
+        return dict(value, text=" ".join(w["text"] for w in words)), words, language, digest
+
+    monkeypatch.setattr(pipeline, "recognise_segment", recognise)

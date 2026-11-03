@@ -19,6 +19,15 @@ language=None and word_timestamps=true. Word positions include the segment and
 track offsets. Unknown track offsets use zero with a diagnostic (D11.2); capture
 metadata is never rewritten to invent alignment.
 
+Words are written only where their track is present (D63 #3): a word whose
+midpoint, 8 × (startMs + endMs) in 16 kHz session samples, lies outside the
+track's present-or-unknown ranges (D52.2, with ownership) is dropped in the child
+on the VAD and the fallback paths, before the VAD words are counted. The G10
+fallback's 15 s and 10-word tests pool every audible track of one speaker id
+(D63 #1); an R64 overlap lane is its own speaker. Activity, windows and the
+margin stay per track, and `recognitionFallback.tracks[]` keeps one entry per
+track of a firing speaker, with its `personActiveSeconds`.
+
 Microphone/local words are `me` (**Me**), native system words are `others`
 (**The others**), with provenance `source`. Browser remote tracks remain separate
 unnamed people, `track-<trackId>`. First speaking determines their Speaker n
