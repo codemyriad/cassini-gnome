@@ -49,24 +49,54 @@ def blocked_workers(broker):
         release.set()
 
 
-@contextmanager
-def policy_after(broker):
-    """Hold lifecycle policy until the block ends, then run it once.
+class PolicyGate:
+    """The broker's lifecycle policy, which a test can hold across a window.
 
     The serve loop's tick runs policy at any moment. Between a capture's
     finish and its control link's loss, a tick may auto-start the still
     announced call on the link that is about to drop; that unanswered Start is
     lost with the link, and a lost auto-start is retried only after its real
-    grace. Fix the interleaving under test: policy next runs with the link gone.
+    grace. Install the gate before the window: every later lookup of
+    broker.policy, including a tick's that has not yet run, goes through it.
+    held() waits for a policy pass already running to finish, defers the ones
+    that arrive during the window, and runs policy once after it.
     """
-    held = []
-    broker.policy = lambda: held.append(True)
-    try:
-        yield
-    finally:
-        del broker.policy
-    if held:
-        broker.policy()
+
+    def __init__(self, broker):
+        self.broker, self.real = broker, broker.policy
+        self.condition = threading.Condition()
+        self.running, self.holding, self.deferred = 0, False, False
+        broker.policy = self
+
+    def __call__(self):
+        with self.condition:
+            if self.holding:
+                self.deferred = True
+                return
+            self.running += 1
+        try:
+            self.real()
+        finally:
+            with self.condition:
+                self.running -= 1
+                self.condition.notify_all()
+
+    @contextmanager
+    def held(self):
+        with self.condition:
+            self.holding = True
+            # Bound only: a running pass releases the condition when it returns.
+            assert self.condition.wait_for(lambda: not self.running, 10), "policy pass did not finish"
+        try:
+            yield
+        finally:
+            with self.condition:
+                self.holding, deferred, self.deferred = False, self.deferred, False
+        if deferred:
+            self()
+
+    def remove(self):
+        del self.broker.policy
 
 
 def test_queued_heard_loss_can_later_auto_record_a_real_instance(service):  # noqa: F811
@@ -179,6 +209,8 @@ def test_expired_stop_does_not_keep_a_real_instances_next_join_suppressed(servic
 @pytest.mark.parametrize("reason", ["callEnded", "pageGone", "appQuit"])
 def test_a_retained_finished_capture_does_not_suppress_the_reconnecting_call(server, reason, finish_before_disconnect):  # noqa: F811
     broker, path, _ = server
+    # Before any state the window depends on: a tick resolves policy through it.
+    gate = PolicyGate(broker)
     extension, client, capture = live(broker, path)
     replacement = None
     try:
@@ -190,7 +222,7 @@ def test_a_retained_finished_capture_does_not_suppress_the_reconnecting_call(ser
         # cannot show that this status and inventory were handled: wait for
         # their effect, the recording call's remembered attempt.
         wait_for(lambda: identifier in broker._attempted_calls)
-        with policy_after(broker):
+        with gate.held():
             if finish_before_disconnect:
                 capture.stop(reason=reason)
             lose(broker, extension)
@@ -210,6 +242,7 @@ def test_a_retained_finished_capture_does_not_suppress_the_reconnecting_call(ser
         if replacement is not None:
             replacement.close()
         client.close()
+        gate.remove()
 
 
 def test_manual_record_during_overlap_rejects_the_old_pending_start_without_cancelling_it(service):  # noqa: F811
