@@ -139,6 +139,31 @@ def test_stop_cancels_a_batch_while_its_first_start_is_pending(service):  # noqa
         peer.close()
 
 
+def test_stop_all_still_stops_a_start_that_unwound_before_its_stop_was_collected(service, monkeypatch):  # noqa: F811
+    """Stop-all cancels the pending Starts, then looks again for whom to stop.
+
+    A cancelled Start's worker can unwind in between and drop its pending
+    entry; that browser must still get its Stop. Here the first snapshot of
+    the Stop-all waits until one cancelled Start has unwound.
+    """
+    from cassini_talk.browser_service import BrowserService
+
+    server, _path = service
+    server.command_timeout = 30  # Only the Stop-all ends these Starts.
+    original, held = BrowserService.snapshot, []
+
+    def snapshot(self):
+        if self._stopping_all.is_set() and not held:
+            held.append(True)
+            browser = next(iter(self.browsers.values()))
+            wait_for(lambda: sum(p["action"] == "start" for p in browser.pending.values()) <= 1)
+        return original(self)
+
+    monkeypatch.setattr(BrowserService, "snapshot", snapshot)
+    test_stop_cancels_a_batch_while_its_first_start_is_pending(service)
+    assert held, "the Stop-all never took its snapshot"
+
+
 def test_stop_before_start_rpc_keeps_its_cancellation_tombstone(service):  # noqa: F811
     server, path = service
     peer = Extension(path)

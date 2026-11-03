@@ -2213,8 +2213,18 @@ class BrowserService:
         stop_token = str(uuid4())
         futures = []
         deadline = self.deadline_clock() + self.batch_timeout
+        # Starts still pending when this Stop-all cancels them. Taken in the same
+        # lock as the cancel: a woken Start can unwind and drop its pending entry
+        # before a later look, and its browser would never get the Stop.
+        cancelled_starts = set()
         if directory is None:
             with self.lock:
+                cancelled_starts.update(
+                    self._meeting_id(b, p["tabId"])
+                    for b in self.browsers.values()
+                    for p in b.pending.values()
+                    if p.get("action") == "start"
+                )
                 self._stop_batches.add(stop_token)
                 self._stop_reasons[stop_token] = reason
                 self._stopping_all.set()
@@ -2255,6 +2265,7 @@ class BrowserService:
             with self.lock:
                 commands = {s["id"] for s in snapshot["statuses"] if s.get("recording") and matches(s.get("path"))}
                 if directory is None:
+                    commands.update(cancelled_starts)
                     commands.update(
                         self._meeting_id(b, p["tabId"])
                         for b in self.browsers.values()
