@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("numpy")  # Core/Whistle-light profiles need no PCM worker dependencies.
+
 ROOT = Path(__file__).parents[1] / "browser-protocol/conformance/multistream"
 FALLBACK = json.loads((ROOT / "fallback.json").read_text())
 WRITEDOWN = json.loads((ROOT / "writedown.json").read_text())
