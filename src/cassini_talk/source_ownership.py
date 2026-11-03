@@ -249,10 +249,20 @@ def speaker_gap_ranges(tracks, *, silent=(), merges=None):
         rows.append(dict(track, id=track.get("id"), captureTrackId=track.get("id"), speaker=speaker))
     # A row this reader cannot place gives no ranges; its source's other rows keep theirs.
     audible = [row for row in rows if _placeable(row) and row.get("frames") and row["id"] not in silent]
-    separated, _diagnostics = separate(audible, reserved=[row["speaker"] for row in rows])
+    reserved = [row["speaker"] for row in rows]
+    sources = {}
+    for row in audible:
+        sources.setdefault(row["speaker"], []).append(row)
     result = {}
-    for row in separated:
-        result.setdefault(row["speaker"], []).extend(gap_ranges(row.get("gaps")))
+    for group in sources.values():
+        # R64 lanes are per source, so one at a time gives the same ids; a
+        # source whose lane id is over the limit loses only its own breaks.
+        try:
+            separated, _diagnostics = separate(group, reserved=reserved)
+        except ValueError:
+            continue
+        for row in separated:
+            result.setdefault(row["speaker"], []).extend(gap_ranges(row.get("gaps")))
     for source, target in (merges or {}).items():
         # A `<group>~n` target keeps its group's ranges as well.
         result[target] = [*own_gap_ranges(result, target), *own_gap_ranges(result, source)]
@@ -265,6 +275,8 @@ def _count(value, low):
 
 def _placeable(row):
     """Whether source_spans.bounds and separate can read a stored row; a foreign file's may not."""
+    from .source_spans import bounds
+
     spans = row.get("spans")
     if (
         not isinstance(row.get("id"), str)
@@ -280,6 +292,14 @@ def _placeable(row):
         at = span.get("offsetMs", span.get("startOffsetMs"))
         if at is not None and (type(at) not in (int, float) or not math.isfinite(at)):
             return False
+    # R64 sorts by UTF-8 ids and extents: collapsed clock anchors divide by
+    # zero, a huge offset goes NaN, a lone surrogate does not encode.
+    try:
+        row["id"].encode("utf-8")
+        row["speaker"].encode("utf-8")
+        bounds(row)
+    except (ArithmeticError, ValueError):
+        return False
     return True
 
 

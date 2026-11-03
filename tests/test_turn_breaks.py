@@ -166,7 +166,7 @@ def stored_track(identifier, *, gaps=JUMP, **span):
     return dict(id=identifier, kind="browser", sourceTrackId="s", spans=[span], gaps=gaps)
 
 
-# Malformed foreign x tracks that share the good track's source, so R64 orders them together.
+# Malformed foreign x tracks; most share the good track's source, so R64 orders them together.
 MALFORMED = {
     "zero rate": stored_track("bad", sampleRate=0, gaps=[]),
     "float rate": stored_track("bad", sampleRate=16000.0, gaps=[]),
@@ -176,14 +176,37 @@ MALFORMED = {
     "no rate": dict(stored_track("bad", gaps=[]), spans=[dict(file="bad.wav", frames=16000, startOffsetMs=0)]),
     "anchored zero rate": stored_track("bad", sampleRate=0, clockAnchors=[[0, 0], [16000, 10**9]], gaps=[]),
     "nan offset": stored_track("bad", startOffsetMs=float("nan"), gaps=[]),
+    # Valid anchors whose 48 kHz positions collapse to one float: mapped_end_sample divided by zero.
+    "collapsed anchors": stored_track("bad", sampleRate=1, clockAnchors=[[2**62, 0], [2**62 + 1, 10**9]], gaps=[]),
+    # A finite offset whose 48 kHz origin is inf: round(NaN).
+    "huge anchored offset": stored_track("bad", startOffsetMs=1e307, clockAnchors=[[0, 0], [16000, 10**9]], gaps=[]),
+    # json.loads accepts a lone surrogate, which R64's UTF-8 sort keys cannot encode.
+    "surrogate id": dict(stored_track("bad", gaps=[]), id="\ud800"),
+    "surrogate source": dict(stored_track("bad", gaps=[]), sourceTrackId="\ud800"),
+    "surrogate own source": dict(stored_track("bad", gaps=[]), sourceTrackId="\udfff"),
 }
+# A good track on another source, which the bad rows must not cost its breaks.
+OTHER = dict(stored_track("other", gaps=[dict(atMs=30000, durationMs=1000, frames=0, kind="jump")]), sourceTrackId="o")
+KEPT = {"track-s": ((160000, 164800),), "track-o": ((480000, 496000),)}
 
 
 @pytest.mark.parametrize("bad", MALFORMED.values(), ids=MALFORMED)
 def test_a_malformed_x_track_costs_only_its_own_breaks(bad):
     # Codex #182: a sampleRate 0 span sharing a source raised ZeroDivisionError.
-    for tracks in ([stored_track("good"), bad], [bad, stored_track("good")]):
-        assert turn_gaps((), {}, {"codemyriad.io": {"tracks": tracks}}) == {"track-s": ((160000, 164800),)}
+    for tracks in ([stored_track("good"), bad, OTHER], [bad, OTHER, stored_track("good")]):
+        assert turn_gaps((), {}, {"codemyriad.io": {"tracks": tracks}}) == KEPT
+
+
+def test_a_source_whose_overlap_lane_id_is_too_long_costs_only_its_own_breaks():
+    # R64 refuses a lane id over 256 characters; only that source's rows go.
+    long = "l" * 250
+    tracks = [dict(stored_track(name), sourceTrackId=long) for name in ("l1", "l2")]
+    for rows in ([*tracks, stored_track("good"), OTHER], [OTHER, stored_track("good"), *tracks]):
+        assert turn_gaps((), {}, {"codemyriad.io": {"tracks": rows}}) == KEPT
+    # Separated one source at a time, lanes keep the ids of one R64 pass.
+    shared = [stored_track("a"), stored_track("b"), dict(stored_track("c"), sourceTrackId="s:overlap:1")]
+    gaps = turn_gaps((), {}, {"codemyriad.io": {"tracks": shared}})
+    assert sorted(gaps) == ["track-s", "track-s:overlap:1", "track-s:overlap:2"]
 
 
 def test_one_bad_x_track_row_is_skipped_and_the_others_keep_their_breaks():
@@ -213,21 +236,27 @@ def foreign_file(path, tracks):
     return path
 
 
-def test_a_malformed_foreign_file_keeps_its_meeting_the_scan_and_its_good_breaks(tmp_path):
+def test_a_malformed_foreign_file_keeps_its_meeting_the_scan_and_its_good_breaks(tmp_path, monkeypatch):
     # Codex #182, end to end: opened directly, as a Received folder and as a root file (v2 index).
     import hashlib
+    from types import SimpleNamespace
     from uuid import uuid4
 
     from test_library import write_metadata
 
+    from cassini_talk import portable_writer
     from cassini_talk.library import LibraryScanner
     from cassini_talk.open_meeting import load_open_meeting
 
-    expected = {"track-s": ((160000, 164800),)}
+    # Another writer's ASCII JSON can carry a lone surrogate as an escape; ours writes UTF-8.
+    ascii_json = SimpleNamespace(dumps=lambda value, **options: json.dumps(value, **dict(options, ensure_ascii=True)))
+    monkeypatch.setattr(portable_writer, "json", ascii_json)
+
+    expected = KEPT
     for name, bad in MALFORMED.items():
         if name == "nan offset":
             continue  # JSON in a file has no NaN
-        tracks = [stored_track("good"), bad, dict(stored_track("x"), id=7)]
+        tracks = [stored_track("good"), bad, dict(stored_track("x"), id=7), OTHER]
         opened = load_open_meeting(foreign_file(tmp_path / f"{uuid4()}.opus", tracks))
         assert opened.transcript == "done" and opened.turn_gaps == expected, name
         # One root each: root files of the same audio are one row.
