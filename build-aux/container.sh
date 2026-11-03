@@ -40,6 +40,19 @@ image_slug() {
   echo "$1" | tr ':/@' '---'
 }
 
+# Where one build attempt keeps its Meson test logs (testlog.txt, testlog.json,
+# the pytest junit XML): a new directory NAME.1, NAME.2, ... under
+# $CASSINI_TEST_LOGS, so a retried build keeps both attempts. Prints nothing
+# when CASSINI_TEST_LOGS is unset (local builds keep no logs). The scripts
+# mount it at /logs:   ${logs:+-v "$logs:/logs:rw$Z"}
+test_log_dir() {
+  [ -n "${CASSINI_TEST_LOGS:-}" ] || return 0
+  log_n=1
+  while [ -e "$CASSINI_TEST_LOGS/$1.$log_n" ]; do log_n=$((log_n + 1)); done
+  mkdir -p "$CASSINI_TEST_LOGS/$1.$log_n"
+  (cd "$CASSINI_TEST_LOGS/$1.$log_n" && pwd -P)
+}
+
 # Run a container with no network at all: only loopback.
 container_run_offline() {
   "$CONTAINER_ENGINE" run --rm --network none "$@"

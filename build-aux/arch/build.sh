@@ -21,7 +21,15 @@ build-aux/sherpa-cache.sh
 mkdir -p dist
 # Per base image, so parallel builds do not swap names.
 name_file=.pkg-name-$(image_slug "$BASE")
-container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z "$BASE" sh -ec '
+logs=$(test_log_dir "arch-$(image_slug "$BASE")")
+container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z ${logs:+-v "$logs:/logs:rw$Z"} "$BASE" sh -ec '
+  # Keep the Meson test logs, also when check() fails (test_log_dir).
+  save_logs() {
+    [ -d /logs ] || return 0
+    [ ! -d /build/pkg/src/build/meson-logs ] || cp -a /build/pkg/src/build/meson-logs/. /logs/
+    chown -R "$(stat -c %u:%g /logs)" /logs
+  }
+  trap "save_logs || true" EXIT
   # The minimal image excludes non-English MO files. Preserve Cassini
   # catalogs for the real installed-language smoke test.
   printf "\nNoExtract = !usr/share/locale/*/LC_MESSAGES/cassini-talk.mo\n" >> /etc/pacman.conf

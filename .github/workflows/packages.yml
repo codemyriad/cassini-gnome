@@ -27,7 +27,9 @@ jobs:
             name: opensuse
     steps:
       - uses: actions/checkout@v7
-      - run: echo "CASSINI_PARAKEET_TEST_CACHE=$RUNNER_TEMP/parakeet-models" >> "$GITHUB_ENV"
+      - run: |
+          echo "CASSINI_PARAKEET_TEST_CACHE=$RUNNER_TEMP/parakeet-models" >> "$GITHUB_ENV"
+          echo "CASSINI_TEST_LOGS=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"
       # The pinned writing-down artifacts (whistle/pins.json), downloaded once
       # per pin set; the package builds read them and never download.
       - uses: actions/cache@v4
@@ -47,6 +49,19 @@ jobs:
       # smoke-tests and writes the D11 goldens down. Retried once because
       # distribution mirrors occasionally time out.
       - run: build-aux/rpm/build.sh "${{ matrix.base }}" || build-aux/rpm/build.sh "${{ matrix.base }}"
+      # G3: the Meson test logs (testlog.txt with each shard's --durations,
+      # testlog.json, the pytest junit XML), also on success, to track creep;
+      # a shard over half its timeout becomes a warning annotation here.
+      - name: Warn about pytest shards over half their budget
+        if: always()
+        run: grep -rhs '^::warning ' "$CASSINI_TEST_LOGS" --include=testlog.txt || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: meson-logs-rpm-${{ matrix.name }}
+          path: ${{ runner.temp }}/meson-logs/
+          retention-days: 14
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v7
         with:
           name: rpm-${{ matrix.name }}
@@ -58,7 +73,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-      - run: echo "CASSINI_PARAKEET_TEST_CACHE=$RUNNER_TEMP/parakeet-models" >> "$GITHUB_ENV"
+      - run: |
+          echo "CASSINI_PARAKEET_TEST_CACHE=$RUNNER_TEMP/parakeet-models" >> "$GITHUB_ENV"
+          echo "CASSINI_TEST_LOGS=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"
       # The pinned writing-down artifacts (whistle/pins.json), downloaded once
       # per pin set; the package builds read them and never download.
       - uses: actions/cache@v4
@@ -75,6 +92,19 @@ jobs:
           key: parakeet-ultra-18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
       - run: build-aux/whistle-cache.sh
       - run: build-aux/arch/build.sh || build-aux/arch/build.sh
+      # G3: the Meson test logs (testlog.txt with each shard's --durations,
+      # testlog.json, the pytest junit XML), also on success, to track creep;
+      # a shard over half its timeout becomes a warning annotation here.
+      - name: Warn about pytest shards over half their budget
+        if: always()
+        run: grep -rhs '^::warning ' "$CASSINI_TEST_LOGS" --include=testlog.txt || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: meson-logs-arch
+          path: ${{ runner.temp }}/meson-logs/
+          retention-days: 14
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v7
         with:
           name: arch

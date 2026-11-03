@@ -46,6 +46,20 @@ jobs:
           - alpine:edge
     steps:
       - uses: actions/checkout@v7
+      - run: echo "CASSINI_TEST_LOGS=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"
       # Retried once because distribution mirrors occasionally time out.
       - run: build-aux/check-distros.sh "${{ matrix.image }}" || build-aux/check-distros.sh "${{ matrix.image }}"
+      # G3: the Meson test logs (testlog.txt with each shard's --durations,
+      # testlog.json, the pytest junit XML), also on success, to track creep;
+      # a shard over half its timeout becomes a warning annotation here.
+      - name: Warn about pytest shards over half their budget
+        if: always()
+        run: grep -rhs '^::warning ' "$CASSINI_TEST_LOGS" --include=testlog.txt || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: meson-logs-distro-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/meson-logs/
+          retention-days: 14
+          if-no-files-found: warn
 

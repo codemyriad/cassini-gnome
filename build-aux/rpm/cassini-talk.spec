@@ -195,6 +195,9 @@ echo "%%dir %{_datadir}/cassini-talk" >> %{name}.lang
 
 %check
 %meson_test
+# CI keeps the test logs (durations, junit): build-aux/rpm/build.sh defines
+# cassini_test_logs, since rpm >= 4.20 removes the build directory afterwards.
+%{?cassini_test_logs:cp -a %{_vpath_builddir}/meson-logs/. %{cassini_test_logs}/}
 # Catches anything that changed the installed bundle, such as stripping.
 python3 whistle/verify.py %{buildroot}%{_datadir}/cassini-talk/whistle
 python3 whistle/verify.py --onnxruntime %{buildroot}%{_libdir}/cassini-talk/python

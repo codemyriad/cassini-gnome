@@ -266,21 +266,38 @@ custom_target('installed-build-identity',
 
 # pytest is optional: the Flatpak SDK, for one, does not ship it.
 pytest = python.find_installation('python3', modules: ['pytest'], required: false)
+# G3: the suite runs as pytest_shards tests, pytest-1 .. pytest-N, balanced by
+# file from tests/shard-durations.json (tests/shard_plan.py). Each has its own
+# timeout, a private HOME, XDG base directories and basetemp (tests/conftest.py),
+# and runs alone: is_parallel false, so the shards never run concurrently with
+# each other or with any other test. The whole suite took 290-330 s of a single
+# 360 s deadline in the package containers (openSUSE 329 s, 2026-11-03), after
+# tripping the earlier 240 s one (D52.4); four shards took 52-61 s each in the
+# roy harness, where the single test took 226 s. A shard over half its budget prints a
+# ::warning:: line into meson-logs/testlog.txt, which CI turns into an annotation.
+pytest_shards = 4
+pytest_budget = 360
 if pytest.found()
-  test('pytest',
-    pytest,
-    depends: [spectro_helper] + gettext_targets[0],
-    args: ['-m', 'pytest', '-q', '--durations=20', meson.project_source_root() / 'tests'],
-    env: ['PYTHONPATH=' + meson.current_source_dir(), 'CASSINI_TEST_TIMINGS=1', 'CASSINI_TEST_BUILD=' + meson.project_build_root()],
-    workdir: meson.project_source_root(),
-    # The suite re-runs both conformance suites as subprocesses, alongside
-    # Meson's own conformance tests: 11-21 s in a package build container,
-    # over Meson's 30 s default on a loaded builder. Library v2 adds a 60 min
-    # alignment golden, a scaled long meeting and a SIGKILL crash matrix.
-    # Distro builders already took 210-237 s of a 240 s deadline (openSUSE
-    # Tumbleweed, 2026-11-01), so any new test tripped it. D52.4: 360 s.
-    timeout: 360,
-  )
+  foreach shard : range(1, pytest_shards + 1)
+    shard_name = 'pytest-@0@'.format(shard)
+    test(shard_name,
+      pytest,
+      depends: [spectro_helper] + gettext_targets[0],
+      args: ['-m', 'pytest', '-q', '--durations=20', '-o', 'junit_family=xunit1',
+             '--junitxml=' + (meson.project_build_root() / 'meson-logs' / shard_name + '.junit.xml'),
+             meson.project_source_root() / 'tests'],
+      env: ['PYTHONPATH=' + meson.current_source_dir(), 'CASSINI_TEST_TIMINGS=1', 'CASSINI_TEST_BUILD=' + meson.project_build_root(),
+            'CASSINI_TEST_SHARD=@0@/@1@'.format(shard, pytest_shards), 'CASSINI_TEST_BUDGET=@0@'.format(pytest_budget)],
+      workdir: meson.project_source_root(),
+      suite: 'pytest',
+      is_parallel: false,
+      # The suite re-runs both conformance suites as subprocesses, alongside
+      # Meson's own conformance tests: 11-21 s in a package build container,
+      # over Meson's 30 s default on a loaded builder. Library v2 adds a 60 min
+      # alignment golden, a scaled long meeting and a SIGKILL crash matrix.
+      timeout: pytest_budget,
+    )
+  endforeach
 endif
 
 configure_file(

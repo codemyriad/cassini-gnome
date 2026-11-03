@@ -51,6 +51,15 @@ make check-distros          # build and test on six distributions, in containers
 
 CI also builds the .deb, both RPMs, the Arch package and the Flatpak.
 
+Meson runs pytest as four shards, `pytest-1` to `pytest-4` (`meson test
+--suite pytest`), one after another, each with its own timeout and a private
+HOME, XDG directories and temporary directory. They split the test files by
+the times in `tests/shard-durations.json` (`tests/shard_plan.py`); a new test
+file joins a shard by itself. When CI warns that a shard used over half its
+timeout, regenerate the table from one build attempt in that job's
+`meson-logs-*` artifact (a directory such as `deb-ubuntu-26.04.1`):
+`build-aux/ci/shard_durations.py deb-ubuntu-26.04.1/pytest-*.junit.xml`.
+
 The GTK-free modules have unit tests; please add tests with changes there.
 For UI changes, follow the [GNOME Human Interface Guidelines](https://developer.gnome.org/hig/)
 and include a screenshot in the pull request.
