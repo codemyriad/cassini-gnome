@@ -395,9 +395,6 @@ class BrowserService:
         self._capture_missing_since = {}
         self._capture_observed = set()
         self._capture_policy_pending = set()
-        # Keys whose uncommitted fallback a return is cancelling; that fallback's
-        # own task keeps _capture_policy_pending until its device answers.
-        self._capture_cancels = set()
         self._capture_lifecycles = {}
         self._control_reconnects = {}
         self._call_aliases = {}
@@ -2284,7 +2281,7 @@ class BrowserService:
         if self.closed.is_set() or self._stopping_all.is_set():
             return
         tasks = []
-        capture_tasks = []
+        capture_tasks, cancels = [], []
         with self.lock:
             generation = self._stop_generation
             now = time.monotonic()
@@ -2419,11 +2416,10 @@ class BrowserService:
                         self._control_reconnects.pop(key, None)
                     identifier = f"{peer[0].id}:{peer[1]}" if peer is not None else None
                     if action == "restore" and capture.fallback_pending:
-                        # The pending fallback's task holds the policy gate while
-                        # its device opens; cancelling it must not wait behind it.
-                        if key not in self._capture_cancels:
-                            self._capture_cancels.add(key)
-                            capture_tasks.append((key, capture, identifier, action))
+                        # Cancelled on this thread below, never queued: the
+                        # fallback may hold a worker while its device opens,
+                        # and a full pool would run a queued cancel too late.
+                        cancels.append((key, capture))
                     elif action and key not in self._capture_policy_pending:
                         self._capture_policy_pending.add(key)
                         capture_tasks.append((key, capture, identifier, action))
@@ -2527,18 +2523,22 @@ class BrowserService:
                                 break
         for identifier, action, version in tasks:
             self.workers.submit(self._automatic, identifier, action, generation, version)
+        for key, capture in cancels:
+            self._cancel_fallback(key, capture)
         for key, capture, identifier, action in capture_tasks:
             self.workers.submit(self._capture_lifecycle, key, capture, identifier, action)
 
+    def _cancel_fallback(self, key, capture):
+        """D52: the call returned before its fallback committed; write nothing.
+
+        Sets the capture's cancel flag under the lock its commit checks, on the
+        policy thread. A fallback that committed first stays (heard rule).
+        """
+        capture.cancel_fallback()
+
     def _capture_lifecycle(self, key, capture, identifier, action):
-        with self.lock:
-            cancel = action == "restore" and key in self._capture_cancels
         try:
-            if cancel:
-                # D52: the call returned before its fallback committed. Writes
-                # nothing; a fallback that committed meanwhile stays (heard rule).
-                capture.cancel_fallback()
-            elif action == "fallback":
+            if action == "fallback":
                 if identifier is not None:
                     self._fallback(identifier, capture)
                 else:
@@ -2558,10 +2558,7 @@ class BrowserService:
             logging.getLogger(__name__).exception("Browser capture lifecycle: %s", action)
         finally:
             with self.lock:
-                if cancel:
-                    self._capture_cancels.discard(key)
-                else:
-                    self._capture_policy_pending.discard(key)
+                self._capture_policy_pending.discard(key)
 
     def _resume_still_eligible(self, key, capture, browser, tab):
         """Every D52.5 ask condition, read again at send time (caller holds self.lock).

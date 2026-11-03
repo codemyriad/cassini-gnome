@@ -55,8 +55,8 @@ class HeldWorkers(Inline):
     ticking: a return can then cancel it before it commits (D52).
     """
 
-    def __init__(self, held):
-        self.held = held
+    def __init__(self, held, *, saturated=False):
+        self.held, self.saturated = held, saturated
 
     def submit(self, function, *args):
         if args and args[-1] == "fallback" and self.held["next"] and self.held["closer"] is None:
@@ -64,7 +64,21 @@ class HeldWorkers(Inline):
             self.held["closer"].start()
             assert self.held["opening"].wait(HOLD_BOUND), "The page loss's fallback never opened its device"
             return Future()
+        if self.saturated and self.held["closer"] is not None:
+            # Every other worker is busy while the held fallback opens its
+            # device: a task submitted now runs only after that device answers.
+            future = Future()
+            self.held["queued"].append((future, function, args))
+            return future
         return super().submit(function, *args)
+
+    def drain(self):
+        while self.held["queued"]:
+            future, function, args = self.held["queued"].pop(0)
+            try:
+                future.set_result(function(*args))
+            except BaseException as error:
+                future.set_exception(error)
 
 
 @pytest.mark.parametrize("case", json.loads(VECTORS.read_text())["cases"], ids=lambda case: case["name"])
@@ -78,8 +92,8 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
     service = BrowserService(tmp_path / "settings.json", notifier=lambda *_: None)
     service.workers.shutdown()
     # fallbackCommitted:false: the next system tap holds its first buffer.
-    held = dict(next=False, tap=None, closer=None, opening=None, cancelled=False)
-    service.workers = HeldWorkers(held)
+    held = dict(next=False, tap=None, closer=None, opening=None, cancelled=False, queued=[])
+    service.workers = HeldWorkers(held, saturated=case.get("saturatedWorkers", False))
 
     def taps(kind, *args, **kwargs):
         if kind == "system" and held["next"]:
@@ -136,6 +150,16 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
         return lifecycle(*args)
 
     monkeypatch.setattr(service, "_capture_lifecycle", record)
+    cancel = service._cancel_fallback
+
+    def record_cancel(*args):
+        # D52: a return's cancel runs on the policy thread; it is the restore.
+        actions.append("restore")
+        if held["closer"] is not None:
+            held["cancelled"] = True
+        return cancel(*args)
+
+    monkeypatch.setattr(service, "_cancel_fallback", record_cancel)
     folder, microphone = capture.directory, capture.microphone
     # The recording's audio transport, as _audio registers it. The runner only
     # emulates the peer's socket; deadlines and teardown are the broker's own.
@@ -184,6 +208,7 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
                 held["closer"].join(HOLD_BOUND)
                 assert not held["closer"].is_alive(), (case["name"], step)
                 held["closer"] = None
+                service.workers.drain()  # Tasks a saturated pool held run only now.
                 if held["cancelled"]:
                     # Cancelled: nothing is committed, the written source is kept.
                     assert not capture.browser_lost and not lost_written(), (case["name"], step)
@@ -572,6 +597,20 @@ def d52(case):
 @pytest.mark.parametrize("case", D52_CASES, ids=lambda case: case["name"])
 def test_d52_shared_lifecycle_on_actual_capture(tmp_path, monkeypatch, case):
     test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monkeypatch, d52(case))
+
+
+@pytest.mark.parametrize(
+    "name", ["return-before-the-fallback-commits-restores", "unheard-return-before-the-fallback-commits-restores"]
+)
+def test_d52_a_return_cancels_the_fallback_even_when_every_worker_is_busy(tmp_path, monkeypatch, name):
+    """#201 codex: with the pending fallback on one worker and the other three
+    busy, the call and its returning PCM are ready before the device opens.
+    The cancel must not wait for a free worker, or the device's first buffer
+    commits system/lost and an unheard call stays on computer sound."""
+    (case,) = [case for case in D52_CASES if case["name"] == name]
+    test_shared_actions_use_actual_capture_devices_spans_and_end(
+        tmp_path, monkeypatch, d52(dict(case, saturatedWorkers=True))
+    )
 
 
 def test_d52_each_new_loss_waits_for_its_own_committed_fallback(tmp_path, monkeypatch):
