@@ -50,12 +50,10 @@ step "meson setup"
 meson setup /build/b --prefix=/usr
 
 step "meson test"
-meson test -C /build/b --list > /build/tests.txt
-cat /build/tests.txt
-# pytest-1 .. pytest-4: the shards of src/meson.build (pytest_shards).
-for t in pytest-1 pytest-2 pytest-3 pytest-4 browser-protocol-conformance browser-control-conformance "Validate desktop file" "Validate appstream file" "Validate schema file"; do
-  grep -q ":$t\$" /build/tests.txt || { echo "missing test (tool not installed?): $t"; exit 1; }
-done
+# Every test registered, from the introspection JSON (the --list text
+# differs between Meson releases): pytest-1 .. pytest-N, conformance, Validate.
+meson introspect /build/b --tests > /build/tests.json
+python3 build-aux/ci/check_meson_tests.py /build/tests.json
 meson test -C /build/b --print-errorlogs
 
 step "meson install"
