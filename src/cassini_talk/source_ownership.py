@@ -247,7 +247,8 @@ def speaker_gap_ranges(tracks, *, silent=(), merges=None):
         else:
             speaker = f"track-{identity}"
         rows.append(dict(track, id=track.get("id"), captureTrackId=track.get("id"), speaker=speaker))
-    audible = [row for row in rows if row.get("frames") and row["id"] not in silent]
+    # A row this reader cannot place gives no ranges; its source's other rows keep theirs.
+    audible = [row for row in rows if _placeable(row) and row.get("frames") and row["id"] not in silent]
     separated, _diagnostics = separate(audible, reserved=[row["speaker"] for row in rows])
     result = {}
     for row in separated:
@@ -256,6 +257,30 @@ def speaker_gap_ranges(tracks, *, silent=(), merges=None):
         # A `<group>~n` target keeps its group's ranges as well.
         result[target] = [*own_gap_ranges(result, target), *own_gap_ranges(result, source)]
     return {speaker: _union(ranges) for speaker, ranges in result.items() if ranges}
+
+
+def _count(value, low):
+    return type(value) is int and low <= value <= 2**63
+
+
+def _placeable(row):
+    """Whether source_spans.bounds and separate can read a stored row; a foreign file's may not."""
+    spans = row.get("spans")
+    if (
+        not isinstance(row.get("id"), str)
+        or not isinstance(row.get("sourceTrackId") or "", str)
+        or not _count(row.get("frames"), 0)
+        or spans is not None
+        and not isinstance(spans, (list, tuple))
+    ):
+        return False
+    for span in spans or [row]:
+        if not isinstance(span, dict) or not _count(span.get("sampleRate"), 1) or not _count(span.get("frames"), 0):
+            return False
+        at = span.get("offsetMs", span.get("startOffsetMs"))
+        if at is not None and (type(at) not in (int, float) or not math.isfinite(at)):
+            return False
+    return True
 
 
 def _union(ranges):

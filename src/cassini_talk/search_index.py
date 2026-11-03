@@ -24,6 +24,7 @@ class SearchTurn:
     speaker: str
     words: tuple
     text: str
+    items: tuple  # display_items of the whole run, one per word
 
     @property
     def start_ms(self):
@@ -39,7 +40,7 @@ def search_turns(ordered, gaps):
         edges = [0, *(i for i in range(1, len(run)) if gap_break(gaps, run[i - 1], run[i])), len(run)]
         for first, end in pairwise(edges):
             shown = " ".join(value.replace(START, "").replace(END, "") for value in values[first:end] if value)
-            yield SearchTurn(speaker, run[first:end], shown)
+            yield SearchTurn(speaker, run[first:end], shown, values[first:end])
 
 
 @dataclass(frozen=True)
@@ -232,7 +233,8 @@ class SearchIndex:
             first = marked.index(START)
             end = 0
             position = turn.start_ms
-            for word, value in zip(turn.words, display_items(turn.words), strict=True):
+            # The run's quote pairing, not one recomputed on this gap-split part.
+            for word, value in zip(turn.words, turn.items, strict=True):
                 value = value.replace(START, "").replace(END, "")
                 if not value:
                     continue

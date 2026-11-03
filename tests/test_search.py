@@ -374,3 +374,16 @@ def test_search_turns_split_at_the_speakers_own_gap_ranges(index):
     index.sync(LibrarySnapshot(meetings=(split,)))
     assert [t.text for t in index.turns[meeting.key]] == ["budget", "plan"]
     assert search(index, "budget plan") == () and len(search(index, "plan")) == 1
+
+
+def test_a_hit_after_a_gap_seeks_with_the_runs_quote_pairing(index):
+    # Quotes pair over the whole run, so the lone closing quote after the gap is
+    # no part of its own; "I" seeks to I, not to agree.
+    meeting = next(m for m in index.current.values() if m.title == "Budget review")
+    timed = ((1000, 'say "hello'), (2000, '"'), (2200, "I"), (2400, "agree"))
+    words = tuple(Word("me", start, start + 100, value) for start, value in timed)
+    split = replace(meeting, words=words, turn_gaps={"me": ((16 * 1500, 16 * 1900),)})
+    index.sync(LibrarySnapshot(meetings=(split,)))
+    assert [len(t.words) for t in index.turns[meeting.key]] == [1, 3]
+    assert [h.position_ms for h in search(index, "I")] == [2200]
+    assert [h.position_ms for h in search(index, "agree")] == [2400]

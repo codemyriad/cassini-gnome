@@ -158,6 +158,93 @@ def test_unreadable_x_track_ids_cost_only_the_breaks():
         assert turn_gaps((), {}, {"codemyriad.io": {"tracks": stored}}) == {}
 
 
+JUMP = [dict(atMs=10000, durationMs=300, frames=4800, kind="jump")]
+
+
+def stored_track(identifier, *, gaps=JUMP, **span):
+    span = dict(dict(file=f"{identifier}.wav", sampleRate=16000, frames=480000, startOffsetMs=0), **span)
+    return dict(id=identifier, kind="browser", sourceTrackId="s", spans=[span], gaps=gaps)
+
+
+# Malformed foreign x tracks that share the good track's source, so R64 orders them together.
+MALFORMED = {
+    "zero rate": stored_track("bad", sampleRate=0, gaps=[]),
+    "float rate": stored_track("bad", sampleRate=16000.0, gaps=[]),
+    "text frames": stored_track("bad", frames="480000", gaps=[]),
+    "text offset": stored_track("bad", startOffsetMs="0", gaps=[]),
+    "boolean offset": stored_track("bad", startOffsetMs=True, gaps=[]),
+    "no rate": dict(stored_track("bad", gaps=[]), spans=[dict(file="bad.wav", frames=16000, startOffsetMs=0)]),
+    "anchored zero rate": stored_track("bad", sampleRate=0, clockAnchors=[[0, 0], [16000, 10**9]], gaps=[]),
+    "nan offset": stored_track("bad", startOffsetMs=float("nan"), gaps=[]),
+}
+
+
+@pytest.mark.parametrize("bad", MALFORMED.values(), ids=MALFORMED)
+def test_a_malformed_x_track_costs_only_its_own_breaks(bad):
+    # Codex #182: a sampleRate 0 span sharing a source raised ZeroDivisionError.
+    for tracks in ([stored_track("good"), bad], [bad, stored_track("good")]):
+        assert turn_gaps((), {}, {"codemyriad.io": {"tracks": tracks}}) == {"track-s": ((160000, 164800),)}
+
+
+def test_one_bad_x_track_row_is_skipped_and_the_others_keep_their_breaks():
+    # Codex #182: one non-string id emptied the whole map.
+    other = dict(stored_track("b", gaps=[dict(atMs=30000, durationMs=1000, frames=0, kind="jump")]), sourceTrackId="b")
+    bad = [dict(stored_track("x"), id=7), "row", None, dict(stored_track("y"), spans="bad")]
+    rows = [bad[0], stored_track("good"), *bad[1:], other]
+    gaps = turn_gaps((), {}, {"codemyriad.io": {"tracks": rows}})
+    assert gaps == {"track-s": ((160000, 164800),), "track-b": ((480000, 496000),)}
+    assert grouped("track-s", words_of("track-s", [(9700, 9950), (10300, 10600)]), gaps) == ([1, 1],) * 3
+
+
+def foreign_file(path, tracks):
+    """A conformance file whose x["codemyriad.io"] carries `tracks` (another writer's)."""
+    from test_library import ROOT
+
+    from cassini_talk import portable
+    from cassini_talk.library_v2 import edit
+
+    source = ROOT / "tests/conformance/opus/001-minimal-v1.opus"
+    manifest = portable.read_meeting(str(source)).manifest
+    manifest.setdefault("x", {})["codemyriad.io"] = {"tracks": tracks}
+    replacements, _ = edit.chunk_set(edit.MANIFEST_PREFIX, manifest, edit.MANIFEST_MIME)
+    with open(source, "rb") as stream:
+        vendor, fields = edit.comment_fields(stream)
+    edit.rewrite(source, path, edit.edited_fields(fields, replacements), vendor)
+    return path
+
+
+def test_a_malformed_foreign_file_keeps_its_meeting_the_scan_and_its_good_breaks(tmp_path):
+    # Codex #182, end to end: opened directly, as a Received folder and as a root file (v2 index).
+    import hashlib
+    from uuid import uuid4
+
+    from test_library import write_metadata
+
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.open_meeting import load_open_meeting
+
+    expected = {"track-s": ((160000, 164800),)}
+    for name, bad in MALFORMED.items():
+        if name == "nan offset":
+            continue  # JSON in a file has no NaN
+        tracks = [stored_track("good"), bad, dict(stored_track("x"), id=7)]
+        opened = load_open_meeting(foreign_file(tmp_path / f"{uuid4()}.opus", tracks))
+        assert opened.transcript == "done" and opened.turn_gaps == expected, name
+        # One root each: root files of the same audio are one row.
+        root = tmp_path / str(uuid4())
+        folder = root / f"Received-{uuid4()}"
+        folder.mkdir(parents=True)
+        original = foreign_file(folder / "original.opus", tracks)
+        digest = hashlib.sha256(original.read_bytes()).hexdigest()
+        received = dict(originalName=original.name, sha256=digest, importedAtMs=1793107080000)
+        reference = dict(kind="embedded", file=original.name)
+        write_metadata(folder, transcript=dict(status="done", reference=reference), received=received)
+        foreign_file(root / "Foreign.opus", tracks)
+        meetings = LibraryScanner(root).scan().meetings
+        assert sorted(m.directory.name for m in meetings) == ["Foreign.opus", folder.name], name
+        assert all(m.transcript == "done" and m.turn_gaps == expected for m in meetings), name
+
+
 def test_the_files_own_silent_tracks_apply_to_its_x_tracks():
     # The window, open view and a Received folder have no sender meeting.json;
     # the file's x meeting lists its D56 silent tracks.

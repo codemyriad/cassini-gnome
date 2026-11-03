@@ -961,13 +961,13 @@ def turn_gaps(tracks, metadata, extensions, known=()):
         if not rows:
             ours = extensions.get("codemyriad.io") if isinstance(extensions, dict) else None
             stored = ours.get("tracks") if isinstance(ours, dict) else None
-            rows = [_stored_row(track) for track in stored or () if isinstance(track, dict)]
+            rows = [row for track in stored or () if (row := _stored_row(track)) is not None]
             stored_meeting = ours.get("meeting") if isinstance(ours, dict) else None
             if isinstance(stored_meeting, dict):
                 silent |= recorded_silent_tracks(stored_meeting)
         return speaker_gap_ranges(rows, silent=silent, merges=merges)
-    except (AttributeError, KeyError, TypeError, ValueError):
-        # Rows this reader cannot place only cost the breaks.
+    except (AttributeError, KeyError, TypeError, ValueError, ArithmeticError):
+        # Rows are checked one at a time (source_ownership._placeable); this only keeps the meeting.
         return {}
 
 
@@ -988,15 +988,24 @@ def _track_row(track):
 
 def _stored_row(track):
     # x tracks keep their offsets on the spans; the logical start is the earliest, unknown if any is.
-    if not isinstance(track.get("id"), str):
-        raise ValueError("track-id")
-    spans = [span for span in track.get("spans") or () if isinstance(span, dict)]
-    offsets = [span.get("startOffsetMs") for span in spans]
+    # A row this reader cannot read is None, and costs only its own breaks.
+    if not isinstance(track, dict) or not isinstance(track.get("id"), str):
+        return None
+    spans = track.get("spans") or ()
+    spans = [span for span in spans if isinstance(span, dict)] if isinstance(spans, (list, tuple)) else None
+    offsets = [span.get("startOffsetMs") for span in spans or ()]
+    frames = [span.get("frames") or 0 for span in spans or ()]
+    if (
+        spans is None
+        or not all(type(value) in (int, float) for value in offsets if value is not None)
+        or not all(type(value) is int for value in frames)
+    ):
+        return None
     return dict(
         track,
         spans=spans,
         startOffsetMs=min(offsets) if offsets and None not in offsets else None,
-        frames=sum(span.get("frames") or 0 for span in spans),
+        frames=sum(frames),
     )
 
 
