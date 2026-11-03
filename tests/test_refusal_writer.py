@@ -682,6 +682,7 @@ def test_a_new_browser_record_clears_an_earlier_start_error(application_class): 
         _record_start_group=None,
         get_windows=lambda: [],
         hold=lambda: None,
+        discard_test_recording=lambda: None,
         _record_start_executor=SimpleNamespace(submit=lambda function: submitted.append(function) or Future()),
     )
     application_class.start_recordings(app)

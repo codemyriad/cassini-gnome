@@ -73,6 +73,7 @@ class CassiniApplication(Adw.Application):
         self._transcription_holds = 0
         self._transcription_generation = 0
         self._quitting = False
+        self._exit_begun = False  # begin_exit ran: services are shut down for good.
         self._capture_background = False
         self._capture_confirmation = None
         self._browser_stops = set()
@@ -110,6 +111,9 @@ class CassiniApplication(Adw.Application):
         self.recording_failures = []
         self.record_first = None
         self.settings_dialog = None
+        # D60: the test recording; a real Start always discards it.
+        self.sound_check = None
+        self.sound_check_dialog = None
         self.shortcuts_dialog = None
         self.library_relocator = None
         self.comfort = None
@@ -214,6 +218,10 @@ class CassiniApplication(Adw.Application):
         import threading
 
         threading.Thread(target=self._load_voices, name="cassini-voices-startup", daemon=True).start()
+        from .sound_check import SoundCheck
+
+        self.sound_check = SoundCheck(application=self)  # Held while a discarded test is deleted.
+        self.sound_check.sweep()  # A crash can leave a test folder behind.
         from .voice_backfill import VoiceBackfill
 
         self.voice_backfill = VoiceBackfill(self)
@@ -290,7 +298,7 @@ class CassiniApplication(Adw.Application):
 
         def callback():
             window = self._activate_current(background=background)
-            if record:
+            if record and not self._exit_held():
                 self._record_current()
             return window
 
@@ -299,7 +307,17 @@ class CassiniApplication(Adw.Application):
         else:
             callback()
 
+    def _exit_held(self):
+        """The exit began and a discarded test still holds the app (D60)."""
+        return self._exit_begun and self.sound_check is not None and self.sound_check.held
+
     def _activate_current(self, *, background=False):
+        if self._exit_held():
+            # A launch while that hold delays the exit: a window now would have
+            # no recorder, test or models behind it. The next launch opens. A
+            # launch after any other exit still reopens (pushed playback).
+            logging.getLogger(__name__).info("Ignored an activation during exit")
+            return None
         self._quitting = False
         if background and not self._resume_writing:
             return None
@@ -347,6 +365,8 @@ class CassiniApplication(Adw.Application):
 
         def opened():
             window = self._activate_current()
+            if window is None:
+                return
             for file in files:
                 window.open_file(file)
             if record:
@@ -361,7 +381,8 @@ class CassiniApplication(Adw.Application):
         """Import/open only after the installed build check completes."""
 
         def callback():
-            return self._activate_current().open_file(file)
+            window = self._activate_current()
+            return window.open_file(file) if window is not None else None
 
         if self.build_refresh:
             self.build_refresh.check(callback, show=True, files=[file.get_uri()])
@@ -417,6 +438,9 @@ class CassiniApplication(Adw.Application):
 
         self.begin_exit()
         finish_close(self, list(self.get_windows()))
+        # D60: quit() ignores holds, so wait until a discarded test is deleted.
+        if self.sound_check and self.sound_check.flush(self.quit):
+            return
         self.quit()
 
     @property
@@ -614,31 +638,20 @@ class CassiniApplication(Adw.Application):
 
     def retry_recording(self):
         """The start banner's Try again: Record again, unless something records."""
-        from .capture_guard import recorder_busy
-
         self.recording_failure = None
-        if not (
-            self._record_start_future
-            or self.browser_capture_active()
-            or any(recorder_busy(r) for r in self.native_captures.values())
-        ):
+        if not self.recording_active():
             self.on_record()
         self._native_changed()
 
     def on_record(self, *_args):
-        from .capture_guard import recorder_busy
-
-        if (
-            self._record_start_future
-            or self.browser_capture_active()
-            or any(recorder_busy(r) for r in self.native_captures.values())
-        ):
+        # A test recording is not a recording: Record starts one (D60).
+        if self.recording_active():
             self.on_stop_recording()
             return
 
         def record():
-            self._activate_current()
-            self._record_current()
+            if self._activate_current() is not None:
+                self._record_current()
 
         if self.build_refresh:
             self.build_refresh.check(record, show=True, record=True)
@@ -655,13 +668,7 @@ class CassiniApplication(Adw.Application):
             self.record_first.connect("closed", lambda *_: setattr(self, "record_first", None))
 
     def on_global_record(self, *_):
-        from .capture_guard import recorder_busy
-
-        active = (
-            self._record_start_future
-            or any(recorder_busy(r) for r in self.native_captures.values())
-            or self.browser_capture_active()
-        )
+        active = self.recording_active()
         if active and not any(w.is_active() for w in self.get_windows()):
             from pathlib import Path
 
@@ -683,11 +690,50 @@ class CassiniApplication(Adw.Application):
         else:
             self.on_record()
 
+    def recording_active(self):
+        """Whether a recording runs or starts: native, browser or automatic.
+        A test recording never counts."""
+        from .capture_guard import recorder_busy
+
+        return bool(
+            self._record_start_future
+            or self.browser_capture_active()
+            or any(recorder_busy(r) for r in self.native_captures.values())
+        )
+
+    def can_test_recording(self):
+        """D60: no test while any recording runs, and one test at a time."""
+        check = self.sound_check
+        return bool(
+            check and not self._quitting and not check.closed and not check.busy and not self.recording_active()
+        )
+
+    def start_test_recording(self, *, test=False):
+        if not self.can_test_recording():
+            return False
+        self.sound_check.start(test=test)
+        return True
+
+    def open_test_recording(self, parent):
+        """D60: start a test and show it over parent (Settings or the first-run step)."""
+        from .sound_check_dialog import SoundCheckDialog
+
+        if not self.start_test_recording():
+            return None
+        self.sound_check_dialog = SoundCheckDialog(self, parent)
+        return self.sound_check_dialog
+
+    def discard_test_recording(self):
+        """A real Start wins (D60 point 2): the test stops, is deleted and shows no result."""
+        if self.sound_check and self.sound_check.state != "idle":
+            self.sound_check.cancel()
+
     def start_recordings(self):
         from . import browser_service
 
         if self._record_start_future is not None or self._quitting:
             return
+        self.discard_test_recording()
         # A new Record replaces any earlier start error, including a D17
         # partial start's, on the browser path too.
         self.recording_failure = None
@@ -725,6 +771,7 @@ class CassiniApplication(Adw.Application):
 
         if self._record_start_future is not None or self._quitting:
             return
+        self.discard_test_recording()
         self._record_start_generation += 1
         generation = self._record_start_generation
         group = self._record_start_group = str(uuid4())
@@ -828,6 +875,7 @@ class CassiniApplication(Adw.Application):
     def start_native(self, *, test=False):
         from .native_recorder import NativeRecorder
 
+        self.discard_test_recording()  # Also the native fallback and direct callers.
         recorder = NativeRecorder()
         self.native_captures[str(uuid4())] = recorder
         self._last_native = recorder
@@ -920,6 +968,9 @@ class CassiniApplication(Adw.Application):
                 window.monitor.refresh_now()
 
     def _native_changed(self, *_):
+        # Automatic, extension and fallback starts arrive here as snapshots.
+        if self.recording_active():
+            self.discard_test_recording()
         for recorder in tuple(self.native_captures.values()) + ((self._last_native,) if self._last_native else ()):
             if recorder.session:
                 self._permission_sources.update(
@@ -929,6 +980,9 @@ class CassiniApplication(Adw.Application):
                 )
         if self.record_first:
             self.record_first.refresh_permissions()
+            self.record_first.refresh_test()
+        if self.settings_dialog and not self.settings_dialog.closed:
+            self.settings_dialog.refresh_test()
         if self.comfort:
             self.comfort.native_level()
         self.windowless_background.refresh()
@@ -1292,7 +1346,9 @@ class CassiniApplication(Adw.Application):
             present()
 
     def begin_exit(self):
-        self._quitting = True
+        self._quitting = self._exit_begun = True
+        if self.sound_check:
+            self.sound_check.shutdown()
         if self.voice_backfill:
             self.voice_backfill.close()
         if self.browser_connection:
@@ -1324,6 +1380,8 @@ class CassiniApplication(Adw.Application):
             self.release()
 
     def window_closing(self, window):
+        if not any(w is not window and w.get_visible() for w in self.get_windows()):
+            self.discard_test_recording()  # The last window goes: so does its test.
         if self._closing_background_windows:
             return
         if (

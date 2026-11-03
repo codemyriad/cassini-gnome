@@ -82,6 +82,22 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.automatic.set_visible(self.app.browser_companion_available)
         self.automatic.connect("notify::active", self._automatic_changed)
         group.add(self.automatic)
+        # D60: the test recording, disabled while any recording or test runs.
+        test = Adw.PreferencesGroup()
+        self.pages["recording"].add(test)
+        self.test_row = Adw.ActionRow(title=text("test.action"), subtitle=text("test.intro"), use_markup=False)
+        self.test_button = Gtk.Button(
+            icon_name="media-playback-start-symbolic",
+            tooltip_text=text("test.action"),
+            valign=Gtk.Align.CENTER,
+            css_classes=["flat"],
+        )
+        self.test_button.update_property([Gtk.AccessibleProperty.LABEL], [text("test.action")])
+        self.test_button.connect("clicked", lambda *_: self.app.open_test_recording(self))
+        self.test_row.add_suffix(self.test_button)
+        self.test_row.set_activatable_widget(self.test_button)
+        test.add(self.test_row)
+        self._test_handler = self.app.sound_check.connect("changed", self.refresh_test) if self.app.sound_check else 0
 
     def _transcription(self):
         page = self.pages["transcription"]
@@ -644,8 +660,14 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.render_moves(mover.state, moving=mover.running, error=mover._error)
         self.render_browser()
         self.automatic.set_visible(self.app.browser_companion_available)
+        self.refresh_test()
         self._request()
         return GLib.SOURCE_CONTINUE
+
+    def refresh_test(self, *_):
+        allowed = self.app.can_test_recording()
+        self.test_row.set_sensitive(allowed)
+        self.test_button.set_sensitive(allowed)
 
     def render_moves(self, state, *, moving=False, error=None):
         self.folder.set_subtitle(text("settings.library.move.moving") if moving else path_caption(library_root()))
@@ -689,6 +711,9 @@ class SettingsDialog(Adw.PreferencesDialog):
         if self.timer:
             GLib.source_remove(self.timer)
             self.timer = 0
+        if self._test_handler:
+            self.app.sound_check.disconnect(self._test_handler)
+            self._test_handler = 0
         if getattr(self, "saved_voices_page", None):
             self.saved_voices_page.shutdown()
         self.executor.shutdown(wait=False)

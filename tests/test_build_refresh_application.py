@@ -3,6 +3,7 @@
 
 from types import SimpleNamespace
 
+import pytest
 from test_installed_build import application, controller
 from test_voice_application import application_class  # noqa: F401
 
@@ -22,14 +23,57 @@ def test_open_consumes_combined_files_record_and_automatic_intent_once(applicati
         _activate_current=lambda **_kw: SimpleNamespace(open_file=opened.append),
         _record_current=lambda: records.append(True),
         build_refresh=None,
+        _exit_begun=False,
+        sound_check=None,
     )
-    bound(app, application_class, "_take_resume_intent", "_restore_automatic")
+    bound(app, application_class, "_take_resume_intent", "_restore_automatic", "_exit_held")
     files = [object(), object()]
     application_class.do_open(app, files, len(files), "")
     assert opened == files and records == [True] and automatic == [True]
     assert not app._resume_record and not app._resume_background and not app._resume_automatic
     application_class.do_activate(app)
     assert records == [True] and automatic == [True], "A later Activate replayed the restart's Record intent"
+
+
+def test_a_launch_during_the_exit_opens_and_records_nothing(application_class):  # noqa: F811
+    """A hold can delay the exit (D60); a window then would have nothing behind it."""
+    records = []
+    app = SimpleNamespace(
+        _exit_begun=True,
+        sound_check=SimpleNamespace(held=True),
+        _quitting=True,
+        _resume_background=False,
+        _resume_record=True,
+        _resume_automatic=False,
+        _record_current=lambda: records.append(True),
+        build_refresh=None,
+        recording_active=lambda: False,
+    )
+    bound(app, application_class, "_take_resume_intent", "_restore_automatic", "_activate_current", "_exit_held")
+    application_class.do_activate(app)
+    application_class.do_open(app, [SimpleNamespace(get_uri=lambda: "file:///a")], 1, "")
+    application_class.open_in_new_window(app, object())
+    application_class.on_record(app)
+    assert app._activate_current() is None and not records and app._quitting
+
+
+@pytest.mark.parametrize("sound_check", [None, SimpleNamespace(held=False)], ids=["no-check", "not-held"])
+def test_a_launch_after_an_exit_without_a_held_test_still_opens(application_class, sound_check):  # noqa: F811
+    """Only a test's exit hold ignores a launch: a quit then a pushed playback reopens."""
+    activated, records = [], []
+    app = SimpleNamespace(
+        _exit_begun=True,
+        sound_check=sound_check,
+        _resume_background=False,
+        _resume_record=True,
+        _resume_automatic=False,
+        _activate_current=lambda **_kw: activated.append(True) or object(),
+        _record_current=lambda: records.append(True),
+        build_refresh=None,
+    )
+    bound(app, application_class, "_take_resume_intent", "_restore_automatic", "_exit_held")
+    application_class.do_activate(app)
+    assert activated == [True] and records == [True]
 
 
 def test_automatic_handoff_is_held_before_activate_or_open(application_class):  # noqa: F811

@@ -70,6 +70,17 @@ class RecordFirst(Adw.Dialog):
                     self.permission_captions["microphone" if index == 0 else "system"] = (value, caption)
             row.append(body)
             content.append(row)
+        # D60: a test of both streams, disabled while any recording or test runs.
+        test = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.test_button = Gtk.Button(
+            child=Adw.ButtonContent(icon_name="media-playback-start-symbolic", label=text("test.action")),
+            halign=Gtk.Align.START,
+        )
+        self.test_button.update_property([Gtk.AccessibleProperty.LABEL], [text("test.action")])
+        self.test_button.connect("clicked", lambda *_: self.app.open_test_recording(self))
+        test.append(self.test_button)
+        test.append(Gtk.Label(label=text("test.intro"), xalign=0, wrap=True, css_classes=["dim-label", "small"]))
+        content.append(test)
         buttons = Gtk.Box(spacing=10, homogeneous=True)
         later = Gtk.Button(label=text("common.notNow"))
         later.connect("clicked", lambda *_: self.close())
@@ -83,11 +94,22 @@ class RecordFirst(Adw.Dialog):
         content.append(buttons)
         self.set_default_widget(self.start_button)
         self.refresh_permissions()
+        self.refresh_test()
+        self._test_handler = app.sound_check.connect("changed", self.refresh_test) if app.sound_check else 0
+        self.connect("closed", self._closed)
         self.present(parent)
 
     def refresh_permissions(self):
         for kind, (label, caption) in self.permission_captions.items():
             label.set_label(text("recordFirst.allowed" if kind in self.app._permission_sources else caption))
+
+    def refresh_test(self, *_):
+        self.test_button.set_sensitive(self.app.can_test_recording())
+
+    def _closed(self, *_):
+        if self._test_handler:
+            self.app.sound_check.disconnect(self._test_handler)
+            self._test_handler = 0
 
     def _start(self, *_):
         self.close()

@@ -114,6 +114,8 @@ talk_sources = files(
   'cassini_talk/recognition_fallback.py',
   'cassini_talk/scratch_budget.py',
   'cassini_talk/silent_tracks.py',
+  'cassini_talk/sound_check.py',
+  'cassini_talk/sound_check_dialog.py',
   'cassini_talk/opus_input.py',
   'cassini_talk/fir-48k-16k.json',
   'cassini_talk/inline_line.py',

@@ -1,6 +1,11 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Actual GApplication process exits: busy inference, stop/save and start/stop race."""
+"""Actual GApplication process exits: busy inference, stop/save and start/stop race.
+
+The test-recording modes (D60) exit while a test's recorder prepares or its
+folder is made, also with a second launch during that exit, then check the
+cache once the process has exited.
+"""
 
 import faulthandler
 import json
@@ -16,6 +21,44 @@ from pathlib import Path
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Use build-aux/ux-screenshot.sh")
 ROOT = Path(__file__).resolve().parents[2]
+TEST_RECORDING_MODES = ("test-recording-quit", "test-recording-close", "test-recording-reactivate")
+
+
+def test_recording_exit(mode):
+    """Release the child's held test once its exit began, then check its cache after it exited."""
+    with tempfile.TemporaryDirectory() as cache:
+        child = subprocess.Popen(
+            [sys.executable, __file__, mode],
+            env=dict(os.environ, XDG_CACHE_HOME=cache),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+        )
+        try:
+            # held: GTK still runs after the exit request; ran: run() returned.
+            markers, output = (b"test-recording: held", b"test-recording: ran"), b""
+            deadline = time.monotonic() + 10
+            with selectors.DefaultSelector() as selector:
+                selector.register(child.stdout, selectors.EVENT_READ)
+                while not any(marker in output.splitlines() for marker in markers):
+                    remaining = deadline - time.monotonic()
+                    assert remaining > 0 and selector.select(remaining), f"{mode}: no exit began: {output!r}"
+                    chunk = os.read(child.stdout.fileno(), 4096)
+                    assert chunk, f"{mode}: exited before its test was released: {output!r}"
+                    output += chunk
+            child.stdin.write(b"release\n")
+            child.stdin.flush()
+            output += child.communicate(timeout=10)[0]
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.wait()
+        root = Path(cache) / "cassini-talk/test"
+        left = sorted(str(p.relative_to(root)) for p in root.rglob("*")) if root.exists() else []
+        assert not left, f"{mode}: the exited process left {left}"
+        assert child.returncode == 0, f"{mode}: exit {child.returncode}: {output!r}"
+        print(output.decode(), end="", flush=True)
+
+
 if len(sys.argv) == 1:
     for mode in (
         "quit-writing",
@@ -42,7 +85,9 @@ if len(sys.argv) == 1:
         "indicator-quit-dialog",
     ):
         subprocess.run([sys.executable, __file__, mode], check=True, timeout=12)
-    print("PASS real process exits: resumable busy writing, close, finalized stop/save and canceled start")
+    for mode in TEST_RECORDING_MODES:
+        test_recording_exit(mode)
+    print("PASS real process exits: resumable writing, close, finalized stop/save, canceled start, test recordings")
     raise SystemExit()
 
 sys.path.insert(0, str(ROOT / "src"))
@@ -189,6 +234,36 @@ with tempfile.TemporaryDirectory() as tmp:
 
         RecordingSession.finish = slow_finish
 
+    if mode in TEST_RECORDING_MODES:
+        from cassini_talk import sound_check
+        from cassini_talk.native_recorder import NativeRecorder
+
+        def exit_now():
+            global closing_at
+            closing_at = time.monotonic()
+            app.on_quit() if mode == "test-recording-quit" else app.get_active_window().close()
+            if mode == "test-recording-reactivate":
+                app.activate()  # A second launch while the hold delays the exit.
+                if any(w.get_visible() for w in app.get_windows()):
+                    errors.append("A launch during the exit opened a window")
+                    app.quit()  # That window would keep the process: end it here.
+            # Runs only while GTK still runs after the exit: something holds the app.
+            GLib.idle_add(lambda: print("test-recording: held", flush=True) or False)
+            return False
+
+        def gated(work):
+            def run(*args):
+                GLib.idle_add(exit_now)  # Quit or close while this still runs.
+                assert sys.stdin.readline() == "release\n", "The runner did not release the test"
+                return work(*args)
+
+            return run
+
+        if mode == "test-recording-quit":
+            NativeRecorder._prepare = staticmethod(gated(NativeRecorder._prepare))
+        else:
+            sound_check.make_folder = gated(sound_check.make_folder)
+
     def respond(choice):
         dialog = app._capture_confirmation
         dialog.emit("response", choice)
@@ -287,6 +362,9 @@ with tempfile.TemporaryDirectory() as tmp:
                 closing_at = time.monotonic()
                 app.on_quit()
                 return False
+        elif mode in TEST_RECORDING_MODES:
+            assert app.start_test_recording(test=True)
+            return False
         elif phase == 0:
             if mode == "prepare-failed":
                 from cassini_talk.native_recorder import NativeRecorder
@@ -432,6 +510,10 @@ with tempfile.TemporaryDirectory() as tmp:
     queue_before_exit = app.transcriber
     GLib.timeout_add(10, drive)
     result = app.run([sys.argv[0]])
+    if mode in TEST_RECORDING_MODES:
+        if mode == "test-recording-quit":
+            app.sound_check._executor.shutdown(wait=True)  # Whatever the exit queued has run.
+        print("test-recording: ran", flush=True)
     assert result == 0 and closing_at is not None and time.monotonic() - closing_at < 0.8
     assert app._transcription_holds == 0 and not app.get_windows(), (
         app._transcription_holds,
@@ -482,6 +564,8 @@ with tempfile.TemporaryDirectory() as tmp:
         pass
     elif mode == "prepare-failed":
         assert app.recorder.pipeline is None and app.recorder.session is None
+    elif mode in TEST_RECORDING_MODES:
+        assert not app.native_captures and app.sound_check.closed and not app.sound_check.held
     else:
         assert app.recorder.pipeline is None
         if app.recorder.discarded:
