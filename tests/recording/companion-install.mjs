@@ -45,7 +45,7 @@ function launchApp(label) {
 function call(action='state',values={}) {
  return new Promise((resolve,reject)=>{
   const timer=setTimeout(()=>reject(new Error('App UI timed out: '+action)),12000);
-  pending.push(value=>{clearTimeout(timer); value.error ? reject(new Error(value.error)) : resolve(value);});
+  pending.push(value=>{clearTimeout(timer); value.error != null ? reject(new Error(value.error || 'App UI request failed')) : resolve(value);});
   app.stdin.write(JSON.stringify({action,...values})+'\n');
  });
 }
