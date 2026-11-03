@@ -186,6 +186,8 @@ class Meeting(MeetingState):
     turns: tuple = field(default=(), compare=False, repr=False)
     quote_line: str | None = None
     tracks: tuple[CaptureTrack, ...] = ()
+    # session.json's track rows as written, readable or not (library.track_rows).
+    listed_tracks: tuple[dict, ...] = field(default=(), compare=False, repr=False)
     capture_source: str | None = None
     capture_state: str | None = None
     capture_events: tuple[dict, ...] = ()
@@ -717,6 +719,8 @@ class LibraryScanner:
         )
         from .speaker_merges import apply_merges
 
+        listed = capture.get("tracks") if isinstance(capture.get("tracks"), list) else []
+        listed = tuple(track for track in listed if isinstance(track, dict))
         known = [s["id"] for s in metadata.get("speakers", [])]
         if embedded:
             known.extend(s.id for s in embedded.speakers)
@@ -725,7 +729,7 @@ class LibraryScanner:
             metadata,
             embedded.manifest.get("x") if embedded and embedded.manifest else None,
             [*known, *(word.speaker for word in words)],
-            capture.get("tracks"),
+            listed,
         )
         words = apply_merges(words, metadata.get("speakerMerges", []), known)
         received_name = metadata.get("received", {}).get("originalName") if origin == "received" else None
@@ -791,6 +795,7 @@ class LibraryScanner:
             if transcript in ("done", "queued", "running")
             else None,
             tracks=tracks,
+            listed_tracks=listed,
             capture_source=capture.get("source") if origin == "own" else None,
             capture_state=capture.get("state") if origin == "own" else None,
             capture_events=events,
@@ -943,6 +948,34 @@ def _sidecar_words(body):
     return tuple(words)
 
 
+def track_rows(tracks, extensions, listed=()):
+    """Every track the folder or file lists, as stored rows, and the file's own D56 silent ids.
+
+    The R64 lanes of the write-down and of the gap map (source_ownership.speaker_lanes)
+    read these same rows. The scanner's readable `tracks` come first, in order;
+    session.json's `listed` rows and the file's x["codemyriad.io"].tracks then only
+    reserve their speaker ids, readable, unreadable or missing. Without readable
+    tracks the x tracks are the rows, and the file's own silent list applies.
+    """
+    from .transcription import recorded_silent_tracks
+
+    silent = frozenset()
+    ours = extensions.get("codemyriad.io") if isinstance(extensions, dict) else None
+    stored = ours.get("tracks") if isinstance(ours, dict) else None
+    stored = [track for track in stored if isinstance(track, dict)] if isinstance(stored, list) else []
+    rows = [_track_row(track) for track in tracks]
+    if rows:
+        stored = [_unplaced(track) for track in stored]
+    else:
+        stored = [_stored_row(track) for track in stored]
+        stored_meeting = ours.get("meeting") if isinstance(ours, dict) else None
+        if isinstance(stored_meeting, dict):
+            silent = recorded_silent_tracks(stored_meeting)
+    listed = listed if isinstance(listed, (list, tuple)) else ()
+    listed = [_unplaced(track) for track in listed if isinstance(track, dict)]
+    return [*rows, *stored, *listed], silent
+
+
 def turn_gaps(tracks, metadata, extensions, known=(), listed=()):
     """D63 #2: each speaker's own gap ranges, which turns never span (presentation, D47).
 
@@ -952,7 +985,8 @@ def turn_gaps(tracks, metadata, extensions, known=(), listed=()):
     no breaks. `known` lists the speaker ids its speakerMerges resolve against.
     A track this reader cannot read, among session.json's `listed` rows or the
     x tracks, gives no ranges but keeps its speaker's empty entry, so it never
-    takes another source's ranges as a voice.
+    takes another source's ranges as a voice. The rows are track_rows', so the
+    lanes are the write-down's.
     """
     from .source_ownership import speaker_gap_ranges
     from .speaker_merges import resolve_merges
@@ -961,22 +995,16 @@ def turn_gaps(tracks, metadata, extensions, known=(), listed=()):
     merges = resolve_merges(metadata.get("speakerMerges", []), known)
     silent = recorded_silent_tracks(metadata)
     try:
-        ours = extensions.get("codemyriad.io") if isinstance(extensions, dict) else None
-        stored = ours.get("tracks") if isinstance(ours, dict) else None
-        stored = [track for track in stored if isinstance(track, dict)] if isinstance(stored, list) else []
-        rows = [_track_row(track) for track in tracks]
-        if rows:
-            stored = [_unplaced(track) for track in stored]
-        else:
-            stored = [_stored_row(track) for track in stored]
-            stored_meeting = ours.get("meeting") if isinstance(ours, dict) else None
-            if isinstance(stored_meeting, dict):
-                silent |= recorded_silent_tracks(stored_meeting)
-        listed = [_unplaced(track) for track in listed if isinstance(track, dict)] if isinstance(listed, list) else []
-        return speaker_gap_ranges([*rows, *stored, *listed], silent=silent, merges=merges, speakers=known)
+        rows, stored_silent = track_rows(tracks, extensions, listed)
+        return speaker_gap_ranges(rows, silent=silent | stored_silent, merges=merges, speakers=known)
     except (AttributeError, KeyError, TypeError, ValueError, ArithmeticError):
         # Rows are checked one at a time (source_ownership._placeable); this only keeps the meeting.
         return {}
+
+
+def track_identity(track):
+    """A scanned track's capture id; a recovered model without one is named by its file."""
+    return track.id or "recovered-" + str(uuid5(NAMESPACE_URL, track.path.name))
 
 
 def _track_row(track):
@@ -988,7 +1016,8 @@ def _track_row(track):
             **({"clockAnchors": [list(point) for point in value.clock_anchors]} if value.clock_anchors else {}),
         )
 
-    row = dict(placed(track), id=track.id, kind=track.kind, sourceTrackId=track.source_track_id, gaps=track.gaps)
+    identity = track_identity(track)
+    row = dict(placed(track), id=identity, kind=track.kind, sourceTrackId=track.source_track_id, gaps=track.gaps)
     if track.spans:
         row["spans"] = [placed(span) for span in track.spans]
     return row

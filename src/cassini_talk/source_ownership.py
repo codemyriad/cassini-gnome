@@ -228,47 +228,76 @@ def gap_ranges(gaps):
     return result
 
 
+def track_speaker_id(row):
+    """D11 base speaker id of a stored track row: `me`, `others` or `track-<source id>`; None without an id."""
+    if row.get("kind") in ("microphone", "local"):
+        return "me"
+    if row.get("kind") == "system":
+        return "others"
+    identity = row.get("sourceTrackId") or row.get("id")
+    return "track-" + identity if isinstance(identity, str) else None
+
+
+def speaker_lanes(rows, *, silent=(), strict=False):
+    """R64 speaker ids of stored track rows, in row order, and the R64 diagnostics.
+
+    The write-down (transcription.prepare_tracks) and the D63 #2 gap map
+    (speaker_gap_ranges) both pass every track the session or file lists
+    (library.track_rows), readable, unreadable or missing, so a lane id is the
+    same in both. Every row's base id is reserved first. Only an audible row
+    (placeable, with frames, not D56 `silent`) gets an id here; any other row
+    gets None and keeps its base id. A source whose lane id would exceed the
+    limit raises when `strict`, else its rows get None.
+    """
+    from .source_spans import separate
+
+    bases = [track_speaker_id(row) for row in rows]
+    reserved = [base for base in bases if base is not None]
+    result = [None] * len(rows)
+    sources = {}
+    for index, (row, base) in enumerate(zip(rows, bases, strict=True)):
+        if base is None:
+            continue
+        candidate = dict(row, speaker=base, captureTrackId=row.get("id"))
+        if _placeable(candidate) and row.get("frames") and row["id"] not in silent:
+            sources.setdefault(base, []).append((index, candidate))
+    diagnostics = []
+    # R64 lanes are per source, so one at a time gives the same ids; a source
+    # whose lane id is over the limit costs only its own rows.
+    for base in sorted(sources, key=lambda value: value.encode("utf-8")):
+        indices = [index for index, _row in sources[base]]
+        try:
+            separated, found = separate([row for _index, row in sources[base]], reserved=reserved)
+        except ValueError:
+            if strict:
+                raise
+            continue
+        diagnostics.extend(found)
+        for index, row in zip(indices, separated, strict=True):
+            result[index] = row["speaker"]
+    return result, diagnostics
+
+
 def speaker_gap_ranges(tracks, *, silent=(), merges=None, speakers=()):
     """D63 #2: {speaker id: sorted gap ranges of that speaker's own tracks}.
 
     `tracks` are stored track rows (session.json, or x["codemyriad.io"] with
-    offsets on the spans). Speaker ids and R64 overlap lanes are the ones the
-    write-down gives (transcription.prepare_tracks); a D56 silent track has no
-    words and adds no ranges. `merges` maps a merged-away speaker to the one
+    offsets on the spans). Speaker ids and R64 overlap lanes come from
+    speaker_lanes, as in the write-down; a D56 silent track has no words and
+    adds no ranges. `merges` maps a merged-away speaker to the one
     its words now carry, which then splits on both speakers' ranges. Every
     track and lane id has an entry, an empty one too, so a source id that ends
     in `~1` never takes another source's ranges as a voice (own_gap_ranges).
     A voice in `speakers` whose group is a merge target keeps its group's own
     ranges, not the merged speaker's.
     """
-    from .source_spans import separate
-
-    rows = []
-    for track in tracks:
-        identity = track.get("sourceTrackId") or track.get("id")
-        if track.get("kind") in ("microphone", "local"):
-            speaker = "me"
-        elif track.get("kind") == "system":
-            speaker = "others"
-        else:
-            speaker = f"track-{identity}"
-        rows.append(dict(track, id=track.get("id"), captureTrackId=track.get("id"), speaker=speaker))
+    tracks = list(tracks)
+    lanes, _diagnostics = speaker_lanes(tracks, silent=silent)
+    result = {speaker: [] for track in tracks if (speaker := track_speaker_id(track)) is not None}
     # A row this reader cannot place gives no ranges; its source's other rows keep theirs.
-    audible = [row for row in rows if _placeable(row) and row.get("frames") and row["id"] not in silent]
-    reserved = [row["speaker"] for row in rows]
-    sources = {}
-    for row in audible:
-        sources.setdefault(row["speaker"], []).append(row)
-    result = {speaker: [] for speaker in reserved}
-    for group in sources.values():
-        # R64 lanes are per source, so one at a time gives the same ids; a
-        # source whose lane id is over the limit loses only its own breaks.
-        try:
-            separated, _diagnostics = separate(group, reserved=reserved)
-        except ValueError:
-            continue
-        for row in separated:
-            result.setdefault(row["speaker"], []).extend(gap_ranges(row.get("gaps")))
+    for track, lane in zip(tracks, lanes, strict=True):
+        if lane is not None:
+            result.setdefault(lane, []).extend(gap_ranges(track.get("gaps")))
     # Merges read the unmerged map, so their order changes nothing. A
     # `<group>~n` target keeps its group's ranges as well.
     merged = {}
