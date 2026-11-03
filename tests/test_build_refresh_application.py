@@ -48,6 +48,7 @@ def test_a_launch_during_the_exit_opens_and_records_nothing(application_class): 
         _record_current=lambda: records.append(True),
         build_refresh=None,
         recording_active=lambda: False,
+        recording_to_stop=lambda: [],
     )
     bound(app, application_class, "_take_resume_intent", "_restore_automatic", "_activate_current", "_exit_held")
     application_class.do_activate(app)

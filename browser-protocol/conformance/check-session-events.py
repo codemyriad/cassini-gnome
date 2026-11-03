@@ -32,8 +32,13 @@ def validate(document):
         if event['type'] == 'selection':
             others = event['others']
         elif event['type'] == 'othersSource':
-            if event['reason'] == 'restored' and (not others or source is None or
-                    source['source'] != 'system' or source['reason'] not in ('missing', 'lost')):
+            # A fallback that committed (system/missing, system/lost), or a browser loss whose
+            # fallback never committed (not asked yet, or still starting) because the call
+            # returned first (none/lost).
+            fallback = source is not None and (
+                source['source'] == 'system' and source['reason'] in ('missing', 'lost') or
+                source['source'] == 'none' and source['reason'] == 'lost')
+            if event['reason'] == 'restored' and (not others or not fallback):
                 raise ValueError('restored needs an enabled others side and a preceding fallback')
             if event['reason'] == 'callConnected' and (not others or source is None or
                     source['source'] != 'system' or source['reason'] != 'missing' or event['source'] != 'browser'):
@@ -71,11 +76,41 @@ def state_at(document, at):
                 fallback=source['reason'] in ('missing', 'lost'))
 
 
+def others_presence(document):
+    """Independent presence oracle (D52.2): The others' span extents minus gap ranges, merged."""
+    spans = []
+    for track in document['tracks']:
+        if track['kind'] in ('microphone', 'local'):
+            continue
+        start, end = track['startOffsetMs'], track['endOffsetMs']
+        cuts = sorted((g['atMs'], g['atMs'] + g['durationMs']) for g in track.get('gaps') or []
+                      if g.get('durationMs', 0) > 0)
+        for cut_start, cut_end in cuts:
+            if cut_start > start:
+                spans.append([start, min(cut_start, end)])
+            start = max(start, cut_end)
+        if start < end:
+            spans.append([start, end])
+    merged = []
+    for start, end in sorted(spans):
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return merged
+
+
 def check_fixtures():
     for case, manifest_name, expected_name in [
         ('fallback', 'session.json', 'expected.json'),
         ('browser-off-on', 'browser-off-on.session.json', 'browser-off-on.expected.json'),
         ('call-return', 'call-return.session.json', 'call-return.expected.json'),
+        ('uncommitted-return', 'uncommitted-return.session.json', 'uncommitted-return.expected.json'),
+        # The same return written by an app that keeps its written othersSource while a
+        # fallback is pending: no none/lost, no restored. The absence is the file's truth
+        # in both forms: no Others presence over the loss (span extents minus gaps).
+        ('uncommitted-return-kept', 'uncommitted-return-kept.session.json',
+         'uncommitted-return-kept.expected.json'),
     ]:
         document = json.loads((FIXTURES / manifest_name).read_text())
         expected = json.loads((FIXTURES / expected_name).read_text())
@@ -94,6 +129,8 @@ def check_fixtures():
             final = state_at(document, duration)
             for key in ('me', 'others', 'source', 'fallback'):
                 assert final[key] == expected[key]
+        if 'othersPresenceMs' in expected:
+            assert others_presence(document) == expected['othersPresenceMs'], others_presence(document)
         if 'end' in expected:
             assert document['events'][-1] == dict(type='end', **expected['end'])
         if 'trackRoles' in expected:

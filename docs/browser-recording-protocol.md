@@ -3,7 +3,7 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `c0284a6f` (protocol PR #43: the resume ask waits for the committed fallback; empty gaps), ships companion 0.2.12, whose browser `track` packets carry
+The current pin, `854f4ada` (protocol PR #45 on #44: a return before the fallback commits restores at once; either writer form, with the absence in the file), ships companion 0.2.12, whose browser `track` packets carry
 the D61 clock facts (copied into session.json and x["codemyriad.io"].tracks, record-only)
 and the span's `documentGeneration` (a live watchdog hint, never written to files). Its
 `ok:false` results carry a D58 result `code`, and its native resume packet carries the
@@ -49,7 +49,11 @@ An active capture's ended physical span returns `state/source/retired:true`;
 its cleanup and in-flight chunks cannot mean the whole capture was saved.
 Capture finalization returns `state/command`. Failed spans are fenced locally,
 healthy sources and the microphone continue, and a live source retries a new ID.
-The pin is protocol commit c0284a6f (PR #43, Mac #113: the host joins only a committed
+The pin is protocol commit 854f4ada (PR #45: the uncommitted-return vector accepts GNOME's kept
+othersSource as well as Mac's none/lost then browser/restored, both with the Others absent over the
+loss), on protocol commit dba4a327 (PR #44, Mac #134: a call that returns before its fallback
+commits restores at once, heard or not; GNOME keeps its written othersSource and writes nothing),
+on protocol commit c0284a6f (PR #43, Mac #113: the host joins only a committed
 fallback, whose othersSource system/lost is written once the fallback device admits its first
 buffer, so the app asks to resume only after that commit, on every control connection; the
 `fallbackCommitted` lifecycle step field and two D52.5 cases; an empty gap entry, `durationMs`
