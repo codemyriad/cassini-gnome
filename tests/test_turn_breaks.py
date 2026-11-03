@@ -393,6 +393,10 @@ def test_an_unreadable_track_keeps_its_speakers_empty_entry(tmp_path):
     words = words_of("track-s~1", [(50, 90), (1010, 1050)])
     assert grouped("track-s~1", words, meeting.turn_gaps) == ([2],) * 3
     assert grouped("track-s", words_of("track-s", [(50, 90), (1010, 1050)]), meeting.turn_gaps) == ([1, 1],) * 3
+    # A root file's working copy (library_v2_index) lists it only in the file's x tracks.
+    x = {"codemyriad.io": {"tracks": [dict(stored_track("b", gaps=[]), sourceTrackId="s~1")]}}
+    assert turn_gaps(meeting.tracks, {}, x) == meeting.turn_gaps
+    assert turn_gaps(meeting.tracks, {}, None) == {"track-s": ((1600, 16000),)}
 
 
 def test_merges_read_the_unmerged_map_in_any_order():
