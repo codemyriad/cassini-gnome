@@ -13,7 +13,8 @@ permissions:
 jobs:
   capture:
     runs-on: ubuntu-26.04
-    timeout-minutes: 20
+    # p95 is 13.5 min; a slow apt mirror once took 14.5 min of a 20 min budget (G10).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -21,8 +22,8 @@ jobs:
           node-version-file: tests/recording/.node-version
       - name: Install audio and isolated GUI test dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc libc6-dev python3-gi python3-numpy python3-pytest python3-jsonschema python3-rfc3339-validator gir1.2-gstreamer-1.0 \
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y gcc libc6-dev python3-gi python3-numpy python3-pytest python3-jsonschema python3-rfc3339-validator gir1.2-gstreamer-1.0 \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good xvfb xauth xdotool dbus-x11 \
             gir1.2-gtk-4.0 gir1.2-adw-1 imagemagick pulseaudio-utils meson ninja-build gettext \
             libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream at-spi2-core gir1.2-atspi-2.0 pipewire pipewire-pulse wireplumber
@@ -44,6 +45,11 @@ jobs:
           echo "CASSINI_RECORDING_BUILD=$PWD/_recording-build" >> "$GITHUB_ENV"
       - run: python3 browser-protocol/verify.py --pinned browser-extension
       - run: npm ci --prefix tests/recording
+      # The same key as deb.yml's browser startup job, so both share one entry.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: browser-startup-linux-x64-${{ hashFiles('tests/recording/package-lock.json') }}
       - run: tests/recording/node_modules/.bin/playwright install --with-deps chromium
       - name: Python tests with private data on the temporary-file filesystem
         run: |
