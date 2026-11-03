@@ -46,13 +46,16 @@ def _fake_download(monkeypatch, responses):
     return calls
 
 
-def test_download_retries_transient_failures_then_checks_the_hash(tmp_path, monkeypatch):
+def test_download_retries_transient_failures_then_checks_the_hash(tmp_path, monkeypatch, capsys):
     payload = b"artifact"
     info = dict(url="https://example.invalid/a", sha256=hashlib.sha256(payload).hexdigest())
     calls = _fake_download(monkeypatch, [TimeoutError("read timeout"), ConnectionResetError("reset"), payload])
     fetch.download("a", info, tmp_path / "a")
     assert (tmp_path / "a").read_bytes() == payload and len(calls) == 3
     assert [p.name for p in tmp_path.iterdir()] == ["a"]
+    # D66: each retry is a GitHub annotation, not a plain log line.
+    warnings = [line for line in capsys.readouterr().err.splitlines() if line.startswith("::warning::")]
+    assert len(warnings) == 2 and "attempt 1 of 3" in warnings[0] and "attempt 2 of 3" in warnings[1]
 
 
 def test_download_gives_up_after_three_attempts(tmp_path, monkeypatch):

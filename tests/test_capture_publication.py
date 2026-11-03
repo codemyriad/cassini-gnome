@@ -26,6 +26,17 @@ from cassini_talk.library_v2 import finalize
 from cassini_talk.native_recorder import NativeRecorder
 
 
+def recording(recorder):
+    """Both test sides opened and recorded 100 ms.
+
+    A side's track is added only when it opens (R79 1), so a check over the
+    tracks alone is vacuously true while a slow start has opened none: a Stop
+    then discards the blank folder instead of publishing it.
+    """
+    tracks = recorder.session.manifest["tracks"] if recorder.session else []
+    return not recorder.starting and len(tracks) == 2 and all(t["frames"] >= 4800 for t in tracks)
+
+
 def test_native_stop_keeps_main_loop_responsive_and_lease_until_published(tmp_path, monkeypatch):
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path / "Library"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
@@ -44,7 +55,7 @@ def test_native_stop_keeps_main_loop_responsive_and_lease_until_published(tmp_pa
     recorder.connect("finished", lambda _recorder, path: finished.append(path))
     try:
         recorder.start(test=True)
-        spin_until(lambda: recorder.session and all(t["frames"] >= 4800 for t in recorder.session.manifest["tracks"]))
+        spin_until(lambda: recording(recorder))
         sid = recorder.session.manifest["id"]
         recorder.stop()
         spin_until(entered.is_set)
@@ -134,7 +145,7 @@ def test_quit_cancels_native_publish_queued_behind_another_capture(tmp_path, mon
     recorder.connect("finished", lambda _recorder, path: finished.append(path))
     try:
         recorder.start(test=True)
-        spin_until(lambda: recorder.session and all(t["frames"] >= 4800 for t in recorder.session.manifest["tracks"]))
+        spin_until(lambda: recording(recorder))
         sid = recorder.session.manifest["id"]
         recorder.stop()
         spin_until(lambda: recorder._publication_future is not None)
@@ -223,7 +234,7 @@ def test_native_publication_failure_is_distinct_from_a_capture_start_failure(tmp
     recorder.connect("finished", lambda *_: finished.append(True))
     try:
         recorder.start(test=True)
-        spin_until(lambda: recorder.session and all(t["frames"] >= 4800 for t in recorder.session.manifest["tracks"]))
+        spin_until(lambda: recording(recorder))
         recorder.stop()
         spin_until(lambda: bool(finished))
         assert recorder.publication_error is failure

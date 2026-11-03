@@ -32,6 +32,7 @@ gi.require_version("Gst", "1.0")
 gi.require_version("GdkX11", "4.0")
 gi.require_version("Gsk", "4.0")
 from gi.repository import GdkX11, Gio, GLib, Gtk  # noqa: E402
+from painted import painted_node  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk.main import CassiniApplication  # noqa: E402
@@ -198,9 +199,7 @@ with tempfile.TemporaryDirectory() as temporary:
             window.add_tick_callback(lambda *_, ticks=ticks: (ticks.append(True), len(ticks) < 3)[1])
             window.queue_draw()
             until(lambda ticks=ticks: len(ticks) >= 3)
-            paintable, snapshot = Gtk.WidgetPaintable.new(window), Gtk.Snapshot.new()
-            paintable.snapshot(snapshot, window.get_width(), window.get_height())
-            node = snapshot.to_node()
+            node = painted_node(window)
             texture = window.get_renderer().render_texture(node, node.get_bounds())
             assert (texture.get_width(), texture.get_height()) == (1120, 720)
             assert texture.save_to_png(os.environ["CASSINI_SCREENSHOT_OUT"])

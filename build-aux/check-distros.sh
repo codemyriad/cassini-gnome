@@ -24,6 +24,7 @@ LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/cassini-check-distros.XXXXXX")
 # "==> step" lines mark progress; the summary reports the last one reached.
 INNER='
 set -eu
+. /in/build-aux/ci/retry.sh
 step() { printf "\\n==> %s\\n" "$1"; }
 # Keep the Meson test logs, also when a test fails (test_log_dir).
 save_logs() {
@@ -40,11 +41,12 @@ rm -rf _build* _install _flatpak dist obj-* .flatpak-builder debian/.debhelper d
   .git .venv tests/recording/node_modules tests/recording/artifacts
 rm -rf src/cassini_talk/__pycache__ tests/__pycache__
 
+# Only these two steps reach the network: package installs, retried.
 step "align container snapshot"
-sh build-aux/ci/prepare_tumbleweed.sh
+retry sh build-aux/ci/prepare_tumbleweed.sh
 
 step "install-deps"
-sh build-aux/install-deps.sh --all --yes
+retry sh build-aux/install-deps.sh --all --yes
 
 step "meson setup"
 meson setup /build/b --prefix=/usr
@@ -114,7 +116,7 @@ for image in "$@"; do
   echo
   echo "################ $image"
   logs=$(test_log_dir "distro-$(image_slug "$image")")
-  { if container_run -e DEBIAN_FRONTEND=noninteractive -v "$PWD":/in:ro$Z \
+  { if container_pull "$image" && container_run -e DEBIAN_FRONTEND=noninteractive -v "$PWD":/in:ro$Z \
          ${logs:+-v "$logs:/logs:rw$Z"} "$image" sh -c "$INNER"; then
       echo 0 > "$log.status"
     else

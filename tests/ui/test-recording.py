@@ -39,6 +39,7 @@ def child():
     gi.require_version("Adw", "1")
     gi.require_version("Gst", "1.0")
     from gi.repository import Adw, Gio, GLib, Gst, Gtk
+    from painted import painted_node
 
     sys.path.insert(0, str(ROOT / "src"))
     Gio.resources_register(
@@ -81,9 +82,7 @@ def child():
         window.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 3)[1])
         window.queue_draw()
         until(lambda: len(frames) >= 3)
-        paintable, snapshot = Gtk.WidgetPaintable.new(window), Gtk.Snapshot.new()
-        paintable.snapshot(snapshot, window.get_width(), window.get_height())
-        node = snapshot.to_node()
+        node = painted_node(window)
         texture = window.get_renderer().render_texture(node, node.get_bounds())
         assert texture.save_to_png(str(OUTPUT.with_name(f"test-recording-{name}.png")))
 
