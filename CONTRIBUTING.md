@@ -85,8 +85,10 @@ msginit -i po/cassini-talk.pot -o po/<code>.po -l <code>
    The deb, RPM and Arch build scripts refuse to build when their version differs
    from `meson.build`.
 2. Tag `vX.Y.Z` and push the tag. The release workflow builds the Ubuntu 26.04
-   and Debian testing .debs (`cassini-talk_X.Y.Z~ubuntu26.04_amd64.deb`,
-   `cassini-talk_X.Y.Z~debian-testing_amd64.deb`), the Fedora and openSUSE
+   and Debian testing .debs (`cassini-talk_DEBVER~ubuntu26.04_amd64.deb`,
+   `cassini-talk_DEBVER~debian-testing_amd64.deb`, where DEBVER is the top
+   `debian/changelog` version, for example
+   `cassini-talk_0.3.0+talk1~ubuntu26.04_amd64.deb`), the Fedora and openSUSE
    x86_64 RPMs, the Arch package and the Flatpak bundle, and attaches them to
    a GitHub release.
 
@@ -155,7 +157,7 @@ choose), then install it in a fresh container and smoke-test it there with
 
 | Command | Builds |
 |---|---|
-| `make deb` | `cassini-talk_X.Y.Z~ubuntu26.04_amd64.deb`, in Ubuntu 26.04 (`build-aux/deb/build.sh debian:testing` for `~debian-testing`) |
+| `make deb` | `cassini-talk_DEBVER~ubuntu26.04_amd64.deb` (DEBVER from `debian/changelog`, such as `0.3.0+talk1`), in Ubuntu 26.04 (`build-aux/deb/build.sh debian:testing` for `~debian-testing`) |
 | `make rpm` | `.x86_64.rpm` and `.src.rpm`, in Fedora |
 | `make rpm-opensuse` | `.x86_64.rpm` and `.src.rpm`, in openSUSE Tumbleweed |
 | `make arch` | `.pkg.tar.zst` (x86_64), in Arch Linux |
