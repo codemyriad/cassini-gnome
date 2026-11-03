@@ -145,11 +145,10 @@ def check_presence(jobs, meeting, session=CALL):
     assert set(jobs) == set(corpus_tracks), "one job per track"
     for name, job in jobs.items():
         track = corpus_tracks[name]
-        assert "presence" in job, f"{track['id']} has no presence"
-        presence = [
-            [a + job["offsetMs"] * RATE // 1000, b + job["offsetMs"] * RATE // 1000] for a, b in job["presence"]
-        ]
-        assert presence == rows[track["id"]]["presence16k"], f"presence of {track['id']}"
+        # D63 #3 compares in session samples; the child's meter shifts the same ranges.
+        assert "presence" not in job, "presence is sent once"
+        assert "sessionPresence" in job, f"{track['id']} has no presence"
+        assert job["sessionPresence"] == rows[track["id"]]["presence16k"], f"presence of {track['id']}"
     for track in meeting.tracks:
         windows = track.ownership_windows or ((0, None),)
         extent = tracks(session)[track.id]
@@ -162,10 +161,6 @@ def check_presence(jobs, meeting, session=CALL):
 def test_prepared_jobs_carry_the_expected_presence_and_ownership(corpus):  # noqa: F811
     for session in SESSIONS:
         check_presence(corpus.jobs[session], corpus.meetings[session], session)
-        # D63 #3 compares in session samples: the same presence from the session origin.
-        for name, job in corpus.jobs[session].items():
-            wanted = expected(session)["tracks"][by_job(session)[name]["id"]]["presence16k"]
-            assert job["sessionPresence"] == wanted, name
 
 
 # Activity and the fallback decision (G10, D63 #1) -------------------------------------------------
@@ -176,7 +171,7 @@ def metered(job):
     from cassini_talk import recognition_fallback as fallback
     from cassini_talk.speech_pipeline import audio_chunks
 
-    meter = fallback.ActivityMeter(job.get("presence"))
+    meter = fallback.ActivityMeter(fallback.track_ranges(job.get("sessionPresence"), job["offsetMs"]))
     for _block in meter.wrap(audio_chunks(job)):
         pass
     return meter
@@ -729,7 +724,7 @@ def no_ownership_mask(monkeypatch):
 def no_presence_mask(monkeypatch):
     from cassini_talk import transcription
 
-    monkeypatch.setattr(transcription, "track_presence", lambda track: None)
+    monkeypatch.setattr(transcription, "session_presence", lambda track: None)
 
 
 def no_track_floor(monkeypatch):

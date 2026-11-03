@@ -435,7 +435,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
             diagnostics.append(dict(code="unknown-offset-display-zero", track=track["id"]))
         if type(offset) not in (int, float) or not math.isfinite(offset) or offset < 0:
             raise ValueError("Invalid capture offset")
-        meter = fallback.ActivityMeter(track.get("presence"))
+        meter = fallback.ActivityMeter(fallback.track_ranges(track.get("sessionPresence"), offset))
         meters[order] = meter
         for segment in segment_ranges(
             path,
@@ -455,12 +455,17 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
     elapsed = processed = 0.0
     language = "und"
 
+    def eta():
+        factor = elapsed / processed if processed else initial_factor
+        return math.ceil((remaining * factor + extra_seconds) / 60)
+
     def emit(event):
         # Only events actually sent decide the summary language, never a
         # discarded fallback window or a replaced VAD segment.
         nonlocal language
         language = event["language"]
-        notify("progress", **event)
+        # A held event goes out after later tracks: its ETA is the one when sent.
+        notify("progress", **dict(event, etaMinutes=eta()))
 
     def recognise(order, track, segment, offset, samples, audio_end):
         nonlocal elapsed, processed, remaining
@@ -485,7 +490,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
             segment=value,
             words=words,
             language=detected,
-            etaMinutes=math.ceil((remaining * factor + extra_seconds) / 60),
+            etaMinutes=eta(),
             realtimeFactor=factor,
         )
 

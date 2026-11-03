@@ -103,15 +103,14 @@ class TimedModel:
         return dict(text=" ".join(w["word"] for w in words), language="en", words=words)
 
 
-def run(tmp_path, monkeypatch, samples, model, probability, offset=0, presence=None, session_presence=None):
+def run(tmp_path, monkeypatch, samples, model, probability, offset=0, presence=None):
+    """`presence` is in session samples, as prepare_tracks sends it."""
     monkeypatch.setattr(pipeline, "SpeechDetector", detector(probability))
     path = write(tmp_path / "track.wav", samples)
     events = []
     job = dict(id="one", path=str(path), offsetMs=offset, frames=len(samples), sampleRate=RATE)
     if presence is not None:
-        job["presence"] = presence
-    if session_presence is not None:
-        job["sessionPresence"] = session_presence
+        job["sessionPresence"] = presence
     result = pipeline.process_tracks(
         model,
         [job],
@@ -364,9 +363,7 @@ def test_a_fallback_word_clamped_to_the_end_of_presence_is_not_written(tmp_path,
     # D63 #3: G11 clamps the overrun to [38500, 38500], whose midpoint is the presence end.
     presence = [[0, 38 * RATE + RATE // 2]]
     model = TimedModel([[], [], [("two", 7.0, 7.5), ("over", 9.6, 9.9)]])
-    result, _progress, words = run(
-        tmp_path, monkeypatch, speech(40), model, 0.0, presence=presence, session_presence=presence
-    )
+    result, _progress, words = run(tmp_path, monkeypatch, speech(40), model, 0.0, presence=presence)
     assert diagnostic(result, "few-words-fallback")["used"] and model.calls == 3
     assert [(w["text"], w["startMs"], w["endMs"]) for w in words] == [("two", 36000, 36500)]
 
@@ -377,9 +374,7 @@ def test_vad_words_outside_presence_are_not_written_or_counted(tmp_path, monkeyp
     # D63 #3: the twelve VAD words in the gap range are dropped before FEW_WORDS, so the fallback still fires.
     presence = [[0, 21 * RATE], [22 * RATE, 40 * RATE]]
     scripted(monkeypatch, {"track.wav": [[21000 + 80 * n, 21050 + 80 * n] for n in range(12)]})
-    result, _progress, words = run(
-        tmp_path, monkeypatch, speech(40), RunModel(), 1.0, presence=presence, session_presence=presence
-    )
+    result, _progress, words = run(tmp_path, monkeypatch, speech(40), RunModel(), 1.0, presence=presence)
     row = diagnostic(result, "few-words-fallback")
     assert row["vadWords"] == 0 and row["used"]
     assert words and not [w for w in words if 21000 <= w["startMs"] < 22000]
@@ -442,7 +437,7 @@ def test_emitted_fallback_words_stay_in_time_order_across_events(tmp_path, monke
         assert all(w["startMs"] >= event["segment"]["startSample"] * 1000 // RATE for w in event["words"])
 
 
-def test_prepare_tracks_sends_presence_as_track_relative_sample_ranges(tmp_path):
+def test_prepare_tracks_sends_presence_once_as_session_sample_ranges(tmp_path):
     import json
     from dataclasses import replace
 
@@ -462,8 +457,11 @@ def test_prepare_tracks_sends_presence_as_track_relative_sample_ranges(tmp_path)
     (meeting,) = LibraryScanner(tmp_path).scan().meetings
     assert meeting.tracks[0].gaps == gaps
     (job,), _speakers = prepare_tracks(meeting)
-    # Sample 0 is the track's offset (1000 ms); the gap is [1250 ms, 1500 ms).
-    assert job["offsetMs"] == 1000 and job["presence"] == [[0, 4000], [8000, 16000]]
+    # The track starts at 1000 ms; the gap is [1250 ms, 1500 ms). The child's
+    # meter counts from the track's own sample 0.
+    assert job["offsetMs"] == 1000 and job["sessionPresence"] == [[16000, 20000], [24000, 32000]]
+    assert "presence" not in job
+    assert fallback.track_ranges(job["sessionPresence"], job["offsetMs"]) == [[0, 4000], [8000, 16000]]
 
     # Without stored ranges the whole extent is unknown, so all of it counts.
     del stored["tracks"][0]["gaps"]
@@ -471,9 +469,131 @@ def test_prepare_tracks_sends_presence_as_track_relative_sample_ranges(tmp_path)
     (meeting,) = LibraryScanner(tmp_path).scan().meetings
     assert meeting.tracks[0].gaps is None
     (job,), _speakers = prepare_tracks(meeting)
-    assert job["presence"] == [[0, 16000]]
+    assert job["sessionPresence"] == [[16000, 32000]]
 
     # Without a known offset nothing can be placed: no restriction is sent.
     unplaced = replace(meeting, tracks=tuple(replace(t, start_offset_ms=None) for t in meeting.tracks))
     (job,), _speakers = prepare_tracks(unplaced)
-    assert "presence" not in job
+    assert "sessionPresence" not in job
+
+
+def test_the_child_rounds_a_fractional_track_shift_inward():
+    # 1000.03 ms is session sample 16000.48: each edge moves inside present time.
+    assert fallback.track_ranges([[16010, 32000]], 1000.03) == [[10, 15999]]
+    assert fallback.track_ranges([[16000, 16001], [17000, 18000]], 1000.03) == [[1000, 1999]]
+    assert fallback.track_ranges(None, 1000.03) is None
+
+
+def test_prepare_tracks_sends_many_gap_ranges_once(tmp_path):
+    import json
+
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.recording_session import RecordingSession
+    from cassini_talk.transcription import prepare_tracks
+
+    session = RecordingSession(tmp_path)
+    session.add_track("a", "Guest", "remote", 48000, 1)
+    for second in range(4):
+        session.append("a", b"\x01\x00" * 48000, 1000 + 1000 * second)
+    session.finish()
+    manifest = session.directory / "session.json"
+    stored = json.loads(manifest.read_text())
+
+    def job(gaps):
+        stored["tracks"][0]["gaps"] = gaps
+        manifest.write_text(json.dumps(stored))
+        (meeting,) = LibraryScanner(tmp_path).scan().meetings
+        (value,), _speakers = prepare_tracks(meeting)
+        return value
+
+    # SPEC's budget of 1000 gap ranges must not cost the 512 KiB request twice.
+    gaps = [dict(atMs=1000.5 + 3 * n, durationMs=1.25, frames=60, kind="jump") for n in range(1000)]
+    full, plain = job(gaps), job([])
+    assert len(full["sessionPresence"]) == 1001
+    assert len(json.dumps(full)) - len(json.dumps(plain)) <= len(json.dumps(full["sessionPresence"]))
+
+
+def interleaved(tmp_path, monkeypatch, script, model=None):
+    """Tracks x0, y1 and x2, 100 s apart; x0 and x2 are one speaker, 16.64 s active together."""
+    from corpus_support import scripted
+
+    monkeypatch.setattr(pipeline, "SpeechDetector", detector(1.0))
+    scripted(monkeypatch, {name: [[a, a + 50] for a in starts] for name, starts in script.items()})
+    jobs = [
+        dict(id=name, path=str(write(tmp_path / name, speech(20))), offsetMs=index * 100000, speaker=speaker)
+        for index, (name, speaker) in enumerate([("x0.wav", "X"), ("y1.wav", "Y"), ("x2.wav", "X")])
+    ]
+    for job in jobs:
+        job.update(frames=20 * RATE, sampleRate=RATE)
+    events = []
+    result = pipeline.process_tracks(
+        model or RunModel(), jobs, None, lambda kind, **values: events.append(dict(type=kind, **values))
+    )
+    progress = [event for event in events if event["type"] == "progress"]
+    return result, progress
+
+
+def scripted_words(script):
+    return sorted(f"{name}:{a}-{a + 50}" for name, starts in script.items() for a in starts)
+
+
+def test_a_rejoined_speaker_releases_every_held_word_once_it_has_enough(tmp_path, monkeypatch):
+    # D63 #1: six words on each of X's tracks reach FEW_WORDS only together.
+    script = {
+        "x0.wav": [1000 + 100 * n for n in range(6)],
+        "y1.wav": [101000],
+        "x2.wav": [201000 + 100 * n for n in range(6)],
+    }
+    result, progress = interleaved(tmp_path, monkeypatch, script)
+    assert "fallback" not in result and diagnostic(result, "few-words-fallback") is None
+    assert sorted(w["text"] for e in progress for w in e["words"]) == scripted_words(script)
+
+
+def test_a_firing_speaker_keeps_the_vad_words_of_a_track_whose_windows_lose(tmp_path, monkeypatch):
+    # Nine VAD words on x0 need twelve; x2 has none, so its windows replace nothing.
+    script = {"x0.wav": [1000 + 100 * n for n in range(9)], "y1.wav": [101000]}
+    result, progress = interleaved(tmp_path, monkeypatch, script)
+    rows = result["fallback"]["tracks"]
+    assert [r["trackId"] for r in rows] == ["x0.wav", "x2.wav"]
+    assert rows[0]["personActiveSeconds"] == rows[1]["personActiveSeconds"] >= 15
+    assert [(r["vadWords"], r["used"]) for r in rows] == [(9, False), (0, True)], rows
+    x0 = [w["text"] for e in progress if e["trackOrder"] == 0 for w in e["words"]]
+    assert sorted(x0) == scripted_words({"x0.wav": script["x0.wav"]})
+    assert [w for e in progress if e["trackOrder"] == 2 for w in e["words"]]
+
+
+def test_tracks_whose_windows_find_nothing_each_keep_only_their_own_words(tmp_path, monkeypatch):
+    from corpus_support import Mute
+
+    script = {
+        "x0.wav": [1000 + 100 * n for n in range(5)],
+        "y1.wav": [101000],
+        "x2.wav": [201000 + 100 * n for n in range(4)],
+    }
+    result, progress = interleaved(tmp_path, monkeypatch, script, Mute())
+    rows = result["fallback"]["tracks"]
+    assert [(r["trackId"], r["used"]) for r in rows] == [("x0.wav", False), ("x2.wav", False)]
+    assert sorted(w["text"] for e in progress for w in e["words"]) == scripted_words(script)
+
+
+def test_held_events_carry_the_eta_of_when_they_are_sent(tmp_path, monkeypatch):
+    import time
+
+    # A fake clock: each segment costs five times its audio, so the ETA only falls.
+    now = [0.0]
+    original = pipeline.recognise_segment
+
+    def timed(model, path, segment, offset_ms=0, **kwargs):
+        now[0] += 5 * (segment["endSample"] - segment["startSample"]) / RATE
+        return original(model, path, segment, offset_ms, **kwargs)
+
+    monkeypatch.setattr(pipeline, "recognise_segment", timed)
+    monkeypatch.setattr(time, "monotonic", lambda: now[0])
+    script = {
+        "x0.wav": [1000 + 100 * n for n in range(6)],
+        "y1.wav": [101000],
+        "x2.wav": [201000 + 100 * n for n in range(6)],
+    }
+    _result, progress = interleaved(tmp_path, monkeypatch, script)
+    etas = [event["etaMinutes"] for event in progress]
+    assert etas[0] > 0 and etas == sorted(etas, reverse=True), etas

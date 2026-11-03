@@ -85,9 +85,14 @@ def should_auto_write(meeting, previous):
     )
 
 
-def _presence_windows(track):
-    """D52.2 present or unknown session-ms windows of a placed track, or None."""
-    from .source_ownership import presence
+def session_presence(track):
+    """D52.2 present or unknown time as merged 16 kHz [start, end) ranges from the session origin.
+
+    The job carries only this form: the child derives its track-relative
+    ranges from it and the offset (D63 #3 compares a word's midpoint here),
+    so the ranges are sent once. None when the track is not placed.
+    """
+    from .source_ownership import presence, samples
 
     if track.start_offset_ms is None:
         return None
@@ -105,13 +110,10 @@ def _presence_windows(track):
     if track.spans:
         logical["spans"] = [row(span) for span in track.spans]
     found = presence(logical, track.ownership_windows)
-    return None if found is None else (*found.present, *found.unknown)
-
-
-def _merged(ranges):
+    if found is None:
+        return None
     merged = []
-    for start, end in sorted(ranges):
-        start = max(0, start)
+    for start, end in sorted(samples((*found.present, *found.unknown))):
         if end <= start:
             continue
         if merged and start <= merged[-1][1]:
@@ -119,34 +121,6 @@ def _merged(ranges):
         else:
             merged.append([start, end])
     return merged
-
-
-def track_presence(track):
-    """D52.2 present or unknown time as merged, track-relative 16 kHz [start, end) ranges.
-
-    Sample 0 is the track's offsetMs, as in the child's audio_chunks. None when
-    the track has no known offset: the child then applies no restriction.
-    """
-    from fractions import Fraction
-
-    from .source_ownership import samples
-
-    if (windows := _presence_windows(track)) is None:
-        return None
-    origin = Fraction(str(track.start_offset_ms))
-    return _merged(samples([(a - origin, b - origin) for a, b in windows]))
-
-
-def session_presence(track):
-    """The same time as merged 16 kHz [start, end) ranges from the session origin.
-
-    D63 #3 compares a word's midpoint here: subtracting a fractional offset
-    before rounding would move the edges. None when the track is not placed.
-    """
-    from .source_ownership import samples
-
-    windows = _presence_windows(track)
-    return None if windows is None else _merged(samples(windows))
 
 
 def prepare_tracks(meeting, *, diagnostics=None, silent=None):
@@ -213,10 +187,8 @@ def prepare_tracks(meeting, *, diagnostics=None, silent=None):
                 if span.start_offset_ms is None
             ]
             tracks[-1]["ownershipWindows"] = [list(window) for window in union(owned[0], assumed)]
-        # D52.2: the G10 fallback measures and windows only present or unknown time.
-        if (presence := track_presence(track)) is not None:
-            tracks[-1]["presence"] = presence
-        # D63 #3: the child writes only words whose midpoint lies in this time.
+        # D52.2: the G10 fallback measures and windows only present or unknown time;
+        # D63 #3: the child writes only words whose midpoint lies in it.
         if (present := session_presence(track)) is not None:
             tracks[-1]["sessionPresence"] = present
         if track.spans:

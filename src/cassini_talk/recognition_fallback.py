@@ -10,6 +10,7 @@ decoded audio; padding and ownership masking are zeros, so they are inactive.
 
 import math
 import unicodedata
+from fractions import Fraction
 
 import numpy as np
 
@@ -39,6 +40,28 @@ WORD_POST_MS = 200
 DUPLICATE_MS = 400
 SINGLETON_MS = 200
 SHIFT_MS = 100
+
+
+def track_ranges(presence, offset_ms):
+    """Session-sample presence as track-relative 16 kHz ranges; sample 0 is offsetMs.
+
+    A fractional shift rounds each edge inward, as the corpus's ranges16 does,
+    so a frame counts only when it lies wholly inside present time. None, a
+    track that is not placed, stays None.
+    """
+    if presence is None:
+        return None
+    shift = Fraction(str(offset_ms or 0)) * RATE / 1000
+    merged = []
+    for start, end in presence:
+        start, end = max(0, math.ceil(start - shift)), math.floor(end - shift)
+        if start >= end:
+            continue
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return merged
 
 
 class ActivityMeter:
