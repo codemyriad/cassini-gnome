@@ -143,6 +143,19 @@ class SessionEventsTests(unittest.TestCase):
             self.session['events'] = events
             with self.assertRaises((ValueError,ValidationError)): annotations.validate(self.session)
 
+    def test_restore_after_a_fallback_that_never_committed(self):
+        # The call returned before its fallback committed (SPEC-CONTROL "Return before the
+        # fallback commits"): none/lost, then browser/restored with no system track between.
+        restore = dict(type='othersSource', atMs=2, source='browser', reason='restored')
+        lost = dict(type='othersSource', atMs=0, source='none', reason='lost')
+        self.session['events'] = [lost, restore]
+        annotations.validate(self.session)
+        # Only a loss: Others turned off (none/user) is not a fallback, nor is a lost Others side.
+        for events in [[dict(lost, reason='user'), restore],
+                       [lost, dict(type='selection',atMs=1,me=True,others=False,reason='user'),restore]]:
+            self.session['events'] = events
+            with self.assertRaises(ValueError): annotations.validate(self.session)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -31,6 +31,14 @@ The hand-written expected file checks timeline, roles and final end. Schema and
 semantic checks reject illegal restoration, duplicate/nonterminal end and unsaved
 state with end. Policy deadlines live in `control/call-lifecycle-vectors.json`.
 
+`--case uncommitted-return` is the same call returning before its fallback
+committed: the browser loss writes none/lost at 1000 ms, no system track starts
+(the fallback was not asked for yet, or was still waiting, for instance on the OS
+permission prompt), and
+browser/restored with a new span of the same opaque source follows at 3500 ms
+(SPEC-CONTROL "Return before the fallback commits"). Restored is legal after
+none/lost as after system/missing or system/lost; none/user is not a fallback.
+
 Production-shaped speech lives elsewhere. `../multistream/` holds the D52 corpus,
 `corpus.json` plus `make.py`. It has real pinned speech, a late remote, sparse and
 gapped spans, a real D49 switch and lost/restored seams with physical overlap, bleed in

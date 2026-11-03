@@ -32,8 +32,13 @@ def validate(document):
         if event['type'] == 'selection':
             others = event['others']
         elif event['type'] == 'othersSource':
-            if event['reason'] == 'restored' and (not others or source is None or
-                    source['source'] != 'system' or source['reason'] not in ('missing', 'lost')):
+            # A fallback that committed (system/missing, system/lost), or a browser loss whose
+            # fallback never committed (not asked yet, or still starting) because the call
+            # returned first (none/lost).
+            fallback = source is not None and (
+                source['source'] == 'system' and source['reason'] in ('missing', 'lost') or
+                source['source'] == 'none' and source['reason'] == 'lost')
+            if event['reason'] == 'restored' and (not others or not fallback):
                 raise ValueError('restored needs an enabled others side and a preceding fallback')
             if event['reason'] == 'callConnected' and (not others or source is None or
                     source['source'] != 'system' or source['reason'] != 'missing' or event['source'] != 'browser'):
@@ -76,6 +81,7 @@ def check_fixtures():
         ('fallback', 'session.json', 'expected.json'),
         ('browser-off-on', 'browser-off-on.session.json', 'browser-off-on.expected.json'),
         ('call-return', 'call-return.session.json', 'call-return.expected.json'),
+        ('uncommitted-return', 'uncommitted-return.session.json', 'uncommitted-return.expected.json'),
     ]:
         document = json.loads((FIXTURES / manifest_name).read_text())
         expected = json.loads((FIXTURES / expected_name).read_text())
