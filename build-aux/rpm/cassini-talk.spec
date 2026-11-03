@@ -66,7 +66,7 @@ ExclusiveArch:  x86_64
 # packages the app does not use (protobuf, flatbuffers, sympy extras).
 %global __requires_exclude_from ^%{_libdir}/cassini-talk/python/onnxruntime-[^/]*\\.dist-info/.*$
 
-BuildRequires:  meson >= 1.0
+BuildRequires:  meson >= 1.3
 BuildRequires:  python3 >= 3.11
 BuildRequires:  desktop-file-utils
 BuildRequires:  gettext
@@ -195,6 +195,9 @@ echo "%%dir %{_datadir}/cassini-talk" >> %{name}.lang
 
 %check
 %meson_test
+# CI keeps the test logs (durations, junit): build-aux/rpm/build.sh defines
+# cassini_test_logs, since rpm >= 4.20 removes the build directory afterwards.
+%{?cassini_test_logs:cp -a %{_vpath_builddir}/meson-logs/. %{cassini_test_logs}/}
 # Catches anything that changed the installed bundle, such as stripping.
 python3 whistle/verify.py %{buildroot}%{_datadir}/cassini-talk/whistle
 python3 whistle/verify.py --onnxruntime %{buildroot}%{_libdir}/cassini-talk/python

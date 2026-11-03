@@ -7,7 +7,8 @@
 # Each image: install deps, meson setup/test/install, then check that GTK
 # >= 4.18, libadwaita >= 1.8 and all playback and recording GStreamer elements
 # load from the installed tree. Prints a PASS/FAIL table; exits 1 if any failed.
-# Logs go to a temporary directory (printed at the end), not the source tree.
+# Logs go to a temporary directory (printed at the end), not the source tree;
+# with CASSINI_TEST_LOGS set, each image's meson-logs also go there.
 set -eu
 case ${1:-} in -h|--help) sed -n '2,10s/^# \{0,1\}//p' "$0"; exit 0 ;; esac
 cd "$(dirname "$0")/.."
@@ -24,6 +25,13 @@ LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/cassini-check-distros.XXXXXX")
 INNER='
 set -eu
 step() { printf "\\n==> %s\\n" "$1"; }
+# Keep the Meson test logs, also when a test fails (test_log_dir).
+save_logs() {
+  [ -d /logs ] || return 0
+  [ ! -d /build/b/meson-logs ] || cp -a /build/b/meson-logs/. /logs/
+  chown -R "$(stat -c %u:%g /logs)" /logs
+}
+trap "save_logs || true" EXIT
 step "copy source"
 mkdir -p /build/src
 cp -a /in/. /build/src
@@ -42,11 +50,10 @@ step "meson setup"
 meson setup /build/b --prefix=/usr
 
 step "meson test"
-meson test -C /build/b --list > /build/tests.txt
-cat /build/tests.txt
-for t in pytest browser-protocol-conformance browser-control-conformance "Validate desktop file" "Validate appstream file" "Validate schema file"; do
-  grep -q "$t" /build/tests.txt || { echo "missing test (tool not installed?): $t"; exit 1; }
-done
+# Every test registered, from the introspection JSON (the --list text
+# differs between Meson releases): pytest-1 .. pytest-N, conformance, Validate.
+meson introspect /build/b --tests > /build/tests.json
+python3 build-aux/ci/check_meson_tests.py /build/tests.json
 meson test -C /build/b --print-errorlogs
 
 step "meson install"
@@ -106,8 +113,9 @@ for image in "$@"; do
   log="$LOGDIR/$(image_slug "$image").log"
   echo
   echo "################ $image"
+  logs=$(test_log_dir "distro-$(image_slug "$image")")
   { if container_run -e DEBIAN_FRONTEND=noninteractive -v "$PWD":/in:ro$Z \
-         "$image" sh -c "$INNER"; then
+         ${logs:+-v "$logs:/logs:rw$Z"} "$image" sh -c "$INNER"; then
       echo 0 > "$log.status"
     else
       echo $? > "$log.status"

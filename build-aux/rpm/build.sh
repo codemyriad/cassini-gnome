@@ -20,8 +20,20 @@ build-aux/sherpa-cache.sh
 mkdir -p dist
 # Per base image, so parallel builds (make -j packages) do not swap names.
 name_file=.rpm-name-$(image_slug "$BASE")
-container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z "$BASE" sh -ec '
+logs=$(test_log_dir "rpm-$(image_slug "$BASE")")
+container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z ${logs:+-v "$logs:/logs:rw$Z"} "$BASE" sh -ec '
   top=/build/rpmbuild src=/build/cassini-talk-$VERSION
+  # Keep the Meson test logs (test_log_dir). After a successful build rpm
+  # >= 4.20 removes the build directory, so %check copies them itself
+  # (cassini_test_logs); this covers a failed %check.
+  save_logs() {
+    [ -d /logs ] || return 0
+    find $top/BUILD -type d -name meson-logs -exec cp -a {}/. /logs/ \;
+    chown -R "$(stat -c %u:%g /logs)" /logs
+  }
+  trap "save_logs || true" EXIT
+  set --
+  [ ! -d /logs ] || set -- --define "cassini_test_logs /logs"
   mkdir -p $top/SOURCES $top/SPECS "$src"
   spec=$top/SPECS/cassini-talk.spec
   install -m 644 /in/build-aux/rpm/cassini-talk.spec "$spec"
@@ -71,7 +83,7 @@ for info in pins[\"onnxruntime\"][\"wheels\"].values():
     dist=.$(. /etc/os-release; echo "$ID${VERSION_ID:+.$VERSION_ID}" | tr -- "-" "_")
     case $dist in .opensuse_tumbleweed*) dist=.opensuse_tumbleweed ;; esac
   fi
-  rpmbuild -ba --define "_topdir $top" --define "dist $dist" "$spec"
+  rpmbuild -ba --define "_topdir $top" --define "dist $dist" "$@" "$spec"
   if command -v rpmlint >/dev/null 2>&1; then
     rpmlint -r /in/build-aux/rpm/cassini-talk-rpmlintrc $top/RPMS/x86_64/*.rpm $top/SRPMS/*.rpm || true
   fi

@@ -30,7 +30,15 @@ build-aux/whistle-cache.sh
 build-aux/sherpa-cache.sh
 container_build -q -f build-aux/deb/Dockerfile --build-arg BASE="$BASE" -t "$TAG" debian
 mkdir -p dist
-container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" -e DEB="$DEB" -e OUT="$OUT" "$TAG" sh -ec '
+logs=$(test_log_dir "deb-$(image_slug "$BASE")")
+container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" ${logs:+-v "$logs:/logs:rw$Z"} -e DEB="$DEB" -e OUT="$OUT" "$TAG" sh -ec '
+  # Keep the Meson test logs, also when a test fails (test_log_dir).
+  save_logs() {
+    [ -d /logs ] || return 0
+    for d in /build/src/obj-*/meson-logs; do [ ! -d "$d" ] || cp -a "$d/." /logs/; done
+    chown -R "$(stat -c %u:%g /logs)" /logs
+  }
+  trap "save_logs || true" EXIT
   mkdir -p /build/src && cd /build/src
   # Copy the tree without build output, caches and VCS data.
   tar -C /in -cf - --exclude=./.git --exclude=./.venv --exclude="./_build*" --exclude=./_install \
