@@ -60,7 +60,9 @@ class PCMSource:
             self.end_frame = max(0, round(end * self.rate / 48000))
         from .source_ownership import FrameMask
 
-        self.ownership = FrameMask(getattr(track, "ownership_windows", None), self.rate)
+        self.ownership = FrameMask(
+            getattr(track, "ownership_windows", None), self.rate, getattr(track, "ownership_offset_ms", 0)
+        )
         self.cursor = 0
         self.lock = threading.Lock()
         self.src = Gst.ElementFactory.make("appsrc", None)

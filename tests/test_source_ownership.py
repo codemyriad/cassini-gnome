@@ -3,6 +3,7 @@
 
 import array
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,13 @@ CASES = json.loads((Path(__file__).parents[1] / "browser-protocol/conformance/mu
 RESUME = json.loads(
     (Path(__file__).parents[1] / "browser-protocol/conformance/control/resume-capture-vectors.json").read_text()
 )
+
+
+@pytest.fixture(autouse=True)
+def release(tmp_path):
+    """Later suite tests need their own free space on a small test tmpfs: drop these WAVs."""
+    yield
+    shutil.rmtree(tmp_path.absolute(), ignore_errors=True)
 
 
 def resume_seam(name):
@@ -87,7 +95,7 @@ def test_browser_mic_is_not_masked_by_others_source_changes(kind):
     assert windows("remote", []) is None
 
 
-def meeting_fixture(root, case):
+def meeting_fixture(root, case, rate=48000):
     import numpy as np
 
     from cassini_talk.library import LibraryScanner
@@ -95,9 +103,9 @@ def meeting_fixture(root, case):
 
     session = RecordingSession(root, source="chromium")
     for track in case["tracks"]:
-        session.add_track(track["id"], track["id"], track["kind"], 48000, 1)
+        session.add_track(track["id"], track["id"], track["kind"], rate, 1)
         for offset in range(track["startMs"], track["endMs"], 1000):
-            count = min(1000, track["endMs"] - offset) * 48
+            count = min(1000, track["endMs"] - offset) * rate // 1000
             session.append(track["id"], np.full(count, 8192, dtype="<i2").tobytes(), offset)
     session.finish()
     session.manifest["events"] = case["events"]
@@ -155,6 +163,57 @@ def test_readers_mask_actual_overlapping_wavs_for_export_speech_diarization_and_
                 joined[at * 16 - 16 : at * 16 + 16], expected_speech[at * 16 - 16 : at * 16 + 16], atol=0.0001
             )
     assert all(path.read_bytes() == data for path, data in before.items())
+
+
+def published_and_exported(meeting):
+    np = pytest.importorskip("numpy")
+    from cassini_talk.export_audio import mixed_pcm
+    from cassini_talk.library_v2 import mixdown
+
+    session = json.loads((meeting.directory / "session.json").read_text())
+    timeline = mixdown.session_spans(meeting.directory, session)
+    published = np.concatenate(list(mixdown.mixed(timeline.spans, mixdown.total_samples(timeline.spans))))
+    return published, np.concatenate(list(mixed_pcm(meeting.tracks))), timeline
+
+
+def test_published_mix_masks_a_16_khz_span_before_resampling_as_export_does(tmp_path):
+    np = pytest.importorskip("numpy")
+    gi = pytest.importorskip("gi")
+    gi.require_version("Gst", "1.0")
+
+    meeting = meeting_fixture(tmp_path, CASES[1], rate=16000)
+    published, exported, _timeline = published_and_exported(meeting)
+    # The resampler sees the same cut at every ownership edge, so the mixes agree exactly.
+    common = min(len(published), len(exported))
+    assert np.array_equal(published[:common], exported[:common])
+    assert not np.any(published[common:]) and not np.any(exported[common:])
+
+
+def test_published_mix_gives_no_ownership_to_a_track_with_an_unplaced_empty_span(tmp_path):
+    import wave
+
+    pytest.importorskip("numpy")
+    from cassini_talk.library import LibraryScanner
+
+    meeting = meeting_fixture(tmp_path, CASES[1])
+    manifest = meeting.directory / "session.json"
+    value = json.loads(manifest.read_text())
+    (after,) = (track for track in value["tracks"] if track["id"] == "after")
+    # A rotation whose last span never received audio, so GNOME never set its offset.
+    with wave.open(str(meeting.directory / "track-after-2.wav"), "wb") as empty:
+        empty.setnchannels(1)
+        empty.setsampwidth(2)
+        empty.setframerate(48000)
+    first = {key: after[key] for key in ("file", "frames", "sampleRate", "channels", "startOffsetMs") if key in after}
+    after["spans"] = [first, dict(first, file="track-after-2.wav", frames=0, startOffsetMs=None)]
+    manifest.write_text(json.dumps(value))
+    meeting = LibraryScanner(tmp_path).scan().meetings[0]
+    scanned = {track.id: track.ownership_windows for track in meeting.tracks}
+    assert scanned["after"] is None
+    from cassini_talk.library_v2 import mixdown
+
+    timeline = mixdown.session_spans(meeting.directory, value)
+    assert {span.track: span.ownership for span in timeline.spans} == scanned
 
 
 def test_unknown_offset_is_reported_and_never_used_as_alignment_zero(tmp_path):

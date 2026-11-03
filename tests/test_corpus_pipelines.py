@@ -225,8 +225,10 @@ def test_capture_record_and_details_report_the_corpus_sources(corpus, tmp_path):
 @contextmanager
 def pipeline_run(tmp_path_factory, name, **values):
     directory = tmp_path_factory.mktemp(name)
+    # The fake child's patches end with its run, so a later run neither stacks on them nor reports into this one.
     with pytest.MonkeyPatch.context() as monkeypatch:
-        yield run_pipeline(values.pop("corpus"), monkeypatch, directory, **values)
+        run = run_pipeline(values.pop("corpus"), monkeypatch, directory, **values)
+    yield run
     shutil.rmtree(directory.absolute(), ignore_errors=True)
 
 
@@ -256,7 +258,12 @@ def overrun(corpus, tmp_path_factory):  # noqa: F811
 
 
 def check_no_words(run, session=CALL):
-    """No word in a gap or in time its track does not own (expected noWords), none outside presence."""
+    """No word in a gap or in time its track does not own (expected noWords), none outside presence.
+
+    The gap ranges are digital zero in the WAVs, where RunModel never writes a
+    word, so only the owned-time ranges that carry audio can fail here; the
+    ownership-noWords mutant below shows they do.
+    """
     rows = expected(session)["tracks"]
     for name, words in run.words.items():
         track = by_job(session)[name]
@@ -274,6 +281,9 @@ def check_fallback(run, session=CALL):
     rows = expected(session)["tracks"]
     breakdown = run.diagnostics("no-words-breakdown")
     used = run.diagnostics("few-words-fallback")
+    assert breakdown, "no breakdown diagnostics"
+    # Without VAD words, a track can only have words through the fallback, which reports its breakdown.
+    assert set(run.words) <= set(breakdown), f"words without a breakdown: {set(run.words) - set(breakdown)}"
     floor_ms = fallback.FLOOR_FRAMES * fallback.FRAME * 1000 // fallback.RATE
     for name, row in breakdown.items():
         track = by_job(session)[name]
@@ -302,6 +312,13 @@ def test_vad_rejecting_everything_falls_back_only_where_the_track_is_active(reje
     fallen = {name for name, row in reject_all.diagnostics("few-words-fallback").items() if row["used"]}
     # G10 gap (not fixed here): no remote span reaches MIN_ACTIVE_SECONDS, so only my track falls back.
     assert {by_job()[name]["kind"] for name in fallen} == {"microphone"}
+
+
+def test_the_fallback_check_fails_without_breakdown_diagnostics(reject_all):
+    from dataclasses import replace
+
+    with pytest.raises(AssertionError, match="no breakdown diagnostics"):
+        check_fallback(replace(reject_all, summary=dict(reject_all.summary, diagnostics=[])))
 
 
 def test_vad_accepting_everything_gives_words_only_in_owned_presence(accept_all):
@@ -385,8 +402,9 @@ def check_rejoin(run, corpus, session=CALL):  # noqa: F811
     from cassini_talk.diarization_audio import rejoin
 
     groups = corpus.groups[session]
-    eligible = {key for key, group in groups.items() if group["eligible"]}
-    rejoined = {speaker(person(by_job(session)[job_id(ids[0])])) for ids in run.rejoined}
+    eligible = sorted(key for key, group in groups.items() if group["eligible"])
+    # Each eligible group is rejoined once by this run, and only those.
+    rejoined = sorted(speaker(person(by_job(session)[job_id(ids[0])])) for ids in run.rejoined)
     assert rejoined == eligible, "rejoined groups"
     for key, group in groups.items():
         if key == "me":
@@ -411,6 +429,21 @@ def check_rejoin(run, corpus, session=CALL):  # noqa: F811
 
 def test_rejoin_keeps_each_group_silent_outside_its_presence(accept_all, corpus):  # noqa: F811
     check_rejoin(accept_all, corpus)
+
+
+def test_module_runs_leave_no_fake_child_patched_behind(reject_all, accept_all, overrun):
+    import os
+    import sys
+    import types
+
+    from cassini_talk import diarization_audio
+    from cassini_talk import speech_pipeline as pipeline
+
+    for value in (pipeline.SpeechDetector, pipeline.resampled_chunks, diarization_audio.rejoin):
+        assert "<locals>" not in value.__qualname__, f"{value.__qualname__} still patched"
+    assert not isinstance(sys.modules.get("cassini_talk.nemotron"), types.SimpleNamespace), "fake diarizer"
+    for run in (reject_all, accept_all, overrun):
+        assert os.environ.get("XDG_CACHE_HOME") != str(run.meeting.directory.parents[1] / "cache")
 
 
 # Published mix and export (G8) --------------------------------------------------------------------
@@ -523,6 +556,12 @@ def no_mix_ownership(monkeypatch):
     monkeypatch.setattr(mixdown, "windows", lambda kind, events: None)
 
 
+def no_words_of(corpus, monkeypatch, tmp_path):  # noqa: F811
+    # The tracks that own only part of their span, where noWords carries audio.
+    partial = {i for i, t in tracks().items() if expected()["tracks"][i]["ownership"] != [[t["startMs"], t["endMs"]]]}
+    check_no_words(run_pipeline(corpus, monkeypatch, tmp_path, keep=partial))
+
+
 def mix_of(corpus, monkeypatch, tmp_path):  # noqa: F811
     meeting = corpus.meetings[CALL]
     mix, _timeline = published(meeting)
@@ -555,13 +594,14 @@ def clamp_of(corpus, monkeypatch, tmp_path):  # noqa: F811
     ("mutant", "check", "message"),
     [
         (no_ownership_mask, once_of, "written twice"),
+        (no_ownership_mask, no_words_of, " word in "),
         (no_ownership_mask, mix_of, "published mix differs"),
         (no_presence_mask, presence_of, "has no presence"),
         (no_track_floor, fallback_of, " (active|has a floor)"),
         (no_word_clamp, clamp_of, "word outside its span"),
         (no_mix_ownership, mix_of, "published mix differs"),
     ],
-    ids=["ownership-words", "ownership-mix", "presence", "track-floor", "clamp", "mix-ownership"],
+    ids=["ownership-words", "ownership-noWords", "ownership-mix", "presence", "track-floor", "clamp", "mix-ownership"],
 )
 def test_each_mutant_fails_its_named_check(corpus, monkeypatch, tmp_path, mutant, check, message):  # noqa: F811
     check(corpus, monkeypatch, tmp_path)  # the baseline passes

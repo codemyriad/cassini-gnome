@@ -25,8 +25,9 @@ Timeline contract (§4.3), as GNOME reads session.json:
 - D52/P8 source ownership: a span sounds only inside its track's ownership
   windows (source_ownership.windows over the session events, as the Library
   scanner computes them), masked on the timeline as export, speech and rejoin
-  mask it. A D49 or seam overlap is mixed once. The PCM and the x track map are
-  unchanged.
+  mask it; a span without clock anchors is also masked at its source rate before
+  resampling, as export's reader does. A D49 or seam overlap is mixed once. The
+  PCM and the x track map are unchanged.
 
 Mixdown (§4.4): each span is decoded to mono 48 kHz float by the export's reader
 (export_audio.track_pcm: one GStreamer audioconvert/audioresample path for WAV and
@@ -196,10 +197,11 @@ def session_spans(directory, manifest):
         if not isinstance(track, dict) or not isinstance(track.get("id"), str):
             raise ValueError("invalid-session-track")
         values = track["spans"] if isinstance(track.get("spans"), list) else [track]
-        found, map_spans = [], []
+        found, map_spans, unplaced = [], [], False
         for value in values:
             info = track_source.inspect(directory, value)
             offset = value.get("startOffsetMs")
+            unplaced = unplaced or offset is None
             if offset is not None and (
                 type(offset) not in (int, float) or not math.isfinite(offset) or not 0 <= offset <= MAX_OFFSET_MS
             ):
@@ -232,9 +234,9 @@ def session_spans(directory, manifest):
             entry.update({key: track[key] for key in TRACK_COPY if key in track})
             records.append(dict(entry, spans=map_spans))
         if found:
-            # Like the scanner, a track with an unplaced span gets no ownership.
+            # Like the scanner, a track with an unplaced span, even an empty one, gets no ownership.
             ownership = windows(_kind(track, found[0].info), events)
-            if ownership is not None and not any(span.offset_assumed for span in found):
+            if ownership is not None and not unplaced:
                 found = [replace(span, ownership=ownership) for span in found]
             spans.extend(found)
         else:
@@ -264,6 +266,9 @@ class Reader:
             channels=info.channels,
             start_offset_ms=0,
         )
+        if span.ownership is not None and Mapping(span).knots is None:
+            # Export masks at the source rate before resampling; do the same in span time.
+            track.ownership_windows, track.ownership_offset_ms = span.ownership, span.start_ms
         self.np = np
         self.length = span.length
         self.blocks = blocks if blocks is not None else track_pcm(track, cancel)
