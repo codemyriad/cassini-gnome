@@ -133,7 +133,8 @@ def test_export_and_playback_mask_after_the_empty_gap(meeting):
 
     wanted = masked(tone())
     exported = np.concatenate(list(track_pcm(meeting.tracks[0])))
-    assert np.array_equal(exported, (wanted.astype(np.float32) / 32768)[: len(exported)])
+    assert len(exported) == len(wanted)
+    assert np.array_equal(exported, wanted.astype(np.float32) / 32768)
     assert np.array_equal(np.concatenate(list(mixed_pcm(meeting.tracks))), exported)
     played, _pts, _duration = capture(meeting.tracks)
     played = np.frombuffer(played.tobytes(), dtype="<i2")

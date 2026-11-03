@@ -198,14 +198,66 @@ def check_constants(fallback, shared):
     assert fallback.WINDOW == C["WINDOW_MS"] * RATE // 1000 == shared.WINDOW, "window"
     assert fallback.OVERLAP == C["OVERLAP_MS"] * RATE // 1000 == shared.OVERLAP, "overlap"
     assert Fraction(str(fallback.MIN_WINDOW_ACTIVE_SECONDS)) * 1000 == C["MIN_WINDOW_ACTIVE_MS"], "window active"
-    needed = math.ceil(fallback.MIN_WINDOW_ACTIVE_SECONDS * fallback.RATE / fallback.FRAME)
-    assert needed == shared.MIN_WINDOW_FRAMES == 16, "window active frames"
+    assert fallback.MIN_WINDOW_FRAMES == shared.MIN_WINDOW_FRAMES == 16, "window active frames"
+    edge = fallback.MIN_WINDOW_FRAMES * shared.FRAME_MS
+    assert edge - shared.FRAME_MS < C["MIN_WINDOW_ACTIVE_MS"] <= edge, "window active time"
+    assert fallback.AUDIBLE_DBFS == shared.AUDIBLE_DBFS == -90, "audible dBFS"
 
 
 def test_gnome_fallback_constants_match_the_corpus_and_the_oracle():
     from cassini_talk import recognition_fallback as fallback
 
     check_constants(fallback, oracle())
+
+
+# Level codes (dBFS + 120; 255 is digital silence) at the rules' edges: the
+# -90 dBFS audible cut, the 312-frame floor minimum, the 10th-percentile index
+# and a run exactly at the threshold.
+EDGES = {
+    "311-audible-and-one-at-minus-90": [60] * 311 + [30] + [255] * 4,
+    "311-audible-and-one-at-minus-89": [60] * 311 + [31],
+    "312-audible": [60] * 312,
+    "311-audible": [60] * 311,
+    "percentile-index": [40] * 31 + [41] + [50] * 288,
+    "run-at-the-threshold": [60] * 312 + [72] * 5 + [60] + [71] * 5 + [60] + [72] * 4,
+}
+
+
+@pytest.mark.parametrize("codes", EDGES.values(), ids=EDGES.keys())
+def test_g10_floor_and_runs_match_the_oracle_at_their_edges(codes):
+    from cassini_talk import recognition_fallback as fallback
+
+    shared = oracle()
+    meter = fallback.ActivityMeter()
+    meter.codes, meter.samples = bytearray(codes), len(codes) * fallback.FRAME
+    values = [None if code == fallback.SILENT else code - 120.0 for code in codes]
+    floor, limit = shared.threshold(values, [True] * len(values))
+    assert meter.threshold_db() == (floor, limit)
+    assert meter.active() == shared.runs([v is not None and v >= limit for v in values])
+
+
+def test_g10_edge_cases_hit_both_sides_of_each_rule():
+    """The oracle's answers on EDGES, so each case above sits where a rule changes."""
+    shared = oracle()
+
+    def floor(name):
+        values = [None if code == 255 else code - 120.0 for code in EDGES[name]]
+        return shared.threshold(values, [True] * len(values))
+
+    assert floor("311-audible-and-one-at-minus-90") == floor("311-audible") == (None, -50.0)
+    assert floor("311-audible-and-one-at-minus-89") == floor("312-audible") == (-60.0, -48.0)
+    assert floor("percentile-index") == (-79.0, -50.0)
+    assert floor("run-at-the-threshold") == (-60.0, -48.0)
+
+
+@pytest.mark.parametrize("frames", [15, 16])
+def test_a_window_needs_the_oracles_active_frames(frames):
+    from cassini_talk import recognition_fallback as fallback
+
+    total = fallback.WINDOW
+    active = [True] * frames + [False] * (total // fallback.FRAME - frames)
+    fires = frames >= oracle().MIN_WINDOW_FRAMES
+    assert fallback.active_windows(total, active) == ([(0, total)] if fires else [])
 
 
 def metered(job):

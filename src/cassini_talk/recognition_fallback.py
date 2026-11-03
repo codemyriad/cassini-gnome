@@ -21,9 +21,11 @@ MIN_ACTIVE_SECONDS = 15
 WINDOW = 15 * RATE
 OVERLAP = RATE // 2
 MIN_WINDOW_ACTIVE_SECONDS = 0.5
+MIN_WINDOW_FRAMES = math.ceil(MIN_WINDOW_ACTIVE_SECONDS * RATE / FRAME)  # 16 frames, 512 ms
 ACTIVE_DBFS = -50.0
 FLOOR_MARGIN_DB = 12.0
 FLOOR_PERCENTILE = 0.10
+AUDIBLE_DBFS = -90.0  # frames at or below this never count toward the noise floor
 FLOOR_FRAMES = 10 * RATE // FRAME  # non-silent frames needed to estimate a noise floor
 MIN_RUN_FRAMES = 5  # active runs shorter than 160 ms (clicks, taps) are not speech
 SILENT = 255  # frame code for digital silence (zero after mean removal)
@@ -122,7 +124,7 @@ class ActivityMeter:
         levels = sorted(
             code
             for code, inside in zip(self.codes, self.inside(), strict=True)
-            if inside and code != SILENT and code - 120 > -90
+            if inside and code != SILENT and code - 120 > AUDIBLE_DBFS
         )
         if len(levels) < FLOOR_FRAMES:
             return None, ACTIVE_DBFS
@@ -174,13 +176,12 @@ def active_windows(total, active, presence=None):
     D52.2: windows are laid separately inside each presence range, so neither
     a window nor the G11 clamp to its end ever crosses a gap range.
     """
-    needed = math.ceil(MIN_WINDOW_ACTIVE_SECONDS * RATE / FRAME)
     intervals = [(0, total)] if presence is None else [(max(0, a), min(total, b)) for a, b in presence]
     windows = []
     for left, right in intervals:
         for start, end in window_bounds(right - left):
             start, end = left + start, left + end
-            if sum(active[start // FRAME : math.ceil(end / FRAME)]) >= needed:
+            if sum(active[start // FRAME : math.ceil(end / FRAME)]) >= MIN_WINDOW_FRAMES:
                 windows.append((start, end))
     return windows
 

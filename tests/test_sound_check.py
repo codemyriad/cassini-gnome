@@ -122,6 +122,12 @@ def test_a_steady_sound_over_10_s_is_still_working(tmp_path, signal):
     assert judge(tmp_path / "a.wav") == WORKING
 
 
+def test_a_sound_exactly_at_minus_50_dbfs_is_working(tmp_path):
+    # The oracle's loud frame is level >= ACTIVE_DBFS, so the limit itself counts.
+    write_wav(tmp_path / "a.wav", tone(-50))
+    assert judge(tmp_path / "a.wav") == WORKING
+
+
 def test_the_judge_constants_match_the_corpus_and_the_oracle():
     """Without numpy too: sound_check's repeated G10 rule against corpus.json and activity.py."""
     import importlib.util
@@ -139,8 +145,8 @@ def test_the_judge_constants_match_the_corpus_and_the_oracle():
 
 @pytest.mark.parametrize(
     "signal",
-    [tone(-20), tone(-49), tone(-51), noise(-40), noise(-62), [0.0] * RATE],
-    ids=["tone-20", "tone-49", "tone-51", "noise-40", "noise-62", "silence"],
+    [tone(-20), tone(-49), tone(-50), tone(-51), noise(-40), noise(-62), [0.0] * RATE],
+    ids=["tone-20", "tone-49", "tone-50", "tone-51", "noise-40", "noise-62", "silence"],
 )
 def test_the_judge_agrees_with_the_activity_meter(tmp_path, signal):
     """sound_check repeats ActivityMeter's rule without numpy; both give the same answer."""
