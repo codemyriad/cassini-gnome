@@ -253,8 +253,22 @@ def speaker_gap_ranges(tracks, *, silent=(), merges=None):
     for row in separated:
         result.setdefault(row["speaker"], []).extend(gap_ranges(row.get("gaps")))
     for source, target in (merges or {}).items():
-        result.setdefault(target, []).extend(own_gap_ranges(result, source))
-    return {speaker: tuple(sorted(set(ranges))) for speaker, ranges in result.items() if ranges}
+        # A `<group>~n` target keeps its group's ranges as well.
+        result[target] = [*own_gap_ranges(result, target), *own_gap_ranges(result, source)]
+    return {speaker: _union(ranges) for speaker, ranges in result.items() if ranges}
+
+
+def _union(ranges):
+    # Sorted ranges that do not overlap; turn_break bisects them. Joining
+    # overlapping ones changes no break (touching ones stay apart: two equal
+    # midpoints on the shared edge are in neither).
+    result = []
+    for left, right in sorted(ranges):
+        if result and left < result[-1][1]:
+            result[-1] = (result[-1][0], max(result[-1][1], right))
+        else:
+            result.append((left, right))
+    return tuple(result)
 
 
 def own_gap_ranges(ranges, speaker):
@@ -269,7 +283,10 @@ def turn_break(ranges, first, second):
     """D63 #2: whether a gap range lies between two words' midpoints.
 
     Words are (startMs, endMs) in session ms; a midpoint is 8 × (start + end)
-    in 16 kHz session samples, so it is exact.
+    in 16 kHz session samples, so it is exact. `ranges` are sorted and never
+    overlap (speaker_gap_ranges), so the first one ending after the lower
+    midpoint decides.
     """
     low, high = sorted((8 * (first[0] + first[1]), 8 * (second[0] + second[1])))
-    return any(left < high and low < right for left, right in ranges)
+    index = bisect_right(ranges, low, key=lambda value: value[1])
+    return index < len(ranges) and ranges[index][0] < high

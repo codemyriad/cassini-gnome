@@ -10,11 +10,11 @@ import stat
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from html import escape
-from itertools import groupby
+from itertools import groupby, pairwise
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from .transcript import display_items
+from .transcript import display_items, gap_break
 
 START, END = "\x01", "\x02"
 
@@ -28,6 +28,18 @@ class SearchTurn:
     @property
     def start_ms(self):
         return self.words[0].start_ms
+
+
+def search_turns(ordered, gaps):
+    """One turn per consecutive speaker run, also split at the speaker's own gap
+    ranges (D63 #2); D38.5 quotes still pair over the whole run."""
+    for speaker, words in groupby(ordered, key=lambda w: w.speaker):
+        run = tuple(words)
+        values = display_items(run)
+        edges = [0, *(i for i in range(1, len(run)) if gap_break(gaps, run[i - 1], run[i])), len(run)]
+        for first, end in pairwise(edges):
+            shown = " ".join(value.replace(START, "").replace(END, "") for value in values[first:end] if value)
+            yield SearchTurn(speaker, run[first:end], shown)
 
 
 @dataclass(frozen=True)
@@ -162,19 +174,11 @@ class SearchIndex:
                 # Scanner keeps immutable word tuples alive. Polling capture levels
                 # never hashes or rewrites an unchanged transcript.
                 old = self.signatures.get(key)
-                signature = (meeting.words, meeting.speakers, meeting.started_at_ms, meeting.origin)
+                signature = (meeting.words, meeting.speakers, meeting.started_at_ms, meeting.origin, meeting.turn_gaps)
                 if old is not None and old[0] is meeting.words and old[1:] == signature[1:]:
                     continue
                 ordered = sorted(meeting.words, key=lambda word: word.start_ms)
-                turns = tuple(
-                    SearchTurn(
-                        speaker,
-                        items,
-                        " ".join(value.replace(START, "").replace(END, "") for value in display_items(items) if value),
-                    )
-                    for speaker, words in groupby(ordered, key=lambda w: w.speaker)
-                    if (items := tuple(words))
-                )
+                turns = tuple(search_turns(ordered, meeting.turn_gaps))
                 names = {s.id: s.name.casefold() for s in meeting.speakers}
                 rows = [(t.text, key, i, names.get(t.speaker, "")) for i, t in enumerate(turns)]
                 fingerprint = hashlib.sha256(

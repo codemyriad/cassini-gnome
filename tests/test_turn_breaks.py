@@ -6,6 +6,7 @@ writedown.json `turns`); corpus turnCases run in test_corpus_pipelines.
 """
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,7 @@ from cassini_talk.export_model import markdown
 from cassini_talk.library import turn_gaps
 from cassini_talk.meeting_text import reading_turns
 from cassini_talk.portable import Word
-from cassini_talk.source_ownership import speaker_gap_ranges
+from cassini_talk.source_ownership import speaker_gap_ranges, turn_break
 from cassini_talk.transcript import SEAM_GAP_MS, build_turns
 
 ROOT = Path(__file__).parents[1] / "browser-protocol/conformance/multistream"
@@ -144,3 +145,87 @@ def test_turn_gaps_read_session_tracks_or_else_the_files_x_tracks():
     assert turn_gaps((), merges, x, ["me", "track-b"])["me"] == ((160000, 164800),)
     assert turn_gaps((), {}, {"codemyriad.io": {"tracks": [dict(stored, spans="bad")]}}) == {}
     assert turn_gaps((), {}, {}) == turn_gaps((), {}, None) == {}
+
+
+def test_unreadable_x_track_ids_cost_only_the_breaks():
+    # Two spans of one source with ids R64 cannot order: no breaks, never an error.
+    spans = [dict(file="a.wav", sampleRate=16000, frames=16000, startOffsetMs=0)]
+    for ids in ((1, 2), (None, "b")):
+        stored = [dict(kind="browser", sourceTrackId="s", spans=spans, gaps=[]) for _ in ids]
+        for row, identifier in zip(stored, ids, strict=True):
+            if identifier is not None:
+                row["id"] = identifier
+        assert turn_gaps((), {}, {"codemyriad.io": {"tracks": stored}}) == {}
+
+
+def test_the_files_own_silent_tracks_apply_to_its_x_tracks():
+    # The window, open view and a Received folder have no sender meeting.json;
+    # the file's x meeting lists its D56 silent tracks.
+    def stored(identifier, start, ms, at, duration):
+        return dict(
+            id=identifier,
+            kind="browser",
+            sourceTrackId="s",
+            gaps=[dict(atMs=at, durationMs=duration, kind="jump", frames=0)],
+            spans=[dict(file=f"{identifier}.wav", sampleRate=16000, frames=ms * 16, startOffsetMs=start)],
+        )
+
+    details = dict(recordingDetails=dict(writingDown=dict(silentTracks=["a"])))
+    x = {"codemyriad.io": {"tracks": [stored("a", 0, 30000, 5000, 3000), stored("b", 20000, 40000, 40000, 5000)]}}
+    assert turn_gaps((), details, x) == {"track-s": ((640000, 720000),)}
+    x["codemyriad.io"]["meeting"] = details
+    for metadata in ({}, dict(title="Received", speakers=[])):
+        gaps = turn_gaps((), metadata, x)
+        assert gaps == {"track-s": ((640000, 720000),)}
+        assert grouped("track-s", words_of("track-s", [(38000, 39000), (46000, 46500)]), gaps) == ([1, 1],) * 3
+        assert grouped("track-s", words_of("track-s", [(4000, 4500), (9000, 9500)]), gaps) == ([2],) * 3
+
+
+def test_a_merge_into_a_voice_keeps_its_groups_ranges():
+    # The merged-away track has ranges of its own, so the voice gets a direct entry.
+    rows = [
+        track("sys", kind="system", source=None, gaps=[dict(atMs=10000, durationMs=5000, frames=0, kind="jump")]),
+        track("b", source="b", gaps=[dict(atMs=30000, durationMs=1000, frames=0, kind="jump")]),
+    ]
+    gaps = speaker_gap_ranges(rows, merges={"track-b": "others~1"})
+    across_others, across_b = [(9000, 9500), (16000, 16500)], [(29000, 29500), (31500, 32000)]
+    for speaker in ("others~1", "others~2"):
+        assert grouped(speaker, words_of(speaker, across_others), gaps) == ([1, 1],) * 3
+    assert grouped("others~1", words_of("others~1", across_b), gaps) == ([1, 1],) * 3
+    assert grouped("others~2", words_of("others~2", across_b), gaps) == ([2],) * 3
+
+
+def test_merged_ranges_are_joined_without_changing_a_break():
+    def jump(at, duration):
+        return dict(atMs=at, durationMs=duration, frames=0, kind="jump")
+
+    gaps, other = [jump(1000, 2000), jump(6000, 1000)], [jump(2500, 1500), jump(7000, 500)]
+    rows = [track("mic", kind="microphone", source=None, gaps=gaps), track("b", source="b", gaps=other)]
+    merged = speaker_gap_ranges(rows, merges={"track-b": "me"})["me"]
+    assert merged == ((16000, 64000), (96000, 112000), (112000, 120000))
+    raw = [(16000, 48000), (40000, 64000), (96000, 112000), (112000, 120000)]
+    edges = range(0, 9000, 250)
+    for first in edges:
+        for second in edges:
+            low, high = sorted((16 * first, 16 * second))
+            expected = any(left < high and low < right for left, right in raw)
+            assert turn_break(merged, (first, first), (second, second)) is expected
+
+
+def test_a_break_looks_up_a_few_ranges_not_all_of_them():
+    # Long recordings keep many gaps; window._set_words groups on the GTK main thread.
+    class Counted(Sequence):
+        def __init__(self, values):
+            self.values, self.reads = values, 0
+
+        def __len__(self):
+            return len(self.values)
+
+        def __getitem__(self, index):
+            self.reads += 1
+            return self.values[index]
+
+    ranges = Counted(tuple((32000 * i, 32000 * i + 1600) for i in range(1, 4097)))
+    assert not turn_break(ranges, (4096 * 2000 + 200, 4096 * 2000 + 300), (4096 * 2000 + 400, 4096 * 2000 + 500))
+    assert turn_break(ranges, (1900, 1950), (2150, 2200))
+    assert ranges.reads <= 40

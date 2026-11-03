@@ -946,22 +946,27 @@ def turn_gaps(tracks, metadata, extensions, known=()):
     """D63 #2: each speaker's own gap ranges, which turns never span (presentation, D47).
 
     From the session.json tracks when the folder has them, else from the file's
-    x["codemyriad.io"].tracks. A file without `gaps` gives no ranges, so no breaks.
-    `known` lists the speaker ids its speakerMerges resolve against.
+    x["codemyriad.io"].tracks, whose D56 silent tracks the file's own
+    x["codemyriad.io"].meeting lists. A file without `gaps` gives no ranges, so
+    no breaks. `known` lists the speaker ids its speakerMerges resolve against.
     """
     from .source_ownership import speaker_gap_ranges
     from .speaker_merges import resolve_merges
     from .transcription import recorded_silent_tracks
 
     merges = resolve_merges(metadata.get("speakerMerges", []), known)
+    silent = recorded_silent_tracks(metadata)
     try:
         rows = [_track_row(track) for track in tracks]
         if not rows:
             ours = extensions.get("codemyriad.io") if isinstance(extensions, dict) else None
             stored = ours.get("tracks") if isinstance(ours, dict) else None
             rows = [_stored_row(track) for track in stored or () if isinstance(track, dict)]
-        return speaker_gap_ranges(rows, silent=recorded_silent_tracks(metadata), merges=merges)
-    except (KeyError, TypeError, ValueError):
+            stored_meeting = ours.get("meeting") if isinstance(ours, dict) else None
+            if isinstance(stored_meeting, dict):
+                silent |= recorded_silent_tracks(stored_meeting)
+        return speaker_gap_ranges(rows, silent=silent, merges=merges)
+    except (AttributeError, KeyError, TypeError, ValueError):
         # Rows this reader cannot place only cost the breaks.
         return {}
 
@@ -983,6 +988,8 @@ def _track_row(track):
 
 def _stored_row(track):
     # x tracks keep their offsets on the spans; the logical start is the earliest, unknown if any is.
+    if not isinstance(track.get("id"), str):
+        raise ValueError("track-id")
     spans = [span for span in track.get("spans") or () if isinstance(span, dict)]
     offsets = [span.get("startOffsetMs") for span in spans]
     return dict(
