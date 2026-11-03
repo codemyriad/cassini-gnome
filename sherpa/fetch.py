@@ -4,9 +4,12 @@
 
 import argparse
 import hashlib
+import http.client
 import json
 import shutil
+import sys
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 
@@ -17,11 +20,36 @@ LINUX = PINS["sherpa-onnx-go-linux"]
 FILES = {Path(name).name: (name, pin) for name, pin in LINUX["files"].items() if not name.endswith("cxx-api.so")}
 BASE = "https://raw.githubusercontent.com/codemyriad/sherpa-onnx-go-linux/" + LINUX["commit"] + "/"
 COPIED = ("LICENSE-sherpa-Apache-2.0.txt", "LICENSE-ONNXRuntime-MIT.txt", "NOTICE.md")
+ATTEMPTS = 3  # D66: a transfer that fails is retried, capped, and announced.
 
 
 def sha(path):
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def download(cache, name, url, expected):
+    request = urllib.request.Request(url, headers={"Accept-Encoding": "identity", "User-Agent": "Cassini-build/0.2"})
+    for attempt in range(1, ATTEMPTS + 1):
+        with tempfile.NamedTemporaryFile(dir=cache, delete=False) as output:
+            temporary = Path(output.name)
+            try:
+                with urllib.request.urlopen(request, timeout=90) as response:
+                    shutil.copyfileobj(response, output, 128 * 1024)
+                output.flush()
+                # A pin mismatch is never retried: the pin or the upstream is wrong.
+                if expected and (temporary.stat().st_size != expected["size"] or sha(temporary) != expected["sha256"]):
+                    raise ValueError("Pinned runtime differs: " + name)
+                temporary.replace(cache / name)
+                return
+            except (OSError, http.client.HTTPException) as error:
+                if attempt == ATTEMPTS:
+                    raise RuntimeError(f"Could not download {name} from {url}: {error}") from error
+                # D66: every retry is a GitHub annotation, so a flaky host stays visible.
+                print(f"::warning::{name}: attempt {attempt} of {ATTEMPTS} failed ({error}); retrying", file=sys.stderr)
+            finally:
+                temporary.unlink(missing_ok=True)
+        time.sleep(5 * attempt)  # Backoff between transfers, not a wait for an event.
 
 
 def cached(cache, name, url, *, offline, expected=None):
@@ -31,20 +59,7 @@ def cached(cache, name, url, *, offline, expected=None):
             raise FileNotFoundError(
                 f"Missing pinned {name} in {cache}; run build-aux/sherpa-cache.sh before the offline build"
             )
-        request = urllib.request.Request(
-            url, headers={"Accept-Encoding": "identity", "User-Agent": "Cassini-build/0.2"}
-        )
-        with tempfile.NamedTemporaryFile(dir=cache, delete=False) as output:
-            temporary = Path(output.name)
-            try:
-                with urllib.request.urlopen(request, timeout=90) as response:
-                    shutil.copyfileobj(response, output, 128 * 1024)
-                output.flush()
-                if expected and (temporary.stat().st_size != expected["size"] or sha(temporary) != expected["sha256"]):
-                    raise ValueError("Pinned runtime differs: " + name)
-                temporary.replace(path)
-            finally:
-                temporary.unlink(missing_ok=True)
+        download(cache, name, url, expected)
     if expected and (path.stat().st_size != expected["size"] or sha(path) != expected["sha256"]):
         raise ValueError("Pinned runtime differs: " + name)
     return path
