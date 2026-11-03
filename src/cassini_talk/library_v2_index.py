@@ -265,7 +265,7 @@ class PublishedIndex:
             metadata,
             extension,
             [*known_speakers, *(w.speaker for w in words)],
-            working.listed_tracks if working else (),
+            working.lane_rows if working else (),
         )
         words = apply_merges(words, metadata.get("speakerMerges", []), known_speakers)
         title = manifest.get("meeting", {}).get("title") or embedded.tags.get("TITLE") or path.stem
@@ -305,7 +305,7 @@ class PublishedIndex:
                 if transcript in ("done", "queued", "running")
                 else None,
                 tracks=working.tracks if working else (),
-                listed_tracks=working.listed_tracks if working else (),
+                lane_rows=working.lane_rows if working else (),
                 capture_source=working.capture_source if working else None,
                 capture_state=working.capture_state if working else None,
                 capture_events=working.capture_events if working else (),

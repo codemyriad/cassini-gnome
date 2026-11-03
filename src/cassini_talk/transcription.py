@@ -130,8 +130,10 @@ def prepare_tracks(meeting, *, diagnostics=None, silent=None):
     speaker row and its place in the D11 layout, flagged `silent`. It is never
     recognised, rejoined or given an overlap lane, so it cannot push a live span
     of its source onto a lane; its speaker ID stays reserved, so no lane takes it.
-    So does the id of a track the session or file lists but this reader cannot
-    read (source_ownership.speaker_lanes, shared with the gap map).
+    A track session.json lists but this reader cannot read keeps its place in
+    the lanes, as session.json states it, so a missing file moves no lane; one
+    the file's x tracks list keeps its id reserved (library.track_rows and
+    source_ownership.speaker_lanes, shared with the gap map).
     """
     # Identity/kind come only from the scanner's validated or recovered model.
     tracks = []
@@ -214,13 +216,17 @@ def prepare_tracks(meeting, *, diagnostics=None, silent=None):
 
     # R64 lanes from every track the session or file lists, as the gap map reads them.
     rows, _stored_silent = track_rows(
-        meeting.tracks, getattr(meeting, "extensions", None), getattr(meeting, "listed_tracks", ())
+        meeting.tracks, getattr(meeting, "extensions", None), getattr(meeting, "lane_rows", ())
     )
-    left_out = {row["id"] for row, track in zip(rows, tracks, strict=False) if track.get("silent")}
+    left_out = {
+        track_identity(scanned) for scanned, job in zip(meeting.tracks, tracks, strict=True) if job.get("silent")
+    }
     lanes, separation_diagnostics = speaker_lanes(rows, silent=left_out, strict=True)
     if diagnostics is not None:
         diagnostics.extend(separation_diagnostics)
-    for track, lane in zip(tracks, lanes, strict=False):
+    lanes = {row.get("id"): lane for row, lane in zip(rows, lanes, strict=True) if lane is not None}
+    for scanned, track in zip(meeting.tracks, tracks, strict=True):
+        lane = lanes.get(track_identity(scanned))
         if lane is not None and lane != track["speaker"]:
             speakers.setdefault(
                 lane,

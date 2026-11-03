@@ -186,8 +186,8 @@ class Meeting(MeetingState):
     turns: tuple = field(default=(), compare=False, repr=False)
     quote_line: str | None = None
     tracks: tuple[CaptureTrack, ...] = ()
-    # session.json's track rows as written, readable or not (library.track_rows).
-    listed_tracks: tuple[dict, ...] = field(default=(), compare=False, repr=False)
+    # One stored row per session.json track for R64 lanes, readable or not (library.track_rows).
+    lane_rows: tuple[dict, ...] = field(default=(), compare=False, repr=False)
     capture_source: str | None = None
     capture_state: str | None = None
     capture_events: tuple[dict, ...] = ()
@@ -560,6 +560,7 @@ class LibraryScanner:
             )
             diagnostics.append(Diagnostic(directory / "session.json", "capture-recovered"))
         tracks = []
+        lanes = []
         identifiers = [
             value.get("id") for value in values if isinstance(value, dict) and isinstance(value.get("id"), str)
         ]
@@ -572,7 +573,10 @@ class LibraryScanner:
                 physical = [logical]
             elif not isinstance(physical, list) or not physical or len(physical) > 4096:
                 diagnostics.append(Diagnostic(directory, "capture-track-unreadable"))
+                lanes.append(_unplaced(logical))
                 continue
+            # Every span as read, or as session.json states it when it cannot be read (R64 lanes).
+            stated = []
             for row in physical:
                 value = dict(logical, **row) if isinstance(logical, dict) and isinstance(row, dict) else row
                 if isinstance(value, dict) and isinstance(logical, dict) and logical.get("ended") is True:
@@ -586,20 +590,14 @@ class LibraryScanner:
                         recovered=salvaged,
                     )
                     name, frames, rate, channels = span.relative, span.frames, span.sample_rate, span.channels
-                    offset = value.get("startOffsetMs")
-                    if type(offset) not in (int, float) or not 0 <= offset <= 86400000 or not math.isfinite(offset):
-                        offset = None
+                    offset = _offset(value)
+                    if offset is None:
                         diagnostics.append(Diagnostic(directory / name, "start-offset-unknown-display-zero"))
                     if name in files:
                         raise ValueError("duplicate-track-file")
                     files.add(name)
                     identity = value.get("id")
-                    if (
-                        not isinstance(identity, str)
-                        or not identity
-                        or len(identity.encode()) > 200
-                        or identifiers.count(identity) != 1
-                    ):
+                    if not _valid_identity(identity) or identifiers.count(identity) != 1:
                         nonce = 0
                         identity = "recovered-" + str(uuid5(NAMESPACE_URL, name))
                         while identity in used:
@@ -607,15 +605,9 @@ class LibraryScanner:
                             identity = "recovered-" + str(uuid5(NAMESPACE_URL, name + str(nonce)))
                         diagnostics.append(Diagnostic(directory / name, "track-identity-recovered"))
                     used.add(identity)
-                    kind = value.get("kind")
-                    if not isinstance(kind, str) or kind not in KINDS:
-                        kind = {"track-microphone.wav": "microphone", "track-system.wav": "system"}.get(name, "unknown")
+                    kind = _kind(value, name)
                     source_identity = value.get("sourceTrackId")
-                    if source_identity is not None and (
-                        not isinstance(source_identity, str)
-                        or not source_identity
-                        or len(source_identity.encode()) > 200
-                    ):
+                    if source_identity is not None and not _valid_identity(source_identity):
                         source_identity = None
                         diagnostics.append(Diagnostic(directory / name, "source-track-identity-invalid"))
                     if kind in ("microphone", "local", "system"):
@@ -633,44 +625,17 @@ class LibraryScanner:
                             source_identity,
                             span.codec,
                             span.decoded_frames if span.codec == "opus" else None,
-                            tuple(
-                                tuple(point)
-                                for point in value.get("clockAnchors", ())
-                                if isinstance(point, list)
-                                and len(point) == 2
-                                and all(type(part) is int and 0 <= part <= 2**63 for part in point)
-                            )
-                            if isinstance(value.get("clockAnchors", ()), (list, tuple))
-                            else (),
+                            _anchors(value),
                             gaps=value.get("gaps") if isinstance(value.get("gaps"), list) else None,
                         )
                     )
+                    stated.append(tracks[-1])
                 except (OSError, ValueError, TypeError):
                     diagnostics.append(Diagnostic(directory, "capture-track-unreadable"))
-            # An empty span without an offset has no audio and no place, so it cannot unplace its siblings.
-            kept = [span for span in tracks[start:] if span.frames or span.start_offset_ms is not None]
-            tracks[start:] = kept or tracks[start : start + 1]
-            if len(tracks) - start > 1:
-                from dataclasses import replace
-
-                spans = tuple(tracks[start:])
-                offset = min((span.start_offset_ms for span in spans if span.start_offset_ms is not None), default=0)
-                if any(span.start_offset_ms is None for span in spans):
-                    offset = None
-                tracks[start:] = [
-                    replace(
-                        spans[0],
-                        frames=sum(span.frames for span in spans),
-                        start_offset_ms=offset,
-                        codec="pcm",
-                        decoded_frames=None,
-                        clock_anchors=(),
-                        ended=logical.get("ended"),
-                        spans=spans,
-                        gaps=logical.get("gaps") if isinstance(logical.get("gaps"), list) else None,
-                    )
-                ]
-        return capture, tuple(tracks), salvaged
+                    stated.append(_stated_span(value, identifiers))
+            tracks[start:] = _logical_track(tracks[start:], logical)
+            lanes.append(_lane_row(logical, tracks[start:], stated))
+        return capture, tuple(tracks), tuple(row for row in lanes if row is not None), salvaged
 
     def _read(self, fd, directory, identifier, active, names):
         diagnostics = []
@@ -678,14 +643,14 @@ class LibraryScanner:
         raw, metadata, unsupported = self._metadata(fd, directory, identifier, origin, diagnostics)
         if origin == "received" and not metadata:
             return None
-        capture, tracks, embedded, audio_file = {}, (), None, None
+        capture, tracks, lanes, embedded, audio_file = {}, (), (), None, None
         embedded_words = {}
         audio_size = None
         duration, started, trusted = None, None, False
         lifecycle = active if origin == "own" and active in ("recording", "saving") else "saved"
         interrupted = None
         if origin == "own":
-            capture, tracks, salvaged = self._capture(fd, directory, identifier, names, diagnostics)
+            capture, tracks, lanes, salvaged = self._capture(fd, directory, identifier, names, diagnostics)
             duration = max((t.display_end_ms for t in tracks), default=None)
             started = _date(capture.get("createdAt"))
             # D52.2: writers that record gap ranges flag long gaps in problemKind.
@@ -719,8 +684,6 @@ class LibraryScanner:
         )
         from .speaker_merges import apply_merges
 
-        listed = capture.get("tracks") if isinstance(capture.get("tracks"), list) else []
-        listed = tuple(track for track in listed if isinstance(track, dict))
         known = [s["id"] for s in metadata.get("speakers", [])]
         if embedded:
             known.extend(s.id for s in embedded.speakers)
@@ -729,8 +692,12 @@ class LibraryScanner:
             metadata,
             embedded.manifest.get("x") if embedded and embedded.manifest else None,
             [*known, *(word.speaker for word in words)],
-            listed,
+            lanes,
         )
+        if transcript in ("queued", "running"):
+            # D56: this attempt's silent tracks, which take no R64 lane, reach meeting.json only
+            # when it is done; until then its words get no gap breaks rather than another lane's.
+            gaps = {}
         words = apply_merges(words, metadata.get("speakerMerges", []), known)
         received_name = metadata.get("received", {}).get("originalName") if origin == "received" else None
         title_values = [
@@ -795,7 +762,7 @@ class LibraryScanner:
             if transcript in ("done", "queued", "running")
             else None,
             tracks=tracks,
-            listed_tracks=listed,
+            lane_rows=lanes,
             capture_source=capture.get("source") if origin == "own" else None,
             capture_state=capture.get("state") if origin == "own" else None,
             capture_events=events,
@@ -948,14 +915,16 @@ def _sidecar_words(body):
     return tuple(words)
 
 
-def track_rows(tracks, extensions, listed=()):
+def track_rows(tracks, extensions, lanes=()):
     """Every track the folder or file lists, as stored rows, and the file's own D56 silent ids.
 
     The R64 lanes of the write-down and of the gap map (source_ownership.speaker_lanes)
-    read these same rows. The scanner's readable `tracks` come first, in order;
-    session.json's `listed` rows and the file's x["codemyriad.io"].tracks then only
-    reserve their speaker ids, readable, unreadable or missing. Without readable
-    tracks the x tracks are the rows, and the file's own silent list applies.
+    read these same rows. `lanes` are the scanner's, one per session.json track:
+    placed as read, or as session.json states it when this reader cannot read it,
+    so a file that goes missing moves no lane. A scanned track without one (a
+    Meeting built elsewhere) is placed as read. The file's x["codemyriad.io"].tracks
+    then only reserve their ids; without session tracks they are the rows, and
+    the file's own silent list applies.
     """
     from .transcription import recorded_silent_tracks
 
@@ -963,7 +932,9 @@ def track_rows(tracks, extensions, listed=()):
     ours = extensions.get("codemyriad.io") if isinstance(extensions, dict) else None
     stored = ours.get("tracks") if isinstance(ours, dict) else None
     stored = [track for track in stored if isinstance(track, dict)] if isinstance(stored, list) else []
-    rows = [_track_row(track) for track in tracks]
+    rows = [row for row in lanes if isinstance(row, dict)] if isinstance(lanes, (list, tuple)) else []
+    named = {row.get("id") for row in rows}
+    rows += [_track_row(track) for track in tracks if track_identity(track) not in named]
     if rows:
         stored = [_unplaced(track) for track in stored]
     else:
@@ -971,22 +942,21 @@ def track_rows(tracks, extensions, listed=()):
         stored_meeting = ours.get("meeting") if isinstance(ours, dict) else None
         if isinstance(stored_meeting, dict):
             silent = recorded_silent_tracks(stored_meeting)
-    listed = listed if isinstance(listed, (list, tuple)) else ()
-    listed = [_unplaced(track) for track in listed if isinstance(track, dict)]
-    return [*rows, *stored, *listed], silent
+    return [*rows, *stored], silent
 
 
-def turn_gaps(tracks, metadata, extensions, known=(), listed=()):
+def turn_gaps(tracks, metadata, extensions, known=(), lanes=()):
     """D63 #2: each speaker's own gap ranges, which turns never span (presentation, D47).
 
     From the session.json tracks when the folder has them, else from the file's
     x["codemyriad.io"].tracks, whose D56 silent tracks the file's own
     x["codemyriad.io"].meeting lists. A file without `gaps` gives no ranges, so
     no breaks. `known` lists the speaker ids its speakerMerges resolve against.
-    A track this reader cannot read, among session.json's `listed` rows or the
-    x tracks, gives no ranges but keeps its speaker's empty entry, so it never
-    takes another source's ranges as a voice. The rows are track_rows', so the
-    lanes are the write-down's.
+    `lanes` are the scanner's Meeting.lane_rows. A track session.json lists
+    but this reader cannot read keeps its lane and its stored gaps; an x track or
+    a row this reader cannot place gives no ranges but keeps its speaker's empty
+    entry, so it never takes another source's ranges as a voice. The rows are
+    track_rows', so the lanes are the write-down's.
     """
     from .source_ownership import speaker_gap_ranges
     from .speaker_merges import resolve_merges
@@ -995,7 +965,7 @@ def turn_gaps(tracks, metadata, extensions, known=(), listed=()):
     merges = resolve_merges(metadata.get("speakerMerges", []), known)
     silent = recorded_silent_tracks(metadata)
     try:
-        rows, stored_silent = track_rows(tracks, extensions, listed)
+        rows, stored_silent = track_rows(tracks, extensions, lanes)
         return speaker_gap_ranges(rows, silent=silent | stored_silent, merges=merges, speakers=known)
     except (AttributeError, KeyError, TypeError, ValueError, ArithmeticError):
         # Rows are checked one at a time (source_ownership._placeable); this only keeps the meeting.
@@ -1043,12 +1013,112 @@ def _stored_row(track):
         or not all(type(value) is int for value in frames)
     ):
         return _unplaced(track)
+    # As the scanner reads session.json: an empty span without an offset has no place.
+    rows = list(zip(spans, offsets, frames, strict=True))
+    rows = [(span, at, count) for span, at, count in rows if count or at is not None] or rows[:1]
+    offsets = [at for _span, at, _count in rows]
     return dict(
         track,
-        spans=spans,
+        spans=[span for span, _at, _count in rows],
         startOffsetMs=min(offsets) if offsets and None not in offsets else None,
-        frames=sum(frames),
+        frames=sum(count for _span, _at, count in rows),
     )
+
+
+def _valid_identity(value):
+    return isinstance(value, str) and 0 < len(value.encode()) <= 200
+
+
+def _offset(value):
+    offset = value.get("startOffsetMs")
+    if type(offset) not in (int, float) or not 0 <= offset <= 86400000 or not math.isfinite(offset):
+        return None
+    return offset
+
+
+def _kind(value, name):
+    kind = value.get("kind")
+    if not isinstance(kind, str) or kind not in KINDS:
+        kind = {"track-microphone.wav": "microphone", "track-system.wav": "system"}.get(name, "unknown")
+    return kind
+
+
+def _anchors(value):
+    anchors = value.get("clockAnchors", ())
+    if not isinstance(anchors, (list, tuple)):
+        return ()
+    return tuple(
+        tuple(point)
+        for point in anchors
+        if isinstance(point, list)
+        and len(point) == 2
+        and all(type(part) is int and 0 <= part <= 2**63 for part in point)
+    )
+
+
+def _logical_track(spans, logical):
+    """One session.json track from its scanned spans, as a list of at most one."""
+    # An empty span without an offset has no audio and no place, so it cannot unplace its siblings.
+    kept = [span for span in spans if span.frames or span.start_offset_ms is not None] or spans[:1]
+    if len(kept) < 2:
+        return kept
+    offset = min((span.start_offset_ms for span in kept if span.start_offset_ms is not None), default=0)
+    if any(span.start_offset_ms is None for span in kept):
+        offset = None
+    return [
+        replace(
+            kept[0],
+            frames=sum(span.frames for span in kept),
+            start_offset_ms=offset,
+            codec="pcm",
+            decoded_frames=None,
+            clock_anchors=(),
+            ended=logical.get("ended"),
+            spans=tuple(kept),
+            gaps=logical.get("gaps") if isinstance(logical.get("gaps"), list) else None,
+        )
+    ]
+
+
+def _stated_span(value, identifiers):
+    """A span this reader cannot read, placed as session.json states it; None when it cannot be."""
+    if not isinstance(value, dict):
+        return None
+    rate, frames, identity = value.get("sampleRate"), value.get("frames"), value.get("id")
+    if type(rate) is not int or rate < 1 or type(frames) is not int or frames < 0:
+        return None
+    name = value.get("file") if isinstance(value.get("file"), str) else ""
+    kind = _kind(value, name)
+    source = value.get("sourceTrackId")
+    # session.json strings always encode (recording_session.strict_json).
+    identity = identity if _valid_identity(identity) and identifiers.count(identity) == 1 else None
+    source = source if _valid_identity(source) and kind not in ("microphone", "local", "system") else None
+    return CaptureTrack(
+        Path(name),
+        frames,
+        rate,
+        _offset(value),
+        value.get("ended"),
+        id=identity,
+        kind=kind,
+        source_track_id=source,
+        clock_anchors=_anchors(value),
+        gaps=value.get("gaps") if isinstance(value.get("gaps"), list) else None,
+    )
+
+
+def _lane_row(logical, read, stated):
+    """One session.json track's R64 row: placed as read, or as it states where a span cannot be read."""
+    if not isinstance(logical, dict):
+        return None
+    if None not in stated and (placed := _logical_track(stated, logical)):
+        track = placed[0]
+        if read:
+            # The scanner's identity, which a span it could not read never recovers.
+            track = replace(track, id=read[0].id, kind=read[0].kind, source_track_id=read[0].source_track_id)
+        if track.id is not None:
+            return _track_row(track)
+    return _track_row(read[0]) if read else _unplaced(logical)
 
 
 def _speakers(words, values, embedded, *, stored_labels=False):
