@@ -16,6 +16,14 @@ unknown spans sort last by ID. Each takes the lowest lane whose last end is at
 or before its start. An unknown span always takes a new, non-reusable lane.
 Lane zero retains the base ID. Further lanes use `base:overlap:n`, starting at 1.
 Every ordinary base ID is reserved first, and suffixes skip an occupied ID.
+That is the base ID of every track session.json or the file's x tracks list,
+including one this reader cannot read or whose file is missing. A session.json
+track this reader cannot read also keeps its place in the lanes, as session.json
+states it, so a file that goes missing after the write-down moves no lane. The
+write-down and the D63 turn-gap map compute the lanes with one function
+(`source_ownership.speaker_lanes`) from those same rows, so they agree. While a
+write-down runs, its D56 silent tracks are not in meeting.json yet, so its words
+get no gap breaks until it is done.
 Input order does not affect the assignments. Reapplying the operation is a no-op.
 The tie-break is the validated capture track ID, never the storage basename;
 compaction may rename the WAV/Opus file while that identity stays unchanged.

@@ -417,6 +417,23 @@ def test_an_unreadable_track_and_a_merge_keep_a_voices_phrases(index):
         assert len(search(index, "budget plan")) == (1 if turns == 1 else 0), speaker
 
 
+def test_a_missing_tracks_reserved_lane_id_keeps_search_splitting_at_its_own_gaps(index, tmp_path):
+    # Codex #183: the write-down's lane id for b is the gap map's, so its phrase never matches across its gap.
+    from test_lane_reservation import lanes_meeting
+
+    from cassini_talk.transcription import prepare_tracks
+
+    (tmp_path / "lanes").mkdir()
+    lanes = lanes_meeting(tmp_path / "lanes")
+    jobs, _speakers = prepare_tracks(lanes)
+    meeting = next(m for m in index.current.values() if m.title == "Budget review")
+    for speaker, turns in ((jobs[1]["speaker"], 2), ("track-s:overlap:1", 1)):
+        words = (Word(speaker, 200, 280, "budget"), Word(speaker, 620, 700, "plan"))
+        index.sync(LibrarySnapshot(meetings=(replace(meeting, words=words, turn_gaps=lanes.turn_gaps),)))
+        assert len(index.turns[meeting.key]) == turns, speaker
+        assert len(search(index, "budget plan")) == (1 if turns == 1 else 0), speaker
+
+
 def test_a_hit_after_a_gap_seeks_with_the_runs_quote_pairing(index):
     # Quotes pair over the whole run, so the lone closing quote after the gap is
     # no part of its own; "I" seeks to I, not to agree.

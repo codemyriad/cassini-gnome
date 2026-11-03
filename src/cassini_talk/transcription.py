@@ -12,7 +12,7 @@ import time
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
 
-from .library import LibraryScanner, library_root, meeting_id
+from .library import LibraryScanner, library_root, meeting_id, track_identity, track_rows
 from .library_edits import mutation, transaction
 from .meeting_store import atomic_json, read_metadata, transcript_snapshot, update_metadata
 from .strings import text
@@ -130,14 +130,16 @@ def prepare_tracks(meeting, *, diagnostics=None, silent=None):
     speaker row and its place in the D11 layout, flagged `silent`. It is never
     recognised, rejoined or given an overlap lane, so it cannot push a live span
     of its source onto a lane; its speaker ID stays reserved, so no lane takes it.
+    A track session.json lists but this reader cannot read keeps its place in
+    the lanes, as session.json states it, so a missing file moves no lane; one
+    the file's x tracks list keeps its id reserved (library.track_rows and
+    source_ownership.speaker_lanes, shared with the gap map).
     """
     # Identity/kind come only from the scanner's validated or recovered model.
-    from uuid import NAMESPACE_URL, uuid5
-
     tracks = []
     speakers = {}
     for index, track in enumerate(meeting.tracks):
-        identity = track.source_track_id or track.id or "recovered-" + str(uuid5(NAMESPACE_URL, track.path.name))
+        identity = track.source_track_id or track_identity(track)
         speaker, name, provenance = track_speaker(dict(id=identity, kind=track.kind))
         if len(speaker) > 256:
             raise ValueError("Capture speaker identifier exceeds metadata limit")
@@ -210,26 +212,34 @@ def prepare_tracks(meeting, *, diagnostics=None, silent=None):
                 for span in track.spans
             ]
             tracks[-1]["sessionDirectory"] = str(meeting.directory)
-    from .source_spans import separate
+    from .source_ownership import speaker_lanes
 
-    audible = [track for track in tracks if not track.get("silent")]
-    separated, separation_diagnostics = separate(audible, reserved=[track["speaker"] for track in tracks])
+    # R64 lanes from every track the session or file lists, as the gap map reads them.
+    rows, _stored_silent = track_rows(
+        meeting.tracks, getattr(meeting, "extensions", None), getattr(meeting, "lane_rows", ())
+    )
+    left_out = {
+        track_identity(scanned) for scanned, job in zip(meeting.tracks, tracks, strict=True) if job.get("silent")
+    }
+    lanes, separation_diagnostics = speaker_lanes(rows, silent=left_out, strict=True)
     if diagnostics is not None:
         diagnostics.extend(separation_diagnostics)
-    for original, track in zip(audible, separated, strict=True):
-        if track["speaker"] != original["speaker"]:
+    lanes = {row.get("id"): lane for row, lane in zip(rows, lanes, strict=True) if lane is not None}
+    for scanned, track in zip(meeting.tracks, tracks, strict=True):
+        lane = lanes.get(track_identity(scanned))
+        if lane is not None and lane != track["speaker"]:
             speakers.setdefault(
-                track["speaker"],
+                lane,
                 dict(
-                    speakers[original["speaker"]],
-                    id=track["speaker"],
+                    speakers[track["speaker"]],
+                    id=lane,
                     colourIndex=max(s["colourIndex"] for s in speakers.values()) + 1,
                 ),
             )
+            track["speaker"] = lane
     for diagnostic in separation_diagnostics:
         LOG.warning("Transcription diagnostic: %s", diagnostic)
-    lanes = iter(separated)
-    return [track if track.get("silent") else next(lanes) for track in tracks], speakers
+    return tracks, speakers
 
 
 def recorded_silent_tracks(metadata):

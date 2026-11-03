@@ -113,7 +113,8 @@ def test_preparer_and_real_diarizer_input_keep_overlapping_tones_separate(tmp_pa
         assert amplitude(own_hz) > 0.20 and amplitude(other_hz) < 0.001
     assert all(path.read_bytes() == data for path, data in before.items())
     # Unknown placement may be displayed at zero, but never proves disjointness.
-    unknown = replace(meeting, tracks=tuple(replace(t, start_offset_ms=None) for t in meeting.tracks))
+    # The scanner's lane rows place them as read; a Meeting without them places its tracks.
+    unknown = replace(meeting, tracks=tuple(replace(t, start_offset_ms=None) for t in meeting.tracks), lane_rows=())
     unknown_jobs, _ = prepare_tracks(unknown)
     assert len({t["speaker"] for t in unknown_jobs}) == 3
 
