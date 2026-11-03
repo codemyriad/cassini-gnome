@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import traceback
 from pathlib import Path
 
 if os.environ.get("CASSINI_ISOLATED_AUDIO") != "1" or os.environ.get("WAYLAND_DISPLAY"):
@@ -96,7 +97,9 @@ def dispatch(packet, result, ready):
             app.on_preferences()
         elif action == "auto":
             dialog = app.settings_dialog
-            assert dialog is not None and not dialog.closed and dialog._future is None
+            # Toggle as a person would, even while the dialog's periodic status
+            # read is in flight: the dialog queues the write behind it.
+            assert dialog is not None and not dialog.closed, "Settings is not open"
             dialog.automatic.set_active(packet["enabled"])
         elif action == "close-window":
             assert window is not None
@@ -156,7 +159,10 @@ def dispatch(packet, result, ready):
             error=app.recording_error,
         )
     except Exception as error:
-        result["error"] = str(error)
+        # Never an empty error: str() of a bare assert is "", which the
+        # caller would read as success and then wait on a change never made.
+        result["error"] = f"{type(error).__name__}: {error}"
+        traceback.print_exc()
     finally:
         ready.set()
     return GLib.SOURCE_REMOVE
@@ -172,7 +178,7 @@ def requests():
             if not ready.wait(10):
                 result["error"] = "GNOME main loop did not answer"
         except Exception as error:
-            result["error"] = str(error)
+            result["error"] = f"{type(error).__name__}: {error}"
         print(json.dumps(result), flush=True)
         if packet.get("action") == "quit":
             return

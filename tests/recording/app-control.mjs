@@ -31,7 +31,7 @@ async function poll(check, label, timeout=20000) {
 function call(packet={action: 'status'}) {
  return new Promise((resolve, reject) => {
   const timer = setTimeout(() => reject(new Error('GNOME UI request timed out')), 12000);
-  pending.push(value => {clearTimeout(timer); value.error ? reject(new Error(value.error)) : resolve(value);});
+  pending.push(value => {clearTimeout(timer); value.error != null ? reject(new Error(value.error || 'GNOME UI request failed')) : resolve(value);});
   ui.stdin.write(JSON.stringify(packet) + '\n');
  });
 }
