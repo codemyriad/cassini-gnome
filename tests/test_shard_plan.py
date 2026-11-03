@@ -4,6 +4,7 @@
 import os
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import shard_plan
@@ -45,6 +46,34 @@ def test_a_new_file_never_moves_a_known_one_and_lands_deterministically():
     # newcomers, in name order, each counted at the table's median (15 s).
     assert before == {"test_a.py": 1, "test_b.py": 2, "test_c.py": 3, "test_d.py": 3}
     assert (after["test_new.py"], after["test_newer.py"]) == (3, 2)
+
+
+def collecting_shards(path, assignment, count=4):
+    """The shards whose collection keeps `path`, by tests/conftest.py's hook."""
+    import conftest
+
+    kept = []
+    for index in range(1, count + 1):
+        shard = SimpleNamespace(index=index, count=count, assignment=assignment)
+        config = SimpleNamespace(stash={conftest._shard: shard}, getini=lambda _name: ["test_*.py", "*_test.py"])
+        if conftest.pytest_ignore_collect(path, config) is None:
+            kept.append(index)
+    return kept
+
+
+def test_a_test_file_the_plan_did_not_list_still_runs_in_exactly_one_shard(tmp_path):
+    here = Path(__file__)
+    assert collecting_shards(here, {"test_shard_plan.py": 3}) == [3]
+    # pytest follows a symlinked directory the plan's walk does not: without
+    # the fallback such a file ran in no shard (resolving inside tests/) or in
+    # every shard (resolving outside it).
+    assert len(collecting_shards(here, {})) == 1
+    outside = tmp_path / "test_outside.py"
+    outside.write_text("")
+    assert len(collecting_shards(outside, {})) == 1
+    helper = tmp_path / "helper.py"
+    helper.write_text("")
+    assert collecting_shards(helper, {}) == [1, 2, 3, 4]  # Not a test file: the hook leaves it to pytest.
 
 
 @pytest.mark.parametrize("value", ["0/4", "5/4", "1", "a/b"])

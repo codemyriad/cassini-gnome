@@ -7,6 +7,7 @@ import os
 import shutil
 import tempfile
 import time
+import zlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -74,7 +75,7 @@ def pytest_configure(config):
         config.option.basetemp = str(_isolate(root))
         mine = {name for name, shard in assignment.items() if shard == index}
         config.stash[_shard] = SimpleNamespace(
-            index=index, count=count, files=mine, root=root, started=time.monotonic()
+            index=index, count=count, assignment=assignment, root=root, started=time.monotonic()
         )
         print(f"pytest shard {index}/{count}: {len(mine)} of {len(assignment)} files; HOME, XDG dirs, basetemp: {root}")
 
@@ -83,14 +84,20 @@ def pytest_ignore_collect(collection_path, config):
     shard = config.stash.get(_shard, None)
     if shard is None or not collection_path.is_file():
         return None
-    try:
-        relative = collection_path.resolve().relative_to(TESTS).as_posix()
-    except ValueError:
-        return None
     patterns = config.getini("python_files")
     if not any(fnmatch.fnmatch(collection_path.name, pattern) for pattern in patterns):
         return None
-    return True if relative not in shard.files else None
+    try:
+        name = collection_path.resolve().relative_to(TESTS).as_posix()
+    except ValueError:  # Reached through a symlinked directory that leads out of tests/.
+        name = collection_path.as_posix()
+    owner = shard.assignment.get(name)
+    if owner is None:
+        # A file pytest reaches but _test_files does not list (pytest follows
+        # symlinked directories, rglob does not): a fixed shard by name, so it
+        # still runs exactly once, never in no shard or in all of them.
+        owner = zlib.crc32(name.encode()) % shard.count + 1
+    return True if owner != shard.index else None
 
 
 def pytest_sessionfinish(session, exitstatus):
