@@ -47,8 +47,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: echo "CASSINI_TEST_LOGS=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"
-      # Retried once because distribution mirrors occasionally time out.
-      - run: build-aux/check-distros.sh "${{ matrix.image }}" || build-aux/check-distros.sh "${{ matrix.image }}"
+      # Retried once, with a warning annotation, so a flaky test or mirror
+      # timeout on the first attempt stays visible (G5 step 0).
+      - run: build-aux/check-distros.sh "${{ matrix.image }}" || { echo "::warning::first attempt failed; retrying (possible flaky test, see log)"; build-aux/check-distros.sh "${{ matrix.image }}"; }
       # G3: the Meson test logs (testlog.txt with each shard's --durations,
       # testlog.json, the pytest junit XML), also on success, to track creep;
       # a shard over half its timeout becomes a warning annotation here.
