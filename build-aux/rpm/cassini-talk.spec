@@ -66,7 +66,7 @@ ExclusiveArch:  x86_64
 # packages the app does not use (protobuf, flatbuffers, sympy extras).
 %global __requires_exclude_from ^%{_libdir}/cassini-talk/python/onnxruntime-[^/]*\\.dist-info/.*$
 
-BuildRequires:  meson >= 1.0
+BuildRequires:  meson >= 1.3
 BuildRequires:  python3 >= 3.11
 BuildRequires:  desktop-file-utils
 BuildRequires:  gettext

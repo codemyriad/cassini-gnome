@@ -34,7 +34,7 @@ unknown() {
   cat >&2 <<EOF
 $1
 Install these with your package manager (names vary between distributions):
-  build:   C compiler and libc headers, meson (>= 1.0), ninja, python3, gettext (msgfmt),
+  build:   C compiler and libc headers, meson (>= 1.3), ninja, python3, gettext (msgfmt),
            glib-compile-resources and glib-compile-schemas (glib dev tools),
            optional: desktop-file-validate, appstreamcli,
            gtk4-update-icon-cache, python3 pytest, jsonschema and
