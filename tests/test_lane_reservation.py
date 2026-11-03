@@ -90,6 +90,25 @@ def test_a_missing_tracks_id_moves_the_overlap_lane_in_the_write_down_and_the_ga
     assert every_grouper("track-s", gaps) == ([2],) * 5
 
 
+@pytest.mark.parametrize("identifier", [["broken"], {"id": "c"}], ids=["array", "object"])
+def test_a_missing_track_whose_id_is_not_text_keeps_its_source_reservation(tmp_path, identifier):
+    """Codex #184: such an id once crashed lane_rows, failing the write-down and every gap."""
+    import json
+
+    meeting = lanes_meeting(tmp_path)
+    path = meeting.directory / "session.json"
+    data = json.loads(path.read_text())
+    (track,) = [track for track in data["tracks"] if track["id"] == "c"]
+    track["id"] = identifier
+    path.write_text(json.dumps(data))
+    (meeting,) = LibraryScanner(tmp_path).scan().meetings
+    lanes, gaps = same_lanes(meeting)
+    # Its valid source id s:overlap:1 is still reserved, so b keeps the lane the write-down gave it.
+    assert lanes == {"a": "track-s", "b": "track-s:overlap:2"}
+    assert gaps == meeting.turn_gaps and gaps["track-s:overlap:2"] == B_GAP
+    assert every_grouper("track-s:overlap:2", gaps) == ([1, 1],) * 5
+
+
 @pytest.mark.parametrize("how", ["missing", "unreadable"])
 def test_a_listed_track_this_reader_cannot_read_keeps_its_id(tmp_path, how):
     meeting = recorded(tmp_path, [A, B, ("c", "s:overlap:1", [(0, 1600)])], **{how: {"c"}})

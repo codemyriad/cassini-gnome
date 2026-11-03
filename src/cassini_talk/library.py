@@ -933,7 +933,8 @@ def track_rows(tracks, extensions, lanes=()):
     stored = ours.get("tracks") if isinstance(ours, dict) else None
     stored = [track for track in stored if isinstance(track, dict)] if isinstance(stored, list) else []
     rows = [row for row in lanes if isinstance(row, dict)] if isinstance(lanes, (list, tuple)) else []
-    named = {row.get("id") for row in rows}
+    # An id that is not text names no scanned track; the row still reserves its source id.
+    named = {row.get("id") for row in rows if isinstance(row.get("id"), str)}
     rows += [_track_row(track) for track in tracks if track_identity(track) not in named]
     if rows:
         stored = [_unplaced(track) for track in stored]
