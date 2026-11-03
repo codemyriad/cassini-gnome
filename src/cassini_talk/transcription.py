@@ -242,6 +242,29 @@ def prepare_tracks(meeting, *, diagnostics=None, silent=None):
     return tracks, speakers
 
 
+def reserved_speakers(meeting, jobs=()):
+    """D64: every speaker id the meeting's listed tracks hold, readable, unreadable or missing.
+
+    Each row's base id and its R64 lane, from the rows the write-down and the
+    gap map read (library.track_rows, source_ownership.speaker_lanes), and the
+    jobs' own speakers. `jobs` are prepare_tracks' (one per scanned track); their
+    D56 silent tracks take no lane, as there.
+    """
+    from .source_ownership import speaker_lanes, track_speaker_id
+
+    rows, _stored_silent = track_rows(
+        meeting.tracks, getattr(meeting, "extensions", None), getattr(meeting, "lane_rows", ())
+    )
+    left_out = (
+        {track_identity(scanned) for scanned, job in zip(meeting.tracks, jobs, strict=True) if job.get("silent")}
+        if jobs
+        else set()
+    )
+    lanes, _diagnostics = speaker_lanes(rows, silent=left_out)
+    bases = [track_speaker_id(row) for row in rows]
+    return {identifier for identifier in bases + lanes if identifier is not None} | {job["speaker"] for job in jobs}
+
+
 def recorded_silent_tracks(metadata):
     """D56: the ids meeting.json lists in writingDown.silentTracks; absent means none."""
     details = metadata.get("recordingDetails")
@@ -261,7 +284,15 @@ def unassigned_voice(identifier, colour_index, source):
 
 
 def update_progress_metadata(
-    directory, speakers, *, check_active=None, transient=False, transcript_body=None, voice_sources=None, **changes
+    directory,
+    speakers,
+    *,
+    check_active=None,
+    transient=False,
+    transcript_body=None,
+    voice_sources=None,
+    reserved=(),
+    **changes,
 ):
     """Write planned speakers; G12 keeps a voice's name only while its source matches.
 
@@ -269,6 +300,9 @@ def update_progress_metadata(
     same id keeps its name only when its stamp is equal; otherwise it becomes
     unassigned, as does any other `<group>~*` entry of a re-diarized group whose
     stamp differs. `voice_sources` adds groups that produced no voice this run.
+    D64: a planned track or lane row never inherits an old voice row of its id,
+    and a `reserved` id (a listed track's, readable or not) is never one of a
+    group's voices, so its row is left as it is.
     """
     with mutation(directory):
         if check_active is not None:
@@ -287,12 +321,22 @@ def update_progress_metadata(
                 merged[identifier] = unassigned_voice(identifier, planned["colourIndex"], planned["voiceSource"])
                 reset[identifier] = previous
                 continue
+            if "voiceSource" in previous and "voiceSource" not in planned:
+                # D64: the id was a voice and is now a track or lane speaker; it keeps nothing of the voice.
+                merged[identifier] = dict(planned)
+                reset[identifier] = previous
+                continue
             merged[identifier] = dict(previous, **planned)
             if previous.get("provenance") in ("user", "recognised", "unnamed"):
                 merged[identifier] = previous
         for identifier, previous in existing.items():
             group = voice_group(identifier)
-            if identifier in speakers or group not in sources or previous.get("voiceSource") == sources[group]:
+            if (
+                identifier in speakers
+                or identifier in reserved
+                or group not in sources
+                or previous.get("voiceSource") == sources[group]
+            ):
                 continue
             merged[identifier] = unassigned_voice(identifier, previous.get("colourIndex", 0), sources[group])
             reset[identifier] = previous
@@ -608,6 +652,8 @@ class TranscriptionQueue:
                 )
             ]
             speakers = {"track-original": dict(id="track-original", name=None, provenance="unnamed", colourIndex=0)}
+            # D64: the tracks the file lists keep their ids.
+            reserved = reserved_speakers(meeting) | set(speakers)
         else:
             from .silent_tracks import silent
 
@@ -615,6 +661,7 @@ class TranscriptionQueue:
             tracks, speakers = prepare_tracks(
                 meeting, diagnostics=source_diagnostics, silent=lambda track: silent(track, self._check_open)
             )
+            reserved = reserved_speakers(meeting, tracks)
         if not tracks:
             raise ValueError("Meeting has no complete audio frames")
         by_track = {track["id"]: track for track in tracks}
@@ -732,7 +779,8 @@ class TranscriptionQueue:
                 if identifier in result["groupIds"] and g["final"] and valid_group(g)
             ]
             if groups:
-                words, voices = apply_transcript(publisher.words, groups)
+                # D64: every listed track's id and lane is taken, readable or not.
+                words, voices = apply_transcript(publisher.words, groups, reserved=reserved)
                 with transaction(directory):
                     if self.closed:
                         raise CancelledError()
@@ -746,7 +794,12 @@ class TranscriptionQueue:
                     sources = {g["id"]: voice_source(g["inputSHA256"], g["turns"]) for g in groups}
                     speakers.update(voices)
                     update_progress_metadata(
-                        directory, speakers, check_active=self._check_open, transient=True, voice_sources=sources
+                        directory,
+                        speakers,
+                        check_active=self._check_open,
+                        transient=True,
+                        voice_sources=sources,
+                        reserved=reserved,
                     )
                     if voices:
                         publisher.reassign(words)
@@ -774,6 +827,7 @@ class TranscriptionQueue:
                         directory=str(directory),
                         speakerMerges=history,
                         recordingDirectories=self._live_recordings(),
+                        reservedSpeakers=sorted(reserved),
                     ),
                     self._check_open,
                 )
@@ -963,6 +1017,8 @@ class TranscriptionQueue:
             # lists as silent, whoever wrote it; it never measures again.
             listed = recorded_silent_tracks(meeting.metadata or {})
             tracks, _speakers = prepare_tracks(meeting, silent=lambda track: track.id in listed)
+            # D64: the write-down's reservations, so no voice takes a listed track's id.
+            reserved = reserved_speakers(meeting, tracks)
             if meeting.origin == "received":
                 tracks = [
                     dict(
@@ -988,7 +1044,9 @@ class TranscriptionQueue:
             )
             self.client.start()
             prints = self.client.voiceprints(
-                tracks, dict(options, directory=str(directory), speakerMerges=history), self._check_open
+                tracks,
+                dict(options, directory=str(directory), speakerMerges=history, reservedSpeakers=sorted(reserved)),
+                self._check_open,
             )
             self._check_open()
 

@@ -56,13 +56,15 @@ def test_record_snapshots_current_calls_and_each_stop_targets_one_session(servic
     try:
         with ThreadPoolExecutor(1) as executor:
             started = executor.submit(request, "start-all", path=path, microphone=False)
+            # The two Starts run on worker threads, so either may arrive first.
             first = peer.receive()
-            assert first["tabId"] == 3 and first["independent"] and not first["captureLocal"]
+            assert first["tabId"] in (3, 4) and first["independent"] and not first["captureLocal"]
             assert first["microphone"] is False
             peer.inventory((3, 4, 5))  # A later call does not join manual Record.
             peer.answer(first)
             second = peer.receive()
-            assert second["tabId"] == 4 and second["microphone"] is False
+            assert {first["tabId"], second["tabId"]} == {3, 4} and second["microphone"] is False
+            assert second["independent"] and not second["captureLocal"]
             peer.answer(second)
             snapshot = started.result(2)
             assert snapshot["attempted"] == 2 and not snapshot["failures"]

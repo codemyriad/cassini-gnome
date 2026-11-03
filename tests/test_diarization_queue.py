@@ -264,10 +264,10 @@ def test_cancelled_attribution_remains_running_and_restart_redoes_missing_turns(
     apply = diarization.apply_transcript
     flush = transcript_publish.TranscriptPublisher.flush
 
-    def paused(*args):
+    def paused(*args, **kwargs):
         entered.set()
         assert release.wait(5)
-        return apply(*args)
+        return apply(*args, **kwargs)
 
     def observed(publisher, **kwargs):
         if kwargs.get("complete"):
