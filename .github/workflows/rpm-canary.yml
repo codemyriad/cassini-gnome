@@ -1,0 +1,38 @@
+name: RPM canary (fedora:latest)
+
+# D66 rule 3: a moving target runs nightly outside the merge gate. ci.yml and
+# green_main.py never see this workflow. When it turns green, packages.yml can
+# move its fedora pin back to fedora:latest.
+on:
+  schedule:
+    - cron: "37 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CONTAINER_ENGINE: docker
+
+jobs:
+  rpm:
+    name: Build .rpm (fedora:latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: echo "CASSINI_PARAKEET_TEST_CACHE=$RUNNER_TEMP/parakeet-models" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        with:
+          path: .whistle-cache
+          key: whistle-${{ hashFiles('whistle/pins.json') }}
+      - uses: actions/cache@v4
+        with:
+          path: .sherpa-cache
+          key: sherpa-${{ hashFiles('src/cassini_talk/sherpa-pins.json') }}
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/parakeet-models
+          key: parakeet-ultra-18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
+      - run: build-aux/whistle-cache.sh
+      - run: build-aux/rpm/build.sh fedora:latest
