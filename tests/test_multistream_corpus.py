@@ -15,6 +15,14 @@ from cassini_talk.meeting_store import read_metadata
 from cassini_talk.transcription import TranscriptionQueue, prepare_tracks
 
 ROOT = Path(__file__).parents[1] / "browser-protocol/conformance/multistream"
+CORPUS = json.loads((ROOT / "corpus.json").read_text())
+
+
+def absent(present, end, margin):
+    """Ms ranges between sorted present ones, `margin` clear of each edge (FIR context)."""
+    edges = [0, *(edge for window in present for edge in window), end]
+    pairs = zip(edges[::2], edges[1::2], strict=True)
+    return [(left + margin, right - margin) for left, right in pairs if right - left > 2 * margin]
 
 
 def test_shared_public_corpus_keeps_source_spans_calls_and_word_attribution_separate(tmp_path):
@@ -27,10 +35,11 @@ def test_shared_public_corpus_keeps_source_spans_calls_and_word_attribution_sepa
     corpus.make(tmp_path)
     snapshot = LibraryScanner(tmp_path).scan()
     meetings = {meeting.id: meeting for meeting in snapshot.meetings}
-    first = meetings["05200000-0000-4000-8000-000000000001"]
-    second = meetings["05200000-0000-4000-8000-000000000002"]
-    assert (first.duration_ms, second.duration_ms) == (90000, 40000)
-    assert first.directory != second.directory and len(first.tracks) == 8 and len(second.tracks) == 1
+    call, other = CORPUS["sessions"]
+    first, second = meetings[call["id"]], meetings[other["id"]]
+    assert (first.duration_ms, second.duration_ms) == (call["durationMs"], other["durationMs"])
+    assert first.directory != second.directory
+    assert (len(first.tracks), len(second.tracks)) == (len(call["tracks"]), len(other["tracks"]))
     before = {
         path: hashlib.sha256(path.read_bytes()).hexdigest()
         for meeting in meetings.values()
@@ -39,36 +48,41 @@ def test_shared_public_corpus_keeps_source_spans_calls_and_word_attribution_sepa
     }
     jobs, speakers = prepare_tracks(first)
     groups = {group["id"]: group for group in group_tracks(jobs)}
-    assert set(groups) == set(speakers) == {"me", "others", "track-source-a", "track-source-b"}
-    assert groups["track-source-a"]["tracks"] == ["track-a-short.wav", "track-a-long.wav", "track-a-return.wav"]
-    assert groups["track-source-a"]["durationMs"] == 62000
-    assert groups["track-source-b"]["tracks"] == ["track-b.wav", "track-b-return.wav"]
-    assert groups["others"]["tracks"] == ["track-system.wav", "track-system-fallback.wav"]
-    assert set(prepare_tracks(second)[1]) == {"track-other-call-source"}
+    members = {}
+    for track in call["tracks"]:
+        group = {"microphone": "me", "system": "others"}.get(track["kind"], f"track-{track.get('sourceTrackId')}")
+        members.setdefault(group, []).append(track)
+    assert set(groups) == set(speakers) == set(members) == {"me", "others", "track-source-a", "track-source-b"}
+    for group, tracks in members.items():
+        assert groups[group]["tracks"] == [f"track-{track['id']}.wav" for track in tracks]
+    source_a = members["track-source-a"]
+    assert groups["track-source-a"]["durationMs"] == max(track["endMs"] for track in source_a)
+    assert set(prepare_tracks(second)[1]) == {f"track-{other['tracks'][0]['sourceTrackId']}"}
     assert all(speakers[key]["name"] is None for key in ("track-source-a", "track-source-b"))
 
     by_id = {job["id"]: job for job in jobs}
-    source_a = [by_id[identifier] for identifier in groups["track-source-a"]["tracks"]]
-    with rejoin(source_a, scratch=tmp_path / "scratch") as (stream, frames, _digest):
+    expected_tracks = CORPUS["expected"]["sessions"][call["id"]]["tracks"]
+    present = sorted(
+        (left // 16, right // 16) for track in source_a for left, right in expected_tracks[track["id"]]["presence16k"]
+    )
+    end = groups["track-source-a"]["durationMs"]
+    with rejoin([by_id[f"track-{track['id']}.wav"] for track in source_a], scratch=tmp_path / "scratch") as (
+        stream,
+        frames,
+        _digest,
+    ):
         samples = np.frombuffer(stream.read(), dtype="<f4")
-        assert frames == 62000 * 16
+        assert frames == end * 16
         # Known absent regions stay absent in actual recogniser/diarizer input.
         # Keep probes away from FIR edge context at physical span boundaries.
-        for left, right in ((0, 29000), (33000, 39000), (42000, 47000), (51000, 59000)):
+        quiet = absent(present, end, 1000)
+        assert quiet
+        for left, right in quiet:
             assert not np.any(samples[left * 16 : right * 16]), (left, right)
-        for left, right in ((30000, 32000), (40000, 41000), (48000, 50000), (60000, 62000)):
+        for left, right in present:
             assert np.max(np.abs(samples[left * 16 : right * 16])) > 0.01, (left, right)
 
-    expected = {
-        "track-mic.wav": "me",
-        "track-system.wav": "others",
-        "track-a-short.wav": "track-source-a",
-        "track-a-long.wav": "track-source-a",
-        "track-a-return.wav": "track-source-a",
-        "track-b.wav": "track-source-b",
-        "track-system-fallback.wav": "others",
-        "track-b-return.wav": "track-source-b",
-    }
+    expected = {f"track-{track['id']}.wav": group for group, tracks in members.items() for track in tracks}
 
     class Client:
         def __init__(self, *_args, **_kwargs):
