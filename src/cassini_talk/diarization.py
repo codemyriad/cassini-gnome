@@ -122,14 +122,42 @@ def speaking_order(words, ids=None):
     return list(dict.fromkeys(ids[index] for index, _word in ordered))
 
 
-def apply_transcript(words, groups):
-    """One final linear-size rewrite; timing, text and attribution stay intact."""
+def voice_id_collisions(planned, reserved):
+    """D64: {group: its voice ids that are another speaker's id} for each colliding group.
+
+    `planned` maps a group to the `<group>~n` ids it would write; `reserved` is
+    every other speaker id of the meeting (tracks, R64 lanes, D56 silent tracks).
+    Two groups cannot form one `<group>~n` id; that check is only a backstop.
+    """
+    owners = Counter(voice for voices in planned.values() for voice in set(voices))
+    result = {}
+    for group, voices in planned.items():
+        taken = [voice for voice in voices if voice in reserved or owners[voice] > 1]
+        if taken:
+            result[group] = taken
+    return result
+
+
+def apply_transcript(words, groups, reserved=()):
+    """One final linear-size rewrite; timing, text and attribution stay intact.
+
+    D64: a group any of whose voice ids is already another speaker's id (a
+    source literally named `s~1`, say) stays undiarized, stored as D11 stores
+    an inconclusive group. Its ordinals are never renumbered (G12).
+    """
     output = [dict(word) for word in words]
     new_speakers = {}
+    chosen_groups = []
     for group in groups:
         positions = [i for i, word in enumerate(output) if word["speaker"] == group["id"]]
         chosen = apply_group(group["id"], [output[i] for i in positions], group["turns"])
-        if not chosen["conclusive"]:
+        if chosen["conclusive"]:
+            chosen_groups.append((group, positions, chosen))
+    taken = set(reserved) | {word["speaker"] for word in words} | {group["id"] for group in groups}
+    collisions = voice_id_collisions({group["id"]: chosen["voiceIds"] for group, _p, chosen in chosen_groups}, taken)
+    for group, positions, chosen in chosen_groups:
+        if group["id"] in collisions:
+            LOG.warning("voiceIdCollision group=%s ids=%s", group["id"], ",".join(collisions[group["id"]]))
             continue
         for index, speaker in zip(positions, chosen["wordSpeakerIds"], strict=True):
             output[index]["speaker"] = speaker
