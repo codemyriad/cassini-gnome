@@ -51,7 +51,8 @@ jobs:
         with:
           bundle: cassini-talk.flatpak
           manifest-path: build-aux/flatpak/io.codemyriad.CassiniTalk.json
-          cache-key: flatpak-builder-${{ github.sha }}
+          # G8: keyed on the stable manifest; see flatpak.yml.
+          cache-key: flatpak-builder-stable-${{ hashFiles('build-aux/flatpak/io.codemyriad.CassiniTalk.json') }}
       - name: Validate exported metadata and launcher in the SDK
         run: |
           version=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -n1)
