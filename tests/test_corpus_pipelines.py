@@ -115,7 +115,7 @@ def check_rows(snapshot):
     assert min(ends) - max(starts) >= C["CONCURRENT_MIN_MS"], "the calls overlap"
     from cassini_talk import ux_formats
 
-    for session in sessions:
+    for session in order:
         meeting = meetings[session["id"]]
         assert meeting.duration_ms == session["durationMs"], "duration"
         assert meeting.row_texts()[0] == ux_formats.row_meta(session["durationMs"], ()), "row meta"
