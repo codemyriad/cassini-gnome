@@ -53,7 +53,14 @@ SKIPS = {
         f"tests.test_bounded_run::test_nothing_of_a_run_outlives_it[scope-{ending}]": "no systemd --user"
         for ending in ("done", "timeout", "stubborn", "interrupt")
     },
-    "tests.test_bounded_run::test_a_process_that_leaves_the_scope_dies_too": "no systemd --user",
+    **{
+        f"tests.test_bounded_run::{name}": "no systemd --user"
+        for name in (
+            "test_a_process_that_leaves_the_scope_dies_too",
+            "test_the_scope_stays_in_the_callers_slice",
+            "test_a_scope_it_cannot_check_is_reported",
+        )
+    },
     "tests.test_ci_orchestrator::test_actual_git_rename_keeps_old_area_coverage": "no git in the build",
     "tests.test_library_v2_finalize::test_a_really_full_tmpfs_leaves_nothing_in_the_root": "needs a tiny tmpfs",
     "tests.test_ux_vectors::test_locale_clock_style_in_a_real_locale_process[en_GB.UTF-8-14:18]": "locale",

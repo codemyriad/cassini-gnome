@@ -4,6 +4,7 @@ that bounds nothing (GNU timeout 0 never times out)."""
 
 import functools
 import os
+import re
 import select
 import shutil
 import signal
@@ -232,6 +233,69 @@ def test_a_process_that_leaves_the_scope_dies_too(tmp_path):
         assert started(pid) != start, "the detached process outlived the run"
     finally:
         os.close(ready)
+        if run.poll() is None:
+            run.kill()
+            run.wait()
+        if start is not None and started(pid) == start:
+            os.kill(pid, signal.SIGKILL)
+
+
+def run_reporting(argv, env, tmp_path):
+    """Start a bounded run of COMMAND ("done"); return (run, detached pid, its start, stderr file)."""
+    ready, writer = os.pipe()
+    errors = tmp_path / "stderr"
+    with errors.open("w") as stderr:
+        run = subprocess.Popen(
+            [*argv, str(BOUNDED), "60", sys.executable, "-c", COMMAND, str(writer), "done"],
+            pass_fds=[writer],
+            env=env,
+            stderr=stderr,
+        )
+    os.close(writer)
+    try:
+        assert select.select([ready], [], [], 30)[0], "the command never reported its detached process"
+        pid = int(os.read(ready, 64))
+    finally:
+        os.close(ready)
+    return run, pid, started(pid), errors
+
+
+def test_the_scope_stays_in_the_callers_slice(tmp_path):
+    # A Codex agent's shell runs in codex.slice (MemoryMax=8G): the bounded command
+    # must stay under its caller's limits, not move to app.slice.
+    if reason := scope_missing():
+        pytest.skip(f"no systemd --user scope: {reason}")
+    slice_ = f"cassini_bounded_run_test_{os.getpid()}.slice"  # a dash would nest it
+    caller = ["systemd-run", "--user", "--scope", "--quiet", "--collect", f"--slice={slice_}", "--"]
+    env = {**os.environ, "CASSINI_BOUNDED_RUN_MECHANISM": "scope"}
+    run, pid, start, errors = run_reporting(caller, env, tmp_path)
+    try:
+        cgroup = Path(f"/proc/{pid}/cgroup").read_text()
+        assert f"/{slice_}/cassini-bounded-run-" in cgroup, cgroup
+        assert (run.wait(timeout=60), errors.read_text()) == (7, "")
+    finally:
+        if run.poll() is None:
+            run.kill()
+            run.wait()
+        if start is not None and started(pid) == start:
+            os.kill(pid, signal.SIGKILL)
+        subprocess.run(["systemctl", "--user", "stop", slice_], capture_output=True, timeout=30)
+
+
+def test_a_scope_it_cannot_check_is_reported(tmp_path):
+    if reason := scope_missing():
+        pytest.skip(f"no systemd --user scope: {reason}")
+    # systemctl fails (the manager restarting, a bus error): not "gone" but a warning;
+    # the sweep still kills what the run left behind.
+    (tmp_path / "systemctl").write_text("#!/bin/sh\nexit 1\n")
+    (tmp_path / "systemctl").chmod(0o755)
+    env = {**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}", "CASSINI_BOUNDED_RUN_MECHANISM": "scope"}
+    run, pid, start, errors = run_reporting([], env, tmp_path)
+    try:
+        assert run.wait(timeout=60) == 7
+        assert re.fullmatch(r"bounded-run\.sh: could not check cassini-bounded-run-[\w-]+\.scope\n", errors.read_text())
+        assert started(pid) != start, "the detached process outlived the run"
+    finally:
         if run.poll() is None:
             run.kill()
             run.wait()

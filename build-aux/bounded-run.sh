@@ -52,9 +52,11 @@ manager=
 for dir in "${XDG_RUNTIME_DIR:-}" "/run/user/$UID"; do
   if [ -n "$dir" ] && [ -S "$dir/systemd/private" ]; then manager=$dir; break; fi
 done
+# --slice-inherit: the scope stays in the caller's slice and under its limits (a
+# Codex agent's codex.slice caps memory), not in app.slice.
 scope_works() {
   [ -n "$manager" ] && command -v systemd-run >/dev/null &&
-    XDG_RUNTIME_DIR=$manager timeout 10 systemd-run --user --scope --quiet --collect true >/dev/null 2>&1
+    XDG_RUNTIME_DIR=$manager timeout 10 systemd-run --user --scope --slice-inherit --quiet --collect true >/dev/null 2>&1
 }
 mechanism=${CASSINI_BOUNDED_RUN_MECHANISM:-auto}
 case "$mechanism" in
@@ -64,8 +66,10 @@ case "$mechanism" in
   *) echo "CASSINI_BOUNDED_RUN_MECHANISM must be auto, scope or sweep" >&2; exit 2 ;;
 esac
 
-# A variable of its own per run, so a nested run keeps the outer run's marker.
-id="$$_${RANDOM}${RANDOM}${RANDOM}"
+# A variable of its own per run, so a nested run keeps the outer run's marker;
+# a random UUID, so the unit name never names someone else's unit.
+read -r id </proc/sys/kernel/random/uuid 2>/dev/null || id="$$-$RANDOM$RANDOM$RANDOM$RANDOM"
+id=${id//-/_}
 marker="CASSINI_BOUNDED_RUN_$id"
 export "$marker=1"
 bounded=(timeout --kill-after="$kill_after" "$limit" "$@")
@@ -87,7 +91,7 @@ if [ "$mechanism" = scope ]; then
     if [ -n "${!name+set}" ]; then keep+=("$name=${!name}"); else drop+=(-u "$name"); fi
   done
   # systemd-run --scope execs its command: $! is timeout's pid either way.
-  XDG_RUNTIME_DIR=$manager systemd-run --user --scope --quiet --collect --unit="$unit" \
+  XDG_RUNTIME_DIR=$manager systemd-run --user --scope --slice-inherit --quiet --collect --unit="$unit" \
     -p RuntimeMaxSec=$((limit + 2 * kill_after + 10)) -p TimeoutStopSec="$kill_after" \
     -- env "${drop[@]}" "${keep[@]}" "${bounded[@]}" &
 else
@@ -102,6 +106,8 @@ while :; do
   # A trap ends wait early; wait again for timeout's own status.
   [ "$interrupted" = 1 ] || break
 done
+# Reaped: its pid may name another process now, which a late signal must not reach.
+run_group=$run run=''
 
 marked() {
   local dir entries
@@ -112,18 +118,20 @@ marked() {
     [[ " ${entries[*]} " == *" $marker=1 "* ]] && echo "${dir#/proc/}"
   done
 }
-gone=1
 if [ "$mechanism" = scope ]; then
   scope() { XDG_RUNTIME_DIR=$manager systemctl --user "$@" 2>/dev/null; }
   scope kill --signal=KILL "$unit"
-  # Gone once every member has exited (--collect unloads it).
+  # Gone once every member has exited (--collect unloads it: "inactive"). A failing
+  # systemctl proves nothing: say so; the sweep below still runs.
   for ((pass = 0; pass < 200; pass++)); do
-    case $(scope show -P ActiveState "$unit") in active | deactivating | activating | reloading) ;; *) gone=0; break ;; esac
+    state=$(scope show -P ActiveState "$unit") || { echo "bounded-run.sh: could not check $unit" >&2; break; }
+    case $state in active | deactivating | activating | reloading) ;; *) break ;; esac
     sleep .05
   done
+  [ "$pass" != 200 ] || echo "bounded-run.sh: $unit is still $state" >&2
 fi
 # timeout leads its own process group (pgid = its pid).
-kill -KILL -- "-$run" 2>/dev/null
+kill -KILL -- "-$run_group" 2>/dev/null
 # Each pass kills what the last one missed (a fork in between, an orphan just
 # adopted) and lets bash reap it (sleep); bounded.
 swept=1
@@ -135,7 +143,6 @@ for ((pass = 0; pass < 200; pass++)); do
   kill -KILL $pids "${children[@]}" 2>/dev/null
   sleep .02
 done
-[ "$mechanism" = scope ] || gone=0
-[ "$gone$swept" = 00 ] || echo "bounded-run.sh: processes of this run ($mechanism) are still alive" >&2
+[ "$swept" = 0 ] || echo "bounded-run.sh: processes of this run ($mechanism) are still alive" >&2
 [ "$signalled" = 0 ] || status=$signalled
 exit "$status"
