@@ -509,7 +509,7 @@ class TranscriptionQueue:
             error=None,
             before_commit=self._check_open,
         )
-        # Failed bodies are intentionally hidden by the Library. Once queued,
+        # A failed body is kept unreferenced (D67.2). Once queued, it is referenced again:
         # read the preserved sidecar through the normal validated reader so the
         # publisher knows how many words it must retain until recomputation
         # catches up. An explicit retry follows the same rule as auto-resume.
@@ -556,9 +556,12 @@ class TranscriptionQueue:
             directory = self._owned(directory)
             with transaction(directory):
                 self._check_open()
+                # D67.2: a failed transcript shows no words because the file says so.
+                # The partial transcript.json stays, unreferenced, for Try again,
+                # which references it again when it queues (_mark_queued).
                 update_metadata(
                     directory,
-                    transcript=dict(read_metadata(directory)["transcript"], status="failed", reference=REFERENCE),
+                    transcript=dict(read_metadata(directory)["transcript"], status="failed", reference=None),
                     transcript_body=transcript_snapshot(directory),
                     etaMinutes=None,
                     error=dict(id="transcribe-failed", action="Try again"),

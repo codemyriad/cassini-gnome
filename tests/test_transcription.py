@@ -201,6 +201,68 @@ def test_worker_failure_becomes_retryable_without_changing_audio(tmp_path):
         queue.close()
 
 
+def test_a_failed_write_down_keeps_its_partial_words_unreferenced_until_try_again(tmp_path):
+    """D67.2: failed shows no words because the file says so; the snapshot waits for Try again."""
+    session = capture(tmp_path)
+    finished, visible = [], []
+
+    class Client:
+        fail = True
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            texts = ["Partial", "words"] if Client.fail else ["Partial", "words", "again"]
+            notify(
+                dict(
+                    type="progress",
+                    trackId=tracks[0]["id"],
+                    trackOrder=0,
+                    language="en",
+                    etaMinutes=1,
+                    words=[dict(startMs=i * 100, endMs=i * 100 + 90, text=t) for i, t in enumerate(texts)],
+                )
+            )
+            if Client.fail:
+                Client.fail = False
+                raise RuntimeError("synthetic worker crash after partial words")
+            return dict(diagnostics=[])
+
+    def changed(directory):
+        meeting = LibraryScanner(tmp_path).scan().meetings[0]
+        visible.append((meeting.transcript, len(meeting.words)))
+
+    queue = TranscriptionQueue(changed, finished.append, client_factory=Client, bundle=tmp_path)
+    try:
+        queue.enqueue(session.directory)
+        until(lambda: len(finished) == 1)
+        metadata = read_metadata(session.directory)
+        assert metadata["transcript"]["status"] == "failed" and metadata["transcript"]["reference"] is None
+        assert metadata["error"] == dict(id="transcribe-failed", action="Try again")
+        # The partial body is kept, unreferenced, and the Library shows the file as stored: no words.
+        body = json.loads((session.directory / "transcript.json").read_text())
+        assert [item["text"] for item in body["items"]] == ["Partial", "words"]
+        meeting = LibraryScanner(tmp_path).scan().meetings[0]
+        assert (meeting.transcript, meeting.words, meeting.quote_line) == ("failed", (), None)
+        visible.clear()
+        # Try again references the snapshot once more: it is visible while queued.
+        assert queue.enqueue(session.directory)
+        until(lambda: len(finished) == 2)
+        assert ("queued", 2) in visible, visible
+        metadata = read_metadata(session.directory)
+        assert metadata["transcript"]["status"] == "done" and metadata["transcript"]["reference"] is not None
+        assert len(LibraryScanner(tmp_path).scan().meetings[0].words) == 3
+    finally:
+        queue.close()
+
+
 def test_newer_metadata_is_not_overwritten_and_unsafe_metadata_is_not_followed(tmp_path):
     session = capture(tmp_path)
     path = session.directory / "meeting.json"
