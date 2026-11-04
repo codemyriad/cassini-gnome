@@ -29,6 +29,23 @@ def until(check):
     assert check(), "Queue did not reach expected state"
 
 
+class Finished:
+    """The queue's finished callback as a completion event (E1): waits end when it fires."""
+
+    def __init__(self):
+        self.directories = []
+        self._condition = threading.Condition()
+
+    def __call__(self, directory):
+        with self._condition:
+            self.directories.append(directory)
+            self._condition.notify_all()
+
+    def wait(self, count, timeout=5):
+        with self._condition:
+            assert self._condition.wait_for(lambda: len(self.directories) >= count, timeout), "Queue did not finish"
+
+
 def capture_hashes(session):
     return {
         p.name: hashlib.sha256(p.read_bytes()).hexdigest()
@@ -204,7 +221,7 @@ def test_worker_failure_becomes_retryable_without_changing_audio(tmp_path):
 def test_a_failed_write_down_keeps_its_partial_words_unreferenced_until_try_again(tmp_path):
     """D67.2: failed shows no words because the file says so; the snapshot waits for Try again."""
     session = capture(tmp_path)
-    finished, visible = [], []
+    finished, visible = Finished(), []
 
     class Client:
         fail = True
@@ -239,10 +256,10 @@ def test_a_failed_write_down_keeps_its_partial_words_unreferenced_until_try_agai
         meeting = LibraryScanner(tmp_path).scan().meetings[0]
         visible.append((meeting.transcript, len(meeting.words)))
 
-    queue = TranscriptionQueue(changed, finished.append, client_factory=Client, bundle=tmp_path)
+    queue = TranscriptionQueue(changed, finished, client_factory=Client, bundle=tmp_path)
     try:
         queue.enqueue(session.directory)
-        until(lambda: len(finished) == 1)
+        finished.wait(1)
         metadata = read_metadata(session.directory)
         assert metadata["transcript"]["status"] == "failed" and metadata["transcript"]["reference"] is None
         assert metadata["error"] == dict(id="transcribe-failed", action="Try again")
@@ -254,7 +271,7 @@ def test_a_failed_write_down_keeps_its_partial_words_unreferenced_until_try_agai
         visible.clear()
         # Try again references the snapshot once more: it is visible while queued.
         assert queue.enqueue(session.directory)
-        until(lambda: len(finished) == 2)
+        finished.wait(2)
         assert ("queued", 2) in visible, visible
         metadata = read_metadata(session.directory)
         assert metadata["transcript"]["status"] == "done" and metadata["transcript"]["reference"] is not None
