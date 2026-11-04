@@ -24,6 +24,8 @@ def test_every_builder_cache_key_hashes_its_own_manifest():
         assert key.endswith("${{ hashFiles('" + manifest + "') }}"), (name, key)
         assert re.search(r"^\s+cache: ", step, re.M) is None, (name, "cache: false also stops the restore")
         keys.setdefault(key, set()).add(manifest)
-    assert len(keys) == 2, keys  # The devel and the stable profile.
+    # The devel profile. The stable one is built by flatpak-builder itself in
+    # flatpak.yml, with no action cache; releases reuse it (G15).
+    assert len(keys) == 1, keys
     prefixes = {key.split("${{")[0] for key in keys}
-    assert len(prefixes) == len(keys), keys  # One manifest's entry never shadows the other's.
+    assert len(prefixes) == len(keys), keys  # One manifest's entry never shadows another's.

@@ -54,20 +54,33 @@ prepared separately from runtime build inputs. Meson stays offline.
 
 ## Releases
 
-Release downloads the five Debian/RPM/Arch products already installed and
-smoke-tested by the exact main commit. `green_main.py` requires the latest main
-push orchestrator to succeed, every nested job green, all five package artifacts
+Release downloads the five Debian/RPM/Arch products and the stable Flatpak
+already installed and smoke-tested by the exact main commit (G15: the Flatpak
+is no longer rebuilt at tag time). `green_main.py` requires the latest main
+push orchestrator to succeed, every nested job green, all six package artifacts
 and all three full-run build products present and unexpired. A PR, another commit,
-a failed run or a partial/expired artifact set cannot supply a release. The
-release Flatpak is a separate default-profile build; main tests development.
+a failed run or a partial/expired artifact set cannot supply a release.
 No tag or publication is created to validate this wiring.
 
+Main builds the stable Flatpak without an update remote until the D45.1 signed
+repository at `https://cassini.talk/download/linux/flatpak/` is published, since
+an origin that does not exist breaks `flatpak update`. The tag workflow checks
+the bundle with `build-aux/ci/flatpak_bundle.py` and fails unless the bundle
+names that remote and carries a public key, and the remote, fetched at tag
+time, serves summaries (legacy and indexed) whose signatures gpgv accepts with
+that key alone, listing the bundle's ref at the bundle's own commit, and that
+commit with a valid signature. So **no release can ship until D45.1 is
+published, serving the exact commit main built**. CI itself never runs this
+check. `tests/test_flatpak_release_guard.py` runs it against a real signed
+repository and bundles made by flatpak and ostree with throwaway keys
+(`tests/flatpak/make-release-fixture.sh`).
+
 Every PR checks the version across Meson, NEWS, metainfo, the man page and all
-native recipes, in Lint (`source.yml`). `release-check.yml` runs that check and
-also builds the stable Flatpak, validates its exported desktop/AppStream files and
-launcher version in the SDK, then installs it and runs the normal offline smoke
-checks. The tag workflow calls it, and rejects a tag that disagrees with any
-package version; dispatch it on a release branch to check one before tagging.
+native recipes, in Lint (`source.yml`). `flatpak.yml` builds the stable Flatpak,
+validates its exported desktop/AppStream files and launcher version in the SDK,
+then installs it and runs the normal offline smoke checks. The tag workflow
+rejects a tag that disagrees with any package version. `release-check.yml` is
+dispatch-only: run it on a release branch to check its metadata before tagging.
 Native package scripts validate the installed metadata and launcher after the
 package-manager install, in addition to their unchanged clean-container offline
 smoke tests. No validator error is suppressed.

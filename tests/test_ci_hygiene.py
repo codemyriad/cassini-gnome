@@ -38,7 +38,7 @@ def test_release_metadata_runs_in_lint_and_release_preparation_has_no_pr_trigger
     assert "build-aux/ci/release_metadata.py --tag" in lint
     release = (WORKFLOWS / "release-check.yml").read_text()
     trigger = release.split("\njobs:", 1)[0]
-    assert "pull_request" not in trigger and "workflow_call:" in trigger
+    assert "pull_request" not in trigger and "workflow_dispatch:" in trigger
 
 
 def test_package_builds_run_on_the_pinned_runner_image():
@@ -47,3 +47,17 @@ def test_package_builds_run_on_the_pinned_runner_image():
     for name in ("deb.yml", "packages.yml", "rpm-canary.yml"):
         images = re.findall(r"^    runs-on: (\S+)", (WORKFLOWS / name).read_text(), re.M)
         assert images and set(images) == {"ubuntu-26.04"}, (name, images)
+
+
+def test_release_ships_the_flatpak_main_tested_and_refuses_it_without_an_update_remote():
+    # G15: no rebuild at tag time, and no workflow calls Release preparation.
+    release = (WORKFLOWS / "release.yml").read_text()
+    flatpak = dict(jobs(WORKFLOWS / "release.yml"))["flatpak"]
+    assert "release-check.yml" not in release and "name: flatpak-stable" in flatpak
+    assert "run-id: ${{ needs.main-inputs.outputs.run_id }}" in flatpak
+    assert "build-aux/ci/flatpak_bundle.py dist/cassini-talk.flatpak" in flatpak
+    assert re.search(r"^    needs: \[deb, packages, flatpak\]$", release, re.M)
+    assert not any("release-check.yml" in w.read_text() for w in WORKFLOWS.glob("*.yml"))
+    stable = (WORKFLOWS / "flatpak.yml").read_text()
+    assert "--repo-url" not in stable and "build-aux/ci/validate_installed.py" in stable
+    assert "name: flatpak-stable" in stable

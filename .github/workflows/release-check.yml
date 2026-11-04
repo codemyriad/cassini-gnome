@@ -1,10 +1,10 @@
 name: Release preparation
 
-# G16: called by the tag workflow, or dispatched on a branch. Every PR runs the
-# same metadata check in Lint (source.yml) and builds and smoke-tests the
-# stable Flatpak in flatpak.yml.
+# Dispatch it on a release branch to check its version metadata before
+# tagging. Every PR runs the same check in Lint (source.yml, G16); the stable
+# Flatpak is built, validated and smoke-tested in flatpak.yml, and the tag
+# workflow ships that bundle (G15), so nothing calls this workflow.
 on:
-  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -27,63 +27,3 @@ jobs:
           path: release-metadata.json
           if-no-files-found: error
 
-  flatpak:
-    name: Stable Flatpak build, install and validation
-    needs: metadata
-    runs-on: ubuntu-26.04
-    timeout-minutes: 30
-    container:
-      # gnome-50 as of 2026-11-03 (multi-arch index, image created 2026-09-22).
-      image: ghcr.io/flathub-infra/flatpak-github-actions@sha256:1de59efef01a946d9f28f1ec3458bf6f61dcee3507d7fecdd473f8134da4ec77
-      # G4: /var/lib/flatpak gets an anonymous volume, which Docker fills
-      # from the image's preinstalled SDK. The volume sits on the host
-      # filesystem, not overlayfs, so ostree's renames during the SDK update
-      # do not fail with EXDEV ("Invalid cross-device link") on the AWS
-      # ubuntu-26.04 runner pool.
-      options: --privileged -v /var/lib/flatpak
-    steps:
-      - uses: actions/checkout@v7
-      # G4: update the system SDK on its own, before anything else, so an
-      # infra failure is named as such instead of surfacing as xvfb-run exit
-      # 139 inside the builder (whose --install-deps-from runs the same
-      # `flatpak --system update`). Never retried: the EXDEV failure is
-      # deterministic per runner pool. The first two checks fail if the volume
-      # is missing or Docker did not fill it from the image, since every
-      # later step needs the image's system SDK and flathub remote there.
-      - name: Update the system GNOME 50 SDK (fails fast on infra errors)
-        run: |
-          grep -E '^([^ ]+ ){4}/var/lib/flatpak ' /proc/self/mountinfo || { echo '::error::infra: /var/lib/flatpak is not a separate mount; the container lost its -v /var/lib/flatpak volume'; exit 1; }
-          { flatpak info --system org.gnome.Sdk//50 && flatpak info --system org.gnome.Platform//50; } >/dev/null || { echo '::error::infra: the /var/lib/flatpak volume was not filled from the image (no system GNOME 50 SDK)'; exit 1; }
-          flatpak update --system -y --noninteractive org.gnome.Sdk//50 org.gnome.Platform//50 || { echo '::error::infra: Flatpak SDK update failed; "Invalid cross-device link" above is overlayfs EXDEV on this runner pool; rerun'; exit 1; }
-      # Pinned (G4). flathub-infra/flatpak-github-actions has no tags and was
-      # archived on 2025-04-24; this is the master SHA @master resolved to on
-      # 2026-11-03 (last commit "Close this branch", README only).
-      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@933e9e8ca36e85046ebca8e211f0785c6becac40 # master, 2026-11-03
-        with:
-          bundle: cassini-talk.flatpak
-          manifest-path: build-aux/flatpak/io.codemyriad.CassiniTalk.json
-          # G8: keyed on the stable manifest; see flatpak.yml.
-          cache-key: flatpak-builder-stable-${{ hashFiles('build-aux/flatpak/io.codemyriad.CassiniTalk.json') }}
-      - name: Validate exported metadata and launcher in the SDK
-        run: |
-          version=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -n1)
-          flatpak build --unshare=network --filesystem="$PWD:ro" flatpak_app \
-            python3 "$PWD/build-aux/ci/validate_installed.py" "$version" --prefix /app
-      - uses: actions/cache@v6
-        with:
-          path: ${{ runner.temp }}/parakeet-models
-          key: parakeet-ultra-18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
-      - name: Install stable bundle and run the existing offline smoke checks
-        env:
-          CASSINI_PARAKEET_TEST_CACHE: ${{ runner.temp }}/parakeet-models
-        run: build-aux/flatpak/smoke.sh cassini-talk.flatpak io.codemyriad.CassiniTalk
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: release-flatpak-evidence
-          path: |
-            flatpak-companion-bridge.json
-            flatpak-library-persistence.json
-            flatpak-*-host.log
-            flatpak-sandbox.log
-          retention-days: 7

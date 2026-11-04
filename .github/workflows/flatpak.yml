@@ -66,13 +66,20 @@ jobs:
       # It builds against the system SDK the steps above already updated (G4
       # volume), instead of a second --user copy downloaded from Flathub.
       # smoke.sh still installs the bundle per-user, as for the devel bundle.
-      - name: Build and freshly install the stable Cassini talk profile
+      # G15: a release ships this exact bundle (flatpak-stable, by run id).
+      # It has no update remote (repo URL) until the D45.1 signed repository
+      # is published: an origin that does not exist breaks `flatpak update`.
+      # The tag workflow refuses a bundle without one
+      # (build-aux/ci/flatpak_bundle.py), so no release ships this way.
+      - name: Build, validate and freshly install the stable Cassini talk profile
         run: |
           flatpak-builder --install-deps-from=flathub --force-clean --disable-rofiles-fuse \
             --repo="$RUNNER_TEMP/talk-stable-repo" "$RUNNER_TEMP/talk-stable-build" \
             build-aux/flatpak/io.codemyriad.CassiniTalk.json
+          version=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -n1)
+          flatpak build --unshare=network --filesystem="$PWD:ro" "$RUNNER_TEMP/talk-stable-build" \
+            python3 "$PWD/build-aux/ci/validate_installed.py" "$version" --prefix /app
           flatpak build-bundle \
-            --repo-url=https://cassini.talk/download/linux/flatpak/ \
             --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
             "$RUNNER_TEMP/talk-stable-repo" cassini-talk.flatpak io.codemyriad.CassiniTalk
           build-aux/flatpak/smoke.sh cassini-talk.flatpak io.codemyriad.CassiniTalk
