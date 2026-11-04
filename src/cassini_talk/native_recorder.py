@@ -127,13 +127,15 @@ class NativeRecorder(GObject.Object):
 
     def armed_sides(self):
         """D58.1: each side selected and waiting for its first buffer, with its
-        attempt's time (0 at start, the turn-on's time otherwise)."""
-        with self._lock:
-            return {
-                kind: attempt.get("refuse_at", 0)
-                for kind, attempt in self._pending_sources.items()
-                if attempt.get("armed")
-            }
+        attempt's time (0 at start, the turn-on's time otherwise).
+
+        The recording page calls this on the GTK main loop, so it never waits on
+        _lock: Stop holds it across file I/O. The pending map is copied in one
+        step (atomic under the GIL) and each attempt is only ever replaced or
+        updated whole, so the snapshot is at worst one change behind.
+        """
+        pending = tuple(self._pending_sources.items())
+        return {kind: attempt.get("refuse_at", 0) for kind, attempt in pending if attempt.get("armed")}
 
     @property
     def activity(self):

@@ -631,6 +631,24 @@ def test_refused_others_turned_off_then_on_and_silent_show_no_refusal(tmp_path, 
         close(recorder)
 
 
+def test_the_page_reads_armed_sides_while_stop_holds_the_recorder_lock(tmp_path):
+    # Boards' quit stop-finishing: the GTK main loop asked for armed_sides while
+    # Stop held the recorder lock, and the page stalled until the session was
+    # left recording.
+    recorder, sides, signals = start(tmp_path, QUIET)
+    try:
+        read = threading.Event()
+        found = []
+        with recorder._lock:
+            worker = threading.Thread(target=lambda: (found.append(recorder.armed_sides()), read.set()), daemon=True)
+            worker.start()
+            assert read.wait(5), "armed_sides waited on the recorder lock"
+        assert found == [{"system": 0}]
+        stop(recorder, signals)
+    finally:
+        close(recorder)
+
+
 def test_a_silent_start_is_armed_at_zero_and_shows_no_line(tmp_path):
     recorder, sides, signals = start(tmp_path, QUIET)
     try:
