@@ -3,6 +3,7 @@
 and the shard selection and per-shard isolation for Meson's pytest-N tests (G3)."""
 
 import fnmatch
+import json
 import os
 import shutil
 import tempfile
@@ -16,6 +17,7 @@ import shard_plan
 
 TESTS = Path(__file__).resolve().parent
 _shard = pytest.StashKey()
+_deselected = []
 
 
 class _Durations:
@@ -32,15 +34,7 @@ class _Durations:
 
 
 def _test_files(config):
-    patterns = config.getini("python_files")
-    files = []
-    for path in sorted(TESTS.rglob("*.py")):
-        relative = path.relative_to(TESTS)
-        if any(part.startswith(".") or part in ("node_modules", "__pycache__") for part in relative.parts):
-            continue
-        if any(fnmatch.fnmatch(path.name, pattern) for pattern in patterns):
-            files.append(relative.as_posix())
-    return files
+    return shard_plan.test_files(TESTS, config.getini("python_files"))
 
 
 def _isolate(root):
@@ -63,8 +57,24 @@ def _isolate(root):
     return root / "tmp"
 
 
+def _require_gtk():
+    """G11: the GTK application tests skip without these, and a package check
+    that CI's Source job relies on must run them, not skip them."""
+    try:
+        import gi
+
+        for namespace, version in (("Gtk", "4.0"), ("Adw", "1"), ("Gst", "1.0")):
+            gi.require_version(namespace, version)
+    except (ImportError, ValueError) as error:
+        raise pytest.UsageError(f"CASSINI_TEST_REQUIRE_GTK=1 but {error}") from error
+    if shutil.which("glib-compile-resources") is None:
+        raise pytest.UsageError("CASSINI_TEST_REQUIRE_GTK=1 but glib-compile-resources is missing")
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
+    if os.environ.get("CASSINI_TEST_REQUIRE_GTK") == "1":
+        _require_gtk()
     if os.environ.get("CASSINI_TEST_TIMINGS") == "1":
         config.pluginmanager.register(_Durations(config), "cassini-live-durations")
     if value := os.environ.get("CASSINI_TEST_SHARD"):
@@ -75,7 +85,13 @@ def pytest_configure(config):
         config.option.basetemp = str(_isolate(root))
         mine = {name for name, shard in assignment.items() if shard == index}
         config.stash[_shard] = SimpleNamespace(
-            index=index, count=count, assignment=assignment, root=root, started=time.monotonic()
+            index=index,
+            count=count,
+            assignment=assignment,
+            root=root,
+            started=time.monotonic(),
+            # G11: the tree this shard tests, before any test can write to it.
+            tests=shard_plan.tests_digest(TESTS),
         )
         print(f"pytest shard {index}/{count}: {len(mine)} of {len(assignment)} files; HOME, XDG dirs, basetemp: {root}")
 
@@ -100,10 +116,25 @@ def pytest_ignore_collect(collection_path, config):
     return True if owner != shard.index else None
 
 
+def pytest_deselected(items):
+    _deselected.extend(item.nodeid for item in items)
+
+
+def _record_run(config, shard):
+    """G11: what this shard ran with, for build-aux/ci/check_pytest_ran.py:
+    the tests tree, the config file pytest read and anything deselected."""
+    build = os.environ.get("CASSINI_TEST_BUILD")
+    if not build or not (Path(build) / "meson-logs").is_dir():
+        return
+    record = dict(tests=shard.tests, inipath=str(config.inipath or ""), deselected=_deselected)
+    (Path(build) / "meson-logs" / f"pytest-{shard.index}.run.json").write_text(json.dumps(record) + "\n")
+
+
 def pytest_sessionfinish(session, exitstatus):
     shard = session.config.stash.get(_shard, None)
     if shard is None:
         return
+    _record_run(session.config, shard)
     elapsed = time.monotonic() - shard.started
     budget = float(os.environ.get("CASSINI_TEST_BUDGET") or 0)
     terminal = session.config.pluginmanager.getplugin("terminalreporter")

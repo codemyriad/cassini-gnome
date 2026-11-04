@@ -17,9 +17,10 @@ jobs:
     name: Build .deb (${{ matrix.base }})
     runs-on: ubuntu-26.04
     timeout-minutes: 30
-    # Only the Ubuntu build is released; a Debian testing breakage should
-    # show up in CI without blocking a release.
-    continue-on-error: ${{ matrix.base != 'ubuntu:26.04' }}
+    # Both builds are required (G11): each runs the pytest suite its Source
+    # distro job leaves to it. A failed debian:testing build already blocked
+    # a release (green_main.py requires every main job to succeed); it no
+    # longer leaves a pull request green either.
     strategy:
       fail-fast: false
       matrix:
@@ -52,6 +53,18 @@ jobs:
       # Run once (D66): the script retries only its package installs and
       # image pulls (build-aux/ci/retry.sh), never the build or its tests.
       - run: build-aux/deb/build.sh "${{ matrix.base }}"
+      # G11: the Source job of this image skips pytest; prove it ran here in
+      # full, then leave the node ids CI's Pytest coverage gate compares.
+      - name: Require the whole pytest suite to have run and passed
+        id: pytest
+        run: |
+          python3 build-aux/ci/check_pytest_ran.py "$CASSINI_TEST_LOGS" --export "$RUNNER_TEMP/pytest" \
+            --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pytest-ran-${{ steps.pytest.outputs.slug }}
+          path: ${{ runner.temp }}/pytest/
+          if-no-files-found: error
       # G3: the Meson test logs (testlog.txt with each shard's --durations,
       # testlog.json, the pytest junit XML), also on success, to track creep;
       # a shard over half its timeout becomes a warning annotation here.

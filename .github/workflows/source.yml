@@ -44,19 +44,51 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image:
-          - debian:testing
-          - ubuntu:26.04
-          - fedora:latest
-          - registry.opensuse.org/opensuse/tumbleweed:latest
-          - archlinux:latest
-          - alpine:edge
+        # G11 (D66 rule 5, D20): the pytest suite is skipped only where
+        # `pytest-in` names a package job that runs the identical suite in the
+        # identical image; its recipe sets CASSINI_TEST_REQUIRE_GTK, so its
+        # check fails rather than skips the GTK application tests. The build,
+        # the other Meson tests, both installs and the smoke test always run.
+        include:
+          - image: debian:testing
+            pytest-in: "Debian package / Build .deb (debian:testing)"
+          - image: ubuntu:26.04
+            pytest-in: "Debian package / Build .deb (ubuntu:26.04)"
+          # No package job uses fedora:latest (the rpm is pinned to fedora:44).
+          - image: fedora:latest
+          - image: registry.opensuse.org/opensuse/tumbleweed:latest
+            pytest-in: "RPM and Arch packages / Build .rpm (registry.opensuse.org/opensuse/tumbleweed:latest)"
+          - image: archlinux:latest
+            pytest-in: "RPM and Arch packages / Build Arch package"
+          - image: alpine:edge
+    env:
+      CASSINI_SKIP_PYTEST: ${{ matrix.pytest-in && '1' || '' }}
     steps:
       - uses: actions/checkout@v7
       - run: echo "CASSINI_TEST_LOGS=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"
+      - name: Name the job that runs this image's pytest suite
+        if: matrix.pytest-in
+        run: echo "::notice::pytest suite skipped here; ${{ matrix.pytest-in }} runs it in ${{ matrix.image }}"
       # Run once (D66): the script retries only its package installs and
       # image pulls (build-aux/ci/retry.sh), never the build or its tests.
       - run: build-aux/check-distros.sh "${{ matrix.image }}"
+      # G11: from this job's own Meson logs, the node ids its pytest ran
+      # (fedora:latest's are the reference every package job must cover),
+      # or, whatever made it skip, a pytest-skipped marker that CI's Pytest
+      # coverage gate requires a package job's proof for.
+      - name: Record which pytest tests ran here
+        id: pytest
+        if: ${{ !cancelled() }}
+        run: |
+          . build-aux/container.sh
+          python3 build-aux/ci/check_pytest_ran.py --source "$CASSINI_TEST_LOGS" --slug "$(image_slug "${{ matrix.image }}")" \
+            --export "$RUNNER_TEMP/pytest" --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: pytest-${{ steps.pytest.outputs.kind }}-${{ steps.pytest.outputs.slug }}
+          path: ${{ runner.temp }}/pytest/
+          if-no-files-found: error
       # G3: the Meson test logs (testlog.txt with each shard's --durations,
       # testlog.json, the pytest junit XML), also on success, to track creep;
       # a shard over half its timeout becomes a warning annotation here.

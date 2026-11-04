@@ -69,6 +69,26 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.packages != 'false') }}
     uses: ./.github/workflows/flatpak.yml
+  # G11: a Source distro job skips pytest only where a package job runs it.
+  # Each Source job uploads the node ids its pytest ran, or pytest-skipped-
+  # <image>; each package job that proved a complete run uploads its node
+  # ids as pytest-ran-<image>. This fails on any skip without that proof
+  # from the same release, and on any package job that left out a test the
+  # fedora:latest Source job ran, whatever skipped, narrowed or broke it.
+  pytest-coverage:
+    name: Pytest coverage
+    needs: [source, deb, rpm-arch]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: pytest-*
+          path: ${{ runner.temp }}/pytest
+      - name: Every skipped pytest suite ran in full in a package job of the same release
+        run: python3 build-aux/ci/check_pytest_ran.py --gate "$RUNNER_TEMP/pytest"
   # Recording, Boards and Offline test Build's product: after a failed Build
   # they are skipped, not failed at the artifact download (G7).
   recording:

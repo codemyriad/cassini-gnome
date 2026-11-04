@@ -30,6 +30,7 @@ container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:r
   save_logs() {
     [ -d /logs ] || return 0
     [ ! -d /build/pkg/src/build/meson-logs ] || cp -a /build/pkg/src/build/meson-logs/. /logs/
+    cp /etc/os-release /logs/os-release  # G11: the image that ran the tests
     chown -R "$(stat -c %u:%g /logs)" /logs
   }
   trap "save_logs || true" EXIT

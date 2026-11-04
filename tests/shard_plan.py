@@ -11,11 +11,40 @@ moves another known file. Re-measure and update the table when shards drift
 (the CI meson-logs artifacts carry each file's time in the pytest junit XML).
 """
 
+import fnmatch
+import hashlib
 import json
 import statistics
 from pathlib import Path
 
 TABLE = Path(__file__).with_name("shard-durations.json")
+# pytest's default python_files; pyproject.toml does not change it.
+PATTERNS = ("test_*.py", "*_test.py")
+# What the package builds and check-distros.sh leave out of their copy of tests/.
+NOT_COPIED = {"__pycache__", ".pytest_cache", "node_modules", "artifacts"}
+
+
+def test_files(tests=TABLE.parent, patterns=PATTERNS):
+    """Every test file under tests/, relative to it, as pytest would collect it."""
+    files = []
+    for path in sorted(Path(tests).rglob("*.py")):
+        relative = path.relative_to(tests)
+        if any(part.startswith(".") or part in ("node_modules", "__pycache__") for part in relative.parts):
+            continue
+        if any(fnmatch.fnmatch(path.name, pattern) for pattern in patterns):
+            files.append(relative.as_posix())
+    return files
+
+
+def tests_digest(tests=TABLE.parent):
+    """sha256 over every file under tests/ (path and content), as the builds
+    copy it: G11 compares the tree a package build tested with the checkout."""
+    digest = hashlib.sha256()
+    for path in sorted(Path(tests).rglob("*")):
+        relative = path.relative_to(tests)
+        if path.is_file() and not NOT_COPIED.intersection(relative.parts):
+            digest.update(f"{relative.as_posix()}\0{hashlib.sha256(path.read_bytes()).hexdigest()}\n".encode())
+    return digest.hexdigest()
 
 
 def durations(table=TABLE):

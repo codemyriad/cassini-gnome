@@ -43,6 +43,49 @@ Distro and package builds remain separate: their OS/ABI/recipe tests are distinc
 No packaging recipe is changed. All six source distros, five native packages,
 Flatpak and Recording scenarios remain enabled with their existing thresholds.
 
+The pytest suite runs once per image (G11, D20). A Source distro job leaves
+out only its `pytest` Meson suite when a package job runs that suite in the
+same image; it still builds, runs every other Meson test, installs and
+smoke-tests. The matrix names that job in `pytest-in`, and the job prints it.
+
+| Source job | pytest suite runs in |
+| --- | --- |
+| debian:testing | Debian package / Build .deb (debian:testing) |
+| ubuntu:26.04 | Debian package / Build .deb (ubuntu:26.04) |
+| openSUSE Tumbleweed | RPM and Arch packages / Build .rpm (Tumbleweed) |
+| archlinux:latest | RPM and Arch packages / Build Arch package |
+| fedora:latest | itself (the rpm is built on fedora:44) |
+| alpine:edge | itself (no package job) |
+
+The deb and rpm builds have the GTK and libadwaita typelibs as check
+dependencies, and every recipe runs its check with `CASSINI_TEST_REQUIRE_GTK=1`.
+pytest then stops with a usage error if a typelib is missing, instead of
+skipping the GTK application tests that only the Source job used to run there.
+
+Those package jobs are required: the debian:testing build no longer has
+`continue-on-error` (a failure there already blocked a release in
+`green_main.py`). After each build, `build-aux/ci/check_pytest_ran.py` proves
+from its Meson logs what pytest ran: pytest-1 .. pytest-N each once and passed,
+with the command `src/meson.build` registers, their shard,
+`CASSINI_TEST_REQUIRE_GTK=1` and no `PYTEST_ADDOPTS`; each shard read the
+source's `pyproject.toml`, deselected nothing and tested a `tests/` tree
+identical to the checkout (`tests/conftest.py` records these per shard);
+every test file is in the shard `tests/shard_plan.py` gives it; and no skip
+falls outside its short `SKIPS` list. The job uploads its node ids and the
+os-release of the container that ran them as `pytest-ran-<image>`.
+
+Every Source job records from its own logs either the node ids its pytest ran
+or, whatever made it skip, `pytest-skipped-<image>`. CI's **Pytest coverage**
+job then fails if a skipped image has no `pytest-ran-` proof from a container
+of the same release, or if any package job ran fewer cases of a test function
+than the fedora:latest Source job, the reference that keeps the whole suite
+with GTK outside a package build. A test left out only in package builds, by
+a deselection, a conditional definition, a patch or another image, fails here.
+`tests/test_ci_pytest_replacement.py` also pins the recipes' test commands,
+hooks, patches and check dependencies, the job conditions and the gate, and
+mutates each (every bypass found in two adversarial reviews among them) to
+prove the guard catches it.
+
 Tar products preserve executable bits. Before use, consumers check their exact
 GitHub commit, profile and every file digest; extraction rejects traversal, links
 and devices. The board install uses its configured fixed prefix and compiled

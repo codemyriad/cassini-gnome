@@ -90,12 +90,18 @@ BuildRequires:  AppStream
 BuildRequires:  glib2-tools
 BuildRequires:  hicolor-icon-theme
 BuildRequires:  typelib-1_0-Gst-1_0
+BuildRequires:  typelib-1_0-Gtk-4_0
+BuildRequires:  typelib-1_0-Adw-1
+BuildRequires:  gpg2
 BuildRequires:  gstreamer-plugins-base
 BuildRequires:  gstreamer-plugins-good
 %else
 BuildRequires:  python3-rpm-macros
 BuildRequires:  appstream
 BuildRequires:  gobject-introspection
+BuildRequires:  gtk4
+BuildRequires:  libadwaita
+BuildRequires:  gnupg2-verify
 BuildRequires:  gstreamer1
 BuildRequires:  gstreamer1-plugins-base
 BuildRequires:  gstreamer1-plugins-good
@@ -194,6 +200,9 @@ chmod 0755 %{buildroot}%{_bindir}/%{name} %{buildroot}%{_bindir}/cassini-browser
 echo "%%dir %{_datadir}/cassini-talk" >> %{name}.lang
 
 %check
+# A missing GTK/Adw typelib fails the check instead of skipping the
+# application tests (G11: CI's Source job relies on this one).
+export CASSINI_TEST_REQUIRE_GTK=1
 %meson_test
 # CI keeps the test logs (durations, junit): build-aux/rpm/build.sh defines
 # cassini_test_logs, since rpm >= 4.20 removes the build directory afterwards.

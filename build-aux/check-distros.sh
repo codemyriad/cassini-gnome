@@ -9,6 +9,8 @@
 # load from the installed tree. Prints a PASS/FAIL table; exits 1 if any failed.
 # Logs go to a temporary directory (printed at the end), not the source tree;
 # with CASSINI_TEST_LOGS set, each image's meson-logs also go there.
+# CASSINI_SKIP_PYTEST=1 leaves out only the pytest suite (CI, where a package
+# job runs it in the same image); every other step and Meson test still runs.
 set -eu
 case ${1:-} in -h|--help) sed -n '2,10s/^# \{0,1\}//p' "$0"; exit 0 ;; esac
 cd "$(dirname "$0")/.."
@@ -30,6 +32,7 @@ step() { printf "\\n==> %s\\n" "$1"; }
 save_logs() {
   [ -d /logs ] || return 0
   [ ! -d /build/b/meson-logs ] || cp -a /build/b/meson-logs/. /logs/
+  cp /etc/os-release /logs/os-release  # G11: the image that ran the tests
   chown -R "$(stat -c %u:%g /logs)" /logs
 }
 trap "save_logs || true" EXIT
@@ -56,7 +59,11 @@ step "meson test"
 # differs between Meson releases): pytest-1 .. pytest-N, conformance, Validate.
 meson introspect /build/b --tests > /build/tests.json
 python3 build-aux/ci/check_meson_tests.py /build/tests.json
-meson test -C /build/b --print-errorlogs
+if [ "${CASSINI_SKIP_PYTEST:-}" = 1 ]; then
+  meson test -C /build/b --print-errorlogs --no-suite pytest
+else
+  meson test -C /build/b --print-errorlogs
+fi
 
 step "meson install"
 DESTDIR=/build/dest meson install -C /build/b --quiet
@@ -116,7 +123,7 @@ for image in "$@"; do
   echo
   echo "################ $image"
   logs=$(test_log_dir "distro-$(image_slug "$image")")
-  { if container_pull "$image" && container_run -e DEBIAN_FRONTEND=noninteractive -v "$PWD":/in:ro$Z \
+  { if container_pull "$image" && container_run -e DEBIAN_FRONTEND=noninteractive -e CASSINI_SKIP_PYTEST="${CASSINI_SKIP_PYTEST:-}" -v "$PWD":/in:ro$Z \
          ${logs:+-v "$logs:/logs:rw$Z"} "$image" sh -c "$INNER"; then
       echo 0 > "$log.status"
     else
