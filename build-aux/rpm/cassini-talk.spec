@@ -92,6 +92,7 @@ BuildRequires:  hicolor-icon-theme
 BuildRequires:  typelib-1_0-Gst-1_0
 BuildRequires:  typelib-1_0-Gtk-4_0
 BuildRequires:  typelib-1_0-Adw-1
+BuildRequires:  gpg2
 BuildRequires:  gstreamer-plugins-base
 BuildRequires:  gstreamer-plugins-good
 %else
@@ -100,6 +101,7 @@ BuildRequires:  appstream
 BuildRequires:  gobject-introspection
 BuildRequires:  gtk4
 BuildRequires:  libadwaita
+BuildRequires:  gnupg2-verify
 BuildRequires:  gstreamer1
 BuildRequires:  gstreamer1-plugins-base
 BuildRequires:  gstreamer1-plugins-good

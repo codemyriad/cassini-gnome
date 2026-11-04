@@ -114,7 +114,8 @@ BUILDS = {
     ),
     "arch": ("build-aux/arch/build.sh", "build-aux/arch/build.sh", 'su builder -c "makepkg -s --noconfirm"'),
 }
-# What the suite needs to run every test, GTK application tests included.
+# What the suite needs to run every test, GTK application tests and the
+# release guard's (gpgv) included.
 DEB_DEPS = (
     "python3-pytest",
     "python3-jsonschema",
@@ -127,6 +128,7 @@ DEB_DEPS = (
     "gstreamer1.0-plugins-base",
     "gstreamer1.0-plugins-good",
     "libglib2.0-dev-bin",
+    "gpgv",
 )
 RPM_DEPS = (
     "python3-pytest",
@@ -142,6 +144,7 @@ SUSE_DEPS = (
     "typelib-1_0-Adw-1",
     "gstreamer-plugins-base",
     "gstreamer-plugins-good",
+    "gpg2",
 )
 FEDORA_DEPS = (
     "gobject-introspection",
@@ -150,6 +153,7 @@ FEDORA_DEPS = (
     "gstreamer1-plugins-good",
     "gtk4",
     "libadwaita",
+    "gnupg2-verify",
 )
 ARCH_DEPS = (
     "python-gobject",
@@ -162,6 +166,7 @@ ARCH_DEPS = (
     "python-pytest",
     "python-jsonschema",
     "python-rfc3339-validator",
+    "gnupg",
 )
 
 
@@ -444,6 +449,7 @@ MUTATIONS = {
     ),
     "deb without adw": ("debian/control", "               gir1.2-adw-1 <!nocheck>,\n", ""),
     "deb without gtk": ("debian/control", "               gir1.2-gtk-4.0 <!nocheck>,\n", ""),
+    "deb without gpgv": ("debian/control", "               gpgv <!nocheck>,\n", ""),
     "deb gtk only in another profile": (
         "debian/control",
         "gir1.2-gtk-4.0 <!nocheck>",
@@ -458,6 +464,8 @@ MUTATIONS = {
     "rpm extra args": ("build-aux/rpm/build.sh", "  set --\n", "  set -- --without check\n"),
     "rpm suse without gtk": ("build-aux/rpm/cassini-talk.spec", "BuildRequires:  typelib-1_0-Gtk-4_0\n", ""),
     "rpm fedora without adw": ("build-aux/rpm/cassini-talk.spec", "BuildRequires:  libadwaita\n", ""),
+    "rpm suse without gpgv": ("build-aux/rpm/cassini-talk.spec", "BuildRequires:  gpg2\n", ""),
+    "rpm fedora without gpgv": ("build-aux/rpm/cassini-talk.spec", "BuildRequires:  gnupg2-verify\n", ""),
     "rpm continue-on-error": ("packages.yml", "  rpm:\n    name:", "  rpm:\n    continue-on-error: true\n    name:"),
     "rpm check step dropped": ("packages.yml", CHECK_STEP, "\n", 0),
     "tumbleweed image gone": (
@@ -479,6 +487,7 @@ MUTATIONS = {
     "arch --nocheck": ("build-aux/arch/build.sh", '"makepkg -s --noconfirm"', '"makepkg -s --noconfirm --nocheck"'),
     "arch BUILDENV": ("build-aux/arch/PKGBUILD", "options=(", "BUILDENV=(!check)\noptions=("),
     "arch without libadwaita": ("build-aux/arch/PKGBUILD", "  'libadwaita>=1.8'\n", ""),
+    "arch without gpgv": ("build-aux/arch/PKGBUILD", " desktop-file-utils gnupg)", " desktop-file-utils)"),
     "arch check step dropped": ("packages.yml", CHECK_STEP, "\n", 1),
     "arch image moved": ("build-aux/arch/build.sh", "BASE=${1:-archlinux:latest}", "BASE=${1:-archlinux:base}"),
     "source keeps fedora skip": (
