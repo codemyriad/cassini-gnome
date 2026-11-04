@@ -128,6 +128,34 @@ def test_word_past_the_pcm_ends_where_mac_ends_it():
     assert differences == []
 
 
+def test_a_tracks_last_word_ends_where_mac_ends_it_within_the_source_end():
+    # process_tracks also bounds a track's words by its source end (_source_end). Counted from
+    # the track's D55 placement, that bound never cuts a segment that ends at the track's last
+    # sample shorter than Mac does: 0.99 ms is session sample 15.84, so the track starts at 16
+    # (1 ms) and its 16000 samples end at 1001 ms, not at floor(0.99 + 1000).
+    from cassini_talk.speech_pipeline import _source_end
+
+    class Late:
+        def transcribe(self, samples, **_options):
+            return dict(text="x", language="en", words=[dict(word="x", start=0.2, end=99.0)])
+
+    differences = []
+    for offset, frames in ((0.99, 16000), (1304.54943, 45927), (1234.5104, 16001), (1001.28125, 31999)):
+        track = dict(id="t", path="unused.wav", offsetMs=offset, frames=frames, sampleRate=16000)
+        for start in (0, 7, 512):
+            segment = dict(startSample=start, endSample=frames, reason="silence")
+            samples = np.zeros(frames - start, "<f4")
+            _, (word,), _, _ = recognise_segment(
+                Late(), None, segment, offset, samples=samples, audio_end_ms=_source_end(track)
+            )
+            if (word["startMs"], word["endMs"]) != mac_clamped(offset, start, frames - start, 0.2, 99.0):
+                differences.append((offset, frames, start, word))
+    assert differences == []
+    # A 48 kHz track's recognizer input is ceil(frames / 3) samples (resampled_chunks).
+    track = dict(id="t", path="unused.wav", offsetMs=0.99, frames=48001, sampleRate=48000)
+    assert _source_end(track) == (16 + 16001) * 1000 // 16000
+
+
 def test_process_tracks_uses_the_clock_mapped_source_end(tmp_path, monkeypatch):
     from cassini_talk import speech_pipeline as pipeline
 

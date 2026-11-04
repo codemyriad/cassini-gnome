@@ -97,3 +97,16 @@ def test_anchored_end_starts_at_the_d55_placement_of_a_fractional_offset():
     assert Mapping(span).end(frames) == 1535999 + 480001
     # Rotation writes this end / 48 as the next span's startOffsetMs, so it stays on Mapping's end.
     assert mapped_end_sample(frames, 48000, offset, anchors) == Mapping(span).end(frames)
+
+
+def test_unanchored_end_starts_at_the_d55_placement_of_a_half_frame_offset():
+    # Without two anchors the span is nominal: 1535998.5 frames is placed at 1535999 (half away
+    # from zero, D55), never at 1535998 (round half to even), where Mapping places it too.
+    pytest.importorskip("numpy")
+
+    from cassini_talk.capture_clock import mapped_end_sample
+    from cassini_talk.library_v2.mixdown import Mapping
+
+    span = SimpleNamespace(info=SimpleNamespace(sample_rate=48000), start_ms=31999.96875, anchors=())
+    assert mapped_end_sample(480000, 48000, 31999.96875, ()) == Mapping(span).end(480000) == 1535999 + 480000
+    assert mapped_end_sample(160000, 16000, 31999.96875, ((0, 5_000_000_000),)) == 1535999 + 480000

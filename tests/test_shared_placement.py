@@ -212,7 +212,7 @@ class Session:
     def speech(self):
         """rec16 and wordMs from the write-down's jobs."""
         from cassini_talk.diarization_audio import rejoin
-        from cassini_talk.speech_pipeline import audio_chunks, recognise_segment
+        from cassini_talk.speech_pipeline import audio_chunks, placed_offset, recognise_segment
 
         jobs = self.writing_down()
         live = [job for job in jobs if not job.get("silent")]
@@ -223,8 +223,8 @@ class Session:
             key = f"{self.meeting.id}/{job['captureTrackId']}"
             self.legs["rec16"][key] = found(session, 16000, EXPECTED[key]["rec16"]["frames"])
             local = np.concatenate(list(audio_chunks(job)))
-            # The write-down places an unknown offset at 0 (speech_pipeline.process_tracks).
-            offset = 0 if job["offsetMs"] is None else job["offsetMs"]
+            # Where the speech child places this job's words (an unknown offset at an assumed 0).
+            offset = placed_offset(job, [])
             words = []
             # Pinned inputs: the segment starts at the burst's local sample, never at a measured onset.
             for start in (16 * ms for ms in TRACKS[key]["burstsMs"]):

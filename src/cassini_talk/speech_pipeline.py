@@ -414,11 +414,27 @@ def _source_end(track):
         and track.get("sampleRate")
     ):
         # Opus frames are source metadata; its decoded PCM, which is also
-        # what publication uses, already bounds each segment's words.
-        from .source_spans import bounds
-
-        return math.floor(bounds(track, display=True)[1])
+        # what publication uses, already bounds each segment's words. D55: the
+        # track's 16 kHz samples end at its placement plus their count, in the
+        # session ms of the word times; never earlier than a segment's own end.
+        count = -(-track["frames"] * RATE // track["sampleRate"])
+        return placement.word_ms(track.get("offsetMs") or 0, count)
     return None
+
+
+def placed_offset(track, diagnostics):
+    """The offset the write-down places a track's words at (D55 M9).
+
+    An unknown offset is placed at an assumed 0 and reported in `diagnostics`;
+    the parent flags the attempt (writingDown.offsetsAssumedZero).
+    """
+    offset = track.get("offsetMs")
+    if offset is None:
+        offset = 0
+        diagnostics.append(dict(code="unknown-offset-display-zero", track=track["id"]))
+    if type(offset) not in (int, float) or not math.isfinite(offset) or offset < 0:
+        raise ValueError("Invalid capture offset")
+    return offset
 
 
 def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
@@ -436,12 +452,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
     audible = [(order, track) for order, track in enumerate(tracks) if track.get("silent") is not True]
     for order, track in audible:
         path = Path(track["path"])
-        offset = track.get("offsetMs")
-        if offset is None:
-            offset = 0
-            diagnostics.append(dict(code="unknown-offset-display-zero", track=track["id"]))
-        if type(offset) not in (int, float) or not math.isfinite(offset) or offset < 0:
-            raise ValueError("Invalid capture offset")
+        offset = placed_offset(track, diagnostics)
         meter = fallback.ActivityMeter(fallback.track_ranges(track.get("sessionPresence"), offset))
         meters[order] = meter
         for segment in segment_ranges(

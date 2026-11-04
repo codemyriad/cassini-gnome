@@ -12,6 +12,7 @@ the track's own rate (D55: placement.frame, as Mac's playback does).
 
 import os
 import threading
+from fractions import Fraction
 
 from gi.repository import GLib, Gst
 
@@ -70,11 +71,11 @@ class PCMSource:
         from .source_ownership import FrameMask
 
         shift = getattr(track, "ownership_offset_ms", 0)
-        self.ownership = FrameMask(
-            getattr(track, "ownership_windows", None),
-            self.rate,
-            shift + track.start_offset_ms if self.local else shift,
-        )
+        if self.local:
+            # Local frames count from where the export places the track, frame(offset, 48000),
+            # in exact ms, so a 48 kHz edge falls on the export's own 48 kHz mask (Mac's PCMInput).
+            shift = Fraction(str(shift)) + Fraction(frame(track.start_offset_ms, 48000), 48)
+        self.ownership = FrameMask(getattr(track, "ownership_windows", None), self.rate, shift)
         # Each placed span is masked by its own windows on the 48 kHz timeline, also when its track is unplaced.
         self.span_masks = [FrameMask(getattr(child.track, "ownership_windows", None), 48000) for child in self.children]
         self.cursor = 0
