@@ -21,7 +21,7 @@ permissions:
 jobs:
   products:
     name: Meson validate and build profiles
-    runs-on: ubuntu-26.04
+    runs-on: ${{ vars.CM_RUNNER != '' && fromJSON(vars.CM_RUNNER) || 'ubuntu-26.04' }}
     container: ubuntu:26.04
     timeout-minutes: 25
     steps:
