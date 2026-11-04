@@ -908,7 +908,9 @@ class BrowserService:
     def _capture_changed(self, capture, event):
         if event == "error":
             self.workers.submit(capture.stop, capture.error)
-        elif event == "finished" and capture.directory is not None:
+        elif event == "finished" and (capture.directory is not None or getattr(capture, "nothing_recorded", False)):
+            # D58.1: a recording nothing ever opened into ends without a folder
+            # at Stop; its tab must not stay "recording".
             with self.lock:
                 self._control_reconnects.pop(capture.capture_id, None)
                 for (instance, tab), (capture_id, url) in self.call_captures.items():
@@ -930,7 +932,8 @@ class BrowserService:
                 finished = [key for key, owner in self.captures.items() if owner.finished]
                 for key in finished[:-19]:
                     self.captures.pop(key, None)
-            self._remember_saved(str(capture.directory), capture.host.session.manifest["title"])
+            if capture.directory is not None:
+                self._remember_saved(str(capture.directory), capture.host.session.manifest["title"])
 
     def _remember_saved(self, path, title, message=None):
         with self.lock:

@@ -717,7 +717,7 @@ def test_browser_refused_microphone_and_others_silent_until_stop_leave_no_folder
     finally:
         stopped = capture.stop()
     # Nothing ever opened: no folder, never the "empty" problem.
-    assert stopped == dict(type="stopped", path=None) and capture.discarded
+    assert stopped == dict(type="stopped", path=None) and capture.discarded and capture.nothing_recorded
     assert not session.directory.exists() and "error" not in changes
 
 

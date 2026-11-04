@@ -60,6 +60,7 @@ class BrowserCapture:
         # D58.1: a native side was committed armed. If no side ever opened by
         # the end, nothing recorded: no folder (D58 point 2), as natively.
         self._armed_once = False
+        self.nothing_recorded = False  # D58.1: Stop found no side ever opened (not a start failure).
         # Native sides requested at start that never opened (R79 §1). A
         # fallback or restore does not reopen them; turning one off forgets it.
         self.refused_sides = set()
@@ -1107,6 +1108,7 @@ class BrowserCapture:
                         # refusals are already stored, for a folder kept for
                         # typed content.
                         discard = ()
+                        self.nothing_recorded = True
                     if discard is not None:
                         self.discarded = self.host.session.discard()
                         if not self.discarded:
