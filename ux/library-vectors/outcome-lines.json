@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Shared test 8 (D67): the Details \"Audio sources\" lines of each T8 case, hand-written from LIBRARY-RULES R13 and the D52.1 source lines, never from app output. Each line is a catalog id with its placeholder arguments, in display order: sources in captureOutcome order, a source's silent line right after its own line. source is {catalog: id} for a role name or {text: label} for a stored label; duration is a meetingDuration in ms. problem is the warning role (D52.1), never inferred from quiet audio. noSpeech and visibleWords (words per speaker id) pin what the meeting shows. The first four cases are the three outcome states and their control; the others guard R13.1 (every track, transcript done), R13.3 (place) and D67.2 (a failed file shows its referenced words as stored).",
+  "note": "Shared test 8 (D67): the Details \"Audio sources\" lines of each T8 case, hand-written from LIBRARY-RULES R13 and the D52.1 source lines, never from app output. Each line is a catalog id with its placeholder arguments, in display order: sources in captureOutcome order, a source's silent line right after its own line. source is {catalog: id} for a role name or {text: label} for a stored label; duration is a meetingDuration in ms. problem is the warning role (D52.1), never inferred from quiet audio. noSpeech and visibleWords (words per speaker id) pin what the meeting shows. The first four cases are the three outcome states and their control; the others guard R13.1 (every track, transcript done), R13.3 (place), D67.2 and D67.8a (a failed or none file shows its referenced words as stored) and D67.8b (a lowAudio source gets its warning and no silent line).",
   "cases": {
     "t8-control-others-spoke": {
       "audio": [
@@ -250,6 +250,71 @@
       "visibleWords": {
         "me": 3,
         "track-guest": 2
+      }
+    },
+    "t8-none-referenced-words": {
+      "audio": [
+        {
+          "id": "details.sources.captured",
+          "args": {
+            "source": {
+              "catalog": "common.yourMicrophone"
+            },
+            "duration": {
+              "ms": 10000
+            }
+          },
+          "problem": false
+        },
+        {
+          "id": "details.sources.captured",
+          "args": {
+            "source": {
+              "text": "Ana"
+            },
+            "duration": {
+              "ms": 10000
+            }
+          },
+          "problem": false
+        }
+      ],
+      "noSpeech": false,
+      "visibleWords": {
+        "me": 2,
+        "track-guest": 1
+      }
+    },
+    "t8-low-audio-silent": {
+      "audio": [
+        {
+          "id": "details.sources.captured",
+          "args": {
+            "source": {
+              "catalog": "common.yourMicrophone"
+            },
+            "duration": {
+              "ms": 10000
+            }
+          },
+          "problem": false
+        },
+        {
+          "id": "details.sources.lowAudio",
+          "args": {
+            "source": {
+              "text": "Ana"
+            },
+            "duration": {
+              "ms": 500
+            }
+          },
+          "problem": true
+        }
+      ],
+      "noSpeech": false,
+      "visibleWords": {
+        "me": 3
       }
     }
   }

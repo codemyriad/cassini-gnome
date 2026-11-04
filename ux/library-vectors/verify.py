@@ -13,11 +13,12 @@ import tempfile
 
 HERE=Path(__file__).resolve().parent
 FIELDS={'id','origin','lifecycle','interruptedAtMs','transcript','etaMinutes','error','badge','title','startMs','durationMs','names','quote','canWriteDown','speakers'}
-CASE_COUNT=20
+CASE_COUNT=22
 # The three outcome states and their control (D67), then guards: R3/D67.2 failed shown as stored, R13.1 done
-# and every track, R13.3 place.
+# and every track, R13.3 place, R3/D67.8a none shown as stored, R13.1/D67.8b lowAudio gets no silent line.
 T8_STATES=['t8-control-others-spoke','t8-others-silent','t8-others-never-captured','t8-others-transcription-failed']
-T8=T8_STATES+['t8-failed-referenced-words','t8-retry-failed-stale-silent','t8-silent-per-source']
+T8=T8_STATES+['t8-failed-referenced-words','t8-retry-failed-stale-silent','t8-silent-per-source',
+            't8-none-referenced-words','t8-low-audio-silent']
 # The 13 cases before T8, digested by legacy_digest: the additive toneFrames key left their bytes unchanged.
 LEGACY={
     'empty':'eab928e1ec07bbfb4f34bdbd051c912df33923043ad84f244e4fc8062d846092',
@@ -33,6 +34,16 @@ LEGACY={
     'r8-consecutive-quote':'f6dc0ef4cbdf7480271ce679752be82179d7a1843fd7228f86d781b38282605e',
     'r9-received-once':'927f241cc48417a9726f791c3c1434ceb41d7a74a710e9acd3ec0f29ccb48a4e',
     'received-only':'d8d71fbb4de1ae0fe6e47ea4ffb80674d9dec8a0e4d3eccd675cd2cef2c0e343',
+}
+# The seven T8 cases before D67.8, digested the same way: the two D67.8 cases are additive.
+LEGACY_T8={
+    't8-control-others-spoke':'d4d2b8c73bbad5ab8efcfbbc6a60b5d0e163942547c0d903d4796b4d1bc3005b',
+    't8-failed-referenced-words':'32b0ad8203a9cea4052695d0c9c0769188ae7a7f07398f84076baf864e332dcf',
+    't8-others-never-captured':'861547464c334d4bcd68a5771fdf849e003286eb9234b1dd7bc7b6a4aa6ef56c',
+    't8-others-silent':'fc7ee72202602bb5c08ce4381fd79360046e01ecdcff91ac287f7ec5b79c9692',
+    't8-others-transcription-failed':'498957b6ab04e60f4773803f89400052800551d1b37686df9e588bb53b564c1f',
+    't8-retry-failed-stale-silent':'99211ff52a782ffab416fd60441b704ad88ebf6478b284a9cc42542c988c9b9e',
+    't8-silent-per-source':'14afb808d4d47be775d6f42c9f46665de45384d1f85d0050e00c1c735406b16f',
 }
 
 
@@ -119,6 +130,20 @@ def guards(cases,lines):
     audio=lines[case]['audio']
     (at,)=[i for i,line in enumerate(audio) if line['id']=='details.sources.silent']
     assert 0<at<len(audio)-1 and audio[at-1]['args']['source']==audio[at]['args']['source']
+    # D67.8a: status none that references a readable body shows its words as stored, as for failed.
+    case='t8-none-referenced-words'
+    meeting=stored(case,'meeting.json')
+    assert meeting['transcript']['status']=='none' and meeting['transcript']['reference'] is not None
+    assert lines[case]['visibleWords'] and 'R3' in cases[case]['rules']
+    # D67.8b: a lowAudio source, every track silent, transcript done: its lowAudio warning, no silent line.
+    case='t8-low-audio-silent'
+    meeting,session=stored(case,'meeting.json'),stored(case,'session.json')
+    listed=set(meeting['recordingDetails']['writingDown']['silentTracks'])
+    (low,)=[r for r in session['captureOutcome']['sources'] if r['captureOutcome']=='lowAudio']
+    assert meeting['transcript']['status']=='done' and low['trackIds'] and set(low['trackIds'])<=listed
+    name={'text':low['label']}
+    assert [line['id'] for line in lines[case]['audio'] if line['args']['source']==name]==['details.sources.lowAudio']
+    assert not silent_sources(case)
 
 
 def check_onboarding_descriptors():
@@ -185,8 +210,9 @@ def main():
         for out in (a,b):subprocess.run([sys.executable,str(HERE/'make.py'),str(out)],check=True)
         assert tree(a)==tree(b),'Fixture generation is nondeterministic'
         assert {name:legacy_digest(a/name) for name in LEGACY}==LEGACY,'A pre-T8 case changed bytes'
+        assert {name:legacy_digest(a/name) for name in LEGACY_T8}==LEGACY_T8,'A pre-D67.8 T8 case changed bytes'
     print(f'Verified {len(cases)} hand-authored cases, R1–R9 and T8 coverage, byte-identical builds, '
-          f'{len(LEGACY)} unchanged pre-T8 trees and T8 outcome lines'
+          f'{len(LEGACY)} unchanged pre-T8 trees, {len(LEGACY_T8)} unchanged pre-D67.8 T8 trees and T8 outcome lines'
           +(' against strings.json' if catalog_checked else ' (catalog ids checked where strings.json is beside)'))
 
 

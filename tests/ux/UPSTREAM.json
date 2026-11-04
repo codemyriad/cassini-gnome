@@ -1,6 +1,6 @@
 {
   "source": "drmeyers:~/dev/cassini-coordination/ux-draft",
-  "commit": "7ddd0ef",
+  "commit": "5a2991d",
   "paths": {
     "format-vectors.json": "tests/ux/format-vectors.json",
     "states-vectors.json": "tests/ux/states-vectors.json",
@@ -72,16 +72,18 @@
     "library-vectors/expected/t8-others-transcription-failed.json": "ux/library-vectors/expected/t8-others-transcription-failed.json",
     "library-vectors/expected/t8-failed-referenced-words.json": "ux/library-vectors/expected/t8-failed-referenced-words.json",
     "library-vectors/expected/t8-retry-failed-stale-silent.json": "ux/library-vectors/expected/t8-retry-failed-stale-silent.json",
-    "library-vectors/expected/t8-silent-per-source.json": "ux/library-vectors/expected/t8-silent-per-source.json"
+    "library-vectors/expected/t8-silent-per-source.json": "ux/library-vectors/expected/t8-silent-per-source.json",
+    "library-vectors/expected/t8-none-referenced-words.json": "ux/library-vectors/expected/t8-none-referenced-words.json",
+    "library-vectors/expected/t8-low-audio-silent.json": "ux/library-vectors/expected/t8-low-audio-silent.json"
   },
   "sha256": {
     "format-vectors.json": "8d9449e30b28b117c85f5396de6b0123b1f79cc9b53f6504157b1a0dfffcc791",
     "states-vectors.json": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
-    "LIBRARY-RULES.md": "97819501073a5fe2f72557ae45217705b57c3622aeada8256dba8e2f21f8bca0",
+    "LIBRARY-RULES.md": "ad63cb997b634992db67ba778c720b1a95203a022dbe04216abc0b11f85c906f",
     "meeting.schema.json": "b20f930cdd689c779a225939e2c35f2379c965d81454b54a80aa70478c7b679e",
-    "library-vectors/verify.py": "8a799b7c7a6de0f823a02006330996079f4e2e3c9f1058dd210c6b53634cafd5",
-    "library-vectors/README.md": "eaf1dc43715570688cc32bce98538e48340916dbb767d24e43dcbeb29cd358c8",
-    "library-vectors/cases.json": "b379121dceb2156e034bf66fab76bec22155d806c7352674985f5e16972ac2cc",
+    "library-vectors/verify.py": "5fd90f650ee1e5cbf0103dee61da0d5c6ec6cc8a40f6fc55b84220331cdb905d",
+    "library-vectors/README.md": "c4d8f844db528e3dad3fbd9a8b057682b900629ed163d2b62d13580c9ecde0cc",
+    "library-vectors/cases.json": "59d65ca32ab38882d9783f02fd8e45a8c4ce23b9444783c3b18c752a5ed65fd4",
     "library-vectors/make.py": "fa5f79d027398ad62dc2c6ecefb69c3fe07cc7fac9f38d2df6f92b1e1509dae0",
     "library-vectors/expected/received-only.json": "85cfce2282d4cc0113dc4c9113f8db32eaac7555788671838be6f0fb0a8e2709",
     "library-vectors/expected/first-record.json": "0c7dfde7b4bdd114c0758ca55b269edd6ee1cda636a0b4d1d2d077a35b7dd178",
@@ -138,13 +140,15 @@
     "library-v2/name-vectors.json": "ea88624249550fabb92a2f5d7b03bfaa6424e8b10a7245431cf3c15da03709ff",
     "library-v2/name-vectors-malformed.json": "5de3b0b1effc01a0bb3cd1c106b88bbee2067373b62628c9c4337bcb47a3f6d9",
     "library-v2/x-schema.json": "214917c6e1f24936a9a97dc3b64e8fe6b4249733c67c985b11be67c2b0463f70",
-    "library-vectors/outcome-lines.json": "918d1af7727e80a70169127e74ee4e51deea0b9f509555cb17fa3db3240b4a8b",
+    "library-vectors/outcome-lines.json": "c796d227443ac2288fa947209fbc5c826a483ba43f8d703bae5996b3b1e251f2",
     "library-vectors/expected/t8-control-others-spoke.json": "28f0a68a6355cbadd8c5252e15eb33ecf86c03bf9640d99336af0fb30f013ed4",
     "library-vectors/expected/t8-others-silent.json": "bc6e0c69dd2abbb8c95fdd2f5631cade47a97141fd335bfd87cad9596c42b007",
     "library-vectors/expected/t8-others-never-captured.json": "234fc68f9a0c7867be33d06573d7f8b78921ece10effc4d345c8b682addbddab",
     "library-vectors/expected/t8-others-transcription-failed.json": "2ec338c00b841d99bfc9886313914d92360b5d135c75d9d630af48ff92ab436b",
     "library-vectors/expected/t8-failed-referenced-words.json": "7f6e4296b7a117f116c021f65c9e6e611e620500b137536e614df3727756644b",
     "library-vectors/expected/t8-retry-failed-stale-silent.json": "2ec338c00b841d99bfc9886313914d92360b5d135c75d9d630af48ff92ab436b",
-    "library-vectors/expected/t8-silent-per-source.json": "87e2d5b35a7eb25181830289d8b8029a17c3fab877f100949a96dabe41a7770d"
+    "library-vectors/expected/t8-silent-per-source.json": "87e2d5b35a7eb25181830289d8b8029a17c3fab877f100949a96dabe41a7770d",
+    "library-vectors/expected/t8-none-referenced-words.json": "111f5a44d2db94a8faaefd635b5c3f6520af0d9280839e90a327c62493ae6c56",
+    "library-vectors/expected/t8-low-audio-silent.json": "234fc68f9a0c7867be33d06573d7f8b78921ece10effc4d345c8b682addbddab"
   }
 }
