@@ -283,6 +283,22 @@ def unassigned_voice(identifier, colour_index, source):
     return dict(id=identifier, name=None, provenance="unnamed", colourIndex=colour_index, voiceSource=dict(source))
 
 
+def _retained_count(directory):
+    """How many words the working snapshot holds, which a new attempt keeps until it catches up.
+
+    D67.2: a failed attempt leaves its partial transcript.json for Try again. The
+    retained count is that sidecar's, read through the validated reader, never the
+    words a reader shows: a published meeting shows its file's words (D47), which
+    a failure leaves as they were, so they would let a shorter retry overwrite the
+    longer snapshot. A missing or unreadable sidecar retains nothing.
+    """
+    try:
+        snapshot = transcript_snapshot(directory)
+    except (OSError, ValueError):
+        return 0
+    return len(snapshot["items"]) if snapshot is not None else 0
+
+
 def update_progress_metadata(
     directory,
     speakers,
@@ -509,10 +525,10 @@ class TranscriptionQueue:
             error=None,
             before_commit=self._check_open,
         )
-        # A failed body is kept unreferenced (D67.2). Once queued, it is referenced again:
-        # read the preserved sidecar through the normal validated reader so the
-        # publisher knows how many words it must retain until recomputation
-        # catches up. An explicit retry follows the same rule as auto-resume.
+        # A failed body is kept unreferenced (D67.2). Once queued, it is referenced again.
+        # How many of its words the job retains is read from that sidecar when it
+        # starts (_retained_count), not from these words: a published meeting shows
+        # its file's words. An explicit retry follows the same rule as auto-resume.
         meeting = next(m for m in scanner.scan(changed_directories={canonical}).meetings if m.directory == canonical)
         return meeting, metadata
 
@@ -669,7 +685,9 @@ class TranscriptionQueue:
         if not tracks:
             raise ValueError("Meeting has no complete audio frames")
         by_track = {track["id"]: track for track in tracks}
-        publisher = TranscriptPublisher(directory, existing_count=len(meeting.words), check_active=self._check_open)
+        publisher = TranscriptPublisher(
+            directory, existing_count=_retained_count(directory), check_active=self._check_open
+        )
         diarization = (
             self.diarization_models.request(directory, origin=meeting.origin) if self.diarization_models else None
         )

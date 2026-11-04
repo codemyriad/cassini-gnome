@@ -280,6 +280,44 @@ def test_a_failed_write_down_keeps_its_partial_words_unreferenced_until_try_agai
         queue.close()
 
 
+def test_a_shorter_failing_try_again_keeps_the_longer_snapshot(tmp_path):
+    """D67.2: Try again retains the preserved snapshot until recomputation catches up, failing or not."""
+    session = capture(tmp_path)
+    finished = Finished()
+    attempts = [["One", "two", "three"], ["One"]]
+
+    class Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            texts = attempts.pop(0)
+            words = [dict(startMs=i * 100, endMs=i * 100 + 90, text=t) for i, t in enumerate(texts)]
+            notify(
+                dict(type="progress", trackId=tracks[0]["id"], trackOrder=0, language="en", etaMinutes=1, words=words)
+            )
+            raise RuntimeError("synthetic worker crash after partial words")
+
+    queue = TranscriptionQueue(lambda _: None, finished, client_factory=Client, bundle=tmp_path)
+    try:
+        for attempt in (1, 2):
+            assert queue.enqueue(session.directory)
+            finished.wait(attempt)
+            metadata = read_metadata(session.directory)
+            assert metadata["transcript"]["status"] == "failed" and metadata["transcript"]["reference"] is None
+            body = json.loads((session.directory / "transcript.json").read_text())
+            assert [item["text"] for item in body["items"]] == ["One", "two", "three"], attempt
+        assert not attempts
+    finally:
+        queue.close()
+
+
 def test_newer_metadata_is_not_overwritten_and_unsafe_metadata_is_not_followed(tmp_path):
     session = capture(tmp_path)
     path = session.directory / "meeting.json"
