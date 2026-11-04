@@ -105,13 +105,17 @@ in two stages (`tests/harness-image.sh`, C). The harness stage holds the Ubuntu
 base, the harness's own packages and the static `Depends` of `debian/control`;
 it is tagged with a hash of every input and the ISO week, and rebuilt with
 `--pull` whenever that tag is new, so it never outlives its Dockerfile, the
-control file or a week. Each run installs app.deb on top after a fresh
-`apt-get update`, so apt resolves the package's own dependencies on every run,
-and the tests still run with `--network=none`. The offline worker image
-(`tests/whistle/Containerfile`) is tagged and rebuilt the same way. CI
-keeps these images in a cache that main saves and pull requests only restore
-(`build-aux/ci/harness-cache.sh`, D66); a miss just builds them. The products
-under test and the package builds' distro images are never cached.
+control file or a week. The cache only saves download and unpack time, never
+freshness (D68): every run first runs `apt-get update` and `apt-get
+dist-upgrade`, so the base and the app's runtime libraries in the cached stage
+(GTK, libadwaita, GStreamer, PyGObject) are as current as an uncached build's,
+then installs app.deb, whose own dependencies apt resolves against the same
+indexes. That per-run stage is built with `--no-cache` and the tests still run
+with `--network=none`. The offline worker image (`tests/whistle/Containerfile`)
+is tagged, rebuilt and brought up to the current archive the same way. CI
+keeps the harness stages in a cache that main saves and pull requests only
+restore (`build-aux/ci/harness-cache.sh`, D66); a miss just builds them. The
+products under test and the package builds' distro images are never cached.
 
 ## Releases
 

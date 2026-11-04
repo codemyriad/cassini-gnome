@@ -29,7 +29,7 @@ if ! docker image inspect "$harness" >/dev/null 2>&1; then
     -f "$source_root/tests/browser-setup/Dockerfile" -t "$harness" "$package_context"
   "$source_root/tests/harness-image.sh" prune browser-setup
 fi
-docker build --label cassini.scope=browser-startup-test --build-arg HARNESS="$harness" \
+docker build --no-cache --label cassini.scope=browser-startup-test --build-arg HARNESS="$harness" \
   --build-arg TEST_UID="$(id -u)" --build-arg TEST_GID="$(id -g)" \
   -f "$source_root/tests/browser-setup/Dockerfile" -t "$package_test_image" "$package_context"
 # timeout must be the container's PID 1, so that its exit ends everything left in

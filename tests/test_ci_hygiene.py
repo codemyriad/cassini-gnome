@@ -155,34 +155,44 @@ def test_caches_are_saved_from_main_only():
     assert sorted(saves) == sorted(restores * 2)
 
 
+REFRESH = "RUN apt-get update && apt-get -y --no-install-recommends dist-upgrade"
+
+
 def test_harness_images_install_the_app_on_top_of_the_cached_stage():
     # C: the cached stage holds the base, the harness packages and the app's static
     # Depends; app.deb goes in on every run, after fresh indexes, so apt resolves
     # the package's own dependencies each time.
+    # D68: every run first brings the cached stage up to the current archive, so a
+    # week-old harness never pins the product's runtime libraries (GTK, libadwaita,
+    # GStreamer) or the distro target to an older archive than an uncached build.
     for name, path in HARNESS_IMAGES.items():
         text = "\n".join(line for line in (ROOT / path).read_text().splitlines() if not line.startswith("#"))
+        harness, separator, current = text.partition("\nFROM ${HARNESS}\n")
+        assert separator and "ARG HARNESS=harness\n" in harness and re.search(r"^FROM \S+ AS harness$", harness, re.M)
+        assert current.startswith(REFRESH) or f"\n{REFRESH}" in current, name
+        assert "dist-upgrade" not in harness, name
         if name == "whistle":
             assert "app.deb" not in text
             continue
-        harness, separator, app = text.partition("\nFROM ${HARNESS}\n")
-        assert separator and "ARG HARNESS=harness\n" in harness and re.search(r"^FROM \S+ AS harness$", harness, re.M)
         assert (
             "app.deb" not in harness and 'apt-get satisfy -y --no-install-recommends "$(cat /tmp/depends)"' in harness
         )
         assert (
-            "COPY app.deb /tmp/app.deb\nRUN apt-get update && apt-get install -y --no-install-recommends /tmp/app.deb"
-            in app
-        )
+            f"COPY app.deb /tmp/app.deb\n{REFRESH} \\\n    && apt-get install -y --no-install-recommends /tmp/app.deb"
+        ) in current, name
     for script in ROOT.glob("tests/*/run.sh"):
         lines = commands(script)
         for name in re.findall(r'tests/harness-image\.sh" tag ([\w-]+)', script.read_text()):
-            builds = [line for line in lines if re.search(r"(^|\s)docker build\s", line)]
-            # The harness stage is built only for a new tag, from a freshly pulled base.
-            assert any("--pull" in line and '-t "$harness"' in line for line in builds), script
+            builds = [line for line in lines if re.search(r"(^|[\s(])docker build\s", line)]
             assert all(HARNESS_IMAGES[name] in line for line in builds), script
-            if name != "whistle":
-                assert any("--target harness" in line for line in builds), script
-                assert any('--build-arg HARNESS="$harness"' in line for line in builds), script
+            # The harness stage is built only for a new tag, from a freshly pulled base.
+            assert any("--pull" in line and "--target harness" in line and '-t "$harness"' in line for line in builds)
+            # The per-run stage is rebuilt every run: no local layer cache keeps an old refresh.
+            current = [line for line in builds if '--build-arg HARNESS="$harness"' in line]
+            assert current and all("--no-cache" in line and "--pull" not in line for line in current), script
+            # Nothing runs in the cached stage itself.
+            runs = [line for line in lines if re.search(r"(^|\s)docker run\s", line)]
+            assert runs and not any(re.search(r'"\$harness"\s', line) for line in runs), script
 
 
 def harness_tag(root, name, epoch="2026-W45", **env):

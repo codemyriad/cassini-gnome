@@ -25,7 +25,7 @@ if ! docker image inspect "$harness" >/dev/null 2>&1; then
   -t "$harness" -f "$source_root/tests/build-refresh/Dockerfile" "$context"
  "$source_root/tests/harness-image.sh" prune build-refresh
 fi
-docker build --label cassini.scope=installed-build-refresh --build-arg HARNESS="$harness" \
+docker build --no-cache --label cassini.scope=installed-build-refresh --build-arg HARNESS="$harness" \
  --build-arg TEST_UID="$(id -u)" --build-arg TEST_GID="$(id -g)" \
  -t "$image" -f "$source_root/tests/build-refresh/Dockerfile" "$context"
 # timeout must be the container's PID 1, so that its exit ends everything left in

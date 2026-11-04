@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # The cacheable stage of a test harness image: the Ubuntu base, the harness's
 # own packages and the app's static runtime Depends from debian/control. The
-# app's package is never in it: each run installs app.deb on top, and apt
-# resolves its dependencies there, every run.
+# app's package is never in it. Every run first brings it up to the current
+# archive (apt-get dist-upgrade, D68: the cache saves time, never freshness), then
+# installs app.deb on top, so apt resolves its dependencies there, every run.
 #
 #   tests/harness-image.sh tag NAME     the image tag for harness NAME
 #   tests/harness-image.sh depends      debian/control's static Depends, for apt-get satisfy

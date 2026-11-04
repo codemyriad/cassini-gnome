@@ -19,13 +19,19 @@ mkdir -p "$output"
 # The harness image (tests/harness-image.sh): built when its tag is new, or loaded from CI's cache.
 harness=$("$root/tests/harness-image.sh" tag whistle)
 if ! docker image inspect "$harness" >/dev/null 2>&1; then
-  docker build --pull -q -t "$harness" - < "$root/tests/whistle/Containerfile"
+  docker build --pull -q --target harness -t "$harness" - < "$root/tests/whistle/Containerfile"
   "$root/tests/harness-image.sh" prune whistle
 fi
+# Every run: the cached harness brought up to the current archive (D68).
+image=$(docker build --no-cache -q --build-arg HARNESS="$harness" - < "$root/tests/whistle/Containerfile")
+trap 'docker image rm "$image" >/dev/null 2>&1 || true' EXIT
+# timeout must be the container's PID 1: refuse an ENTRYPOINT inherited from the harness image.
+entrypoint=$(docker image inspect -f '{{json .Config.Entrypoint}}' "$image")
+[ "$entrypoint" = null ] || { echo "$image has ENTRYPOINT $entrypoint: timeout must be PID 1" >&2; exit 2; }
 docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
   --user "$(id -u):$(id -g)" --read-only --tmpfs /tmp:rw,exec,nosuid,nodev,size=64m \
   -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/source/src \
   -e CASSINI_WHISTLE_NETWORK_NONE=1 -e NEEDLE_TELEMETRY=unexpected -e DO_NOT_TRACK=unexpected \
   -v "$root:/source:ro" -v "$bundle:/bundle:ro" -v "$modules:/modules/cassini_talk:ro" -v "$ort:$ort_target:ro" -v "$output:/out:rw" -w /source \
-  "$harness" timeout --kill-after=30 "$limit" /bin/bash -c \
+  "$image" timeout --kill-after=30 "$limit" /bin/bash -c \
   'set -e; python3 -m pytest -q -p no:cacheprovider tests/test_whistle_spike.py --junitxml=/out/worker-tests.xml && PYTHONPATH=/modules python3 tests/whistle/probe.py /bundle /out/whistle-linux.json --modules /modules ; PYTHONPATH=/modules python3 tests/dc/probe.py /bundle /out/dc --modules /modules; golden_status=0; PYTHONPATH=/modules python3 tests/whistle/pipeline_probe.py /bundle /out/pipeline-linux.json --modules /modules || golden_status=$?; PYTHONPATH=/modules python3 tests/whistle/stream_probe.py /out; bash tests/whistle/ui-run.sh; exit "$golden_status"'
