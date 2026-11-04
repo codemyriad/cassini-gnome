@@ -9,6 +9,7 @@ WORKFLOWS = ROOT / ".github/workflows"
 BOUND = 'timeout --kill-after=30 "$limit" '
 # GNU timeout 0 never times out: a limit must be whole seconds, from 1 to 999999999.
 LIMIT_CHECK = '[[ $limit =~ ^0*[1-9][0-9]{0,8}$ ]] || { echo "CASSINI_RUN_TIMEOUT must be whole seconds, from 1 to 999999999" >&2; exit 2; }'
+ENTRYPOINT_CHECK = "docker image inspect -f '{{json .Config.Entrypoint}}' "
 LIMIT = re.compile(r"^limit=\$\{CASSINI_RUN_TIMEOUT:-\d+\}\n" + re.escape(LIMIT_CHECK) + "$", re.M)
 
 
@@ -61,12 +62,17 @@ def test_every_local_test_run_is_bounded():
     # process left in the container, setsid'd ones too. The images used by a bounded
     # docker run declare no ENTRYPOINT (ubuntu:26.04 declares none either); the
     # detached audio server's own timeout entrypoint is the exception.
-    images = set()
+    images = {}
     for script in ROOT.glob("tests/*/run.sh"):
         for line in commands(script):
             if re.search(r"(^|\s)docker build\s", line):
-                images.update(re.findall(r"tests/[\w/.-]*(?:Dockerfile|Containerfile)\b", line))
-    assert images > {"tests/whistle/Containerfile", "tests/desktop/Dockerfile"}
+                images.update(dict.fromkeys(re.findall(r"tests/[\w/.-]*(?:Dockerfile|Containerfile)\b", line), script))
+    assert set(images) > {"tests/whistle/Containerfile", "tests/desktop/Dockerfile"}
+    # Nor their bases: ubuntu:26.04, or one picked at build time (FROM ${BASE}),
+    # whose run.sh refuses the built image if it inherited an ENTRYPOINT.
+    for name, script in images.items():
+        for base in re.findall(r"^FROM\s+(\S+)", (ROOT / name).read_text(), re.M | re.I):
+            assert base == "ubuntu:26.04" or ("$" in base and ENTRYPOINT_CHECK in script.read_text()), (name, base)
     entrypoints = [name for name in sorted(images) if re.search(r"^ENTRYPOINT", (ROOT / name).read_text(), re.M | re.I)]
     assert entrypoints == ["tests/recording/Audio.Dockerfile"]
     audio = [line for line in commands(ROOT / "tests/recording/run.sh") if "docker run " in line]

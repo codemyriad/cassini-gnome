@@ -23,6 +23,10 @@ test -x "$browser_binary"
 docker build --label cassini.scope=browser-startup-test --build-arg BASE="${CASSINI_BROWSER_TEST_BASE:-ubuntu:26.04}" \
   --build-arg TEST_UID="$(id -u)" --build-arg TEST_GID="$(id -g)" \
   -f "$source_root/tests/browser-setup/Dockerfile" -t "$package_test_image" "$package_context"
+# timeout must be the container's PID 1, so that its exit ends everything left in
+# the container: refuse an ENTRYPOINT inherited from CASSINI_BROWSER_TEST_BASE.
+entrypoint=$(docker image inspect -f '{{json .Config.Entrypoint}}' "$package_test_image")
+[ "$entrypoint" = null ] || { echo "$package_test_image has ENTRYPOINT $entrypoint: timeout must be PID 1" >&2; exit 2; }
 docker run --rm --label cassini.scope=browser-startup-test --network=none --cap-drop=ALL \
   --security-opt=no-new-privileges --read-only --cpus=4 --memory=3g \
   --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,exec,nosuid,nodev,size=512m --shm-size=128m \
