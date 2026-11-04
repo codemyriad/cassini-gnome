@@ -114,7 +114,10 @@ def test_nothing_of_a_run_outlives_it(mechanism, ending):
 @pytest.mark.parametrize("limit", NO_BOUND)
 def test_bounded_run_refuses_a_limit_that_bounds_nothing(limit):
     result = subprocess.run([str(BOUNDED), limit, "true"], capture_output=True, text=True, timeout=30)
-    assert (result.returncode, result.stderr) == (2, "bounded-run.sh: SECONDS must be whole seconds, from 1 to 999999999\n")
+    assert (result.returncode, result.stderr) == (
+        2,
+        "bounded-run.sh: SECONDS must be whole seconds, from 1 to 999999999\n",
+    )
     escalation = subprocess.run(
         [str(BOUNDED), "5", "true"],
         env={**os.environ, "CASSINI_BOUNDED_RUN_KILL_AFTER": limit or "0"},
@@ -140,5 +143,8 @@ def test_every_wrapper_refuses_a_limit_that_bounds_nothing(script, tmp_path):
             text=True,
             timeout=30,
         )
-        refused = (result.returncode, result.stderr) == (2, "CASSINI_RUN_TIMEOUT must be whole seconds, from 1 to 999999999\n")
+        refused = (result.returncode, result.stderr) == (
+            2,
+            "CASSINI_RUN_TIMEOUT must be whole seconds, from 1 to 999999999\n",
+        )
         assert refused == (limit not in ("5", "999999999")), (limit, result.returncode, result.stderr)
