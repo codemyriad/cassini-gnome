@@ -301,3 +301,12 @@ def test_a_scope_it_cannot_check_is_reported(tmp_path):
             run.wait()
         if start is not None and started(pid) == start:
             os.kill(pid, signal.SIGKILL)
+
+
+def test_every_test_environment_installs_bash_and_gnu_timeout():
+    # bounded-run.sh is a bash script and passes --kill-after, which busybox's
+    # timeout refuses: Alpine's build set must bring both (its Source job runs
+    # this file). Every other family has bash and coreutils in its base image.
+    recipe = (ROOT / "build-aux/install-deps.sh").read_text()
+    apk = re.search(r'\n  apk\)\n(?:    #.*\n)*    build="([^"]*)"', recipe)
+    assert apk and {"bash", "coreutils"} <= set(apk.group(1).split())
