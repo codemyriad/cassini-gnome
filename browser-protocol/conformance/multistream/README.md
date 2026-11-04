@@ -229,7 +229,8 @@ An overflow marker never splits. Turn grouping stays presentation (D47).
 **3. Words outside a track's presence are not written.** On every path (VAD and fallback),
 a word is written only when its M lies in one of its track's present-or-unknown ranges
 [a, b) (gaps.presence with that track's ownership), compared in session samples: never
-subtract a fractional startOffsetMs before rounding. A track without `gaps` is unknown, and
+subtract a fractional startOffsetMs before rounding. The extent starts at the track's D55
+placement, frame(startOffsetMs, 16000), never at the raw offset (R88). A track without `gaps` is unknown, and
 so is the time after an overflow marker: words there are kept, still only inside the span
 extent and ownership. At a seam, every word is
 written by exactly one of the two tracks that carry the call. Use the exact M: rounding the
@@ -247,10 +248,12 @@ seam property, and a guard that some person falls back only when pooled while an
 multi-track person does not, with one failing data mutation per guard message. Code mutants
 of the oracles must fail the same literals: pooling per track, presence, ownership or gap
 ranges ignored, no run-length filter, no floor margin, no 10 s floor minimum, a midpoint
-rounded half up, a closed range, unknown presence dropped, presence compared track-relative,
+rounded half up, a closed range, unknown presence dropped, presence compared track-relative
+or started at the raw offset,
 turns split on word edges, on an overflow or on a gap range closed at its end, and a margin
 pooled or without its minimum. Rules the corpus cannot show
-(near-silence and the floor, mean removal) have synthetic checks.
+(near-silence and the floor, mean removal, a fractionally placed track whose first frame and
+first window start at local sample 0) have synthetic checks.
 
 ## Adoption and browser tests
 

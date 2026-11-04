@@ -32,6 +32,22 @@ class SessionEventsTests(unittest.TestCase):
             annotations.validate(session)
             self.assertEqual(annotations.others_presence(session) == expected['othersPresenceMs'], present)
 
+    def test_presence_starts_at_the_d55_placement(self):
+        """R88 (D67 item 7): 1000.03 ms is 16 kHz sample 16000.48, placed at 16000 (1000 ms).
+
+        The extent lasts its 8000 frames at 8 kHz, so it ends at 2000 ms, not 2000.03 ms;
+        the gap [1500, 1600) stays absolute. 1000.03125 ms is 16000.5, placed half away
+        from zero at 16001, so its extent is [1000.0625, 2000.0625).
+        """
+        tracks = {track['id']: track for track in self.session['tracks']}
+        remote = dict(tracks['browser-1'], frames=8000, startOffsetMs=1000.03, endOffsetMs=2000.03,
+                      gaps=[dict(atMs=1500, durationMs=100, frames=800, kind='jump')])
+        session = dict(self.session, tracks=[tracks['microphone-1'], remote])
+        self.assertEqual(annotations.others_presence(session), [[1000.0, 1500], [1600, 2000.0]])
+        tie = dict(remote, startOffsetMs=1000.03125, endOffsetMs=2000.03125, gaps=[])
+        session = dict(self.session, tracks=[tracks['microphone-1'], tie])
+        self.assertEqual(annotations.others_presence(session), [[1000.0625, 2000.0625]])
+
     def test_legacy_and_null_annotations_do_not_infer_a_fallback(self):
         for value in [None, []]:
             self.session['events'] = value

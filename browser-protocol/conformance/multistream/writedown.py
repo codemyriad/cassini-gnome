@@ -6,8 +6,9 @@ session samples, is M = 8 * (startMs + endMs): exact, so no rounding is involved
 keep() (D63 #3): a word is written only when M lies in one of its track's
 present-or-unknown ranges [a, b) from gaps.presence with that track's ownership.
 A track without `gaps` is unknown and keeps its words inside its span extent and
-ownership; time after an overflow marker is unknown too. Compare in session samples:
-subtracting a fractional startOffsetMs before rounding moves the edges. This is a write-time rule on every path, not a display filter.
+ownership; time after an overflow marker is unknown too. The extent starts at the D55
+placement, frame(startOffsetMs, 16000), not at the raw offset (R88). Compare in session
+samples: subtracting a fractional startOffsetMs before rounding moves the edges. This is a write-time rule on every path, not a display filter.
 
 breaks() and turns() (D63 #2): the gap ranges of a speaker are the non-overflow
 gap ranges of that speaker's tracks, as 16 kHz samples [G0, G1) with the presence

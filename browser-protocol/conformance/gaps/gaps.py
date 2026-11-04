@@ -2,7 +2,8 @@
 
 Writer: replays abstract wire/app steps (frame counts only, no PCM) and returns
 each recorded span's gap facts plus the session flag. Presence: turns stored
-track facts into integer 16 kHz session-sample ranges. Never reads PCM.
+track facts into integer 16 kHz session-sample ranges. A track's extent starts at its
+D55 placement, never at the raw fractional offset. Never reads PCM.
 """
 import math
 from fractions import Fraction
@@ -164,9 +165,21 @@ def _intersect(windows, ownership):
     return result
 
 
+def frame(ms, rate):
+    """D55: ms * rate / 1000 rounded half away from zero."""
+    x = Fraction(str(ms)) * rate / 1000
+    whole = math.floor(abs(x) + Fraction(1, 2))
+    return whole if x >= 0 else -whole
+
+
 def presence(track, ownership=None):
-    """Present and unknown half-open windows as 16 kHz session sample ranges."""
-    start = Fraction(str(track['startOffsetMs']))
+    """Present and unknown half-open windows as 16 kHz session sample ranges.
+
+    The extent starts at the track's D55 placement, the 16 kHz session sample
+    frame(startOffsetMs, 16000), and lasts frames/sampleRate from there. Gap ranges and
+    ownership stay on the session timeline.
+    """
+    start = Fraction(frame(track['startOffsetMs'], 16000), 16)
     extent = [(start, start + Fraction(track['frames'] * 1000, track['sampleRate']))]
     if track.get('gaps') is None:
         present, unknown = [], extent

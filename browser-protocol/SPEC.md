@@ -452,6 +452,9 @@ New writers always write the key, so `gaps: []` means no gaps and a missing key 
   the older reading, any gapFrames > 0.
 
 Presence comes only from span extents minus `gaps`, intersected with othersSource ownership.
+A span's extent starts at its D55 placement, never at the raw offset: the 16 kHz session sample
+frame(startOffsetMs, 16000), that is startOffsetMs × 16 rounded half away from zero, and it lasts
+frames/sampleRate from there. Gap ranges and ownership stay on the session timeline (R88, D67).
 Zero samples are not evidence of absence: a muted sender's zeros are present audio. Presence
 never reads PCM. An `overflow` marker or a missing/null `gaps` makes the affected time unknown,
 neither present nor absent. On a 16 kHz session grid a window [a,b) ms covers samples

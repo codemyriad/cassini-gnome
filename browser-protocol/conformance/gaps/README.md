@@ -38,12 +38,19 @@ Native gap kinds assume an unwarped clock, so nominal and mapped positions agree
 
 Stored track facts (`startOffsetMs`, `sampleRate`, `frames`, optional `gaps`) plus optional
 ownership windows go in; integer half-open 16 kHz session-sample ranges `present` and
-`unknown` come out. A window [a,b) ms covers samples [ceil(16a - 1e-6), ceil(16b - 1e-6)).
+`unknown` come out. A track's extent starts at its D55 placement, the session sample
+frame(startOffsetMs, 16000) (startOffsetMs × 16 rounded half away from zero), not at the raw
+offset, and lasts frames/sampleRate from there; gap ranges and ownership stay on the session
+timeline. A window [a,b) ms covers samples [ceil(16a - 1e-6), ceil(16b - 1e-6)).
+A reader whose presence function takes an already placed offset runs these cases with
+frame(startOffsetMs, 16000)/16 ms, as its transcriber passes it; the raw `startOffsetMs`
+fails `a-fractional-start-offset-starts-at-the-d55-placement`.
 A missing or null `gaps` is unknown. An empty gap (`durationMs` 0, `frames` 0) is no range.
 Presence never reads PCM and never uses `droppedFrames`.
 
 `tests/test_gap_ranges.py` checks the oracle against every literal case. It also checks
-that coalescing ranges, truncating without an overflow marker, storing drops only on the live
+that presence from the raw offset, or from a half-even, floor or ceil placement, fails a
+presence.json or writedown.json literal, and that coalescing ranges, truncating without an overflow marker, storing drops only on the live
 span, flagging every gap, or deriving the flag from stored ranges alone each fail at least one
 vector. Not covered here (app fault injection): a long gap together with io or capture loss,
 where io and capture take precedence, and a `writer` range for in-place host write padding.
