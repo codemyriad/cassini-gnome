@@ -132,7 +132,7 @@ class NativeRecorder(GObject.Object):
             return {
                 kind: attempt.get("refuse_at", 0)
                 for kind, attempt in self._pending_sources.items()
-                if attempt.get("armed") and not attempt["retired"] and not attempt.get("failing")
+                if attempt.get("armed")
             }
 
     @property

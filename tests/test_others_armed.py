@@ -747,3 +747,13 @@ def test_browser_silent_others_with_a_recorded_microphone_keep_the_folder(tmp_pa
     native_pcm(capture, "microphone")
     assert capture.stop()["path"] == str(session.directory) and not capture.discarded
     assert session.manifest["state"] == "completed" and session.manifest.get("problem") is None
+
+
+def test_browser_an_opened_microphone_keeps_the_folder_before_its_first_recorded_frame(tmp_path):
+    """Opened is a committed track (as natively), not a frame count: no discard."""
+    taps = QuietTaps()
+    capture, _result, _changes = browser_start(tmp_path, taps, others_source="system")
+    session = capture.host.session
+    assert kinds_of(session) == ["microphone"] and session.manifest["tracks"][0]["frames"] == 0
+    assert capture.stop()["path"] == str(session.directory) and not capture.discarded
+    assert session.directory.exists()
