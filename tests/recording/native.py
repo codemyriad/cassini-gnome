@@ -4,7 +4,6 @@
 
 import faulthandler
 import json
-import math
 import os
 import struct
 import sys
@@ -20,6 +19,7 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
 from gst_evidence import GstEvidence  # noqa: E402
 from readiness import PCMProgress, wait_until  # noqa: E402
+from signal_power import stereo_tones  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from cassini_talk.recorder import Recorder  # noqa: E402
@@ -129,13 +129,11 @@ try:
         assert audio.getnframes() >= rate * 2
         samples = struct.unpack(f"<{audio.getnframes() * 2}h", audio.readframes(audio.getnframes()))
 
-    def tone(channel, frequency):
-        data = samples[rate * 2 + channel : rate * 4 : 2]
-        real = sum(v * math.cos(2 * math.pi * frequency * n / rate) for n, v in enumerate(data))
-        imag = sum(v * math.sin(2 * math.pi * frequency * n / rate) for n, v in enumerate(data))
-        return 2 * math.hypot(real, imag) / len(data) / 32768
-
-    amplitudes = {"left440": tone(0, 440), "left880": tone(0, 880), "right440": tone(1, 440), "right880": tone(1, 880)}
+    # Frames 1 s to 2 s, in the same 100 ms windows as the browser proofs: a
+    # Pulse skew correction can flip a tone's phase mid-interval (signal_power).
+    measured = stereo_tones(samples, rate, rate, rate * 2, (440, 880))
+    evidence["rms"] = {side: measured.pop(side + "Rms") for side in ("left", "right")}
+    amplitudes = measured
     evidence["amplitudes"] = amplitudes
     assert amplitudes["left440"] > 0.08 and amplitudes["right880"] > 0.08, amplitudes
     assert amplitudes["left880"] < 0.01 and amplitudes["right440"] < 0.01, amplitudes
