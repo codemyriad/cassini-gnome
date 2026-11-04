@@ -831,7 +831,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         for item in refused:
             if item["side"] == "browser":
                 continue
-            # Try again only for deviceUnavailable: GNOME never classifies a permission.
+            # Try again for every line but the microphone's permission line (D58.1:
+            # a refused computer sound has one line, whatever its code).
             retry = (
                 None
                 if item["id"] == "errors.micPermission.line"

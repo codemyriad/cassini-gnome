@@ -26,7 +26,7 @@ from cassini_talk.native_recorder import START_FAILURE, NativeRecorder  # noqa: 
 Gst.init(None)
 FRAME = bytes(960)  # 10 ms of mono S16LE at 48 kHz.
 FRAME_NS = 10 * Gst.MSECOND
-BOUND = 3  # R79 §1: a side has opened when its first buffer arrives within 3 s.
+BOUND = 3  # R79 §1: the microphone has opened when its first buffer arrives within 3 s.
 CAPS = "audio/x-raw,format=S16LE,rate=48000,channels=1,layout=interleaved"
 
 
@@ -75,8 +75,10 @@ class Sides:
     a loaded test spent in between become a recorded gap.
     """
 
-    def __init__(self, recorder, plan, causes=None):
+    def __init__(self, recorder, plan, causes=None, codes=None):
         self.recorder, self.plan, self.causes = recorder, dict(plan), dict(causes or {})
+        # An "error" side's GStreamer resource error code, by kind (OPEN_READ by default).
+        self.codes = dict(codes or {})
         self.now = 0.0
         self.built, self.sources, self.fired = {}, {}, set()
         self.started_at = None
@@ -122,8 +124,9 @@ class Sides:
         source = self.sources[kind]
         if self.plan[kind][0] == "error":
             # A failing source reports its cause, then a stream error, then ends.
+            code = int(self.codes.get(kind, Gst.ResourceError.OPEN_READ))
             for problem in (self.causes.get(kind, "Fake device went away"), "Internal data stream error."):
-                error = GLib.Error.new_literal(Gst.ResourceError.quark(), problem, int(Gst.ResourceError.OPEN_READ))
+                error = GLib.Error.new_literal(Gst.ResourceError.quark(), problem, code)
                 source.post_message(Gst.Message.new_error(source, error, "scripted"))
             return source.emit("end-of-stream")
         return source.emit("push-buffer", Gst.Buffer.new_wrapped(FRAME))
@@ -227,8 +230,11 @@ REASONS = {
 }
 
 
-@pytest.mark.parametrize("refused", ["microphone", "system"])
-@pytest.mark.parametrize("behaviour", ["fail", "error", "never"])
+@pytest.mark.parametrize(
+    ("behaviour", "refused"),
+    # D58.1: a silent system side is never refused (test_others_armed.py).
+    [(b, r) for b in ("fail", "error", "never") for r in ("microphone", "system") if (b, r) != ("never", "system")],
+)
 def test_one_refused_side_gets_no_track_while_the_other_records(tmp_path, caplog, refused, behaviour):
     caplog.set_level(logging.WARNING, logger="cassini_talk.native_recorder")
     opened = OTHER[refused]
@@ -398,9 +404,12 @@ def test_a_side_stuck_in_its_state_change_blocks_neither_the_other_side_nor_stop
         else:
             spin_until(lambda: signals == ["started"])
             assert sides.now == BOUND and sides.started_at == BOUND
-            assert refusals(caplog) == [
-                f"Native {SIDE[blocked]} side ({blocked}) did not open at start: {REASONS['never']}"
-            ]
+            # D58.1: a stuck system side stays armed, unrefused; the microphone is refused.
+            assert refusals(caplog) == (
+                [f"Native {SIDE[blocked]} side ({blocked}) did not open at start: {REASONS['never']}"]
+                if blocked == "microphone"
+                else []
+            )
         assert not sides.release.is_set()
         sides.feed(healthy, 9)
         spin_until(lambda: session.writers[healthy].frames == 4800)
