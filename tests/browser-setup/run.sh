@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
+# E1: bound the run so a hang fails instead of living for days (exit 124/137).
+limit=${CASSINI_RUN_TIMEOUT:-1200}
+[[ $limit =~ ^0*[1-9][0-9]{0,8}$ ]] || { echo "CASSINI_RUN_TIMEOUT must be whole seconds, from 1 to 999999999" >&2; exit 2; }
 package=$(realpath "$1")
 output=$(realpath -m "$2")
 source_root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -20,10 +23,14 @@ test -x "$browser_binary"
 docker build --label cassini.scope=browser-startup-test --build-arg BASE="${CASSINI_BROWSER_TEST_BASE:-ubuntu:26.04}" \
   --build-arg TEST_UID="$(id -u)" --build-arg TEST_GID="$(id -g)" \
   -f "$source_root/tests/browser-setup/Dockerfile" -t "$package_test_image" "$package_context"
+# timeout must be the container's PID 1, so that its exit ends everything left in
+# the container: refuse an ENTRYPOINT inherited from CASSINI_BROWSER_TEST_BASE.
+entrypoint=$(docker image inspect -f '{{json .Config.Entrypoint}}' "$package_test_image")
+[ "$entrypoint" = null ] || { echo "$package_test_image has ENTRYPOINT $entrypoint: timeout must be PID 1" >&2; exit 2; }
 docker run --rm --label cassini.scope=browser-startup-test --network=none --cap-drop=ALL \
   --security-opt=no-new-privileges --read-only --cpus=4 --memory=3g \
   --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,exec,nosuid,nodev,size=512m --shm-size=128m \
   -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 -e PLAYWRIGHT_BROWSERS_PATH=/browsers \
   -v "$source_root:/source:ro" -v "$output:/out:rw" -v "$browser_cache:/browsers:ro" \
   -v "$node_binary:/opt/node/bin/node:ro" -w /source "$package_test_image" \
-  bash /source/tests/browser-setup/session.sh 2>&1 | tee "$output/session.log"
+  timeout --kill-after=30 "$limit" bash /source/tests/browser-setup/session.sh 2>&1 | tee "$output/session.log"

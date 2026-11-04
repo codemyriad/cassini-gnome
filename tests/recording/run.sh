@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
+# E1: bound the run so a hang fails instead of living for days (exit 124/137).
+limit=${CASSINI_RUN_TIMEOUT:-600}
+[[ $limit =~ ^0*[1-9][0-9]{0,8}$ ]] || { echo "CASSINI_RUN_TIMEOUT must be whole seconds, from 1 to 999999999" >&2; exit 2; }
 cd "$(dirname "$0")/../.."
 for tool in docker xvfb-run xauth xdotool dbus-run-session; do
     command -v "$tool" >/dev/null || { echo "Missing $tool: install the recording harness prerequisites in tests/recording/README.md" >&2; exit 1; }
@@ -76,4 +79,4 @@ export GSETTINGS_BACKEND=memory
 export GDK_BACKEND=x11
 export CASSINI_ISOLATED_AUDIO=1
 # Keyboard injection is only permitted inside this nested, private X server.
-dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' "$@"
+build-aux/bounded-run.sh "$limit" dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' "$@"
