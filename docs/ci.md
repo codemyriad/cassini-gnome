@@ -62,11 +62,12 @@ a failed run or a partial/expired artifact set cannot supply a release. The
 release Flatpak is a separate default-profile build; main tests development.
 No tag or publication is created to validate this wiring.
 
-`release-check.yml` validates the version across Meson, NEWS, metainfo, the man
-page and all native recipes. Release branches also build the stable Flatpak,
-validate its exported desktop/AppStream files and launcher version in the SDK,
-then install it and run the normal offline smoke checks. The tag workflow calls
-this same workflow, and rejects a tag that disagrees with any package version.
+Every PR checks the version across Meson, NEWS, metainfo, the man page and all
+native recipes, in Lint (`source.yml`). `release-check.yml` runs that check and
+also builds the stable Flatpak, validates its exported desktop/AppStream files and
+launcher version in the SDK, then installs it and runs the normal offline smoke
+checks. The tag workflow calls it, and rejects a tag that disagrees with any
+package version; dispatch it on a release branch to check one before tagging.
 Native package scripts validate the installed metadata and launcher after the
 package-manager install, in addition to their unchanged clean-container offline
 smoke tests. No validator error is suppressed.

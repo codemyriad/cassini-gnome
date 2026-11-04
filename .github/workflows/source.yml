@@ -19,6 +19,12 @@ jobs:
       - run: pip install ruff pytest
       - run: ruff check src tests build-aux/ci
       - run: ruff format --check src tests build-aux/ci
+      # G16: the release metadata check runs on every PR here (Lint always
+      # runs), not in its own path-filtered workflow. It creates no tag.
+      - name: Check every package version and the proposed tag name without creating it
+        run: |
+          version=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -n1)
+          python3 build-aux/ci/release_metadata.py --tag "v$version" --report "$RUNNER_TEMP/release-metadata.json"
       - name: Install system Python audio test dependencies
         run: |
           sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
