@@ -391,6 +391,8 @@ def test_failed_or_none_published_meeting_shows_the_files_words_as_stored(publis
     assert meeting.transcript == status and meeting.error == (error and MeetingError(**error))
     assert [w.text for w in meeting.words] == ["Stored", "words"] and [s.id for s in meeting.speakers] == ["original-a"]
     assert meeting.quote_line is None
+    # The Library preview and the meeting view show the same stored words (D47).
+    assert meeting.preview_turns and meeting.turns
 
 
 def test_file_only_metadata_edit_does_not_create_a_working_folder(published, monkeypatch):
