@@ -183,3 +183,12 @@ and every frame-count/readiness/duration requirement is unchanged. Analytic
 controls still reject silence, another source, a short 20%-duty burst and real
 cross-source bleed. Failure JSON retains RMS, magnitude, power and measured
 frame count alongside the WAVs; this change never touches captured audio.
+
+The native stereo proof (`native.py`: microphone 440 Hz left, desktop 880 Hz
+right) measures its 1 s interval in the same 100 ms windows (`stereo_tones`).
+A hosted run had the desktop tone at full level in the right channel, but its
+producer's pulsesink corrected clock skew by one 20 ms segment at the middle of
+the interval, flipping the 880 Hz phase: one coherent coefficient gave 0.0019,
+the two halves 0.196 and 0.200, windowed magnitude 0.198. Skew slaving also
+runs in the recorder's own pulsesrc (provide-clock=false), so the measurement,
+not the producers, is fixed. The > 0.08 wanted and < 0.01 bleed bounds stay.
