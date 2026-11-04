@@ -86,6 +86,8 @@ class NativeRecorder(GObject.Object):
         self.line = None
         self.minutes_left = 0
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-native-io")
+        # Bus errors and EOS, in order, off the main loop (_bus_message).
+        self._bus_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-native-bus")
         self._lock = threading.Lock()
         self._finishing = False
         self._problem = None
@@ -961,6 +963,17 @@ class NativeRecorder(GObject.Object):
             attempt["wake"].set()
 
     def _message(self, _bus, message):
+        """A bus error or EOS is handled on the bus worker, never on the main
+        loop: telling whose error it is takes the PCM lock, which a refusal's
+        or a writer's checkpoint holds across slow storage. Both go through
+        the same worker so an EOS never overtakes the error before it."""
+        if message.type in (Gst.MessageType.ERROR, Gst.MessageType.EOS):
+            # A closed worker: this recording has finished.
+            with contextlib.suppress(RuntimeError):
+                self._bus_worker.submit(self._bus_message, self.pipeline, message)
+
+    def _bus_message(self, pipeline, message):
+        problem = None
         if message.type == Gst.MessageType.ERROR:
             error, debug = message.parse_error()
             problem = error.message
@@ -979,9 +992,13 @@ class NativeRecorder(GObject.Object):
                         return
                 if any(message.src == b or message.src.has_as_ancestor(b) for b in self._retired_branches):
                     return  # A failed/deselected device must not stop the old source.
+        GLib.idle_add(self._bus_finish, pipeline, problem)
+
+    def _bus_finish(self, pipeline, problem):
+        """A committed side's error, or the pipeline's EOS, ends this recording (main loop)."""
+        if self.pipeline is pipeline:
             self._begin_finish(problem)
-        elif message.type == Gst.MessageType.EOS:
-            self._begin_finish()
+        return False
 
     def stop(self):
         self.end_reason = self.end_reason or "user"
@@ -1166,6 +1183,7 @@ class NativeRecorder(GObject.Object):
         if self.pipeline is not None or self.starting or self.stopping or self._finishing:
             raise RuntimeError("Capture has not finished")
         self._executor.shutdown(wait=False)
+        self._bus_worker.shutdown(wait=False)
 
     def cancel_publication(self):
         """An explicit Quit keeps the stopped WAVs without waiting for encode."""

@@ -391,14 +391,14 @@ def test_an_armed_refusal_persists_off_the_main_loop_and_stop_still_completes(tm
     recorder, sides, signals = start(tmp_path, QUIET)
     session = recorder.session
     entered, release = threading.Event(), threading.Event()
-    blocked, refused = [], []
+    blocked, refused, released = [], [], []
     checkpoint, refuse = session.checkpoint, session.refuse
 
     def slow_checkpoint():
         if "refusals" in session.manifest and not blocked:
             blocked.append(threading.current_thread() is threading.main_thread())
             entered.set()
-            release.wait(5)  # Bound only: the test releases it.
+            released.append(release.wait(5))  # Bound only: the test releases it.
         checkpoint()
 
     def counted_refuse(*items):
@@ -414,8 +414,11 @@ def test_an_armed_refusal_persists_off_the_main_loop_and_stop_still_completes(tm
         ran = threading.Event()
         GLib.idle_add(ran.set)
         spin_until(ran.is_set)  # The main loop iterates while the fsync is blocked.
-        recorder.stop()  # Accepted at once: its work queues behind the refusal.
-        assert recorder.stopping and not release.is_set() and "finished" not in names(signals)
+        # Stop is accepted at once: its work queues behind the refusal. The
+        # stream error that follows the cause reaches the bus meanwhile; its
+        # handling waits for the lock off the main loop too.
+        recorder.stop()
+        assert recorder.stopping and not released and "finished" not in names(signals)
         ran.clear()
         GLib.idle_add(ran.set)
         spin_until(ran.is_set)
@@ -425,6 +428,7 @@ def test_an_armed_refusal_persists_off_the_main_loop_and_stop_still_completes(tm
         release.set()
         close(recorder)
     assert names(signals) == ["started", "finished"] and not recorder.discarded
+    assert released == [True], "the main loop waited for the blocked checkpoint"
     assert len(refused) == 1 and len(blocked) == 1
     stored = saved(session)
     assert stored["state"] == "completed" and "problem" not in stored
