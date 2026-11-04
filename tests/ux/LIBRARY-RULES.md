@@ -233,3 +233,23 @@ belong to the Meeting view (UX3).
 
 A speaker with provenance `source` shows its stored name (Me, The others). It is listed and coloured like any
 speaking speaker, in speaking order. Its sidebar caption is the track description (D11.2).
+
+## R13. Details source lines: no speech heard (D67.1), 2026-11-04
+
+The Details "Audio sources" section has one line per expected source, in captureOutcome order, from its
+captureOutcome (D52.1: `details.sources.captured`, `neverAudio`, `lowAudio`, `failed`). D67.1 adds one line:
+
+> **"Others silent" is a visible state.** New Details line `details.sources.silent`, "{source}: no speech heard."
+> (…, role line, not a warning). It shows for a captured source whose every track is in `writingDown.silentTracks`
+> and whose transcript is done. A never-captured line (`details.sources.neverAudio`) takes precedence over it.
+
+1. **Condition.** All of these hold:
+   - the source is expected and its `captureOutcome` is `captured`;
+   - it has at least one track, and every id in its `trackIds` is in
+     `recordingDetails.writingDown.silentTracks`;
+   - the transcript is `done` (R3).
+2. **Precedence.** A never-captured source shows `details.sources.neverAudio` and never the silent line, even
+   though its 0-frame track is in `silentTracks` (D67.3).
+3. **Place and role.** The silent line follows that source's own line and its gap lines (`details.sources.gap`, D52.2),
+   before the next source's line. It is a line, not a warning: it never sets the source's problem. Tested by
+   `library-vectors/outcome-lines.json` (T8).

@@ -1,0 +1,41 @@
+{
+  "scan": "ok",
+  "groups": [
+    {
+      "title": "Today",
+      "meetings": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000001",
+          "origin": "own",
+          "lifecycle": "saved",
+          "interruptedAtMs": null,
+          "transcript": "done",
+          "etaMinutes": null,
+          "error": null,
+          "badge": null,
+          "title": "Call with Ana and Bruno",
+          "startMs": 1793107079000,
+          "durationMs": 10000,
+          "names": [
+            "Me",
+            "Ana"
+          ],
+          "quote": "“Thanks for joining.”",
+          "canWriteDown": false,
+          "speakers": [
+            {
+              "id": "me",
+              "name": "Me",
+              "colourIndex": 0
+            },
+            {
+              "id": "track-guest",
+              "name": "Ana",
+              "colourIndex": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "source": "drmeyers:~/dev/cassini-coordination/ux-draft",
-  "commit": "d2c94664a79bb46b334d073a44d609ee26b20045",
+  "commit": "7ddd0ef",
   "paths": {
     "format-vectors.json": "tests/ux/format-vectors.json",
     "states-vectors.json": "tests/ux/states-vectors.json",
@@ -64,17 +64,25 @@
     "dc/dc-quiet-jfk-v1-control.wav": "tests/dc/dc-quiet-jfk-v1-control.wav",
     "library-v2/name-vectors.json": "tests/ux/library-v2/name-vectors.json",
     "library-v2/name-vectors-malformed.json": "tests/ux/library-v2/name-vectors-malformed.json",
-    "library-v2/x-schema.json": "src/cassini_talk/library_v2/x-schema.json"
+    "library-v2/x-schema.json": "src/cassini_talk/library_v2/x-schema.json",
+    "library-vectors/outcome-lines.json": "ux/library-vectors/outcome-lines.json",
+    "library-vectors/expected/t8-control-others-spoke.json": "ux/library-vectors/expected/t8-control-others-spoke.json",
+    "library-vectors/expected/t8-others-silent.json": "ux/library-vectors/expected/t8-others-silent.json",
+    "library-vectors/expected/t8-others-never-captured.json": "ux/library-vectors/expected/t8-others-never-captured.json",
+    "library-vectors/expected/t8-others-transcription-failed.json": "ux/library-vectors/expected/t8-others-transcription-failed.json",
+    "library-vectors/expected/t8-failed-referenced-words.json": "ux/library-vectors/expected/t8-failed-referenced-words.json",
+    "library-vectors/expected/t8-retry-failed-stale-silent.json": "ux/library-vectors/expected/t8-retry-failed-stale-silent.json",
+    "library-vectors/expected/t8-silent-per-source.json": "ux/library-vectors/expected/t8-silent-per-source.json"
   },
   "sha256": {
     "format-vectors.json": "8d9449e30b28b117c85f5396de6b0123b1f79cc9b53f6504157b1a0dfffcc791",
     "states-vectors.json": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
-    "LIBRARY-RULES.md": "95a0e5068a08efa521f6eed73799b715ab50b2cf6aee374570b5337a6a3bdd2a",
+    "LIBRARY-RULES.md": "97819501073a5fe2f72557ae45217705b57c3622aeada8256dba8e2f21f8bca0",
     "meeting.schema.json": "b20f930cdd689c779a225939e2c35f2379c965d81454b54a80aa70478c7b679e",
-    "library-vectors/verify.py": "2011c3a7fc8d6fd5c58a4f06b16e8397f081755f743725f2732e332e4d1767da",
-    "library-vectors/README.md": "8e8cbbe91ab72bbf9f404a94ab3b83822f4e137cca8cbbb25afd493b78394b54",
-    "library-vectors/cases.json": "80723c1274ac44d8b23d0a154daa7b6fc5e559a1fceb6491b8e52558c4a6ce2b",
-    "library-vectors/make.py": "8a5fe5ecc1fd2c2bab3d1264b6137035b8f67b16fe9bacfe73af36d8b2a7eafb",
+    "library-vectors/verify.py": "8a799b7c7a6de0f823a02006330996079f4e2e3c9f1058dd210c6b53634cafd5",
+    "library-vectors/README.md": "eaf1dc43715570688cc32bce98538e48340916dbb767d24e43dcbeb29cd358c8",
+    "library-vectors/cases.json": "b379121dceb2156e034bf66fab76bec22155d806c7352674985f5e16972ac2cc",
+    "library-vectors/make.py": "fa5f79d027398ad62dc2c6ecefb69c3fe07cc7fac9f38d2df6f92b1e1509dae0",
     "library-vectors/expected/received-only.json": "85cfce2282d4cc0113dc4c9113f8db32eaac7555788671838be6f0fb0a8e2709",
     "library-vectors/expected/first-record.json": "0c7dfde7b4bdd114c0758ca55b269edd6ee1cda636a0b4d1d2d077a35b7dd178",
     "library-vectors/expected/empty.json": "0c7dfde7b4bdd114c0758ca55b269edd6ee1cda636a0b4d1d2d077a35b7dd178",
@@ -99,7 +107,7 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "6af5bc6234c74afb9496e5bccc3f771e1a2b8b54f772da78a9fb0fb056c6f406",
+    "strings.json": "3357dd71000f835c08f4ccdd49ef77ee8a458bb58f784aec755d2ff8144a7b33",
     "LIBRARY.md": "6cd4063cdd58567c75a4733c8862e9fe0983863df890b86a91e9a9bb17749751",
     "session-events/session.json": "6bcec60cf4024421b57683d86a44d7ffd92efdc84a3e5b67e24cb09fcfb55723",
     "session-events/expected.json": "905ad1966fa3cac23aa348109d4f694a5606ea685f3a5689cc052cf092a8a920",
@@ -129,6 +137,14 @@
     "dc/dc-quiet-jfk-v1-control.wav": "e31ed958621a39baf1d33dab6d10798695b8319e78fcaa1cb672cdb43c5f7830",
     "library-v2/name-vectors.json": "ea88624249550fabb92a2f5d7b03bfaa6424e8b10a7245431cf3c15da03709ff",
     "library-v2/name-vectors-malformed.json": "5de3b0b1effc01a0bb3cd1c106b88bbee2067373b62628c9c4337bcb47a3f6d9",
-    "library-v2/x-schema.json": "214917c6e1f24936a9a97dc3b64e8fe6b4249733c67c985b11be67c2b0463f70"
+    "library-v2/x-schema.json": "214917c6e1f24936a9a97dc3b64e8fe6b4249733c67c985b11be67c2b0463f70",
+    "library-vectors/outcome-lines.json": "918d1af7727e80a70169127e74ee4e51deea0b9f509555cb17fa3db3240b4a8b",
+    "library-vectors/expected/t8-control-others-spoke.json": "28f0a68a6355cbadd8c5252e15eb33ecf86c03bf9640d99336af0fb30f013ed4",
+    "library-vectors/expected/t8-others-silent.json": "bc6e0c69dd2abbb8c95fdd2f5631cade47a97141fd335bfd87cad9596c42b007",
+    "library-vectors/expected/t8-others-never-captured.json": "234fc68f9a0c7867be33d06573d7f8b78921ece10effc4d345c8b682addbddab",
+    "library-vectors/expected/t8-others-transcription-failed.json": "2ec338c00b841d99bfc9886313914d92360b5d135c75d9d630af48ff92ab436b",
+    "library-vectors/expected/t8-failed-referenced-words.json": "7f6e4296b7a117f116c021f65c9e6e611e620500b137536e614df3727756644b",
+    "library-vectors/expected/t8-retry-failed-stale-silent.json": "2ec338c00b841d99bfc9886313914d92360b5d135c75d9d630af48ff92ab436b",
+    "library-vectors/expected/t8-silent-per-source.json": "87e2d5b35a7eb25181830289d8b8029a17c3fab877f100949a96dabe41a7770d"
   }
 }

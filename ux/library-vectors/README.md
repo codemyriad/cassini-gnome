@@ -6,8 +6,9 @@ empty. It builds `OUT/<case>/root` and `activity.json`; it never reads or writes
 `expected/`. Every case uses now=1793107080000, Europe/Rome (27 October 2026,
 14:18). Activity maps canonical IDs to recording/saving; readers normalise case.
 
-Per D7 the suite has 13 cases: main + one combined case per rule group R1–R9,
-plus empty, first-record and received-only. The longer rare-edge checklist is
+Per D7 the suite has 20 cases: main + one combined case per rule group R1–R9,
+plus empty, first-record and received-only, plus the seven shared test 8 cases (T8,
+below). The longer rare-edge checklist is
 not a release gate. `cases.json` is an explicit filesystem recipe. Expected
 JSON files were written from the rules, using literal values with serialization
 helpers, before updating or running the GNOME scanner. No app output has been
@@ -46,3 +47,44 @@ bytes. No Cassini app encoder is involved. All S-3a files are CC0-1.0.
 built trees for identical bytes, modes, file types and link targets. It does not
 validate expected row values by running an app. Main UI preference/search/voice
 stores are outside S-3a; this supplies the Library and its activity source only.
+
+## Shared test 8: three outcome files (T8, D67)
+
+Four browser-capture cases (D67.5: source `chromium`, no native system audio in
+v1), each one ten-second `Recording-` folder with session.json, two 16 kHz track
+WAVs, meeting.json (with `recordingDetails.captureRecord`, the same shape
+GNOME's `capture_report.from_session` writes) and transcript.json. The
+microphone source and the guest "Ana" are both announced in `captureOutcome`.
+
+| Case | Guest | Write-down | Distinct state |
+|---|---|---|---|
+| `t8-control-others-spoke` | 10 s, 5 s tone; captured | done; 3 + 2 words | control |
+| `t8-others-silent` | 10 s of zeros; captured (zero-valued audio is captured: protocol `outcomes.json`) | done; 3 words; `silentTracks: ["guest"]` | Details adds "Ana: no speech heard." (D67.1) |
+| `t8-others-never-captured` | 0-frame WAV; neverAudio; session interrupted (`problemKind: capture`) | done; 3 words; `silentTracks: ["guest"]` (D67.3) | "Ana: no audio was received." wins over silent (D67.1); Interrupted at 00:00:10 |
+| `t8-others-transcription-failed` | 10 s, 5 s tone; captured | failed as the writer leaves it (D67.2): `reference: null`, stored error, 2 partial words kept in an unreferenced transcript.json for Try again | Needs attention; no words |
+
+Three guard cases pin what those four cannot tell apart. Their lines are not
+required to differ from the four states.
+
+| Case | Pins | Files | Shown |
+|---|---|---|---|
+| `t8-failed-referenced-words` (also R3) | D67.2 "readers show the file as stored": no reader rule hides a failed meeting's words | failed, but meeting.json still references a readable sidecar with 3 words (an older or another writer) | Needs attention; names Me, Ana (R7); no quote (R8.5); the 3 words are visible |
+| `t8-retry-failed-stale-silent` | R13.1 "the transcript is done" | both tracks zeros; the first write-down was done with no speech (`silentTracks` lists both); Try again failed, so that writingDown is still stored | Needs attention; no silent line |
+| `t8-silent-per-source` | R13.1 "every track", R13.3 place | rejoins (D63 #1): Bruno's two tracks both silent, Ana's first track silent and her return track spoke; sources mic, Bruno, Ana | "Bruno: no speech heard." right after Bruno's line, before Ana's; none for Ana |
+
+`expected/t8-*.json` are rows as for the other cases. `outcome-lines.json` adds,
+per case, the Details "Audio sources" lines as catalog ids with their placeholder
+arguments (LIBRARY-RULES R13), whether the meeting reads as no speech, and the
+visible words per speaker id. Both files are hand-written from the rules, never
+from app output. Each app renders the lines through its real Details path and
+compares ids, arguments (rendered with its own catalog and meetingDuration) and
+the warning role exactly.
+
+Tones longer than one second use the optional wav key `toneFrames` (here 80000,
+five seconds, well above the D56 silent floor). Without it the tone is still
+`min(frames, rate)`, so the 13 earlier cases are byte-identical; `verify.py`
+re-checks their pinned tree digests. It also checks that `outcome-lines.json`
+covers exactly the T8 cases, its catalog ids and placeholders against
+`../strings.json` where that file is beside the vectors (ux-draft), that the
+four outcome cases' lines differ pairwise, with the silent case's Details lines
+differing from the control's, and the shape each guard case relies on.

@@ -17678,6 +17678,39 @@
    }
   },
   {
+   "id": "details.sources.silent",
+   "en": "{source}: no speech heard.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D67",
+   "placeholders": {
+    "source": "source display name (person, This computer, Microphone)"
+   },
+   "note": "Coordinator (D67.1, GNOME R87 test 8). Captured source whose every track is in writingDown.silentTracks and whose transcript is done. A never-captured line (neverAudio) takes precedence.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{source}: nessun parlato rilevato."
+    },
+    "fr": {
+     "text": "{source} : aucune parole entendue."
+    },
+    "es": {
+     "text": "{source}: no se detectó habla."
+    },
+    "pt-BR": {
+     "text": "{source}: nenhuma fala detectada."
+    },
+    "pt-PT": {
+     "text": "{source}: não foi detetada fala."
+    }
+   }
+  },
+  {
    "id": "details.sources.failed",
    "en": "{source}: audio couldn’t be recorded.",
    "platforms": [
@@ -19372,6 +19405,68 @@
     },
     "pt-PT": {
      "text": "Reproduza para verificar se o som está bom."
+    }
+   }
+  },
+  {
+   "id": "export.failed.folderNotWritable",
+   "en": "Couldn’t export this meeting. Cassini can’t save changes to its folder in your Library.",
+   "role": "line",
+   "boards": [
+    "Export-mac"
+   ],
+   "note": "Coordinator (#116, R65). Shown when an export is refused because the meeting's Library folder can't be written, so the export revision is never reused. Amber line in the Export dialog; action common.tryAgain. Never the raw error.",
+   "platforms": [
+    "mac"
+   ],
+   "milestone": "D55",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Impossibile esportare questa riunione. Cassini non riesce a salvare le modifiche nella sua cartella della Libreria."
+    },
+    "fr": {
+     "text": "Impossible d’exporter cette réunion. Cassini ne peut pas enregistrer les modifications dans son dossier de votre bibliothèque."
+    },
+    "es": {
+     "text": "No se pudo exportar esta reunión. Cassini no puede guardar cambios en su carpeta de tu biblioteca."
+    },
+    "pt-BR": {
+     "text": "Não foi possível exportar esta reunião. O Cassini não consegue salvar alterações na pasta dela na sua biblioteca."
+    },
+    "pt-PT": {
+     "text": "Não foi possível exportar esta reunião. O Cassini não consegue guardar alterações na pasta dela na sua biblioteca."
+    }
+   }
+  },
+  {
+   "id": "export.failed.newerFormat",
+   "en": "Couldn’t export this meeting. It was saved by a newer version of Cassini. Update Cassini, then try again.",
+   "role": "line",
+   "boards": [
+    "Export-mac"
+   ],
+   "note": "Coordinator (#116, R65). Shown when an export is refused because the meeting's x[\"codemyriad.io\"] namespace has a schema this app doesn't know (or its revision can't advance), so Mac's edits would ship under a foreign revision. Amber line in the Export dialog; no Try again action (it would fail the same way). Never the raw error.",
+   "platforms": [
+    "mac"
+   ],
+   "milestone": "D55",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Impossibile esportare questa riunione. È stata salvata da una versione più recente di Cassini. Aggiorna Cassini, poi riprova."
+    },
+    "fr": {
+     "text": "Impossible d’exporter cette réunion. Elle a été enregistrée par une version plus récente de Cassini. Mettez Cassini à jour, puis réessayez."
+    },
+    "es": {
+     "text": "No se pudo exportar esta reunión. Se guardó con una versión más reciente de Cassini. Actualiza Cassini y vuelve a intentarlo."
+    },
+    "pt-BR": {
+     "text": "Não foi possível exportar esta reunião. Ela foi salva por uma versão mais recente do Cassini. Atualize o Cassini e tente de novo."
+    },
+    "pt-PT": {
+     "text": "Não foi possível exportar esta reunião. Foi guardada por uma versão mais recente do Cassini. Atualize o Cassini e tente novamente."
     }
    }
   }
