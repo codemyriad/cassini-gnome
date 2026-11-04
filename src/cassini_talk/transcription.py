@@ -558,11 +558,12 @@ class TranscriptionQueue:
                 self._check_open()
                 # D67.2: a failed transcript shows no words because the file says so.
                 # The partial transcript.json stays, unreferenced, for Try again,
-                # which references it again when it queues (_mark_queued).
+                # which references it again when it queues (_mark_queued). No body
+                # goes to a published Cassini file either: its default transcript
+                # keeps what it held, so no reader sees the partial words.
                 update_metadata(
                     directory,
                     transcript=dict(read_metadata(directory)["transcript"], status="failed", reference=None),
-                    transcript_body=transcript_snapshot(directory),
                     etaMinutes=None,
                     error=dict(id="transcribe-failed", action="Try again"),
                     before_commit=self._check_open,

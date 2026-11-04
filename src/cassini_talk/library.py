@@ -822,7 +822,9 @@ class LibraryScanner:
         error = MeetingError(stored["id"], stored["action"]) if stored else None
         words, readable, present = (), False, False
         try:
-            if reference is not None and status not in ("none", "failed", "damaged"):
+            # D67.2: a failed meeting shows the words it references, as stored (D47); its
+            # writer stores reference null instead, so no reader rule hides them.
+            if reference is not None and status not in ("none", "damaged"):
                 if (
                     origin == "received"
                     and not trusted
@@ -866,7 +868,7 @@ class LibraryScanner:
             eta = metadata.get("etaMinutes")
             return words, status, eta if _integer(eta) else None, error
         if status == "failed":
-            return (), "failed", None, error or MeetingError("transcribe-failed", "Try again")
+            return words, "failed", None, error or MeetingError("transcribe-failed", "Try again")
         if status == "damaged" or status == "done" and not readable or status is None and present and not readable:
             actionable = error if error and error.action is not None else MeetingError("transcript-damaged", None)
             return (), "damaged", None, actionable

@@ -20,6 +20,7 @@ from cassini_talk import meeting_store, portable
 from cassini_talk.library import LibraryScanner
 from cassini_talk.library_edits import commit_metadata, transaction
 from cassini_talk.library_v2 import finalize, journal, publish, xschema
+from cassini_talk.meeting_state import MeetingError
 
 
 @pytest.fixture
@@ -285,6 +286,107 @@ def test_existing_transcription_queue_commits_words_after_concurrent_title_edit(
     finally:
         finish_job.set()
         queue.close()
+
+
+def test_failed_write_down_leaves_the_published_files_words_as_they_were(published, monkeypatch, tmp_path_factory):
+    """D67.2 on the published path: the partial words stay in the working folder, unreferenced.
+
+    The Cassini file keeps its default transcript, so neither this Library nor
+    another reader of the file (Open a file, a received copy) sees them. Try
+    again still carries them over.
+    """
+    import shutil
+
+    from cassini_talk.open_meeting import load_open_meeting
+    from cassini_talk.transcription import TranscriptionQueue
+
+    root, sid, directory, original = published
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(root))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(root / "private-config"))
+    stored = portable.read_meeting(str(original))
+    before = portable.load_words(stored, stored.default_transcript_id)
+    finished = []
+    done = threading.Condition()
+
+    class Client:
+        fail = True
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, progress):
+            texts = ["Partial", "words"] if Client.fail else ["Partial", "words", "again"]
+            progress(
+                dict(
+                    type="progress",
+                    trackId=tracks[0]["id"],
+                    trackOrder=0,
+                    language="en",
+                    etaMinutes=0,
+                    words=[dict(startMs=i * 100, endMs=i * 100 + 90, text=t) for i, t in enumerate(texts)],
+                )
+            )
+            if Client.fail:
+                Client.fail = False
+                raise RuntimeError("synthetic failure after partial words")
+            return dict(diagnostics=[])
+
+    def finish(directory):
+        with done:
+            finished.append(directory)
+            done.notify_all()
+
+    queue = TranscriptionQueue(lambda _directory: None, finish, root=root, bundle=root, client_factory=Client)
+    try:
+        assert queue.enqueue(directory)
+        with done:
+            assert done.wait_for(lambda: len(finished) == 1, 10)
+        (meeting,) = LibraryScanner(root).scan().meetings
+        assert (meeting.transcript, meeting.words) == ("failed", ())
+        embedded = portable.read_meeting(str(meeting.audio_file))
+        ours = embedded.manifest["x"][xschema.DOMAIN]["meeting"]
+        assert ours["transcript"]["status"] == "failed" and ours["transcript"]["reference"] is None
+        assert portable.load_words(embedded, embedded.default_transcript_id) == before
+        elsewhere = tmp_path_factory.mktemp("elsewhere") / meeting.audio_file.name
+        shutil.copyfile(meeting.audio_file, elsewhere)
+        assert not load_open_meeting(elsewhere, elsewhere.parent).words
+        # The snapshot waits, unreferenced, in the working folder for Try again.
+        assert [item["text"] for item in meeting_store.transcript_snapshot(directory)["items"]] == ["Partial", "words"]
+        assert queue.enqueue(directory)
+        with done:
+            assert done.wait_for(lambda: len(finished) == 2, 10)
+        (meeting,) = LibraryScanner(root).scan().meetings
+        assert meeting.transcript == "done" and [w.text for w in meeting.words] == ["Partial", "words", "again"]
+        assert not journal.pending(journal.Layout(root)).entries
+    finally:
+        queue.close()
+
+
+def test_failed_published_meeting_shows_the_files_words_as_stored(published):
+    """D67.2: no reader rule. A failed status hides nothing the file holds; it only gives no quote (R8.5)."""
+    root, sid, directory, original = published
+    body = dict(
+        format=portable.WORDS_FORMAT,
+        language="en",
+        items=[
+            dict(speaker="original-a", startMs=0, endMs=40, text="Stored"),
+            dict(speaker="original-a", startMs=40, endMs=90, text="words"),
+        ],
+    )
+    error = dict(id="transcribe-failed", action="Try again")
+    failed = dict(transcript=dict(status="failed", reference=None), error=error)
+    with transaction(directory):
+        commit_metadata(directory, meeting_store.read_metadata(directory), failed, words=body)
+    (meeting,) = LibraryScanner(root).scan().meetings
+    assert meeting.transcript == "failed" and meeting.error == MeetingError("transcribe-failed", "Try again")
+    assert [w.text for w in meeting.words] == ["Stored", "words"] and [s.id for s in meeting.speakers] == ["original-a"]
+    assert meeting.quote_line is None
 
 
 def test_file_only_metadata_edit_does_not_create_a_working_folder(published, monkeypatch):

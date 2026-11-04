@@ -7,6 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from cassini_talk.library import LibraryScanner, library_root, scan_library
+from cassini_talk.meeting_state import MeetingError
 from cassini_talk.recording_session import RecordingSession
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -325,22 +326,27 @@ def test_bad_received_reference_does_not_read_outside_library(tmp_path):
     assert not scan_library(tmp_path).meetings, "Received publication must pass the whole schema"
 
 
-def test_none_and_failed_never_publish_stored_body_or_speakers(tmp_path):
+def test_none_never_publishes_stored_body_and_failed_shows_it_as_stored(tmp_path):
     session = capture(tmp_path)
     (session.directory / "transcript.json").write_text(
         json.dumps(dict(language="en", items=[dict(speaker="a", startMs=0, endMs=100, text="Stale words")]))
     )
     scanner = LibraryScanner(tmp_path)
-    for status in ("none", "failed"):
-        write_metadata(
-            session.directory,
-            transcript=dict(
-                status=status, reference=dict(kind="sidecar", file="transcript.json", format="cassini.words.v1")
-            ),
-        )
-        meeting = scanner.scan().meetings[0]
-        assert meeting.transcript == status
-        assert not meeting.words and not meeting.speakers and not meeting.quote_line and not meeting.preview_turns
+    reference = dict(kind="sidecar", file="transcript.json", format="cassini.words.v1")
+    write_metadata(session.directory, transcript=dict(status="none", reference=reference))
+    meeting = scanner.scan().meetings[0]
+    assert meeting.transcript == "none"
+    assert not meeting.words and not meeting.speakers and not meeting.quote_line and not meeting.preview_turns
+    # D67.2: no reader rule hides a failed meeting's words. Its writer stores reference null;
+    # a file that still references a readable body shows it as stored (D47), with no quote (R8.5).
+    write_metadata(session.directory, transcript=dict(status="failed", reference=reference))
+    meeting = scanner.scan().meetings[0]
+    assert meeting.transcript == "failed" and meeting.error == MeetingError("transcribe-failed", "Try again")
+    assert [w.text for w in meeting.words] == ["Stale words"] and [s.id for s in meeting.speakers] == ["a"]
+    assert meeting.quote_line is None and meeting.preview_turns
+    write_metadata(session.directory, transcript=dict(status="failed", reference=None))
+    meeting = scanner.scan().meetings[0]
+    assert meeting.transcript == "failed" and not meeting.words and not meeting.speakers
 
 
 def test_preview_filters_asides_before_limit_and_reuses_grouping_on_metadata_change(tmp_path, monkeypatch):

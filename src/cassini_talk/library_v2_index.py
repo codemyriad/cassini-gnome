@@ -257,7 +257,9 @@ class PublishedIndex:
                     error=local.get("error"),
                 )
                 transcript = metadata["transcript"]["status"]
-        words = audio.words if transcript not in ("none", "failed", "damaged") else ()
+        # D67.2: a failed meeting shows the file's words as stored (D47); a failed
+        # write-down never replaces them with its partial words.
+        words = audio.words if transcript not in ("none", "damaged") else ()
         known_speakers = [speaker["id"] for speaker in metadata.get("speakers", [])]
         known_speakers.extend(speaker.id for speaker in embedded.speakers)
         gaps = turn_gaps(
