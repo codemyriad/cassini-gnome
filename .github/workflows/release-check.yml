@@ -1,22 +1,11 @@
 name: Release preparation
 
+# G16: called by the tag workflow, or dispatched on a branch. Every PR runs the
+# same metadata check in Lint (source.yml) and builds and smoke-tests the
+# stable Flatpak in flatpak.yml.
 on:
   workflow_call:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - meson.build
-      - NEWS
-      - data/**
-      - debian/**
-      - build-aux/arch/**
-      - build-aux/rpm/**
-      - build-aux/deb/**
-      - build-aux/flatpak/**
-      - build-aux/ci/release_metadata.py
-      - build-aux/ci/validate_installed.py
-      - tests/test_ci_release.py
-      - .github/workflows/release*.yml
 
 permissions:
   contents: read
@@ -41,7 +30,6 @@ jobs:
   flatpak:
     name: Stable Flatpak build, install and validation
     needs: metadata
-    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'release/')
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     container:

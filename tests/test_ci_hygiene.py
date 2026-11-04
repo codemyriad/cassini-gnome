@@ -30,3 +30,12 @@ def test_every_job_has_a_timeout():
 def test_ci_runs_on_pushes_to_main_only():
     trigger = re.search(r"^  push:\n    branches: (.+)$", (WORKFLOWS / "ci.yml").read_text(), re.M)
     assert trigger and trigger.group(1) == "[main]"
+
+
+def test_release_metadata_runs_in_lint_and_release_preparation_has_no_pr_trigger():
+    # G16: one check per PR in Lint (always runs), no path-filtered workflow of its own.
+    lint = dict(jobs(WORKFLOWS / "source.yml"))["lint-and-test"]
+    assert "build-aux/ci/release_metadata.py --tag" in lint
+    release = (WORKFLOWS / "release-check.yml").read_text()
+    trigger = release.split("\njobs:", 1)[0]
+    assert "pull_request" not in trigger and "workflow_call:" in trigger
