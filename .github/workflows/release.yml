@@ -70,8 +70,8 @@ jobs:
           if-no-files-found: error
 
   # G15: the stable Flatpak main built, validated and smoke-tested, not a
-  # rebuild. Until D45.1 publishes the signed repository, main's bundle has
-  # no update remote, and this job fails the release instead of shipping it.
+  # rebuild. It ships only when the signed D45.1 repository it names serves
+  # its exact commit; until then this job fails the release instead.
   flatpak:
     name: Reuse the verified stable Flatpak
     needs: main-inputs
@@ -85,10 +85,12 @@ jobs:
           run-id: ${{ needs.main-inputs.outputs.run_id }}
           name: flatpak-stable
           path: dist
-      - name: Require the signed update remote in the bundle (D45.1)
+      # Fetches the remote the bundle names and verifies its summaries and
+      # the bundle's commit with the key the bundle carries (gpgv).
+      - name: Require the published, signed update remote to serve this bundle (D45.1)
         run: |
           sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y python3-gi
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y python3-gi gpgv
           /usr/bin/python3 build-aux/ci/flatpak_bundle.py dist/cassini-talk.flatpak
       - uses: actions/upload-artifact@v7
         with:

@@ -65,9 +65,15 @@ No tag or publication is created to validate this wiring.
 Main builds the stable Flatpak without an update remote until the D45.1 signed
 repository at `https://cassini.talk/download/linux/flatpak/` is published, since
 an origin that does not exist breaks `flatpak update`. The tag workflow checks
-the bundle with `build-aux/ci/flatpak_bundle.py` and fails unless it names that
-remote and carries its signing key, so **no release can ship until D45.1 is
-published and main builds the signed bundle**. CI itself never runs this check.
+the bundle with `build-aux/ci/flatpak_bundle.py` and fails unless the bundle
+names that remote and carries a public key, and the remote, fetched at tag
+time, serves summaries (legacy and indexed) whose signatures gpgv accepts with
+that key alone, listing the bundle's ref at the bundle's own commit, and that
+commit with a valid signature. So **no release can ship until D45.1 is
+published, serving the exact commit main built**. CI itself never runs this
+check. `tests/test_flatpak_release_guard.py` runs it against a real signed
+repository and bundles made by flatpak and ostree with throwaway keys
+(`tests/flatpak/make-release-fixture.sh`).
 
 Every PR checks the version across Meson, NEWS, metainfo, the man page and all
 native recipes, in Lint (`source.yml`). `flatpak.yml` builds the stable Flatpak,

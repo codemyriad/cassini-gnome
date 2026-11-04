@@ -182,28 +182,3 @@ def test_installed_metadata_validation_checks_the_packaged_files_and_both_valida
     with pytest.raises(ValueError, match="Installed browser companion version must be 0.2.12"):
         policy.validate(prefix, "io.codemyriad.CassiniTalk", "7.8.9", run=run)
     assert calls == []
-
-
-def bundle(path, **values):
-    # A superblock shaped like `flatpak build-bundle` output, metadata only.
-    GLib = pytest.importorskip("gi.repository.GLib")
-    policy = module("flatpak_bundle")
-    meta = {key: GLib.Variant("ay" if key == "gpg-keys" else "s", value) for key, value in values.items()}
-    value = GLib.Variant(policy.SUPERBLOCK, (meta, 0, b"", b"", ([], [])))
-    path.write_bytes(value.get_data_as_bytes().get_data())
-    return path
-
-
-def test_release_refuses_a_flatpak_bundle_without_the_signed_update_remote(tmp_path, capsys, monkeypatch):
-    policy = module("flatpak_bundle")
-    runtime = "https://dl.flathub.org/repo/flathub.flatpakrepo"
-    main_today = bundle(tmp_path / "main.flatpak", **{"runtime-repo": runtime})
-    unsigned = bundle(tmp_path / "unsigned.flatpak", origin=policy.URL, **{"runtime-repo": runtime})
-    signed = bundle(tmp_path / "signed.flatpak", origin=policy.URL, **{"gpg-keys": b"key", "runtime-repo": runtime})
-    assert policy.metadata(signed) == {"origin": policy.URL, "gpg-keys": list(b"key"), "runtime-repo": runtime}
-    for path, expected in ((main_today, 1), (unsigned, 1), (signed, 0)):
-        monkeypatch.setattr("sys.argv", ["flatpak_bundle.py", str(path)])
-        assert policy.main() == expected, path
-    errors = [line for line in capsys.readouterr().out.splitlines() if line.startswith("::error::")]
-    assert len(errors) == 3 and "origin is None" in errors[0] and "gpg-keys" in errors[1]
-    assert "gpg-keys" in errors[2] and str(unsigned) in errors[2]
