@@ -62,6 +62,16 @@ dependencies, and every recipe runs its check with `CASSINI_TEST_REQUIRE_GTK=1`.
 pytest then stops with a usage error if a typelib is missing, instead of
 skipping the GTK application tests that only the Source job used to run there.
 
+Those package jobs are required: the debian:testing build no longer has
+`continue-on-error` (a failure there already blocked a release in
+`green_main.py`). After each build, `build-aux/ci/check_pytest_ran.py` reads
+its Meson logs and fails the job unless pytest-1 .. pytest-N each ran once and
+passed, with the command `src/meson.build` registers, their shard,
+`CASSINI_TEST_REQUIRE_GTK=1` and no `PYTEST_ADDOPTS`, and none of their junit
+skips is a GTK fallback. `tests/test_ci_pytest_replacement.py` checks the
+recipes' exact test commands, the build-script invocations and the check
+dependencies, and mutates each one to prove the check catches it.
+
 Tar products preserve executable bits. Before use, consumers check their exact
 GitHub commit, profile and every file digest; extraction rejects traversal, links
 and devices. The board install uses its configured fixed prefix and compiled
