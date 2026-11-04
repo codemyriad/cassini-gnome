@@ -477,6 +477,37 @@ def test_prepare_tracks_sends_presence_once_as_session_sample_ranges(tmp_path):
     assert "sessionPresence" not in job
 
 
+def test_presence_of_a_fractional_track_starts_at_its_d55_placement(tmp_path, monkeypatch):
+    # R88 (D67 item 7): presence starts at the placed sample, as Mac's TrackPresence does.
+    # 1234.5104 ms is session sample 19752.1664, placed at 19752; the raw offset would
+    # start presence at 19753, leaving track sample 0 outside it.
+    import json
+
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.recording_session import RecordingSession
+    from cassini_talk.transcription import prepare_tracks
+
+    samples = speech(40)
+    session = RecordingSession(tmp_path / "library")
+    session.add_track("a", "Guest", "remote", RATE, 1)
+    pcm = np.round(samples * 32767).astype("<i2")
+    for second in range(len(samples) // RATE):  # one-second chunks, back to back
+        session.append("a", pcm[second * RATE : (second + 1) * RATE].tobytes(), 1234.5104 + second * 1000)
+    session.finish()
+    assert json.loads((session.directory / "session.json").read_text())["tracks"][0]["startOffsetMs"] == 1234.5104
+    (meeting,) = LibraryScanner(tmp_path / "library").scan().meetings
+    (job,), _speakers = prepare_tracks(meeting)
+    assert job["sessionPresence"] == [[19752, 19752 + len(samples)]]
+    assert fallback.track_ranges(job["sessionPresence"], job["offsetMs"]) == [[0, len(samples)]]
+
+    monkeypatch.setattr(pipeline, "SpeechDetector", detector(0.0))
+    events = []
+    pipeline.process_tracks(RunModel(), [job], None, lambda kind, **values: events.append(dict(type=kind, **values)))
+    progress = [event for event in events if event["type"] == "progress"]
+    # The first G10 fallback window starts at the track's first sample.
+    assert progress and progress[0]["segment"]["startSample"] == 0
+
+
 def test_the_child_shifts_presence_by_the_one_d55_placement():
     # 1000.03 ms is session sample 16000.48: the track starts at sample 16000, where its
     # words and its rejoin put it (placement.frame), so presence moves by whole samples.

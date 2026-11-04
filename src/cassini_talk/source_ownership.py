@@ -150,6 +150,22 @@ def _time(value):
     return Fraction(str(value))
 
 
+def _placed(row):
+    """A stored row with its offset at its D55 16 kHz placement (R88, D67 item 7).
+
+    An extent starts at session sample frame(offset, 16000), never at the raw
+    offset, as Mac builds TrackPresence from startSample / 16. Gap ranges and
+    ownership stay on the session timeline. Unusable offsets are left to bounds().
+    """
+    from .placement import frame
+
+    key = "offsetMs" if "offsetMs" in row else "startOffsetMs"
+    at = row.get(key)
+    if isinstance(at, bool) or not isinstance(at, (int, float)) or not math.isfinite(at):
+        return row
+    return dict(row, **{key: frame(at, 16000) / 16})
+
+
 def presence(track, ownership=None):
     """Span extents minus stored gap ranges, intersected with ownership windows.
 
@@ -158,14 +174,14 @@ def presence(track, ownership=None):
     after an overflow marker, or from a malformed entry on, the time is unknown.
     Works on session.json tracks and on the published file's x["codemyriad.io"]
     tracks, whose offsets live only on their spans. Returns None when no span
-    has a known start offset.
+    has a known start offset. Each extent starts at its D55 placement.
     """
     from .source_spans import bounds
 
     # Span rows inherit the logical track's fields; a span offset wins. A span
     # without an offset cannot be placed (display=False never assumes zero).
     logical = {key: value for key, value in track.items() if key != "spans"}
-    rows = [dict(logical, **span) for span in track.get("spans") or [{}] if isinstance(span, dict)]
+    rows = [_placed(dict(logical, **span)) for span in track.get("spans") or [{}] if isinstance(span, dict)]
     placed = sorted(extent for row in rows if (extent := bounds(row)) is not None)
     if not placed:
         return None
