@@ -61,3 +61,30 @@ def test_release_ships_the_flatpak_main_tested_and_refuses_it_without_an_update_
     stable = (WORKFLOWS / "flatpak.yml").read_text()
     assert "--repo-url" not in stable and "build-aux/ci/validate_installed.py" in stable
     assert "name: flatpak-stable" in stable
+
+
+def test_source_skips_pytest_only_where_a_package_job_runs_it_in_the_same_image():
+    # G11 (D20): a Source distro job leaves out pytest only when the job it
+    # names builds a package from the identical image, and that recipe's check
+    # fails instead of skipping the GTK tests the Source job used to run.
+    root = WORKFLOWS.parents[1]
+    matrix = dict(jobs(WORKFLOWS / "source.yml"))["distros"]
+    entries = re.findall(r'^          - image: (\S+)\n(?:            pytest-in: "([^"]+)"\n)?', matrix, re.M)
+    skipped = {image: job for image, job in entries if job}
+    assert {image for image, job in entries if not job} == {"fedora:latest", "alpine:edge"}
+    deb, packages = (WORKFLOWS / "deb.yml").read_text(), (WORKFLOWS / "packages.yml").read_text()
+    for image, job in skipped.items():
+        if job.startswith("Debian package / Build .deb ("):
+            assert job == f"Debian package / Build .deb ({image})" and f'"{image}"' in deb, job
+            recipe = root / "debian/rules"
+        elif job.startswith("RPM and Arch packages / Build .rpm ("):
+            assert job == f"RPM and Arch packages / Build .rpm ({image})" and f"- base: {image}\n" in packages, job
+            recipe = root / "build-aux/rpm/cassini-talk.spec"
+        else:
+            assert job == "RPM and Arch packages / Build Arch package", job
+            assert "run: build-aux/arch/build.sh\n" in packages
+            assert f"BASE=${{1:-{image}}}" in (root / "build-aux/arch/build.sh").read_text()
+            recipe = root / "build-aux/arch/PKGBUILD"
+        assert "CASSINI_TEST_REQUIRE_GTK=1" in recipe.read_text(), recipe
+    assert len(skipped) == 4
+    assert "CASSINI_SKIP_PYTEST: ${{ matrix.pytest-in && '1' || '' }}" in matrix

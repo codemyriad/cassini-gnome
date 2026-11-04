@@ -63,8 +63,24 @@ def _isolate(root):
     return root / "tmp"
 
 
+def _require_gtk():
+    """G11: the GTK application tests skip without these, and a package check
+    that CI's Source job relies on must run them, not skip them."""
+    try:
+        import gi
+
+        for namespace, version in (("Gtk", "4.0"), ("Adw", "1"), ("Gst", "1.0")):
+            gi.require_version(namespace, version)
+    except (ImportError, ValueError) as error:
+        raise pytest.UsageError(f"CASSINI_TEST_REQUIRE_GTK=1 but {error}") from error
+    if shutil.which("glib-compile-resources") is None:
+        raise pytest.UsageError("CASSINI_TEST_REQUIRE_GTK=1 but glib-compile-resources is missing")
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
+    if os.environ.get("CASSINI_TEST_REQUIRE_GTK") == "1":
+        _require_gtk()
     if os.environ.get("CASSINI_TEST_TIMINGS") == "1":
         config.pluginmanager.register(_Durations(config), "cassini-live-durations")
     if value := os.environ.get("CASSINI_TEST_SHARD"):

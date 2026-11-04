@@ -43,6 +43,25 @@ Distro and package builds remain separate: their OS/ABI/recipe tests are distinc
 No packaging recipe is changed. All six source distros, five native packages,
 Flatpak and Recording scenarios remain enabled with their existing thresholds.
 
+The pytest suite runs once per image (G11, D20). A Source distro job leaves
+out only its `pytest` Meson suite when a package job runs that suite in the
+same image; it still builds, runs every other Meson test, installs and
+smoke-tests. The matrix names that job in `pytest-in`, and the job prints it.
+
+| Source job | pytest suite runs in |
+| --- | --- |
+| debian:testing | Debian package / Build .deb (debian:testing) |
+| ubuntu:26.04 | Debian package / Build .deb (ubuntu:26.04) |
+| openSUSE Tumbleweed | RPM and Arch packages / Build .rpm (Tumbleweed) |
+| archlinux:latest | RPM and Arch packages / Build Arch package |
+| fedora:latest | itself (the rpm is built on fedora:44) |
+| alpine:edge | itself (no package job) |
+
+The deb and rpm builds have the GTK and libadwaita typelibs as check
+dependencies, and every recipe runs its check with `CASSINI_TEST_REQUIRE_GTK=1`.
+pytest then stops with a usage error if a typelib is missing, instead of
+skipping the GTK application tests that only the Source job used to run there.
+
 Tar products preserve executable bits. Before use, consumers check their exact
 GitHub commit, profile and every file digest; extraction rejects traversal, links
 and devices. The board install uses its configured fixed prefix and compiled

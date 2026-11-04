@@ -38,7 +38,9 @@ PY_NEXT := $(shell python3 -c 'import sys; print("%d.%d" % (sys.version_info[0],
 override_dh_gencontrol:
 	dh_gencontrol -- -Vcassini:Python="python3 (>= $(PY_VERSION)~), python3 (<< $(PY_NEXT))"
 
+# CASSINI_TEST_REQUIRE_GTK: a missing GTK/Adw typelib fails the check instead
+# of skipping the application tests (G11: CI's Source job relies on this one).
 override_dh_auto_test:
 ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
-	meson test -C obj-$(DEB_HOST_GNU_TYPE) --print-errorlogs
+	CASSINI_TEST_REQUIRE_GTK=1 meson test -C obj-$(DEB_HOST_GNU_TYPE) --print-errorlogs
 endif
