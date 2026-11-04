@@ -48,17 +48,17 @@
     },
     {
       "name": "a-fractional-start-offset-compares-in-session-samples",
-      "note": "Convert the ranges with the session origin, never track-relative: subtracting startOffsetMs (16000.48 samples) before the ceil keeps [2000, 2001] and drops [3000, 3001].",
+      "note": "Presence starts at the D55 placement (R88, D67 item 7): 16 * 1000.03 = 16000.48 rounds half away from zero to session sample 16000, and 192000 frames at 48 kHz are 64000 samples, so the extent is [16000, 80000). The gap stays on the session timeline: [ceil(16 * 2000.5), ceil(16 * 3000.5)) = [32008, 48008), leaving [16000, 32008) and [48008, 80000) present. M = 16000 for [1000, 1000] is the first placed sample: kept. M = 16008 for [1000, 1001] and 32000 for [1999, 2001]: kept. M = 32008 for [2000, 2001] is the gap start and 48000 for [3000, 3000] lies inside it: dropped. M = 48008 for [3000, 3001] is the gap end: kept. M = 80000 for [5000, 5000] and 80008 for [5000, 5001] are at or past the extent end: dropped. The raw offset would give [ceil(16000.48), ceil(80000.48)) = [16001, 80001), dropping [1000, 1000] and keeping [5000, 5000]. Convert gap ranges with the session origin, never track-relative: subtracting startOffsetMs (16000.48 samples) before the ceil keeps [2000, 2001] and drops [3000, 3001].",
       "track": {"startOffsetMs": 1000.03, "sampleRate": 48000, "frames": 192000,
                 "gaps": [{"atMs": 2000.5, "durationMs": 1000, "frames": 48000, "kind": "jump"}]},
       "words": [
-        {"ms": [1000, 1000], "keep": false},
+        {"ms": [1000, 1000], "keep": true},
         {"ms": [1000, 1001], "keep": true},
         {"ms": [1999, 2001], "keep": true},
         {"ms": [2000, 2001], "keep": false},
         {"ms": [3000, 3000], "keep": false},
         {"ms": [3000, 3001], "keep": true},
-        {"ms": [5000, 5000], "keep": true},
+        {"ms": [5000, 5000], "keep": false},
         {"ms": [5000, 5001], "keep": false}
       ]
     },

@@ -387,6 +387,25 @@ def test_received_import_cleans_published_folder_if_first_scan_fails(tmp_path, m
     assert not list(root.iterdir())
 
 
+def test_a_source_that_never_delivered_pcm_is_not_an_assumed_zero_offset(tmp_path):
+    # recording_session sets a track's offset with its first chunk: a declared source that
+    # never sent one has no samples and no offset. Nothing is placed at an assumed 0, so the
+    # export does not flag it (Mac's MeetingFileExporter and finalize count tracks with frames).
+    gst()
+    session = RecordingSession(tmp_path, "One silent source")
+    session.add_track("microphone", "Me", "microphone", 48000, 1)
+    session.add_track("system", "Others", "system", 48000, 1)
+    samples = array.array("h", (round(8000 * math.sin(2 * math.pi * 440 * i / 48000)) for i in range(48000)))
+    if sys.byteorder != "little":
+        samples.byteswap()
+    session.append("microphone", samples.tobytes(), 250)
+    session.finish()
+    meeting = LibraryScanner(tmp_path).scan().meetings[0]
+    assert [(t.frames, t.start_offset_ms) for t in meeting.tracks] == [(48000, 250), (0, None)]
+    result, _value = check_portable(export_meeting(meeting, tmp_path / "Documents"))
+    assert "recovery" not in result["manifest"].get("x", {}).get("gocassini.com", {})
+
+
 def test_recovered_session_exports_without_inventing_date_or_alignment(tmp_path):
     from datetime import UTC, datetime
 

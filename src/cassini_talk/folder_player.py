@@ -6,15 +6,18 @@ and the silence before its known offset; it never assumes an unknown offset is
 zero. This lets audiomixer forward the same seek to every source, including
 sources that start later or have already ended. No intermediate audio is written.
 A compacted Opus span (S-12 §5) is decoded at 48 kHz by track_source's
-seekable decoder instead of being read from its WAV.
+seekable decoder instead of being read from its WAV. A known offset is placed at
+the track's own rate (D55: placement.frame, as Mac's playback does).
 """
 
 import os
 import threading
+from fractions import Fraction
 
 from gi.repository import GLib, Gst
 
 from .library import _wave
+from .placement import frame
 from .player import Player
 from .track_source import OpusDecoder
 
@@ -22,7 +25,10 @@ CHUNK_FRAMES = 2048
 
 
 class PCMSource:
-    def __init__(self, track):
+    def __init__(self, track, *, local=False):
+        """`local`: an unmapped track's own samples from frame 0, with no leading silence,
+        for a consumer that places it at another rate (export places at 48 kHz, D55).
+        A clock-mapped or rotated track is always placed by its map, on the 48 kHz grid."""
         if track.start_offset_ms is None:
             raise ValueError("Cannot align a track with an unknown start offset")
         from .mapped_audio import required
@@ -41,12 +47,15 @@ class PCMSource:
         self.codec = track.codec
         self.decoder = None
         self.frames, self.rate, self.channels = track.pcm_frames, track.pcm_rate, track.channels
-        self.offset_ns = round(track.start_offset_ms * Gst.MSECOND)
-        self.leading_frames = (self.offset_ns * self.rate + Gst.SECOND - 1) // Gst.SECOND
+        self.local = local and not self.mapped
+        self.leading_frames = 0 if self.local else frame(track.start_offset_ms, self.rate)
         self.end_frame = self.leading_frames + self.frames
+        # Where this source ends on the publication's 48 kHz grid (mixdown.Mapping.end).
+        length = self.frames if self.rate == 48000 else round(self.frames * 48000 / self.rate)
+        self.end48 = frame(track.start_offset_ms, 48000) + length
         if self.children:
             self.rate = 48000
-            self.end_frame = max(round(child.end_frame * 48000 / child.rate) for child in self.children)
+            self.end_frame = max(child.end48 for child in self.children)
         elif self.mapped:
             from .capture_clock import mapped_end_sample
 
@@ -57,12 +66,16 @@ class PCMSource:
                 track.clock_anchors,
                 decoded_frames=track.pcm_frames if track.codec == "opus" else None,
             )
+            self.end48 = end
             self.end_frame = max(0, round(end * self.rate / 48000))
         from .source_ownership import FrameMask
 
-        self.ownership = FrameMask(
-            getattr(track, "ownership_windows", None), self.rate, getattr(track, "ownership_offset_ms", 0)
-        )
+        shift = getattr(track, "ownership_offset_ms", 0)
+        if self.local:
+            # Local frames count from where the export places the track, frame(offset, 48000),
+            # in exact ms, so a 48 kHz edge falls on the export's own 48 kHz mask (Mac's PCMInput).
+            shift = Fraction(str(shift)) + Fraction(frame(track.start_offset_ms, 48000), 48)
+        self.ownership = FrameMask(getattr(track, "ownership_windows", None), self.rate, shift)
         # Each placed span is masked by its own windows on the 48 kHz timeline, also when its track is unplaced.
         self.span_masks = [FrameMask(getattr(child.track, "ownership_windows", None), 48000) for child in self.children]
         self.cursor = 0
@@ -184,8 +197,7 @@ class PCMSource:
         if self.children:
             output = np.zeros((count, self.channels), dtype=np.float64)
             for child, mask in zip(self.children, self.span_masks, strict=True):
-                first = child.track.start_offset_ms * 48
-                end = child.end_frame * 48000 / child.rate
+                first, end = frame(child.track.start_offset_ms, 48000), child.end48
                 if cursor + count > first and cursor < end:
                     child._open()
                     data = mask.pcm(child._mapped_data(cursor, count, output_rate=48000), cursor, 4 * self.channels)
@@ -267,14 +279,14 @@ class FolderPlayer(Player):
 
     @staticmethod
     def can_play(meeting):
-        return (
-            any(t.frames > 0 for t in meeting.tracks)
-            and meeting.lifecycle == "saved"
-            and all(t.start_offset_ms is not None for t in meeting.tracks)
-        )
+        # A track with no samples places nothing: its unknown offset refuses nothing (Mac's canPlaySession).
+        tracks = [t for t in meeting.tracks if t.frames != 0]
+        return bool(tracks) and meeting.lifecycle == "saved" and all(t.start_offset_ms is not None for t in tracks)
 
     def load_tracks(self, tracks, duration_ms=None):
         self.shutdown()
+        # A source that never delivered PCM has nothing to play, and maybe no offset (recording_session).
+        tracks = [track for track in tracks if track.frames != 0]
         if not tracks:
             raise ValueError("No recording sources")
         pipeline = Gst.Pipeline.new(None)

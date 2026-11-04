@@ -152,7 +152,8 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
             extension.pop("codemyriad.io")
     domain = extension.get("gocassini.com")
     domain = domain if isinstance(domain, dict) else {}
-    if meeting.origin == "own" and any(t.start_offset_ms is None for t in meeting.tracks):
+    # D19: only a track with samples is placed at an assumed 0 (Mac's MeetingFileExporter, finalize).
+    if meeting.origin == "own" and any(t.start_offset_ms is None and t.frames != 0 for t in meeting.tracks):
         recovery = domain.get("recovery")
         recovery = recovery if isinstance(recovery, dict) else {}
         recovery["offsetsAssumedZero"] = True

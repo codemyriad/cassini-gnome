@@ -1,7 +1,7 @@
 {
  "version": 1,
  "decision": "D52.2",
- "note": "Hand-written presence vectors: stored track facts in, half-open 16 kHz session sample ranges out. A window [a,b) ms covers samples [ceil(16a), ceil(16b)). See README.md.",
+ "note": "Hand-written presence vectors: stored track facts in, half-open 16 kHz session sample ranges out. A track's extent starts at its D55 placement, frame(startOffsetMs, 16000) rounded half away from zero; a window [a,b) ms covers samples [ceil(16a), ceil(16b)). See README.md.",
  "cases": [
   {
    "name": "gap-is-absent-half-open",
@@ -324,6 +324,54 @@
      ]
     ],
     "unknown": []
+   }
+  },
+  {
+   "name": "a-fractional-start-offset-starts-at-the-d55-placement",
+   "note": "R88 (D67 item 7): 16 * 1234.5104 = 19752.1664 rounds half away from zero to session sample 19752, and 96000 frames at 48 kHz are 32000 samples, so the extent is [19752, 51752). The gap stays on the session timeline: [ceil(16 * 1984.5104), ceil(16 * 2084.5104)) = [ceil(31752.1664), ceil(33352.1664)) = [31753, 33353). The raw offset would give [19753, 31753) and [33353, 51753).",
+   "track": {
+    "startOffsetMs": 1234.5104,
+    "sampleRate": 48000,
+    "frames": 96000,
+    "gaps": [
+     {
+      "atMs": 1984.5104,
+      "durationMs": 100,
+      "frames": 4800,
+      "kind": "jump"
+     }
+    ]
+   },
+   "expected": {
+    "present": [
+     [
+      19752,
+      31753
+     ],
+     [
+      33353,
+      51752
+     ]
+    ],
+    "unknown": []
+   }
+  },
+  {
+   "name": "an-exact-half-start-rounds-away-from-zero",
+   "note": "16 * 1000.03125 = 16000.5 places the first sample at 16001 (D55 rounds half away from zero; half-even or floor would give 16000), and 48000 frames at 48 kHz are 16000 samples: [16001, 32001). The track has no gaps key, so the whole extent is unknown.",
+   "track": {
+    "startOffsetMs": 1000.03125,
+    "sampleRate": 48000,
+    "frames": 48000
+   },
+   "expected": {
+    "present": [],
+    "unknown": [
+     [
+      16001,
+      32001
+     ]
+    ]
    }
   }
  ]

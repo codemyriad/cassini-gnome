@@ -1,0 +1,17 @@
+{
+  "rule": "D55: a track starting at ms is placed at frame ms * rate / 1000, rounded half away from zero, at each consumer's rate",
+  "cases": [
+    {"ms": 0, "rate": 16000, "frame": 0, "why": "zero"},
+    {"ms": 0, "rate": 48000, "frame": 0, "why": "zero"},
+    {"ms": 1234.5104, "rate": 16000, "frame": 19752, "why": "19752.1664"},
+    {"ms": 1234.5104, "rate": 48000, "frame": 59256, "why": "59256.4992: ns-then-ceil gives 59257"},
+    {"ms": 1000.09375, "rate": 16000, "frame": 16002, "why": "16001.5: floor gives 16001"},
+    {"ms": 1000.09375, "rate": 48000, "frame": 48005, "why": "48004.5: half-even gives 48004"},
+    {"ms": 1001.28125, "rate": 16000, "frame": 16021, "why": "16020.5: half-even, whole-microsecond rounding and ms / 1000 * rate give 16020"},
+    {"ms": 1001.28125, "rate": 48000, "frame": 48062, "why": "48061.5: ms / 1000 * rate in doubles gives 48061"},
+    {"ms": 31999.96875, "rate": 16000, "frame": 512000, "why": "511999.5: floor gives 511999"},
+    {"ms": 31999.96875, "rate": 48000, "frame": 1535999, "why": "1535998.5: half-even gives 1535998"},
+    {"ms": 0.03125, "rate": 16000, "frame": 1, "why": "0.5: half away from zero, not to even"},
+    {"ms": 0.09375, "rate": 48000, "frame": 5, "why": "4.5"}
+  ]
+}

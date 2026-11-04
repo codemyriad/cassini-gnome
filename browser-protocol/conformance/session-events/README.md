@@ -42,7 +42,7 @@ none/lost as after system/missing or system/lost; none/user is not a fallback.
 written othersSource while a fallback is pending (SPEC.md: "until then the
 recording keeps its written othersSource"): no none/lost and no restored. Both
 expected files require the same Others presence, `othersPresenceMs` (span extents
-minus gap ranges, D52.2): absent from the loss to the return, so neither form may
+from each track's D55 placement, minus gap ranges, D52.2): absent from the loss to the return, so neither form may
 hide the missing audio, as a zero-filled span would.
 
 Production-shaped speech lives elsewhere. `../multistream/` holds the D52 corpus,

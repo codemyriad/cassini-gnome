@@ -476,3 +476,50 @@ def test_compacted_opus_ownership_is_exact_after_decoding_and_resampling(tmp_pat
     assert np.all(speech[:8001] == 0) and np.all(speech[16001:] == 0)
     assert np.max(np.abs(speech[9000:15000])) > 0.1
     assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("owned,after", [([[2000.01, None]], True), ([[0, 2000.01]], False)], ids=["from", "until"])
+def test_recognizer_input_ownership_edges_are_on_the_session_grid_from_the_d55_placement(tmp_path, owned, after):
+    # A 16 kHz track at 1234.5104 ms starts at session sample 19752 (D55), where its words
+    # and its rejoin put it. A window edge at 2000.01 ms is session sample ceil(32000.16) =
+    # 32001: the first sample it owns, or the first it no longer owns.
+    np = pytest.importorskip("numpy")
+    import wave
+
+    from cassini_talk.speech_pipeline import audio_chunks
+
+    path = tmp_path / "track.wav"
+    with wave.open(str(path), "wb") as stream:
+        stream.setparams((1, 2, 16000, 0, "NONE", ""))
+        stream.writeframes(np.full(20000, 1000, dtype="<i2").tobytes())
+    job = dict(path=str(path), offsetMs=1234.5104, frames=20000, sampleRate=16000, ownershipWindows=owned)
+    speech = np.concatenate(list(audio_chunks(job)))
+    edge = np.flatnonzero(np.diff(speech != 0))
+    assert len(edge) == 1 and 19752 + edge[0] + 1 == 32001
+    assert bool(speech[32001 - 19752]) is after
+
+
+@pytest.mark.parametrize(
+    "owned,first,end", [(((1500, None),), 72000, 144001), (((0, 1500),), 48001, 72000)], ids=["from", "until"]
+)
+def test_export_ownership_edges_are_on_the_48k_grid_from_the_d55_placement(tmp_path, owned, first, end):
+    # A 48 kHz track at 1000.0125 ms is placed at 48001 (48000.6, D55), as the export mix
+    # places it. A window edge at 1500 ms is 48 kHz session frame 72000 on both sides of the
+    # resampler: the first frame it owns, or the first it no longer owns (Mac's PCMInput).
+    np = pytest.importorskip("numpy")
+    gi = pytest.importorskip("gi")
+    gi.require_version("Gst", "1.0")
+    import wave
+
+    from cassini_talk.export_audio import track_pcm
+    from cassini_talk.library import CaptureTrack
+
+    path = tmp_path / "track.wav"
+    with wave.open(str(path), "wb") as stream:
+        stream.setparams((1, 2, 48000, 0, "NONE", ""))
+        stream.writeframes(np.full(96000, 8000, dtype="<i2").tobytes())
+    track = CaptureTrack(path, 96000, 48000, 1000.0125, True, kind="remote", ownership_windows=owned)
+    exported = np.concatenate([np.asarray(block) for block in track_pcm(track)])
+    sounding = np.flatnonzero(exported)
+    assert (sounding[0], sounding[-1] + 1) == (first, end)
+    assert len(sounding) == end - first

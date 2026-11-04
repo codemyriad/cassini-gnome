@@ -76,13 +76,25 @@ def state_at(document, at):
                 fallback=source['reason'] in ('missing', 'lost'))
 
 
+def placed_ms(ms):
+    """D55: the session ms of the 16 kHz sample ms * 16 rounded half away from zero."""
+    x = ms * 16
+    whole = math.floor(abs(x) + 0.5)
+    return (whole if x >= 0 else -whole) / 16
+
+
 def others_presence(document):
-    """Independent presence oracle (D52.2): The others' span extents minus gap ranges, merged."""
+    """Independent presence oracle (D52.2): The others' span extents minus gap ranges, merged.
+
+    An extent starts at the track's D55 placement and lasts its frames (R88, D67 item 7);
+    gap ranges stay absolute session times.
+    """
     spans = []
     for track in document['tracks']:
         if track['kind'] in ('microphone', 'local'):
             continue
-        start, end = track['startOffsetMs'], track['endOffsetMs']
+        start = placed_ms(track['startOffsetMs'])
+        end = start + track['frames'] * 1000 / track['sampleRate']
         cuts = sorted((g['atMs'], g['atMs'] + g['durationMs']) for g in track.get('gaps') or []
                       if g.get('durationMs', 0) > 0)
         for cut_start, cut_end in cuts:

@@ -75,6 +75,19 @@ def test_rotation_keeps_every_frame_one_speaker_and_all_input_paths(tmp_path, mo
     assert stored_pcm(session) == b"".join(blocks)
 
 
+def test_rotation_without_a_native_clock_starts_the_next_span_at_the_d55_end(tmp_path, monkeypatch):
+    # 31999.96875 ms is 1535998.5 frames at 48 kHz: D55 places the first span at 1535999, so
+    # its 1600 frames end, and the next span starts, at 1537599 frames (the publication's Mapping).
+    _root, session = capture(tmp_path, monkeypatch)
+    session.add_track("system", "Others", "system", 48000, 1)
+    block = b"\x10\0" * 1600
+    session.append("system", block, 31999.96875)
+    session.append("system", block, 31999.96875 + 1600 / 48)
+    session.finish()
+    system = next(track for track in session.manifest["tracks"] if track["id"] == "system")
+    assert [span["startOffsetMs"] for span in system["spans"]] == [31999.96875, 1537599 / 48]
+
+
 def test_materialized_gap_crosses_rotation_without_loss_or_double_insertion(tmp_path, monkeypatch):
     root, session = capture(tmp_path, monkeypatch, limit=16000)
     first, last = b"\x10\0" * 800, b"\x20\0" * 800

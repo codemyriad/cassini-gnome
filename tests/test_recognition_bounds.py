@@ -91,12 +91,69 @@ def test_mapped_source_end_is_the_final_bound_even_with_a_longer_decoded_segment
     assert words[2] == dict(text="after", startMs=8801, endMs=8801)
 
 
-def test_clamp_uses_absolute_sample_endpoint_without_accumulating_rounding():
+def test_clamp_counts_the_segment_pcm_in_whole_ms_from_its_first_sample_as_mac_does():
+    # Session samples 116015..116030 are 7250.9375..7251.875 ms: the segment starts at 7250
+    # ms and its 15 samples are 0 whole ms, so nothing ends past 7250 (Mac: start + 15 * 1000 / 16000).
     _, words, _, _ = recognise_segment(
         OverrunModel(), None, dict(startSample=15, endSample=30), 7250, samples=np.ones(15, dtype="<f4")
     )
-    assert all(7250 <= word["startMs"] <= word["endMs"] <= 7251 for word in words)
-    assert words[-1]["endMs"] == 7251
+    assert all(word["startMs"] == word["endMs"] == 7250 for word in words)
+
+
+def mac_clamped(offset_ms, start_sample, count, start, end):
+    """MeetingTranscriber.clamped over words(), as Swift computes it (Int64 division truncates)."""
+    from fractions import Fraction
+
+    placed = Fraction(offset_ms) * 16  # TrackPlacement.frame: half away from zero, exact here
+    first = int(placed) + (placed - int(placed) >= Fraction(1, 2))
+    base, length = (first + start_sample) * 1000 // 16000, count * 1000 // 16000
+    a, b = round(start * 1000), round(end * 1000)  # .toNearestOrEven, as Python's round
+    lower = min(a, length)
+    return base + lower, base + min(max(b, lower), length)
+
+
+def test_word_past_the_pcm_ends_where_mac_ends_it():
+    class Late:  # a recognizer that reports a word past the PCM it was given (G11)
+        def transcribe(self, samples, **_options):
+            return dict(text="x", language="en", words=[dict(word="x", start=0.2, end=9.0)])
+
+    differences = []
+    for offset in (1234.5104, 31999.96875, 1000.09375, 0, 17.3, 250.0625):
+        for start in (0, 512, 1000, 16008, 31744):
+            for count in range(3990, 4030):
+                segment = dict(startSample=start, endSample=start + count, reason="silence")
+                _, (word,), _, _ = recognise_segment(Late(), None, segment, offset, samples=np.zeros(count, "<f4"))
+                if (word["startMs"], word["endMs"]) != mac_clamped(offset, start, count, 0.2, 9.0):
+                    differences.append((offset, start, count, word))
+    assert differences == []
+
+
+def test_a_tracks_last_word_ends_where_mac_ends_it_within_the_source_end():
+    # process_tracks also bounds a track's words by its source end (_source_end). Counted from
+    # the track's D55 placement, that bound never cuts a segment that ends at the track's last
+    # sample shorter than Mac does: 0.99 ms is session sample 15.84, so the track starts at 16
+    # (1 ms) and its 16000 samples end at 1001 ms, not at floor(0.99 + 1000).
+    from cassini_talk.speech_pipeline import _source_end
+
+    class Late:
+        def transcribe(self, samples, **_options):
+            return dict(text="x", language="en", words=[dict(word="x", start=0.2, end=99.0)])
+
+    differences = []
+    for offset, frames in ((0.99, 16000), (1304.54943, 45927), (1234.5104, 16001), (1001.28125, 31999)):
+        track = dict(id="t", path="unused.wav", offsetMs=offset, frames=frames, sampleRate=16000)
+        for start in (0, 7, 512):
+            segment = dict(startSample=start, endSample=frames, reason="silence")
+            samples = np.zeros(frames - start, "<f4")
+            _, (word,), _, _ = recognise_segment(
+                Late(), None, segment, offset, samples=samples, audio_end_ms=_source_end(track)
+            )
+            if (word["startMs"], word["endMs"]) != mac_clamped(offset, start, frames - start, 0.2, 99.0):
+                differences.append((offset, frames, start, word))
+    assert differences == []
+    # A 48 kHz track's recognizer input is ceil(frames / 3) samples (resampled_chunks).
+    track = dict(id="t", path="unused.wav", offsetMs=0.99, frames=48001, sampleRate=48000)
+    assert _source_end(track) == (16 + 16001) * 1000 // 16000
 
 
 def test_process_tracks_uses_the_clock_mapped_source_end(tmp_path, monkeypatch):

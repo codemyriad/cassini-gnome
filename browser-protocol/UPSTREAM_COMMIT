@@ -1,26 +1,26 @@
-tree c6bad7b456ec379acf9f461de1e199674af74d7b
-parent dba4a327cd76baa5b73a217f3465f53c109bd4a5
-parent d2a23274fa887f3817a8b74a17c2ea82a0adfc19
-author Silvio Tomatis <silviot@gmail.com> 1793743031 +0100
-committer GitHub <noreply@github.com> 1793743031 +0100
+tree 52d0deeec758d89340aab335bf85d90a3891a30f
+parent 3882189667cd1b857d0025d89f9d02ed87cce283
+parent fd3b4a0432ce3aebedfcb20fa5a41dbcc99ed627
+author Silvio Tomatis <silviot@gmail.com> 1793816217 +0100
+committer GitHub <noreply@github.com> 1793816217 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq6li3CRC1aQ7uu5UhlAAAL7sQAE6sQ32aOhRBlwp3Mj1IlOGN
- rwJZDnbYr87ISj2W7l/aiiZud71dQaAF2QYx7RVWejMF5OfONjQyTly7vM7e4fNv
- BHVosbv8u7P6YJlH/a8LugrI9kmOk9xEPWTZqvtHILoaIV5LKjNgF69nYGT3320b
- 5em6D4EFe0JbT8w/jSGxrhOTDhL18oqaI7xVPC3fU6xP1DjoeiOyAGe+MlS/NXMj
- 93vpd5fXEt5vd4cAadDhuImA8Egt96ypZRb6LLVruIXT7ZuBTREKhJTCh+nBfYCQ
- +Rw5uJcHCvC07ZJvABlHCOakOnTggX7QIcodPYw1M/KtQwcXjCtkQnCGNA+V8Plj
- HrMzfd0YwfhZ+nk+vKjJAVGi6jspHsnr23QbWO8P/Ogp2lWpQxBOtPb6/IskSAEt
- GtyCA9SK00Oy7/XItSWY6OVAC7IDszINFiW8A8fEmeFWm52WTgzbtm18zXavFfc6
- Ww1+lS57Q64h1W7HPchOxAQ7RTG9RNBBVcnqznzDhH2q0J3kw6zV6+fmEkd62OzI
- dK9AtGpzF6rzDFBW0eI9mok56x5QHgtgqQsJJzUh7creZOE0+NdfxN73qggENesc
- yUmmbId0s54wKte3V+24U9QgaTAeqUmkgGiceB17iLscs7g5BsV0DeUKDKjEXKqs
- 9A6aY8x5z1jw4O2ZK0+m
- =2dHu
+ wsFcBAABCAAQBQJq63aZCRC1aQ7uu5UhlAAA0wYQAA5L4E4g6RAyUX8eVJu63GWq
+ vpOJGl26ejGagnsbHVx6XGlzvpR5XuMU2XC4wbGa+xddEUOrWhVjMXT5E0CatTkq
+ 74jppxhVJ0zlEcI7iJjQNPgDbwPYaEkqVCkpvWTtl8ACEW5A0fQXgGBEvlua9a0d
+ 3v+EXWN7oaruwVPSiqHXxqjsKSIUPtPSGj8CaLbXULVAzNlW6c6ZcYW58pvQ9u1b
+ aw9ZQ+eiUF7uvoJf/RCsCH4HAPsT/wi1YUTflSIGj6wLuov0es4ZiYRJVi3eip33
+ 4hXByI9HXiwfj7BMBV78DkvVvfcum0DoCf4oxB10frFhkKTJO/GfOuyeyGji6T1N
+ dQMTQEgfzf4RpavH+v0TwAbruPnwskmw5FRGnf2DZy8aqR0nyyq47OrDLGicau9h
+ cF1RXwcPyljmYnjIlaQ1mKW2fqy82TkXyRaOgW02t2zevsDWxtjvwX7NjMF39rhC
+ qY2E9iRmpXOKhAaA0KpRFo6mup/3TyUnoTMlmvqYiz24qmkwA0L9CtEg0cQnQikJ
+ PqZJadwO5x01FOxdd1WCxslCdxEW9Ix8WBMdC2eTKg7NyKc+zgKRGos2I3HeHvCO
+ XAizdNpNN+bkQH/MCEUCUCinZ6e99KM9J3uVTG2B5m69Q3pwdtJ5UTqekeOFiY4h
+ VYz9KQhBzwMsoCMc4GDx
+ =05s4
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #45 from codemyriad/feat/uncommitted-return-either-file
+Merge pull request #48 from codemyriad/conformance/presence-from-placement
 
-D52: an uncommitted return is valid in either writer form, with the absence in the file
+Presence starts at the D55 placement (R88, D67 item 7)

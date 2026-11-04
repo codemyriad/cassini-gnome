@@ -1,0 +1,509 @@
+{
+  "vector": "placement-v1",
+  "burstMs": 250,
+  "toneHz": 1000,
+  "level": 8000,
+  "headlineMs": 20,
+  "sessions": [
+    {
+      "id": "09000000-0000-4000-8000-000000000001",
+      "createdAt": "2026-10-27T10:00:00Z",
+      "title": "Placement golden A",
+      "source": "gnome",
+      "tracks": [
+        {
+          "id": "microphone",
+          "label": "Microphone",
+          "kind": "microphone",
+          "sampleRate": 48000,
+          "channels": 1,
+          "startOffsetMs": 0,
+          "lengthMs": 12000,
+          "burstsMs": [
+            500,
+            2500,
+            4500,
+            6500,
+            8500,
+            10500
+          ]
+        },
+        {
+          "id": "system",
+          "label": "System output",
+          "kind": "system",
+          "sampleRate": 48000,
+          "channels": 2,
+          "startOffsetMs": 1234.5104,
+          "lengthMs": 12000,
+          "burstsMs": [
+            0,
+            2000,
+            4000,
+            6000,
+            8000,
+            10000
+          ]
+        }
+      ]
+    },
+    {
+      "id": "09000000-0000-4000-8000-000000000002",
+      "createdAt": "2026-10-27T10:00:00Z",
+      "title": "Placement golden B",
+      "source": "macos",
+      "tracks": [
+        {
+          "id": "microphone",
+          "label": "Microphone",
+          "kind": "microphone",
+          "sampleRate": 16000,
+          "channels": 1,
+          "startOffsetMs": 1001.28125,
+          "lengthMs": 12000,
+          "burstsMs": [
+            0,
+            2000,
+            4000,
+            6000,
+            8000,
+            10000
+          ]
+        },
+        {
+          "id": "system",
+          "label": "System output",
+          "kind": "system",
+          "sampleRate": 48000,
+          "channels": 2,
+          "startOffsetMs": 31999.96875,
+          "lengthMs": 12000,
+          "burstsMs": [
+            1000,
+            3000,
+            5000,
+            7000,
+            9000,
+            11000
+          ]
+        }
+      ]
+    },
+    {
+      "id": "09000000-0000-4000-8000-000000000003",
+      "createdAt": "2026-10-27T10:00:00Z",
+      "title": "Placement golden C",
+      "source": "gnome",
+      "tracks": [
+        {
+          "id": "microphone",
+          "label": "Microphone",
+          "kind": "microphone",
+          "sampleRate": 48000,
+          "channels": 1,
+          "startOffsetMs": 0,
+          "lengthMs": 12000,
+          "burstsMs": [
+            500,
+            2500,
+            4500,
+            6500,
+            8500,
+            10500
+          ]
+        },
+        {
+          "id": "system",
+          "label": "System output",
+          "kind": "system",
+          "sampleRate": 48000,
+          "channels": 1,
+          "startOffsetMs": null,
+          "lengthMs": 12000,
+          "burstsMs": [
+            1500,
+            3500,
+            5500,
+            7500,
+            9500,
+            11500
+          ]
+        }
+      ]
+    }
+  ],
+  "mutants": [
+    {
+      "name": "a-system-late",
+      "session": "09000000-0000-4000-8000-000000000001",
+      "track": "system",
+      "startOffsetMs": 1234.5312,
+      "why": "one 48 kHz frame later (59257.4976), the same 16 kHz frame (19752.4992)",
+      "fails": [
+        "mix48",
+        "mix48publication",
+        "playback"
+      ]
+    },
+    {
+      "name": "b-mic-25ms",
+      "session": "09000000-0000-4000-8000-000000000002",
+      "track": "microphone",
+      "startOffsetMs": 1026.28125,
+      "why": "25 ms late: past the 20 ms headline in every consumer",
+      "fails": [
+        "rec16",
+        "wordMs",
+        "mix48",
+        "mix48publication",
+        "playback",
+        "opus48"
+      ]
+    },
+    {
+      "name": "c-system-known",
+      "session": "09000000-0000-4000-8000-000000000003",
+      "track": "system",
+      "startOffsetMs": 0,
+      "why": "the unknown offset becomes a known 0: the same placement, but playback plays and nothing is flagged",
+      "fails": [
+        "playback",
+        "offsetsAssumedZero"
+      ]
+    }
+  ],
+  "expected": {
+    "09000000-0000-4000-8000-000000000001/microphone": {
+      "offsetsAssumedZero": false,
+      "rec16": {
+        "tolerance": 0,
+        "frames": [
+          8000,
+          40000,
+          72000,
+          104000,
+          136000,
+          168000
+        ]
+      },
+      "wordMs": {
+        "tolerance": 0,
+        "values": [
+          500,
+          2500,
+          4500,
+          6500,
+          8500,
+          10500
+        ]
+      },
+      "mix48": {
+        "tolerance": 0,
+        "frames": [
+          24000,
+          120000,
+          216000,
+          312000,
+          408000,
+          504000
+        ]
+      },
+      "playback": {
+        "rate": 48000,
+        "tolerance": 0,
+        "frames": [
+          24000,
+          120000,
+          216000,
+          312000,
+          408000,
+          504000
+        ]
+      },
+      "opus48": {
+        "tolerance": 960,
+        "frames": [
+          24000,
+          120000,
+          216000,
+          312000,
+          408000,
+          504000
+        ]
+      }
+    },
+    "09000000-0000-4000-8000-000000000001/system": {
+      "offsetsAssumedZero": false,
+      "rec16": {
+        "tolerance": 0,
+        "frames": [
+          19752,
+          51752,
+          83752,
+          115752,
+          147752,
+          179752
+        ]
+      },
+      "wordMs": {
+        "tolerance": 0,
+        "values": [
+          1234,
+          3234,
+          5234,
+          7234,
+          9234,
+          11234
+        ]
+      },
+      "mix48": {
+        "tolerance": 0,
+        "frames": [
+          59256,
+          155256,
+          251256,
+          347256,
+          443256,
+          539256
+        ]
+      },
+      "playback": {
+        "rate": 48000,
+        "tolerance": 0,
+        "frames": [
+          59256,
+          155256,
+          251256,
+          347256,
+          443256,
+          539256
+        ]
+      },
+      "opus48": {
+        "tolerance": 960,
+        "frames": [
+          59256,
+          155256,
+          251256,
+          347256,
+          443256,
+          539256
+        ]
+      }
+    },
+    "09000000-0000-4000-8000-000000000002/microphone": {
+      "offsetsAssumedZero": false,
+      "rec16": {
+        "tolerance": 0,
+        "frames": [
+          16021,
+          48021,
+          80021,
+          112021,
+          144021,
+          176021
+        ]
+      },
+      "wordMs": {
+        "tolerance": 0,
+        "values": [
+          1001,
+          3001,
+          5001,
+          7001,
+          9001,
+          11001
+        ]
+      },
+      "mix48": {
+        "tolerance": 960,
+        "frames": [
+          48062,
+          144062,
+          240062,
+          336062,
+          432062,
+          528062
+        ]
+      },
+      "playback": {
+        "rate": 16000,
+        "tolerance": 0,
+        "frames": [
+          16021,
+          48021,
+          80021,
+          112021,
+          144021,
+          176021
+        ]
+      },
+      "opus48": {
+        "tolerance": 960,
+        "frames": [
+          48062,
+          144062,
+          240062,
+          336062,
+          432062,
+          528062
+        ]
+      }
+    },
+    "09000000-0000-4000-8000-000000000002/system": {
+      "offsetsAssumedZero": false,
+      "rec16": {
+        "tolerance": 0,
+        "frames": [
+          528000,
+          560000,
+          592000,
+          624000,
+          656000,
+          688000
+        ]
+      },
+      "wordMs": {
+        "tolerance": 0,
+        "values": [
+          33000,
+          35000,
+          37000,
+          39000,
+          41000,
+          43000
+        ]
+      },
+      "mix48": {
+        "tolerance": 0,
+        "frames": [
+          1583999,
+          1679999,
+          1775999,
+          1871999,
+          1967999,
+          2063999
+        ]
+      },
+      "playback": {
+        "rate": 48000,
+        "tolerance": 0,
+        "frames": [
+          1583999,
+          1679999,
+          1775999,
+          1871999,
+          1967999,
+          2063999
+        ]
+      },
+      "opus48": {
+        "tolerance": 960,
+        "frames": [
+          1583999,
+          1679999,
+          1775999,
+          1871999,
+          1967999,
+          2063999
+        ]
+      }
+    },
+    "09000000-0000-4000-8000-000000000003/microphone": {
+      "offsetsAssumedZero": false,
+      "rec16": {
+        "tolerance": 0,
+        "frames": [
+          8000,
+          40000,
+          72000,
+          104000,
+          136000,
+          168000
+        ]
+      },
+      "wordMs": {
+        "tolerance": 0,
+        "values": [
+          500,
+          2500,
+          4500,
+          6500,
+          8500,
+          10500
+        ]
+      },
+      "mix48": {
+        "tolerance": 0,
+        "frames": [
+          24000,
+          120000,
+          216000,
+          312000,
+          408000,
+          504000
+        ]
+      },
+      "playback": "refused",
+      "opus48": {
+        "tolerance": 960,
+        "frames": [
+          24000,
+          120000,
+          216000,
+          312000,
+          408000,
+          504000
+        ]
+      }
+    },
+    "09000000-0000-4000-8000-000000000003/system": {
+      "offsetsAssumedZero": true,
+      "rec16": {
+        "tolerance": 0,
+        "frames": [
+          24000,
+          56000,
+          88000,
+          120000,
+          152000,
+          184000
+        ]
+      },
+      "wordMs": {
+        "tolerance": 0,
+        "values": [
+          1500,
+          3500,
+          5500,
+          7500,
+          9500,
+          11500
+        ]
+      },
+      "mix48": {
+        "tolerance": 0,
+        "frames": [
+          72000,
+          168000,
+          264000,
+          360000,
+          456000,
+          552000
+        ]
+      },
+      "playback": "refused",
+      "opus48": {
+        "tolerance": 960,
+        "frames": [
+          72000,
+          168000,
+          264000,
+          360000,
+          456000,
+          552000
+        ]
+      }
+    }
+  }
+}

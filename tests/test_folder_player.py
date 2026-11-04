@@ -292,3 +292,70 @@ def test_voice_sample_waits_for_preroll_and_does_not_play_if_seek_fails(tmp_path
         assert player._range_end is None and len(errors) == 1
     finally:
         player.shutdown()
+
+
+def test_rotated_spans_are_read_only_inside_their_d55_placement(tmp_path):
+    np = pytest.importorskip("numpy")
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from cassini_talk.folder_player import PCMSource
+    from cassini_talk.library_v2.mixdown import Mapping
+    from cassini_talk.placement import frame
+
+    # A 48 kHz span at 0, then a 16 kHz span at 1001.28125 ms: 48061.5 frames at 48 kHz
+    # (D55: 48062) and 16020.5 at 16 kHz (16021, so 48063 at the span's own rate).
+    first, second = tmp_path / "first.wav", tmp_path / "second.wav"
+    spans = (
+        CaptureTrack(first, tone(first, 440, seconds=0.5), 48000, 0, True, id="remote"),
+        CaptureTrack(second, tone(second, 440, seconds=1, rate=16000), 16000, 1001.28125, True, id="remote"),
+    )
+    track = replace(spans[0], frames=sum(span.frames for span in spans), spans=spans)
+    source = PCMSource(track)
+    child = source.children[1]
+    try:
+        place = SimpleNamespace(info=SimpleNamespace(sample_rate=16000), start_ms=1001.28125, anchors=())
+        assert child.end48 == Mapping(place).end(48000) == 48062 + 48000
+        assert source.end_frame == child.end48
+        start, end = frame(1001.28125, 48000), child.end48
+        opened, original = [], child._open
+        child._open = lambda: (opened.append(True), original())[1]
+
+        def reads(cursor, count):
+            opened.clear()
+            data = np.frombuffer(source._mapped_data(cursor, count), dtype="<f4")
+            return bool(opened), data
+
+        # The block that ends where the span starts never opens it; the next one does.
+        was_read, data = reads(start - 512, 512)
+        assert not was_read and not np.any(data)
+        was_read, data = reads(start, 512)
+        assert was_read and 0 < np.flatnonzero(data)[0] < 4
+        # Nor does the block that starts at its placed end.
+        assert reads(end - 512, 512)[0] and not reads(end, 512)[0]
+    finally:
+        source.close()
+
+
+def test_a_track_with_no_samples_neither_refuses_nor_joins_folder_playback(tmp_path):
+    from types import SimpleNamespace
+
+    # A declared source that never delivered PCM has no offset (recording_session sets it on
+    # the first chunk). As on Mac (Meeting.canPlaySession), it is left out, not refused.
+    path, empty = tmp_path / "mic.wav", tmp_path / "empty.wav"
+    frames = tone(path, 440, seconds=0.5)
+    tone(empty, 440, seconds=0)
+    tracks = [CaptureTrack(path, frames, 48000, 250, True), CaptureTrack(empty, 0, 48000, None, True)]
+    assert FolderPlayer.can_play(SimpleNamespace(tracks=tracks, lifecycle="saved"))
+    samples, _pts, duration = capture(tracks)
+    assert duration == 750 and level(samples, 0.3, 0.7, 440) > 3500
+    # A track with samples and no offset still refuses the whole folder (D19).
+    unknown = [CaptureTrack(path, frames, 48000, None, True), tracks[1]]
+    assert not FolderPlayer.can_play(SimpleNamespace(tracks=unknown, lifecycle="saved"))
+    assert not FolderPlayer.can_play(SimpleNamespace(tracks=tracks[1:], lifecycle="saved"))
+    player = FolderPlayer(audio_sink=Gst.ElementFactory.make("fakesink", None))
+    try:
+        with pytest.raises(ValueError, match="No recording sources"):
+            player.load_tracks(tracks[1:])
+    finally:
+        player.shutdown()

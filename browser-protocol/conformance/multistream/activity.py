@@ -56,10 +56,16 @@ def levels(pcm):
     return [level(pcm[k * FRAME:(k + 1) * FRAME]) for k in range(len(pcm) // FRAME)]
 
 
+def placement16(track):
+    """D55: the span's first 16 kHz session sample, offset * 16 rounded half away from zero."""
+    x = Fraction(str(track['startOffsetMs'])) * 16
+    return math.floor(x) + (x - math.floor(x) >= Fraction(1, 2))
+
+
 def ranges16(track, ownership=None):
     """Merged present-or-unknown ranges, track-relative 16 kHz samples, clipped to the span."""
     found = gaps.presence(track, ownership)
-    offset = Fraction(str(track['startOffsetMs'])) * 16
+    offset = placement16(track)
     total = track['frames'] * 16000 // track['sampleRate']
     merged = []
     for a, b in sorted(found['present'] + found['unknown']):
@@ -130,13 +136,13 @@ def _ms(value):
 
 def windows(track, active, ownership=None):
     """Fallback windows as half-open session milliseconds."""
-    start = Fraction(str(track['startOffsetMs']))
+    start = placement16(track)
     result = []
     for left, right in ranges16(track, ownership):
         for a, b in window_bounds(right - left):
             a, b = left + a, left + b
             if sum(active[a // FRAME_16K:-(-b // FRAME_16K)]) >= MIN_WINDOW_FRAMES:
-                result.append([_ms(start + Fraction(a, 16)), _ms(start + Fraction(b, 16))])
+                result.append([_ms(Fraction(start + a, 16)), _ms(Fraction(start + b, 16))])
     return result
 
 

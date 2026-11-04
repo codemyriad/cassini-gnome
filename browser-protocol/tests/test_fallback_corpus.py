@@ -239,8 +239,19 @@ def check_windows():
         assert activity.windows(meta, result['active']) == wanted, ('MIN_WINDOW_FRAMES with a partial edge frame', loud)
 
 
+def check_fractional_start_is_placed():
+    # R88: presence and windows start at the D55 placement, 16 * 1234.5104 = 19752.1664 -> 19752,
+    # so local sample 0 is present and the first 32 ms frame counts (20 loud frames, 10240 samples).
+    samples = _frames(3000, 20)
+    meta = dict(_meta(samples, []), startOffsetMs=1234.5104)
+    assert activity.ranges16(meta) == [[0, 10240]], 'presence of a fractional start begins at local sample 0'
+    result = activity.measure(meta, samples)
+    assert result['frames'] == 20, 'the first frame of a fractionally placed track is inside'
+    assert activity.windows(meta, result['active']) == [[1234.5, 1874.5]], 'the window starts at the placed sample'
+
+
 SYNTHETIC = [check_run_length, check_fixed_threshold_with_too_few_audible_frames, check_near_silence_never_lowers_the_floor,
-             check_mean_removal, check_presence_and_edges, check_windows]
+             check_mean_removal, check_presence_and_edges, check_windows, check_fractional_start_is_placed]
 
 
 def _failures(checks):
@@ -337,6 +348,10 @@ class VectorTests(unittest.TestCase):
             m = writedown.midpoint(word) - 16 * origin
             return any(a <= m < b for a, b in found['present'] + found['unknown'])
 
+        def keep_raw_offset(track, word, ownership=None):  # R88: presence from the raw offset, not the D55 placement
+            with mock.patch.object(writedown.gaps, 'frame', lambda ms, rate: writedown.Fraction(str(ms)) * rate / 1000):
+                return keep(track, word, ownership)
+
         def split_closed(ranges, first, second):
             m1, m2 = writedown.midpoint(first), writedown.midpoint(second)
             return any(g0 <= max(m1, m2) and min(m1, m2) <= g1 for g0, g1 in ranges)
@@ -354,6 +369,7 @@ class VectorTests(unittest.TestCase):
             'unknown presence dropped': ('keep', keep_present_only),
             'ownership ignored': ('keep', lambda track, word, ownership=None: keep(track, word)),
             'presence compared track-relative': ('keep', keep_track_relative),
+            'presence from the raw offset': ('keep', keep_raw_offset),
             'gap ranges ignored': ('keep', lambda track, word, ownership=None: keep(dict(track, gaps=[]), word, ownership)),
             'turns never split': ('split', lambda ranges, first, second: False),
             'turns split on word edges': ('split', split_on_edges),
@@ -451,6 +467,12 @@ class MaterializedActivityTests(unittest.TestCase):
         for name, (target, mutant) in mutants.items():
             with self.subTest(name), mock.patch.object(activity, target, mutant):
                 self.assertTrue(_failures(SYNTHETIC), name + ' passes every synthetic activity rule')
+        # R88: presence (gaps.frame) or the local origin (placement16) from the raw offset.
+        raw = {'presence from the raw offset': (activity.gaps, 'frame', lambda ms, rate: activity.Fraction(str(ms)) * rate / 1000),
+               'windows from the raw offset': (activity, 'placement16', lambda track: activity.Fraction(str(track['startOffsetMs'])) * 16)}
+        for name, (module, target, mutant) in raw.items():
+            with self.subTest(name), mock.patch.object(module, target, mutant):
+                self.assertEqual(_failures(SYNTHETIC), ['check_fractional_start_is_placed'])
 
 
 class CorpusDataMutantTests(unittest.TestCase):

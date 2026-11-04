@@ -12,6 +12,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from .library_v2 import mixdown
+from .placement import WORD_RATE, frame, word_ms
 
 
 def _warped(value):
@@ -64,20 +65,51 @@ def timeline(track):
 
 
 def end_ms(track):
-    """The absolute source end, on exactly the same sample grid as publication."""
-    result, _offset = timeline(track)
-    return mixdown.total_samples(result.spans) * 1000 // mixdown.RATE
+    """The absolute end of the recognizer input, in the session ms of its word times (D55).
+
+    The track's 16 kHz samples end at its placement plus their count, as
+    speech_pipeline._source_end counts an unmapped track's.
+    """
+    spans, offset = _placed(track)
+    return word_ms(offset, (mixdown.total_samples(spans) + 2) // 3)
 
 
-def _local(windows, offset):
-    """Absolute session-ms windows on a timeline that starts at `offset`."""
+def _local(windows, origin_ms):
+    """Absolute session-ms windows on a timeline whose sample 0 is at `origin_ms`."""
     if windows is None:
         return None
     return tuple(
-        (max(0, left - offset), None if right is None else right - offset)
+        (max(0, left - origin_ms), None if right is None else right - origin_ms)
         for left, right in windows
-        if right is None or right > offset
+        if right is None or right > origin_ms
     )
+
+
+def _placed(track):
+    """The physical spans on the track's own recognizer timeline, and the track's offset.
+
+    D55 places the track's sample 0 at session sample frame(offsetMs, 16000) and
+    each physical span's first sample at frame(its startOffsetMs, 16000), the
+    sample presence and Mac's recognizer place that file at. A span therefore
+    starts at the whole local 16 kHz sample between the two, which is exactly the
+    48 kHz frame three times that: the FIR's output sample n is centred on input
+    frame 3n, so the span's first sample stays on its placement through the
+    3:1 decimation, and the consumer adds the track's placement once.
+    """
+    result, offset = timeline(track)
+    origin = frame(offset, WORD_RATE)
+    # A span's own ownership windows (set when its logical track is unplaced) mask it before the FIR.
+    owned = {
+        span.get("file"): span.get("ownershipWindows") for span in track.get("spans") or () if isinstance(span, dict)
+    }
+    spans = []
+    for span in result.spans:
+        local = frame(span.start_ms, WORD_RATE) - origin
+        if local < 0:
+            raise ValueError("A physical span starts before its logical track")
+        # local / 16 ms is a dyadic double, so mixdown's frame(start_ms, 48000) is exactly 3 * local.
+        spans.append(replace(span, start_ms=local / 16, ownership=_local(owned.get(span.info.relative), origin / 16)))
+    return spans, offset
 
 
 def chunks(track):
@@ -86,17 +118,7 @@ def chunks(track):
 
     from .speech_pipeline import resampled_stream
 
-    result, offset = timeline(track)
-    # A span's own ownership windows (set when its logical track is unplaced) mask it before the FIR.
-    owned = {
-        span.get("file"): span.get("ownershipWindows") for span in track.get("spans") or () if isinstance(span, dict)
-    }
-    spans = [
-        replace(span, start_ms=span.start_ms - offset, ownership=_local(owned.get(span.info.relative), offset))
-        for span in result.spans
-    ]
-    if any(span.start_ms < 0 for span in spans):
-        raise ValueError("A physical span starts before its logical track")
+    spans, _offset = _placed(track)
     total = mixdown.total_samples(spans)
     with closing(mixdown.mixed(spans, total)) as source:
         yield from resampled_stream(np.asarray(block, dtype="<f4") for block in source)
