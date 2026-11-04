@@ -187,6 +187,8 @@ def transcript_snapshot(directory):
     if len(raw) > INFLATE_CEILING:
         raise ValueError("Transcript snapshot exceeds limit")
     value = strict_json(raw)
+    if not isinstance(value, dict):
+        raise ValueError("Transcript snapshot is not an object")
     _sidecar_words(value)
     return value
 

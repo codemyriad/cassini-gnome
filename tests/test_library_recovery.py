@@ -199,6 +199,64 @@ def test_a_shorter_failing_retry_of_a_published_meeting_keeps_the_longer_snapsho
         queue.close()
 
 
+@pytest.mark.parametrize("damage", ["[]", "null", '"x"', "{bad"])
+@pytest.mark.parametrize("published", [True, False], ids=["published", "unpublished"])
+def test_try_again_rewrites_a_damaged_snapshot(tmp_path, monkeypatch, published, damage):
+    """D67.2: a damaged working snapshot holds no words to retain, so Try again writes down from scratch.
+
+    The retained count reads the sidecar through the validated reader; a body that
+    is not a transcript object (valid JSON or not) retains nothing instead of
+    failing every Try again.
+    """
+    from test_library import capture
+
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "private-config"))
+    if published:
+        sid, directory = simple_session(tmp_path, 0.1)
+        finalize.finalize(tmp_path, sid)
+    else:
+        directory = capture(tmp_path).directory
+    finished = Finished()
+    attempts = [(["One", "two", "three"], True), (["Fresh"], False)]
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, progress):
+            texts, fail = attempts.pop(0)
+            words = [dict(startMs=i * 100, endMs=i * 100 + 90, text=t) for i, t in enumerate(texts)]
+            progress(
+                dict(type="progress", trackId=tracks[0]["id"], trackOrder=0, language="en", etaMinutes=1, words=words)
+            )
+            if fail:
+                raise RuntimeError("synthetic worker crash after partial words")
+            return dict(diagnostics=[])
+
+    queue = TranscriptionQueue(lambda _path: None, finished, root=tmp_path, bundle=tmp_path, client_factory=Client)
+    try:
+        assert queue.enqueue(directory)
+        finished.wait(1)
+        assert read_metadata(directory)["transcript"]["status"] == "failed"
+        (directory / "transcript.json").write_text(damage)
+        assert queue.enqueue(directory)
+        finished.wait(2)
+        assert not attempts
+        metadata = read_metadata(directory)
+        assert metadata["transcript"]["status"] == "done", metadata
+        body = json.loads((directory / "transcript.json").read_text())
+        assert [item["text"] for item in body["items"]] == ["Fresh"]
+    finally:
+        queue.close()
+
+
 def test_publication_transition_enables_automatic_writing_once(tmp_path):
     sid, directory = simple_session(tmp_path, 0.1)
     (before,) = LibraryScanner(tmp_path).scan().meetings
