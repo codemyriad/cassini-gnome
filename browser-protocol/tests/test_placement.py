@@ -60,9 +60,9 @@ def perfect(golden=GOLDEN):
 
 
 def mutated(name):
-    """bursts.json as make.py --mutant NAME writes it."""
-    golden = copy.deepcopy(GOLDEN)
-    golden['sessions'] = make.sessions(name)
+    """bursts.json as make.py --mutant NAME writes it, with the moved expectations."""
+    golden = oracle.mutated(GOLDEN, name)
+    assert golden['sessions'] == make.sessions(name)
     return golden
 
 
@@ -215,6 +215,7 @@ class PlacementGolden(unittest.TestCase):
         cases = {
             'one 48 kHz frame late in the mix': ('mix48', f'{a}/system', 0, 1, 'exact tier'),
             'one 16 kHz sample late in recognition': ('rec16', f'{b}/microphone', 2, 1, 'exact tier'),
+            'one 16 kHz frame early in playback': ('playback', f'{b}/microphone', 0, -1, 'exact tier'),
             'one 16 kHz sample early, 48 kHz track': ('rec16', f'{b}/system', 0, -1, 'exact tier'),
             'one frame late in the publication mix': ('mix48publication', f'{a}/system', 0, 1, 'exact tier'),
             'one word ms late': ('wordMs', f'{b}/system', 0, 1, 'exact tier'),
@@ -260,20 +261,46 @@ class PlacementGolden(unittest.TestCase):
 
     def test_each_app_mutant_fails_exactly_its_legs(self):
         for mutant in GOLDEN['mutants']:
-            name = mutant['name']
+            name, session = mutant['name'], mutant['session']
             measured = perfect(mutated(name))
             self.assertEqual(oracle.mutant_problems(name, measured), [], name)
             lean = copy.deepcopy(measured)
             del lean['legs']['opus48'], lean['legs']['mix48publication']
             self.assertEqual(oracle.mutant_problems(name, lean), [], name)
-            # An app that reports bursts.json's numbers instead of measuring fails every mutant.
-            self.assertTrue(oracle.mutant_problems(name, perfect()), name)
+            # Numbers copied from bursts.json fail exactly the mutant's `fails` legs, in its session.
+            copied = list(oracle._findings(perfect(), mutated(name)))
+            self.assertEqual({leg for leg, _, _ in copied}, set(mutant['fails']), name)
+            self.assertEqual({key.split('/')[0] for _, key, _ in copied}, {session}, name)
+
+    def test_a_mutant_run_rejects_what_a_clean_run_rejects(self):
+        # A harness that drops, nulls or garbles the moved session's entries measured
+        # nothing: that must fail, never pass as a detected mutant.
+        for mutant in GOLDEN['mutants']:
+            name, session = mutant['name'], mutant['session']
+            key = f"{session}/{mutant['track']}"
+            measured = perfect(mutated(name))
+            changes = {
+                'the session dropped from every leg': lambda r: [
+                    r['legs'][leg].pop(k) for leg in r['legs'] if isinstance(r['legs'][leg], dict)
+                    for k in [k for k in r['legs'][leg] if k.split('/')[0] == session]],
+                'the moved track missing': lambda r: r['legs']['rec16'].pop(key),
+                'a null burst': lambda r: r['legs']['wordMs'][key].__setitem__(0, None),
+                'an invalid flag': lambda r: r['legs'][oracle.FLAGS][session].__setitem__('export', 'yes'),
+                'the flags of the session missing': lambda r: r['legs'][oracle.FLAGS].pop(session),
+                'refused instead of measured': lambda r: r['legs']['rec16'].__setitem__(key, 'refused'),
+            }
+            for change_name, change in changes.items():
+                results = copy.deepcopy(measured)
+                change(results)
+                self.assertTrue(oracle.mutant_problems(name, results), (name, change_name))
+            # Codex's attack on the first version: clean results minus the moved session's
+            # entries on the named legs.
+            attack = perfect()
             for leg in mutant['fails']:
-                self.assertIn(leg, oracle.LEGS + oracle.OPTIONAL + (oracle.FLAGS,), name)
-        # A mutant failing outside its session or legs is reported too.
-        measured = perfect(mutated('a-system-late'))
-        measured['legs']['rec16']['09000000-0000-4000-8000-000000000002/system'][0] += 1
-        self.assertEqual(len(oracle.mutant_problems('a-system-late', measured)), 1)
+                for k in [k for k in attack['legs'][leg] if k.split('/')[0] == session]:
+                    del attack['legs'][leg][k]
+            self.assertTrue(oracle.mutant_problems(name, attack), name)
+        self.assertEqual(oracle.mutant_problems('no-such-mutant', perfect()), ["no mutant 'no-such-mutant'"])
 
     def test_make_moves_only_the_mutant_offset(self):
         for mutant in GOLDEN['mutants']:

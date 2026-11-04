@@ -1,8 +1,26 @@
-tree 4c944071c673355ca1184f26bba839a56341b447
-parent 124cfe7750ad7b74fe427ac4367ca0c02daab094
-author Silvio Tomatis <silviot@gmail.com> 1793808384 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793808384 +0100
+tree d69846a0f2906b8fb178c0c72759ecedf3f38876
+parent 47b519205a0806e1db1ede266ddd18df2cdb037e
+parent 421c7ff060ac791815ad05196bddfe0dc2ddee2c
+author Silvio Tomatis <silviot@gmail.com> 1793814996 +0100
+committer GitHub <noreply@github.com> 1793814996 +0100
+gpgsig -----BEGIN PGP SIGNATURE-----
+ 
+ wsFcBAABCAAQBQJq63HUCRC1aQ7uu5UhlAAAY8YQABm62vFqKrcqwO9aoAwA/Cyf
+ imwE35IOAszjm9qM2GSvLIg5TJ3o1W6kbF0EFvZf3HHRoocgFt/ndRi429mKg1Ua
+ g1UEXsrKEt6ivEsvl3/Tbilio0g+R7SdtKoXHvIDwOPLjtnDmG7b0gWKXGepwoLO
+ bI5KDkQzN/SUHPrL2tBqMoDNpXPEAkvDazMpxyyobH6CFaYNS1PCV80pXzfAuX3j
+ usSiWRq3FqC0gVyobh+OzWjoq5J+HWVkZtSBA8SrzrZQtb79MRCWfXH8YYHPWiV0
+ I12+JlGCxq9VyqLOF6pm6ux+hGiHacCt7Zf6FmxNRege7PJMscyWRCsEJwIOlWW5
+ 7iFAEH5ve2GEbRk9E0gIXDf4Xhjo2MDE5j4rOTGZPbgk3+CBPgNsUokwciIf2CdE
+ Rc7PKfVN3tMWX1DtP7lfye803iBKNrsFxFC08EsXfzR5JWgP4geHPwKnFXuRV9Qb
+ XRFCbXcd+pGzCs5udUBEsSHjf0EDdRnSTIlEbAHQq7nannP/38zTz5tBqJkB31gq
+ KT2/nG2wHSwtNcfSkQib72SP6Q2d5sdQiFJ5lrX4h+SFZkcyJptKCr7UJVEgSSbr
+ ChPRVZlPbdH1l4FRaTeJvbn6GINDNiY1mMzl6LzGwADc3Z8FOjq8mxwEl5G33ho+
+ 2xhikxsnfcCZNa3KmWqH
+ =D4ZR
+ -----END PGP SIGNATURE-----
+ 
 
-Placement golden README: a-system-late also fails mix48publication; 0-frame tracks are ignored in both apps
+Merge pull request #47 from codemyriad/conformance/placement-golden
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Placement golden: tone-burst folders, D55 placement per consumer (shared test 9)

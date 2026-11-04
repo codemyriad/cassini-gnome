@@ -63,7 +63,7 @@ consumer's rate. A burst at local ms `t` of a track at `offset` is expected at:
 | `rec16` | the 16 kHz recognizer input, as placed on the session timeline | placement(offset, 16000) + 16 t | 0 samples (the shared FIR keeps a 48 kHz burst's onset exact) |
 | `wordMs` | its production word-time function, for a recognizer segment that starts at the burst's local 16 kHz sample 16 t with a word at 0 s in it | floor(rec16 * 1000 / 16000) | equal |
 | `mix48` | the 48 kHz export mix before encoding | placement(offset, 48000) + 48 t | 0 (48 kHz track); 20 ms (16 kHz track, resampled) |
-| `playback` | folder playback, as frames at the track's rate | placement(offset, rate) + t * rate / 1000, or `refused` for every track of a session with an unknown offset | 0 (48 kHz); 20 ms (16 kHz) |
+| `playback` | folder playback, as frames at the track's own rate (nothing resamples them) | placement(offset, rate) + t * rate / 1000, or `refused` for every track of a session with an unknown offset | 0 |
 | `offsetsAssumedZero` | per session, read back from what transcription (`writingDown.offsetsAssumedZero`) and export (`recovery.offsetsAssumedZero`) wrote | true for C, false for A and B | equal |
 | `opus48` (optional) | the published Opus mix, decoded at 48 kHz | as `mix48` | 20 ms |
 | `mix48publication` (optional) | a second 48 kHz mix path, if the app has one (GNOME's publication mixdown) | as `mix48` | as `mix48` |
@@ -112,11 +112,13 @@ unknown leg or track fails.
 `check` only compares numbers, so an app could pass by reporting `expected`.
 Each app therefore also measures its legs on the three `mutants` in
 `bursts.json` (`make.py --mutant NAME`: one track offset moved in one
-session.json) and runs `check --mutant NAME` on those results. A mutant passes
-when the named legs fail in its session (optional legs only if reported) and
-nothing else fails:
+session.json) and runs `check --mutant NAME` on those results. That is an
+ordinary check against the expectations of the moved sessions, so a missing
+track, burst or flag fails exactly as in a clean run. `fails` lists the legs
+whose expectations the move changes: numbers copied from `bursts.json` fail
+there.
 
-| mutant | change | must fail |
+| mutant | change | `fails` (differ from the clean expectations) |
 |---|---|---|
 | `a-system-late` | A.system 1234.5104 → 1234.5312: one 48 kHz frame later, the same 16 kHz frame | `mix48`, `mix48publication`, `playback` (exact tier) |
 | `b-mic-25ms` | B.microphone 25 ms later | every position leg (headline) |

@@ -13,12 +13,16 @@ stdlib only: Linux and macOS write identical bytes (materialized.sha256).
 """
 import argparse
 from array import array
+import importlib.util
 import json
 from pathlib import Path
 import sys
 import wave
 
 ROOT = Path(__file__).resolve().parent
+_spec = importlib.util.spec_from_file_location('placement', ROOT / 'placement.py')
+placement = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(placement)
 LEVEL = 8000
 BURST_MS = 250
 TONE_HZ = 1000
@@ -73,12 +77,12 @@ def document(session):
 def sessions(mutant=None):
     """bursts.json's sessions; with a mutant name, its one track offset moved."""
     golden = json.loads((ROOT / 'bursts.json').read_text())
-    if mutant is not None:
-        change = next(m for m in golden['mutants'] if m['name'] == mutant)
-        session = next(s for s in golden['sessions'] if s['id'] == change['session'])
-        track = next(t for t in session['tracks'] if t['id'] == change['track'])
-        track['startOffsetMs'] = change['startOffsetMs']
-    return golden['sessions']
+    if mutant is None:
+        return golden['sessions']
+    moved = placement.mutated(golden, mutant)
+    if moved is None:
+        raise SystemExit(f'no mutant {mutant!r}')
+    return moved['sessions']
 
 
 def make(destination, mutant=None):

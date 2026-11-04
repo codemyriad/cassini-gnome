@@ -328,7 +328,7 @@
       },
       "playback": {
         "rate": 16000,
-        "tolerance": 320,
+        "tolerance": 0,
         "frames": [
           16021,
           48021,

@@ -14,10 +14,12 @@ assumed 0 and flag it (offsetsAssumedZero); playback refuses the whole session
 value every app parses).
 
     placement.py check --mutant NAME RESULTS.json
-        results measured on `make.py --mutant NAME`: they must fail exactly the
-        legs bursts.json names for that mutant, and only in its session.
+        results measured on `make.py --mutant NAME`, checked against the
+        expectations of the moved sessions (numbers copied from bursts.json
+        fail on that mutant's `fails` legs).
 """
 import argparse
+import copy
 from fractions import Fraction
 import json
 import math
@@ -58,8 +60,9 @@ def expected(golden):
                 'wordMs': {'tolerance': 0, 'values': [f * 1000 // 16000 for f in rec16]},
                 # A 16 kHz track is resampled into the 48 kHz mix: only the headline holds.
                 'mix48': {'tolerance': 0 if rate == 48000 else 48 * HEADLINE_MS, 'frames': mix48},
+                # Frames at the track's own rate: nothing resamples them, so exact at 16 kHz too.
                 'playback': 'refused' if refused else {
-                    'rate': rate, 'tolerance': 0 if rate == 48000 else rate * HEADLINE_MS // 1000,
+                    'rate': rate, 'tolerance': 0,
                     'frames': [frame(at, rate) + ms * rate // 1000 for ms in local]},
                 'opus48': {'tolerance': 48 * HEADLINE_MS, 'frames': mix48},
             }
@@ -172,24 +175,28 @@ def problems(results, golden=None):
     return [message for _, _, message in _findings(results, golden or golden_json())]
 
 
-def mutant_problems(name, results, golden=None):
-    """Results measured on `make.py --mutant NAME` against the unchanged expectations:
-    every named leg the results carry must fail in the mutant's session, and nothing else."""
-    golden = golden or golden_json()
+def mutated(golden, name):
+    """golden as `make.py --mutant NAME` writes it: one track offset moved, and the
+    expectations derived from the moved sessions; None for an unknown mutant."""
     mutant = next((m for m in golden.get('mutants', []) if m['name'] == name), None)
     if mutant is None:
+        return None
+    golden = copy.deepcopy(golden)
+    session = next(s for s in golden['sessions'] if s['id'] == mutant['session'])
+    track = next(t for t in session['tracks'] if t['id'] == mutant['track'])
+    track['startOffsetMs'] = mutant['startOffsetMs']
+    golden['expected'] = expected(golden)
+    return golden
+
+
+def mutant_problems(name, results, golden=None):
+    """Results measured on `make.py --mutant NAME`, checked like any results file against
+    the expectations of the moved sessions. A missing track, burst or flag fails here as
+    it does in a clean run; numbers copied from bursts.json fail on the mutant's `fails` legs."""
+    moved = mutated(golden or golden_json(), name)
+    if moved is None:
         return [f'no mutant {name!r}']
-    session = mutant['session']
-    failed, found = set(), []
-    for leg, key, message in _findings(results, golden):
-        if leg in mutant['fails'] and key is not None and key.split('/')[0] == session:
-            failed.add(leg)
-        else:
-            found.append(f'{name}: unexpected: {message}')
-    legs = results.get('legs', {})
-    found += [f'{name}: {leg} passes; this mutant must fail it'
-              for leg in mutant['fails'] if leg in legs and leg not in failed]
-    return found
+    return [f'{name}: {message}' for message in problems(results, moved)]
 
 
 def compare(a, b):
