@@ -226,20 +226,20 @@ def rises(samples, level=0.125):
     return [int(i) for i in np.flatnonzero(above & ~np.concatenate(([False], above[:-1])))]
 
 
-def rotated(root, rate, anchors):
+def rotated(root, rate, anchors, tail=0):
     """Codex #209: two physical spans whose D55 placements are not a whole 48 kHz frame apart."""
     first, second = root / "track-first.wav", root / "track-second.wav"
     count = rate // 4
     write_wav(first, np.full(count, 0.25), rate=rate)
-    write_wav(second, np.full(count, 0.25), rate=rate)
+    write_wav(second, np.full(count + tail, 0.25), rate=rate)
     spans = [
         dict(file=first.name, frames=count, sampleRate=rate, channels=1, startOffsetMs=1001.28125),
-        dict(file=second.name, frames=count, sampleRate=rate, channels=1, startOffsetMs=1999.9375),
+        dict(file=second.name, frames=count + tail, sampleRate=rate, channels=1, startOffsetMs=1999.9375),
     ]
     if anchors:
         # The second file's own clock runs 0.05 % slow; placement stays its startOffsetMs.
         spans[1]["clockAnchors"] = [[0, 0], [count, count * 1_000_500_000 // rate]]
-    return dict(track(first, rate=rate), offsetMs=1001.28125, frames=2 * count, spans=spans)
+    return dict(track(first, rate=rate), offsetMs=1001.28125, frames=2 * count + tail, spans=spans)
 
 
 @pytest.mark.parametrize(
@@ -270,3 +270,19 @@ def test_rotated_spans_start_at_their_own_d55_placement_in_the_rejoin_and_word_t
     # Session ms floor the session sample: 16021 -> 1001 ms, 31999 -> 1999 ms (never 2000).
     # One assertion, so a miss shows the rejoin, the recognizer input and the words together.
     assert (rises(session), rises(local), words) == (placed, [0, 31999 - 16021], [1001, 1999])
+
+
+@pytest.mark.parametrize("anchors", [False, True], ids=["48k", "48k-clock-anchored"])
+def test_rotated_source_end_is_the_recognizer_inputs_end_in_word_time(tmp_path, anchors):
+    from cassini_talk.placement import word_ms
+    from cassini_talk.speech_pipeline import _source_end
+
+    # The second file has 12001 frames: its 16 kHz samples end at session sample
+    # 31999 + 4001 = 36000, 2250 ms, as an unrotated track's end is counted. The
+    # 48 kHz publication grid ends it at frame 95997 + 12001, 2249 ms, which would
+    # clamp a last word one ms short of its own audio.
+    source = rotated(tmp_path, 48000, anchors, tail=1)
+    count = len(collect(source))
+    assert _source_end(source) == end_ms(source) == word_ms(1001.28125, count)
+    if not anchors:
+        assert (count, end_ms(source)) == (36000 - 16021, 2250)

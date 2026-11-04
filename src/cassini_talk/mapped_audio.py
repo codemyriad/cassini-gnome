@@ -12,7 +12,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from .library_v2 import mixdown
-from .placement import WORD_RATE, frame
+from .placement import WORD_RATE, frame, word_ms
 
 
 def _warped(value):
@@ -65,9 +65,13 @@ def timeline(track):
 
 
 def end_ms(track):
-    """The absolute source end, on exactly the same sample grid as publication."""
-    result, _offset = timeline(track)
-    return mixdown.total_samples(result.spans) * 1000 // mixdown.RATE
+    """The absolute end of the recognizer input, in the session ms of its word times (D55).
+
+    The track's 16 kHz samples end at its placement plus their count, as
+    speech_pipeline._source_end counts an unmapped track's.
+    """
+    spans, offset = _placed(track)
+    return word_ms(offset, (mixdown.total_samples(spans) + 2) // 3)
 
 
 def _local(windows, origin_ms):
@@ -104,9 +108,7 @@ def _placed(track):
         if local < 0:
             raise ValueError("A physical span starts before its logical track")
         # local / 16 ms is a dyadic double, so mixdown's frame(start_ms, 48000) is exactly 3 * local.
-        spans.append(
-            replace(span, start_ms=local / 16, ownership=_local(owned.get(span.info.relative), origin / 16))
-        )
+        spans.append(replace(span, start_ms=local / 16, ownership=_local(owned.get(span.info.relative), origin / 16)))
     return spans, offset
 
 
