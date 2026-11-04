@@ -56,9 +56,16 @@ jobs:
       # script retries only its package installs and image pulls
       # (build-aux/ci/retry.sh), never the build or its tests.
       - run: build-aux/rpm/build.sh "${{ matrix.base }}"
-      # G11: the Source job of this image skips pytest; prove it ran here in full.
+      # G11: the Source job of this image skips pytest; prove it ran here in
+      # full, then leave the marker CI's Pytest coverage gate looks for.
       - name: Require the whole pytest suite to have run and passed
-        run: python3 build-aux/ci/check_pytest_ran.py "$CASSINI_TEST_LOGS"
+        id: pytest
+        run: python3 build-aux/ci/check_pytest_ran.py "$CASSINI_TEST_LOGS" --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pytest-ran-${{ steps.pytest.outputs.slug }}
+          path: ${{ runner.temp }}/meson-logs/*/testlog.json
+          if-no-files-found: error
       # G3: the Meson test logs (testlog.txt with each shard's --durations,
       # testlog.json, the pytest junit XML), also on success, to track creep;
       # a shard over half its timeout becomes a warning annotation here.
@@ -103,9 +110,16 @@ jobs:
       - run: build-aux/whistle-cache.sh
       # Run once (D66): only package installs and image pulls are retried.
       - run: build-aux/arch/build.sh
-      # G11: the Source job of this image skips pytest; prove it ran here in full.
+      # G11: the Source job of this image skips pytest; prove it ran here in
+      # full, then leave the marker CI's Pytest coverage gate looks for.
       - name: Require the whole pytest suite to have run and passed
-        run: python3 build-aux/ci/check_pytest_ran.py "$CASSINI_TEST_LOGS"
+        id: pytest
+        run: python3 build-aux/ci/check_pytest_ran.py "$CASSINI_TEST_LOGS" --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pytest-ran-${{ steps.pytest.outputs.slug }}
+          path: ${{ runner.temp }}/meson-logs/*/testlog.json
+          if-no-files-found: error
       # G3: the Meson test logs (testlog.txt with each shard's --durations,
       # testlog.json, the pytest junit XML), also on success, to track creep;
       # a shard over half its timeout becomes a warning annotation here.

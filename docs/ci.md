@@ -64,13 +64,22 @@ skipping the GTK application tests that only the Source job used to run there.
 
 Those package jobs are required: the debian:testing build no longer has
 `continue-on-error` (a failure there already blocked a release in
-`green_main.py`). After each build, `build-aux/ci/check_pytest_ran.py` reads
-its Meson logs and fails the job unless pytest-1 .. pytest-N each ran once and
-passed, with the command `src/meson.build` registers, their shard,
-`CASSINI_TEST_REQUIRE_GTK=1` and no `PYTEST_ADDOPTS`, and none of their junit
-skips is a GTK fallback. `tests/test_ci_pytest_replacement.py` checks the
-recipes' exact test commands, the build-script invocations and the check
-dependencies, and mutates each one to prove the check catches it.
+`green_main.py`). After each build, `build-aux/ci/check_pytest_ran.py` proves
+from its Meson logs what pytest ran: pytest-1 .. pytest-N each once and passed,
+with the command `src/meson.build` registers, their shard,
+`CASSINI_TEST_REQUIRE_GTK=1` and no `PYTEST_ADDOPTS`; every test file of the
+checkout in the shard `tests/shard_plan.py` gives it (a file deleted or
+ignored during the build is missing); and no skip outside its short `SKIPS`
+list. The job then uploads a `pytest-ran-<image>` marker.
+
+Each Source job that skips pytest uploads `pytest-skipped-<image>` first. CI's
+**Pytest coverage** job runs after Source and the package workflows and fails
+if any skipped image has no `pytest-ran-` marker, whatever left the package
+job out (a condition, a matrix exclusion, another image, a failure).
+`tests/test_ci_pytest_replacement.py` also pins the recipes' test commands,
+hooks and check dependencies, the job conditions and the gate, and mutates
+each (every bypass found in an adversarial review among them) to prove the
+guard catches it.
 
 Tar products preserve executable bits. Before use, consumers check their exact
 GitHub commit, profile and every file digest; extraction rejects traversal, links

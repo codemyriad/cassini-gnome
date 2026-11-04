@@ -69,6 +69,28 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.packages != 'false') }}
     uses: ./.github/workflows/flatpak.yml
+  # G11: a Source distro job skips pytest only where a package job runs it.
+  # Each skip uploads pytest-skipped-<image>, and each package job that
+  # proved a complete run uploads pytest-ran-<image>; any skip without its
+  # proof fails here, whatever skipped, excluded or broke the package job.
+  pytest-coverage:
+    name: Pytest coverage
+    needs: [source, deb, rpm-arch]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Every image whose Source job skipped pytest ran it in its package job
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+            -q '.artifacts[].name' > "$RUNNER_TEMP/artifacts"
+          python3 build-aux/ci/check_pytest_ran.py --gate "$RUNNER_TEMP/artifacts"
   # Recording, Boards and Offline test Build's product: after a failed Build
   # they are skipped, not failed at the artifact download (G7).
   recording:

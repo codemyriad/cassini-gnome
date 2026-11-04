@@ -3,18 +3,22 @@
 job runs the complete suite in the same image.
 
 `problems` reads the files that decide it; every mutation below must make it
-fail. At run time build-aux/ci/check_pytest_ran.py checks the package job's
-Meson logs for every shard (tests/test_check_pytest_ran.py).
+fail. At run time build-aux/ci/check_pytest_ran.py proves from the package
+job's Meson logs that every test file ran (tests/test_check_pytest_ran.py),
+and CI's Pytest coverage gate requires that proof for every skipping image.
 """
 
 import importlib.util
+import json
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).parents[1]
 FILES = (
+    ".github/workflows/ci.yml",
     ".github/workflows/source.yml",
     ".github/workflows/deb.yml",
     ".github/workflows/packages.yml",
@@ -25,7 +29,12 @@ FILES = (
     "build-aux/deb/build.sh",
     "build-aux/rpm/build.sh",
     "build-aux/arch/build.sh",
+    "build-aux/ci/pr-paths.json",
+    "pyproject.toml",
+    "tests/conftest.py",
 )
+# Read when present: debhelper deletes the files debian/clean lists.
+OPTIONAL = ("debian/clean",)
 # The Source images that keep their pytest suite: no package job uses them.
 KEEPS_PYTEST = {"fedora:latest", "alpine:edge"}
 
@@ -37,10 +46,58 @@ RULES_CHECK = [
 ]
 SPEC_CHECK = ["export CASSINI_TEST_REQUIRE_GTK=1", "%meson_test"]
 ARCH_CHECK = ["check() {", "CASSINI_TEST_REQUIRE_GTK=1 meson test -C build --print-errorlogs", "}"]
-CHECK_STEP = (
-    "\n      - name: Require the whole pytest suite to have run and passed\n"
-    '        run: python3 build-aux/ci/check_pytest_ran.py "$CASSINI_TEST_LOGS"\n'
-)
+CHECK_STEP = """
+      - name: Require the whole pytest suite to have run and passed
+        id: pytest
+        run: python3 build-aux/ci/check_pytest_ran.py "$CASSINI_TEST_LOGS" --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pytest-ran-${{ steps.pytest.outputs.slug }}
+          path: ${{ runner.temp }}/meson-logs/*/testlog.json
+          if-no-files-found: error
+"""
+SKIP_ENV = """
+    env:
+      CASSINI_SKIP_PYTEST: ${{ matrix.pytest-in && '1' || '' }}
+    steps:
+"""
+SKIP_MARKER = """
+      - name: Record that this image's pytest suite is skipped here
+        id: skip
+        if: env.CASSINI_SKIP_PYTEST == '1'
+        run: |
+          . build-aux/container.sh
+          echo "slug=$(image_slug "${{ matrix.image }}")" >> "$GITHUB_OUTPUT"
+          echo "::notice::pytest suite skipped here; ${{ matrix.pytest-in }} runs it in ${{ matrix.image }}"
+          echo "${{ matrix.image }}" > "$RUNNER_TEMP/pytest-skipped"
+      - uses: actions/upload-artifact@v7
+        if: env.CASSINI_SKIP_PYTEST == '1'
+        with:
+          name: pytest-skipped-${{ steps.skip.outputs.slug }}
+          path: ${{ runner.temp }}/pytest-skipped
+          if-no-files-found: error
+"""
+GATE = """
+  pytest-coverage:
+    name: Pytest coverage
+    needs: [source, deb, rpm-arch]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Every image whose Source job skipped pytest ran it in its package job
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \\
+            -q '.artifacts[].name' > "$RUNNER_TEMP/artifacts"
+          python3 build-aux/ci/check_pytest_ran.py --gate "$RUNNER_TEMP/artifacts"
+"""
+PYTEST_OPTIONS = {"faulthandler_timeout": 30, "pythonpath": ["src"], "testpaths": ["tests"]}
 BUILDS = {
     "deb": ('build-aux/deb/build.sh "${{ matrix.base }}"', "build-aux/deb/build.sh", "dpkg-buildpackage -us -uc -b"),
     "rpm": (
@@ -102,7 +159,9 @@ ARCH_DEPS = (
 
 
 def read():
-    return {name: (ROOT / name).read_text() for name in FILES}
+    files = {name: (ROOT / name).read_text() for name in FILES}
+    files.update({name: (ROOT / name).read_text() if (ROOT / name).exists() else "" for name in OPTIONAL})
+    return files
 
 
 def jobs(text):
@@ -137,8 +196,24 @@ def deb_build_depends(control):
     return entries
 
 
-def spec_requires(text):
-    return {m[1] for m in re.finditer(r"^BuildRequires:\s+(\S+)", text, re.M)}
+def spec_requires(spec):
+    """{"common"|"openSUSE"|"Fedora": BuildRequires} by where they sit: at
+    top level, or directly in the one suse_version %if or its %else; a
+    BuildRequires inside any other conditional counts nowhere."""
+    found, stack = {"common": set(), "openSUSE": set(), "Fedora": set()}, []
+    for line in spec.splitlines():
+        if line.startswith("%if"):
+            stack.append([line.strip(), False])
+        elif line.startswith("%else") and stack:
+            stack[-1][1] = True
+        elif line.startswith("%endif") and stack:
+            stack.pop()
+        elif match := re.match(r"BuildRequires:\s+(\S+)", line):
+            if not stack:
+                found["common"].add(match[1])
+            elif len(stack) == 1 and stack[0][0] == "%if 0%{?suse_version}":
+                found["Fedora" if stack[0][1] else "openSUSE"].add(match[1])
+    return found
 
 
 def arch_array(pkgbuild, name):
@@ -154,8 +229,29 @@ def problems(files):
     skipped = {image: job for image, job in entries if job}
     if {image for image, job in entries if not job} != KEEPS_PYTEST:
         found.append(f"Source keeps pytest on {sorted(i for i, j in entries if not j)}, not {sorted(KEEPS_PYTEST)}")
-    if "CASSINI_SKIP_PYTEST: ${{ matrix.pytest-in && '1' || '' }}" not in source:
-        found.append("Source skips pytest without a pytest-in job")
+    if len([line for line in code(source.splitlines()) if "pytest-in:" in line]) != len(skipped):
+        found.append("Source has a pytest-in this guard cannot read")
+    if source.count("CASSINI_SKIP_PYTEST:") != 1 or SKIP_ENV not in source:
+        found.append("Source skips pytest other than through the job's pytest-in")
+    if SKIP_MARKER not in source:
+        found.append("Source skips pytest without leaving its pytest-skipped marker")
+
+    # CI runs the package jobs whenever it runs Source, and gates on the proof.
+    ci = jobs(files[".github/workflows/ci.yml"])
+    condition = re.search(r"^    if: (.+)$", ci["source"], re.M)[1]
+    for caller in ("deb", "rpm-arch"):
+        block = ci[caller]
+        if re.findall(r"^    (?:if|needs): (.+)$", block, re.M) != [
+            "changes",
+            condition.replace("outputs.source", "outputs.packages"),
+        ]:
+            found.append(f"ci.yml: {caller} does not run whenever Source does")
+    # The job's own lines: the comment that follows introduces the next job.
+    if "\n" + ci.get("pytest-coverage", "").split("\n  #")[0].rstrip("\n") + "\n" != GATE:
+        found.append("ci.yml: the Pytest coverage gate is missing or changed")
+    always = json.loads(files["build-aux/ci/pr-paths.json"])["always"]
+    if not {"source", "packages"} <= set(always):
+        found.append("pr-paths.json: Source and the packages are not both always run")
     workflows = {
         "deb": jobs(files[".github/workflows/deb.yml"])["build"],
         "rpm": jobs(files[".github/workflows/packages.yml"])["rpm"],
@@ -182,10 +278,12 @@ def problems(files):
         block, (call, script, command) = workflows[kind], BUILDS[kind]
         if "continue-on-error" in block:
             found.append(f"{kind}: the job that runs Source's pytest has continue-on-error")
-        if not re.search(rf"\n      - run: {re.escape(call)}\n", block):
-            found.append(f"{kind}: the job does not run {call}")
+        if re.search(r"^    if:", block, re.M) or "exclude:" in block or (kind == "deb" and "include:" in block):
+            found.append(f"{kind}: the job or its matrix can leave a build out")
+        if not re.search(rf"\n      - run: {re.escape(call)}\n(?!        )", block):
+            found.append(f"{kind}: the job does not run {call} unconditionally")
         if not re.search(re.escape(CHECK_STEP) + r"(?!        )", block):
-            found.append(f"{kind}: no unconditional check_pytest_ran.py step")
+            found.append(f"{kind}: no unconditional check_pytest_ran.py step and pytest-ran marker")
         if 'echo "CASSINI_TEST_LOGS=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"' not in block:
             found.append(f"{kind}: CASSINI_TEST_LOGS is not set")
         text = files[script]
@@ -203,8 +301,21 @@ def problems(files):
     rules = files["debian/rules"]
     # The target up to the next blank line: exactly the four lines, nothing more.
     block = rules[rules.find("override_dh_auto_test:") :].split("\n\n")[0]
-    if rules.count("override_dh_auto_test") != 1 or code(block.splitlines()) != RULES_CHECK:
-        found.append("debian/rules: override_dh_auto_test is not the full `meson test` with GTK required")
+    if rules.count("dh_auto_test") != 1 or code(block.splitlines()) != RULES_CHECK:
+        found.append("debian/rules: dh_auto_test is not just the full `meson test` with GTK required")
+    if [line for line in code(rules.splitlines()) if re.match(r"-?include\b", line)] != [
+        "include /usr/share/dpkg/architecture.mk"
+    ]:
+        found.append("debian/rules: includes a makefile this guard does not read")
+    recipes = {
+        "debian/rules": rules,
+        "debian/clean": files["debian/clean"],
+        "build-aux/rpm/cassini-talk.spec": files["build-aux/rpm/cassini-talk.spec"],
+        "build-aux/arch/PKGBUILD": files["build-aux/arch/PKGBUILD"],
+    }
+    for name, text in recipes.items():
+        if any(re.search(r"(^|[\s/'\"])tests\b", line) for line in code(text.splitlines())):
+            found.append(f"{name}: touches tests/ outside the test command")
     spec = files["build-aux/rpm/cassini-talk.spec"]
     check = section(spec, r"^%check$", r"^%(files|changelog|install|build|prep|post|pre|clean)\b")
     if (
@@ -220,7 +331,7 @@ def problems(files):
     if (
         check is None
         or [line.strip() for line in code(check.splitlines() + ["}"])] != ARCH_CHECK
-        or "BUILDENV" in pkgbuild
+        or re.search(r"BUILDENV|!check", pkgbuild)
     ):
         found.append("PKGBUILD: check() is not the full `meson test` with GTK required")
 
@@ -229,19 +340,19 @@ def problems(files):
     missing = [d for d in DEB_DEPS if control.get(d) not in ("", "<!nocheck>")]
     if missing:
         found.append(f"debian/control: missing check dependencies {missing}")
-    head, _, rest = spec.partition("%if 0%{?suse_version}\n")
-    suse, _, fedora = rest.partition("%else\n")
-    fedora = fedora.partition("%endif\n")[0]
-    for branch, text, wanted in (
-        ("common", head, RPM_DEPS),
-        ("openSUSE", suse, SUSE_DEPS),
-        ("Fedora", fedora, FEDORA_DEPS),
-    ):
-        if missing := sorted(set(wanted) - spec_requires(text)):
+    requires = spec_requires(spec)
+    for branch, wanted in (("common", RPM_DEPS), ("openSUSE", SUSE_DEPS), ("Fedora", FEDORA_DEPS)):
+        if missing := sorted(set(wanted) - requires[branch]):
             found.append(f"cassini-talk.spec ({branch}): missing BuildRequires {missing}")
     arch = arch_array(pkgbuild, "depends") | arch_array(pkgbuild, "makedepends") | arch_array(pkgbuild, "checkdepends")
     if missing := sorted(set(ARCH_DEPS) - arch):
         found.append(f"PKGBUILD: missing dependencies {missing}")
+
+    # pytest's own configuration selects nothing narrower than tests/.
+    if tomllib.loads(files["pyproject.toml"])["tool"]["pytest"]["ini_options"] != PYTEST_OPTIONS:
+        found.append("pyproject.toml: the pytest options changed (addopts, testpaths, python_files ...)")
+    if "collect_ignore" in files["tests/conftest.py"]:
+        found.append("tests/conftest.py: collect_ignore leaves test files out")
     return found
 
 
@@ -343,14 +454,127 @@ MUTATIONS = {
         '"Debian package / Build .deb (ubuntu:26.04)"',
     ),
     "source skips unconditionally": ("source.yml", "${{ matrix.pytest-in && '1' || '' }}", "'1'"),
+    # The red-team bypasses of 9a8b13e, each confirmed by an independent run.
+    "deb hook deletes tests": (
+        "debian/rules",
+        "override_dh_gencontrol:",
+        "execute_before_dh_auto_test:\n\trm -f tests/test_record_toggle.py\n\noverride_dh_gencontrol:",
+    ),
+    "deb hook after the test": (
+        "debian/rules",
+        "override_dh_gencontrol:",
+        "execute_after_dh_auto_test:\n\ttrue\n\noverride_dh_gencontrol:",
+    ),
+    "deb includes a makefile": (
+        "debian/rules",
+        "include /usr/share/dpkg/architecture.mk\n",
+        "include /usr/share/dpkg/architecture.mk\n-include debian/local.mk\n",
+    ),
+    "deb clean list": (
+        "debian/control",
+        "Build-Depends:",
+        "Build-Depends:",
+        0,
+        ("debian/clean", "tests/test_record_toggle.py\n"),
+    ),
+    "rpm %prep deletes tests": (
+        "build-aux/rpm/cassini-talk.spec",
+        "%autosetup -p1\n",
+        "%autosetup -p1\nrm -f tests/test_record_toggle.py\n",
+    ),
+    "rpm numpy behind %if": (
+        "build-aux/rpm/cassini-talk.spec",
+        "BuildRequires:  python3dist(numpy)\n",
+        "%if 0%{?fedora}\nBuildRequires:  python3dist(numpy)\n%endif\n",
+    ),
+    "arch prepare deletes tests": (
+        "build-aux/arch/PKGBUILD",
+        "build() {\n",
+        'prepare() {\n  rm -f "$_srcdir"/tests/test_record_toggle.py\n}\n\nbuild() {\n',
+    ),
+    "arch options !check": ("build-aux/arch/PKGBUILD", "options=(!strip !debug)", "options=(!strip !debug !check)"),
+    "deb job if": (
+        "deb.yml",
+        "    timeout-minutes: 30\n",
+        "    timeout-minutes: 30\n    if: github.event.pull_request.draft == false\n",
+    ),
+    "rpm job if": (
+        "packages.yml",
+        "  rpm:\n    name:",
+        "  rpm:\n    if: github.event_name != 'pull_request'\n    name:",
+    ),
+    "arch job if": ("packages.yml", "  arch:\n    name:", "  arch:\n    if: github.event_name == 'push'\n    name:"),
+    "deb matrix exclude": (
+        "deb.yml",
+        '["ubuntu:26.04", "debian:testing"]\n',
+        '["ubuntu:26.04", "debian:testing"]\n        exclude:\n          - base: debian:testing\n',
+    ),
+    "deb build step conditional": (
+        "deb.yml",
+        '      - run: build-aux/deb/build.sh "${{ matrix.base }}"\n',
+        '      - run: build-aux/deb/build.sh "${{ matrix.base }}"\n        if: false\n',
+    ),
+    "ran marker conditional": (
+        "packages.yml",
+        "          if-no-files-found: error\n",
+        "          if-no-files-found: error\n        if: false\n",
+        1,
+    ),
+    "ci deb caller only on push": (
+        "ci.yml",
+        "outputs.packages != 'false') }}\n    uses: ./.github/workflows/deb.yml",
+        "outputs.packages != 'false') && github.event_name == 'push' }}\n    uses: ./.github/workflows/deb.yml",
+    ),
+    "ci rpm-arch caller waits for build": (
+        "ci.yml",
+        "  rpm-arch:\n    name: RPM and Arch packages\n    needs: changes\n",
+        "  rpm-arch:\n    name: RPM and Arch packages\n    needs: [changes, build]\n",
+    ),
+    "ci gate dropped": ("ci.yml", "  pytest-coverage:\n", "  pytest-coverage-disabled:\n"),
+    "ci gate does not wait for deb": (
+        "ci.yml",
+        "    needs: [source, deb, rpm-arch]\n",
+        "    needs: [source, rpm-arch]\n",
+    ),
+    "pr-paths packages not always": ("build-aux/ci/pr-paths.json", '    "packages",\n', ""),
+    "source fedora single-quoted pytest-in": (
+        "source.yml",
+        "          - image: fedora:latest\n",
+        "          - image: fedora:latest\n            pytest-in: 'RPM and Arch packages / Build .rpm (fedora:44)'\n",
+    ),
+    "source skip marker dropped": (
+        "source.yml",
+        "          name: pytest-skipped-${{ steps.skip.outputs.slug }}\n",
+        "          name: skipped-${{ steps.skip.outputs.slug }}\n",
+    ),
+    "source skips on its own": (
+        "source.yml",
+        '      - run: build-aux/check-distros.sh "${{ matrix.image }}"\n',
+        '      - run: build-aux/check-distros.sh "${{ matrix.image }}"\n        env:\n          CASSINI_SKIP_PYTEST: "1"\n',
+    ),
+    "pyproject addopts": (
+        "pyproject.toml",
+        'testpaths = ["tests"]\n',
+        'testpaths = ["tests"]\naddopts = "--ignore=tests/test_record_toggle.py"\n',
+    ),
+    "pyproject testpaths": ("pyproject.toml", 'testpaths = ["tests"]\n', 'testpaths = ["tests/ux"]\n'),
+    "conftest collect_ignore": (
+        "tests/conftest.py",
+        "TESTS = Path(",
+        'collect_ignore = ["test_record_toggle.py"]\nTESTS = Path(',
+    ),
 }
 
 
 @pytest.mark.parametrize("name", MUTATIONS)
 def test_every_way_to_narrow_or_drop_the_replacement_run_fails_the_guard(name):
-    path, old, new, *occurrence = MUTATIONS[name]
+    path, old, new, *rest = MUTATIONS[name]
+    occurrence, extra = (rest + [None, None])[:2]
+    occurrence = [] if occurrence is None else [occurrence]
     path = next(f for f in FILES if f == path or f.endswith("/" + path))
     files = read()
+    if extra:  # A file this guard reads when present.
+        files[extra[0]] = extra[1]
     text = files[path]
     starts = [m.start() for m in re.finditer(re.escape(old), text)]
     assert starts and (occurrence or len(starts) == 1), (name, len(starts))  # The mutation still applies.

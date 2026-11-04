@@ -32,15 +32,7 @@ class _Durations:
 
 
 def _test_files(config):
-    patterns = config.getini("python_files")
-    files = []
-    for path in sorted(TESTS.rglob("*.py")):
-        relative = path.relative_to(TESTS)
-        if any(part.startswith(".") or part in ("node_modules", "__pycache__") for part in relative.parts):
-            continue
-        if any(fnmatch.fnmatch(path.name, pattern) for pattern in patterns):
-            files.append(relative.as_posix())
-    return files
+    return shard_plan.test_files(TESTS, config.getini("python_files"))
 
 
 def _isolate(root):
