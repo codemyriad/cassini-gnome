@@ -15,8 +15,9 @@ PYTEST_ADDOPTS; each shard read pyproject.toml, deselected nothing and tested
 a tests/ tree identical to this checkout (tests/conftest.py records these in
 pytest-N.run.json); every test file of the checkout is in the junit of the
 shard tests/shard_plan.py gives it; nothing failed and the only skips are in
-SKIPS. It exports the node ids it ran and the os-release of the container
-that ran them, which the job uploads as pytest-ran-<slug>.
+SKIPS, one in MESON_RUNS only where that Meson test passed in the same log. It
+exports the node ids it ran and the os-release of the container that ran them,
+which the job uploads as pytest-ran-<slug>.
 
 Source job (--source): exports its node ids when its own logs show all of
 pytest-1 .. pytest-N run, as pytest-nodes-<slug>, or else a pytest-skipped-
@@ -65,6 +66,13 @@ SKIPS = {
     "tests.test_library_v2_finalize::test_a_really_full_tmpfs_leaves_nothing_in_the_root": "needs a tiny tmpfs",
     "tests.test_ux_vectors::test_locale_clock_style_in_a_real_locale_process[en_GB.UTF-8-14:18]": "locale",
     "tests.test_ux_vectors::test_locale_clock_style_in_a_real_locale_process[en_US.UTF-8-2:18 PM]": "locale",
+    "tests.test_browser_host::test_canonical_conformance": "Meson runs it",
+}
+# Skips of a test that runs exactly the command of a Meson test registered in
+# the same build (the shard checks that): node id -> that Meson test, which
+# must have passed in the same testlog.json. Recording's host pytest runs them.
+MESON_RUNS = {
+    "tests.test_browser_host::test_canonical_conformance": "browser-protocol-conformance",
 }
 # The Source job whose node ids every package job must have run: it keeps the
 # whole suite, with GTK, outside any package build.
@@ -138,6 +146,16 @@ def shard_runs(directory, shards):
     return runs
 
 
+def meson_results(directory):
+    """{Meson test name: [results]} from one Meson log directory."""
+    results = {}
+    for line in (Path(directory) / "testlog.json").read_text().splitlines():
+        if line.strip():
+            entry = json.loads(line)
+            results.setdefault(entry["name"].rpartition(":")[2], []).append(entry.get("result"))
+    return results
+
+
 def nodes(directory, shards):
     """{node id: status} over every shard's junit."""
     found = {}
@@ -200,6 +218,9 @@ def problems(directory, shards, expected=None, tests=None):
             found.append(f"{directory.name}: {name} failed {failed[:5]}")
         if skipped := [node(c) for c in cases if status(c) == "skipped" and node(c) not in SKIPS]:
             found.append(f"{directory.name}: {name} skipped {skipped[:5]} (not in SKIPS)")
+        for skipped in (node(c) for c in cases if status(c) == "skipped" and node(c) in MESON_RUNS):
+            if meson_results(directory).get(MESON_RUNS[skipped]) != ["OK"]:
+                found.append(f"{directory.name}: {name} skipped {skipped}, but {MESON_RUNS[skipped]} did not pass")
     return found
 
 

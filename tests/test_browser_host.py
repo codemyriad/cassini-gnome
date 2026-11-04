@@ -35,12 +35,40 @@ def invoke(tmp_path, messages, **options):
     return code, replies
 
 
+CONFORMANCE = [
+    sys.executable,
+    str(ROOT / "browser-protocol/conformance/run.py"),
+    str(ROOT / "tests/conformance_host.py"),
+]
+
+
+def meson_runs_conformance():
+    """True in Meson's pytest-N shards when this build registers its own
+    browser-protocol-conformance test with this exact command (src/meson.build).
+
+    That test runs in the same `meson test` as the shards; build-aux/ci/
+    check_pytest_ran.py accepts the skip below only where it passed. Every
+    other pytest run (Recording's host run, a developer's) runs it here.
+    """
+    build = os.environ.get("CASSINI_TEST_BUILD")
+    if not os.environ.get("CASSINI_TEST_SHARD") or not build:
+        return False
+    tests = json.loads((Path(build) / "meson-info/intro-tests.json").read_text())
+    same = [os.path.realpath(part) for part in CONFORMANCE]
+    return any(
+        test["name"] == "browser-protocol-conformance" and [os.path.realpath(part) for part in test["cmd"]] == same
+        for test in tests
+    )
+
+
 def test_canonical_conformance(tmp_path):
     # The runner validates against the JSON schemas; meson treats these as optional too.
     pytest.importorskip("jsonschema")
     pytest.importorskip("rfc3339_validator")
+    if meson_runs_conformance():
+        pytest.skip("Meson's browser-protocol-conformance runs this command in this build")
     result = subprocess.run(
-        [sys.executable, str(ROOT / "browser-protocol/conformance/run.py"), str(ROOT / "tests/conformance_host.py")],
+        CONFORMANCE,
         # The runner makes each case's private Library under TMPDIR.
         env={**os.environ, "TMPDIR": str(tmp_path)},
         capture_output=True,
@@ -50,6 +78,29 @@ def test_canonical_conformance(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     count = len(json.loads((ROOT / "browser-protocol/conformance/vectors.json").read_text()))
     assert f"{count} passed, 0 failed" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("shard", "name", "command", "skipped"),
+    [
+        ("1/4", "browser-protocol-conformance", CONFORMANCE, True),
+        (None, "browser-protocol-conformance", CONFORMANCE, False),  # Recording's host pytest
+        ("1/4", "browser-protocol-conformance", CONFORMANCE[:2] + ["control_host.py"], False),
+        ("1/4", "browser-control-conformance", CONFORMANCE, False),
+    ],
+    ids=["meson-runs-it", "no-shard", "another-command", "not-registered"],
+)
+def test_conformance_is_left_to_meson_only_where_meson_runs_the_same_command(
+    tmp_path, monkeypatch, shard, name, command, skipped
+):
+    (tmp_path / "meson-info").mkdir()
+    (tmp_path / "meson-info/intro-tests.json").write_text(json.dumps([dict(name=name, cmd=command)]))
+    monkeypatch.setenv("CASSINI_TEST_BUILD", str(tmp_path))
+    if shard is None:
+        monkeypatch.delenv("CASSINI_TEST_SHARD", raising=False)
+    else:
+        monkeypatch.setenv("CASSINI_TEST_SHARD", shard)
+    assert meson_runs_conformance() is skipped
 
 
 def test_pinned_contract_integrity():
