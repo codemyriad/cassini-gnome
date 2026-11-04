@@ -7,9 +7,9 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 WORKFLOWS = ROOT / ".github/workflows"
 BOUND = 'timeout --kill-after=30 "$limit" '
-# GNU timeout 0 never times out: a limit must be whole seconds, at least 1.
+# GNU timeout 0 never times out: a limit must be whole seconds, from 1 to 999999999.
 LIMIT_CHECK = (
-    '[[ $limit =~ ^0*[1-9][0-9]*$ ]] || { echo "CASSINI_RUN_TIMEOUT must be whole seconds, at least 1" >&2; exit 2; }'
+    '[[ $limit =~ ^0*[1-9][0-9]{0,8}$ ]] || { echo "CASSINI_RUN_TIMEOUT must be whole seconds, from 1 to 999999999" >&2; exit 2; }'
 )
 LIMIT = re.compile(r"^limit=\$\{CASSINI_RUN_TIMEOUT:-\d+\}\n" + re.escape(LIMIT_CHECK) + "$", re.M)
 

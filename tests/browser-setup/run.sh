@@ -3,7 +3,7 @@
 set -euo pipefail
 # E1: bound the run so a hang fails instead of living for days (exit 124/137).
 limit=${CASSINI_RUN_TIMEOUT:-1200}
-[[ $limit =~ ^0*[1-9][0-9]*$ ]] || { echo "CASSINI_RUN_TIMEOUT must be whole seconds, at least 1" >&2; exit 2; }
+[[ $limit =~ ^0*[1-9][0-9]{0,8}$ ]] || { echo "CASSINI_RUN_TIMEOUT must be whole seconds, from 1 to 999999999" >&2; exit 2; }
 package=$(realpath "$1")
 output=$(realpath -m "$2")
 source_root=$(cd "$(dirname "$0")/../.." && pwd)

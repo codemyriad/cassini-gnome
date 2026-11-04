@@ -15,13 +15,13 @@
 #   environment and leaves the group escapes the sweep.
 # CASSINI_BOUNDED_RUN_MECHANISM=auto (default: scope where it works) | scope | sweep.
 set -uo pipefail
-whole='^0*[1-9][0-9]*$'
+whole='^0*[1-9][0-9]{0,8}$'
 [ "$#" -ge 2 ] || { echo "Usage: $0 seconds command [args...]" >&2; exit 2; }
 limit=$1
 shift
-[[ $limit =~ $whole ]] || { echo "bounded-run.sh: SECONDS must be whole seconds, at least 1" >&2; exit 2; }
+[[ $limit =~ $whole ]] || { echo "bounded-run.sh: SECONDS must be whole seconds, from 1 to 999999999" >&2; exit 2; }
 kill_after=${CASSINI_BOUNDED_RUN_KILL_AFTER:-30}
-[[ $kill_after =~ $whole ]] || { echo "CASSINI_BOUNDED_RUN_KILL_AFTER must be whole seconds, at least 1" >&2; exit 2; }
+[[ $kill_after =~ $whole ]] || { echo "CASSINI_BOUNDED_RUN_KILL_AFTER must be whole seconds, from 1 to 999999999" >&2; exit 2; }
 limit=$((10#$limit)) kill_after=$((10#$kill_after))
 
 # The wrappers give the command a private XDG_RUNTIME_DIR: reach the user

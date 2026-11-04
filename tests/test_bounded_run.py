@@ -20,7 +20,8 @@ WRAPPERS = sorted(
     for path in [ROOT / "build-aux/ux-screenshot.sh", *ROOT.glob("tests/*/run.sh")]
     if "CASSINI_RUN_TIMEOUT" in path.read_text()
 )
-NO_BOUND = ["", "0", "00", "-1", "1.5", "abc", " 5", "5s"]
+# 2**64 would wrap to 0 in bash arithmetic: a limit has at most 9 digits.
+NO_BOUND = ["", "0", "00", "-1", "1.5", "abc", " 5", "5s", "1000000000", "18446744073709551616"]
 
 # The bounded command: like browser_service.ensure_service it starts a process
 # in a new session, out of the process group, and that process ignores TERM.
@@ -113,7 +114,16 @@ def test_nothing_of_a_run_outlives_it(mechanism, ending):
 @pytest.mark.parametrize("limit", NO_BOUND)
 def test_bounded_run_refuses_a_limit_that_bounds_nothing(limit):
     result = subprocess.run([str(BOUNDED), limit, "true"], capture_output=True, text=True, timeout=30)
-    assert (result.returncode, result.stderr) == (2, "bounded-run.sh: SECONDS must be whole seconds, at least 1\n")
+    assert (result.returncode, result.stderr) == (2, "bounded-run.sh: SECONDS must be whole seconds, from 1 to 999999999\n")
+    escalation = subprocess.run(
+        [str(BOUNDED), "5", "true"],
+        env={**os.environ, "CASSINI_BOUNDED_RUN_KILL_AFTER": limit or "0"},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    message = "CASSINI_BOUNDED_RUN_KILL_AFTER must be whole seconds, from 1 to 999999999\n"
+    assert (escalation.returncode, escalation.stderr) == (2, message)
 
 
 @pytest.mark.parametrize("script", WRAPPERS)
@@ -121,7 +131,7 @@ def test_every_wrapper_refuses_a_limit_that_bounds_nothing(script, tmp_path):
     # With nothing on PATH, exit 2 and the message show the check comes before
     # any docker, Xvfb or file work.
     bash = shutil.which("bash")
-    for limit in [value for value in NO_BOUND if value] + ["5"]:
+    for limit in [value for value in NO_BOUND if value] + ["5", "999999999"]:
         result = subprocess.run(
             [bash, ROOT / script],
             env={"PATH": str(tmp_path), "CASSINI_RUN_TIMEOUT": limit},
@@ -130,5 +140,5 @@ def test_every_wrapper_refuses_a_limit_that_bounds_nothing(script, tmp_path):
             text=True,
             timeout=30,
         )
-        refused = (result.returncode, result.stderr) == (2, "CASSINI_RUN_TIMEOUT must be whole seconds, at least 1\n")
-        assert refused == (limit != "5"), (limit, result.returncode, result.stderr)
+        refused = (result.returncode, result.stderr) == (2, "CASSINI_RUN_TIMEOUT must be whole seconds, from 1 to 999999999\n")
+        assert refused == (limit not in ("5", "999999999")), (limit, result.returncode, result.stderr)
