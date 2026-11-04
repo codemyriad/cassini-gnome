@@ -320,6 +320,13 @@ class BrowserCapture:
             session.manifest["tracks"][-1]["startOffsetMs"] = at
         return identifier
 
+    def _current(self, kind, identifier):
+        """Whether this tap is the side's committed tap (lock held). A tap a
+        change removed is retired for good: its late first buffer, PCM, level
+        or error never reaches the session, even once a turn-on commits
+        another tap for the same side."""
+        return self.native_taps.get(kind, (None,))[0] == identifier
+
     def _has_track(self, identifier):
         """Whether a committed native tap has its track (D58.1: an armed system
         tap gets it at its first buffer). Lock held."""
@@ -347,8 +354,11 @@ class BrowserCapture:
             opened = False
             with self.lock:
                 state["heard"] = True
-                if not state["active"]:
-                    return  # Readiness PCM is not a committed recording span.
+                if not state["active"] or not self._current(kind, identifier):
+                    # Readiness PCM is not a committed recording span, and a
+                    # retired tap's buffer (one in flight while a deselect
+                    # stops it) opens no track after its side was turned off.
+                    return
                 if not state["track"]:
                     # D58.1: an armed tap opens on its first buffer, however late.
                     if self.finished or self.stop_requested.is_set():
@@ -401,7 +411,7 @@ class BrowserCapture:
 
         def level(value):
             with self.lock:
-                if not state["active"]:
+                if not state["active"] or not self._current(kind, identifier):
                     return
                 selected = self.me if kind == "microphone" else self.others
                 self.levels[0 if kind == "microphone" else 1] = value if selected else 0
@@ -412,6 +422,7 @@ class BrowserCapture:
                 state["error"] = message
                 active = (
                     state["active"]
+                    and self._current(kind, identifier)
                     and not self.finished
                     and not any(
                         track["id"] == identifier and track.get("ended")
@@ -424,9 +435,8 @@ class BrowserCapture:
                     active = False
                     if not self.stopping and not self.stop_requested.is_set():
                         state["active"] = False
-                        if self.native_taps.get(kind, (None,))[0] == identifier:
-                            self.native_taps.pop(kind)
-                            self.refused_sides.add(kind)
+                        self.native_taps.pop(kind)
+                        self.refused_sides.add(kind)
                         refused = self._refusal(state["refuse_at"], kind, self._tap_error(state, message))
                         self.host.session.refuse(refused)
                         if self.browser_lost and not self.native_taps and not self.host.session.manifest["tracks"]:
@@ -954,8 +964,14 @@ class BrowserCapture:
                     self.me, self.others, self.browser_lost = me, others, lost
                     if not lost:
                         self.browser_lost_since = None
-                    for kind in removed:
+                    for kind, (identifier, _tap) in removed.items():
                         self.native_taps.pop(kind)
+                        # Retired before the lock is released: a first buffer
+                        # that arrives while tap.stop() runs below records
+                        # nothing (an armed tap would open a new track).
+                        retired = self._tap_states.pop(identifier, None)
+                        if retired is not None:
+                            retired["active"] = False
                         self.levels[0 if kind == "microphone" else 1] = 0
                     for kind, (identifier, tap, state) in prepared.items():
                         # A turn-on's armed tap is refused at its time; a

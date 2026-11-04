@@ -452,6 +452,78 @@ def test_a_silent_system_turn_on_is_armed_and_refused_only_at_its_time(tmp_path)
         capture.stop()
 
 
+class StopBlocks:
+    """A tap's stop() that blocks until the test releases it, as a device that
+    still delivers while it shuts down."""
+
+    def __init__(self, tap):
+        self.entered, self.release = threading.Event(), threading.Event()
+        tap.stop = self
+
+    def __call__(self):
+        self.entered.set()
+        assert self.release.wait(5), "Test did not release the tap's stop"  # Bound only.
+
+
+@pytest.mark.parametrize("late", [("buffer",), ("error",), ("buffer", "error")])
+def test_browser_an_armed_tap_deselected_while_it_delivers_records_nothing_after(tmp_path, late):
+    taps = QuietTaps()
+    capture, _result, changes = browser_start(tmp_path, taps, others_source="system")
+    session = capture.host.session
+    try:
+        (system,) = taps.of("system")
+        stopping = StopBlocks(system)
+        done = []
+        worker = threading.Thread(target=lambda: done.append(capture.select(True, False)), daemon=True)
+        worker.start()
+        assert stopping.entered.wait(5)  # Bound only: the deselect committed and now stops the tap.
+        # While the tap stops, its device delivers its first buffer and/or fails.
+        if "buffer" in late:
+            system.append(struct.pack("<h", 7) * 480, capture.elapsed_ms())
+        if "error" in late:
+            system.failed("Fake monitor went away")
+        stopping.release.set()
+        worker.join(5)
+        assert done and not worker.is_alive()
+        assert kinds_of(session) == ["microphone"] and "system" not in capture.native_taps
+        assert not any(identifier.startswith("system") for identifier in session.writers)
+        selection = [e for e in session.manifest["events"] if e["type"] == "selection"][-1]
+        assert (selection["me"], selection["others"]) == (True, False)
+        assert "refusals" not in session.manifest and not capture.refused_sides
+        assert not capture.error and "error" not in changes and capture.snapshot()["armed"] == {}
+        native_pcm(capture, "microphone")
+    finally:
+        capture.stop()
+    assert session.manifest["state"] == "completed" and "refusals" not in session.manifest
+    assert [(t["kind"], t["frames"]) for t in session.manifest["tracks"]] == [("microphone", 480)]
+
+
+def test_browser_a_retired_armed_tap_never_feeds_the_next_turn_on(tmp_path):
+    taps = QuietTaps()
+    capture, _result, changes = browser_start(tmp_path, taps, others_source="system")
+    session = capture.host.session
+    try:
+        (first,) = taps.of("system")
+        capture.select(True, False)
+        capture.select(True, True)
+        second = taps.of("system")[-1]
+        armed = capture.snapshot()["armed"]
+        assert second is not first and set(armed) == {"system"} and armed["system"] > 0
+        # The turned-off tap's thread delivers late, after the turn-on armed another.
+        first.append(struct.pack("<h", 7) * 480, capture.elapsed_ms())
+        first.failed("Fake monitor went away")
+        assert kinds_of(session) == ["microphone"] and "refusals" not in session.manifest
+        assert capture.snapshot()["armed"] == armed and not capture.error and "error" not in changes
+        # The new tap's own first buffer opens the side; the old tap's never reaches it.
+        second.append(struct.pack("<h", 7) * 480, armed["system"] + 10)
+        first.append(struct.pack("<h", 7) * 480, armed["system"] + 20)
+        assert kinds_of(session) == ["microphone", "system"]
+        assert session.manifest["tracks"][1]["frames"] == 480 and capture.snapshot()["armed"] == {}
+    finally:
+        capture.stop()
+    assert session.manifest["state"] == "completed" and "refusals" not in session.manifest
+
+
 # The real tap: no first buffer is not a failure for the system side.
 
 
