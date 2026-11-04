@@ -43,8 +43,17 @@ def inventory(extension, tabs, page="present", count=2):
             ],
         ),
     )
-    wait_for(
-        lambda: len([m for m in request(path=extension.path)["meetings"] if m["title"] == extension.title]) == len(tabs)
+    # Wait for this inventory, not merely a row: an earlier inventory of the
+    # same tabs already satisfies a row count, and a policy tick taken before
+    # the broker reads this packet still sees the old sourceCount.
+    wait_for(lambda: applied(extension, tabs, page, count))
+
+
+def applied(extension, tabs, page, count):
+    rows = [m for m in request(path=extension.path)["meetings"] if m["title"] == extension.title]
+    return len(rows) == len(tabs) and all(
+        any(m["tabId"] == tab and m.get("sourceCount") == count and m.get("pageState") == page for m in rows)
+        for tab in tabs
     )
 
 
@@ -455,6 +464,43 @@ def test_fast_page_return_does_not_reuse_the_departed_documents_positive_invento
         service.policy()
         assert service._capture_lifecycles["retained"].missing is None
     finally:
+        capture.stop()
+        extension.close()
+        client.close()
+
+
+def test_inventory_waits_for_its_own_packet_not_an_earlier_row(server, monkeypatch):  # noqa: F811
+    """The deb container's flake: the second inventory's wait passed on the first one's row."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    service, path, _ = server
+    extension, client, capture = live(service, path)
+    entered, release = threading.Event(), threading.Event()
+    update = service.update
+
+    def held(browser, packet):
+        if packet.get("type") == "meetings" and any(m.get("sourceCount") == 2 for m in packet["meetings"]):
+            entered.set()
+            assert release.wait(5), "the test never released the held inventory"
+        return update(browser, packet)
+
+    try:
+        inventory(extension, (3,), count=0)
+        monkeypatch.setattr(service, "update", held)
+        with ThreadPoolExecutor(1) as pool:
+            returned = pool.submit(inventory, extension, (3,), count=2)
+            assert entered.wait(2)
+            # The broker still shows the earlier inventory: a bare row count is
+            # already satisfied, which is what returned too early before.
+            rows = [m for m in request(path=path)["meetings"] if m["title"] == extension.title]
+            assert [(m["tabId"], m["sourceCount"]) for m in rows] == [(3, 0)]
+            assert not applied(extension, (3,), "present", 2) and not returned.done()
+            release.set()
+            returned.result(5)
+        assert applied(extension, (3,), "present", 2)
+    finally:
+        release.set()
         capture.stop()
         extension.close()
         client.close()
