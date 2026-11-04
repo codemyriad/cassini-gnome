@@ -508,6 +508,66 @@ def test_presence_of_a_fractional_track_starts_at_its_d55_placement(tmp_path, mo
     assert progress and progress[0]["segment"]["startSample"] == 0
 
 
+def test_presence_of_each_fractional_span_starts_at_its_own_d55_placement(tmp_path):
+    # R88 on a rotated track: each span is placed at frame(its offset, 16000). 1234.5104 ms
+    # is 19752.1664 and 3000.0101 ms is 48000.1616, so the spans sit at 19752 and 48000;
+    # their raw offsets would give [19753, 35753) and [48001, 64001).
+    import json
+
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.transcription import prepare_tracks
+
+    directory = tmp_path / "library" / "Recording-05200000-0000-4000-8000-0000000000e8"
+    directory.mkdir(parents=True)
+    spans = []
+    for name, start in (("track-a.wav", 1234.5104), ("track-a-2.wav", 3000.0101)):
+        write(directory / name, tone(1))
+        spans.append(dict(file=name, sampleRate=RATE, channels=1, frames=RATE, startOffsetMs=start))
+    track = dict(id="a", kind="remote", label="Guest", labelSource="browser", sourceTrackId="x", ended=True, gaps=[])
+    session = dict(
+        version=1,
+        id=directory.name.removeprefix("Recording-"),
+        createdAt="2026-11-04T10:00:00Z",
+        title="Rotated",
+        source="chromium",
+        state="completed",
+        tracks=[dict(track, spans=spans)],
+        events=[dict(type="end", atMs=4001, reason="user")],
+    )
+    (directory / "session.json").write_text(json.dumps(session))
+    (meeting,) = LibraryScanner(tmp_path / "library").scan().meetings
+    (scanned,) = meeting.tracks
+    assert [span.start_offset_ms for span in scanned.spans] == [1234.5104, 3000.0101]
+    (job,), _speakers = prepare_tracks(meeting)
+    assert job["sessionPresence"] == [[19752, 19752 + RATE], [48000, 48000 + RATE]]
+
+
+def test_presence_of_a_clock_anchored_fractional_track_starts_at_its_d55_placement(tmp_path):
+    # R88 on a native track with clock anchors. 1234.51875 ms is 16 kHz sample 19752.3,
+    # placed at 19752 (48 kHz frame 59256). The anchors map the 32000 frames onto
+    # 2.0000625 s, 96003 48 kHz samples, so the mapped end is 59256 + 96003 = 155259,
+    # 16 kHz sample 51753 (a nominal end would be 51752). The raw offset would start at
+    # 19753 and map from frame(1234.51875, 48000) = 59257, ending at ceil(155260 / 3) = 51754.
+    import json
+
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.recording_session import RecordingSession
+    from cassini_talk.transcription import session_presence
+
+    session = RecordingSession(tmp_path / "library")
+    session.add_track("a", "Me", "microphone", RATE, 1)
+    session.append("a", b"\x01\x00" * 2 * RATE, 1234.51875)
+    session.finish()
+    session.manifest["tracks"][0]["clockAnchors"] = [[0, 0], [2 * RATE, 2_000_062_500]]
+    session.checkpoint()
+    stored = json.loads((session.directory / "session.json").read_text())["tracks"][0]
+    assert (stored["startOffsetMs"], stored["clockAnchors"]) == (1234.51875, [[0, 0], [32000, 2_000_062_500]])
+    (meeting,) = LibraryScanner(tmp_path / "library").scan().meetings
+    (track,) = meeting.tracks
+    assert track.clock_anchors
+    assert session_presence(track) == [[19752, 51753]]
+
+
 def test_the_child_shifts_presence_by_the_one_d55_placement():
     # 1000.03 ms is session sample 16000.48: the track starts at sample 16000, where its
     # words and its rejoin put it (placement.frame), so presence moves by whole samples.
