@@ -46,9 +46,12 @@ def meson_runs_conformance():
     """True in Meson's pytest-N shards when this build registers its own
     browser-protocol-conformance test with this exact command (src/meson.build).
 
-    That test runs in the same `meson test` as the shards; build-aux/ci/
-    check_pytest_ran.py accepts the skip below only where it passed. Every
-    other pytest run (Recording's host run, a developer's) runs it here.
+    The skip depends on the build registering that test, not on this `meson
+    test` running it: a shard-only run (`meson test pytest-4`, `--suite pytest`)
+    runs conformance nowhere, so run browser-protocol-conformance too. CI runs
+    every shard in a full `meson test`, and build-aux/ci/check_pytest_ran.py
+    accepts the skip below only where that test passed. Every pytest run outside
+    the shards (Recording's host run, a developer's) runs it here.
     """
     build = os.environ.get("CASSINI_TEST_BUILD")
     if not os.environ.get("CASSINI_TEST_SHARD") or not build:

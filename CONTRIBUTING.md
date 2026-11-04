@@ -55,7 +55,9 @@ Meson runs pytest as four shards, `pytest-1` to `pytest-4` (`meson test
 --suite pytest`), one after another, each with its own timeout and a private
 HOME, XDG directories and temporary directory. They split the test files by
 the times in `tests/shard-durations.json` (`tests/shard_plan.py`); a new test
-file joins a shard by itself. When CI warns that a shard used over half its
+file joins a shard by itself. Inside the shards, `test_canonical_conformance`
+leaves canonical conformance to Meson's `browser-protocol-conformance`, so
+`--suite pytest` alone does not run it. When CI warns that a shard used over half its
 timeout, regenerate the table from one build attempt in that job's
 `meson-logs-*` artifact (a directory such as `deb-ubuntu-26.04.1`):
 `build-aux/ci/shard_durations.py deb-ubuntu-26.04.1/pytest-*.junit.xml`.
