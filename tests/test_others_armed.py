@@ -326,6 +326,56 @@ def test_an_armed_turn_on_can_be_turned_off_again(tmp_path, quiet_turn_on):
     assert saved(session)["state"] == "completed"
 
 
+def test_an_armed_refusal_persists_off_the_main_loop_and_stop_still_completes(tmp_path, caplog):
+    # The refusal's checkpoint (manifest write and fsync, under the PCM lock)
+    # is blocked as on slow storage: the main loop must keep running, and Stop
+    # must be accepted, then complete once storage returns.
+    caplog.set_level(logging.WARNING, logger="cassini_talk.native_recorder")
+    recorder, sides, signals = start(tmp_path, QUIET)
+    session = recorder.session
+    entered, release = threading.Event(), threading.Event()
+    blocked, refused = [], []
+    checkpoint, refuse = session.checkpoint, session.refuse
+
+    def slow_checkpoint():
+        if "refusals" in session.manifest and not blocked:
+            blocked.append(threading.current_thread() is threading.main_thread())
+            entered.set()
+            release.wait(5)  # Bound only: the test releases it.
+        checkpoint()
+
+    def counted_refuse(*items):
+        refused.append(items)
+        return refuse(*items)
+
+    session.checkpoint, session.refuse = slow_checkpoint, counted_refuse
+    try:
+        sides.now = BOUND + 20
+        post_error(sides, "system", DENIED)
+        spin_until(entered.is_set)
+        assert blocked == [False], "the refusal's checkpoint ran on the main loop"
+        ran = threading.Event()
+        GLib.idle_add(ran.set)
+        spin_until(ran.is_set)  # The main loop iterates while the fsync is blocked.
+        recorder.stop()  # Accepted at once: its work queues behind the refusal.
+        assert recorder.stopping and not release.is_set() and "finished" not in names(signals)
+        ran.clear()
+        GLib.idle_add(ran.set)
+        spin_until(ran.is_set)
+        release.set()
+        spin_until(lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing)
+    finally:
+        release.set()
+        close(recorder)
+    assert names(signals) == ["started", "finished"] and not recorder.discarded
+    assert len(refused) == 1 and len(blocked) == 1
+    stored = saved(session)
+    assert stored["state"] == "completed" and "problem" not in stored
+    assert [(r["atMs"], r["side"], r["code"]) for r in stored["refusals"]] == [(0, "others", "permissionDenied")]
+    assert recorder.refusals == stored["refusals"] and [t["kind"] for t in stored["tracks"]] == ["microphone"]
+    assert refusals(caplog) == ["Native others side (system) did not open: " + stored["refusals"][0]["message"]]
+
+
 def test_an_armed_turn_on_refused_by_an_explicit_error_is_refused_at_its_time(tmp_path, quiet_turn_on):
     recorder, sides, signals = start(tmp_path, {"microphone": ("ok", 0.1), "system": ("fail", 0)})
     try:

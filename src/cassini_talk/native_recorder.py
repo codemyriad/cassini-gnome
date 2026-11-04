@@ -363,20 +363,24 @@ class NativeRecorder(GObject.Object):
         It is refused at its attempt's time (0 at start, the turn-on's time
         otherwise) and the recording goes on. Nothing else changes. If no side
         has opened and none is armed any more, nothing records (D58 point 2).
+
+        It runs on the IO worker: the refusal's checkpoint fsyncs under the
+        PCM lock, which a writer can hold across slow storage. Only the UI
+        signal and the finish go back to the main loop.
         """
-        pipeline = self.pipeline
+        pipeline = attempt["pipeline"]
         with self._lock:
             if (
                 attempt["retired"]
                 or attempt["committed"]
                 or self._pending_sources.get(kind) is not attempt
-                or pipeline is not attempt["pipeline"]
+                or self.pipeline is not pipeline
                 or self.stopping
                 or self._finishing
                 or self.session is None
                 or self.session.finished
             ):
-                return False
+                return
             self._retire_attempt(kind, attempt)
             item = self._refusal(attempt["refuse_at"], kind, attempt)
             nothing = not self.session.manifest["tracks"] and not any(
@@ -386,15 +390,20 @@ class NativeRecorder(GObject.Object):
                 self.refusals.append(item)
             if nothing:
                 self._unstored.append(item)
+                self._discard = True
             else:
                 self.session.refuse(item)
         LOG.warning("Native %s side (%s) did not open: %s", SIDES[kind], kind, item.get("message"))
-        self._executor.submit(self._detach, pipeline, attempt)
+        self._detach(pipeline, attempt)
         if nothing:
-            self._discard = True
-            self._begin_finish(self._nothing_cause())
+            GLib.idle_add(self._armed_nothing, pipeline)
         else:
-            self.emit("changed")
+            GLib.idle_add(self.emit, "changed")
+
+    def _armed_nothing(self, pipeline):
+        """The last armed side was refused and none opened: nothing records (main loop)."""
+        if self.pipeline is pipeline:
+            self._begin_finish(self._nothing_cause())
         return False
 
     def _nothing_cause(self):
@@ -449,10 +458,13 @@ class NativeRecorder(GObject.Object):
         return code, attempt.get("message") or attempt.get("error")
 
     def _armed_error(self, kind, attempt):
-        """Under the lock: an armed side's error is handled on the main loop."""
+        """Under the lock: an armed side's error is refused on the IO worker,
+        never on the main loop (_armed_failed)."""
         if attempt.get("armed") and attempt["error"] and not attempt.get("failing"):
             attempt["failing"] = True
-            GLib.idle_add(self._armed_failed, kind, attempt)
+            # A closed worker: this recording has finished; nothing is refused.
+            with contextlib.suppress(RuntimeError):
+                self._executor.submit(self._armed_failed, kind, attempt)
 
     @staticmethod
     def _hold_eos(_pad, info):
