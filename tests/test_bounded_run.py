@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """E1: bounded-run.sh leaves nothing of a run alive, and no bound accepts a limit
-that bounds nothing (GNU timeout 0 never times out)."""
+that bounds nothing (GNU timeout 0 never times out).
+
+Known limitation (D-208, accepted), not tested here: in sweep mode (no user
+systemd manager) the cleanup is bounded-run.sh itself, so SIGKILLing the wrapper
+leaves its setsid'd descendants alive. Scope mode, the default where systemd
+--user works (roy), is not affected: the scope's RuntimeMaxSec still ends them.
+"""
 
 import functools
 import os
