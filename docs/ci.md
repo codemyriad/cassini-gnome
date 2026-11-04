@@ -95,6 +95,19 @@ share the pin-keyed `.whistle-cache` (including private ORT wheels); native sher
 uses `.sherpa-cache`. The model fixture cache is revision-keyed, test-only, and
 prepared separately from runtime build inputs. Meson stays offline.
 
+The installed-package harnesses (Desktop, build refresh, browser setup) build
+in two stages (`tests/harness-image.sh`, C). The harness stage holds the Ubuntu
+base, the harness's own packages and the static `Depends` of `debian/control`;
+it is tagged with a hash of every input and the ISO week, and rebuilt with
+`--pull` whenever that tag is new, so it never outlives its Dockerfile, the
+control file or a week. Each run installs app.deb on top after a fresh
+`apt-get update`, so apt resolves the package's own dependencies on every run,
+and the tests still run with `--network=none`. The offline worker image
+(`tests/whistle/Containerfile`) is tagged and rebuilt the same way. CI
+keeps these images in a cache that main saves and pull requests only restore
+(`build-aux/ci/harness-cache.sh`, D66); a miss just builds them. The products
+under test and the package builds' distro images are never cached.
+
 ## Releases
 
 Release downloads the five Debian/RPM/Arch products and the stable Flatpak

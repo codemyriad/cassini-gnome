@@ -1,8 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """G13/G14: every job and every local test run has a time budget, and CI runs on pushes to main only."""
 
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).parents[1]
 WORKFLOWS = ROOT / ".github/workflows"
@@ -117,3 +122,107 @@ def test_release_ships_the_flatpak_main_tested_and_refuses_it_without_an_update_
     stable = (WORKFLOWS / "flatpak.yml").read_text()
     assert "--repo-url" not in stable and "build-aux/ci/validate_installed.py" in stable
     assert "name: flatpak-stable" in stable
+
+
+HARNESS_IMAGES = {
+    "desktop": "tests/desktop/Dockerfile",
+    "build-refresh": "tests/build-refresh/Dockerfile",
+    "browser-setup": "tests/browser-setup/Dockerfile",
+    "whistle": "tests/whistle/Containerfile",
+}
+
+
+def steps(workflow):
+    """Each step of a workflow, as its own text."""
+    return re.split(r"\n(?=      - )", workflow.read_text())[1:]
+
+
+def test_caches_are_saved_from_main_only():
+    # D66: a pull request restores caches and never saves one. The harness
+    # images are only ever restored, then saved by an explicit main-only step.
+    main_only = "github.event_name != 'pull_request' && github.ref == 'refs/heads/main'"
+    saves, restores = [], []
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        for step in steps(workflow):
+            if "uses: actions/cache/save@" in step or "harness-cache.sh save" in step:
+                saves.append(workflow.name)
+                assert re.search(r"^        if: .*" + re.escape(main_only), step, re.M), (workflow.name, step)
+            if "harness-cache" in step and "uses: actions/cache@" in step:
+                raise AssertionError(f"{workflow.name}: harness images through actions/cache, which saves on PRs")
+            if "uses: actions/cache/restore@" in step and "steps.harness.outputs.key" in step:
+                restores.append(workflow.name)
+    assert sorted(restores) == ["background-apps.yml", "deb.yml", "whistle.yml"]
+    assert sorted(saves) == sorted(restores * 2)
+
+
+def test_harness_images_install_the_app_on_top_of_the_cached_stage():
+    # C: the cached stage holds the base, the harness packages and the app's static
+    # Depends; app.deb goes in on every run, after fresh indexes, so apt resolves
+    # the package's own dependencies each time.
+    for name, path in HARNESS_IMAGES.items():
+        text = "\n".join(line for line in (ROOT / path).read_text().splitlines() if not line.startswith("#"))
+        if name == "whistle":
+            assert "app.deb" not in text
+            continue
+        harness, separator, app = text.partition("\nFROM ${HARNESS}\n")
+        assert separator and "ARG HARNESS=harness\n" in harness and re.search(r"^FROM \S+ AS harness$", harness, re.M)
+        assert (
+            "app.deb" not in harness and 'apt-get satisfy -y --no-install-recommends "$(cat /tmp/depends)"' in harness
+        )
+        assert (
+            "COPY app.deb /tmp/app.deb\nRUN apt-get update && apt-get install -y --no-install-recommends /tmp/app.deb"
+            in app
+        )
+    for script in ROOT.glob("tests/*/run.sh"):
+        lines = commands(script)
+        for name in re.findall(r'tests/harness-image\.sh" tag ([\w-]+)', script.read_text()):
+            builds = [line for line in lines if re.search(r"(^|\s)docker build\s", line)]
+            # The harness stage is built only for a new tag, from a freshly pulled base.
+            assert any("--pull" in line and '-t "$harness"' in line for line in builds), script
+            assert all(HARNESS_IMAGES[name] in line for line in builds), script
+            if name != "whistle":
+                assert any("--target harness" in line for line in builds), script
+                assert any('--build-arg HARNESS="$harness"' in line for line in builds), script
+
+
+def harness_tag(root, name, epoch="2026-W45", **env):
+    return subprocess.run(
+        ["bash", str(root / "tests/harness-image.sh"), "tag", name],
+        env={"PATH": os.environ["PATH"], "CASSINI_HARNESS_EPOCH": epoch, **env},
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def test_a_harness_image_tag_changes_with_every_input_and_every_epoch(tmp_path):
+    # D68: a cached harness never outlives its inputs, nor a week.
+    for path in ["tests/harness-image.sh", "debian/control", *HARNESS_IMAGES.values()]:
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(ROOT / path, tmp_path / path)
+    tags = {name: harness_tag(tmp_path, name) for name in HARNESS_IMAGES}
+    assert len(set(tags.values())) == len(tags)
+    assert all(re.fullmatch(rf"cassini-harness-{name}:[0-9a-f]{{16}}-2026-W45", tag) for name, tag in tags.items())
+    assert harness_tag(tmp_path, "desktop", "2026-W46") != tags["desktop"]
+    assert harness_tag(tmp_path, "browser-setup", CASSINI_BROWSER_TEST_BASE="debian:testing") != tags["browser-setup"]
+    inputs = {"tests/harness-image.sh": set(HARNESS_IMAGES), "debian/control": set(HARNESS_IMAGES) - {"whistle"}}
+    inputs |= {path: {name} for name, path in HARNESS_IMAGES.items()}
+    for path, names in inputs.items():
+        original = (tmp_path / path).read_text()
+        (tmp_path / path).write_text(original + "\n# changed\n")
+        assert {name for name in HARNESS_IMAGES if harness_tag(tmp_path, name) != tags[name]} == names, path
+        (tmp_path / path).write_text(original)
+    with pytest.raises(subprocess.CalledProcessError):
+        harness_tag(tmp_path, "desktop", "2026 W45")
+
+
+def test_the_harness_stage_installs_the_static_runtime_depends():
+    control = (ROOT / "debian/control").read_text()
+    stanza = control[control.index("\nPackage: cassini-talk\n") :]
+    field = re.search(r"^Depends:(.*(?:\n[ \t].*)*)", stanza, re.M)[1]
+    expected = [d.strip() for d in field.split(",") if d.strip() and not d.strip().startswith("${")]
+    depends = subprocess.run(
+        ["bash", str(ROOT / "tests/harness-image.sh"), "depends"], check=True, capture_output=True, text=True
+    ).stdout
+    assert depends.endswith("\n") and depends.strip().split(", ") == expected
+    assert "python3-gi" in expected and "gir1.2-gtk-4.0 (>= 4.18)" in expected

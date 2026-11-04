@@ -17,9 +17,21 @@ cleanup() {
 }
 trap cleanup EXIT
 cp "$package" "$context/app.deb"
-docker build --label cassini.scope=installed-build-refresh \
+"$source_root/tests/harness-image.sh" depends > "$context/depends"
+# The harness stage (tests/harness-image.sh): built when its tag is new, or loaded from CI's cache.
+harness=$("$source_root/tests/harness-image.sh" tag build-refresh)
+if ! docker image inspect "$harness" >/dev/null 2>&1; then
+ docker build --pull --target harness --label cassini.scope=installed-build-refresh-harness \
+  -t "$harness" -f "$source_root/tests/build-refresh/Dockerfile" "$context"
+ "$source_root/tests/harness-image.sh" prune build-refresh
+fi
+docker build --label cassini.scope=installed-build-refresh --build-arg HARNESS="$harness" \
  --build-arg TEST_UID="$(id -u)" --build-arg TEST_GID="$(id -g)" \
  -t "$image" -f "$source_root/tests/build-refresh/Dockerfile" "$context"
+# timeout must be the container's PID 1, so that its exit ends everything left in
+# the container: refuse an ENTRYPOINT inherited from the harness image.
+entrypoint=$(docker image inspect -f '{{json .Config.Entrypoint}}' "$image")
+[ "$entrypoint" = null ] || { echo "$image has ENTRYPOINT $entrypoint: timeout must be PID 1" >&2; exit 2; }
 # The installed app and both package upgrades share only this private display,
 # bus, synthetic audio, and generated home. Never mount a host desktop/socket.
 docker run --rm --label cassini.scope=installed-build-refresh --network=none \

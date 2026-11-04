@@ -20,11 +20,21 @@ cp "$package" "$package_context/app.deb"
 browser_binary=$(node -e 'console.log(require(process.argv[1]).chromium.executablePath())' "$source_root/tests/recording/node_modules/playwright")
 browser_cache=$(dirname "$(dirname "$(dirname "$browser_binary")")")
 test -x "$browser_binary"
-docker build --label cassini.scope=browser-startup-test --build-arg BASE="${CASSINI_BROWSER_TEST_BASE:-ubuntu:26.04}" \
+"$source_root/tests/harness-image.sh" depends > "$package_context/depends"
+# The harness stage (tests/harness-image.sh): built when its tag is new, or loaded from CI's cache.
+harness=$("$source_root/tests/harness-image.sh" tag browser-setup)
+if ! docker image inspect "$harness" >/dev/null 2>&1; then
+  docker build --pull --target harness --label cassini.scope=browser-startup-harness \
+    --build-arg BASE="${CASSINI_BROWSER_TEST_BASE:-ubuntu:26.04}" \
+    -f "$source_root/tests/browser-setup/Dockerfile" -t "$harness" "$package_context"
+  "$source_root/tests/harness-image.sh" prune browser-setup
+fi
+docker build --label cassini.scope=browser-startup-test --build-arg HARNESS="$harness" \
   --build-arg TEST_UID="$(id -u)" --build-arg TEST_GID="$(id -g)" \
   -f "$source_root/tests/browser-setup/Dockerfile" -t "$package_test_image" "$package_context"
 # timeout must be the container's PID 1, so that its exit ends everything left in
-# the container: refuse an ENTRYPOINT inherited from CASSINI_BROWSER_TEST_BASE.
+# the container: refuse an ENTRYPOINT inherited from CASSINI_BROWSER_TEST_BASE
+# through the harness image.
 entrypoint=$(docker image inspect -f '{{json .Config.Entrypoint}}' "$package_test_image")
 [ "$entrypoint" = null ] || { echo "$package_test_image has ENTRYPOINT $entrypoint: timeout must be PID 1" >&2; exit 2; }
 docker run --rm --label cassini.scope=browser-startup-test --network=none --cap-drop=ALL \

@@ -19,9 +19,21 @@ cleanup() {
 }
 trap cleanup EXIT
 cp "$package" "$context/app.deb"
-docker build --label cassini.scope=background-desktop-test \
+"$source_root/tests/harness-image.sh" depends > "$context/depends"
+# The harness stage (tests/harness-image.sh): built when its tag is new, or loaded from CI's cache.
+harness=$("$source_root/tests/harness-image.sh" tag desktop)
+if ! docker image inspect "$harness" >/dev/null 2>&1; then
+  docker build --pull --target harness --label cassini.scope=background-desktop-harness \
+    -t "$harness" -f "$source_root/tests/desktop/Dockerfile" "$context"
+  "$source_root/tests/harness-image.sh" prune desktop
+fi
+docker build --label cassini.scope=background-desktop-test --build-arg HARNESS="$harness" \
   --build-arg TEST_UID="$(id -u)" --build-arg TEST_GID="$(id -g)" \
   -t "$image" -f "$source_root/tests/desktop/Dockerfile" "$context"
+# timeout must be the container's PID 1, so that its exit ends everything left in
+# the container: refuse an ENTRYPOINT inherited from the harness image.
+entrypoint=$(docker image inspect -f '{{json .Config.Entrypoint}}' "$image")
+[ "$entrypoint" = null ] || { echo "$image has ENTRYPOINT $entrypoint: timeout must be PID 1" >&2; exit 2; }
 # Download runtime outside the offline desktop; the cache contains no test home.
 docker run --rm --label cassini.scope=background-desktop-prepare \
   -v "$cache:/flatpak:rw" -v "$bundle:/tmp/app.flatpak:ro" -v "$source_root:/source:ro" \

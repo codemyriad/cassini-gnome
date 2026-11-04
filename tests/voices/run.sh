@@ -22,7 +22,12 @@ if [ "$#" -ge 7 ]; then
 fi
 test -n "$sherpa_target"
 mkdir -p "$output"
-docker build -q -t cassini-whistle-test - < "$root/tests/whistle/Containerfile"
+# The harness image (tests/harness-image.sh): built when its tag is new, or loaded from CI's cache.
+harness=$("$root/tests/harness-image.sh" tag whistle)
+if ! docker image inspect "$harness" >/dev/null 2>&1; then
+  docker build --pull -q -t "$harness" - < "$root/tests/whistle/Containerfile"
+  "$root/tests/harness-image.sh" prune whistle
+fi
 docker run --rm --network none --cpus=2 --memory=2g --cap-drop ALL --security-opt no-new-privileges \
   --user "$(id -u):$(id -g)" --read-only --tmpfs /tmp:rw,exec,nosuid,nodev,size=64m \
   -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 -e CASSINI_WHISTLE_NETWORK_NONE=1 \
@@ -30,5 +35,5 @@ docker run --rm --network none --cpus=2 --memory=2g --cap-drop ALL --security-op
   -v "$root:/source:ro" -v "$bundle:/bundle:ro" -v "$modules:/modules/cassini_talk:ro" \
   -v "$stage$sherpa_target:$sherpa_target:ro" -v "$stage$ort_target:$ort_target:ro" -v "$models:/models:$model_access" "${extra[@]}" \
   -v "$audio:/input.wav:ro" -v "$output:/out:rw" -w /source \
-  cassini-whistle-test timeout --kill-after=30 "$limit" /bin/bash -c \
+  "$harness" timeout --kill-after=30 "$limit" /bin/bash -c \
   'set -e; python3 -m pytest -q -p no:cacheprovider tests/test_voice*.py --basetemp=/out/unit-temp --junitxml=/out/voice-tests.xml; python3 tests/voices/pipeline_probe.py /bundle /models/campplus-voxceleb-16k/357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b "$CASSINI_SHERPA_BUNDLE" /input.wav /out/pipeline --modules /modules; if [ "${CASSINI_VOICE_QUEUE:-0}" = 1 ]; then python3 tests/diarization/queue_probe.py /bundle /nemotron /input.wav /out/queue-whistle --modules /modules --voices /models; python3 tests/diarization/queue_probe.py /bundle /nemotron /input.wav /out/queue-parakeet --modules /modules --voices /models --parakeet /parakeet; python3 tests/voices/backfill_probe.py /bundle /nemotron /models /input.wav /out/backfill --modules /modules; fi'
