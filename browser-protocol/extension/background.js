@@ -7,6 +7,19 @@ async function hasOffscreenDocument() {
 const frames = new Set();
 // Browser-owned lifecycle evidence, never supplied by a page-posted packet.
 const pageStates = new Map();
+// The app stops a closed tab's retained session as tabClosed after its 2 s
+// grace (SPEC-CONTROL), within its 10 s control reconnect grace. If it never
+// does while the native port stays open, the extension finalizes the session
+// itself after this bound so neither the capture nor its slot stays forever.
+const CLOSED_SESSION_GRACE_MS = 30000;
+const sessionTimers = { later: (fn, ms) => setTimeout(fn, ms), cancel: id => clearTimeout(id) };
+function armClosedWatchdog(session) {
+  if (session.closedWatchdog != null || session.stopping) return;
+  session.closedWatchdog = sessionTimers.later(() => {
+    session.closedWatchdog = null;
+    if (sessions.get(session.tabId) === session && !session.stopping) void stop(session, "tabClosed");
+  }, CLOSED_SESSION_GRACE_MS);
+}
 const pageState = tabId => pageStates.get(tabId) || "present";
 function setPageState(tabId, value) {
   if (pageState(tabId) === "closed" && value !== "closed") return;
@@ -241,6 +254,7 @@ function failure(message, session = firstSession()) {
 async function stop(session = firstSession(), reason = "user") {
   if (!session) { for (const request of pendingStarts.values()) request.cancelled = true; return; }
   if (session.stopPromise) return session.stopPromise;
+  if (session.closedWatchdog != null) { sessionTimers.cancel(session.closedWatchdog); session.closedWatchdog = null; }
   session.stopping = true;
   notifyControl();
   session.stopPromise = (async () => {
@@ -540,7 +554,6 @@ chrome.runtime.onConnect.addListener(port => {
     if (message.type !== "packet" || !["track", "audio", ...(session.sourceOutcomes ? ["trackEnd", "sources"] : [])].includes(message.packet?.type)) return;
     try {
       await forwardPacket(session, message.packet, spanDocument(frame));
-      port.postMessage({ type: "ack", token: session.token, request: message.request });
     } catch (error) {
       if (error.retired) { /* Already retired locally; keep other spans recording. */ }
       else if (error.code === "state" && ["source", "command"].includes(error.scope)) {
@@ -556,7 +569,11 @@ chrome.runtime.onConnect.addListener(port => {
         session.warning = "One track was interrupted and has a gap. The other tracks continue."; session.problem ??= session.warning; notifyControl(); }
       else if (!["command", "source"].includes(error.scope)) failure(error.message, session);
       try { port.postMessage({ type: "ack", token: session.token, request: message.request, error: error.message, code: error.code, scope: error.scope, ...(error.retired === true ? {retired:true} : {}) }); } catch {}
+      return;
     }
+    // The packet is durable. Its ACK is page transport only: a page that closed
+    // or navigated while the native reply was in flight is not a capture failure.
+    try { port.postMessage({ type: "ack", token: session.token, request: message.request }); } catch {}
   });
   port.onDisconnect.addListener(() => {
     frames.delete(frame);
@@ -614,6 +631,7 @@ chrome.tabs.onRemoved.addListener(id => {
   if (session?.keepOnNavigation) for (const frame of [...session.frames]) {
     session.frames.delete(frame); frames.delete(frame); frame.obsolete = true; frame.finished?.();
   }
+  if (session?.keepOnNavigation) armClosedWatchdog(session);
   notifyControl();
 });
 function tabUpdated(id, change) {

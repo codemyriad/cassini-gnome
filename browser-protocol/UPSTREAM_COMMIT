@@ -1,26 +1,8 @@
-tree c6bad7b456ec379acf9f461de1e199674af74d7b
-parent dba4a327cd76baa5b73a217f3465f53c109bd4a5
-parent d2a23274fa887f3817a8b74a17c2ea82a0adfc19
-author Silvio Tomatis <silviot@gmail.com> 1793743031 +0100
-committer GitHub <noreply@github.com> 1793743031 +0100
-gpgsig -----BEGIN PGP SIGNATURE-----
- 
- wsFcBAABCAAQBQJq6li3CRC1aQ7uu5UhlAAAL7sQAE6sQ32aOhRBlwp3Mj1IlOGN
- rwJZDnbYr87ISj2W7l/aiiZud71dQaAF2QYx7RVWejMF5OfONjQyTly7vM7e4fNv
- BHVosbv8u7P6YJlH/a8LugrI9kmOk9xEPWTZqvtHILoaIV5LKjNgF69nYGT3320b
- 5em6D4EFe0JbT8w/jSGxrhOTDhL18oqaI7xVPC3fU6xP1DjoeiOyAGe+MlS/NXMj
- 93vpd5fXEt5vd4cAadDhuImA8Egt96ypZRb6LLVruIXT7ZuBTREKhJTCh+nBfYCQ
- +Rw5uJcHCvC07ZJvABlHCOakOnTggX7QIcodPYw1M/KtQwcXjCtkQnCGNA+V8Plj
- HrMzfd0YwfhZ+nk+vKjJAVGi6jspHsnr23QbWO8P/Ogp2lWpQxBOtPb6/IskSAEt
- GtyCA9SK00Oy7/XItSWY6OVAC7IDszINFiW8A8fEmeFWm52WTgzbtm18zXavFfc6
- Ww1+lS57Q64h1W7HPchOxAQ7RTG9RNBBVcnqznzDhH2q0J3kw6zV6+fmEkd62OzI
- dK9AtGpzF6rzDFBW0eI9mok56x5QHgtgqQsJJzUh7creZOE0+NdfxN73qggENesc
- yUmmbId0s54wKte3V+24U9QgaTAeqUmkgGiceB17iLscs7g5BsV0DeUKDKjEXKqs
- 9A6aY8x5z1jw4O2ZK0+m
- =2dHu
- -----END PGP SIGNATURE-----
- 
+tree 4c944071c673355ca1184f26bba839a56341b447
+parent 124cfe7750ad7b74fe427ac4367ca0c02daab094
+author Silvio Tomatis <silviot@gmail.com> 1793808384 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793808384 +0100
 
-Merge pull request #45 from codemyriad/feat/uncommitted-return-either-file
+Placement golden README: a-system-late also fails mix48publication; 0-frame tracks are ignored in both apps
 
-D52: an uncommitted return is valid in either writer form, with the absence in the file
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

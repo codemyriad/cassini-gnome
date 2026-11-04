@@ -350,6 +350,12 @@ The app owns these monotonic per-session timers (seconds):
   stops as callEnded. Recovery before2s cancels that pending end.
 - Browser-confirmed closed tab stops as tabClosed after2s. It never starts a
   computer-sound fallback. Closed is terminal evidence despite late messages.
+  Extension fallback: if no app Stop has ended a closed tab's retained
+  (keepOnNavigation) session 30 s after tabs.onRemoved, while the extension
+  worker still runs, the extension finalizes it itself as a Stop with reason
+  tabClosed, so neither the capture nor its session slot is held forever. Any
+  earlier Stop cancels it. A late page ACK to the closed tab is page transport,
+  never a capture failure.
 - Navigating/absent page starts computer-sound fallback after2s in the same folder.
   `BROWSER_RETURN_GRACE = 120`, measured from first loss, bounds its lifetime.
   Present with zero sources during that pending return does not become callEnded.
