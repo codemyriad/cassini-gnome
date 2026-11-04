@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
+# E1: bound the run so a hang fails instead of living for days (exit 124/137).
+limit=${CASSINI_RUN_TIMEOUT:-1200}
+[[ $limit =~ ^0*[1-9][0-9]{0,8}$ ]] || { echo "CASSINI_RUN_TIMEOUT must be whole seconds, from 1 to 999999999" >&2; exit 2; }
 package=$(realpath "$1")
 output=$(realpath -m "$2")
 source_root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -24,4 +27,4 @@ docker run --rm --label cassini.scope=installed-build-refresh --network=none \
  --tmpfs /tmp:rw,exec,nosuid,nodev,size=2g \
  -v "$source_root:/source:ro" -v "$package:/original.deb:ro" -v "$output:/out:rw" \
  -v "$private_home:/home/qa:rw" -e CASSINI_QA_UPGRADE=1 \
- "$image" bash /source/tests/build-refresh/session.sh 2>&1 | tee "$output/session.log"
+ "$image" timeout --kill-after=30 "$limit" bash /source/tests/build-refresh/session.sh 2>&1 | tee "$output/session.log"

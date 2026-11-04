@@ -101,9 +101,11 @@ case $family in
     runtime="python python-gobject gtk4 libadwaita gstreamer
              gst-plugins-base gst-plugins-good python-numpy" ;;
   apk)
+    # bash and GNU timeout (--kill-after) for the bounded test runs and their
+    # tests: busybox has neither.
     build="build-base meson samurai python3 gettext glib glib-dev desktop-file-utils
            appstream gtk4.0 py3-pytest
-           py3-jsonschema py3-rfc3339-validator gpgv"
+           py3-jsonschema py3-rfc3339-validator gpgv bash coreutils"
     # No NumPy: the pinned engine cannot run on musl, so
     # writing down is not available on Alpine.
     runtime="python3 py3-gobject3 gtk4.0 libadwaita gstreamer coreutils
