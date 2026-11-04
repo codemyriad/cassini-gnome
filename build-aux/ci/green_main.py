@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 
 WORKFLOWS = ("ci.yml",)
-PACKAGES = {"deb-0", "deb-1", "rpm-fedora", "rpm-opensuse", "arch"}
+PACKAGES = {"deb-0", "deb-1", "rpm-fedora", "rpm-opensuse", "arch", "flatpak-stable"}
 BUILD_PRODUCTS = {"ci-core", "ci-boards", "ci-offline"}
 
 
