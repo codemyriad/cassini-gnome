@@ -12,6 +12,7 @@ jobs:
   main-inputs:
     name: Require exact green main inputs
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     outputs:
       run_id: ${{ steps.main.outputs.run_id }}
     steps:
@@ -28,6 +29,7 @@ jobs:
     name: Reuse verified Debian packages
     needs: main-inputs
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -46,6 +48,7 @@ jobs:
     name: Reuse verified RPM and Arch packages
     needs: main-inputs
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -73,6 +76,7 @@ jobs:
   publish:
     needs: [deb, packages, flatpak]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/download-artifact@v8
         with:
