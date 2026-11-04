@@ -91,7 +91,8 @@ def test_outcome_lines_cover_exactly_the_shared_test_8_cases():
 
 @pytest.mark.parametrize("case", list(OUTCOMES["cases"]))
 def test_outcome_lines(case, shared_library):
-    """D67: control, others silent, never captured and failed read as three distinct states; guards pin R13 and D67.2."""
+    """D67: control, others silent, never captured and failed read as three distinct states; guards pin R13,
+    D67.2 and D67.8."""
     actual = outcome(shared_library / case / "root")
     dump(case, actual)
     assert actual == expected_outcome(case)
@@ -144,8 +145,18 @@ def retry_became_done(folder):
     )
 
 
-def failed_reference_dropped(folder):
+def reference_dropped(folder):
     edit_json(folder / "meeting.json", lambda value: value["transcript"].update(reference=None))
+
+
+def low_audio_was_captured(folder):
+    def change(value):
+        for row in [*value["captureOutcome"]["sources"], *value["tracks"]]:
+            row["captureOutcome"] = "captured"
+        value["state"] = "completed"
+        del value["problem"], value["problemKind"]
+
+    edit_json(folder / "session.json", change)
 
 
 @pytest.mark.parametrize(
@@ -157,7 +168,9 @@ def failed_reference_dropped(folder):
         ("t8-others-silent", silent_tracks_dropped, True),
         ("t8-silent-per-source", return_track_silent_too, True),
         ("t8-retry-failed-stale-silent", retry_became_done, True),
-        ("t8-failed-referenced-words", failed_reference_dropped, True),
+        ("t8-failed-referenced-words", reference_dropped, True),
+        ("t8-none-referenced-words", reference_dropped, True),
+        ("t8-low-audio-silent", low_audio_was_captured, True),
     ],
     ids=lambda value: getattr(value, "__name__", value),
 )

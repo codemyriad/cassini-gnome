@@ -326,17 +326,27 @@ def test_bad_received_reference_does_not_read_outside_library(tmp_path):
     assert not scan_library(tmp_path).meetings, "Received publication must pass the whole schema"
 
 
-def test_none_never_publishes_stored_body_and_failed_shows_it_as_stored(tmp_path):
+def test_none_and_failed_show_a_referenced_body_as_stored(tmp_path):
     session = capture(tmp_path)
     (session.directory / "transcript.json").write_text(
         json.dumps(dict(language="en", items=[dict(speaker="a", startMs=0, endMs=100, text="Stale words")]))
     )
     scanner = LibraryScanner(tmp_path)
     reference = dict(kind="sidecar", file="transcript.json", format="cassini.words.v1")
-    write_metadata(session.directory, transcript=dict(status="none", reference=reference))
+    # D67.8a: status none that still references words shows them as stored, as for failed
+    # (D47). The status stays none (R3), there is no quote (R8.5) and Write down stays (R9).
+    write_metadata(
+        session.directory,
+        transcript=dict(status="none", reference=reference),
+        quoteOverride=dict(atMs=0, text="Pinned"),
+    )
     meeting = scanner.scan().meetings[0]
-    assert meeting.transcript == "none"
-    assert not meeting.words and not meeting.speakers and not meeting.quote_line and not meeting.preview_turns
+    assert meeting.transcript == "none" and meeting.error is None and meeting.can_write_down
+    assert [w.text for w in meeting.words] == ["Stale words"] and [s.id for s in meeting.speakers] == ["a"]
+    assert meeting.quote_line is None and meeting.preview_turns
+    write_metadata(session.directory, transcript=dict(status="none", reference=None))
+    meeting = scanner.scan().meetings[0]
+    assert meeting.transcript == "none" and not meeting.words and not meeting.speakers and not meeting.preview_turns
     # D67.2: no reader rule hides a failed meeting's words. Its writer stores reference null;
     # a file that still references a readable body shows it as stored (D47), with no quote (R8.5).
     write_metadata(session.directory, transcript=dict(status="failed", reference=reference))

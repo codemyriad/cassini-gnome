@@ -368,8 +368,10 @@ def test_failed_write_down_leaves_the_published_files_words_as_they_were(publish
         queue.close()
 
 
-def test_failed_published_meeting_shows_the_files_words_as_stored(published):
-    """D67.2: no reader rule. A failed status hides nothing the file holds; it only gives no quote (R8.5)."""
+@pytest.mark.parametrize("status", ["failed", "none"])
+def test_failed_or_none_published_meeting_shows_the_files_words_as_stored(published, status):
+    """D67.2, D67.8a: no reader rule. A failed or none status hides nothing the file holds; it only
+    gives no quote (R8.5)."""
     root, sid, directory, original = published
     body = dict(
         format=portable.WORDS_FORMAT,
@@ -379,12 +381,14 @@ def test_failed_published_meeting_shows_the_files_words_as_stored(published):
             dict(speaker="original-a", startMs=40, endMs=90, text="words"),
         ],
     )
-    error = dict(id="transcribe-failed", action="Try again")
-    failed = dict(transcript=dict(status="failed", reference=None), error=error)
+    error = dict(id="transcribe-failed", action="Try again") if status == "failed" else None
+    stored = dict(
+        transcript=dict(status=status, reference=None), error=error, quoteOverride=dict(atMs=0, text="Pinned")
+    )
     with transaction(directory):
-        commit_metadata(directory, meeting_store.read_metadata(directory), failed, words=body)
+        commit_metadata(directory, meeting_store.read_metadata(directory), stored, words=body)
     (meeting,) = LibraryScanner(root).scan().meetings
-    assert meeting.transcript == "failed" and meeting.error == MeetingError("transcribe-failed", "Try again")
+    assert meeting.transcript == status and meeting.error == (error and MeetingError(**error))
     assert [w.text for w in meeting.words] == ["Stored", "words"] and [s.id for s in meeting.speakers] == ["original-a"]
     assert meeting.quote_line is None
 

@@ -822,9 +822,9 @@ class LibraryScanner:
         error = MeetingError(stored["id"], stored["action"]) if stored else None
         words, readable, present = (), False, False
         try:
-            # D67.2: a failed meeting shows the words it references, as stored (D47); its
-            # writer stores reference null instead, so no reader rule hides them.
-            if reference is not None and status not in ("none", "damaged"):
+            # D67.2, D67.8a: a failed or none meeting shows the words it references, as
+            # stored (D47); hiding is a writer-side choice (on failure it stores null).
+            if reference is not None and status != "damaged":
                 if (
                     origin == "received"
                     and not trusted
@@ -879,7 +879,7 @@ class LibraryScanner:
 
             if empty_word_transcripts(embedded, embedded_words):
                 status = "none"
-        return (() if status == "none" else words), status, None, error
+        return words, status, None, error
 
 
 def _unreadable(directory, identifier, activity):
