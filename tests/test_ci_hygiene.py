@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""G13/G14: every job has a time budget, and CI runs on pushes to main only."""
+"""G13/G14: every job and every local test run has a time budget, and CI runs on pushes to main only."""
 
 import re
 from pathlib import Path
 
-WORKFLOWS = Path(__file__).parents[1] / ".github/workflows"
+ROOT = Path(__file__).parents[1]
+WORKFLOWS = ROOT / ".github/workflows"
+BOUND = 'timeout --kill-after=30 "$limit" '
 
 
 def jobs(workflow):
@@ -25,6 +27,37 @@ def test_every_job_has_a_timeout():
         if not re.search(r"^    uses: ", block, re.M) and not re.search(r"^    timeout-minutes: \d+", block, re.M)
     ]
     assert missing == []
+
+
+def commands(script):
+    """A shell script's commands, continuation lines joined."""
+    return re.sub(r"\\\n\s*", " ", script.read_text()).splitlines()
+
+
+def test_every_local_test_run_is_bounded():
+    # E1: outside CI nothing caps a run, and a hung UI test lived for 4.5 days.
+    # The bound sits inside the container: killing the docker client leaves the
+    # container running, and a shell as PID 1 ignores TERM.
+    scripts = sorted([*ROOT.glob("tests/**/*.sh"), *ROOT.glob("build-aux/*.sh")])
+    unbounded = []
+    for script in scripts:
+        for line in commands(script):
+            if re.search(r"(^|\s)docker run\s", line) and " -d " not in line and BOUND not in line:
+                unbounded.append(f"{script.relative_to(ROOT)}: {line.strip()[:80]}")
+    assert unbounded == []
+    # On the host, bounded-run.sh also kills what the run leaves in its process group.
+    host = re.compile(r'("\$bounded"|build-aux/bounded-run\.sh) "\$limit" dbus-run-session ')
+    for name in ("build-aux/ux-screenshot.sh", "tests/recording/run.sh"):
+        lines = [line for line in commands(ROOT / name) if "xvfb-run -a" in line]
+        assert lines and all(host.match(line) for line in lines), name
+    for script in scripts:
+        text = script.read_text()
+        if script.name != "bounded-run.sh" and (BOUND in text or "bounded-run.sh" in text):
+            assert re.search(r"^limit=\$\{CASSINI_RUN_TIMEOUT:-\d+\}$", text, re.M), script
+    # The detached audio server is removed by run.sh's EXIT trap; its own bound is the backstop.
+    assert (
+        'ENTRYPOINT ["timeout", "--kill-after=30", "7200", ' in (ROOT / "tests/recording/Audio.Dockerfile").read_text()
+    )
 
 
 def test_ci_runs_on_pushes_to_main_only():

@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Usage: ux-screenshot.sh INSTALLED_APP OUTPUT.png
 set -euo pipefail
+# E1: bound the run so a hang fails instead of living for days (exit 124/137).
+limit=${CASSINI_RUN_TIMEOUT:-300}
+case "$limit" in ''|*[!0-9]*) echo "CASSINI_RUN_TIMEOUT must be whole seconds" >&2; exit 2 ;; esac
+bounded=$(dirname "$(realpath "$0")")/bounded-run.sh
 [ "$#" -eq 2 ] || { echo "Usage: $0 installed-app output.png" >&2; exit 1; }
 app=$(realpath "$1")
 output=$(realpath -m "$2")
@@ -52,4 +56,4 @@ case "$scale" in
 esac
 export GDK_SCALE="$scale"
 exec_args=("$app")
-dbus-run-session -- xvfb-run -a -s "-screen 0 $screen -nolisten tcp" "${exec_args[@]}"
+"$bounded" "$limit" dbus-run-session -- xvfb-run -a -s "-screen 0 $screen -nolisten tcp" "${exec_args[@]}"

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
+# E1: bound the run so a hang fails instead of living for days (exit 124/137).
+limit=${CASSINI_RUN_TIMEOUT:-1200}
+case "$limit" in ''|*[!0-9]*) echo "CASSINI_RUN_TIMEOUT must be whole seconds" >&2; exit 2 ;; esac
 root=$(cd "$(dirname "$0")/../.." && pwd)
 bundle=$(realpath "$1")
 models=$(realpath "$2")
@@ -27,5 +30,5 @@ docker run --rm --network none --cpus=2 --memory=2g --cap-drop ALL --security-op
   -v "$root:/source:ro" -v "$bundle:/bundle:ro" -v "$modules:/modules/cassini_talk:ro" \
   -v "$stage$sherpa_target:$sherpa_target:ro" -v "$stage$ort_target:$ort_target:ro" -v "$models:/models:$model_access" "${extra[@]}" \
   -v "$audio:/input.wav:ro" -v "$output:/out:rw" -w /source \
-  cassini-whistle-test /bin/bash -c \
+  cassini-whistle-test timeout --kill-after=30 "$limit" /bin/bash -c \
   'set -e; python3 -m pytest -q -p no:cacheprovider tests/test_voice*.py --basetemp=/out/unit-temp --junitxml=/out/voice-tests.xml; python3 tests/voices/pipeline_probe.py /bundle /models/campplus-voxceleb-16k/357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b "$CASSINI_SHERPA_BUNDLE" /input.wav /out/pipeline --modules /modules; if [ "${CASSINI_VOICE_QUEUE:-0}" = 1 ]; then python3 tests/diarization/queue_probe.py /bundle /nemotron /input.wav /out/queue-whistle --modules /modules --voices /models; python3 tests/diarization/queue_probe.py /bundle /nemotron /input.wav /out/queue-parakeet --modules /modules --voices /models --parakeet /parakeet; python3 tests/voices/backfill_probe.py /bundle /nemotron /models /input.wav /out/backfill --modules /modules; fi'

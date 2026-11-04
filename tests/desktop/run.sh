@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Fresh installed deb + Flatpak, with a private headless GNOME 50 compositor.
 set -euo pipefail
+# E1: bound the run so a hang fails instead of living for days (exit 124/137).
+limit=${CASSINI_RUN_TIMEOUT:-1200}
+case "$limit" in ''|*[!0-9]*) echo "CASSINI_RUN_TIMEOUT must be whole seconds" >&2; exit 2 ;; esac
 package=$(realpath "$1")
 bundle=$(realpath "$2")
 output=$(realpath -m "$3")
@@ -24,7 +27,7 @@ docker run --rm --label cassini.scope=background-desktop-prepare \
   -v "$cache:/flatpak:rw" -v "$bundle:/tmp/app.flatpak:ro" -v "$source_root:/source:ro" \
   -e FLATPAK_USER_DIR=/flatpak -e FLATPAK_GL_DRIVERS=default \
   -e DBUS_SYSTEM_BUS_ADDRESS=unix:path=/tmp/cassini-qa-system-bus \
-  "$image" dbus-run-session -- sh -ec '
+  "$image" timeout --kill-after=30 "$limit" dbus-run-session -- sh -ec '
     dbus-daemon --config-file=/source/tests/desktop/system-bus.conf --fork --nopidfile
     flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
     flatpak install --user --noninteractive flathub org.gnome.Platform//50
@@ -45,5 +48,5 @@ for indicator in 0 1; do
     -v "$scenario/home:/home/qa:rw" \
     -e FLATPAK_USER_DIR=/flatpak -e FLATPAK_GL_DRIVERS=default -e CASSINI_QA_DESKTOP=1 \
     -e CASSINI_QA_INDICATOR="$indicator" \
-    "$image" bash /source/tests/desktop/session.sh 2>&1 | tee "$scenario/session.log"
+    "$image" timeout --kill-after=30 "$limit" bash /source/tests/desktop/session.sh 2>&1 | tee "$scenario/session.log"
 done

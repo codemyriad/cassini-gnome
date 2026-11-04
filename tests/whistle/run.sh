@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
+# E1: bound the run so a hang fails instead of living for days (exit 124/137).
+limit=${CASSINI_RUN_TIMEOUT:-1200}
+case "$limit" in ''|*[!0-9]*) echo "CASSINI_RUN_TIMEOUT must be whole seconds" >&2; exit 2 ;; esac
 root=$(cd "$(dirname "$0")/../.." && pwd)
 bundle=$(realpath "$1")
 output=$(realpath -m "$2")
@@ -19,5 +22,5 @@ docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
   -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/source/src \
   -e CASSINI_WHISTLE_NETWORK_NONE=1 -e NEEDLE_TELEMETRY=unexpected -e DO_NOT_TRACK=unexpected \
   -v "$root:/source:ro" -v "$bundle:/bundle:ro" -v "$modules:/modules/cassini_talk:ro" -v "$ort:$ort_target:ro" -v "$output:/out:rw" -w /source \
-  cassini-whistle-test /bin/bash -c \
+  cassini-whistle-test timeout --kill-after=30 "$limit" /bin/bash -c \
   'set -e; python3 -m pytest -q -p no:cacheprovider tests/test_whistle_spike.py --junitxml=/out/worker-tests.xml && PYTHONPATH=/modules python3 tests/whistle/probe.py /bundle /out/whistle-linux.json --modules /modules ; PYTHONPATH=/modules python3 tests/dc/probe.py /bundle /out/dc --modules /modules; golden_status=0; PYTHONPATH=/modules python3 tests/whistle/pipeline_probe.py /bundle /out/pipeline-linux.json --modules /modules || golden_status=$?; PYTHONPATH=/modules python3 tests/whistle/stream_probe.py /out; bash tests/whistle/ui-run.sh; exit "$golden_status"'

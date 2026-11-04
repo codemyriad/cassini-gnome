@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
+# E1: bound the run so a hang fails instead of living for days (exit 124/137).
+limit=${CASSINI_RUN_TIMEOUT:-1200}
+case "$limit" in ''|*[!0-9]*) echo "CASSINI_RUN_TIMEOUT must be whole seconds" >&2; exit 2 ;; esac
 root=$(cd "$(dirname "$0")/../.." && pwd)
 bundle=$(realpath "$1")
 models=$(realpath "$2")
@@ -21,5 +24,5 @@ docker run --rm --network none --cpus=2 --memory=2g --cap-drop ALL --security-op
   -v "$root:/source:ro" -v "$bundle:/bundle:ro" -v "$modules:/modules/cassini_talk:ro" \
   -v "$stage$ort_target:$ort_target:ro" -v "$stage$sherpa_target:$sherpa_target:ro" \
   -v "$parakeet:/parakeet:ro" -v "$models:/models:rw" -v "$audio:/input.wav:ro" -v "$output:/out:rw" \
-  -w /source cassini-whistle-test /bin/bash -c \
+  -w /source cassini-whistle-test timeout --kill-after=30 "$limit" /bin/bash -c \
   'set -e; python3 -m pytest -q -p no:cacheprovider tests/test_diarization*.py --basetemp=/out/unit-temp --junitxml=/out/diarization-tests.xml; python3 tests/diarization/pipeline_probe.py /bundle /models/nemotron-3-diarization-int8/47c221ea9b4d4e7f6c108bd098e769bc706cdc986c29f6133c93cae335fe6779 /input.wav /out/pipeline --modules /modules; python3 tests/diarization/pipeline_probe.py /bundle /models/nemotron-3-diarization-int8/47c221ea9b4d4e7f6c108bd098e769bc706cdc986c29f6133c93cae335fe6779 /input.wav /out/parakeet --modules /modules --parakeet-model /parakeet; python3 tests/diarization/queue_probe.py /bundle /models /input.wav /out/queue --modules /modules'

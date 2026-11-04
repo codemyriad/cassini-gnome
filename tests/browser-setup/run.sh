@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
+# E1: bound the run so a hang fails instead of living for days (exit 124/137).
+limit=${CASSINI_RUN_TIMEOUT:-1200}
+case "$limit" in ''|*[!0-9]*) echo "CASSINI_RUN_TIMEOUT must be whole seconds" >&2; exit 2 ;; esac
 package=$(realpath "$1")
 output=$(realpath -m "$2")
 source_root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -26,4 +29,4 @@ docker run --rm --label cassini.scope=browser-startup-test --network=none --cap-
   -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 -e PLAYWRIGHT_BROWSERS_PATH=/browsers \
   -v "$source_root:/source:ro" -v "$output:/out:rw" -v "$browser_cache:/browsers:ro" \
   -v "$node_binary:/opt/node/bin/node:ro" -w /source "$package_test_image" \
-  bash /source/tests/browser-setup/session.sh 2>&1 | tee "$output/session.log"
+  timeout --kill-after=30 "$limit" bash /source/tests/browser-setup/session.sh 2>&1 | tee "$output/session.log"
