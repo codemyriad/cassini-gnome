@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """D43.1(c): a batch must fit inside the app RPC's 30-second budget."""
 
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -255,18 +256,26 @@ def test_default_batch_finishes_inside_the_real_thirty_second_request_timeout(se
     assert server.deadline_clock is time.monotonic
     futures, expire = fake_deadlines(server, monkeypatch)
     server.command_timeout = 25
-    timeouts, connect = [], browser_service.connect
+    timeouts, connections = [], {}
+    connect, read = browser_service.connect, browser_service.read_packet
 
-    def recorded(*args, **kwargs):
-        connection = connect(*args, **kwargs)
-        timeouts.append(connection.gettimeout())
+    def connected(*args, **kwargs):
+        connections[threading.current_thread()] = connection = connect(*args, **kwargs)
         return connection
+
+    def reading(stream):
+        # The socket timeout in effect while request() waits for the reply,
+        # whatever request() set after connect().
+        if (connection := connections.get(threading.current_thread())) is not None:
+            timeouts.append(connection.gettimeout())
+        return read(stream)
 
     # Leave the production batch budget unchanged: two peers never answer,
     # while the third must still start.
     peer = Extension(path, (3, 4, 5))
-    # The socket timeout the Record request below really gets from request().
-    monkeypatch.setattr(browser_service, "connect", recorded)
+    # The socket timeout the Record request below really reads its reply with.
+    monkeypatch.setattr(browser_service, "connect", connected)
+    monkeypatch.setattr(browser_service, "read_packet", reading)
     try:
         with ThreadPoolExecutor(1) as pool:
             before = time.monotonic()
