@@ -868,6 +868,7 @@ class NativeRecorder(GObject.Object):
             return Gst.FlowReturn.EOS
         buffer = sample.get_buffer()
         raw, shift, path = buffer.pts, 0, None
+        branch = sink.get_parent() if isinstance(sink, Gst.Element) else None
         try:
             if raw == Gst.CLOCK_TIME_NONE:
                 raise ValueError("Audio source has no clock timestamp")
@@ -876,6 +877,8 @@ class NativeRecorder(GObject.Object):
             picture = None
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
+                if not self._owns(identifier, attempt, branch):
+                    return Gst.FlowReturn.OK  # A retired branch's late buffer.
                 if attempt is not None and not self._admit(identifier, attempt, pts / Gst.MSECOND):
                     return Gst.FlowReturn.OK  # Uncommitted readiness PCM is discarded.
                 stored = self._track_ids.get(identifier)
@@ -930,6 +933,8 @@ class NativeRecorder(GObject.Object):
             )
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
+                if not self._owns(identifier, attempt, branch):
+                    return Gst.FlowReturn.ERROR  # A retired branch fails alone.
                 if attempt is not None:
                     attempt["error"] = attempt["error"] or str(error)
                     attempt["message"] = attempt.get("message") or str(error)
@@ -939,6 +944,15 @@ class NativeRecorder(GObject.Object):
                     GLib.idle_add(self._begin_finish, str(error))
             return Gst.FlowReturn.ERROR
         return Gst.FlowReturn.OK
+
+    def _owns(self, kind, attempt, branch):
+        """Whether a buffer's branch is this side's current one (lock held).
+
+        A turned-off side's branch can still deliver while its state change
+        finishes; the next turn-on's attempt, or the track it committed, must
+        not take that buffer as its own. None: a stand-in sink with no branch.
+        """
+        return branch is None or branch == (attempt["branch"] if attempt is not None else self._branches.get(kind))
 
     @staticmethod
     def _signal(attempt):

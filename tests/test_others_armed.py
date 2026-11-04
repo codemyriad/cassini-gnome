@@ -22,7 +22,17 @@ try:
 except ValueError:
     pytest.skip("GStreamer typelib is unavailable", allow_module_level=True)
 from gi.repository import GLib, Gst  # noqa: E402
-from test_native_sides import BOUND, CAUSES, Sides, browser_start, close, kinds_of, native_pcm, refusals  # noqa: E402
+from test_native_sides import (  # noqa: E402
+    BOUND,
+    CAUSES,
+    FRAME,
+    Sides,
+    browser_start,
+    close,
+    kinds_of,
+    native_pcm,
+    refusals,
+)
 from test_recorder import spin_until  # noqa: E402
 
 from cassini_talk import refusals as R  # noqa: E402
@@ -324,6 +334,53 @@ def test_an_armed_turn_on_can_be_turned_off_again(tmp_path, quiet_turn_on):
     finally:
         close(recorder)
     assert saved(session)["state"] == "completed"
+
+
+def test_a_turned_off_armed_branch_still_delivering_never_feeds_the_next_turn_on(tmp_path, quiet_turn_on):
+    # A side armed at start whose state change has not returned yet: turning it
+    # off detaches its branch, and its own thread stops it later (_detach). Until
+    # then it can still deliver, after a turn-on armed a new branch for the side.
+    recorder, sides, signals = start(tmp_path, QUIET)
+    old = recorder._pending_sources["system"]
+    try:
+        session = recorder.session
+        recorder._turn_on_wait = quiet_turn_on
+        source, sink = sides.sources["system"], old["branch"].get_by_name("system")
+        with recorder._lock:
+            old["settled"] = False
+        turn_on(recorder, True, False)
+        assert old["retired"] and old["branch"].get_parent() is None
+        turn_on(recorder, True, True)
+        new = recorder._pending_sources["system"]
+        assert new is not old and new["armed"] and recorder.armed_sides().keys() == {"system"}
+        handled = threading.Event()  # Connected after the recorder's own handler: runs once it returned.
+        sink.connect("new-sample", lambda *_: (handled.set(), Gst.FlowReturn.OK)[1])
+
+        def late():
+            handled.clear()
+            buffer = Gst.Buffer.new_wrapped(FRAME)
+            clock = recorder.pipeline.get_clock()
+            buffer.pts = clock.get_time() - recorder.pipeline.get_base_time()
+            assert source.emit("push-buffer", buffer) == Gst.FlowReturn.OK
+            assert handled.wait(5)  # Bound only: the retired branch's buffer was handled.
+
+        late()
+        assert recorder._pending_sources.get("system") is new and not new["committed"] and not new["ready"].is_set()
+        assert kinds_of(session) == ["microphone"] and "refusals" not in session.manifest
+        # The new branch's own first buffer opens the side; the old one's never reaches its track.
+        sides.fire("system")
+        spin_until(lambda: recorder._track_ids.get("system") is not None)
+        identifier = recorder._track_ids["system"]
+        spin_until(lambda: session.writers[identifier].frames == 480)
+        late()
+        assert session.writers[identifier].frames == 480 and not recorder._finishing
+        stop(recorder, signals)
+    finally:
+        old["branch"].set_state(Gst.State.NULL)
+        close(recorder)
+    stored = saved(session)
+    assert stored["state"] == "completed" and "refusals" not in stored and "problem" not in stored
+    assert [(t["kind"], t["frames"]) for t in stored["tracks"]] == [("microphone", 480), ("system", 480)]
 
 
 def test_an_armed_refusal_persists_off_the_main_loop_and_stop_still_completes(tmp_path, caplog):
