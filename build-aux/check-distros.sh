@@ -32,6 +32,7 @@ step() { printf "\\n==> %s\\n" "$1"; }
 save_logs() {
   [ -d /logs ] || return 0
   [ ! -d /build/b/meson-logs ] || cp -a /build/b/meson-logs/. /logs/
+  cp /etc/os-release /logs/os-release  # G11: the image that ran the tests
   chown -R "$(stat -c %u:%g /logs)" /logs
 }
 trap "save_logs || true" EXIT

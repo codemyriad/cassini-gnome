@@ -29,12 +29,17 @@ FILES = (
     "build-aux/deb/build.sh",
     "build-aux/rpm/build.sh",
     "build-aux/arch/build.sh",
+    "build-aux/check-distros.sh",
+    "build-aux/deb/Dockerfile",
     "build-aux/ci/pr-paths.json",
     "pyproject.toml",
     "tests/conftest.py",
 )
-# Read when present: debhelper deletes the files debian/clean lists.
-OPTIONAL = ("debian/clean",)
+# Read when present: debhelper deletes the files debian/clean lists and
+# applies debian/patches; pytest reads its config from the first of these.
+OPTIONAL = ("debian/clean", "debian/patches/series", "pytest.ini", ".pytest.ini", "pytest.toml", ".pytest.toml")
+OPTIONAL += ("tox.ini", "setup.cfg", "conftest.py")
+OS_RELEASE = "cp /etc/os-release /logs/os-release  # G11: the image that ran the tests"
 # The Source images that keep their pytest suite: no package job uses them.
 KEEPS_PYTEST = {"fedora:latest", "alpine:edge"}
 
@@ -49,11 +54,13 @@ ARCH_CHECK = ["check() {", "CASSINI_TEST_REQUIRE_GTK=1 meson test -C build --pri
 CHECK_STEP = """
       - name: Require the whole pytest suite to have run and passed
         id: pytest
-        run: python3 build-aux/ci/check_pytest_ran.py "$CASSINI_TEST_LOGS" --github-output "$GITHUB_OUTPUT"
+        run: |
+          python3 build-aux/ci/check_pytest_ran.py "$CASSINI_TEST_LOGS" --export "$RUNNER_TEMP/pytest" \\
+            --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
           name: pytest-ran-${{ steps.pytest.outputs.slug }}
-          path: ${{ runner.temp }}/meson-logs/*/testlog.json
+          path: ${{ runner.temp }}/pytest/
           if-no-files-found: error
 """
 SKIP_ENV = """
@@ -61,20 +68,24 @@ SKIP_ENV = """
       CASSINI_SKIP_PYTEST: ${{ matrix.pytest-in && '1' || '' }}
     steps:
 """
-SKIP_MARKER = """
-      - name: Record that this image's pytest suite is skipped here
-        id: skip
-        if: env.CASSINI_SKIP_PYTEST == '1'
+SOURCE_STEP = """
+      - run: build-aux/check-distros.sh "${{ matrix.image }}"
+      # G11: from this job's own Meson logs, the node ids its pytest ran
+      # (fedora:latest's are the reference every package job must cover),
+      # or, whatever made it skip, a pytest-skipped marker that CI's Pytest
+      # coverage gate requires a package job's proof for.
+      - name: Record which pytest tests ran here
+        id: pytest
+        if: ${{ !cancelled() }}
         run: |
           . build-aux/container.sh
-          echo "slug=$(image_slug "${{ matrix.image }}")" >> "$GITHUB_OUTPUT"
-          echo "::notice::pytest suite skipped here; ${{ matrix.pytest-in }} runs it in ${{ matrix.image }}"
-          echo "${{ matrix.image }}" > "$RUNNER_TEMP/pytest-skipped"
+          python3 build-aux/ci/check_pytest_ran.py --source "$CASSINI_TEST_LOGS" --slug "$(image_slug "${{ matrix.image }}")" \\
+            --export "$RUNNER_TEMP/pytest" --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
-        if: env.CASSINI_SKIP_PYTEST == '1'
+        if: ${{ !cancelled() }}
         with:
-          name: pytest-skipped-${{ steps.skip.outputs.slug }}
-          path: ${{ runner.temp }}/pytest-skipped
+          name: pytest-${{ steps.pytest.outputs.kind }}-${{ steps.pytest.outputs.slug }}
+          path: ${{ runner.temp }}/pytest/
           if-no-files-found: error
 """
 GATE = """
@@ -84,18 +95,14 @@ GATE = """
     if: ${{ !cancelled() }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
-    permissions:
-      contents: read
-      actions: read
     steps:
       - uses: actions/checkout@v7
-      - name: Every image whose Source job skipped pytest ran it in its package job
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \\
-            -q '.artifacts[].name' > "$RUNNER_TEMP/artifacts"
-          python3 build-aux/ci/check_pytest_ran.py --gate "$RUNNER_TEMP/artifacts"
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: pytest-*
+          path: ${{ runner.temp }}/pytest
+      - name: Every skipped pytest suite ran in full in a package job of the same release
+        run: python3 build-aux/ci/check_pytest_ran.py --gate "$RUNNER_TEMP/pytest"
 """
 PYTEST_OPTIONS = {"faulthandler_timeout": 30, "pythonpath": ["src"], "testpaths": ["tests"]}
 BUILDS = {
@@ -233,8 +240,26 @@ def problems(files):
         found.append("Source has a pytest-in this guard cannot read")
     if source.count("CASSINI_SKIP_PYTEST:") != 1 or SKIP_ENV not in source:
         found.append("Source skips pytest other than through the job's pytest-in")
-    if SKIP_MARKER not in source:
-        found.append("Source skips pytest without leaving its pytest-skipped marker")
+    if SOURCE_STEP not in source:
+        found.append("Source does not record from its own logs whether its pytest ran")
+    distros = files["build-aux/check-distros.sh"]
+    if distros.count("CASSINI_SKIP_PYTEST") != 4 or 'if [ "${CASSINI_SKIP_PYTEST:-}" = 1 ]; then' not in distros:
+        found.append("check-distros.sh decides on its own whether to skip pytest")
+    for script in (
+        "build-aux/check-distros.sh",
+        "build-aux/deb/build.sh",
+        "build-aux/rpm/build.sh",
+        "build-aux/arch/build.sh",
+    ):
+        if files[script].count(OS_RELEASE) != 1:
+            found.append(f"{script}: does not save the os-release of the container that ran the tests")
+    if [
+        line for line in code(files["build-aux/deb/Dockerfile"].splitlines()) if re.match(r"(FROM|ARG BASE)\b", line)
+    ] != [
+        "ARG BASE=ubuntu:26.04",
+        "FROM ${BASE}",
+    ]:
+        found.append("build-aux/deb/Dockerfile: the build image is not the BASE build.sh names")
 
     # CI runs the package jobs whenever it runs Source, and gates on the proof.
     ci = jobs(files[".github/workflows/ci.yml"])
@@ -353,6 +378,19 @@ def problems(files):
         found.append("pyproject.toml: the pytest options changed (addopts, testpaths, python_files ...)")
     if "collect_ignore" in files["tests/conftest.py"]:
         found.append("tests/conftest.py: collect_ignore leaves test files out")
+    for name in ("pytest.ini", ".pytest.ini", "pytest.toml", ".pytest.toml", "conftest.py"):
+        if files[name]:
+            found.append(f"{name}: pytest reads it before pyproject.toml")
+    if "[pytest]" in files["tox.ini"] or "[tool:pytest]" in files["setup.cfg"]:
+        found.append("tox.ini or setup.cfg configures pytest")
+
+    # No mechanism that edits the sources (tests included) inside a build.
+    if code(files["debian/patches/series"].splitlines()):
+        found.append("debian/patches: the Debian build patches the sources")
+    if re.search(r"^Patch\d*:", files["build-aux/rpm/cassini-talk.spec"], re.M):
+        found.append("cassini-talk.spec: the RPM build patches the sources")
+    if any(re.search(r"(^|\s)patch\s", line) for line in code(files["build-aux/arch/PKGBUILD"].splitlines())):
+        found.append("PKGBUILD: the Arch build patches the sources")
     return found
 
 
@@ -542,10 +580,65 @@ MUTATIONS = {
         "          - image: fedora:latest\n",
         "          - image: fedora:latest\n            pytest-in: 'RPM and Arch packages / Build .rpm (fedora:44)'\n",
     ),
-    "source skip marker dropped": (
+    "source pytest record dropped": (
         "source.yml",
-        "          name: pytest-skipped-${{ steps.skip.outputs.slug }}\n",
-        "          name: skipped-${{ steps.skip.outputs.slug }}\n",
+        "          name: pytest-${{ steps.pytest.outputs.kind }}-${{ steps.pytest.outputs.slug }}\n",
+        "          name: pytest-nodes-${{ steps.pytest.outputs.slug }}\n",
+    ),
+    "source records only on success": (
+        "source.yml",
+        "        if: ${{ !cancelled() }}\n        run: |\n          . build",
+        "        run: |\n          . build",
+    ),
+    "check-distros skips fedora on its own": (
+        "build-aux/check-distros.sh",
+        ". build-aux/container.sh\n",
+        '. build-aux/container.sh\ncase "$*" in *fedora*) CASSINI_SKIP_PYTEST=1 ;; esac\n',
+    ),
+    "deb Dockerfile ignores BASE": (
+        "build-aux/deb/Dockerfile",
+        "ARG BASE=ubuntu:26.04\nFROM ${BASE}",
+        "ARG BASE_IMAGE=ubuntu:26.04\nFROM ${BASE_IMAGE}",
+    ),
+    "deb os-release not saved": ("build-aux/deb/build.sh", "    " + OS_RELEASE + "\n", ""),
+    "source os-release not saved": ("build-aux/check-distros.sh", "  " + OS_RELEASE + "\n", ""),
+    "root pytest.ini": (
+        "pyproject.toml",
+        "[tool.pytest.ini_options]",
+        "[tool.pytest.ini_options]",
+        0,
+        ("pytest.ini", "[pytest]\naddopts = -k 'not record'\n"),
+    ),
+    "root conftest": (
+        "pyproject.toml",
+        "[tool.pytest.ini_options]",
+        "[tool.pytest.ini_options]",
+        0,
+        ("conftest.py", "collect_ignore_glob = ['tests/test_record*']\n"),
+    ),
+    "setup.cfg pytest section": (
+        "pyproject.toml",
+        "[tool.pytest.ini_options]",
+        "[tool.pytest.ini_options]",
+        0,
+        ("setup.cfg", "[tool:pytest]\naddopts = -k x\n"),
+    ),
+    "debian patch series": (
+        "debian/control",
+        "Build-Depends:",
+        "Build-Depends:",
+        0,
+        ("debian/patches/series", "drop-record-tests.patch\n"),
+    ),
+    "rpm Patch": (
+        "build-aux/rpm/cassini-talk.spec",
+        "BuildRequires:  meson >= 1.3\n",
+        "Patch0:         drop-record-tests.patch\nBuildRequires:  meson >= 1.3\n",
+    ),
+    "arch patch": (
+        "build-aux/arch/PKGBUILD",
+        "build() {\n",
+        "prepare() {\n  patch -p1 -i ../drop.patch\n}\n\nbuild() {\n",
     ),
     "source skips on its own": (
         "source.yml",

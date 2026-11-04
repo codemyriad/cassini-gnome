@@ -54,14 +54,16 @@ jobs:
       # image pulls (build-aux/ci/retry.sh), never the build or its tests.
       - run: build-aux/deb/build.sh "${{ matrix.base }}"
       # G11: the Source job of this image skips pytest; prove it ran here in
-      # full, then leave the marker CI's Pytest coverage gate looks for.
+      # full, then leave the node ids CI's Pytest coverage gate compares.
       - name: Require the whole pytest suite to have run and passed
         id: pytest
-        run: python3 build-aux/ci/check_pytest_ran.py "$CASSINI_TEST_LOGS" --github-output "$GITHUB_OUTPUT"
+        run: |
+          python3 build-aux/ci/check_pytest_ran.py "$CASSINI_TEST_LOGS" --export "$RUNNER_TEMP/pytest" \
+            --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
           name: pytest-ran-${{ steps.pytest.outputs.slug }}
-          path: ${{ runner.temp }}/meson-logs/*/testlog.json
+          path: ${{ runner.temp }}/pytest/
           if-no-files-found: error
       # G3: the Meson test logs (testlog.txt with each shard's --durations,
       # testlog.json, the pytest junit XML), also on success, to track creep;

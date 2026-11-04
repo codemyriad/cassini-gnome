@@ -67,19 +67,24 @@ Those package jobs are required: the debian:testing build no longer has
 `green_main.py`). After each build, `build-aux/ci/check_pytest_ran.py` proves
 from its Meson logs what pytest ran: pytest-1 .. pytest-N each once and passed,
 with the command `src/meson.build` registers, their shard,
-`CASSINI_TEST_REQUIRE_GTK=1` and no `PYTEST_ADDOPTS`; every test file of the
-checkout in the shard `tests/shard_plan.py` gives it (a file deleted or
-ignored during the build is missing); and no skip outside its short `SKIPS`
-list. The job then uploads a `pytest-ran-<image>` marker.
+`CASSINI_TEST_REQUIRE_GTK=1` and no `PYTEST_ADDOPTS`; each shard read the
+source's `pyproject.toml`, deselected nothing and tested a `tests/` tree
+identical to the checkout (`tests/conftest.py` records these per shard);
+every test file is in the shard `tests/shard_plan.py` gives it; and no skip
+falls outside its short `SKIPS` list. The job uploads its node ids and the
+os-release of the container that ran them as `pytest-ran-<image>`.
 
-Each Source job that skips pytest uploads `pytest-skipped-<image>` first. CI's
-**Pytest coverage** job runs after Source and the package workflows and fails
-if any skipped image has no `pytest-ran-` marker, whatever left the package
-job out (a condition, a matrix exclusion, another image, a failure).
+Every Source job records from its own logs either the node ids its pytest ran
+or, whatever made it skip, `pytest-skipped-<image>`. CI's **Pytest coverage**
+job then fails if a skipped image has no `pytest-ran-` proof from a container
+of the same release, or if any package job ran fewer cases of a test function
+than the fedora:latest Source job, the reference that keeps the whole suite
+with GTK outside a package build. A test left out only in package builds, by
+a deselection, a conditional definition, a patch or another image, fails here.
 `tests/test_ci_pytest_replacement.py` also pins the recipes' test commands,
-hooks and check dependencies, the job conditions and the gate, and mutates
-each (every bypass found in an adversarial review among them) to prove the
-guard catches it.
+hooks, patches and check dependencies, the job conditions and the gate, and
+mutates each (every bypass found in two adversarial reviews among them) to
+prove the guard catches it.
 
 Tar products preserve executable bits. Before use, consumers check their exact
 GitHub commit, profile and every file digest; extraction rejects traversal, links
