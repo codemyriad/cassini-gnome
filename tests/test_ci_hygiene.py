@@ -137,9 +137,10 @@ def steps(workflow):
     return re.split(r"\n(?=      - )", workflow.read_text())[1:]
 
 
-def test_caches_are_saved_from_main_only():
+def test_harness_image_caches_are_saved_from_main_only():
     # D66: a pull request restores caches and never saves one. The harness
     # images are only ever restored, then saved by an explicit main-only step.
+    # The older restore-and-save caches are pinned in D66_SAVE_ON_PR_DEBT below.
     main_only = "github.event_name != 'pull_request' && github.ref == 'refs/heads/main'"
     saves, restores = [], []
     for workflow in sorted(WORKFLOWS.glob("*.yml")):
@@ -153,6 +154,37 @@ def test_caches_are_saved_from_main_only():
                 restores.append(workflow.name)
     assert sorted(restores) == ["background-apps.yml", "deb.yml", "whistle.yml"]
     assert sorted(saves) == sorted(restores * 2)
+
+
+# D66 debt: these caches restore and save in one step (actions/cache, or the
+# flatpak-builder action's cache-key), so a pull request's miss saves an entry.
+# Follow-up: split each into actions/cache/restore plus a main-only
+# actions/cache/save, then drop it here. Nothing may be added to this list.
+D66_SAVE_ON_PR_DEBT = sorted(
+    [
+        ("background-apps.yml", "desktop-gnome50-v1"),
+        *[("build.yml", key) for key in ("whistle", "sherpa")],
+        *[("deb.yml", key) for key in ("whistle", "sherpa", "parakeet-ultra", "browser-startup-linux-x64")],
+        *[("flatpak.yml", key) for key in ("flatpak-builder-devel", "parakeet-ultra")],
+        *[("packages.yml", key) for key in ("whistle", "sherpa", "parakeet-ultra") * 2],
+        ("recording.yml", "browser-startup-linux-x64"),
+        *[("rpm-canary.yml", key) for key in ("whistle", "sherpa", "parakeet-ultra")],
+        *[("ux-shot.yml", key) for key in ("whistle", "sherpa")],
+        *[("whistle.yml", key) for key in ("whistle", "sherpa", "parakeet-ultra", "nemotron", "campplus", "s11-audio")],
+    ]
+)
+
+
+def test_no_new_cache_saves_on_pull_requests():
+    # D66: every cache that can save from a pull request is listed debt; a new
+    # one fails here instead of passing under the main-only test above.
+    found = []
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        for step in steps(workflow):
+            if re.search(r"uses: actions/cache@", step) or re.search(r"^\s+cache-key: ", step, re.M):
+                key = re.search(r"^\s+(?:key|cache-key): (\S+)", step, re.M)[1]
+                found.append((workflow.name, re.match(r"[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*", key)[0]))
+    assert sorted(found) == D66_SAVE_ON_PR_DEBT
 
 
 REFRESH = "RUN apt-get update && apt-get -y --no-install-recommends dist-upgrade"
