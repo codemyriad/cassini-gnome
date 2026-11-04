@@ -3,7 +3,7 @@
 set -euo pipefail
 # E1: bound the run so a hang fails instead of living for days (exit 124/137).
 limit=${CASSINI_RUN_TIMEOUT:-600}
-case "$limit" in ''|*[!0-9]*) echo "CASSINI_RUN_TIMEOUT must be whole seconds" >&2; exit 2 ;; esac
+[[ $limit =~ ^0*[1-9][0-9]*$ ]] || { echo "CASSINI_RUN_TIMEOUT must be whole seconds, at least 1" >&2; exit 2; }
 cd "$(dirname "$0")/../.."
 for tool in docker xvfb-run xauth xdotool dbus-run-session; do
     command -v "$tool" >/dev/null || { echo "Missing $tool: install the recording harness prerequisites in tests/recording/README.md" >&2; exit 1; }

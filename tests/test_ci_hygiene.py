@@ -7,6 +7,11 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 WORKFLOWS = ROOT / ".github/workflows"
 BOUND = 'timeout --kill-after=30 "$limit" '
+# GNU timeout 0 never times out: a limit must be whole seconds, at least 1.
+LIMIT_CHECK = (
+    '[[ $limit =~ ^0*[1-9][0-9]*$ ]] || { echo "CASSINI_RUN_TIMEOUT must be whole seconds, at least 1" >&2; exit 2; }'
+)
+LIMIT = re.compile(r"^limit=\$\{CASSINI_RUN_TIMEOUT:-\d+\}\n" + re.escape(LIMIT_CHECK) + "$", re.M)
 
 
 def jobs(workflow):
@@ -45,7 +50,7 @@ def test_every_local_test_run_is_bounded():
             if re.search(r"(^|\s)docker run\s", line) and " -d " not in line and BOUND not in line:
                 unbounded.append(f"{script.relative_to(ROOT)}: {line.strip()[:80]}")
     assert unbounded == []
-    # On the host, bounded-run.sh also kills what the run leaves in its process group.
+    # On the host, bounded-run.sh also kills what the run leaves behind, setsid'd or not.
     host = re.compile(r'("\$bounded"|build-aux/bounded-run\.sh) "\$limit" dbus-run-session ')
     for name in ("build-aux/ux-screenshot.sh", "tests/recording/run.sh"):
         lines = [line for line in commands(ROOT / name) if "xvfb-run -a" in line]
@@ -53,7 +58,21 @@ def test_every_local_test_run_is_bounded():
     for script in scripts:
         text = script.read_text()
         if script.name != "bounded-run.sh" and (BOUND in text or "bounded-run.sh" in text):
-            assert re.search(r"^limit=\$\{CASSINI_RUN_TIMEOUT:-\d+\}$", text, re.M), script
+            assert LIMIT.search(text), script
+    # timeout must be the container's PID 1: when it exits, the kernel kills every
+    # process left in the container, setsid'd ones too. The images used by a bounded
+    # docker run declare no ENTRYPOINT (ubuntu:26.04 declares none either); the
+    # detached audio server's own timeout entrypoint is the exception.
+    images = set()
+    for script in ROOT.glob("tests/*/run.sh"):
+        for line in commands(script):
+            if re.search(r"(^|\s)docker build\s", line):
+                images.update(re.findall(r"tests/[\w/.-]*(?:Dockerfile|Containerfile)\b", line))
+    assert images > {"tests/whistle/Containerfile", "tests/desktop/Dockerfile"}
+    entrypoints = [name for name in sorted(images) if re.search(r"^ENTRYPOINT", (ROOT / name).read_text(), re.M | re.I)]
+    assert entrypoints == ["tests/recording/Audio.Dockerfile"]
+    audio = [line for line in commands(ROOT / "tests/recording/run.sh") if "docker run " in line]
+    assert audio and all(" -d " in line for line in audio)
     # The detached audio server is removed by run.sh's EXIT trap; its own bound is the backstop.
     assert (
         'ENTRYPOINT ["timeout", "--kill-after=30", "7200", ' in (ROOT / "tests/recording/Audio.Dockerfile").read_text()

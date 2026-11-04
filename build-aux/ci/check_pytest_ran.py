@@ -49,6 +49,10 @@ import shard_plan  # noqa: E402
 ARGUMENTS = ["-m", "pytest", "-q", "--durations=20", "-o", "junit_family=xunit1"]
 # Every skip a package build may report: node id -> why it cannot run there.
 SKIPS = {
+    **{
+        f"tests.test_bounded_run::test_nothing_of_a_run_outlives_it[scope-{ending}]": "no systemd --user"
+        for ending in ("done", "timeout", "stubborn", "interrupt")
+    },
     "tests.test_ci_orchestrator::test_actual_git_rename_keeps_old_area_coverage": "no git in the build",
     "tests.test_library_v2_finalize::test_a_really_full_tmpfs_leaves_nothing_in_the_root": "needs a tiny tmpfs",
     "tests.test_ux_vectors::test_locale_clock_style_in_a_real_locale_process[en_GB.UTF-8-14:18]": "locale",
