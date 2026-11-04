@@ -19,6 +19,13 @@
 #   killed. A process can still move itself out of the scope (Chromium asks the
 #   user manager for a scope of its own when it reaches the session bus): the
 #   sweep above still catches it.
+# - Known limitation (D-208, accepted): the sweep is this script (python3 only
+#   sets the subreaper flag, then execs it under the same pid). SIGKILL it and
+#   no sweep runs. In sweep mode, without a user systemd manager, descendants
+#   that called setsid have left the process group and stay alive. Scope mode,
+#   the default where systemd --user works (roy), still ends everything left in
+#   the scope, though only at RuntimeMaxSec (SECONDS + 2 * kill-after + 10 s); a
+#   process that moved into a scope of its own (Chromium) survives in either mode.
 # CASSINI_BOUNDED_RUN_MECHANISM=auto (default: scope where it works) | scope | sweep.
 set -uo pipefail
 whole='^0*[1-9][0-9]{0,8}$'

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """D43.1(c): a batch must fit inside the app RPC's 30-second budget."""
 
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -26,8 +27,8 @@ def fake_deadlines(server, monkeypatch):
     monkeypatch.setattr(browser_service, "ThreadPoolExecutor", Recorded)
     server.deadline_clock = lambda: now[0]
 
-    def expire():
-        now[0] += server.batch_timeout + server.command_timeout + 1
+    def expire(seconds=None):
+        now[0] += server.batch_timeout + server.command_timeout + 1 if seconds is None else seconds
 
     return futures, expire
 
@@ -249,20 +250,47 @@ def test_stop_cannot_overtake_a_start_then_leave_that_start_recording(service, m
         peer.close()
 
 
-def test_default_batch_finishes_inside_the_real_thirty_second_request_timeout(service):  # noqa: F811
+def test_default_batch_finishes_inside_the_real_thirty_second_request_timeout(service, monkeypatch):  # noqa: F811
     server, path = service
+    # Production deadlines run on the monotonic clock fake_deadlines replaces.
+    assert server.deadline_clock is time.monotonic
+    futures, expire = fake_deadlines(server, monkeypatch)
     server.command_timeout = 25
+    timeouts, connections = [], {}
+    connect, read = browser_service.connect, browser_service.read_packet
+
+    def connected(*args, **kwargs):
+        connections[threading.current_thread()] = connection = connect(*args, **kwargs)
+        return connection
+
+    def reading(stream):
+        # The socket timeout in effect while request() waits for the reply,
+        # whatever request() set after connect().
+        if (connection := connections.get(threading.current_thread())) is not None:
+            timeouts.append(connection.gettimeout())
+        return read(stream)
+
     # Leave the production batch budget unchanged: two peers never answer,
-    # while the third must still start, using request()'s actual 30 s socket.
+    # while the third must still start.
     peer = Extension(path, (3, 4, 5))
+    # The socket timeout the Record request below really reads its reply with.
+    monkeypatch.setattr(browser_service, "connect", connected)
+    monkeypatch.setattr(browser_service, "read_packet", reading)
     try:
         with ThreadPoolExecutor(1) as pool:
             before = time.monotonic()
             pending = pool.submit(request, "start-all", path=path)
             commands = [peer.receive() for _ in range(3)]
             peer.answer(next(c for c in commands if c["tabId"] == 5))
-            result = pending.result(28)
-            assert time.monotonic() - before < 28
+            wait_for(lambda: sum(future.done() for future in futures) == 1)
+            # Exactly the production budget after the batch began, not a second more.
+            expire(server.batch_timeout)
+            result = pending.result(10)
+            # The budget plus all the real time the request took apart from
+            # waiting for it, with 2 s of the socket timeout left (as the 28 s
+            # bound of a real-time run gave).
+            (timeout,) = timeouts
+            assert server.batch_timeout + (time.monotonic() - before) + 2 < timeout
             assert result["attempted"] == 3 and len(result["failures"]) == 2
             assert {s["tabId"] for s in result["statuses"] if s["recording"]} == {5}
     finally:

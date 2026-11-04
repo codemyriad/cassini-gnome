@@ -52,18 +52,38 @@ def test_queued_auto_start_cannot_restart_a_manually_stopped_replacement(service
         new.close()
 
 
-def test_lost_auto_start_retries_when_its_replacement_arrives_after_real_grace(service):  # noqa: F811
+def test_lost_auto_start_retries_when_its_replacement_arrives_after_real_grace(service, monkeypatch):  # noqa: F811
     broker, path = service
     broker.command_timeout = 25
+    # The reconnect grace runs on the deadline clock; the test moves it.
+    now = [0.0]
+    broker.deadline_clock = lambda: now[0]
+    recovering, polling = [], threading.Event()
+    recover, resolve = broker._recover_command, broker._resolve_call
+
+    def recovery(*args, **kwargs):
+        recovering.append(threading.current_thread())
+        return recover(*args, **kwargs)
+
+    def resolved(*args, **kwargs):
+        # The lost Start's recovery has set its grace deadline and is waiting.
+        if threading.current_thread() in recovering:
+            polling.set()
+        return resolve(*args, **kwargs)
+
+    monkeypatch.setattr(broker, "_recover_command", recovery)
+    monkeypatch.setattr(broker, "_resolve_call", resolved)
     old = peer(path)
     request("configure", path=path, autoRecord=True)
     assert old.receive()["action"] == "start"
     old.close()
     wait_for(lambda: not broker.browsers)
-    end = time.monotonic() + 12
-    while broker._scheduled_calls and time.monotonic() < end:
-        time.sleep(0.02)
-    assert not broker._scheduled_calls
+    assert polling.wait(5)
+    # 12 s, the old real-time bound: the 10 s grace (the extension's and
+    # docs/call-lifecycle.md's window) must be over by then, still well inside
+    # the Start's own 25 s. A longer grace leaves the call scheduled.
+    now[0] = 12
+    wait_for(lambda: not broker._scheduled_calls)
     new = peer(path)
     try:
         command = new.receive()

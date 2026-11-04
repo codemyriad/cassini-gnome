@@ -156,6 +156,24 @@ def test_only_the_listed_skips_are_allowed(tmp_path):
     assert module().problems(logs(tmp_path, cases=skipped), SHARDS, expected, DIGEST) == []
 
 
+@pytest.mark.parametrize("meson", ["OK", "FAIL", "SKIP", None])
+def test_a_skip_meson_runs_instead_needs_that_meson_test_to_pass_in_the_same_log(tmp_path, meson):
+    check = module()
+    ((skip, test),) = check.MESON_RUNS.items()
+    assert skip in check.SKIPS
+    classname, name = skip.split("::")
+    file = classname.replace(".", "/") + ".py"
+    skipped = {1: passing(1) + [case(file, name, '<skipped message="Meson runs it"/>')]}
+    directory = logs(tmp_path, cases=skipped)
+    log = directory / "testlog.json"
+    entries = [e for e in map(json.loads, log.read_text().splitlines()) if e["name"] != f"cassini-talk:{test}"]
+    if meson is not None:
+        entries.append(dict(name=f"cassini-talk:{test}", result=meson, command=["x"], env={}))
+    log.write_text("\n".join(map(json.dumps, entries)) + "\n")
+    found = check.problems(directory, SHARDS, {**EXPECTED, 1: EXPECTED[1] | {file}}, DIGEST)
+    assert found == ([] if meson == "OK" else [f"{directory.name}: pytest-1 skipped {skip}, but {test} did not pass"])
+
+
 def test_the_expected_files_and_skips_are_this_checkouts():
     check = module()
     expected = check.expected_files(SHARDS)

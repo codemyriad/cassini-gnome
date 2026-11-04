@@ -781,20 +781,29 @@ def owned_mix(meeting, session=CALL):
     return mix
 
 
-def check_mix(mix, meeting, session=CALL):
-    wanted = owned_mix(meeting, session)
+def check_mix(mix, meeting, session=CALL, wanted=None):
+    wanted = owned_mix(meeting, session) if wanted is None else wanted
     assert len(mix) == len(wanted), "published duration"
     worst = np.max(np.abs(mix - wanted))
     assert worst < LSB, f"published mix differs from the owned sum by {worst:.4f}"
 
 
-def test_published_mix_and_export_hold_each_instant_once(corpus):  # noqa: F811
+@pytest.fixture(scope="module")
+def call_mix(corpus):  # noqa: F811
+    """Session 1's unpatched publication mix, its timeline and its owned sum, built once:
+    the test below and the mix mutants' baselines check this same PCM."""
+    meeting = corpus.meetings[CALL]
+    mix, timeline = published(meeting)
+    return mix, timeline, owned_mix(meeting)
+
+
+def test_published_mix_and_export_hold_each_instant_once(corpus, call_mix):  # noqa: F811
     from cassini_talk.export_audio import track_pcm
     from cassini_talk.source_ownership import presence, samples
 
     meeting = corpus.meetings[CALL]
-    mix, timeline = published(meeting)
-    check_mix(mix, meeting)
+    mix, timeline, wanted = call_mix
+    check_mix(mix, meeting, wanted=wanted)
     # Export reads each track through the same mask; mixed_pcm sums these blocks
     # sample by sample in Python, so the sum here is numpy's.
     exported = np.zeros(len(mix))
@@ -909,8 +918,12 @@ def clamp_of(corpus, monkeypatch, tmp_path):  # noqa: F811
     ],
     ids=["ownership-words", "ownership-noWords", "ownership-mix", "presence", "track-floor", "clamp", "mix-ownership"],
 )
-def test_each_mutant_fails_its_named_check(corpus, monkeypatch, tmp_path, mutant, check, message):  # noqa: F811
-    check(corpus, monkeypatch, tmp_path)  # the baseline passes
+def test_each_mutant_fails_its_named_check(corpus, call_mix, monkeypatch, tmp_path, mutant, check, message):  # noqa: F811
+    # The baseline passes. Unpatched, mix_of would rebuild call_mix's PCM exactly.
+    if check is mix_of:
+        check_mix(call_mix[0], corpus.meetings[CALL], wanted=call_mix[2])
+    else:
+        check(corpus, monkeypatch, tmp_path)
     mutant(monkeypatch)
     with pytest.raises(AssertionError, match=message):
         check(corpus, monkeypatch, tmp_path / "mutant")
