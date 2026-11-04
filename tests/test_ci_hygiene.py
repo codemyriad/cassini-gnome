@@ -226,3 +226,26 @@ def test_the_harness_stage_installs_the_static_runtime_depends():
     ).stdout
     assert depends.endswith("\n") and depends.strip().split(", ") == expected
     assert "python3-gi" in expected and "gir1.2-gtk-4.0 (>= 4.18)" in expected
+
+
+def test_the_meson_tests_run_beside_the_build_products_and_gate_every_run():
+    # H: Recording, Boards and Offline wait only for the products; the Meson tests
+    # run on every CI run, unfiltered, and nothing passes without them.
+    ci = dict(jobs(WORKFLOWS / "ci.yml"))
+    assert [line.strip() for line in ci["meson-tests"].strip().splitlines()] == [
+        "meson-tests:",
+        "name: Meson tests",
+        "uses: ./.github/workflows/meson-tests.yml",
+    ]
+    for name in ("recording", "boards", "offline"):
+        assert re.search(r"^    needs: \[changes, build\]$", ci[name], re.M) and "meson-tests" not in ci[name], name
+    assert "needs: [source, deb, rpm-arch, meson-tests]" in ci["pytest-coverage"]
+    assert 'test "$MESON_TESTS" = success ||' in ci["pytest-coverage"]
+    (tests,) = dict(jobs(WORKFLOWS / "meson-tests.yml")).values()
+    products = dict(jobs(WORKFLOWS / "build.yml"))["products"]
+    for line in ("meson test -C _build-core --print-errorlogs", "meson compile -C _build-core cassini-talk-pot"):
+        assert line in tests and line not in products
+    assert "container: ubuntu:26.04" in tests and "if:" not in tests
+    # The same minimal environment as the products' build.
+    install = re.compile(r"- name: Install build tools \(minimal source-validation environment\)\n(?:        .*\n)+")
+    assert install.search(tests)[0] == install.search(products)[0]

@@ -16,8 +16,8 @@ a missing product makes its consumer fail explicitly. Root calls use
 still stops downstream work, following [GitHub status-check semantics](https://docs.github.com/en/actions/reference/workflows-and-actions/expressions#status-check-functions). No automatic cancellation remains. Agents may cancel their own superseded heads
 manually, never main/nightly or the last potentially mergeable head.
 
-The PR checks list names the areas: Changed areas, Build, Source, Packaging,
-Recording, Boards, Library and Offline. Called workflows have `workflow_call`
+The PR checks list names the areas: Changed areas, Build, Meson tests, Source,
+Packaging, Recording, Boards, Library and Offline. Called workflows have `workflow_call`
 and `workflow_dispatch`, without duplicate PR/push/nightly entry points. Each
 can still run alone; standalone dispatch builds its own required profile.
 
@@ -27,7 +27,7 @@ One Linux build job produces the distinct configurations without conflating them
 
 | Product | Configuration | Consumers |
 | --- | --- | --- |
-| `ci-core` | Default profile, no bundled engines, normal `/usr/local` prefix | Meson validation/install/POT; Recording uses its compiled resource |
+| `ci-core` | Default profile, no bundled engines, normal `/usr/local` prefix | Staged install; Recording uses its compiled resource |
 | `ci-boards` | Development profile, engines disabled, `/tmp/cassini-ci-boards` | Light/dark boards and all native GUI flows |
 | `ci-offline` | Default profile, `/usr`, bundled Whistle/Silero/private Python ORT and sherpa | Both engines, goldens, ABI and real queue/GTK proofs |
 
@@ -39,6 +39,11 @@ rather than accepting the minimal container's `lib64` fallback. Whistle and
 Parakeet harnesses both mount the installed private Python ORT and assert 1.31.0;
 the Whistle GTK proof imports installed modules instead of bypassing paths.json. All
 original Meson/protocol/desktop/schema tests, POT and staged-install checks run.
+The Meson tests and the POT check run in their own job (`meson-tests.yml`, H),
+from the same checkout in the same minimal container, beside Build instead of
+ahead of it: Recording, Boards and Offline wait only for the products. The
+Pytest coverage gate fails unless that job passed, and `green_main.py` requires
+both jobs in the main run a release comes from.
 Distro and package builds remain separate: their OS/ABI/recipe tests are distinct.
 No packaging recipe is changed. All six source distros, five native packages,
 Flatpak and Recording scenarios remain enabled with their existing thresholds.
