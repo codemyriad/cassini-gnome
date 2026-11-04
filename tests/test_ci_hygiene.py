@@ -39,3 +39,11 @@ def test_release_metadata_runs_in_lint_and_release_preparation_has_no_pr_trigger
     release = (WORKFLOWS / "release-check.yml").read_text()
     trigger = release.split("\njobs:", 1)[0]
     assert "pull_request" not in trigger and "workflow_call:" in trigger
+
+
+def test_package_builds_run_on_the_pinned_runner_image():
+    # G16: the package builds run on the image every other job pins, not on
+    # whatever ubuntu-latest points to. release.yml's publish job only uploads.
+    for name in ("deb.yml", "packages.yml", "rpm-canary.yml"):
+        images = re.findall(r"^    runs-on: (\S+)", (WORKFLOWS / name).read_text(), re.M)
+        assert images and set(images) == {"ubuntu-26.04"}, (name, images)
