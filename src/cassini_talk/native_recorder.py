@@ -125,6 +125,16 @@ class NativeRecorder(GObject.Object):
         # A turn-on's bounded wait for its first buffer or an error.
         self._turn_on_wait = threading.Event.wait
 
+    def armed_sides(self):
+        """D58.1: each side selected and waiting for its first buffer, with its
+        attempt's time (0 at start, the turn-on's time otherwise)."""
+        with self._lock:
+            return {
+                kind: attempt.get("refuse_at", 0)
+                for kind, attempt in self._pending_sources.items()
+                if attempt.get("armed") and not attempt["retired"] and not attempt.get("failing")
+            }
+
     @property
     def activity(self):
         if self.session is None or not (self.pipeline is not None or self.starting or self.stopping or self._finishing):

@@ -54,6 +54,12 @@ class BrowserCapture:
         self.call_tab = None
         self.microphone = None
         self.native_taps = {}
+        # Each native tap's state, by its track identifier (D58.1: an armed
+        # tap's attempt time drives the recording page's lines).
+        self._tap_states = {}
+        # D58.1: a native side was committed armed. If no side ever opened by
+        # the end, nothing recorded: no folder (D58 point 2), as natively.
+        self._armed_once = False
         # Native sides requested at start that never opened (R79 §1). A
         # fallback or restore does not reopen them; turning one off forgets it.
         self.refused_sides = set()
@@ -137,7 +143,19 @@ class BrowserCapture:
                 title=self.host.session.manifest["title"],
                 error=self.error,
                 events=list(self.host.session.manifest.get("events", [])),
+                armed=self._armed_sides(),
             )
+
+    def _armed_sides(self):
+        """D58.1: each native side committed armed (waiting for its first
+        buffer), with its attempt's time (0 at start, the turn-on's time, or a
+        fallback's commit). Lock held."""
+        armed = {}
+        for kind, (identifier, _tap) in self.native_taps.items():
+            state = self._tap_states.get(identifier)
+            if state is not None and state["active"] and not self._has_track(identifier):
+                armed[kind] = state["at"] if state["refuse_at"] is None else state["refuse_at"]
+        return armed
 
     def start(self, message, *, others_source="browser", reason="start", refusals=()):
         """Start this capture. `refusals` are start refusals made before the folder
@@ -320,6 +338,8 @@ class BrowserCapture:
         # armed tap (D58.1); None where it is not a refusal (a fallback).
         state = dict(active=active, at=at, error=None, timeline=NativeTimeline(48000), heard=False, track=active)
         state["refuse_at"] = None
+        with self.lock:
+            self._tap_states[identifier] = state
 
         def append(data, offset, *, host_ns=None):
             picture = None
@@ -408,6 +428,13 @@ class BrowserCapture:
                             self.refused_sides.add(kind)
                         refused = self._refusal(state["refuse_at"], kind, self._tap_error(state, message))
                         self.host.session.refuse(refused)
+                        if self.browser_lost and not self.native_taps and not self.host.session.manifest["tracks"]:
+                            # No side opened and none is left that could
+                            # (D58 point 2): the recording ends, and Stop
+                            # removes its folder, as the native path does.
+                            active = True
+                            self.error = message
+                            self.end_reason = "error"
                 elif active:
                     self.error = message
                     self.end_reason = "error"
@@ -487,6 +514,7 @@ class BrowserCapture:
                     # D58.1: the system tap heard nothing yet. It is armed, not
                     # refused; its track starts at its first buffer.
                     LOG.info("Native %s side (%s) heard nothing yet; it opens on its first buffer", SIDES[kind], kind)
+                    self._armed_once = True
                 state.update(active=True, at=at, track=state["heard"], refuse_at=0)
                 self.native_taps[kind] = identifier, tap
                 if kind == "microphone":
@@ -933,6 +961,7 @@ class BrowserCapture:
                         # fallback's or restore's failure is not a refusal.
                         turn_on = fallback is None and not restore
                         state.update(active=True, at=at, track=state["heard"], refuse_at=at if turn_on else None)
+                        self._armed_once = self._armed_once or not state["heard"]
                         self.native_taps[kind] = identifier, tap
                     self.microphone = self.native_taps.get("microphone", (None, None))[1]
                     self.refused_sides = (self.refused_sides & desired) - prepared.keys()
@@ -1072,6 +1101,12 @@ class BrowserCapture:
                         problem = problem or str(error)
                         self.end_reason = "error"
                 with self.lock:
+                    if discard is None and self._armed_once and not self.host.session.manifest["tracks"]:
+                        # D58.1: an armed side never heard a buffer and no side
+                        # ever opened: nothing recorded (D58 point 2). Its
+                        # refusals are already stored, for a folder kept for
+                        # typed content.
+                        discard = ()
                     if discard is not None:
                         self.discarded = self.host.session.discard()
                         if not self.discarded:

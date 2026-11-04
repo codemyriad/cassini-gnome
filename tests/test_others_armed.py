@@ -553,3 +553,197 @@ def test_the_sound_check_reads_a_never_heard_others_side_as_silent():
     assert outcomes == dict(microphone=Outcome(REFUSED, mic), system=Outcome(SILENT))
     # Without that fact, a side that never opened is still refused.
     assert judge_streams(None, [], [mic])["system"].state == REFUSED
+
+
+# Waiting for sound shows no refusal (D58.1): the recording page's lines read the
+# live armed sides, which the folder cannot express (Try again writes no event).
+
+
+def shown(recorder):
+    """The recording page's lines for a native recording, as the window reads them."""
+    manifest = recorder.session.manifest
+    tracks = [(t["kind"], t.get("ended"), t.get("startOffsetMs")) for t in manifest["tracks"]]
+    return R.live_lines(manifest.get("refusals"), tracks, manifest.get("events") or (), recorder.armed_sides())
+
+
+def browser_shown(capture):
+    """The same for a browser capture: its folder plus the armed sides of its status."""
+    manifest = capture.host.session.manifest
+    tracks = [(t["kind"], t.get("ended"), t.get("startOffsetMs")) for t in manifest["tracks"]]
+    return R.live_lines(manifest.get("refusals"), tracks, manifest.get("events") or (), capture.snapshot()["armed"])
+
+
+OTHERS_LINE = dict(side="others", id="errors.deviceUnavailable.others", caption=None)
+
+
+def test_an_armed_side_covers_only_the_refusals_before_its_attempt():
+    stored = [R.entry(0, "others", "deviceUnavailable")]
+    assert R.live_lines(stored, []) == [OTHERS_LINE]
+    assert R.live_lines(stored, [], (), {"system": 0}) == []
+    assert R.live_lines(stored, [], (), {"system": 7000}) == []
+    later = [R.entry(7000, "others", "permissionDenied")]
+    assert R.live_lines(later, [], (), {"system": 3000}) == [OTHERS_LINE]
+    # Not the others' kind, or unreadable: no cover.
+    assert R.live_lines(stored, [], (), {"microphone": 9000}) == [OTHERS_LINE]
+    assert R.live_lines(stored, [], (), {"system": "9000"}) == [OTHERS_LINE]
+    assert R.live_lines(stored, [], (), [("system", 9000)]) == [OTHERS_LINE]
+    # Computer sound selected and waiting records the others: the fallback line.
+    browser = [R.entry(0, "browser", "startRejected", detail="noSources")]
+    assert [line["id"] for line in R.live_lines(browser, [], (), {"system": 0})] == ["errors.othersFallback.line"]
+    assert R.live_lines(browser, []) == []
+
+
+def test_try_again_on_refused_others_that_stay_silent_shows_no_refusal(tmp_path, quiet_turn_on):
+    recorder, sides, signals = start(tmp_path, {"microphone": ("ok", 0.1), "system": ("fail", 0)})
+    try:
+        session = recorder.session
+        assert shown(recorder) == [OTHERS_LINE]
+        recorder._turn_on_wait = quiet_turn_on
+        sides.plan["system"] = ("never", 0)
+        recorder._elapsed_ms = lambda _pipeline: 7000
+        turn_on(recorder, True, True)  # Try again: silent, so armed.
+        assert recorder.armed_sides() == {"system": 7000}
+        assert shown(recorder) == []
+        # A later explicit error is its own refusal, at the attempt's time.
+        post_error(sides, "system", DENIED)
+        spin_until(lambda: len(session.manifest.get("refusals", ())) == 2)
+        spin_until(lambda: recorder.armed_sides() == {})
+        assert shown(recorder) == [OTHERS_LINE]
+        assert session.manifest["refusals"][-1]["atMs"] == 7000
+        stop(recorder, signals)
+    finally:
+        close(recorder)
+
+
+def test_refused_others_turned_off_then_on_and_silent_show_no_refusal(tmp_path, quiet_turn_on):
+    recorder, sides, signals = start(tmp_path, {"microphone": ("ok", 0.1), "system": ("fail", 0)})
+    try:
+        recorder._turn_on_wait = quiet_turn_on
+        recorder._elapsed_ms = lambda _pipeline: 4000
+        turn_on(recorder, True, False)
+        assert shown(recorder) == []
+        recorder._elapsed_ms = lambda _pipeline: 8000
+        sides.plan["system"] = ("never", 0)
+        turn_on(recorder, True, True)
+        assert recorder.armed_sides() == {"system": 8000} and shown(recorder) == []
+        stop(recorder, signals)
+    finally:
+        close(recorder)
+
+
+def test_a_silent_start_is_armed_at_zero_and_shows_no_line(tmp_path):
+    recorder, sides, signals = start(tmp_path, QUIET)
+    try:
+        assert recorder.armed_sides() == {"system": 0} and shown(recorder) == []
+        sides.now = BOUND + 5
+        sides.fire("system")
+        spin_until(lambda: "system" in recorder._track_ids)
+        assert recorder.armed_sides() == {}
+        stop(recorder, signals)
+    finally:
+        close(recorder)
+
+
+def test_browser_try_again_on_a_refused_system_tap_that_stays_silent_shows_no_refusal(tmp_path):
+    taps = QuietTaps()
+    capture, _result, _changes = browser_start(tmp_path, taps, others_source="system")
+    try:
+        session = capture.host.session
+        assert capture.snapshot()["armed"] == {"system": 0}
+        (system,) = taps.of("system")
+        system.failed("Fake monitor went away")  # An explicit error: refused at 0.
+        assert capture.snapshot()["armed"] == {} and browser_shown(capture) == [OTHERS_LINE]
+        capture.select(True, True, retry=True)  # Try again: silent, so armed.
+        armed = capture.snapshot()["armed"]
+        assert set(armed) == {"system"} and armed["system"] > 0 and browser_shown(capture) == []
+        # Its first buffer gives it a track; it is no longer armed.
+        taps.of("system")[-1].append(struct.pack("<h", 7) * 480, armed["system"] + 10)
+        assert kinds_of(session) == ["microphone", "system"] and capture.snapshot()["armed"] == {}
+        assert browser_shown(capture) == []
+    finally:
+        capture.stop()
+
+
+def test_the_window_reads_a_browser_capture_s_armed_sides_from_its_status(tmp_path):
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    try:
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+    except ValueError:
+        pytest.skip("Adwaita is unavailable")
+    from cassini_talk.library_window import LibraryWindow
+
+    identifier = str(uuid4())
+    directory = tmp_path / f"Recording-{identifier}"
+    status = dict(path=str(directory), recording=True, armed={"system": 1200})
+    app = SimpleNamespace(_browser_snapshot=dict(statuses=[dict(path=str(tmp_path / "Recording-x"), armed={})]))
+    window = SimpleNamespace(_browser_snapshot=dict(statuses=[status]), get_application=lambda: app)
+    meeting = SimpleNamespace(id=identifier, directory=directory)
+    assert LibraryWindow._armed_sides(window, meeting) == {"system": 1200}
+    window._browser_snapshot = {}
+    assert LibraryWindow._armed_sides(window, meeting) is None
+    app._browser_snapshot = dict(statuses=[status])
+    assert LibraryWindow._armed_sides(window, meeting) == {"system": 1200}
+    assert LibraryWindow._armed_sides(window, SimpleNamespace(id=str(uuid4()), directory=directory)) is None
+
+
+# The browser path ends like the native one when no side ever opened (D58 point 2).
+
+
+class RefusingMicrophone(QuietTaps):
+    """The microphone tap reports an explicit error at start; the system tap is quiet."""
+
+    def __call__(self, kind, origin, append, failed, *, level):
+        tap = super().__call__(kind, origin, append, failed, level=level)
+        if kind == "microphone":
+
+            def start():
+                raise OSError("No such entity")
+
+            tap.start = start
+        return tap
+
+
+def test_browser_refused_microphone_and_others_silent_until_stop_leave_no_folder(tmp_path):
+    taps = RefusingMicrophone()
+    capture, result, changes = browser_start(tmp_path, taps, others_source="system")
+    session = capture.host.session
+    try:
+        assert result["type"] == "started" and capture.snapshot()["armed"] == {"system": 0}
+        assert [(r["side"], r["code"]) for r in session.manifest["refusals"]] == [("me", "deviceUnavailable")]
+        assert [line["side"] for line in browser_shown(capture)] == ["me"]
+    finally:
+        stopped = capture.stop()
+    # Nothing ever opened: no folder, never the "empty" problem.
+    assert stopped == dict(type="stopped", path=None) and capture.discarded
+    assert not session.directory.exists() and "error" not in changes
+
+
+def test_browser_refused_microphone_and_a_late_others_error_end_with_no_folder(tmp_path):
+    taps = RefusingMicrophone()
+    capture, _result, changes = browser_start(tmp_path, taps, others_source="system")
+    session = capture.host.session
+    try:
+        (system,) = taps.of("system")
+        system.refusal_code = "permissionDenied"
+        system.failed("Fake monitor denied")
+        assert [(r["side"], r["code"]) for r in session.manifest["refusals"]] == [
+            ("me", "deviceUnavailable"),
+            ("others", "permissionDenied"),
+        ]
+        # Nothing is left that could open: the capture asks to end (as the service does on "error").
+        assert "error" in changes and capture.error == "Fake monitor denied"
+    finally:
+        stopped = capture.stop(capture.error)
+    assert stopped == dict(type="stopped", path=None) and capture.discarded and not session.directory.exists()
+
+
+def test_browser_silent_others_with_a_recorded_microphone_keep_the_folder(tmp_path):
+    taps = QuietTaps()
+    capture, _result, _changes = browser_start(tmp_path, taps, others_source="system")
+    session = capture.host.session
+    native_pcm(capture, "microphone")
+    assert capture.stop()["path"] == str(session.directory) and not capture.discarded
+    assert session.manifest["state"] == "completed" and session.manifest.get("problem") is None
