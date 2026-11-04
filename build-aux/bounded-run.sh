@@ -7,12 +7,18 @@
 # behind: a descendant that called setsid (browser_service.ensure_service does)
 # leaves the process group, and one that ignores TERM outlives timeout, which
 # escalates only for its child.
-# - scope: COMMAND runs in a transient systemd --user scope, killed as a whole when
-#   COMMAND returns; RuntimeMaxSec ends it even if this script is killed.
-# - sweep, without a user systemd (CI runners, containers): the process group, then
-#   every process of this user whose environment carries this run's marker,
-#   CASSINI_BOUNDED_RUN_<id>=1, until none is left. A process that clears its
-#   environment and leaves the group escapes the sweep.
+# - This script becomes a child subreaper (through python3), so every orphan of the
+#   run becomes its child, whatever its session, cgroup, environment, title or
+#   dumpability. When COMMAND returns it kills the process group, then its children
+#   and every process of this user whose environment carries this run's marker,
+#   CASSINI_BOUNDED_RUN_<id>=1, until none is left. Without python3 only the marker
+#   scan remains: a process that leaves the group and clears or rewrites its
+#   environment (Chromium's title does) escapes it.
+# - scope, where a systemd --user scope works: COMMAND also runs in a transient
+#   scope, killed as a whole first; RuntimeMaxSec ends it even if this script is
+#   killed. A process can still move itself out of the scope (Chromium asks the
+#   user manager for a scope of its own when it reaches the session bus): the
+#   sweep above still catches it.
 # CASSINI_BOUNDED_RUN_MECHANISM=auto (default: scope where it works) | scope | sweep.
 set -uo pipefail
 whole='^0*[1-9][0-9]{0,8}$'
@@ -22,6 +28,22 @@ shift
 [[ $limit =~ $whole ]] || { echo "bounded-run.sh: SECONDS must be whole seconds, from 1 to 999999999" >&2; exit 2; }
 kill_after=${CASSINI_BOUNDED_RUN_KILL_AFTER:-30}
 [[ $kill_after =~ $whole ]] || { echo "CASSINI_BOUNDED_RUN_KILL_AFTER must be whole seconds, from 1 to 999999999" >&2; exit 2; }
+
+# Set (to this pid, which exec keeps) only by the re-exec below.
+reaper=${_CASSINI_BOUNDED_RUN_REAPER:-}
+unset _CASSINI_BOUNDED_RUN_REAPER
+if [ "$reaper" != "$$" ] && [ "$reaper" != "$$-unset" ] && command -v python3 >/dev/null; then
+  # PR_SET_CHILD_SUBREAPER survives exec; SIGPIPE and SIGXFSZ, which Python
+  # ignores, go back to their defaults, as subprocess restores them.
+  _CASSINI_BOUNDED_RUN_REAPER="$$-unset" exec python3 -I -c '
+import ctypes, os, signal, sys
+if ctypes.CDLL(None).prctl(36, 1, 0, 0, 0) == 0:
+    os.environ["_CASSINI_BOUNDED_RUN_REAPER"] = str(os.getpid())
+for name in ("SIGPIPE", "SIGXFSZ"):
+    signal.signal(getattr(signal, name), signal.SIG_DFL)
+os.execv(sys.argv[1], sys.argv[1:])
+' "$BASH" "$0" "$limit" "$@"
+fi
 limit=$((10#$limit)) kill_after=$((10#$kill_after))
 
 # The wrappers give the command a private XDG_RUNTIME_DIR: reach the user
@@ -69,7 +91,6 @@ if [ "$mechanism" = scope ]; then
     -p RuntimeMaxSec=$((limit + 2 * kill_after + 10)) -p TimeoutStopSec="$kill_after" \
     -- env "${drop[@]}" "${keep[@]}" "${bounded[@]}" &
 else
-  # timeout leads its own process group (pgid = its pid).
   "${bounded[@]}" &
 fi
 run=$!
@@ -100,16 +121,21 @@ if [ "$mechanism" = scope ]; then
     case $(scope show -P ActiveState "$unit") in active | deactivating | activating | reloading) ;; *) gone=0; break ;; esac
     sleep .05
   done
-else
-  kill -KILL -- "-$run" 2>/dev/null
-  # Each pass kills what the last one missed (a fork in between); bounded.
-  for ((pass = 0; pass < 200; pass++)); do
-    pids=$(marked)
-    [ -z "$pids" ] && { gone=0; break; }
-    # shellcheck disable=SC2086
-    kill -KILL $pids 2>/dev/null
-  done
 fi
-[ "$gone" = 0 ] || echo "bounded-run.sh: processes of this run ($mechanism) are still alive" >&2
+# timeout leads its own process group (pgid = its pid).
+kill -KILL -- "-$run" 2>/dev/null
+# Each pass kills what the last one missed (a fork in between, an orphan just
+# adopted) and lets bash reap it (sleep); bounded.
+swept=1
+for ((pass = 0; pass < 200; pass++)); do
+  pids=$(marked) children=()
+  if [ "$reaper" = "$$" ]; then read -r -a children <"/proc/$$/task/$$/children" || true; fi
+  [ -z "$pids" ] && [ "${#children[@]}" = 0 ] && { swept=0; break; }
+  # shellcheck disable=SC2086
+  kill -KILL $pids "${children[@]}" 2>/dev/null
+  sleep .02
+done
+[ "$mechanism" = scope ] || gone=0
+[ "$gone$swept" = 00 ] || echo "bounded-run.sh: processes of this run ($mechanism) are still alive" >&2
 [ "$signalled" = 0 ] || status=$signalled
 exit "$status"

@@ -9,6 +9,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -36,6 +37,31 @@ detached.stdout.readline()
 if ending == "stubborn":
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
 os.write(ready, f"{detached.pid}\n".encode())
+os.close(ready)
+if ending == "done":
+    sys.exit(7)
+signal.pause()
+"""
+# Hidden from the sweep's marker scan: a detached process with an empty environment
+# (or one that rewrites it for its title, as Chromium does), not dumpable (its /proc
+# entries belong to root), that keeps forking and exiting. It holds the descriptor
+# until its deadline, so end of file means every generation is gone.
+HIDDEN = r"""
+import os, signal, subprocess, sys
+ready, ending, deadline = int(sys.argv[1]), sys.argv[2], sys.argv[3]
+hopper = r'''
+import ctypes, os, signal, sys, time
+ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)  # PR_SET_DUMPABLE: 0
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+while time.monotonic() < float(sys.argv[1]):
+    time.sleep(0.02)
+    if os.fork():
+        os._exit(0)
+'''
+subprocess.Popen(
+    [sys.executable, "-c", hopper, deadline], start_new_session=True, env={}, pass_fds=[ready],
+    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+os.write(ready, b"ready\n")
 os.close(ready)
 if ending == "done":
     sys.exit(7)
@@ -148,3 +174,66 @@ def test_every_wrapper_refuses_a_limit_that_bounds_nothing(script, tmp_path):
             "CASSINI_RUN_TIMEOUT must be whole seconds, from 1 to 999999999\n",
         )
         assert refused == (limit not in ("5", "999999999")), (limit, result.returncode, result.stderr)
+
+
+@pytest.mark.parametrize("ending", ["done", "timeout"])
+def test_the_sweep_kills_what_it_cannot_recognise(ending):
+    limit, expected = ENDINGS[ending]
+    ready, writer = os.pipe()
+    env = {**os.environ, "CASSINI_BOUNDED_RUN_MECHANISM": "sweep", "CASSINI_BOUNDED_RUN_KILL_AFTER": "1"}
+    deadline = str(time.monotonic() + 30)
+    run = subprocess.Popen(
+        [str(BOUNDED), str(limit), sys.executable, "-c", HIDDEN, str(writer), ending, deadline],
+        pass_fds=[writer],
+        env=env,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    os.close(writer)
+    try:
+        assert select.select([ready], [], [], 30)[0] and os.read(ready, 64) == b"ready\n"
+        _, errors = run.communicate(timeout=60)
+        assert (run.returncode, errors) == (expected, "")
+        # Only the run's processes hold the pipe: end of file once none is left.
+        assert select.select([ready], [], [], 10)[0], "a hidden process outlived the run"
+        assert os.read(ready, 64) == b""
+    finally:
+        os.close(ready)
+        if run.poll() is None:
+            run.kill()
+            run.wait()
+
+
+def test_a_process_that_leaves_the_scope_dies_too(tmp_path):
+    # A process can move itself out of the scope (a nested bounded run, Chromium's
+    # own scope): here the inner run's scope, whose bounded-run.sh ignores TERM and
+    # is KILLed by the outer timeout before it can clean up.
+    if reason := scope_missing():
+        pytest.skip(f"no systemd --user scope: {reason}")
+    ready, writer = os.pipe()
+    env = {**os.environ, "CASSINI_BOUNDED_RUN_MECHANISM": "scope", "CASSINI_BOUNDED_RUN_KILL_AFTER": "1"}
+    inner = f'trap "" TERM; exec "$0" 20 "$1" -c "$2" {writer} stubborn'
+    # A file, not a pipe: a process that escaped would hold a pipe open.
+    errors = tmp_path / "stderr"
+    with errors.open("w") as stderr:
+        run = subprocess.Popen(
+            [str(BOUNDED), "2", "bash", "-c", inner, BOUNDED, sys.executable, COMMAND],
+            pass_fds=[writer],
+            env=env,
+            stderr=stderr,
+        )
+    os.close(writer)
+    pid = start = None
+    try:
+        assert select.select([ready], [], [], 30)[0], "the command never reported its detached process"
+        pid = int(os.read(ready, 64))
+        start = started(pid)
+        assert (run.wait(timeout=60), errors.read_text()) == (137, "")
+        assert started(pid) != start, "the detached process outlived the run"
+    finally:
+        os.close(ready)
+        if run.poll() is None:
+            run.kill()
+            run.wait()
+        if start is not None and started(pid) == start:
+            os.kill(pid, signal.SIGKILL)
