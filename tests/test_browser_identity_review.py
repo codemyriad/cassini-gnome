@@ -11,6 +11,7 @@ from test_browser_service import meeting, no_command, service, wait_for  # noqa:
 from test_control_reconnect import inventory, live, lose, peer
 
 from cassini_talk.browser_service import request, send_packet
+from cassini_talk.call_lifecycle import CONTROL_RECONNECT_GRACE
 
 
 def navigate(extension, url):
@@ -52,18 +53,36 @@ def test_queued_auto_start_cannot_restart_a_manually_stopped_replacement(service
         new.close()
 
 
-def test_lost_auto_start_retries_when_its_replacement_arrives_after_real_grace(service):  # noqa: F811
+def test_lost_auto_start_retries_when_its_replacement_arrives_after_real_grace(service, monkeypatch):  # noqa: F811
     broker, path = service
     broker.command_timeout = 25
+    # The reconnect grace runs on the deadline clock; the test moves it.
+    now = [0.0]
+    broker.deadline_clock = lambda: now[0]
+    recovering, polling = [], threading.Event()
+    recover, resolve = broker._recover_command, broker._resolve_call
+
+    def recovery(*args, **kwargs):
+        recovering.append(threading.current_thread())
+        return recover(*args, **kwargs)
+
+    def resolved(*args, **kwargs):
+        # The lost Start's recovery has set its grace deadline and is waiting.
+        if threading.current_thread() in recovering:
+            polling.set()
+        return resolve(*args, **kwargs)
+
+    monkeypatch.setattr(broker, "_recover_command", recovery)
+    monkeypatch.setattr(broker, "_resolve_call", resolved)
     old = peer(path)
     request("configure", path=path, autoRecord=True)
     assert old.receive()["action"] == "start"
     old.close()
     wait_for(lambda: not broker.browsers)
-    end = time.monotonic() + 12
-    while broker._scheduled_calls and time.monotonic() < end:
-        time.sleep(0.02)
-    assert not broker._scheduled_calls
+    assert polling.wait(5)
+    # The whole real grace, still well inside the Start's own 25 s.
+    now[0] = CONTROL_RECONNECT_GRACE
+    wait_for(lambda: not broker._scheduled_calls)
     new = peer(path)
     try:
         command = new.receive()
