@@ -24,9 +24,13 @@ def track_pcm(track, cancel=None):
     from gi.repository import Gst
 
     from .folder_player import PCMSource
+    from .placement import frame
 
     Gst.init(None)
-    source = PCMSource(track)
+    # D55: the export mix places a track at 48 kHz: its own samples, resampled, after
+    # frame(offset, 48000) zeros. A clock-mapped or rotated track is placed by its map.
+    source = PCMSource(track, local=True)
+    lead = 0 if source.mapped else frame(track.start_offset_ms, RATE)
     pipeline = Gst.parse_launch(
         "audioconvert dithering=0 noise-shaping=0 ! audioresample ! "
         "audio/x-raw,format=F32LE,layout=interleaved,channels=1,rate=48000 ! "
@@ -41,8 +45,13 @@ def track_pcm(track, cancel=None):
 
     ownership = FrameMask(getattr(track, "ownership_windows", None), RATE, getattr(track, "ownership_offset_ms", 0))
     cursor = 0
-    remaining = array.array("f")
     try:
+        # Whole one-second blocks, as mixed_pcm sums streams block by block.
+        for _ in range(lead // RATE):
+            check_cancel(cancel)
+            yield array.array("f", bytes(4 * RATE))
+            cursor += RATE
+        remaining = array.array("f", bytes(4 * (lead % RATE)))
         if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
             raise RuntimeError("Could not read recording for export")
         last_progress = time.monotonic()

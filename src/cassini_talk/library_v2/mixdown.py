@@ -9,8 +9,9 @@ Timeline contract (§4.3), as GNOME reads session.json:
   the session folder; its length is the complete frames on disk (G25), never a
   header or a session.json count.
 - startOffsetMs places a span's first sample on the session timeline. It is the
-  only placement source and is applied exactly once (G1, G2). A null offset is
-  mixed at 0 and reported (offsetsAssumedZero, D19).
+  only placement source and is applied exactly once (G1, G2), at 48 kHz frame
+  placement.frame(startOffsetMs, 48000) (D55). A null offset is mixed at 0 and
+  reported (offsetsAssumedZero, D19).
 - Gaps inside a span's PCM (gapFrames, `gapMaterialized`) are already samples and
   are never inserted again. Time between spans, or before a late joiner, is not in
   any PCM: it is mixed as explicit silence (G8, G10).
@@ -47,6 +48,7 @@ from types import SimpleNamespace
 
 from .. import track_source
 from ..export_audio import check_cancel
+from ..placement import frame
 from ..recording_session import KINDS
 from ..session_events import read_events
 from ..source_ownership import FrameMask, windows
@@ -123,11 +125,12 @@ class Mapping:
         import numpy as np
 
         rate = span.info.sample_rate
-        origin = span.start_ms * RATE / 1000
+        # D55: the span's first sample is at the one placement; anchors give only elapsed time.
+        origin = frame(span.start_ms, RATE)
         knots = valid_anchors(span.anchors, rate)
         if len(knots) < 2:
             self.knots = None
-            self.shift = round(origin)
+            self.shift = origin
             return
         j = np.array([index * RATE / rate for index, _ in knots], dtype=np.float64)
         seconds = np.array([t for _, t in knots], dtype=np.float64)

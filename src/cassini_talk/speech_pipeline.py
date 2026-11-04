@@ -21,6 +21,8 @@ from pathlib import Path
 
 import numpy as np
 
+from . import placement
+
 RATE = 16000
 FIR = json.loads(Path(__file__).with_name("fir-48k-16k.json").read_text())
 TAPS = np.asarray(FIR["coefficients"], dtype="<f4")
@@ -100,7 +102,9 @@ def streamed(track):
 def audio_chunks(track):
     from .source_ownership import FrameMask
 
-    mask = FrameMask(track.get("ownershipWindows"), RATE, track.get("offsetMs") or 0)
+    # Windows are cut on the session's 16 kHz grid, then moved by the track's whole-sample
+    # D55 placement: the sample the word times and the rejoin put the track's first sample at.
+    mask = FrameMask(track.get("ownershipWindows"), RATE, placement.frame(track.get("offsetMs") or 0, RATE) / 16)
     cursor = 0
     with closing(_unmasked_chunks(track)) as source:
         for block in source:
@@ -356,9 +360,12 @@ def recognise_segment(model, path, segment, offset_ms=0, *, samples=None, audio_
         samples = np.concatenate(list(resampled_chunks(path, segment["startSample"], segment["endSample"])))
     input_hash = hashlib.sha256(samples.tobytes()).hexdigest()
     result = model.transcribe(samples, language=None, word_timestamps=True)
-    base = math.floor(offset_ms) + segment["startSample"] * 1000 // 16000
+    # D55: session ms of the segment's first 16 kHz sample, from the one placement. G11: a
+    # word ends within the PCM it was recognised from, counted in whole ms from that first
+    # sample (Mac's MeetingTranscriber.clamped: start + count * 1000 / 16000).
+    base = placement.word_ms(offset_ms, segment["startSample"])
     last_sample = min(segment["endSample"], segment["startSample"] + len(samples))
-    end = math.floor(offset_ms) + last_sample * 1000 // RATE
+    end = base + (last_sample - segment["startSample"]) * 1000 // RATE
     if audio_end_ms is not None:
         end = min(end, audio_end_ms)
     words = []
@@ -534,7 +541,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
                 segment = dict(startSample=start, endSample=end, reason="noVadWindow")
                 event = recognise(order, track, segment, offset, samples, audio_end)
                 heartbeat(track)
-                base = math.floor(offset) + start * 1000 // RATE
+                base = placement.word_ms(offset, start)
                 kept = fallback.energetic(event["words"], samples, base)
                 previous = events[-1]["segment"]["endSample"] if events else None
                 if previous is not None and start < previous:
@@ -548,7 +555,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
         # Keep words in global time order across events: each word goes to the
         # last window starting at or before it, not to the window it came from.
         words = sorted(words, key=lambda word: word["startMs"])
-        starts = [math.floor(offset) + event["segment"]["startSample"] * 1000 // RATE for event in events]
+        starts = [placement.word_ms(offset, event["segment"]["startSample"]) for event in events]
         owned = [[] for _ in events]
         for word in words:
             owned[max(0, bisect_right(starts, word["startMs"]) - 1)].append(word)

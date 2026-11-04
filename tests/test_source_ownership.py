@@ -476,3 +476,24 @@ def test_compacted_opus_ownership_is_exact_after_decoding_and_resampling(tmp_pat
     assert np.all(speech[:8001] == 0) and np.all(speech[16001:] == 0)
     assert np.max(np.abs(speech[9000:15000])) > 0.1
     assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("owned,after", [([[2000.01, None]], True), ([[0, 2000.01]], False)], ids=["from", "until"])
+def test_recognizer_input_ownership_edges_are_on_the_session_grid_from_the_d55_placement(tmp_path, owned, after):
+    # A 16 kHz track at 1234.5104 ms starts at session sample 19752 (D55), where its words
+    # and its rejoin put it. A window edge at 2000.01 ms is session sample ceil(32000.16) =
+    # 32001: the first sample it owns, or the first it no longer owns.
+    np = pytest.importorskip("numpy")
+    import wave
+
+    from cassini_talk.speech_pipeline import audio_chunks
+
+    path = tmp_path / "track.wav"
+    with wave.open(str(path), "wb") as stream:
+        stream.setparams((1, 2, 16000, 0, "NONE", ""))
+        stream.writeframes(np.full(20000, 1000, dtype="<i2").tobytes())
+    job = dict(path=str(path), offsetMs=1234.5104, frames=20000, sampleRate=16000, ownershipWindows=owned)
+    speech = np.concatenate(list(audio_chunks(job)))
+    edge = np.flatnonzero(np.diff(speech != 0))
+    assert len(edge) == 1 and 19752 + edge[0] + 1 == 32001
+    assert bool(speech[32001 - 19752]) is after

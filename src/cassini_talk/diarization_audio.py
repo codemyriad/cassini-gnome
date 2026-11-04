@@ -13,6 +13,7 @@ from contextlib import closing, contextmanager
 
 import numpy as np
 
+from .placement import frame
 from .scratch_budget import scratch_directory
 from .speech_pipeline import audio_chunks
 
@@ -29,7 +30,7 @@ def rejoin(tracks, *, scratch=None, heartbeat=lambda: None):
             offset = track.get("offsetMs", track.get("startOffsetMs")) or 0
             if type(offset) not in (int, float) or not math.isfinite(offset) or offset < 0:
                 raise ValueError("Invalid diarization track offset")
-            cursor = math.floor(offset * 16)
+            cursor = frame(offset, 16000)  # D55
             with closing(audio_chunks(track)) as chunks:
                 for block in chunks:
                     if not len(block):

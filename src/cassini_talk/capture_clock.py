@@ -43,12 +43,13 @@ def mapped_end_sample(frames, rate, offset_ms, anchors, *, decoded_frames=None):
     sample positions still use Mapping itself on their worker threads.
     """
     from .library_v2.mixdown import valid_anchors
+    from .placement import frame
 
     points = valid_anchors(anchors, rate)
     length = round(frames * 48000 / rate) if decoded_frames is None else decoded_frames
-    origin = float(offset_ms or 0) * 48
+    origin = frame(offset_ms or 0, 48000)
     if len(points) < 2:
-        return length + round(origin)
+        return length + origin
     xs = [index * 48000 / rate for index, _ in points]
     seconds = [at for _, at in points]
 

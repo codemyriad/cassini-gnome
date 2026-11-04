@@ -164,6 +164,7 @@ talk_sources = files(
   'cassini_talk/ux_formats.py',
   'cassini_talk/screenshot.py',
   'cassini_talk/player.py',
+  'cassini_talk/placement.py',
   'cassini_talk/folder_player.py',
   'cassini_talk/recorder.py',
   'cassini_talk/native_recorder.py',

@@ -477,10 +477,13 @@ def test_prepare_tracks_sends_presence_once_as_session_sample_ranges(tmp_path):
     assert "sessionPresence" not in job
 
 
-def test_the_child_rounds_a_fractional_track_shift_inward():
-    # 1000.03 ms is session sample 16000.48: each edge moves inside present time.
-    assert fallback.track_ranges([[16010, 32000]], 1000.03) == [[10, 15999]]
-    assert fallback.track_ranges([[16000, 16001], [17000, 18000]], 1000.03) == [[1000, 1999]]
+def test_the_child_shifts_presence_by_the_one_d55_placement():
+    # 1000.03 ms is session sample 16000.48: the track starts at sample 16000, where its
+    # words and its rejoin put it (placement.frame), so presence moves by whole samples.
+    assert fallback.track_ranges([[16010, 32000]], 1000.03) == [[10, 16000]]
+    assert fallback.track_ranges([[16000, 16001], [17000, 18000]], 1000.03) == [[0, 1], [1000, 2000]]
+    # 1000.03125 ms is 16000.5: half away from zero, so sample 0 is session sample 16001.
+    assert fallback.track_ranges([[16000, 16001], [17000, 18000]], 1000.03125) == [[999, 1999]]
     assert fallback.track_ranges(None, 1000.03) is None
 
 
@@ -597,3 +600,20 @@ def test_held_events_carry_the_eta_of_when_they_are_sent(tmp_path, monkeypatch):
     _result, progress = interleaved(tmp_path, monkeypatch, script)
     etas = [event["etaMinutes"] for event in progress]
     assert etas[0] > 0 and etas == sorted(etas, reverse=True), etas
+
+
+def test_fallback_windows_place_their_words_and_energy_at_the_d55_word_base(tmp_path, monkeypatch):
+    # 31999.96875 ms is session sample 511999.5, so the track starts at 512000 (D55) and a
+    # window at track sample s starts at session ms (512000 + s) // 16, never at 31999 + s // 16.
+    samples = speech(40)
+    # 80 samples (5 ms) of sound where the "edge" word's energy window begins, at 1000 ms.
+    samples[RATE : RATE + 80] = np.tile([0.25, -0.25], 40)
+    model = TimedModel([[("edge", 1.1, 1.2), ("late", 14.499, 14.6)]])
+    _result, progress, words = run(tmp_path, monkeypatch, samples, model, 0.0, offset=31999.96875)
+    assert [e["segment"]["startSample"] for e in progress] == [0, 232000, 464000]
+    # The window starts are 32000, 46500 and 61000 ms: "late" (46499) is the first window's.
+    assert [[(w["text"], w["startMs"]) for w in e["words"]] for e in progress] == [
+        [("edge", 33100), ("late", 46499)],
+        [],
+        [],
+    ]

@@ -10,9 +10,10 @@ decoded audio; padding and ownership masking are zeros, so they are inactive.
 
 import math
 import unicodedata
-from fractions import Fraction
 
 import numpy as np
+
+from . import placement
 
 RATE = 16000
 FRAME = 512
@@ -45,15 +46,15 @@ SHIFT_MS = 100
 
 
 def track_ranges(presence, offset_ms):
-    """Session-sample presence as track-relative 16 kHz ranges; sample 0 is offsetMs.
+    """Session-sample presence as track-relative 16 kHz ranges.
 
-    A fractional shift rounds each edge inward, as the corpus's ranges16 does,
-    so a frame counts only when it lies wholly inside present time. None, a
-    track that is not placed, stays None.
+    Track sample 0 is session sample placement.frame(offsetMs, 16000) (D55), the
+    sample the word times and the rejoin place it at, so the shift is whole.
+    None, a track that is not placed, stays None.
     """
     if presence is None:
         return None
-    shift = Fraction(str(offset_ms or 0)) * RATE / 1000
+    shift = placement.frame(offset_ms or 0, RATE)
     merged = []
     for start, end in presence:
         start, end = max(0, math.ceil(start - shift)), math.floor(end - shift)
