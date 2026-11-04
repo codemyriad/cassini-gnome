@@ -94,6 +94,7 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
     if not all(getattr(word, "text_is_stored", False) for word in meeting.words):
         items = normalize_quote_items(items)
     body = dict(format=portable.WORDS_FORMAT, wordCount=len(items), items=items)
+    exported = {item["speaker"] for item in items}
     words_tags, reference = chunk_set("CASSINI_TX_WORDS_PAYLOAD_", body, WORDS_MIME)
     shape = dict(
         sampleRate=48000,
@@ -119,7 +120,8 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
         meeting=dict(id=identifier, title=meeting.title, createdAtUtc=date, durationMs=shape["durationMs"]),
         audio=dict(container="ogg", codec="opus", **shape),
         integrity=dict(matchPolicy="exact-opus-audio-v1", opusAudioSha256=digest["sha256"], **shape),
-        speakers=[dict(id=s.id, label=s.name) for s in meeting.speakers],
+        # D65: speakers listed are only those in the exported words.
+        speakers=[dict(id=s.id, label=s.name) for s in meeting.speakers if s.id in exported],
         transcripts=[
             dict(id="words", default=True, format=portable.WORDS_FORMAT, wordCount=len(items), payloadRef=reference)
         ],

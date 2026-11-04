@@ -125,15 +125,20 @@ def _gap_break(gaps, first, second):
 
 
 def model_projection(meeting, *, tz=None):
+    items = (
+        [dict(speaker=w.speaker, startMs=w.start_ms, endMs=w.end_ms, text=w.text) for w in meeting.words]
+        if meeting.transcript == "done"
+        else []
+    )
+    exported = {item["speaker"] for item in items}
     return dict(
         title=meeting.title,
         startMs=meeting.started_at_ms,
         tz=tz,
         durationMs=meeting.duration_ms,
-        speakers=[dict(id=s.id, name=s.name) for s in meeting.speakers],
-        items=[dict(speaker=w.speaker, startMs=w.start_ms, endMs=w.end_ms, text=w.text) for w in meeting.words]
-        if meeting.transcript == "done"
-        else [],
+        # D65: speakers listed are only those in the exported words.
+        speakers=[dict(id=s.id, name=s.name) for s in meeting.speakers if s.id in exported],
+        items=items,
         notes=list(meeting.notes),
         turnGaps={speaker: [list(r) for r in ranges] for speaker, ranges in meeting.turn_gaps.items()},
         **({"verbatim": True} if meeting.words and all(w.text_is_stored for w in meeting.words) else {}),
