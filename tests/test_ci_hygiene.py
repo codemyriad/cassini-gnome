@@ -97,12 +97,17 @@ def test_release_metadata_runs_in_lint_and_release_preparation_has_no_pr_trigger
     assert "pull_request" not in trigger and "workflow_dispatch:" in trigger
 
 
+# The CM_RUNNER repository variable may move a job to the cm-hetzner runners, whose job
+# containers are Ubuntu 26.04 too; unset, the job keeps the pinned GitHub image.
+CM_RUNNER_PINNED = "${{ vars.CM_RUNNER != '' && fromJSON(vars.CM_RUNNER) || 'ubuntu-26.04' }}"
+
+
 def test_package_builds_run_on_the_pinned_runner_image():
     # G16: the package builds run on the image every other job pins, not on
     # whatever ubuntu-latest points to. release.yml's publish job only uploads.
     for name in ("deb.yml", "packages.yml", "rpm-canary.yml"):
-        images = re.findall(r"^    runs-on: (\S+)", (WORKFLOWS / name).read_text(), re.M)
-        assert images and set(images) == {"ubuntu-26.04"}, (name, images)
+        images = re.findall(r"^    runs-on: (.+)$", (WORKFLOWS / name).read_text(), re.M)
+        assert images and set(images) <= {"ubuntu-26.04", CM_RUNNER_PINNED}, (name, images)
 
 
 def test_release_ships_the_flatpak_main_tested_and_refuses_it_without_an_update_remote():
