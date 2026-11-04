@@ -11,7 +11,6 @@ from test_browser_service import meeting, no_command, service, wait_for  # noqa:
 from test_control_reconnect import inventory, live, lose, peer
 
 from cassini_talk.browser_service import request, send_packet
-from cassini_talk.call_lifecycle import CONTROL_RECONNECT_GRACE
 
 
 def navigate(extension, url):
@@ -80,8 +79,10 @@ def test_lost_auto_start_retries_when_its_replacement_arrives_after_real_grace(s
     old.close()
     wait_for(lambda: not broker.browsers)
     assert polling.wait(5)
-    # The whole real grace, still well inside the Start's own 25 s.
-    now[0] = CONTROL_RECONNECT_GRACE
+    # 12 s, the old real-time bound: the 10 s grace (the extension's and
+    # docs/call-lifecycle.md's window) must be over by then, still well inside
+    # the Start's own 25 s. A longer grace leaves the call scheduled.
+    now[0] = 12
     wait_for(lambda: not broker._scheduled_calls)
     new = peer(path)
     try:
