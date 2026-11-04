@@ -36,7 +36,10 @@ def wav(path, entry):
     with path.open('wb') as stream:
         with wave.open(SparseWriter(stream),'wb') as audio:
             audio.setparams((channels,2,rate,0,'NONE','not compressed'))
-            tone = min(frames,rate) if entry.get('tone') else 0
+            # T8: optional toneFrames sets the tone's length; absent keeps the original one second.
+            tone = entry.get('toneFrames',min(frames,rate)) if entry.get('tone') else 0
+            if type(tone) is not int or not 0 <= tone <= frames:
+                raise ValueError('toneFrames must be a whole number of frames within the file')
             # An integer square wave, avoiding floating point/platform differences.
             if tone:
                 audio.writeframesraw(b''.join((5000 if (i*440*2//rate)%2 else -5000).to_bytes(2,'little',signed=True)*channels for i in range(tone)))

@@ -50,7 +50,7 @@ The stored `transcript.status` is the starting point. Then apply the first match
 | done | readable | `done` |
 | done | missing / unreadable / mismatched | `damaged`. The error is the stored error if it has an action; otherwise `{transcript-damaged, null}`. |
 | damaged | any | `damaged`, with the same error rule as the previous row |
-| none | any | `none`. A body never promotes `none` to `done`. |
+| none | any | `none`. A body never promotes `none` to `done`. A readable referenced body is shown as stored (below). |
 | *(meeting.json absent or ignored)* | `transcript.json` readable / unreadable / absent | `done` / `damaged` with `{transcript-damaged, null}` / `none` |
 
 Rules for references:
@@ -69,6 +69,17 @@ Rules for references:
   cassini-format reader exactly; do not add your own clamping.
 
 The stored error wins over a derived error whenever it has an action.
+
+**Words of a failed or none meeting (D67.2, D67.8a), 2026-11-04.** Readers show the file as stored (D47). When a
+`failed` or `none` meeting's reference is readable, its words are the meeting's words: they name the speaking
+speakers (R7) and show in the preview and the meeting view. The status stays as stored, and there is still no quote
+(R8.5). A missing or unreadable body under `failed` or `none` is no words, never `damaged`. Any hiding is a
+writer-side choice: on failure both writers store `reference: null` (D67.2).
+
+> (D67.8a) a meeting with transcript status none that still references words shows them as stored, as for failed
+> (D47: readers show the file as stored; any hiding is a writer-side choice).
+
+Tested by `library-vectors` `t8-failed-referenced-words` and `t8-none-referenced-words`.
 
 ## R4. lifecycle and interruptedAtMs
 
@@ -233,3 +244,27 @@ belong to the Meeting view (UX3).
 
 A speaker with provenance `source` shows its stored name (Me, The others). It is listed and coloured like any
 speaking speaker, in speaking order. Its sidebar caption is the track description (D11.2).
+
+## R13. Details source lines: no speech heard (D67.1), 2026-11-04
+
+The Details "Audio sources" section has one line per expected source, in captureOutcome order, from its
+captureOutcome (D52.1: `details.sources.captured`, `neverAudio`, `lowAudio`, `failed`). D67.1 adds one line:
+
+> **"Others silent" is a visible state.** New Details line `details.sources.silent`, "{source}: no speech heard."
+> (…, role line, not a warning). It shows for a captured source whose every track is in `writingDown.silentTracks`
+> and whose transcript is done. A never-captured line (`details.sources.neverAudio`) takes precedence over it.
+
+1. **Condition.** All of these hold:
+   - the source is expected and its `captureOutcome` is `captured`;
+   - it has at least one track, and every id in its `trackIds` is in
+     `recordingDetails.writingDown.silentTracks`;
+   - the transcript is `done` (R3).
+2. **Precedence.** A never-captured source shows `details.sources.neverAudio` and never the silent line, even
+   though its 0-frame track is in `silentTracks` (D67.3). A `lowAudio` source likewise shows only
+   `details.sources.lowAudio` and never the silent line, even when every one of its tracks is in `silentTracks`
+   (D67.8b, 2026-11-04):
+
+   > (b) A lowAudio source does not also get the silent line; its warning already explains the missing words.
+3. **Place and role.** The silent line follows that source's own line and its gap lines (`details.sources.gap`, D52.2),
+   before the next source's line. It is a line, not a warning: it never sets the source's problem. Tested by
+   `library-vectors/outcome-lines.json` (T8; `t8-low-audio-silent` for the lowAudio precedence).

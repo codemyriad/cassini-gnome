@@ -2032,6 +2032,2375 @@
           }
         }
       ]
+    },
+    {
+      "id": "t8-control-others-spoke",
+      "rules": [
+        "T8"
+      ],
+      "description": "Browser capture control: the guest was captured and spoke; transcript done.",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "title": "Call with Ana",
+            "source": "chromium",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "label": "Microphone",
+                "kind": "microphone",
+                "file": "track-microphone.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 160000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "mic",
+                "receivedFrames": 160000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 10000
+              },
+              {
+                "id": "guest",
+                "label": "Ana",
+                "kind": "remote",
+                "file": "track-guest.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 160000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "guest",
+                "receivedFrames": 160000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 10000
+              }
+            ],
+            "startedAtUtcOffsetMinutes": 60,
+            "captureOutcome": {
+              "sources": [
+                {
+                  "sourceTrackId": "mic",
+                  "kind": "microphone",
+                  "label": "Microphone",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "microphone"
+                  ]
+                },
+                {
+                  "sourceTrackId": "guest",
+                  "kind": "remote",
+                  "label": "Ana",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "guest"
+                  ]
+                }
+              ]
+            },
+            "events": [
+              {
+                "type": "end",
+                "atMs": 10000,
+                "reason": "user"
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 160000,
+          "tone": true,
+          "toneFrames": 80000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-guest.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 160000,
+          "tone": true,
+          "toneFrames": 80000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 3,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [
+              {
+                "id": "me",
+                "name": "Me",
+                "provenance": "source",
+                "colourIndex": 0
+              },
+              {
+                "id": "track-guest",
+                "name": "Ana",
+                "provenance": "user",
+                "colourIndex": 1
+              }
+            ],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              },
+              "model": "whistle"
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null,
+            "recordingDetails": {
+              "captureRecord": {
+                "sources": [
+                  {
+                    "sourceTrackId": "mic",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "microphone"
+                    ]
+                  },
+                  {
+                    "sourceTrackId": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "guest"
+                    ]
+                  }
+                ],
+                "version": 1,
+                "tracks": [
+                  {
+                    "id": "microphone",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "sourceTrackId": "mic",
+                    "frames": 160000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 160000
+                  },
+                  {
+                    "id": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "sourceTrackId": "guest",
+                    "frames": 160000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 160000
+                  }
+                ],
+                "events": [
+                  {
+                    "type": "end",
+                    "atMs": 10000,
+                    "reason": "user"
+                  }
+                ]
+              },
+              "writingDown": {
+                "wallDurationMs": 4000,
+                "resumed": false,
+                "speechSegments": 2,
+                "speakerSeparation": {
+                  "status": "skipped",
+                  "reason": "notApplicable"
+                }
+              }
+            }
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "me",
+                "startMs": 1000,
+                "endMs": 1400,
+                "text": "Thanks"
+              },
+              {
+                "speaker": "me",
+                "startMs": 1400,
+                "endMs": 1700,
+                "text": "for"
+              },
+              {
+                "speaker": "me",
+                "startMs": 1700,
+                "endMs": 2200,
+                "text": "joining."
+              },
+              {
+                "speaker": "track-guest",
+                "startMs": 5000,
+                "endMs": 5400,
+                "text": "Hello"
+              },
+              {
+                "speaker": "track-guest",
+                "startMs": 5400,
+                "endMs": 5800,
+                "text": "there."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "t8-others-silent",
+      "rules": [
+        "T8"
+      ],
+      "description": "Guest captured as all-zero audio (captured, D52.1), listed in writingDown.silentTracks; transcript done.",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "title": "Call with Ana",
+            "source": "chromium",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "label": "Microphone",
+                "kind": "microphone",
+                "file": "track-microphone.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 160000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "mic",
+                "receivedFrames": 160000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 10000
+              },
+              {
+                "id": "guest",
+                "label": "Ana",
+                "kind": "remote",
+                "file": "track-guest.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 160000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "guest",
+                "receivedFrames": 160000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 10000
+              }
+            ],
+            "startedAtUtcOffsetMinutes": 60,
+            "captureOutcome": {
+              "sources": [
+                {
+                  "sourceTrackId": "mic",
+                  "kind": "microphone",
+                  "label": "Microphone",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "microphone"
+                  ]
+                },
+                {
+                  "sourceTrackId": "guest",
+                  "kind": "remote",
+                  "label": "Ana",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "guest"
+                  ]
+                }
+              ]
+            },
+            "events": [
+              {
+                "type": "end",
+                "atMs": 10000,
+                "reason": "user"
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 160000,
+          "tone": true,
+          "toneFrames": 80000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-guest.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 160000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 3,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [
+              {
+                "id": "me",
+                "name": "Me",
+                "provenance": "source",
+                "colourIndex": 0
+              },
+              {
+                "id": "track-guest",
+                "name": "Ana",
+                "provenance": "user",
+                "colourIndex": 1
+              }
+            ],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              },
+              "model": "whistle"
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null,
+            "recordingDetails": {
+              "captureRecord": {
+                "sources": [
+                  {
+                    "sourceTrackId": "mic",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "microphone"
+                    ]
+                  },
+                  {
+                    "sourceTrackId": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "guest"
+                    ]
+                  }
+                ],
+                "version": 1,
+                "tracks": [
+                  {
+                    "id": "microphone",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "sourceTrackId": "mic",
+                    "frames": 160000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 160000
+                  },
+                  {
+                    "id": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "sourceTrackId": "guest",
+                    "frames": 160000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 160000
+                  }
+                ],
+                "events": [
+                  {
+                    "type": "end",
+                    "atMs": 10000,
+                    "reason": "user"
+                  }
+                ]
+              },
+              "writingDown": {
+                "wallDurationMs": 4000,
+                "resumed": false,
+                "speechSegments": 2,
+                "speakerSeparation": {
+                  "status": "skipped",
+                  "reason": "notApplicable"
+                },
+                "silentTracks": [
+                  "guest"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "me",
+                "startMs": 1000,
+                "endMs": 1400,
+                "text": "Thanks"
+              },
+              {
+                "speaker": "me",
+                "startMs": 1400,
+                "endMs": 1700,
+                "text": "for"
+              },
+              {
+                "speaker": "me",
+                "startMs": 1700,
+                "endMs": 2200,
+                "text": "joining."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "t8-others-never-captured",
+      "rules": [
+        "T8"
+      ],
+      "description": "Guest announced but never sent audio: 0-frame WAV, neverAudio, interrupted (capture), also in silentTracks (D67.3); never-captured beats silent (D67.1).",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "title": "Call with Ana",
+            "source": "chromium",
+            "state": "interrupted",
+            "tracks": [
+              {
+                "id": "microphone",
+                "label": "Microphone",
+                "kind": "microphone",
+                "file": "track-microphone.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 160000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "mic",
+                "receivedFrames": 160000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 10000
+              },
+              {
+                "id": "guest",
+                "label": "Ana",
+                "kind": "remote",
+                "file": "track-guest.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 0,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "guest",
+                "receivedFrames": 0,
+                "captureOutcome": "neverAudio",
+                "ended": true
+              }
+            ],
+            "startedAtUtcOffsetMinutes": 60,
+            "captureOutcome": {
+              "sources": [
+                {
+                  "sourceTrackId": "mic",
+                  "kind": "microphone",
+                  "label": "Microphone",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "microphone"
+                  ]
+                },
+                {
+                  "sourceTrackId": "guest",
+                  "kind": "remote",
+                  "label": "Ana",
+                  "captureOutcome": "neverAudio",
+                  "audioMs": 0,
+                  "trackIds": [
+                    "guest"
+                  ]
+                }
+              ]
+            },
+            "events": [
+              {
+                "type": "end",
+                "atMs": 10000,
+                "reason": "user"
+              }
+            ],
+            "problem": "Some announced audio was not fully captured.",
+            "problemKind": "capture"
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 160000,
+          "tone": true,
+          "toneFrames": 80000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-guest.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 0
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 3,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [
+              {
+                "id": "me",
+                "name": "Me",
+                "provenance": "source",
+                "colourIndex": 0
+              },
+              {
+                "id": "track-guest",
+                "name": "Ana",
+                "provenance": "user",
+                "colourIndex": 1
+              }
+            ],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              },
+              "model": "whistle"
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null,
+            "recordingDetails": {
+              "captureRecord": {
+                "sources": [
+                  {
+                    "sourceTrackId": "mic",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "microphone"
+                    ]
+                  },
+                  {
+                    "sourceTrackId": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "captureOutcome": "neverAudio",
+                    "audioMs": 0,
+                    "trackIds": [
+                      "guest"
+                    ]
+                  }
+                ],
+                "version": 1,
+                "tracks": [
+                  {
+                    "id": "microphone",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "sourceTrackId": "mic",
+                    "frames": 160000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 160000
+                  },
+                  {
+                    "id": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "sourceTrackId": "guest",
+                    "frames": 0,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "gaps": [],
+                    "captureOutcome": "neverAudio",
+                    "receivedFrames": 0
+                  }
+                ],
+                "events": [
+                  {
+                    "type": "end",
+                    "atMs": 10000,
+                    "reason": "user"
+                  }
+                ],
+                "problemKind": "capture"
+              },
+              "writingDown": {
+                "wallDurationMs": 4000,
+                "resumed": false,
+                "speechSegments": 2,
+                "speakerSeparation": {
+                  "status": "skipped",
+                  "reason": "notApplicable"
+                },
+                "silentTracks": [
+                  "guest"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "me",
+                "startMs": 1000,
+                "endMs": 1400,
+                "text": "Thanks"
+              },
+              {
+                "speaker": "me",
+                "startMs": 1400,
+                "endMs": 1700,
+                "text": "for"
+              },
+              {
+                "speaker": "me",
+                "startMs": 1700,
+                "endMs": 2200,
+                "text": "joining."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "t8-others-transcription-failed",
+      "rules": [
+        "T8"
+      ],
+      "description": "Failed write-down as the writer leaves it (D67.2): reference null, partial snapshot kept unreferenced for Try again; readers show the file as stored.",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "title": "Call with Ana",
+            "source": "chromium",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "label": "Microphone",
+                "kind": "microphone",
+                "file": "track-microphone.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 160000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "mic",
+                "receivedFrames": 160000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 10000
+              },
+              {
+                "id": "guest",
+                "label": "Ana",
+                "kind": "remote",
+                "file": "track-guest.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 160000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "guest",
+                "receivedFrames": 160000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 10000
+              }
+            ],
+            "startedAtUtcOffsetMinutes": 60,
+            "captureOutcome": {
+              "sources": [
+                {
+                  "sourceTrackId": "mic",
+                  "kind": "microphone",
+                  "label": "Microphone",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "microphone"
+                  ]
+                },
+                {
+                  "sourceTrackId": "guest",
+                  "kind": "remote",
+                  "label": "Ana",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "guest"
+                  ]
+                }
+              ]
+            },
+            "events": [
+              {
+                "type": "end",
+                "atMs": 10000,
+                "reason": "user"
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 160000,
+          "tone": true,
+          "toneFrames": 80000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-guest.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 160000,
+          "tone": true,
+          "toneFrames": 80000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 3,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [
+              {
+                "id": "me",
+                "name": "Me",
+                "provenance": "source",
+                "colourIndex": 0
+              },
+              {
+                "id": "track-guest",
+                "name": "Ana",
+                "provenance": "user",
+                "colourIndex": 1
+              }
+            ],
+            "transcript": {
+              "status": "failed",
+              "reference": null,
+              "model": "whistle"
+            },
+            "etaMinutes": null,
+            "error": {
+              "id": "transcribe-failed",
+              "action": "Try again"
+            },
+            "quoteOverride": null,
+            "received": null,
+            "recordingDetails": {
+              "captureRecord": {
+                "sources": [
+                  {
+                    "sourceTrackId": "mic",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "microphone"
+                    ]
+                  },
+                  {
+                    "sourceTrackId": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "guest"
+                    ]
+                  }
+                ],
+                "version": 1,
+                "tracks": [
+                  {
+                    "id": "microphone",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "sourceTrackId": "mic",
+                    "frames": 160000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 160000
+                  },
+                  {
+                    "id": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "sourceTrackId": "guest",
+                    "frames": 160000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 160000
+                  }
+                ],
+                "events": [
+                  {
+                    "type": "end",
+                    "atMs": 10000,
+                    "reason": "user"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "me",
+                "startMs": 1000,
+                "endMs": 1400,
+                "text": "Thanks"
+              },
+              {
+                "speaker": "me",
+                "startMs": 1400,
+                "endMs": 1700,
+                "text": "for"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "t8-failed-referenced-words",
+      "rules": [
+        "T8",
+        "R3"
+      ],
+      "description": "Failed, but meeting.json still references a readable sidecar (an older or another writer; D67.2 writers store null). Readers show the file as stored (D67.2, D47): its words are visible, R3 keeps failed, R8.5 shows no quote.",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "title": "Call with Ana",
+            "source": "chromium",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "label": "Microphone",
+                "kind": "microphone",
+                "file": "track-microphone.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 160000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "mic",
+                "receivedFrames": 160000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 10000
+              },
+              {
+                "id": "guest",
+                "label": "Ana",
+                "kind": "remote",
+                "file": "track-guest.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 160000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "guest",
+                "receivedFrames": 160000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 10000
+              }
+            ],
+            "startedAtUtcOffsetMinutes": 60,
+            "captureOutcome": {
+              "sources": [
+                {
+                  "sourceTrackId": "mic",
+                  "kind": "microphone",
+                  "label": "Microphone",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "microphone"
+                  ]
+                },
+                {
+                  "sourceTrackId": "guest",
+                  "kind": "remote",
+                  "label": "Ana",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "guest"
+                  ]
+                }
+              ]
+            },
+            "events": [
+              {
+                "type": "end",
+                "atMs": 10000,
+                "reason": "user"
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 160000,
+          "tone": true,
+          "toneFrames": 80000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-guest.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 160000,
+          "tone": true,
+          "toneFrames": 80000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 3,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [
+              {
+                "id": "me",
+                "name": "Me",
+                "provenance": "source",
+                "colourIndex": 0
+              },
+              {
+                "id": "track-guest",
+                "name": "Ana",
+                "provenance": "user",
+                "colourIndex": 1
+              }
+            ],
+            "transcript": {
+              "status": "failed",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              },
+              "model": "whistle"
+            },
+            "etaMinutes": null,
+            "error": {
+              "id": "transcribe-failed",
+              "action": "Try again"
+            },
+            "quoteOverride": null,
+            "received": null,
+            "recordingDetails": {
+              "captureRecord": {
+                "sources": [
+                  {
+                    "sourceTrackId": "mic",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "microphone"
+                    ]
+                  },
+                  {
+                    "sourceTrackId": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "guest"
+                    ]
+                  }
+                ],
+                "version": 1,
+                "tracks": [
+                  {
+                    "id": "microphone",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "sourceTrackId": "mic",
+                    "frames": 160000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 160000
+                  },
+                  {
+                    "id": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "sourceTrackId": "guest",
+                    "frames": 160000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 160000
+                  }
+                ],
+                "events": [
+                  {
+                    "type": "end",
+                    "atMs": 10000,
+                    "reason": "user"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "me",
+                "startMs": 1000,
+                "endMs": 1400,
+                "text": "Thanks"
+              },
+              {
+                "speaker": "me",
+                "startMs": 1400,
+                "endMs": 1700,
+                "text": "for"
+              },
+              {
+                "speaker": "track-guest",
+                "startMs": 5000,
+                "endMs": 5400,
+                "text": "Hello"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "t8-retry-failed-stale-silent",
+      "rules": [
+        "T8"
+      ],
+      "description": "Every track silent: the first write-down was done with no speech (silentTracks lists both). Try again failed, so writingDown is the earlier one, still stored; the transcript is not done, so no silent line (R13.1).",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "title": "Call with Ana",
+            "source": "chromium",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "label": "Microphone",
+                "kind": "microphone",
+                "file": "track-microphone.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 160000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "mic",
+                "receivedFrames": 160000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 10000
+              },
+              {
+                "id": "guest",
+                "label": "Ana",
+                "kind": "remote",
+                "file": "track-guest.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 160000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "guest",
+                "receivedFrames": 160000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 10000
+              }
+            ],
+            "startedAtUtcOffsetMinutes": 60,
+            "captureOutcome": {
+              "sources": [
+                {
+                  "sourceTrackId": "mic",
+                  "kind": "microphone",
+                  "label": "Microphone",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "microphone"
+                  ]
+                },
+                {
+                  "sourceTrackId": "guest",
+                  "kind": "remote",
+                  "label": "Ana",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "guest"
+                  ]
+                }
+              ]
+            },
+            "events": [
+              {
+                "type": "end",
+                "atMs": 10000,
+                "reason": "user"
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 160000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-guest.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 160000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 3,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [
+              {
+                "id": "me",
+                "name": "Me",
+                "provenance": "source",
+                "colourIndex": 0
+              },
+              {
+                "id": "track-guest",
+                "name": "Ana",
+                "provenance": "user",
+                "colourIndex": 1
+              }
+            ],
+            "transcript": {
+              "status": "failed",
+              "reference": null,
+              "model": "whistle"
+            },
+            "etaMinutes": null,
+            "error": {
+              "id": "transcribe-failed",
+              "action": "Try again"
+            },
+            "quoteOverride": null,
+            "received": null,
+            "recordingDetails": {
+              "captureRecord": {
+                "sources": [
+                  {
+                    "sourceTrackId": "mic",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "microphone"
+                    ]
+                  },
+                  {
+                    "sourceTrackId": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "guest"
+                    ]
+                  }
+                ],
+                "version": 1,
+                "tracks": [
+                  {
+                    "id": "microphone",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "sourceTrackId": "mic",
+                    "frames": 160000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 160000
+                  },
+                  {
+                    "id": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "sourceTrackId": "guest",
+                    "frames": 160000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 160000
+                  }
+                ],
+                "events": [
+                  {
+                    "type": "end",
+                    "atMs": 10000,
+                    "reason": "user"
+                  }
+                ]
+              },
+              "writingDown": {
+                "wallDurationMs": 4000,
+                "resumed": false,
+                "speechSegments": 0,
+                "speakerSeparation": {
+                  "status": "skipped",
+                  "reason": "notApplicable"
+                },
+                "silentTracks": [
+                  "microphone",
+                  "guest"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "und",
+            "items": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "t8-silent-per-source",
+      "rules": [
+        "T8"
+      ],
+      "description": "Rejoins (D63 #1): both of Bruno's tracks are silent, so his silent line follows his own line, before Ana's (R13.3); Ana's first track is silent but her return track spoke, so she has none: every track of the source must be silent (R13.1).",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "title": "Call with Ana and Bruno",
+            "source": "chromium",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "label": "Microphone",
+                "kind": "microphone",
+                "file": "track-microphone.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 160000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "mic",
+                "receivedFrames": 160000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 10000
+              },
+              {
+                "id": "bruno",
+                "label": "Bruno",
+                "kind": "remote",
+                "file": "track-bruno.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 80000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "bruno",
+                "receivedFrames": 80000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 5000
+              },
+              {
+                "id": "bruno-return",
+                "label": "Bruno",
+                "kind": "remote",
+                "file": "track-bruno-return.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 80000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "bruno",
+                "receivedFrames": 80000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 5000,
+                "ended": true,
+                "endOffsetMs": 10000
+              },
+              {
+                "id": "guest",
+                "label": "Ana",
+                "kind": "remote",
+                "file": "track-guest.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 80000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "guest",
+                "receivedFrames": 80000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 5000
+              },
+              {
+                "id": "guest-return",
+                "label": "Ana",
+                "kind": "remote",
+                "file": "track-guest-return.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 80000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "guest",
+                "receivedFrames": 80000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 5000,
+                "ended": true,
+                "endOffsetMs": 10000
+              }
+            ],
+            "startedAtUtcOffsetMinutes": 60,
+            "captureOutcome": {
+              "sources": [
+                {
+                  "sourceTrackId": "mic",
+                  "kind": "microphone",
+                  "label": "Microphone",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "microphone"
+                  ]
+                },
+                {
+                  "sourceTrackId": "bruno",
+                  "kind": "remote",
+                  "label": "Bruno",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "bruno",
+                    "bruno-return"
+                  ]
+                },
+                {
+                  "sourceTrackId": "guest",
+                  "kind": "remote",
+                  "label": "Ana",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "guest",
+                    "guest-return"
+                  ]
+                }
+              ]
+            },
+            "events": [
+              {
+                "type": "end",
+                "atMs": 10000,
+                "reason": "user"
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 160000,
+          "tone": true,
+          "toneFrames": 80000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-bruno.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 80000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-bruno-return.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 80000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-guest.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 80000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-guest-return.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 80000,
+          "tone": true,
+          "toneFrames": 40000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 3,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [
+              {
+                "id": "me",
+                "name": "Me",
+                "provenance": "source",
+                "colourIndex": 0
+              },
+              {
+                "id": "track-guest",
+                "name": "Ana",
+                "provenance": "user",
+                "colourIndex": 1
+              },
+              {
+                "id": "track-bruno",
+                "name": "Bruno",
+                "provenance": "user",
+                "colourIndex": 2
+              }
+            ],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              },
+              "model": "whistle"
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null,
+            "recordingDetails": {
+              "captureRecord": {
+                "sources": [
+                  {
+                    "sourceTrackId": "mic",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "microphone"
+                    ]
+                  },
+                  {
+                    "sourceTrackId": "bruno",
+                    "kind": "remote",
+                    "label": "Bruno",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "bruno",
+                      "bruno-return"
+                    ]
+                  },
+                  {
+                    "sourceTrackId": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "guest",
+                      "guest-return"
+                    ]
+                  }
+                ],
+                "version": 1,
+                "tracks": [
+                  {
+                    "id": "microphone",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "sourceTrackId": "mic",
+                    "frames": 160000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 160000
+                  },
+                  {
+                    "id": "bruno",
+                    "kind": "remote",
+                    "label": "Bruno",
+                    "sourceTrackId": "bruno",
+                    "frames": 80000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 5000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 80000
+                  },
+                  {
+                    "id": "bruno-return",
+                    "kind": "remote",
+                    "label": "Bruno",
+                    "sourceTrackId": "bruno",
+                    "frames": 80000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 5000,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 80000
+                  },
+                  {
+                    "id": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "sourceTrackId": "guest",
+                    "frames": 80000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 5000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 80000
+                  },
+                  {
+                    "id": "guest-return",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "sourceTrackId": "guest",
+                    "frames": 80000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 5000,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 80000
+                  }
+                ],
+                "events": [
+                  {
+                    "type": "end",
+                    "atMs": 10000,
+                    "reason": "user"
+                  }
+                ]
+              },
+              "writingDown": {
+                "wallDurationMs": 4000,
+                "resumed": false,
+                "speechSegments": 2,
+                "speakerSeparation": {
+                  "status": "skipped",
+                  "reason": "notApplicable"
+                },
+                "silentTracks": [
+                  "bruno",
+                  "bruno-return",
+                  "guest"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "me",
+                "startMs": 1000,
+                "endMs": 1400,
+                "text": "Thanks"
+              },
+              {
+                "speaker": "me",
+                "startMs": 1400,
+                "endMs": 1700,
+                "text": "for"
+              },
+              {
+                "speaker": "me",
+                "startMs": 1700,
+                "endMs": 2200,
+                "text": "joining."
+              },
+              {
+                "speaker": "track-guest",
+                "startMs": 6000,
+                "endMs": 6400,
+                "text": "Hello"
+              },
+              {
+                "speaker": "track-guest",
+                "startMs": 6400,
+                "endMs": 6800,
+                "text": "again."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "t8-none-referenced-words",
+      "rules": [
+        "T8",
+        "R3"
+      ],
+      "description": "Status none, but meeting.json references a readable sidecar (another or an older writer). Readers show the file as stored, as for failed (D67.8a, D47): its words are visible, R3 keeps none, R8.5 shows no quote, R9 can write down.",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "title": "Call with Ana",
+            "source": "chromium",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "label": "Microphone",
+                "kind": "microphone",
+                "file": "track-microphone.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 160000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "mic",
+                "receivedFrames": 160000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 10000
+              },
+              {
+                "id": "guest",
+                "label": "Ana",
+                "kind": "remote",
+                "file": "track-guest.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 160000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "guest",
+                "receivedFrames": 160000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 10000
+              }
+            ],
+            "startedAtUtcOffsetMinutes": 60,
+            "captureOutcome": {
+              "sources": [
+                {
+                  "sourceTrackId": "mic",
+                  "kind": "microphone",
+                  "label": "Microphone",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "microphone"
+                  ]
+                },
+                {
+                  "sourceTrackId": "guest",
+                  "kind": "remote",
+                  "label": "Ana",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "guest"
+                  ]
+                }
+              ]
+            },
+            "events": [
+              {
+                "type": "end",
+                "atMs": 10000,
+                "reason": "user"
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 160000,
+          "tone": true,
+          "toneFrames": 80000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-guest.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 160000,
+          "tone": true,
+          "toneFrames": 80000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 3,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [
+              {
+                "id": "me",
+                "name": "Me",
+                "provenance": "source",
+                "colourIndex": 0
+              },
+              {
+                "id": "track-guest",
+                "name": "Ana",
+                "provenance": "user",
+                "colourIndex": 1
+              }
+            ],
+            "transcript": {
+              "status": "none",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              },
+              "model": "whistle"
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null,
+            "recordingDetails": {
+              "captureRecord": {
+                "sources": [
+                  {
+                    "sourceTrackId": "mic",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "microphone"
+                    ]
+                  },
+                  {
+                    "sourceTrackId": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "guest"
+                    ]
+                  }
+                ],
+                "version": 1,
+                "tracks": [
+                  {
+                    "id": "microphone",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "sourceTrackId": "mic",
+                    "frames": 160000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 160000
+                  },
+                  {
+                    "id": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "sourceTrackId": "guest",
+                    "frames": 160000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 160000
+                  }
+                ],
+                "events": [
+                  {
+                    "type": "end",
+                    "atMs": 10000,
+                    "reason": "user"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "me",
+                "startMs": 1000,
+                "endMs": 1400,
+                "text": "Thanks"
+              },
+              {
+                "speaker": "me",
+                "startMs": 1400,
+                "endMs": 1700,
+                "text": "for"
+              },
+              {
+                "speaker": "track-guest",
+                "startMs": 5000,
+                "endMs": 5400,
+                "text": "Hello"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "t8-low-audio-silent",
+      "rules": [
+        "T8"
+      ],
+      "description": "Ana sent only 500 ms of zeros (lowAudio); the write-down is done and lists her only track as silent. Her lowAudio warning already explains the missing words, so no silent line (D67.8b, R13.1).",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "createdAt": "2026-10-27T13:17:59Z",
+            "title": "Call with Ana",
+            "source": "chromium",
+            "state": "interrupted",
+            "tracks": [
+              {
+                "id": "microphone",
+                "label": "Microphone",
+                "kind": "microphone",
+                "file": "track-microphone.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 160000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "mic",
+                "receivedFrames": 160000,
+                "captureOutcome": "captured",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 10000
+              },
+              {
+                "id": "guest",
+                "label": "Ana",
+                "kind": "remote",
+                "file": "track-guest.wav",
+                "sampleRate": 16000,
+                "channels": 1,
+                "frames": 8000,
+                "labelSource": "browser",
+                "gaps": [],
+                "sourceTrackId": "guest",
+                "receivedFrames": 8000,
+                "captureOutcome": "lowAudio",
+                "startOffsetMs": 0,
+                "ended": true,
+                "endOffsetMs": 500
+              }
+            ],
+            "startedAtUtcOffsetMinutes": 60,
+            "captureOutcome": {
+              "sources": [
+                {
+                  "sourceTrackId": "mic",
+                  "kind": "microphone",
+                  "label": "Microphone",
+                  "captureOutcome": "captured",
+                  "audioMs": 10000,
+                  "trackIds": [
+                    "microphone"
+                  ]
+                },
+                {
+                  "sourceTrackId": "guest",
+                  "kind": "remote",
+                  "label": "Ana",
+                  "captureOutcome": "lowAudio",
+                  "audioMs": 500,
+                  "trackIds": [
+                    "guest"
+                  ]
+                }
+              ]
+            },
+            "events": [
+              {
+                "type": "end",
+                "atMs": 10000,
+                "reason": "user"
+              }
+            ],
+            "problem": "Some announced audio was not fully captured.",
+            "problemKind": "capture"
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 160000,
+          "tone": true,
+          "toneFrames": 80000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-guest.wav",
+          "type": "wav",
+          "rate": 16000,
+          "channels": 1,
+          "frames": 8000
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 3,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [
+              {
+                "id": "me",
+                "name": "Me",
+                "provenance": "source",
+                "colourIndex": 0
+              },
+              {
+                "id": "track-guest",
+                "name": "Ana",
+                "provenance": "user",
+                "colourIndex": 1
+              }
+            ],
+            "transcript": {
+              "status": "done",
+              "reference": {
+                "kind": "sidecar",
+                "file": "transcript.json",
+                "format": "cassini.words.v1"
+              },
+              "model": "whistle"
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null,
+            "recordingDetails": {
+              "captureRecord": {
+                "sources": [
+                  {
+                    "sourceTrackId": "mic",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "captureOutcome": "captured",
+                    "audioMs": 10000,
+                    "trackIds": [
+                      "microphone"
+                    ]
+                  },
+                  {
+                    "sourceTrackId": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "captureOutcome": "lowAudio",
+                    "audioMs": 500,
+                    "trackIds": [
+                      "guest"
+                    ]
+                  }
+                ],
+                "version": 1,
+                "tracks": [
+                  {
+                    "id": "microphone",
+                    "kind": "microphone",
+                    "label": "Microphone",
+                    "sourceTrackId": "mic",
+                    "frames": 160000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 10000,
+                    "gaps": [],
+                    "captureOutcome": "captured",
+                    "receivedFrames": 160000
+                  },
+                  {
+                    "id": "guest",
+                    "kind": "remote",
+                    "label": "Ana",
+                    "sourceTrackId": "guest",
+                    "frames": 8000,
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0,
+                    "endOffsetMs": 500,
+                    "gaps": [],
+                    "captureOutcome": "lowAudio",
+                    "receivedFrames": 8000
+                  }
+                ],
+                "events": [
+                  {
+                    "type": "end",
+                    "atMs": 10000,
+                    "reason": "user"
+                  }
+                ]
+              },
+              "writingDown": {
+                "wallDurationMs": 4000,
+                "resumed": false,
+                "speechSegments": 1,
+                "speakerSeparation": {
+                  "status": "skipped",
+                  "reason": "notApplicable"
+                },
+                "silentTracks": [
+                  "guest"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/transcript.json",
+          "type": "json",
+          "value": {
+            "format": "cassini.words.v1",
+            "language": "en",
+            "items": [
+              {
+                "speaker": "me",
+                "startMs": 1000,
+                "endMs": 1400,
+                "text": "Thanks"
+              },
+              {
+                "speaker": "me",
+                "startMs": 1400,
+                "endMs": 1700,
+                "text": "for"
+              },
+              {
+                "speaker": "me",
+                "startMs": 1700,
+                "endMs": 2200,
+                "text": "joining."
+              }
+            ]
+          }
+        }
+      ]
     }
   ]
 }

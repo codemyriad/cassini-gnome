@@ -116,22 +116,25 @@ class AudioLine:
     gap_lines: tuple[str, ...] = ()
 
 
-def audio_lines(sources, refusals):
+def audio_lines(sources, refusals, silent_tracks=frozenset()):
     """Audio sources, in the protocol's reader order (conformance/refusals readers).
 
-    Expected source rows first, as today. Then one line per distinct refusal
-    line. Then each not-selected row, unless its role (Me, or The others, which
-    a browser refusal also covers) has a refusal line. `empty` only when no
-    other line is shown.
+    Expected source rows first, as today, each followed by its D67.1 silent
+    line when the write-down heard no speech in any of its tracks. Then one
+    line per distinct refusal line. Then each not-selected row, unless its
+    role (Me, or The others, which a browser refusal also covers) has a
+    refusal line. `empty` only when no other line is shown.
     """
     from .refusals import SOURCES, lines
 
     shown, roles = lines(refusals)
-    result = [
-        AudioLine("details.sources." + source.outcome, "", source.line, source.problem, source.gap_lines)
-        for source in sources
-        if source.expected
-    ]
+    result = []
+    for source in sources:
+        if not source.expected:
+            continue
+        result.append(AudioLine("details.sources." + source.outcome, "", source.line, source.problem, source.gap_lines))
+        if source.silent(silent_tracks):
+            result.append(AudioLine("details.sources.silent", "", text("details.sources.silent", source=source.name)))
     result += [AudioLine(key, origin, text(key, source=text(origin)), True) for key, origin in shown]
     for source in sources:
         role = "me" if source.kind in ("microphone", "local") else "others"
@@ -155,10 +158,12 @@ class Report:
     sources: tuple[SourceFact, ...] = ()
     # D58: every well-formed stored refusal, exactly as stored, for Copy details.
     refusals: tuple[dict, ...] = ()
+    # D56/D67.1: the done write-down's writingDown.silentTracks, as stored.
+    silent_tracks: frozenset[str] = frozenset()
 
     @property
     def audio(self):
-        return audio_lines(self.sources, list(self.refusals))
+        return audio_lines(self.sources, list(self.refusals), self.silent_tracks)
 
     def plain_text(self):
         lines = [text("details.copy.heading"), self.title, "", text("details.capture.title")]
@@ -593,6 +598,8 @@ def read_details(meeting):
     segments = writing_facts.get("speechSegments")
     segments = str(segments) if type(segments) is int and 0 <= segments <= 9007199254740991 else UNKNOWN
     separation = _separation(writing_facts.get("speakerSeparation"))
+    listed = writing_facts.get("silentTracks")
+    silent_tracks = frozenset(i for i in listed if isinstance(i, str)) if isinstance(listed, list) else frozenset()
     language = LANGUAGES.get(language.lower().replace("_", "-").split("-", 1)[0], UNKNOWN)
     writing = (
         (text("details.writing.model"), model),
@@ -617,4 +624,5 @@ def read_details(meeting):
         tuple(notes),
         source_facts(session, meeting.metadata, live=meeting.lifecycle in ("recording", "saving")),
         tuple(read_refusals(session.get("refusals"))),
+        silent_tracks,
     )

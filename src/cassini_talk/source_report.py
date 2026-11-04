@@ -20,6 +20,7 @@ class SourceFact:
     dropped_ms: Fraction | None
     final: bool
     expected: bool = True
+    track_ids: tuple[str, ...] = ()
 
     @property
     def problem(self):
@@ -45,6 +46,18 @@ class SourceFact:
         if not self.final and outcome == "lowAudio":
             outcome = "captured"
         return text("details.sources." + outcome, source=self.name, duration=meeting_duration(self.audio_ms))
+
+    def silent(self, silent_tracks):
+        """D67.1 (LIBRARY-RULES R13): a finished, captured source whose every track the
+        write-down listed in writingDown.silentTracks. A never-captured source keeps its
+        neverAudio line instead, though its 0-frame track is listed too (D67.3)."""
+        return (
+            self.expected
+            and self.final
+            and self.outcome == "captured"
+            and bool(self.track_ids)
+            and all(identifier in silent_tracks for identifier in self.track_ids)
+        )
 
     @property
     def gap_lines(self):
@@ -131,6 +144,7 @@ def sources(session, metadata, *, live):
                 _counter(tracks, row["trackIds"], "droppedFrames"),
                 not live,
                 expected=row.get("captureExpected", True),
+                track_ids=tuple(row["trackIds"]),
             )
         )
     # These two counters may describe the same missing interval; they are not

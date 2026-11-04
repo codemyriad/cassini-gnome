@@ -13,6 +13,38 @@ import tempfile
 
 HERE=Path(__file__).resolve().parent
 FIELDS={'id','origin','lifecycle','interruptedAtMs','transcript','etaMinutes','error','badge','title','startMs','durationMs','names','quote','canWriteDown','speakers'}
+CASE_COUNT=22
+# The three outcome states and their control (D67), then guards: R3/D67.2 failed shown as stored, R13.1 done
+# and every track, R13.3 place, R3/D67.8a none shown as stored, R13.1/D67.8b lowAudio gets no silent line.
+T8_STATES=['t8-control-others-spoke','t8-others-silent','t8-others-never-captured','t8-others-transcription-failed']
+T8=T8_STATES+['t8-failed-referenced-words','t8-retry-failed-stale-silent','t8-silent-per-source',
+            't8-none-referenced-words','t8-low-audio-silent']
+# The 13 cases before T8, digested by legacy_digest: the additive toneFrames key left their bytes unchanged.
+LEGACY={
+    'empty':'eab928e1ec07bbfb4f34bdbd051c912df33923043ad84f244e4fc8062d846092',
+    'first-record':'eab928e1ec07bbfb4f34bdbd051c912df33923043ad84f244e4fc8062d846092',
+    'main':'1b03c9b1bed9761218b38c17d340864eb0d8b6da76073fffe2eef4942b674a6b',
+    'r1-discovery':'521eab0b1fe813791406a395b3be6f645943115354d501386cb666589ae8789a',
+    'r2-whole-document':'f538d51605cb9789fa79d4b9e9d466881faa3dff8402ac5b8bd1e210c69dfb4f',
+    'r3-transcript-precedence':'f8fa462560d11564ff670773e58c75e67a8864b66104264ebbbab2b9ff2e890c',
+    'r4-capture-history':'84be9fb6720d99b403c53e3737cfa5f716c988d18b7a63b6ea134116f9067cf2',
+    'r5-display-duration':'8a4f719b7c6f3202ccc10d9a2a1f5314d7c8b087b46fc9cdb4af2275c95af2ff',
+    'r6-title-start-order':'6d6021f9631c70ddeb1774155054635bd94e24ccf4aeb0efc37ce3a05039060f',
+    'r7-speaking-order':'2bc44134e478bc2e99a47d6c08aba5353203458cfbd029659960d6a97b1cc560',
+    'r8-consecutive-quote':'f6dc0ef4cbdf7480271ce679752be82179d7a1843fd7228f86d781b38282605e',
+    'r9-received-once':'927f241cc48417a9726f791c3c1434ceb41d7a74a710e9acd3ec0f29ccb48a4e',
+    'received-only':'d8d71fbb4de1ae0fe6e47ea4ffb80674d9dec8a0e4d3eccd675cd2cef2c0e343',
+}
+# The seven T8 cases before D67.8, digested the same way: the two D67.8 cases are additive.
+LEGACY_T8={
+    't8-control-others-spoke':'d4d2b8c73bbad5ab8efcfbbc6a60b5d0e163942547c0d903d4796b4d1bc3005b',
+    't8-failed-referenced-words':'32b0ad8203a9cea4052695d0c9c0769188ae7a7f07398f84076baf864e332dcf',
+    't8-others-never-captured':'861547464c334d4bcd68a5771fdf849e003286eb9234b1dd7bc7b6a4aa6ef56c',
+    't8-others-silent':'fc7ee72202602bb5c08ce4381fd79360046e01ecdcff91ac287f7ec5b79c9692',
+    't8-others-transcription-failed':'498957b6ab04e60f4773803f89400052800551d1b37686df9e588bb53b564c1f',
+    't8-retry-failed-stale-silent':'99211ff52a782ffab416fd60441b704ad88ebf6478b284a9cc42542c988c9b9e',
+    't8-silent-per-source':'14afb808d4d47be775d6f42c9f46665de45384d1f85d0050e00c1c735406b16f',
+}
 
 
 def tree(root):
@@ -30,6 +62,88 @@ def tree(root):
                 value.extend([info.st_size,digest.hexdigest()])
             entries[str(path.relative_to(root))]=value
     return entries
+
+
+def legacy_digest(root):
+    # Bytes, file types and link targets only: permission bits of links and of parents
+    # created by mkdir(parents=True) follow the platform and umask, not make.py.
+    entries={name:[stat.S_IFMT(value[0])]+value[2:] for name,value in tree(root).items()}
+    return hashlib.sha256(json.dumps(entries,sort_keys=True).encode()).hexdigest()
+
+
+def check_outcome_lines(cases):
+    """T8 (D67): shape and coverage of the hand-written Details lines; never derives them."""
+    lines=json.loads((HERE/'outcome-lines.json').read_text())
+    assert set(lines)=={'version','note','cases'} and lines['version']==1
+    assert [case['id'] for case in cases if 'T8' in case['rules']]==T8 and list(lines['cases'])==T8
+    catalog=HERE.parent/'strings.json'  # Beside the vectors in ux-draft; app copies vendor it elsewhere.
+    entries={e['id']:e for e in json.loads(catalog.read_text())['entries']} if catalog.exists() else None
+    for case in T8:
+        value=lines['cases'][case]
+        assert set(value)=={'audio','noSpeech','visibleWords'} and type(value['noSpeech']) is bool
+        assert all(type(n) is int and n>0 for n in value['visibleWords'].values())
+        for line in value['audio']:
+            assert set(line)=={'id','args','problem'} and type(line['problem']) is bool,(case,line)
+            assert line['id'].startswith('details.sources.')
+            source=line['args'].get('source')
+            assert isinstance(source,dict) and len(source)==1 and set(source)<={'catalog','text'},(case,line)
+            if 'duration' in line['args']:
+                assert set(line['args']['duration'])=={'ms'} and type(line['args']['duration']['ms']) is int
+            if entries is not None:
+                assert line['id'] in entries and ('catalog' not in source or source['catalog'] in entries),(case,line)
+                assert set(line['args'])==set(entries[line['id']].get('placeholders',{})),(case,line)
+    # Three distinct states (D67.1): each outcome differs from the control and from each other.
+    shown=[json.dumps(lines['cases'][case],sort_keys=True) for case in T8_STATES]
+    assert len(set(shown))==len(T8_STATES),'T8 outcome lines must differ pairwise'
+    # Others silent is visible in Details itself, not only through missing words.
+    assert lines['cases'][T8[1]]['audio']!=lines['cases'][T8[0]]['audio']
+    guards({case['id']:case for case in cases},lines['cases'])
+    return entries is not None
+
+
+def guards(cases,lines):
+    """The guard cases pin what the four states cannot tell apart (review of T8); never derives lines."""
+    def stored(case,name):
+        (entry,)=[e for e in cases[case]['entries'] if e['path'].endswith('/'+name)]
+        return entry['value']
+    def silent_sources(case):
+        return [line['args']['source']['text'] for line in lines[case]['audio'] if line['id']=='details.sources.silent']
+    # D67.2: a failed meeting that references a readable body shows its words as stored.
+    case='t8-failed-referenced-words'
+    meeting=stored(case,'meeting.json')
+    assert meeting['transcript']['status']=='failed' and meeting['transcript']['reference'] is not None
+    assert lines[case]['visibleWords'] and 'R3' in cases[case]['rules']
+    # R13.1 transcript done: a stale writingDown listing every track, transcript failed, no silent line.
+    case='t8-retry-failed-stale-silent'
+    meeting,session=stored(case,'meeting.json'),stored(case,'session.json')
+    assert meeting['transcript']['status']!='done'
+    assert set(meeting['recordingDetails']['writingDown']['silentTracks'])=={t['id'] for t in session['tracks']}
+    assert not silent_sources(case)
+    # R13.1 every track and R13.3 place: two two-track sources, one all silent, one partly; the silent line is
+    # not the last line, so it sits right after its own source's line.
+    case='t8-silent-per-source'
+    meeting,session=stored(case,'meeting.json'),stored(case,'session.json')
+    listed=set(meeting['recordingDetails']['writingDown']['silentTracks'])
+    rows=[r for r in session['captureOutcome']['sources'] if len(r['trackIds'])>1]
+    assert len(rows)==2 and sum(set(r['trackIds'])<=listed for r in rows)==1
+    assert sum(bool(set(r['trackIds'])&listed) and not set(r['trackIds'])<=listed for r in rows)==1
+    audio=lines[case]['audio']
+    (at,)=[i for i,line in enumerate(audio) if line['id']=='details.sources.silent']
+    assert 0<at<len(audio)-1 and audio[at-1]['args']['source']==audio[at]['args']['source']
+    # D67.8a: status none that references a readable body shows its words as stored, as for failed.
+    case='t8-none-referenced-words'
+    meeting=stored(case,'meeting.json')
+    assert meeting['transcript']['status']=='none' and meeting['transcript']['reference'] is not None
+    assert lines[case]['visibleWords'] and 'R3' in cases[case]['rules']
+    # D67.8b: a lowAudio source, every track silent, transcript done: its lowAudio warning, no silent line.
+    case='t8-low-audio-silent'
+    meeting,session=stored(case,'meeting.json'),stored(case,'session.json')
+    listed=set(meeting['recordingDetails']['writingDown']['silentTracks'])
+    (low,)=[r for r in session['captureOutcome']['sources'] if r['captureOutcome']=='lowAudio']
+    assert meeting['transcript']['status']=='done' and low['trackIds'] and set(low['trackIds'])<=listed
+    name={'text':low['label']}
+    assert [line['id'] for line in lines[case]['audio'] if line['args']['source']==name]==['details.sources.lowAudio']
+    assert not silent_sources(case)
 
 
 def check_onboarding_descriptors():
@@ -74,7 +188,14 @@ def main():
     names={case['id'] for case in cases}
     assert len(names)==len(cases)
     assert {p.stem for p in (HERE/'expected').glob('*.json')}==names
-    assert {f'R{i}' for i in range(1,10)} <= {rule for case in cases for rule in case['rules']}
+    assert len(cases)==CASE_COUNT,len(cases)
+    assert {f'R{i}' for i in range(1,10)}|{'T8'} <= {rule for case in cases for rule in case['rules']}
+    for case in cases:
+        for entry in case['entries']:
+            if 'toneFrames' in entry:
+                assert entry['type']=='wav' and entry.get('tone') is True and 'T8' in case['rules'],case['id']
+                assert type(entry['toneFrames']) is int and 0<=entry['toneFrames']<=entry['frames'],case['id']
+    catalog_checked=check_outcome_lines(cases)
     for case in cases:
         expected=json.loads((HERE/'expected'/f"{case['id']}.json").read_text())
         assert set(expected)=={'scan','groups'}
@@ -88,7 +209,11 @@ def main():
         a,b=Path(temporary)/'a',Path(temporary)/'b'
         for out in (a,b):subprocess.run([sys.executable,str(HERE/'make.py'),str(out)],check=True)
         assert tree(a)==tree(b),'Fixture generation is nondeterministic'
-    print(f'Verified {len(cases)} hand-authored cases, R1–R9 coverage and byte-identical builds')
+        assert {name:legacy_digest(a/name) for name in LEGACY}==LEGACY,'A pre-T8 case changed bytes'
+        assert {name:legacy_digest(a/name) for name in LEGACY_T8}==LEGACY_T8,'A pre-D67.8 T8 case changed bytes'
+    print(f'Verified {len(cases)} hand-authored cases, R1–R9 and T8 coverage, byte-identical builds, '
+          f'{len(LEGACY)} unchanged pre-T8 trees, {len(LEGACY_T8)} unchanged pre-D67.8 T8 trees and T8 outcome lines'
+          +(' against strings.json' if catalog_checked else ' (catalog ids checked where strings.json is beside)'))
 
 
 if __name__=='__main__':main()

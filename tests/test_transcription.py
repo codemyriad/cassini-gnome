@@ -29,6 +29,23 @@ def until(check):
     assert check(), "Queue did not reach expected state"
 
 
+class Finished:
+    """The queue's finished callback as a completion event (E1): waits end when it fires."""
+
+    def __init__(self):
+        self.directories = []
+        self._condition = threading.Condition()
+
+    def __call__(self, directory):
+        with self._condition:
+            self.directories.append(directory)
+            self._condition.notify_all()
+
+    def wait(self, count, timeout=5):
+        with self._condition:
+            assert self._condition.wait_for(lambda: len(self.directories) >= count, timeout), "Queue did not finish"
+
+
 def capture_hashes(session):
     return {
         p.name: hashlib.sha256(p.read_bytes()).hexdigest()
@@ -197,6 +214,106 @@ def test_worker_failure_becomes_retryable_without_changing_audio(tmp_path):
         until(lambda: len(finished) == 2)
         assert read_metadata(session.directory)["transcript"]["status"] == "done"
         assert capture_hashes(session) == before
+    finally:
+        queue.close()
+
+
+def test_a_failed_write_down_keeps_its_partial_words_unreferenced_until_try_again(tmp_path):
+    """D67.2: failed shows no words because the file says so; the snapshot waits for Try again."""
+    session = capture(tmp_path)
+    finished, visible = Finished(), []
+
+    class Client:
+        fail = True
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            texts = ["Partial", "words"] if Client.fail else ["Partial", "words", "again"]
+            notify(
+                dict(
+                    type="progress",
+                    trackId=tracks[0]["id"],
+                    trackOrder=0,
+                    language="en",
+                    etaMinutes=1,
+                    words=[dict(startMs=i * 100, endMs=i * 100 + 90, text=t) for i, t in enumerate(texts)],
+                )
+            )
+            if Client.fail:
+                Client.fail = False
+                raise RuntimeError("synthetic worker crash after partial words")
+            return dict(diagnostics=[])
+
+    def changed(directory):
+        meeting = LibraryScanner(tmp_path).scan().meetings[0]
+        visible.append((meeting.transcript, len(meeting.words)))
+
+    queue = TranscriptionQueue(changed, finished, client_factory=Client, bundle=tmp_path)
+    try:
+        queue.enqueue(session.directory)
+        finished.wait(1)
+        metadata = read_metadata(session.directory)
+        assert metadata["transcript"]["status"] == "failed" and metadata["transcript"]["reference"] is None
+        assert metadata["error"] == dict(id="transcribe-failed", action="Try again")
+        # The partial body is kept, unreferenced, and the Library shows the file as stored: no words.
+        body = json.loads((session.directory / "transcript.json").read_text())
+        assert [item["text"] for item in body["items"]] == ["Partial", "words"]
+        meeting = LibraryScanner(tmp_path).scan().meetings[0]
+        assert (meeting.transcript, meeting.words, meeting.quote_line) == ("failed", (), None)
+        visible.clear()
+        # Try again references the snapshot once more: it is visible while queued.
+        assert queue.enqueue(session.directory)
+        finished.wait(2)
+        assert ("queued", 2) in visible, visible
+        metadata = read_metadata(session.directory)
+        assert metadata["transcript"]["status"] == "done" and metadata["transcript"]["reference"] is not None
+        assert len(LibraryScanner(tmp_path).scan().meetings[0].words) == 3
+    finally:
+        queue.close()
+
+
+def test_a_shorter_failing_try_again_keeps_the_longer_snapshot(tmp_path):
+    """D67.2: Try again retains the preserved snapshot until recomputation catches up, failing or not."""
+    session = capture(tmp_path)
+    finished = Finished()
+    attempts = [["One", "two", "three"], ["One"]]
+
+    class Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            texts = attempts.pop(0)
+            words = [dict(startMs=i * 100, endMs=i * 100 + 90, text=t) for i, t in enumerate(texts)]
+            notify(
+                dict(type="progress", trackId=tracks[0]["id"], trackOrder=0, language="en", etaMinutes=1, words=words)
+            )
+            raise RuntimeError("synthetic worker crash after partial words")
+
+    queue = TranscriptionQueue(lambda _: None, finished, client_factory=Client, bundle=tmp_path)
+    try:
+        for attempt in (1, 2):
+            assert queue.enqueue(session.directory)
+            finished.wait(attempt)
+            metadata = read_metadata(session.directory)
+            assert metadata["transcript"]["status"] == "failed" and metadata["transcript"]["reference"] is None
+            body = json.loads((session.directory / "transcript.json").read_text())
+            assert [item["text"] for item in body["items"]] == ["One", "two", "three"], attempt
+        assert not attempts
     finally:
         queue.close()
 
