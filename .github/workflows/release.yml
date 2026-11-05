@@ -103,6 +103,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v7
+        with:
+          path: source
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
@@ -115,4 +118,6 @@ jobs:
           # The packages carry the x86_64 writing-down engine: amd64 .debs
           # (one per base), x86_64 RPMs and Arch package, an x86_64 Flatpak.
           mapfile -d '' bundles < <(find artifacts -type f \( -name '*.deb' -o -name '*.flatpak' -o -name '*.x86_64.rpm' -o -name '*.pkg.tar.zst' \) -print0)
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes "${bundles[@]}"
+          # The tagged version's NEWS section, in plain language, then GitHub's PR list.
+          python3 source/build-aux/ci/release_notes.py "$GITHUB_REF_NAME" > notes.md
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file notes.md --generate-notes "${bundles[@]}"

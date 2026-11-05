@@ -201,3 +201,21 @@ def test_installed_metadata_validation_checks_the_packaged_files_and_both_valida
     with pytest.raises(ValueError, match="Installed browser companion version must be 0.2.13"):
         policy.validate(prefix, "io.codemyriad.CassiniTalk", "7.8.9", run=run)
     assert calls == []
+
+
+def test_release_notes_are_the_tagged_versions_news_section():
+    notes = module("release_notes").notes
+    news = "Version 2.0.0\n~~~~~~~~~~~~~\nReleased: 2026-11-05\n\n- New\n  line\n\nVersion 1.0.0\n~~~~~~~~~~~~~\nReleased: 2026-10-01\n\n- Old\n"
+    assert notes(news, "2.0.0") == "- New\n  line\n"
+    assert notes(news, "1.0.0") == "- Old\n"
+    with pytest.raises(ValueError, match="no notes for version 3.0.0"):
+        notes(news, "3.0.0")
+
+
+def test_this_releases_notes_exist_and_the_tag_workflow_publishes_them():
+    root = Path(__file__).parents[1]
+    version = module("release_metadata").check(root)["version"]
+    assert module("release_notes").notes((root / "NEWS").read_text(), version).strip()
+    workflow = (root / ".github/workflows/release.yml").read_text()
+    assert 'build-aux/ci/release_notes.py "$GITHUB_REF_NAME" > notes.md' in workflow
+    assert "--notes-file notes.md --generate-notes" in workflow

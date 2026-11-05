@@ -20,8 +20,8 @@ fi
 # carries the x86_64 writing-down engine, so it is amd64 only.
 DEB=cassini-talk_${DEB_VERSION}_amd64.deb
 # Each base gets its own file name in dist/ and in the release:
-# ubuntu:26.04 -> cassini-talk_0.3.0+talk1~ubuntu26.04_amd64.deb,
-# debian:testing -> cassini-talk_0.3.0+talk1~debian-testing_amd64.deb.
+# ubuntu:26.04 -> cassini-talk_0.4.0~ubuntu26.04_amd64.deb,
+# debian:testing -> cassini-talk_0.4.0~debian-testing_amd64.deb.
 BASE_TAG=$(echo "${BASE##*/}" | sed 's/:\([0-9]\)/\1/; s/[:@]/-/g')
 OUT=cassini-talk_${DEB_VERSION}~${BASE_TAG}_amd64.deb
 TAG=cassini-talk-deb:$(image_slug "$BASE")

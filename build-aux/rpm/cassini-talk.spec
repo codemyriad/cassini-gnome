@@ -2,8 +2,8 @@
 # which makes the source tarball from the working tree and puts Source1-5
 # (from .whistle-cache) next to it.
 Name:           cassini-talk
-Version:        0.3.0
-Release:        2%{?dist}
+Version:        0.4.0
+Release:        1%{?dist}
 Summary:        Record meetings and read along with their transcripts
 License:        GPL-3.0-or-later AND Apache-2.0 AND MIT AND Unicode-3.0
 URL:            https://github.com/codemyriad/cassini-gnome
@@ -235,6 +235,13 @@ python3 sherpa/fetch.py --cache .sherpa-cache --verify %{buildroot}%{_libdir}/ca
 %{_mandir}/man1/cassini-talk.1*
 
 %changelog
+* Thu Nov 05 2026 Silvio Tomatis <silviot@gmail.com> - 0.4.0-1
+- First release as Cassini talk.
+- Recording starts reliably on a silent computer; sources that cannot open say why.
+- Silent sources are saved as exact silence; one track placement everywhere (D55).
+- Browser recordings set up and connect from Cassini, survive reloads, share one clock.
+- Live spectrogram, Recording details, test recording; Trash with Undo; translations.
+
 * Fri Oct 30 2026 Silvio Tomatis <silviot@gmail.com> - 0.3.0-2
 - Use the clean Cassini talk identity without development-build migration.
 

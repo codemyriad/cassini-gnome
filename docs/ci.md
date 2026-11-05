@@ -177,11 +177,11 @@ Native package scripts validate the installed metadata and launcher after the
 package-manager install, in addition to their unchanged clean-container offline
 smoke tests. No validator error is suppressed.
 
-The draft `release/0.3.0` PR uses the coordinator-approved provisional metainfo
-date `2026-10-29`. The coordinator confirms the version and updates the date in
-that PR before tagging. Keep it a draft until then; running the version/tag-name
-check does not create a tag or publish a release. Review fixes for #76–#85 also
-land before the release is finalised.
+A release PR (`release/X.Y.Z`) bumps every version that check reads and adds the
+NEWS section, which the tag workflow publishes as the release notes
+(`build-aux/ci/release_notes.py`, ahead of GitHub's generated PR list). After it
+merges and main's run is green, the tag `vX.Y.Z` on that merge builds nothing new:
+it publishes what main tested.
 
 ## Measurements and validation
 
