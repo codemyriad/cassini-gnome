@@ -2,6 +2,7 @@
 """Read-only, bounded broker polling; capture identity comes from controllers."""
 
 import socket
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -15,6 +16,12 @@ from .library import meeting_id
 # It has not said that nothing records: it is busy (its once-a-second session
 # checkpoint fsyncs under the capture lock that a status reply also takes).
 UNANSWERED = object()
+# How long unanswered polls may keep the last known capture. A frozen broker
+# that still holds its socket must not keep a meeting "recording" forever. The
+# extension gives up on a broker that has not acked a packet for 10 s ("Cassini
+# stopped responding", background.js) and ends its capture, so after as long
+# the Library stops believing in it too.
+UNANSWERED_BOUND = 10.0
 
 
 def read_browser_activity(path=None, with_connection=False, with_paths=False, *, unanswered=None):
@@ -79,7 +86,7 @@ def application_activity(app, browser=None, fallback=()):
 
 
 class BrowserActivity:
-    def __init__(self, changed, *, path=None, interval_ms=1000):
+    def __init__(self, changed, *, path=None, interval_ms=1000, clock=time.monotonic):
         self.snapshot = {}
         self.paths = {}
         self.connected = False
@@ -87,6 +94,9 @@ class BrowserActivity:
         self.path = path
         self.closed = False
         self.future = None
+        self.clock = clock
+        # When the current streak of unanswered polls began; None while answered.
+        self.unanswered_since = None
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-activity")
         self.timer = GLib.timeout_add(interval_ms, self.poll)
         self.poll()
@@ -103,16 +113,28 @@ class BrowserActivity:
         if not future.done():
             return False
         self.future = None
+        if self.closed:
+            return GLib.SOURCE_REMOVE
         # Unanswered is unknown, not idle: publishing "nothing records" for one
         # late reply unbinds a live meeting's views and tears its meter down.
-        # Keep what the broker last said until it answers or its socket goes.
-        if not self.closed and (result := future.result()) is not UNANSWERED:
-            value, connected, paths = result
-            if value != self.snapshot or connected != self.connected or paths != self.paths:
-                self.snapshot = value
-                self.connected = connected
-                self.paths = paths
-                self.changed()
+        # Keep what the broker last said until it answers, its socket goes, or
+        # it stays silent for UNANSWERED_BOUND; then it reads as idle, as a
+        # reply that nothing records (or a missing broker) would.
+        if (result := future.result()) is UNANSWERED:
+            now = self.clock()
+            if self.unanswered_since is None:
+                self.unanswered_since = now
+            if now - self.unanswered_since < UNANSWERED_BOUND:
+                return GLib.SOURCE_REMOVE
+            result = ({}, False, {})
+        else:
+            self.unanswered_since = None
+        value, connected, paths = result
+        if value != self.snapshot or connected != self.connected or paths != self.paths:
+            self.snapshot = value
+            self.connected = connected
+            self.paths = paths
+            self.changed()
         return GLib.SOURCE_REMOVE
 
     def close(self):

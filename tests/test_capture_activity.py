@@ -14,6 +14,21 @@ from cassini_talk.browser_service import send_packet  # noqa: E402
 from cassini_talk.capture_activity import BrowserActivity, read_browser_activity, recorder_activity  # noqa: E402
 
 
+def pump(condition):
+    """Iterate the main context until condition holds; 5 s only bounds it (E1)."""
+    from gi.repository import GLib
+
+    expired = []
+    source = GLib.timeout_add_seconds(5, lambda: expired.append(True) or GLib.SOURCE_REMOVE)
+    try:
+        while not condition():
+            assert not expired, "activity poll did not complete"
+            GLib.MainContext.default().iteration(True)
+    finally:
+        if not expired:
+            GLib.source_remove(source)
+
+
 def test_real_broker_reports_canonical_recording_and_clears_on_stop(service, tmp_path):  # noqa: F811
     _, path = service
     session = capture(tmp_path)
@@ -112,8 +127,6 @@ def test_an_unanswered_poll_keeps_the_live_capture_and_a_real_reply_clears_it(tm
     import socket
     import threading
 
-    from gi.repository import GLib
-
     from cassini_talk.browser_service import read_packet
 
     session = capture(tmp_path, completed=False)
@@ -132,17 +145,6 @@ def test_an_unanswered_poll_keeps_the_live_capture_and_a_real_reply_clears_it(tm
                     release.wait()  # Never answers: the client's own bound ends the poll.
                 else:
                     send_packet(stream, answer)
-
-    def pump(condition):
-        expired = []
-        source = GLib.timeout_add_seconds(5, lambda: expired.append(True) or GLib.SOURCE_REMOVE)
-        try:
-            while not condition():
-                assert not expired, "activity poll did not complete"
-                GLib.MainContext.default().iteration(True)
-        finally:
-            if not expired:
-                GLib.source_remove(source)
 
     changes = []
     with socket.socket(socket.AF_UNIX) as server:
@@ -177,6 +179,67 @@ def test_an_unanswered_poll_keeps_the_live_capture_and_a_real_reply_clears_it(tm
     assert not thread.is_alive()
     # Without a broker it still reads as idle, as before.
     assert read_browser_activity(path, True, True, unanswered=object()) == ({}, False, {})
+
+
+def test_unanswered_polls_keep_the_live_capture_only_up_to_the_bound(tmp_path, monkeypatch):
+    """A broker that is late is unknown, not idle, but a frozen broker that still
+    holds its socket must not keep a meeting "recording" forever: after
+    UNANSWERED_BOUND of unanswered polls the Library reads it as idle, once."""
+    from cassini_talk import capture_activity
+    from cassini_talk.capture_activity import UNANSWERED, UNANSWERED_BOUND
+
+    session = capture(tmp_path, completed=False)
+    identifier, directory = session.manifest["id"], str(session.directory)
+    live = ({identifier: "recording"}, True, {identifier: directory})
+    replies, now, changes = [live], [0.0], []
+    monkeypatch.setattr(capture_activity, "read_browser_activity", lambda *_args, **_kwargs: replies.pop(0))
+    watcher = BrowserActivity(
+        lambda: changes.append(dict(watcher.snapshot)), interval_ms=3_600_000, clock=lambda: now[0]
+    )
+
+    def poll(result, at):
+        now[0] = at
+        replies.append(result)
+        watcher.poll()
+        pump(lambda: watcher.future is None)
+
+    def holds_live():
+        return (watcher.snapshot, watcher.connected, watcher.paths) == live
+
+    try:
+        pump(lambda: watcher.future is None)
+        assert holds_live() and changes == [{identifier: "recording"}]
+
+        # Before the bound the last answer stands and nothing is published.
+        poll(UNANSWERED, 1)
+        poll(UNANSWERED, 1 + UNANSWERED_BOUND - 0.1)
+        assert holds_live() and len(changes) == 1
+        # At the bound the frozen broker reads as idle, published exactly once.
+        poll(UNANSWERED, 1 + UNANSWERED_BOUND)
+        assert (watcher.snapshot, watcher.connected, watcher.paths) == ({}, False, {})
+        assert changes == [{identifier: "recording"}, {}]
+        poll(UNANSWERED, 2 + UNANSWERED_BOUND)
+        assert len(changes) == 2, "Further unanswered polls publish no more changes"
+        # A real reply after that restores the capture.
+        poll(live, 13)
+        assert holds_live() and changes[-1] == {identifier: "recording"} and len(changes) == 3
+
+        # A real reply ends the streak: silence is timed from the next miss.
+        poll(UNANSWERED, 14)
+        poll(UNANSWERED, 14 + UNANSWERED_BOUND - 0.1)
+        poll(live, 14 + UNANSWERED_BOUND - 0.05)
+        poll(UNANSWERED, 30)
+        poll(UNANSWERED, 30 + UNANSWERED_BOUND - 0.1)
+        assert holds_live() and len(changes) == 3, "An answer must reset the unanswered streak"
+
+        # So does a missing broker (mid-streak here), which reads as idle at once.
+        poll(({}, False, {}), 41)
+        assert watcher.unanswered_since is None and changes[3:] == [{}]
+        poll(live, 42)
+        assert holds_live() and changes[3:] == [{}, {identifier: "recording"}]
+        assert not replies
+    finally:
+        watcher.close()
 
 
 def test_native_identity_only_comes_from_controller_owned_session(tmp_path):
