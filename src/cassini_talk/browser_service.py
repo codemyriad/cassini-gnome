@@ -2277,6 +2277,21 @@ class BrowserService:
                     if token not in self._record_groups:
                         self._cancelled_groups.pop(token, None)
         try:
+            # R93-2 (#230): Stop is marked before anything waits for a capture
+            # lock (the snapshot below takes each one), which a stalled
+            # checkpoint can hold: its moment is the press, and PCM queued
+            # behind the stall finds the boundary when it gets the lock.
+            with self.lock:
+                captures = [
+                    (key, c)
+                    for key, c in self.captures.items()
+                    if not c.finished and (directory is None or c.directory is not None and matches(str(c.directory)))
+                ]
+                for _key, capture in captures:
+                    if quitting_pid is None:
+                        self._remember_capture_stop(capture)
+                    capture.end_reason = capture.end_reason or reason
+                    capture.request_stop()
             snapshot = self.snapshot()
             paths = [
                 s["path"]
@@ -2293,17 +2308,6 @@ class BrowserService:
                         for p in b.pending.values()
                         if p.get("action") == "start"
                     )
-            with self.lock:
-                captures = [
-                    (key, c)
-                    for key, c in self.captures.items()
-                    if not c.finished and (directory is None or c.directory is not None and matches(str(c.directory)))
-                ]
-                for _key, capture in captures:
-                    if quitting_pid is None:
-                        self._remember_capture_stop(capture)
-                    capture.end_reason = capture.end_reason or reason
-                    capture.request_stop()
             # Save native-owned audio before waiting for any browser acknowledgement.
             jobs = [
                 ("capture:" + key, lambda capture=capture: capture.stop(reason=reason)) for key, capture in captures

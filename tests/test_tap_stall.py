@@ -606,13 +606,19 @@ def broker(tmp_path):
     stop_broker(service, worker, path)
 
 
+@pytest.mark.parametrize("stall", [False, True], ids=["", "stalled"])
 @pytest.mark.parametrize("route", ["stop-all", "stop", "command", "cancel"])
-def test_each_broker_stop_path_fixes_the_stop_moment_so_queued_audio_before_it_is_kept(broker, route):
+def test_each_broker_stop_path_fixes_the_stop_moment_so_queued_audio_before_it_is_kept(broker, route, stall):
     """The broker marks Stop before capture.stop() runs: GNOME's Stop and Quit
     (stop-all), a user's Stop of one call, a policy Stop of it (not the user's)
     and a cancelled capture. Each must fix the Stop moment as it marks Stop;
     marking it bare leaves no boundary, and the drain would drop every queued
-    buffer captured before Stop."""
+    buffer captured before Stop.
+
+    `stall`: Stop is pressed at 945 ms while a checkpoint stalled on storage
+    holds capture.lock. Stop's moment is still 945 ms, marked before the stall
+    ends at 2945 ms (#230 review). On 979431a stop-all took every capture's
+    lock for its snapshot before it marked Stop."""
     from test_browser_capture import bind_capture
     from test_browser_capture import start as start_audio
     from test_browser_sessions import Extension
@@ -622,7 +628,7 @@ def test_each_broker_stop_path_fixes_the_stop_moment_so_queued_audio_before_it_i
 
     service, path = broker
     client = BrowserAudioProxy(path=path)
-    peer = None
+    peer = release = None
     try:
         start_audio(client, "stall")
         capture = service.captures["stall"]
@@ -635,6 +641,8 @@ def test_each_broker_stop_path_fixes_the_stop_moment_so_queued_audio_before_it_i
         clock.ms = capture.session_clock.now()
         capture.session_clock = clock
         tap, start = record_live(capture, clock)
+        if stall:
+            holder, release = stall_holding(capture)
         stops = {
             "stop-all": lambda: request("stop-all", path=path),
             "stop": lambda: request("stop", path=path, id=identifier),
@@ -642,8 +650,12 @@ def test_each_broker_stop_path_fixes_the_stop_moment_so_queued_audio_before_it_i
         }
         result = {}
         if route == "cancel":
-            with service.lock:
-                service._cancel_capture("stall")
+
+            def cancel():
+                with service.lock:  # Its callers hold the broker's lock.
+                    service._cancel_capture("stall")
+
+            canceller, _ = in_thread("test-cancel", cancel)
         else:
 
             def run():
@@ -655,6 +667,13 @@ def test_each_broker_stop_path_fixes_the_stop_moment_so_queued_audio_before_it_i
             thread = threading.Thread(target=run, name="test-broker-stop")
             thread.start()
         assert capture.stop_requested.wait(BOUND)
+        if stall:
+            assert capture.stop_at_ms == pytest.approx(start + 945)  # Marked while the stall goes on.
+            clock.ms = start + 2945  # Storage recovers 2 s after Stop.
+            release.set()
+            holder.join(BOUND)
+        if route == "cancel":
+            canceller.join(BOUND)
         assert tap.draining.wait(BOUND)
         drain_across_stop(tap, start, clock)
         if peer is not None:
@@ -667,6 +686,8 @@ def test_each_broker_stop_path_fixes_the_stop_moment_so_queued_audio_before_it_i
         assert capture.stopped.wait(BOUND) and capture.finished
         assert_kept_before_stop(capture, start)
     finally:
+        if release is not None:
+            release.set()  # A failed case still ends its stall.
         client.close()
         if peer is not None:
             peer.close()
