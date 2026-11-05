@@ -145,14 +145,21 @@ supply a release. No tag or publication is created to validate this wiring.
 release with those packages and the tagged version's NEWS section
 (`build-aux/ci/release_notes.py`).
 
-The Flatpak ships through Flathub (D45.3, 2026-11-05): Flathub builds
-`io.codemyriad.CassiniTalk` from the release tag, signs, hosts and updates it.
-We run no Flatpak repository and hold no Flatpak signing key, so a release
-attaches no Flatpak bundle: one without an update remote must not be offered.
-This replaces G15's guard, which refused to ship the bundle until our own
-signed D45.1 repository served it. Main's stable Flatpak is still built without
-an update remote, validated and smoke-tested in `flatpak.yml` below, as the
-test of the Flatpak Flathub builds; it is a test package from main only.
+The Flatpak's channel is Flathub (D45.3, 2026-11-05), and its listing is still
+pending: the `io.codemyriad.CassiniTalk` submission is being prepared. Once
+listed, Flathub builds, signs, hosts and updates it from the manifest in its
+`flathub/io.codemyriad.CassiniTalk` repository, which pins a release tag.
+Pushing our tag builds nothing there: a release reaches Flathub when that
+manifest is moved to the new tag. We run no Flatpak repository and hold no
+Flatpak signing key, so a release attaches no Flatpak bundle: one without an
+update remote must not be offered. This replaces G15's guard, which refused to
+ship the bundle until our own signed D45.1 repository served it. Main's stable
+Flatpak is still built without an update remote, validated and smoke-tested in
+`flatpak.yml` below; it is a test package from main only. It is the closest
+test we run of Flathub's build, not the same build: the in-repo manifest builds
+the checkout (a `dir` source) where Flathub's builds the tagged sources, and
+Flathub's permissions follow its review (`--talk-name=org.freedesktop.Flatpak`,
+for example, is granted only by exception).
 
 Every PR checks the version across Meson, NEWS, metainfo, the man page and all
 native recipes, in Lint (`source.yml`). `flatpak.yml` builds the stable Flatpak,

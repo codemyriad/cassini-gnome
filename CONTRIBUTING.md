@@ -92,7 +92,10 @@ msginit -i po/cassini-talk.pot -o po/<code>.po -l <code>
    `debian/changelog` version, for example
    `cassini-talk_0.4.0~ubuntu26.04_amd64.deb`), the Fedora and openSUSE
    x86_64 RPMs and the Arch package, and attaches them to a GitHub release.
-   The Flatpak ships through Flathub, which builds it from the tag (D45.3).
+   The Flatpak's channel is Flathub (D45.3; the listing is pending): once it
+   is listed, updating the tag in the `flathub/io.codemyriad.CassiniTalk`
+   manifest makes Flathub build, sign and publish that release. Pushing our tag
+   does not.
 
 ## Build from source
 
