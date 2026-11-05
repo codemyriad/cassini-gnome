@@ -137,7 +137,7 @@ def test_cancel_running_voice_job_keeps_next_meeting_and_no_private_print(tmp_pa
         with queue.cancel_meeting(directories[0]):
             assert directories[0] not in queue.voice_pending
             directories[0].rename(tmp_path / "private-trash-voice")
-        finished.wait(2)
+        finished.wait(2, exactly=True)
         assert not failures and not directories[0].exists()
         assert not (store.root / "meetings" / (directories[0].name + ".json")).exists()
         assert store.meeting(directories[1])["speakers"]["others"]["embedding"] == embedding()

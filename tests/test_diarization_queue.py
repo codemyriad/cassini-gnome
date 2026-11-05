@@ -96,7 +96,7 @@ def test_voice_publication_and_diarization_failures_preserve_words_and_capture(t
     )
     try:
         assert queue.enqueue(session.directory)
-        finished.wait(1)
+        finished.wait(1, exactly=True)
         metadata = read_metadata(session.directory)
         assert metadata["transcript"]["status"] == "done" and metadata["privateField"] == "preserved"
         assert metadata["notes"] == [dict(atMs=100, text="Keep this")]
@@ -149,7 +149,7 @@ os._exit(77)
     )
     try:
         assert queue.enqueue(session.directory)
-        finished.wait(1)
+        finished.wait(1, exactly=True)
         assert read_metadata(session.directory)["transcript"]["status"] == "done"
         body = json.loads((session.directory / "transcript.json").read_bytes())
         assert body["items"] == [dict(text="Kept", startMs=10, endMs=800, speaker="others")]
@@ -237,7 +237,7 @@ def test_close_after_worker_return_does_not_flush_buffered_words(system_capture,
     )
     try:
         assert queue.enqueue(session.directory)
-        finished.wait(1)
+        finished.wait(1, exactly=True)
         assert len(snapshots) == 1
         assert file_snapshot(session.directory) == snapshots[0], "Queue committed files after close"
         body = json.loads((session.directory / "transcript.json").read_bytes())
@@ -293,7 +293,7 @@ def test_cancelled_attribution_remains_running_and_restart_redoes_missing_turns(
         queue.close()
         before = file_snapshot(session.directory)
         release.set()
-        finished.wait(1)
+        finished.wait(1, exactly=True)
         assert file_snapshot(session.directory) == before
         assert not completed_flushes
     finally:
@@ -310,7 +310,7 @@ def test_cancelled_attribution_remains_running_and_restart_redoes_missing_turns(
     )
     try:
         assert resumed.enqueue(session.directory, resume=True)
-        finished.wait(2)
+        finished.wait(2, exactly=True)
         metadata = read_metadata(session.directory)
         assert metadata["transcript"]["status"] == "done"
         body = json.loads((session.directory / "transcript.json").read_bytes())
@@ -354,7 +354,7 @@ def test_transcribing_reports_a_queued_or_running_job_until_it_finishes(tmp_path
         assert entered.wait(10)
         assert queue.transcribing(session.directory)
         release.set()
-        finished.wait(1)
+        finished.wait(1, exactly=True)
         assert not queue.transcribing(session.directory)
     finally:
         release.set()

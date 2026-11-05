@@ -195,7 +195,7 @@ def test_fifo_reads_model_when_job_starts_and_remove_keeps_loaded_job(
             models.select(MODEL_ID)
             expected = ["whistle", MODEL_ID]
         release.set()
-        finished.wait(2)
+        finished.wait(2, exactly=True)
         assert calls == expected
         for session, kind in zip(sessions, expected, strict=True):
             metadata = read_metadata(session.directory)

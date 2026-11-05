@@ -147,7 +147,7 @@ def test_fifo_queue_marks_waiting_job_queued_and_preserves_capture_and_user_meta
             sessions[1].directory, speakers=[dict(id="me", name="Named while queued", provenance="user", colourIndex=0)]
         )
         release.set()
-        finished.wait(2)
+        finished.wait(2, exactly=True)
         assert calls == [s.directory for s in sessions]
         assert read_metadata(sessions[1].directory)["speakers"][0]["name"] == "Named while queued"
         assert before == [capture_hashes(s) for s in sessions]
@@ -194,12 +194,12 @@ def test_worker_failure_becomes_retryable_without_changing_audio(tmp_path):
     queue = TranscriptionQueue(lambda _: None, finished, client_factory=Client, bundle=tmp_path)
     try:
         queue.enqueue(session.directory)
-        finished.wait(1)
+        finished.wait(1, exactly=True)
         metadata = read_metadata(session.directory)
         assert metadata["transcript"]["status"] == "failed" and metadata["error"]["id"] == "transcribe-failed"
         assert Client.closed == 1
         assert queue.enqueue(session.directory)
-        finished.wait(2)
+        finished.wait(2, exactly=True)
         assert read_metadata(session.directory)["transcript"]["status"] == "done"
         assert capture_hashes(session) == before
     finally:
@@ -322,7 +322,7 @@ def test_newer_metadata_is_not_overwritten_and_unsafe_metadata_is_not_followed(t
         target.write_bytes(before)
         path.symlink_to(target)
         queue.enqueue(session.directory)
-        finished.wait(2)
+        finished.wait(2, exactly=True)
         assert target.read_bytes() == before and path.is_symlink()
     finally:
         queue.close()
@@ -415,7 +415,7 @@ time.sleep(30)
     start = time.monotonic()
     queue.close()
     assert time.monotonic() - start < 0.5, "close waited for child inference on the calling thread"
-    finished.wait(3)
+    finished.wait(3, exactly=True)
     until(lambda: child.poll() is not None)
     assert len(set(finished)) == 3 and not queue.pending
     assert read_metadata(first)["transcript"]["status"] == "running"

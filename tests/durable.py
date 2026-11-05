@@ -112,10 +112,17 @@ class Finished(list):
     def directories(self):
         return self
 
-    def wait(self, count=1, bound=DURABLE_BOUND):
-        """Wait for exactly `count` finished jobs."""
+    def wait(self, count=1, bound=DURABLE_BOUND, exactly=False):
+        """Wait until at least `count` jobs have finished.
+
+        `exactly` also asserts that no more had, as a test's old
+        `len(finished) == count` poll required. Leave it off where another job
+        may finish right after (a rerun queued at the completion boundary): the
+        waiter can wake after that one too.
+        """
         with self.condition:
             assert self.condition.wait_for(lambda: len(self) >= count, bound), (
                 f"the queue did not finish {count} job(s) within {bound} s ({len(self)} finished)"
             )
-            assert len(self) == count, f"{len(self)} jobs finished, not {count}"
+            if exactly:
+                assert len(self) == count, f"{len(self)} jobs finished, not {count}"
