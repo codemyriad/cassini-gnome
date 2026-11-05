@@ -162,7 +162,9 @@ then installs it and runs the normal offline smoke checks, the Whistle and
 Parakeet goldens included. The devel bundle the same job builds first runs
 every check but those golden decodes (`smoke.sh --without-goldens`, F): its
 engines come from the same pinned sources, it still verifies their installed
-payload offline, and its manifest differs from the stable one only in the ID
+payload offline, it imports, uses and hash-checks its NumPy against the wheel's
+RECORD (its NumPy stage comes from the flatpak-builder cache, the stable
+bundle's is built fresh), and its manifest differs from the stable one only in the ID
 and `-Dprofile`, which no recognition code reads (`tests/test_ci_flatpak_dedup.py`
 fails on a new branch on the profile). The job's host Trash portal (fuse and
 xdg-desktop-portal, compiled by `tests/flatpak/prepare_trash_portal.py`) comes

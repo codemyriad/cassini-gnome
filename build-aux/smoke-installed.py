@@ -17,7 +17,9 @@
 #
 # --engines checks both engines' installed payloads the same way (the Whistle
 # bundle's hashes, the private ONNX Runtime, the pinned Parakeet runtime, no
-# network) without decoding the goldens. CI's Flatpak job uses it for the devel
+# network) without decoding the goldens, and imports, uses and checks the
+# bundle's NumPy wheel against its RECORD (the devel bundle's NumPy stage comes
+# from the flatpak-builder cache, the stable bundle's is built fresh). CI's Flatpak job uses it for the devel
 # bundle only: its engines come from the same pinned sources as the stable
 # bundle's, which runs the full goldens in the same job (F, D20).
 import argparse
@@ -28,6 +30,58 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+
+def verify_record(name):
+    """Check every file a wheel installed in site-packages against its RECORD.
+
+    Console scripts outside site-packages are skipped: the Flatpak manifest's
+    cleanup removes NumPy's. A missing RECORD, file or SHA-256 match exits.
+    RECORD is read directly: Distribution.files leaves out missing files."""
+    import base64
+    import csv
+    import hashlib
+    from importlib import metadata
+
+    try:
+        distribution = metadata.distribution(name)
+    except metadata.PackageNotFoundError:
+        sys.exit(f"installed {name} has no distribution metadata")
+    rows = [row for row in csv.reader((distribution.read_text("RECORD") or "").splitlines()) if row]
+    rows = [row for row in rows if len(row) > 1 and row[1] and not row[0].startswith("../")]
+    if not rows:
+        sys.exit(f"installed {name} has no hashed RECORD to check its files against")
+    for path, hashed, *_ in rows:
+        algorithm, _, expected = hashed.partition("=")
+        if algorithm != "sha256":
+            sys.exit(f"installed {name} RECORD uses {algorithm} for {path}, not sha256")
+        try:
+            data = Path(distribution.locate_file(path)).read_bytes()
+        except OSError as error:
+            sys.exit(f"installed {name} is incomplete: {path}: {error}")
+        digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode()
+        if digest != expected:
+            sys.exit(f"installed {name} does not match its RECORD: {path}")
+    return distribution
+
+
+def verify_numpy():
+    """Import the bundle's NumPy, check it against its RECORD and compute with it.
+
+    The Flatpak devel bundle's python3-numpy stage usually comes from the
+    flatpak-builder cache (G8) while the stable bundle builds it fresh, so
+    without the devel goldens this is what exercises the devel bundle's NumPy."""
+    import numpy
+
+    distribution = verify_record("numpy")
+    if Path(numpy.__file__).resolve().parent != Path(distribution.locate_file("numpy")).resolve():
+        sys.exit(f"NumPy imported from {numpy.__file__}, not from its checked RECORD")
+    matrix = numpy.arange(12, dtype=numpy.float32).reshape(3, 4)
+    samples = numpy.frombuffer(numpy.arange(4, dtype=numpy.int16).tobytes(), dtype=numpy.int16)
+    if float(numpy.trace(matrix @ matrix.T)) != 506.0 or float(numpy.exp(samples * 0.0).sum()) != 4.0:
+        sys.exit("NumPy smoke computation gave a wrong result")
+    return numpy.__version__
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("datadir", nargs="?", default="/usr/share/cassini-talk", type=Path)
@@ -191,4 +245,5 @@ if args.parakeet:
         )
     print("Parakeet package smoke passed offline: two goldens and two real FIFO jobs")
 if args.engines:
+    print(f"NumPy {verify_numpy()} imported, computed with and checked against its RECORD")
     print("both engines' installed payloads verified offline; goldens not requested")

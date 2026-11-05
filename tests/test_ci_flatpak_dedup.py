@@ -2,6 +2,8 @@
 """F: the Flatpak job builds the host Trash portal once per input (a main-saved
 cache), and decodes the engine goldens on the stable bundle only (D20)."""
 
+import ast
+import base64
 import hashlib
 import importlib.util
 import io
@@ -332,3 +334,96 @@ def test_smoke_installed_refuses_mixed_or_incomplete_engine_options(arguments, t
         timeout=60,
     )
     assert result.returncode == 2 and "usage:" in result.stderr
+
+
+# The devel bundle's python3-numpy stage comes from the flatpak-builder cache
+# (G8) while the stable one is built fresh, so once the devel goldens are gone
+# --engines must itself import, use and hash-check the bundle's NumPy.
+
+SMOKE_INSTALLED = ROOT / "build-aux/smoke-installed.py"
+
+
+def smoke_installed_functions(*names):
+    tree = ast.parse(SMOKE_INSTALLED.read_text())
+    found = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names]
+    assert sorted(node.name for node in found) == sorted(names)
+    namespace = {"Path": Path, "sys": sys}
+    exec(compile(ast.Module(body=found, type_ignores=[]), str(SMOKE_INSTALLED), "exec"), namespace)
+    return namespace
+
+
+def test_the_engines_smoke_checks_numpy_in_the_installed_bundle():
+    tree = ast.parse(SMOKE_INSTALLED.read_text())
+    engines_only = [node for node in tree.body if isinstance(node, ast.If) and ast.unparse(node.test) == "args.engines"]
+    calls = [ast.unparse(call.func) for node in engines_only for call in ast.walk(node) if isinstance(call, ast.Call)]
+    assert "verify_numpy" in calls
+
+
+def fake_wheel(site, name="cassini_fake"):
+    package = site / name
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("VALUE = 1\n")
+    (package / "core.so").write_bytes(b"\x7fELF fake")
+    info = site / f"{name}-1.0.dist-info"
+    info.mkdir()
+    (info / "METADATA").write_text(f"Metadata-Version: 2.1\nName: {name}\nVersion: 1.0\n")
+    rows = []
+    for path in [package / "__init__.py", package / "core.so", info / "METADATA"]:
+        digest = hashlib.sha256(path.read_bytes()).digest()
+        rows.append(
+            f"{path.relative_to(site).as_posix()},sha256={base64.urlsafe_b64encode(digest).rstrip(b'=').decode()},1"
+        )
+    # A console script the manifest's cleanup removes: outside site-packages.
+    rows.append("../../../bin/cassini-fake,sha256=AAAA,1")
+    rows.append(f"{info.name}/RECORD,,")
+    (info / "RECORD").write_text("\n".join(rows) + "\n")
+    return package, info
+
+
+@pytest.mark.parametrize("damage", [None, "byte", "missing", "no-record", "md5"])
+def test_verify_record_checks_every_installed_file_of_a_wheel(damage, tmp_path, monkeypatch):
+    site = tmp_path / "lib/python3/site-packages"
+    package, info = fake_wheel(site)
+    if damage == "byte":
+        (package / "core.so").write_bytes(b"\x7fELF fakf")
+    elif damage == "missing":
+        (package / "core.so").unlink()
+    elif damage == "no-record":
+        (info / "RECORD").unlink()
+    elif damage == "md5":
+        record = (info / "RECORD").read_text().replace("cassini_fake/core.so,sha256=", "cassini_fake/core.so,md5=")
+        (info / "RECORD").write_text(record)
+    monkeypatch.syspath_prepend(str(site))
+    verify_record = smoke_installed_functions("verify_record")["verify_record"]
+    if damage is None:
+        distribution = verify_record("cassini_fake")
+        assert Path(distribution.locate_file("cassini_fake")) == package
+    else:
+        with pytest.raises(SystemExit, match="cassini_fake"):
+            verify_record("cassini_fake")
+
+
+def test_verify_numpy_imports_computes_and_matches_its_record(monkeypatch):
+    numpy = pytest.importorskip("numpy")
+    functions = smoke_installed_functions("verify_record", "verify_numpy")
+    checked = []
+
+    class Installed:
+        def locate_file(self, name):
+            return Path(numpy.__file__).parent.parent / name
+
+    def record(name):
+        checked.append(name)
+        return Installed()
+
+    functions["verify_record"] = record
+    assert functions["verify_numpy"]() == numpy.__version__
+    assert checked == ["numpy"]
+
+    class Elsewhere:
+        def locate_file(self, name):
+            return Path("/nowhere") / name
+
+    functions["verify_record"] = lambda name: Elsewhere()
+    with pytest.raises(SystemExit, match="NumPy"):
+        functions["verify_numpy"]()

@@ -5,7 +5,8 @@
 # the sandbox gets --unshare=network, so it has nothing but loopback.
 #   build-aux/flatpak/smoke.sh BUNDLE.flatpak APP_ID [--without-goldens]
 # --without-goldens runs every check but the two engines' golden decodes, whose
-# installed payloads it still verifies offline (smoke-installed.py --engines).
+# installed payloads it still verifies offline (smoke-installed.py --engines),
+# NumPy included: the devel NumPy stage comes from the flatpak-builder cache.
 # CI passes it for the devel bundle only: its engines come from the same pinned
 # sources, with the same code, as the stable bundle's, which runs the full goldens
 # in the same job (F, D20). Everything that depends on the application ID or the

@@ -228,7 +228,8 @@ Flatpak manifests use exactly those.
   (D11.3). `build-aux/flatpak/build.sh --smoke` (and CI) does the same in the
   installed Flatpak with `--unshare=network`. CI decodes the goldens on the
   stable bundle; the devel bundle, built from the same pinned engine sources,
-  verifies the engines' payload without decoding (`smoke.sh --without-goldens`).
+  verifies the engines' payload without decoding (`smoke.sh --without-goldens`)
+  and imports, uses and hash-checks its NumPy against the wheel's RECORD.
 
 The Flatpak is built on the host. It needs `flatpak` and either `flatpak-builder`
 or the `org.flatpak.Builder` app. The script adds the Flathub remote to your
