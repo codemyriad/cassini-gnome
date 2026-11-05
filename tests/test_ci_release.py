@@ -3,6 +3,7 @@
 
 import hashlib
 import importlib.util
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -281,8 +282,42 @@ def test_release_sums_refuse_a_missing_or_extra_package(tmp_path, drop):
 
 def test_the_tag_workflow_attaches_sha256sums_and_verifies_the_published_files():
     workflow = (Path(__file__).parents[1] / ".github/workflows/release.yml").read_text()
-    assert "release_sums.py artifacts --sums SHA256SUMS" in workflow
+    assert "release_sums.py artifacts --stage staged --sums SHA256SUMS" in workflow
     assert '--generate-notes "${assets[@]}"' in workflow
     assert 'gh release download "$GITHUB_REF_NAME"' in workflow
     assert "sha256sum --check --strict SHA256SUMS" in workflow
     assert 'test "$(wc -l < SHA256SUMS)" -eq 5' in workflow
+
+
+def test_release_sums_name_each_package_as_github_publishes_it(tmp_path):
+    # v0.4.0: GitHub published ...~ubuntu26.04... as ....ubuntu26.04..., so the
+    # SHA256SUMS lines for both .debs named files the release did not have.
+    sums = module("release_sums")
+    assert sums.asset_name("cassini-talk_0.4.0~ubuntu26.04_amd64.deb") == "cassini-talk_0.4.0.ubuntu26.04_amd64.deb"
+    assert sums.asset_name("cassini-talk-0.4.0-1.fc44.x86_64.rpm") == "cassini-talk-0.4.0-1.fc44.x86_64.rpm"
+    names = {
+        "cassini-talk_0.4.0~ubuntu26.04_amd64.deb": b"u",
+        "cassini-talk_0.4.0~debian-testing_amd64.deb": b"d",
+        "cassini-talk-0.4.0-1.fc44.x86_64.rpm": b"f",
+        "cassini-talk-0.4.0-1.opensuse_tumbleweed.x86_64.rpm": b"o",
+        "cassini-talk-0.4.0-1-x86_64.pkg.tar.zst": b"a",
+    }
+    for name, data in names.items():
+        (tmp_path / name).write_bytes(data)
+    staged = sums.stage(sums.packages(tmp_path), tmp_path / "staged")
+    written = sums.write_sums(staged, tmp_path / "staged" / "SHA256SUMS").read_text().splitlines()
+    listed = {line.split("  ", 1)[1] for line in written}
+    assert listed == {p.name for p in staged} == {sums.asset_name(n) for n in names}
+    assert all(re.fullmatch(r"[A-Za-z0-9._-]+", name) for name in listed)
+    if shutil.which("sha256sum"):
+        subprocess.run(
+            ["sha256sum", "--check", "--strict", "SHA256SUMS"], cwd=tmp_path / "staged", check=True, capture_output=True
+        )
+
+
+def test_release_sums_refuse_two_packages_with_one_published_name(tmp_path):
+    sums = module("release_sums")
+    (tmp_path / "a~b.deb").write_bytes(b"1")
+    (tmp_path / "a.b.deb").write_bytes(b"2")
+    with pytest.raises(ValueError, match="share a published name"):
+        sums.stage(sorted(tmp_path.glob("*.deb")), tmp_path / "staged")
