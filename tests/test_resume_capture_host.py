@@ -156,7 +156,10 @@ def test_native_resume_attaches_with_exact_proof_and_restores_on_the_same_folder
         assert sources(capture) == [("browser", "start"), ("system", "lost"), ("browser", "restored")]
         assert folders(broker) == [folder] and capture.directory == folder and capture.origin_ms == origin
         assert capture.microphone is microphone
-        microphone.append(b"\x02\x00" * 480, 300)
+        # At the capture's own clock: PCM stamped before the microphone side
+        # committed is readiness PCM and is dropped, and that commit comes
+        # later than 300 ms when the folder's durable writes are slow.
+        microphone.append(b"\x02\x00" * 480, now_ms(capture))
         assert me_frames(capture) > before
         assert capture.host.session.manifest["title"] == "F", "a fresh Start's title does not modify the target"
         capture.stop()
