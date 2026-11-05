@@ -47,6 +47,11 @@ jobs:
       # Failed detection must override even partially written false outputs.
       boards: ${{ needs.changes.result != 'success' || needs.changes.outputs.boards != 'false' }}
       offline: ${{ needs.changes.result != 'success' || needs.changes.outputs.offline != 'false' }}
+  # H: Build packs the products Recording, Boards and Offline test; the Meson
+  # tests run beside it, and the Pytest coverage gate fails unless they passed.
+  meson-tests:
+    name: Meson tests
+    uses: ./.github/workflows/meson-tests.yml
   source:
     name: Source
     needs: changes
@@ -75,9 +80,10 @@ jobs:
   # ids as pytest-ran-<image>. This fails on any skip without that proof
   # from the same release, and on any package job that left out a test the
   # fedora:latest Source job ran, whatever skipped, narrowed or broke it.
+  # It also fails unless the Meson tests, Build's until H, ran and passed.
   pytest-coverage:
     name: Pytest coverage
-    needs: [source, deb, rpm-arch]
+    needs: [source, deb, rpm-arch, meson-tests]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
@@ -89,6 +95,11 @@ jobs:
           path: ${{ runner.temp }}/pytest
       - name: Every skipped pytest suite ran in full in a package job of the same release
         run: python3 build-aux/ci/check_pytest_ran.py --gate "$RUNNER_TEMP/pytest"
+      - name: The Meson tests ran and passed
+        if: ${{ !cancelled() }}
+        env:
+          MESON_TESTS: ${{ needs.meson-tests.result }}
+        run: test "$MESON_TESTS" = success || { echo "::error::Meson tests $MESON_TESTS, not success"; exit 1; }
   # Recording, Boards and Offline test Build's product: after a failed Build
   # they are skipped, not failed at the artifact download (G7).
   recording:

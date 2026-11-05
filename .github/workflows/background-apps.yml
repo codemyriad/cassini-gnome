@@ -36,6 +36,20 @@ jobs:
         with:
           path: .desktop-flatpak-cache
           key: desktop-gnome50-v1
+      # C (D66): the harness images of tests/harness-image.sh, from a cache main
+      # saves and pull requests only read; their key changes every week and with
+      # every input. run.sh builds an image the cache did not hold.
+      - name: Harness image cache key
+        id: harness
+        run: build-aux/ci/harness-cache.sh key desktop >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v6
+        id: harness-cache
+        with:
+          path: ${{ steps.harness.outputs.path }}
+          key: ${{ steps.harness.outputs.key }}
+      - name: Load the cached harness images
+        if: steps.harness-cache.outputs.cache-hit == 'true'
+        run: build-aux/ci/harness-cache.sh load "${{ steps.harness.outputs.path }}"
       - name: Background Apps, app-grid reopen, and stop-and-keep on quit
         run: |
           CASSINI_DESKTOP_FLATPAK_CACHE="$PWD/.desktop-flatpak-cache" \
@@ -49,3 +63,11 @@ jobs:
             desktop-evidence/*/*.log
             desktop-evidence/*/*.png
           retention-days: 7
+      - name: Save the harness images (main only)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.harness-cache.outputs.cache-hit != 'true'
+        run: build-aux/ci/harness-cache.sh save "${{ steps.harness.outputs.path }}" desktop
+      - uses: actions/cache/save@v6
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.harness-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.harness.outputs.path }}
+          key: ${{ steps.harness.outputs.key }}
