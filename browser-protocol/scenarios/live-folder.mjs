@@ -19,7 +19,8 @@
 //                       recording, the browsers and pages, its relays, broker and hosts),
 //                       leaving no process. Idempotent; the driver awaits it exactly once,
 //                       in a finally, bounded by CLEANUP_MS, after a failure's evidence is
-//                       written and after check.py ran. It leaves controlHost.observe in place.
+//                       written and after check.py ran (or was killed at CHECK_MS). It leaves
+//                       controlHost.observe in place.
 //   name, protocolCommit, nativeTones: {microphone: Hz}, startsWithMeOff?: true
 // meeting is the call tab (in the browser with the extension), remote its far end, worker
 // the extension's service worker. Every wait polls the folder (scenarios/folder-clock.mjs)
@@ -44,6 +45,8 @@ import { controlConnections, RELAY_START_MS, resumeRequests, stopLaunchers, stop
 const ORACLE = path.resolve(import.meta.dirname, '../conformance/live-folder');
 // Bound on the adapter's cleanup(): quitting the app, closing two browsers, ending hosts.
 export const CLEANUP_MS = 60000;
+// Bound on check.py: one that does not finish is killed and fails the run (then torn down).
+export const CHECK_MS = 300000;
 
 // promise, or a rejection naming label once ms pass (the timer never outlives it).
 function bounded(promise, ms, label) {
@@ -79,10 +82,21 @@ async function receiverStats(meeting, slot) {
 const playoutMs = (from, to) => to.jitterBufferEmittedCount > from.jitterBufferEmittedCount
   ? Math.round(1000 * (to.jitterBufferDelay - from.jitterBufferDelay) / (to.jitterBufferEmittedCount - from.jitterBufferEmittedCount)) : null;
 
-// relayStartMs and cleanupMs are the control relay's start bound and cleanup()'s bound
-// (tests shorten them).
+// check.py on the folder and evidence, its result written to result. Resolves {code, stdout,
+// stderr} once it exits; rejects, after killing it, if it has not exited within ms.
+export function runOracle({ python = 'python3', oracle = ORACLE, folder, evidence, result, ms = CHECK_MS }) {
+  return new Promise((resolve, reject) => execFile(python, ['-I', path.join(oracle, 'check.py'), 'check', folder,
+    '--evidence', evidence, '--out', result], { maxBuffer: 16 << 20, timeout: ms, killSignal: 'SIGKILL' }, (error, stdout, stderr) => {
+    if (error?.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') reject(new Error(`check.py: ${error.message}`));
+    else if (error?.killed) reject(new Error(`check.py did not finish within ${ms} ms (killed)\n${stdout}${stderr}`));
+    else resolve({ code: error ? (typeof error.code === 'number' ? error.code : 2) : 0, stdout, stderr });
+  }));
+}
+
+// relayStartMs, cleanupMs and checkMs are the control relay's start bound, cleanup()'s bound
+// and check.py's (tests shorten them).
 export async function runLiveFolder({ meeting, remote, app, worker, out, log = console.log, python = 'python3',
-  relayStartMs = RELAY_START_MS, cleanupMs = CLEANUP_MS }) {
+  relayStartMs = RELAY_START_MS, cleanupMs = CLEANUP_MS, checkMs = CHECK_MS }) {
   let failed = true, recordAsked = false, stopAsked = false;
   try {
     const value = await scenario();
@@ -325,10 +339,8 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
 
       const evidenceFile = path.join(out, 'evidence.json'), resultFile = path.join(out, 'result.json');
       await writeFile(evidenceFile, JSON.stringify(evidence(), null, 1) + '\n');
-      // The oracle, before the app quits or compacts the folder.
-      const run = await new Promise(resolve => execFile(python, ['-I', path.join(oracle, 'check.py'), 'check', status.path,
-        '--evidence', evidenceFile, '--out', resultFile], { maxBuffer: 16 << 20 }, (error, stdout, stderr) =>
-        resolve({ code: error ? (typeof error.code === 'number' ? error.code : 2) : 0, stdout, stderr })));
+      // The oracle, before the app quits or compacts the folder; bounded (a hang fails the run).
+      const run = await runOracle({ python, oracle, folder: status.path, evidence: evidenceFile, result: resultFile, ms: checkMs });
       await writeFile(path.join(out, 'check.log'), run.stdout + run.stderr);
       log(run.stdout.trim().split('\n').at(-1) || run.stderr.trim());
       let result = null;

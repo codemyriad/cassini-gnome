@@ -171,7 +171,13 @@ own: the adapter passes the pages and the extension's service worker.
   bounded by `CLEANUP_MS`; then `stopRelays` ends any control relay still running and
   `stopLaunchers` kills any control launcher still waiting in `open()` on its FIFO (its
   relay never opened it: the launcher reads neither of the browser's pipes, so the
-  browser's exit does not end it). `cleanup()` ends everything the adapter started (the
+  browser's exit does not end it). A launcher is told from its host by its command line
+  alone (on macOS liveness is `kill(pid, 0)`, which both pass). A relay spawned but not yet
+  started at teardown cannot be found by its log line; it watches its writer instead (the
+  launcher's pid, passed as its third argument) until its FIFO is open, and once that pid
+  is gone it opens the FIFO for writing itself without blocking and closes it, so it reads
+  the end of its input (`writerGone`, then `end`) and exits. `check.py` is bounded by
+  `CHECK_MS`: one that does not finish is killed and fails the run, which is then torn down. `cleanup()` ends everything the adapter started (the
   app and its recording, the browsers, its broker and hosts) and leaves no process; it is
   idempotent, so the adapter may also call it from its own `finally`, and it leaves
   `controlHost.observe` in place for the driver. It runs after a failure's
@@ -232,7 +238,9 @@ own: the adapter passes the pages and the extension's service worker.
 `runLiveFolder`'s teardown with fake pages and app around a real launcher and relay (a
 failure after Record: Stop, one cleanup, the relay stopped; a failure while the control
 launcher starts: one cleanup, the launcher waiting on its FIFO killed; a failing or missing
-cleanup never hides the run's failure);
+cleanup never hides the run's failure; a relay that starts only after teardown killed its
+launcher ends by itself; on macOS's branches, with no `/proc`, the waiting launcher is
+still killed; a `check.py` that never exits is killed at its bound);
 `node --test tests/control-relay.test.mjs` checks the frame reader across chunk
 boundaries, the relay's byte-exact passthrough, unparsable and cut-off frames, and the
 observing launcher (the host stays the spawner's child, connections in launch order, the

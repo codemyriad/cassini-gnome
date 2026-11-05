@@ -4,13 +4,15 @@
 // and runLiveFolder's teardown on failure (fake pages and app, real launcher and relay).
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
+import { closeSync, constants, openSync } from 'node:fs';
 import { mkdtemp, open, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { eventsOf, extent, F, folderClock, S } from '../scenarios/folder-clock.mjs';
-import { controlConnections, hostPids, livePids, stopRelays, writeNativeHost } from '../scenarios/native-launcher.mjs';
-import { loadScenario, runLiveFolder } from '../scenarios/live-folder.mjs';
+import { controlConnections, hostPids, livePids, stopLaunchers, stopRelays, writeNativeHost } from '../scenarios/native-launcher.mjs';
+import * as driver from '../scenarios/live-folder.mjs';
+const { loadScenario, runLiveFolder } = driver;
 import { poll } from '../scenarios/folder-clock.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -227,4 +229,77 @@ test('a failing cleanup or an adapter without one never hides the run\'s own fai
   await poll(() => ended(relay), 'the relay is gone', BOUND, { pollMs: 5 });
   run.browser.stdin.end();
   await exitOf(run.browser);
+});
+
+test('a relay that starts only after teardown killed its launcher sees the end of its input and exits', async () => {
+  // The relay's interpreter starts late (a stalled machine): it waits until the test opens
+  // its gate. Teardown runs before the relay has logged its start, so stopRelays cannot see
+  // it, and stopLaunchers kills the launcher, the FIFO's only writer-to-be.
+  const gate = path.join(scratch, 'late-gate');
+  execFileSync('mkfifo', [gate]);
+  const late = path.join(scratch, 'late-node.sh');
+  await writeFile(late, `#!/bin/sh\nread go < '${gate}'\nexec '${process.execPath}' "$@"\n`, { mode: 0o700 });
+  const run = await controlRun('late-relay', { node: late });
+  // The gate opens for writing once the late interpreter waits on it (the relay is spawned).
+  const held = await poll(() => {
+    try { return openSync(gate, constants.O_WRONLY | constants.O_NONBLOCK); }
+    catch (error) { if (error.code === 'ENXIO') return null; throw error; }
+  }, 'the late relay interpreter waits on its gate', BOUND, { pollMs: 5 });
+  const [before] = await controlConnections(run.host);
+  assert.deepEqual([before.pid, before.relay], [run.browser.pid, null]);
+  assert.deepEqual(await stopRelays(run.host), [], 'no start line yet, so no relay to stop');
+  assert.deepEqual(await stopLaunchers(run.host), [run.browser.pid]);
+  assert.deepEqual(await exitOf(run.browser), { code: null, signal: 'SIGKILL' });
+  run.browser.stdin.end(); run.browser.stdout.destroy();  // the browser closes
+  closeSync(held);  // the relay starts now
+  const relay = await poll(async () => (await controlConnections(run.host))[0].relay, 'the late relay logs its start', BOUND, { pollMs: 5 });
+  await poll(() => ended(relay), 'the late relay is gone (no writer will ever open its FIFO)', BOUND, { pollMs: 5 });
+  const [after] = await controlConnections(run.host);
+  assert.deepEqual([after.ended, after.frames.length, after.inputError, after.outputError], [true, 0, null, null]);
+});
+
+// macOS has no /proc: native-launcher.mjs takes its other branches (kill(pid, 0), ps). This
+// child process runs them on Linux: process.platform darwin, /proc reads failing as there,
+// and the system ps answering for the pid.
+const AS_ON_MACOS = `
+import { createRequire, syncBuiltinESMExports } from 'node:module';
+const require = createRequire(import.meta.url);
+Object.defineProperty(process, 'platform', { value: 'darwin' });
+const fsp = require('node:fs/promises'), readFile = fsp.readFile;
+fsp.readFile = (file, ...rest) => String(file).startsWith('/proc/')
+  ? Promise.reject(Object.assign(new Error('no /proc on macOS'), { code: 'ENOENT' })) : readFile(file, ...rest);
+syncBuiltinESMExports();
+const { controlConnections, stopLaunchers } = await import(process.argv[1]);
+const host = JSON.parse(process.argv[2]);
+const [c] = await controlConnections(host);
+console.log(JSON.stringify({ live: c.live, killed: await stopLaunchers(host) }));
+`;
+
+test('on macOS too, stopLaunchers kills a launcher still waiting on its FIFO', async () => {
+  const run = await controlRun('macos-launcher', { node: '/bin/false' });
+  await poll(async () => (await controlConnections(run.host))[0]?.pid, 'the launcher records the connection', BOUND, { pollMs: 5 });
+  const child = spawn(process.execPath, ['--input-type=module', '-e', AS_ON_MACOS, path.join(root, 'scenarios/native-launcher.mjs'), JSON.stringify(run.host)],
+    { stdio: ['ignore', 'pipe', 'inherit'] });
+  let text = '';
+  child.stdout.on('data', chunk => { text += chunk; });
+  assert.deepEqual(await exitOf(child), { code: 0, signal: null });
+  // Off Linux liveness is kill(pid, 0), so the waiting launcher reads as a live host; only
+  // its command line (the launcher script, not the host's) tells them apart.
+  assert.deepEqual(JSON.parse(text), { live: true, killed: [run.browser.pid] });
+  assert.deepEqual(await exitOf(run.browser), { code: null, signal: 'SIGKILL' });
+});
+
+test('check.py is bounded: one that never exits is killed and fails the run', async () => {
+  const directory = path.join(scratch, 'oracle-hang');
+  execFileSync('mkdir', ['-p', directory]);
+  // A python stand-in that records its pid and never exits (it waits for the end of its stdin).
+  const python = path.join(directory, 'python');
+  await writeFile(python, `#!/bin/sh\necho $$ > '${directory}/pid'\nexec cat\n`, { mode: 0o700 });
+  assert.equal(typeof driver.runOracle, 'function', 'the driver runs check.py through runOracle');
+  const started = Date.now();
+  await assert.rejects(driver.runOracle({ python, folder: directory, evidence: path.join(directory, 'evidence.json'),
+    result: path.join(directory, 'result.json'), ms: 300 }), /check\.py did not finish within 300 ms/);
+  assert.ok(Date.now() - started < BOUND);
+  const pid = Number((await readFile(path.join(directory, 'pid'), 'utf8')).trim());
+  assert.ok(await ended(pid), 'the hung check.py was killed');
 });

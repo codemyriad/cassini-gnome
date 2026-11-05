@@ -20,12 +20,23 @@
 // the browser closes the control port only when the host's session is over, so this is
 // documented rather than worked around.
 //
-//   node control-relay.mjs <fifo> <log.jsonl>
-import { closeSync, createReadStream, openSync, writeSync } from 'node:fs';
+// The FIFO's writer is the launcher, which becomes the host by exec (same pid). If that pid
+// dies before the FIFO is open (the browser ending a launch early, or the driver's
+// stopLaunchers), no writer will ever come and opening the FIFO would wait for good. Until
+// the FIFO is open the relay checks that pid every WRITER_POLL_MS; once it is gone it opens
+// the FIFO for writing itself, without blocking (that succeeds once its own read open is
+// waiting) and closes it at once, so its read open completes and reads the end of input:
+// it logs `writerGone`, then its `end`, and exits. Should the host have opened, written and
+// exited just before, those bytes are still read and forwarded first.
+//
+//   node control-relay.mjs <fifo> <log.jsonl> [<writer pid>]
+import { execFileSync } from 'node:child_process';
+import { closeSync, constants, createReadStream, openSync, readFileSync, writeSync } from 'node:fs';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 export const MAX_FRAME = 1024 * 1024;  // Chrome's limit for host-to-browser messages
+export const WRITER_POLL_MS = 100;  // how often a relay whose FIFO is not open yet checks its writer
 const decoder = new TextDecoder('utf-8', { fatal: true });
 
 // Frames out of a byte stream that may arrive in any chunking. push(chunk, atWall) returns
@@ -99,17 +110,48 @@ function writeAll(fd, chunk) {
   }
 }
 
-export function relay(input, logPath, { output = 1 } = {}) {
+// Whether pid still runs (not gone, not a zombie no one reaps): /proc on Linux, ps elsewhere.
+export function processRunning(pid) {
+  try { process.kill(pid, 0); } catch (error) { if (error.code === 'ESRCH') return false; if (error.code !== 'EPERM') throw error; }
+  let state;
+  if (process.platform === 'linux') {
+    try { const stat = readFileSync(`/proc/${pid}/stat`, 'utf8'); state = stat.slice(stat.lastIndexOf(')') + 2); }
+    catch (error) { if (error.code === 'ENOENT' || error.code === 'ESRCH') return false; throw error; }
+  } else {
+    try { state = execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
+    catch { return false; }
+  }
+  return !state.startsWith('Z');
+}
+
+// writer: the pid that will open the FIFO for writing (the header); null when none is watched.
+export function relay(input, logPath, { output = 1, writer = null, writerPollMs = WRITER_POLL_MS, running = processRunning } = {}) {
   const log = openSync(logPath, 'a', 0o600);
   const note = value => writeSync(log, JSON.stringify(value) + '\n');
-  note({ relay: process.pid, startedWall: Date.now(), endianness: os.endianness() });
+  note({ relay: process.pid, startedWall: Date.now(), endianness: os.endianness(), ...(writer === null ? {} : { writer }) });
   const reader = new FrameReader();
   let total = 0, reported = false;
   const report = () => { if (reader.failure && !reported) { reported = true; note({ unparsable: reader.failure.reason, offset: reader.failure.offset, atWall: Date.now() }); } };
   return new Promise(resolve => {
     const stream = createReadStream(input, { highWaterMark: 65536 });
-    let finished = false;
-    const finish = code => { if (finished) return; finished = true; try { closeSync(log); } catch {} resolve(code); };
+    let finished = false, watch = null;
+    const finish = code => { if (finished) return; finished = true; clearInterval(watch); try { closeSync(log); } catch {} resolve(code); };
+    // Until the FIFO is open: a writer gone for good releases the read open (the header).
+    if (writer !== null) {
+      let gone = false;
+      watch = setInterval(() => {
+        if (finished || (!gone && running(writer))) return;
+        if (!gone) { gone = true; note({ writerGone: writer, atWall: Date.now() }); }
+        let fd;
+        try { fd = openSync(input, constants.O_WRONLY | constants.O_NONBLOCK); }
+        catch (error) {
+          if (error.code === 'ENXIO') return;  // the read open is not waiting yet: next tick
+          note({ inputError: error.code || error.message, atWall: Date.now(), bytes: total }); finish(1); process.exit(1);
+        }
+        closeSync(fd); clearInterval(watch);
+      }, writerPollMs);
+      stream.once('open', () => clearInterval(watch));
+    }
     // The browser end is gone: stop reading (closing the FIFO), so the host meets a closed pipe as it would.
     const closed = (outputError, undelivered) => {
       if (finished) return;
@@ -139,7 +181,9 @@ export function relay(input, logPath, { output = 1 } = {}) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const [input, logPath] = process.argv.slice(2);
-  if (!input || !logPath) { process.stderr.write('usage: control-relay.mjs <fifo> <log.jsonl>\n'); process.exit(64); }
-  process.exitCode = await relay(input, logPath);
+  const [input, logPath, writer] = process.argv.slice(2);
+  if (!input || !logPath || (writer !== undefined && !/^[1-9][0-9]*$/.test(writer))) {
+    process.stderr.write('usage: control-relay.mjs <fifo> <log.jsonl> [<writer pid>]\n'); process.exit(64);
+  }
+  process.exitCode = await relay(input, logPath, { writer: writer === undefined ? null : Number(writer) });
 }

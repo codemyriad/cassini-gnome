@@ -63,7 +63,8 @@ export async function writeNativeHost({ manifestDirectory, launcherDirectory = m
     `printf '%s %s\\n' "$$" "$PPID" > "$dir/.host.tmp" || exit 70`,
     'mv -f "$dir/.host.tmp" "$dir/host" || exit 70',
     'mkfifo "$dir/out" || exit 70',
-    `( exec ${quote(node)} ${quote(RELAY)} "$dir/out" "$dir/frames.jsonl" </dev/null 2>"$dir/relay.err" & )`,
+    // "$$" (the launcher, later the host): the FIFO's writer, which the relay watches until it opens.
+    `( exec ${quote(node)} ${quote(RELAY)} "$dir/out" "$dir/frames.jsonl" "$$" </dev/null 2>"$dir/relay.err" & )`,
     'umask "$mask"',
     `exec ${command.map(quote).join(' ')} "$@" >"$dir/out"`,
   );
@@ -271,13 +272,15 @@ async function commandLine(pid) {
 
 // Ends the launchers that never became their host: a launcher whose relay never opened the
 // FIFO waits in open() for good, and the browser closing its pipes does not end it (it reads
-// neither). Such a pid still runs the launcher script, not the host it would have exec'd.
-// Returns the pids it killed.
+// neither). Such a pid still runs the launcher script, not the host it would have exec'd:
+// its command line alone decides, never `live` (off Linux liveness is kill(pid, 0), which a
+// waiting launcher passes as well as its host would). A relay that had not started yet sees
+// its writer gone and ends by itself (scenarios/control-relay.mjs). Returns the pids it killed.
 export async function stopLaunchers(host) {
   if (!host?.launcher) return [];
   const killed = [];
   for (const c of await controlConnections(host)) {
-    if (c.pid === null || c.live || !alive(c.pid)) continue;
+    if (c.pid === null || !alive(c.pid)) continue;
     if (!(await commandLine(c.pid)).includes(host.launcher)) continue;
     try { process.kill(c.pid, 'SIGKILL'); killed.push(c.pid); } catch (error) { if (error.code !== 'ESRCH') throw error; }
   }
