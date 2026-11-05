@@ -12,6 +12,11 @@ from test_browser_sessions import Extension
 import cassini_talk.browser_service as browser_service
 from cassini_talk.browser_service import request
 
+# A hang guard on the fallback's durable save (about 15 fsyncs, 1.9 s on a real
+# disk), as test_call_lifecycle.HOLD_BOUND: the 2 s wait_for bound before it was
+# sized for in-memory state changes and failed on a CI disk stall.
+SAVE_BOUND = 10  # seconds
+
 
 def fake_deadlines(server, monkeypatch):
     """Command and batch deadlines that pass only when the test expires them,
@@ -138,9 +143,10 @@ def test_a_native_fallback_crossing_the_deadline_is_saved_and_never_left_recordi
     _futures, expire = fake_deadlines(server, monkeypatch)
     peer = Extension(path, (3,))
     entered, release = threading.Event(), threading.Event()
-    start = BrowserCapture.start
+    start, started = BrowserCapture.start, []
 
     def delayed(capture, *args, **kwargs):
+        started.append(capture)
         entered.set()
         assert release.wait(2)
         return start(capture, *args, **kwargs)
@@ -156,7 +162,12 @@ def test_a_native_fallback_crossing_the_deadline_is_saved_and_never_left_recordi
             assert not result["cancelled"] and len(result["failures"]) == 1
             assert result["failures"][0]["refusals"][0]["code"] == "startFailed"
             release.set()
-            wait_for(lambda: server.captures and all(c.finished for c in server.captures.values()))
+            # Its start and save write the folder durably (about 15 fsyncs on a
+            # real disk): wait for that save itself, bounded only against a hang.
+            (capture,) = started
+            assert capture.stopped.wait(SAVE_BOUND), f"the native fallback did not finish its save within {SAVE_BOUND} s"
+            assert capture.finished and capture.directory is not None
+            assert list(server.captures.values()) == [capture]
             assert not any(s["recording"] for s in request(path=path)["statuses"])
     finally:
         release.set()
