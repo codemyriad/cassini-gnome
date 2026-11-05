@@ -2,6 +2,7 @@
 """D36 private meter role: bounded columns, never PCM or extension messages."""
 
 import base64
+import contextlib
 import errno
 import json
 import math
@@ -13,7 +14,7 @@ LIMIT = 32768
 
 
 def serve_meter(service, connection, stream, directory):
-    from .browser_service import send_packet
+    from .browser_service import encode_packet, send_packet
 
     with service.lock:
         capture = next(
@@ -31,29 +32,43 @@ def serve_meter(service, connection, stream, directory):
     with capture.lock:
         capture._sync_spectrogram()
         subscription = source.subscribe(capture.elapsed_ms())
-    connection.settimeout(0.5)
+    # A view that stops reading for a while (a stalled GTK main loop) is not a
+    # view that went away: its subscription stays, and the producer never
+    # blocks on it. Columns wait in the subscription's bounded lanes (the
+    # oldest are dropped) and a packet is only built once the previous one has
+    # left. Only the view's EOF, an error or the broker's shutdown ends it.
+    connection.setblocking(False)
+    packet, finished = b"", False
     try:
         while not service.closed.is_set():
-            now = capture.elapsed_ms()
-            lanes = source.drain(subscription, now)
-            send_packet(
-                stream,
-                dict(
-                    type="columns",
-                    nowMs=now,
-                    finished=source.finished,
-                    lanes={
-                        side: [[slot, flags, base64.b64encode(bands).decode("ascii")] for slot, flags, bands in rows]
-                        for side, rows in lanes.items()
-                    },
-                ),
-            )
-            if source.finished:
-                break
-            readable, _, _ = select.select([connection], [], [], 0.04)
+            if not packet:
+                now = capture.elapsed_ms()
+                lanes = source.drain(subscription, now)
+                finished = source.finished
+                packet = encode_packet(
+                    dict(
+                        type="columns",
+                        nowMs=now,
+                        finished=finished,
+                        lanes={
+                            side: [
+                                [slot, flags, base64.b64encode(bands).decode("ascii")] for slot, flags, bands in rows
+                            ]
+                            for side, rows in lanes.items()
+                        },
+                    )
+                )
+            readable, writable, _ = select.select([connection], [connection], [], 0)
+            if writable:
+                with contextlib.suppress(BlockingIOError):
+                    packet = packet[connection.send(packet) :]
+                if not packet and finished:
+                    break
+            # Paces packets, or waits for room for the rest of one. The role
+            # is one-way after subscribing: EOF releases its producer at once.
+            if not readable:
+                readable, _, _ = select.select([connection], [connection] if packet else [], [], 0.04)
             if readable:
-                # The role is one-way after subscribing. EOF releases its
-                # producer immediately, rather than waiting for the next send.
                 connection.recv(1)
                 break
     finally:
