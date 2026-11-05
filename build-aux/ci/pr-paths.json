@@ -19,7 +19,16 @@
       "ux/library-vectors/**",
       "tests/ui/**",
       ".github/workflows/ux-shot.yml",
-      "tests/**"
+      "tests/**",
+      "browser-extension/**",
+      "whistle/**",
+      "sherpa/**",
+      "build-aux/bounded-run.sh",
+      "build-aux/build-identity.py",
+      "build-aux/check-ux-vectors.py",
+      "build-aux/product-name.py",
+      "build-aux/whistle-cache.sh",
+      "build-aux/sherpa-cache.sh"
     ],
     "library": [
       "src/**",
