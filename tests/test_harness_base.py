@@ -40,7 +40,10 @@ DIGEST_B = "sha256:" + "b" * 64
 EPOCH = "2026-W45"
 
 # A docker that logs every call and answers like a daemon with registry access.
-# Each registry lookup serves a new digest, as a base moving between two lookups would.
+# Each registry lookup of a tag serves a new digest, as a base moving between two
+# lookups would; a reference by digest is immutable. Like buildx, --raw prints the
+# manifest's bytes as served (one GET, one Docker Hub pull), while a formatted
+# inspect also GETs every platform's manifest of an index: "pulls" counts them.
 FAKE_DOCKER = r"""#!/usr/bin/env python3
 import hashlib, json, os, sys
 state = os.environ["FAKE_DOCKER_STATE"]
@@ -53,8 +56,8 @@ elif args[:3] == ["buildx", "imagetools", "inspect"]:
     if os.environ.get("FAKE_REGISTRY_DOWN"):
         sys.exit("ERROR: 429 Too Many Requests")
     lookups = os.path.join(state, "lookups.jsonl")
-    count = sum(1 for _ in open(lookups)) if os.path.exists(lookups) else 0
     reference = args[-1]
+    count = 0 if "@" in reference else (sum(1 for _ in open(lookups)) if os.path.exists(lookups) else 0)
     def digest(what):
         return "sha256:" + hashlib.sha256(f"{reference} {what} {count}".encode()).hexdigest()
     platforms = [("linux", "amd64", None), ("unknown", "unknown", None), ("linux", "arm64", "v8")]
@@ -64,9 +67,22 @@ elif args[:3] == ["buildx", "imagetools", "inspect"]:
         {"digest": digest(f"{os_}/{arch}"), "platform": {"os": os_, "architecture": arch, **({"variant": v} if v else {})}}
         for os_, arch, v in platforms
     ]
+    if os.environ.get("FAKE_REGISTRY_PLATFORMS") == "single":
+        document = {"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json", "config": {"digest": digest("config")}}
+        raw = json.dumps(document).encode()
+        manifests, formatted, pulls = [], {**document, "digest": "sha256:" + hashlib.sha256(raw).hexdigest()}, 1
+    else:
+        index = {"schemaVersion": 2, "mediaType": "application/vnd.oci.image.index.v1+json", "manifests": manifests}
+        raw = json.dumps(index).encode()
+        formatted = {**index, "digest": "sha256:" + hashlib.sha256(raw).hexdigest()}
+        pulls = 1 + len(manifests)
+    if "--raw" in args:
+        sys.stdout.buffer.write(raw)
+        pulls = 1
+    else:
+        print(json.dumps(formatted))
     with open(lookups, "a") as log:
-        log.write(json.dumps({"reference": reference, "manifests": manifests}) + "\n")
-    print(json.dumps({"mediaType": "application/vnd.oci.image.index.v1+json", "digest": digest("index"), "manifests": manifests}))
+        log.write(json.dumps({"reference": reference, "manifests": manifests, "raw": raw.decode(), "pulls": pulls}) + "\n")
 elif args[:2] == ["image", "inspect"]:
     if "-f" in args:
         print("null")
@@ -287,3 +303,66 @@ def test_the_cache_key_resolves_each_base_once_for_the_whole_job(docker, tmp_pat
     for name in ("build-refresh", "browser-setup"):
         harness("tag", name, **{**docker.env, **job})
     assert len(docker.lookups()) == 1
+
+
+def test_a_lookup_is_one_get_of_the_raw_manifest(docker):
+    # Review of the fix: a formatted inspect GETs every platform's manifest too, so
+    # each lookup cost Docker Hub seven pulls of an anonymous hundred an hour.
+    harness("base", "desktop", **docker.env)
+    harness("pin", "build-refresh", "browser-setup", **docker.env)
+    inspects = [call for call in docker.calls() if call[:3] == ["buildx", "imagetools", "inspect"]]
+    assert len(inspects) == 2 and all("--raw" in call and "--format" not in call for call in inspects), inspects
+    assert [lookup["pulls"] for lookup in docker.lookups()] == [1, 1]
+    # A base that is a single manifest is itself: the digest of the bytes served.
+    single = harness("base", "desktop", **docker.env, FAKE_REGISTRY_PLATFORMS="single")
+    raw = docker.lookups()[-1]["raw"].encode()
+    assert single == f"ubuntu:26.04@sha256:{hashlib.sha256(raw).hexdigest()}"
+
+
+def test_a_base_named_by_digest_is_never_replaced_by_a_pin(docker):
+    # Review of the fix: a pin was matched by image name alone, so a job's pin of
+    # ubuntu:26.04 replaced the digest CASSINI_BROWSER_TEST_BASE asked for.
+    asked = f"ubuntu:26.04@{DIGEST_B}"
+    browser = {**docker.env, "CASSINI_BROWSER_TEST_BASE": asked}
+    job = {**browser, "CASSINI_HARNESS_BASES": f"ubuntu:26.04@{DIGEST_A}"}
+    base = harness("base", "browser-setup", **job)
+    (lookup,) = docker.lookups()
+    assert lookup["reference"] == asked and base == docker.amd64(lookup).replace(f"@{DIGEST_B}", "", 1)
+    assert base == harness("base", "browser-setup", **browser), "a digest reference is immutable"
+    assert harness("tag", "browser-setup", **job) == harness("tag", "browser-setup", **browser)
+    assert harness("tag", "browser-setup", **job) != harness(
+        "tag", "browser-setup", **{**docker.env, "CASSINI_HARNESS_BASES": f"ubuntu:26.04@{DIGEST_A}"}
+    )
+    # Pinning a job never turns that digest into the pin of the other harnesses' image.
+    for order in (["desktop", "browser-setup"], ["browser-setup", "desktop"]):
+        pins = harness("pin", *order, **browser).split(" ")
+        assert len(pins) == 1 and pins[0] != base, order
+        assert harness("base", "desktop", **browser, CASSINI_HARNESS_BASES=pins[0]) == pins[0]
+    assert harness("pin", "desktop", "browser-setup", **job) == f"ubuntu:26.04@{DIGEST_A}"
+    # Two pins of one image are ambiguous: refused, never the first one silently.
+    twice = run(
+        ["bash", str(ROOT / "tests/harness-image.sh"), "tag", "desktop"],
+        {**docker.env, "CASSINI_HARNESS_BASES": pinned(f"ubuntu:26.04@{DIGEST_A}", f"ubuntu:26.04@{DIGEST_B}")},
+        check=False,
+    )
+    assert twice.returncode == 2 and "ubuntu:26.04 more than once" in twice.stderr and twice.stdout == ""
+
+
+def test_pins_are_not_sold_as_an_offline_build(docker):
+    # Review of the fix: a pin only skips the lookup; the harness build still pulls
+    # its digest and every run still runs apt-get, so neither works offline.
+    failed = run(
+        ["bash", str(ROOT / "tests/harness-image.sh"), "base", "desktop"],
+        {**docker.env, "FAKE_REGISTRY_DOWN": "1"},
+        check=False,
+    )
+    assert "skip the registry lookup, set CASSINI_HARNESS_BASES=ubuntu:26.04@sha256:" in failed.stderr
+    assert "offline" not in failed.stderr
+    script = (ROOT / "tests/harness-image.sh").read_text()
+    assert "offline" not in script.split("set -euo pipefail", 1)[0]
+    assert "only skips the lookup" in script
+    docs = (ROOT / "docs/ci.md").read_text()
+    paragraph = next(block for block in docs.split("\n\n") if "CASSINI_HARNESS_BASES" in block)
+    assert "offline, set" not in paragraph and "only skips that lookup" in paragraph
+    for runner in RUNNERS:
+        assert "docker build --pull" in (ROOT / runner).read_text(), runner

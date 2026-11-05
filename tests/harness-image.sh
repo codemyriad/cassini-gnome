@@ -15,11 +15,16 @@
 # The harness stage is built FROM ${BASE}: the image its Dockerfile's ARG BASE
 # names (CASSINI_BROWSER_TEST_BASE for browser-setup), pinned to the digest of
 # this platform's manifest. CASSINI_HARNESS_BASES holds the pins, IMAGE@sha256:...
-# separated by spaces; an image it lacks is resolved from the registry, and a
-# base that cannot be resolved is an error, never an unpinned build. Pin once
-# (run.sh, or CI's cache key for the whole job) and reuse it: the tag and the
-# build then name the same base, so a cached harness and a fresh one are
-# byte for byte the same base. For an offline build, set CASSINI_HARNESS_BASES.
+# separated by spaces, at most one per image; an image it lacks is resolved from
+# the registry (one GET of its index: one Docker Hub pull), and a base that
+# cannot be resolved is an error, never an unpinned build. Pin once (run.sh, or
+# CI's cache key for the whole job) and reuse it: the tag and the build then name
+# the same base, so a cached harness and a fresh one are byte for byte the same
+# base. A base named by digest (CASSINI_BROWSER_TEST_BASE=IMAGE@sha256:...) is
+# immutable: it is resolved itself, never replaced by a pin of the same image.
+# Setting CASSINI_HARNESS_BASES only skips the lookup (tests, or Docker Hub's rate
+# limit); the build still pulls that digest and every run still runs apt-get.
+# A digest: `docker buildx imagetools inspect --raw IMAGE`, the linux/ARCH entry.
 #
 # The tag hashes every input of the harness stage (its Dockerfile, debian/control,
 # the pinned base, this script) and ends with the epoch, the ISO week unless
@@ -36,6 +41,8 @@ read -ra pinned <<<"${CASSINI_HARNESS_BASES:-}"
 for pin in "${pinned[@]}"; do
   [[ $pin =~ ^[^@[:space:]]+@sha256:[0-9a-f]{64}$ ]] || { echo "CASSINI_HARNESS_BASES: $pin is not IMAGE@sha256:<64 hex digits>" >&2; exit 2; }
 done
+pinned_names=$(for pin in "${pinned[@]}"; do echo "${pin%@sha256:*}"; done | sort | uniq -d)
+[ -z "$pinned_names" ] || { echo "CASSINI_HARNESS_BASES pins $pinned_names more than once" >&2; exit 2; }
 
 dockerfile() {
   case "$1" in
@@ -61,36 +68,42 @@ image() {
 }
 
 # IMAGE@DIGEST: the pin CASSINI_HARNESS_BASES holds for the image, or else the
-# digest of the manifest the registry serves this Docker host's platform.
+# digest of the manifest the registry serves this Docker host's platform. A
+# reference that names its own digest is resolved itself, never by a pin.
 base() {
   local reference name pin platform digest
   reference=$(image "$1") || return
   name=${reference%@*}
-  for pin in "${pinned[@]}"; do
-    if [ "${pin%@sha256:*}" = "$name" ]; then
-      echo "$pin"
-      return
-    fi
-  done
+  if [ "$reference" = "$name" ]; then
+    for pin in "${pinned[@]}"; do
+      if [ "${pin%@sha256:*}" = "$name" ]; then
+        echo "$pin"
+        return
+      fi
+    done
+  fi
   platform=$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}') || { echo "cannot ask Docker for its platform" >&2; return 1; }
-  # A multi-platform index: the one manifest for this platform. A single manifest: itself.
-  digest=$(docker buildx imagetools inspect --format '{{json .Manifest}}' "$reference" | python3 -I -c '
-import json, sys
+  # One GET of the raw manifest (a formatted inspect fetches every platform's too).
+  # A multi-platform index: the one manifest for this platform. A single manifest:
+  # itself, whose digest is that of the raw bytes.
+  digest=$(docker buildx imagetools inspect --raw "$reference" | python3 -I -c '
+import hashlib, json, sys
+raw = sys.stdin.buffer.read()
 try:
-    manifest = json.load(sys.stdin)
+    manifest = json.loads(raw)
 except ValueError:
     sys.exit("no manifest")
-if "manifests" in manifest:
+if isinstance(manifest, dict) and "manifests" in manifest:
     found = [m["digest"] for m in manifest["manifests"]
              if "{}/{}".format(m.get("platform", {}).get("os"), m.get("platform", {}).get("architecture")) == sys.argv[1]]
 else:
-    found = [manifest["digest"]]
+    found = ["sha256:" + hashlib.sha256(raw).hexdigest()]
 if len(found) != 1:
     sys.exit(f"{len(found)} manifests for {sys.argv[1]}")
 print(found[0])
 ' "$platform") || digest=
   [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] || {
-    echo "cannot resolve the $platform digest of $reference; to build offline, set CASSINI_HARNESS_BASES=$name@sha256:..." >&2
+    echo "cannot resolve the $platform digest of $reference; to skip the registry lookup, set CASSINI_HARNESS_BASES=$name@sha256:..." >&2
     return 1
   }
   echo "$name@$digest"
@@ -102,6 +115,9 @@ case "${1:-}" in
     pins=("${pinned[@]}")
     for name in "$@"; do
       pin=$(base "$name")
+      # A base named by its own digest needs no pin, and must not pin its image for the others.
+      reference=$(image "$name")
+      if [ "$reference" != "${reference%@*}" ]; then continue; fi
       # Pinned from here on: a second NAME on the same image never looks it up again.
       if [[ " ${pins[*]} " != *" $pin "* ]]; then pins+=("$pin") pinned+=("$pin"); fi
     done

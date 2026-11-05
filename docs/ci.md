@@ -104,10 +104,14 @@ The installed-package harnesses (Desktop, build refresh, browser setup) build
 in two stages (`tests/harness-image.sh`, C). The harness stage holds the Ubuntu
 base, the harness's own packages and the static `Depends` of `debian/control`.
 Its base is the image the Dockerfile's `ARG BASE` names, pinned to the digest
-of the runner platform's manifest (`tests/harness-image.sh pin`/`base`; offline,
-set `CASSINI_HARNESS_BASES=IMAGE@sha256:...`): the harness stage is built
+of the runner platform's manifest (`tests/harness-image.sh pin`/`base`, one
+Docker Hub pull: a single GET of the raw index): the harness stage is built
 `FROM` that pin, never the bare tag, and a base that cannot be resolved fails
-the run. The stage is tagged with a hash of every input, the pinned base and
+the run. `CASSINI_HARNESS_BASES=IMAGE@sha256:...` (the `linux/ARCH` entry of
+`docker buildx imagetools inspect --raw IMAGE`) only skips that lookup, for
+tests or Docker Hub's rate limit; the build still pulls the digest and every run
+still runs `apt-get`, so neither is offline. A `CASSINI_BROWSER_TEST_BASE` that
+names its own digest is resolved itself, never replaced by a pin of the same image. The stage is tagged with a hash of every input, the pinned base and
 the ISO week, and rebuilt with `--pull` whenever that tag is new, so it never
 outlives its Dockerfile, the control file, its base or a week. The cache only
 saves download and unpack time, never freshness (D68): every run first runs
