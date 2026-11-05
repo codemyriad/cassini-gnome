@@ -9,6 +9,58 @@ from cassini_talk.meeting_store import LOCK, read_metadata
 from cassini_talk.recording_session import RecordingSession
 from cassini_talk.transcription import REFERENCE
 
+WITHOUT_GI = """
+import ast, importlib, sys
+from importlib.abc import MetaPathFinder
+from pathlib import Path
+from types import SimpleNamespace
+
+
+class NoGi(MetaPathFinder):
+    def find_spec(self, name, path=None, target=None):
+        if name == "gi" or name.startswith("gi."):
+            raise ModuleNotFoundError(f"No module named {name!r}", name=name)
+
+
+sys.meta_path.insert(0, NoGi())
+package = Path(sys.argv[1])
+modules = set()
+for owner in ("capture_guard", "installed_build", "build_refresh"):
+    modules.add(owner)
+    for node in ast.walk(ast.parse((package / (owner + ".py")).read_text())):
+        if isinstance(node, ast.ImportFrom) and node.level == 1:
+            modules.update([node.module] if node.module else [alias.name for alias in node.names])
+for module in sorted(modules):
+    importlib.import_module("cassini_talk." + module)
+from cassini_talk.capture_guard import capture_targets
+
+app = SimpleNamespace(get_windows=lambda: [], _browser_snapshot={}, _browser_answered_at=None)
+assert capture_targets(app) == ([], False)
+print(" ".join(sorted(modules)))
+"""
+
+
+def test_quit_and_build_checks_import_without_pygobject():
+    """CI's minimal environment has no PyGObject. capture_guard and
+    installed_build (Quit's and the build refresh's capture checks) need no
+    GLib, yet capture_targets' lazy import of capture_activity loaded GLib at
+    module level and failed there (ModuleNotFoundError: gi). Every module those
+    three import, at module level or inside a function, must import without gi."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import cassini_talk
+
+    package = Path(cassini_talk.__file__).parent
+    env = dict(os.environ, PYTHONPATH=str(package.parent))
+    result = subprocess.run(
+        [sys.executable, "-c", WITHOUT_GI, str(package)], env=env, capture_output=True, text=True, timeout=60
+    )
+    assert result.returncode == 0, result.stderr
+    assert "capture_activity" in result.stdout.split()
+
 
 def test_close_save_does_not_queue_empty_capture(tmp_path, monkeypatch):
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))

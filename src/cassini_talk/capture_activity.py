@@ -6,8 +6,6 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from gi.repository import GLib
-
 from .browser_service import read_packet, send_packet, service_path
 from .capture_guard import browser_capture_busy
 from .library import meeting_id
@@ -151,6 +149,10 @@ class BrowserActivity:
         # Monotonic receive time of the answer the snapshot holds (broker_silent).
         self.answered_at = None
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-activity")
+        # GLib only here, in the poller: capture_guard and installed_build load
+        # this module for broker state alone, where PyGObject may be absent.
+        from gi.repository import GLib
+
         self.timer = GLib.timeout_add(interval_ms, self.poll)
         self.poll()
 
@@ -159,6 +161,8 @@ class BrowserActivity:
         return self.clock(), result
 
     def poll(self):
+        from gi.repository import GLib
+
         if self.closed:
             return GLib.SOURCE_REMOVE
         if self.future is None:
@@ -167,6 +171,8 @@ class BrowserActivity:
         return GLib.SOURCE_CONTINUE
 
     def _complete(self, future):
+        from gi.repository import GLib
+
         if not future.done():
             return False
         self.future = None
@@ -197,6 +203,8 @@ class BrowserActivity:
         return GLib.SOURCE_REMOVE
 
     def close(self):
+        from gi.repository import GLib
+
         self.closed = True
         if self.timer:
             GLib.source_remove(self.timer)
