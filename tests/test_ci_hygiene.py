@@ -173,22 +173,32 @@ def test_package_builds_run_on_the_pinned_runner_image():
         assert images and set(images) <= {"ubuntu-26.04", CM_RUNNER_PINNED}, (name, images)
 
 
-def test_release_ships_the_flatpak_main_tested_and_refuses_it_without_an_update_remote():
-    # G15: no rebuild at tag time, and no workflow calls Release preparation.
-    release = (WORKFLOWS / "release.yml").read_text()
-    flatpak = dict(jobs(WORKFLOWS / "release.yml"))["flatpak"]
-    assert "release-check.yml" not in release and "name: flatpak-stable" in flatpak
-    assert "run-id: ${{ needs.main-inputs.outputs.run_id }}" in flatpak
-    assert "build-aux/ci/flatpak_bundle.py dist/cassini-talk.flatpak" in flatpak
-    # Option B: the native release never waits for the Flatpak, and nothing but
-    # flatpak-release, after the unchanged G15 job passes, ever attaches one.
-    jobs_ = dict(jobs(WORKFLOWS / "release.yml"))
-    assert re.search(r"^    needs: \[deb, packages\]$", jobs_["publish"], re.M)
-    assert "flatpak" not in jobs_["publish"].replace("source/", "")
-    assert re.search(r"^    needs: \[publish, flatpak\]$", jobs_["flatpak-release"], re.M)
-    assert "name: release-flatpak" in jobs_["flatpak-release"]
-    assert sum("release-flatpak" in block or ".flatpak" in block for name, block in jobs_.items()) == 2
+def test_release_ships_the_native_packages_and_leaves_the_flatpak_to_flathub():
+    # D45.3: Flathub builds, signs, hosts and updates the Flatpak; we hold no
+    # signing key and run no repository. A release ships the native packages
+    # (publish needs exactly deb and packages), never downloads main's
+    # flatpak-stable and never attaches a .flatpak: a bundle without an update
+    # remote must not be offered. No workflow calls Release preparation.
+    def code(block):
+        return "\n".join(line for line in block.splitlines() if not line.lstrip().startswith("#"))
+
+    release = dict(jobs(WORKFLOWS / "release.yml"))
+    assert set(release) == {"main-inputs", "deb", "packages", "publish"}
+    assert re.findall(r"^    needs: (.+)$", release["publish"], re.M) == ["[deb, packages]"]
+    assert re.findall(r"^          name: (\S+)$", release["publish"], re.M) == ["release-deb", "release-packages"]
+    shipping = {f"release.yml:{name}": code(block) for name, block in release.items()}
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        if "\njobs:\n" in workflow.read_text():
+            for name, block in jobs(workflow):
+                if "gh release" in code(block):
+                    shipping[f"{workflow.name}:{name}"] = code(block)
+    assert "release.yml:publish" in shipping
+    for name, block in shipping.items():
+        assert "flatpak-stable" not in block and ".flatpak" not in block.lower(), name
+        assert "release-flatpak" not in block, name
     assert not any("release-check.yml" in w.read_text() for w in WORKFLOWS.glob("*.yml"))
+    # Main still builds, validates and smoke-tests the stable profile Flathub
+    # builds, without an update remote.
     stable = (WORKFLOWS / "flatpak.yml").read_text()
     assert "--repo-url" not in stable and "build-aux/ci/validate_installed.py" in stable
     assert "name: flatpak-stable" in stable

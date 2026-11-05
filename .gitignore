@@ -10,8 +10,6 @@ __pycache__/
 /_flatpak/
 /repo/
 *.flatpak
-# Real bundles the release guard is tested with (G15).
-!tests/flatpak/release-fixture/*.flatpak
 /obj-*/
 /debian/.debhelper/
 /debian/cassini-talk/

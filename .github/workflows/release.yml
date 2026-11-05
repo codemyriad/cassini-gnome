@@ -69,40 +69,10 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  # G15: the stable Flatpak main built, validated and smoke-tested, not a
-  # rebuild. It ships only when the signed D45.1 repository it names serves
-  # its exact commit; until then this job fails, and the release ships
-  # without a Flatpak (flatpak-release never runs).
-  flatpak:
-    name: Reuse the verified stable Flatpak
-    needs: main-inputs
-    runs-on: ubuntu-26.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
-        with:
-          github-token: ${{ github.token }}
-          run-id: ${{ needs.main-inputs.outputs.run_id }}
-          name: flatpak-stable
-          path: dist
-      # Fetches the remote the bundle names and verifies its summaries and
-      # the bundle's commit with the key the bundle carries (gpgv).
-      - name: Require the published, signed update remote to serve this bundle (D45.1)
-        run: |
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y python3-gi gpgv
-          /usr/bin/python3 build-aux/ci/flatpak_bundle.py dist/cassini-talk.flatpak
-      - uses: actions/upload-artifact@v7
-        with:
-          name: release-flatpak
-          path: dist/cassini-talk.flatpak
-          if-no-files-found: error
-
-  # Option B (coordinator, 2026-11-05): the native packages and the GitHub
-  # release do not wait for the Flatpak. G15 is unchanged: the flatpak job
-  # above still refuses a bundle the signed D45.1 remote does not serve, and
-  # only flatpak-release, after it passes, attaches the Flatpak.
+  # D45.3 (Silvio, 2026-11-05): Flathub is the Flatpak channel. It builds,
+  # signs, hosts and updates io.codemyriad.CassiniTalk from this tag, so a
+  # release attaches no Flatpak bundle: one without an update remote must not
+  # be offered. The release ships the Debian, RPM and Arch packages.
   publish:
     needs: [deb, packages]
     runs-on: ubuntu-latest
@@ -130,18 +100,3 @@ jobs:
           # The tagged version's NEWS section, in plain language, then GitHub's PR list.
           python3 source/build-aux/ci/release_notes.py "$GITHUB_REF_NAME" > notes.md
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file notes.md --generate-notes "${bundles[@]}"
-
-  flatpak-release:
-    name: Attach the verified stable Flatpak
-    needs: [publish, flatpak]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: release-flatpak
-          path: dist
-      - name: Attach the Flatpak to the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/cassini-talk.flatpak --repo "$GITHUB_REPOSITORY"

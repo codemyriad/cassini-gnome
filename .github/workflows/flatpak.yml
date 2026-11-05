@@ -79,7 +79,7 @@ jobs:
       # runs every check but the engines' golden decodes, whose payload it still
       # verifies: both manifests take the same pinned engine sources and differ
       # only in the ID and -Dprofile, which no recognition code reads. The stable
-      # bundle below, the one a release ships (G15), decodes the full goldens.
+      # bundle below, the profile Flathub builds (D45.3), decodes the full goldens.
       - name: Smoke-test the installed Flatpak offline
         run: build-aux/flatpak/smoke.sh cassini-talk-devel.flatpak io.codemyriad.CassiniTalk.Devel --without-goldens
       # Keep stable-profile build/install coverage; D51 removes only old-ID
@@ -87,11 +87,9 @@ jobs:
       # It builds against the system SDK the steps above already updated (G4
       # volume), instead of a second --user copy downloaded from Flathub.
       # smoke.sh still installs the bundle per-user, as for the devel bundle.
-      # G15: a release ships this exact bundle (flatpak-stable, by run id).
-      # It has no update remote (repo URL) until the D45.1 signed repository
-      # is published: an origin that does not exist breaks `flatpak update`.
-      # The tag workflow refuses a bundle without one
-      # (build-aux/ci/flatpak_bundle.py), so no release ships this way.
+      # D45.3: Flathub builds, signs and ships the stable Flatpak; this build
+      # is the test of it. The bundle has no update remote (repo URL), so it is
+      # a test package from main only: no release attaches it.
       - name: Build, validate and freshly install the stable Cassini talk profile
         env:
           CASSINI_PARAKEET_TEST_CACHE: ${{ runner.temp }}/parakeet-models

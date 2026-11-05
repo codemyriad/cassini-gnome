@@ -134,30 +134,25 @@ package builds' distro images are never cached.
 
 ## Releases
 
-Release downloads the five Debian/RPM/Arch products and the stable Flatpak
-already installed and smoke-tested by the exact main commit (G15: the Flatpak
-is no longer rebuilt at tag time). `green_main.py` requires the latest main
-push orchestrator to succeed, every nested job green, all six package artifacts
-and all three full-run build products present and unexpired. A PR, another commit,
-a failed run or a partial/expired artifact set cannot supply a release.
-No tag or publication is created to validate this wiring.
+Release downloads the five Debian/RPM/Arch products the exact main commit
+built and tested (no rebuild at tag time). `green_main.py` requires the latest
+main push orchestrator to succeed, every nested job green, all six package
+artifacts (the stable Flatpak's among them, as proof main built and
+smoke-tested it) and all three full-run build products present and unexpired.
+A PR, another commit, a failed run or a partial/expired artifact set cannot
+supply a release. No tag or publication is created to validate this wiring.
+`publish` needs exactly the Debian and RPM/Arch jobs and creates the GitHub
+release with those packages and the tagged version's NEWS section
+(`build-aux/ci/release_notes.py`).
 
-Main builds the stable Flatpak without an update remote until the D45.1 signed
-repository at `https://cassini.talk/download/linux/flatpak/` is published, since
-an origin that does not exist breaks `flatpak update`. The tag workflow checks
-the bundle with `build-aux/ci/flatpak_bundle.py` and fails unless the bundle
-names that remote and carries a public key, and the remote, fetched at tag
-time, serves summaries (legacy and indexed) whose signatures gpgv accepts with
-that key alone, listing the bundle's ref at the bundle's own commit, and that
-commit with a valid signature. So **no Flatpak can ship until D45.1 is
-published, serving the exact commit main built**. The native packages and the
-GitHub release do not wait for it (option B, 2026-11-05): `publish` needs only
-the Debian and RPM/Arch jobs, and `flatpak-release` attaches the Flatpak to the
-release only after the guard passes. Until then that job fails visibly and the
-release has no Flatpak. CI itself never runs this
-check. `tests/test_flatpak_release_guard.py` runs it against a real signed
-repository and bundles made by flatpak and ostree with throwaway keys
-(`tests/flatpak/make-release-fixture.sh`).
+The Flatpak ships through Flathub (D45.3, 2026-11-05): Flathub builds
+`io.codemyriad.CassiniTalk` from the release tag, signs, hosts and updates it.
+We run no Flatpak repository and hold no Flatpak signing key, so a release
+attaches no Flatpak bundle: one without an update remote must not be offered.
+This replaces G15's guard, which refused to ship the bundle until our own
+signed D45.1 repository served it. Main's stable Flatpak is still built without
+an update remote, validated and smoke-tested in `flatpak.yml` below, as the
+test of the Flatpak Flathub builds; it is a test package from main only.
 
 Every PR checks the version across Meson, NEWS, metainfo, the man page and all
 native recipes, in Lint (`source.yml`). `flatpak.yml` builds the stable Flatpak,

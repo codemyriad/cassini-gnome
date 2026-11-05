@@ -9,6 +9,8 @@ import subprocess
 from pathlib import Path
 
 WORKFLOWS = ("ci.yml",)
+# flatpak-stable is not shipped (Flathub builds the Flatpak, D45.3); it proves
+# main built, validated and smoke-tested the stable profile Flathub builds.
 PACKAGES = {"deb-0", "deb-1", "rpm-fedora", "rpm-opensuse", "arch", "flatpak-stable"}
 BUILD_PRODUCTS = {"ci-core", "ci-boards", "ci-offline"}
 # Jobs a release needs to have run, not merely not failed: since H the Meson

@@ -91,8 +91,8 @@ msginit -i po/cassini-talk.pot -o po/<code>.po -l <code>
    `cassini-talk_DEBVER~debian-testing_amd64.deb`, where DEBVER is the top
    `debian/changelog` version, for example
    `cassini-talk_0.4.0~ubuntu26.04_amd64.deb`), the Fedora and openSUSE
-   x86_64 RPMs, the Arch package and the Flatpak bundle, and attaches them to
-   a GitHub release.
+   x86_64 RPMs and the Arch package, and attaches them to a GitHub release.
+   The Flatpak ships through Flathub, which builds it from the tag (D45.3).
 
 ## Build from source
 
