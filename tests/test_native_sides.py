@@ -461,6 +461,9 @@ def test_an_opening_side_keeps_the_error_that_names_its_cause():
         # A failed source reports its cause, then the stream error that follows.
         for problem in ("Fake device went away", "Internal data stream error."):
             recorder._message(None, Gst.Message.new_error(source, GLib.Error(problem), "scripted"))
+        # Bus errors are handled on the recorder's one in-order bus worker, off the
+        # main loop: wait until it has handled both, then read what they left.
+        recorder._bus_worker.submit(lambda: None).result(5)
         assert attempt["error"] == "Fake device went away"
         assert attempt["ready"].is_set() and attempt["wake"].is_set()
         assert not recorder._finishing
