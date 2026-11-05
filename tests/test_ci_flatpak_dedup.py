@@ -148,7 +148,9 @@ def cache_round_trip(tree):
     tree.rmdir()
     packed.seek(0)
     with tarfile.open(fileobj=packed) as tar:
-        tar.extractall(tree.parent, filter="tar")
+        # Our own fixture archive: keep its modes exactly (the "tar" filter drops
+        # group-write, which a umask of 0002 sets, and the snapshot would differ).
+        tar.extractall(tree.parent, filter="fully_trusted")
 
 
 def test_a_restored_portal_is_used_as_built_and_anything_else_is_rebuilt(portal, tmp_path):
