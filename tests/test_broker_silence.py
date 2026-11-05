@@ -2,6 +2,7 @@
 """A silent broker's last capture state expires everywhere: Library, Record and Quit."""
 
 import socket
+import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from functools import partial
 from types import SimpleNamespace
@@ -48,6 +49,8 @@ def broker(application_class, monkeypatch):  # noqa: F811
         reply = activity_replies.pop(0)
         return reply(*args, **kwargs) if callable(reply) else reply
 
+    # The production read, for polls scripted to run it (path=None: it ensures the broker).
+    production_read = browser_watch.BrowserWatch._read
     monkeypatch.setattr(browser_watch.BrowserWatch, "_read", watch_read)
     monkeypatch.setattr(capture_activity, "read_browser_activity", activity_read)
     # The app's own wiring (_start_browser_watch); only its timer is held off.
@@ -163,6 +166,7 @@ def broker(application_class, monkeypatch):  # noqa: F811
         idle_activity=({}, True, {}),
         silent=silent,
         read_activity=read_activity,
+        production_read=production_read,
         published=published,
         watch_replies=watch_replies,
         activity_replies=activity_replies,
@@ -323,7 +327,67 @@ def test_a_broker_that_exited_reads_idle_at_once_in_library_record_and_quit(brok
     assert not b.watch_replies and not b.activity_replies
 
 
-def test_a_broker_that_is_there_but_silent_keeps_the_capture_until_the_bound(broker, tmp_path):
+def no_spawn(*_args, **_kwargs):
+    """A broker that cannot be spawned (browser_service.ensure_service's Popen)."""
+    raise PermissionError("no broker executable")
+
+
+@pytest.mark.parametrize("respawn", ["blocked by the exiting broker's lock", "fails"])
+def test_the_apps_own_watch_reads_idle_at_once_while_it_respawns_the_broker(broker, exited, monkeypatch, respawn):
+    """The app's BrowserWatch has no path: each poll first ensures the broker
+    (ensure_service), which on a missing or refused socket spawns one and waits
+    up to 5 s for it. The exiting broker stops its captures still holding its
+    lock (serve()'s finally, after it unlinked its socket), so the new one
+    cannot take over and the wait ends in a generic error (or the spawn fails
+    at once): the finding of no broker never reached BrowserWatch, and Library,
+    Record and Quit read the app's snapshot "recording" until the bound (#217
+    review). It is delivered at once, stamped when found, before the wait. Both
+    caches start live at 0, as in production with a Library window open."""
+    import fcntl
+    import subprocess
+
+    from cassini_talk import browser_service
+
+    b, app = broker, broker.app
+    monkeypatch.delenv("FLATPAK_ID", raising=False)
+    monkeypatch.setattr(browser_service, "service_path", lambda: exited)
+    assert b.watch.path is None
+    was_there = exited.exists()
+    if respawn == "fails":
+        monkeypatch.setattr(subprocess, "Popen", no_spawn)
+        b.poll(1, watch_reply=b.production_read)
+        assert b.readings() == b.idle
+        assert app._browser_answered_at == 1 and b.activity.answered_at == 0
+        assert not b.watch_replies
+        return
+    spawned, spawn, started = [], subprocess.Popen, threading.Event()
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda *args, **kwargs: spawned.append(spawn(*args, **kwargs)) or started.set()
+    )
+    with exited.with_suffix(".lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)  # The exiting broker's.
+        b.now[0] = 1
+        b.watch_replies.append(b.production_read)
+        b.published.clear()
+        b.watch.poll()
+        pump(lambda: app._browser_answered_at is not None and app._browser_answered_at >= 1, "no broker found")
+        assert b.watch.future is not None, "The respawn is still waited on"
+        assert b.readings() == b.idle
+        assert app._browser_answered_at == 1 and b.activity.answered_at == 0
+        assert b.published and b.published[-1] == {}, "The Library hears of it at once"
+        # The spawned broker found the lock held and gave up: nothing listens.
+        assert started.wait(timeout=30)
+        assert len(spawned) == 1 and spawned[0].wait(timeout=30) == 0
+        assert exited.exists() == was_there
+        assert b.readings() == b.idle
+        # The app quits: closing the watch ends the wait.
+        b.watch.close()
+        pump(lambda: b.watch.future is None, "the cancelled respawn wait")
+    assert b.readings() == b.idle
+    assert not b.watch_replies
+
+
+def test_a_broker_that_is_there_but_silent_keeps_the_capture_until_the_bound(broker, tmp_path, monkeypatch):
     """A frozen broker still listens: its full backlog fails a connect with
     EAGAIN, never ECONNREFUSED. That, a timeout, an EOF, a reset or a malformed
     reply is a broker that did not answer, not one that is gone: both caches
@@ -343,12 +407,17 @@ def test_a_broker_that_is_there_but_silent_keeps_the_capture_until_the_bound(bro
             browser_service.connect(stalled, timeout=0.8)
         b.activity.path = stalled
         frozen = lease_connect(stalled)
+        # The app's own read ensures the broker first: EAGAIN is no absence, so
+        # it spawns one, which cannot take over (here: cannot be spawned).
+        monkeypatch.setattr(browser_service, "service_path", lambda: stalled)
+        monkeypatch.setattr(browser_service.subprocess, "Popen", no_spawn)
         for at, watch_failure in (
             (1, frozen),
             (2, b.silent),
             (3, OSError("Browser inventory unavailable")),  # EOF or an error reply (BrowserWatch._read).
             (4, ValueError("Invalid control packet size")),  # A partial or malformed reply.
             (5, ConnectionResetError()),
+            (6, b.production_read),
             (UNANSWERED_BOUND - 0.1, frozen),
         ):
             b.poll(at, watch_failure, b.read_activity)

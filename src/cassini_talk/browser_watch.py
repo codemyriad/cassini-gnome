@@ -61,7 +61,7 @@ class BrowserWatch:
                 # suspends this watcher while host access is unavailable.
                 self._profiles = "unavailable"
                 LOG.debug("Could not inspect browser profiles", exc_info=True)
-        target = self.path or browser_service.ensure_service(cancelled=self.closed)
+        target = self.path or browser_service.ensure_service(cancelled=self.closed, absent=self._found_absent)
         with self.lock:
             missing = self.lease is None
         if missing:
@@ -95,6 +95,20 @@ class BrowserWatch:
                 raise OSError("Browser inventory unavailable")
             return value
 
+    def _found_absent(self, _error):
+        # On the worker: ensure_service found no broker and now spawns one,
+        # waiting up to 5 s for it to take over. No broker is an answer now
+        # (BROKER_ABSENT), so deliver it now, stamped as found, not after the
+        # wait. Its generic failure, if the new broker never takes over, is
+        # then a later unanswered poll that cannot revive the answer.
+        at = self.clock()
+        GLib.idle_add(self._deliver_absent, at)
+
+    def _deliver_absent(self, at):
+        if not self.closed.is_set() and self.absent is not None:
+            self.absent(at)
+        return GLib.SOURCE_REMOVE
+
     def _poll_once(self):
         try:
             value = self._read()
@@ -125,9 +139,7 @@ class BrowserWatch:
                     if self.lease is not None:
                         self.lease.close()
                         self.lease = None
-                from .capture_activity import BROKER_ABSENT
-
-                if self.absent is not None and isinstance(error, BROKER_ABSENT):
+                if self.absent is not None and isinstance(error, browser_service.BROKER_ABSENT):
                     self.absent(at)
                 elif self.unanswered is not None:
                     self.unanswered(at)

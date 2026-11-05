@@ -6,7 +6,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from .browser_service import read_packet, send_packet, service_path
+from .browser_service import BROKER_ABSENT, read_packet, send_packet, service_path
 from .capture_guard import browser_capture_busy
 from .library import meeting_id
 
@@ -28,7 +28,7 @@ UNANSWERED = object()
 # backlog fails with EAGAIN. This is a definite answer, not silence: no broker
 # runs, so nothing records. It is stamped like a reply, and is the newest one,
 # so it supersedes every older live cache at once (standing_broker_caches).
-BROKER_ABSENT = (FileNotFoundError, ConnectionRefusedError)
+# BROKER_ABSENT, from browser_service, where ensure_service finds it too.
 # How long a broker's last answer outlives polls that go unanswered. A frozen
 # broker that still holds its socket must not keep a meeting "recording"
 # forever. The extension gives up on a broker that has not acked a packet for
