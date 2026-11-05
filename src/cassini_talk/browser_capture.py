@@ -54,6 +54,13 @@ class BrowserCapture:
         self.call_tab = None
         self.microphone = None
         self.native_taps = {}
+        # Each native tap's state, by its track identifier (D58.1: an armed
+        # tap's attempt time drives the recording page's lines).
+        self._tap_states = {}
+        # D58.1: a native side was committed armed. If no side ever opened by
+        # the end, nothing recorded: no folder (D58 point 2), as natively.
+        self._armed_once = False
+        self.nothing_recorded = False  # D58.1: Stop found no side ever opened (not a start failure).
         # Native sides requested at start that never opened (R79 §1). A
         # fallback or restore does not reopen them; turning one off forgets it.
         self.refused_sides = set()
@@ -137,7 +144,19 @@ class BrowserCapture:
                 title=self.host.session.manifest["title"],
                 error=self.error,
                 events=list(self.host.session.manifest.get("events", [])),
+                armed=self._armed_sides(),
             )
+
+    def _armed_sides(self):
+        """D58.1: each native side committed armed (waiting for its first
+        buffer), with its attempt's time (0 at start, the turn-on's time, or a
+        fallback's commit). Lock held."""
+        armed = {}
+        for kind, (identifier, _tap) in self.native_taps.items():
+            state = self._tap_states.get(identifier)
+            if state is not None and state["active"] and not self._has_track(identifier):
+                armed[kind] = state["at"] if state["refuse_at"] is None else state["refuse_at"]
+        return armed
 
     def start(self, message, *, others_source="browser", reason="start", refusals=()):
         """Start this capture. `refusals` are start refusals made before the folder
@@ -231,9 +250,15 @@ class BrowserCapture:
         return result
 
     @staticmethod
-    def _classify(_kind, error):
-        """GNOME knows only deviceUnavailable for a native side that never opened."""
-        return "deviceUnavailable", str(error)
+    def _classify(kind, error):
+        """The D58 code of a native side that never opened.
+
+        D58.1: the system tap's explicit error keeps its own code
+        (permissionDenied only when the system reported it). The microphone
+        keeps deviceUnavailable.
+        """
+        code = getattr(error, "refusal_code", None) if kind == "system" else None
+        return code if code in ("permissionDenied", "deviceUnavailable") else "deviceUnavailable", str(error)
 
     def _refusal(self, at_ms, kind, error):
         code, message = self._classify(kind, error)
@@ -244,6 +269,8 @@ class BrowserCapture:
 
         with self.lock:
             identifier, tap = self.native_taps.get("system", (None, None))
+            if not self._has_track(identifier):
+                identifier = None  # D58.1: armed, no track until its first buffer.
             session = self.host.session
             at_ms = self.elapsed_ms()
         monitor = monitor_device(tap.pipeline if tap else None)
@@ -253,6 +280,8 @@ class BrowserCapture:
         with self.lock:
             session, tap = sample.token
             identifier, current = self.native_taps.get("system", (None, None))
+            if not self._has_track(identifier):
+                identifier = None
             if (
                 session is self.host.session
                 and tap is current
@@ -291,6 +320,18 @@ class BrowserCapture:
             session.manifest["tracks"][-1]["startOffsetMs"] = at
         return identifier
 
+    def _current(self, kind, identifier):
+        """Whether this tap is the side's committed tap (lock held). A tap a
+        change removed is retired for good: its late first buffer, PCM, level
+        or error never reaches the session, even once a turn-on commits
+        another tap for the same side."""
+        return self.native_taps.get(kind, (None,))[0] == identifier
+
+    def _has_track(self, identifier):
+        """Whether a committed native tap has its track (D58.1: an armed system
+        tap gets it at its first buffer). Lock held."""
+        return identifier is not None and any(t["id"] == identifier for t in self.host.session.manifest["tracks"])
+
     def _make_native(self, kind, identifier, at=0, *, active=False):
         factory = self.tap_factory
         if factory is None:
@@ -300,13 +341,33 @@ class BrowserCapture:
 
         from .native_timing import NS, NativeTimeline
 
-        state = dict(active=active, at=at, error=None, timeline=NativeTimeline(48000))
+        # heard: a first buffer arrived. track: the committed side has its track.
+        # refuse_at: when an explicit error before a first buffer refuses an
+        # armed tap (D58.1); None where it is not a refusal (a fallback).
+        state = dict(active=active, at=at, error=None, timeline=NativeTimeline(48000), heard=False, track=active)
+        state["refuse_at"] = None
+        with self.lock:
+            self._tap_states[identifier] = state
 
         def append(data, offset, *, host_ns=None):
             picture = None
+            opened = False
             with self.lock:
-                if not state["active"]:
-                    return  # Readiness PCM is not a committed recording span.
+                state["heard"] = True
+                if not state["active"] or not self._current(kind, identifier):
+                    # Readiness PCM is not a committed recording span, and a
+                    # retired tap's buffer (one in flight while a deselect
+                    # stops it) opens no track after its side was turned off.
+                    return
+                if not state["track"]:
+                    # D58.1: an armed tap opens on its first buffer, however late.
+                    if self.finished or self.stop_requested.is_set():
+                        return
+                    with self.host.session.change([]):
+                        self._add_native(kind, max(state["at"], offset), identifier=identifier)
+                        canonical_order(self.host.session.manifest["tracks"])
+                    state["track"] = opened = True
+                    self._sync_spectrogram()
                 track = next(t for t in self.host.session.manifest["tracks"] if t["id"] == identifier)
                 if not self.finished and not self.stop_requested.is_set() and not track.get("ended"):
                     original_offset = offset
@@ -342,39 +403,89 @@ class BrowserCapture:
                 self.spectrogram.observe(**picture, now_ms=self.elapsed_ms())
             else:
                 self.spectrogram.release_if_idle()
+            if opened:
+                LOG.info("Native %s side (%s) opened on its first buffer", SIDES[kind], kind)
+                if self._mute_observer:
+                    self._mute_observer.refresh()
+                self.changed(self, "sources")
 
         def level(value):
             with self.lock:
-                if not state["active"]:
+                if not state["active"] or not self._current(kind, identifier):
                     return
                 selected = self.me if kind == "microphone" else self.others
                 self.levels[0 if kind == "microphone" else 1] = value if selected else 0
 
         def failed(message):
+            refused = None
             with self.lock:
                 state["error"] = message
                 active = (
                     state["active"]
+                    and self._current(kind, identifier)
                     and not self.finished
                     and not any(
                         track["id"] == identifier and track.get("ended")
                         for track in self.host.session.manifest["tracks"]
                     )
                 )
-                if active:
+                if active and not state["track"] and state["refuse_at"] is not None:
+                    # D58.1: an armed tap that never heard a buffer did not open:
+                    # its explicit error is a refusal, and the recording goes on.
+                    active = False
+                    if not self.stopping and not self.stop_requested.is_set():
+                        state["active"] = False
+                        self.native_taps.pop(kind)
+                        self.refused_sides.add(kind)
+                        refused = self._refusal(state["refuse_at"], kind, self._tap_error(state, message))
+                        self.host.session.refuse(refused)
+                        if self.browser_lost and not self.native_taps and not self.host.session.manifest["tracks"]:
+                            # No side opened and none is left that could
+                            # (D58 point 2): the recording ends, and Stop
+                            # removes its folder, as the native path does.
+                            active = True
+                            self.error = message
+                            self.end_reason = "error"
+                elif active:
                     self.error = message
                     self.end_reason = "error"
+            if refused is not None:
+                LOG.warning("Native %s side (%s) did not open: %s", SIDES[kind], kind, message)
+                tap = state.get("tap")
+                if tap is not None:
+                    # Not on the tap's own message thread, which stop() joins.
+                    threading.Thread(
+                        target=self._stop_tap, args=(tap,), name="cassini-refused-tap", daemon=True
+                    ).start()
+                self.changed(self, "sources")
             if active:
                 self.changed(self, "error")
 
-        return factory(kind, self.origin_ms, append, failed, level=level), state
+        tap = factory(kind, self.origin_ms, append, failed, level=level)
+        state["tap"] = tap
+        return tap, state
+
+    @staticmethod
+    def _tap_error(state, message):
+        from .native_tap import CaptureError
+
+        return CaptureError(message, getattr(state.get("tap"), "refusal_code", "deviceUnavailable"))
+
+    @staticmethod
+    def _stop_tap(tap):
+        try:
+            tap.stop()
+        except Exception:
+            LOG.debug("A refused tap did not stop cleanly", exc_info=True)
 
     def _open_natives(self, kinds):
         """Open each requested native side on its own and in parallel (R79 §1).
 
         A side opens when its tap admits a first buffer within its 3 s bound
-        (NativeTap.start), and commits at once. Returns the refused sides'
-        errors; a commit failure is not a refusal and propagates.
+        (NativeTap.start), and commits at once. D58.1: the system tap has no
+        such bound; silent after the window, it commits armed and gets its
+        track at its first buffer. Returns the refused sides' errors; a commit
+        failure is not a refusal and propagates.
         """
         if not kinds:
             return {}
@@ -405,11 +516,17 @@ class BrowserCapture:
                 if state["error"]:
                     return OSError(state["error"])
                 at = change_time(self.host.session, self.elapsed_ms())
-                # One checkpoint holds the track with its start.
-                with self.host.session.change([]):
-                    self._add_native(kind, at, identifier=identifier)
-                    canonical_order(self.host.session.manifest["tracks"])
-                state.update(active=True, at=at)
+                if state["heard"]:
+                    # One checkpoint holds the track with its start.
+                    with self.host.session.change([]):
+                        self._add_native(kind, at, identifier=identifier)
+                        canonical_order(self.host.session.manifest["tracks"])
+                else:
+                    # D58.1: the system tap heard nothing yet. It is armed, not
+                    # refused; its track starts at its first buffer.
+                    LOG.info("Native %s side (%s) heard nothing yet; it opens on its first buffer", SIDES[kind], kind)
+                    self._armed_once = True
+                state.update(active=True, at=at, track=state["heard"], refuse_at=0)
                 self.native_taps[kind] = identifier, tap
                 if kind == "microphone":
                     self.microphone = tap
@@ -828,15 +945,18 @@ class BrowserCapture:
                         raise ProtocolError("limit", "A session supports at most 64 sources")
                     at = change_time(self.host.session, self.elapsed_ms())
                     removed = {kind: value for kind, value in self.native_taps.items() if kind not in desired}
+                    # D58.1: an armed tap (no first buffer yet) has no track to end.
+                    ending = {kind: value for kind, value in removed.items() if self._has_track(value[0])}
                     with (
                         self.streams.change(),
                         self.host.session.change(self._events(me, others, lost, fallback, at)),
                     ):
                         self.streams.select(me, others, at, browser=not lost)
-                        for identifier, _tap in removed.values():
+                        for identifier, _tap in ending.values():
                             self.host.session.end_track(identifier)
-                        for kind, (identifier, _tap, _state) in prepared.items():
-                            self._add_native(kind, at, identifier=identifier)
+                        for kind, (identifier, _tap, state) in prepared.items():
+                            if state["heard"]:
+                                self._add_native(kind, at, identifier=identifier)
                     self._sync_spectrogram()
                     if lost and not self.browser_lost:
                         self.browser_lost_since = time.monotonic()
@@ -844,17 +964,27 @@ class BrowserCapture:
                     self.me, self.others, self.browser_lost = me, others, lost
                     if not lost:
                         self.browser_lost_since = None
-                    for kind in removed:
+                    for kind, (identifier, _tap) in removed.items():
                         self.native_taps.pop(kind)
+                        # Retired before the lock is released: a first buffer
+                        # that arrives while tap.stop() runs below records
+                        # nothing (an armed tap would open a new track).
+                        retired = self._tap_states.pop(identifier, None)
+                        if retired is not None:
+                            retired["active"] = False
                         self.levels[0 if kind == "microphone" else 1] = 0
                     for kind, (identifier, tap, state) in prepared.items():
-                        state.update(active=True, at=at)
+                        # A turn-on's armed tap is refused at its time; a
+                        # fallback's or restore's failure is not a refusal.
+                        turn_on = fallback is None and not restore
+                        state.update(active=True, at=at, track=state["heard"], refuse_at=at if turn_on else None)
+                        self._armed_once = self._armed_once or not state["heard"]
                         self.native_taps[kind] = identifier, tap
                     self.microphone = self.native_taps.get("microphone", (None, None))[1]
                     self.refused_sides = (self.refused_sides & desired) - prepared.keys()
                     committed = True
-                if "system" in removed and self._mute_observer:
-                    self._mute_observer.retire(removed["system"][0], at)
+                if "system" in ending and self._mute_observer:
+                    self._mute_observer.retire(ending["system"][0], at)
                 for _identifier, tap in removed.values():
                     try:
                         tap.stop()
@@ -988,6 +1118,13 @@ class BrowserCapture:
                         problem = problem or str(error)
                         self.end_reason = "error"
                 with self.lock:
+                    if discard is None and self._armed_once and not self.host.session.manifest["tracks"]:
+                        # D58.1: an armed side never heard a buffer and no side
+                        # ever opened: nothing recorded (D58 point 2). Its
+                        # refusals are already stored, for a folder kept for
+                        # typed content.
+                        discard = ()
+                        self.nothing_recorded = True
                     if discard is not None:
                         self.discarded = self.host.session.discard()
                         if not self.discarded:
