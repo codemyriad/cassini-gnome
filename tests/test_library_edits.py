@@ -14,6 +14,7 @@ try:
 except ValueError:
     pytest.skip("Real publication tests require GStreamer", allow_module_level=True)
 
+from durable import DURABLE_BOUND, durable
 from library_v2_support import simple_session
 
 from cassini_talk import meeting_store, portable
@@ -119,7 +120,7 @@ def test_nested_same_root_transaction_and_concurrent_independent_edits(published
     for worker in workers:
         worker.start()
     for worker in workers:
-        worker.join(timeout=5)
+        worker.join(timeout=DURABLE_BOUND)  # Each commits durably; a deadlock never ends.
     assert not any(worker.is_alive() for worker in workers), "Nested filesystem locks deadlocked"
     assert not errors
     (meeting,) = LibraryScanner(root).scan().meetings
@@ -260,7 +261,8 @@ def test_existing_transcription_queue_commits_words_after_concurrent_title_edit(
                 )
             )
             progress_written.set()
-            assert finish_job.wait(5), "Test did not release recognition worker"
+            # Released after the test commits its edit durably.
+            assert finish_job.wait(DURABLE_BOUND), "Test did not release recognition worker"
             return dict(diagnostics=[])
 
     queue = TranscriptionQueue(
@@ -275,7 +277,7 @@ def test_existing_transcription_queue_commits_words_after_concurrent_title_edit(
         assert portable.load_words(portable.read_meeting(str(original)), "words") == []
         meeting_store.update_metadata(directory, title="Typed while writing", titleSource="user")
         finish_job.set()
-        assert completed.wait(5)
+        durable(completed, "the write-down did not finish")
         (meeting,) = LibraryScanner(root).scan().meetings
         assert meeting.transcript == "done" and meeting.title == "Typed while writing"
         assert [w.text for w in meeting.words] == ["Published words"]

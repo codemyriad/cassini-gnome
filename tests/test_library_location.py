@@ -6,6 +6,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from durable import DURABLE_BOUND
 
 from cassini_talk import library_location as location
 from cassini_talk.library import LibraryCollectionScanner, library_root
@@ -147,7 +148,9 @@ def test_new_recording_does_not_wait_for_old_meeting_copy(roots, monkeypatch):
         browser = BrowserHost()
         started = pool.submit(browser.handle, dict(type="start"))
         try:
-            started.result(timeout=2)
+            # Its folder is written durably (7 fsyncs); a start blocked by the
+            # move would wait for `proceed`, which is set only after this.
+            started.result(timeout=DURABLE_BOUND)
             assert browser.session.directory.parent == new / ".cassini/sessions"
         finally:
             proceed.set()

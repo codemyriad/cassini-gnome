@@ -18,6 +18,7 @@ try:
     gi.require_version("Gst", "1.0")
 except ValueError:
     pytest.skip("GStreamer typelib is unavailable", allow_module_level=True)
+from durable import DURABLE_BOUND  # noqa: E402
 from gi.repository import GLib, Gst  # noqa: E402
 from test_recorder import spin_until  # noqa: E402
 
@@ -415,7 +416,11 @@ def test_a_side_stuck_in_its_state_change_blocks_neither_the_other_side_nor_stop
         spin_until(lambda: session.writers[healthy].frames == 4800)
         # Stop does not wait on the stuck state change either.
         recorder.stop()
-        spin_until(lambda: "finished" in signals and recorder.pipeline is None and not recorder._finishing, timeout=5)
+        # Its save is durable: bounded against that work, not the stuck side.
+        spin_until(
+            lambda: "finished" in signals and recorder.pipeline is None and not recorder._finishing,
+            timeout=DURABLE_BOUND,
+        )
         assert not sides.release.is_set()
         assert signals == ["started", "finished"]
         assert session.manifest["state"] == "completed"

@@ -13,6 +13,7 @@ try:
 except ValueError:
     pytest.skip("Real publication requires GStreamer", allow_module_level=True)
 
+from durable import DURABLE_BOUND
 from library_v2_support import simple_session
 
 from cassini_talk import library_location as location
@@ -355,7 +356,7 @@ def test_old_path_editor_queued_across_published_move_crash_uses_destination(tmp
             location.process()
         assert directory.exists(), "Crash must retain the stale source folder"
         source_before = (directory / "meeting.json").read_bytes()
-        assert edit.result(timeout=5)["title"] == "Edit routed after crash"
+        assert edit.result(timeout=DURABLE_BOUND)["title"] == "Edit routed after crash"
         target = new / ".cassini/sessions" / directory.name
         assert read_metadata(target)["title"] == "Edit routed after crash"
         assert (directory / "meeting.json").read_bytes() == source_before
