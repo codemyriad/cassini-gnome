@@ -6,6 +6,7 @@ the tap's audioconvert, whose default TPDF dither would turn that silence into
 +-1 noise. Each tap's own description (pulsesrc swapped for an appsrc) is run
 on float silence and on a -144 dBFS constant (D68.1's keep-real-time level, as a
 browser's output reaches the monitor), and must give only zeros.
+test_capture_silence records float silence end to end through the shipped taps.
 """
 
 import array
