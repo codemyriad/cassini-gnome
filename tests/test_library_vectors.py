@@ -61,7 +61,7 @@ def outcome(root):
 def expected_outcome(case):
     """Render the hand-written catalog ids and arguments with GNOME's own catalog and formats."""
     from cassini_talk.strings import ENTRIES, text
-    from cassini_talk.ux_formats import meeting_duration
+    from cassini_talk.ux_formats import details_duration
 
     value = OUTCOMES["cases"][case]
     lines = []
@@ -70,7 +70,7 @@ def expected_outcome(case):
         source = line["args"]["source"]
         args = dict(source=text(source["catalog"]) if "catalog" in source else source["text"])
         if "duration" in line["args"]:
-            args["duration"] = meeting_duration(line["args"]["duration"]["ms"])
+            args["duration"] = details_duration(line["args"]["duration"]["ms"])
         lines.append((line["id"], text(line["id"], **args), line["problem"], ()))
     return lines, value["noSpeech"], value["visibleWords"]
 

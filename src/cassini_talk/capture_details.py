@@ -132,7 +132,7 @@ def audio_lines(sources, refusals, silent_tracks=frozenset()):
     for source in sources:
         if not source.expected:
             continue
-        result.append(AudioLine("details.sources." + source.outcome, "", source.line, source.problem, source.gap_lines))
+        result.append(AudioLine(source.line_id, "", source.line, source.problem, source.gap_lines))
         if source.silent(silent_tracks):
             result.append(AudioLine("details.sources.silent", "", text("details.sources.silent", source=source.name)))
     result += [AudioLine(key, origin, text(key, source=text(origin)), True) for key, origin in shown]
