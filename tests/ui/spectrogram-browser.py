@@ -159,12 +159,17 @@ with tempfile.TemporaryDirectory() as temporary:
             )
             print(json.dumps(report))
         if not measure:
-            prior = model.last
             events = reply(child, "fallback")["events"]
-            assert any(
-                e.get("type") == "othersSource" and e.get("source") == "system" and e.get("reason") == "lost"
+            switched = [
+                e["atMs"]
                 for e in events
-            )
+                if e.get("type") == "othersSource" and e.get("source") == "system" and e.get("reason") == "lost"
+            ]
+            assert len(switched) == 1, events
+            # Only the system span's own columns count: browser PCM, sent as
+            # captured, reaches at most one 8192-frame chunk past the switch;
+            # a second chunk covers its last analysis window.
+            prior = math.ceil((switched[0] + 2 * 8192 * 1000 / 48000) / 20)
             until(
                 lambda: any(
                     e.get("type") == "othersSource" and e.get("source") == "system"
@@ -174,7 +179,7 @@ with tempfile.TemporaryDirectory() as temporary:
             )
             until(
                 lambda: (
-                    model.last > prior + 10
+                    model.last > prior
                     and any(any(model.cell("others", slot)[1] or ()) for slot in range(prior + 1, model.last + 1))
                 ),
                 "system fallback span reached the visible spectrum",
