@@ -15,6 +15,7 @@ import test from 'node:test';
 import { FrameReader, frameRecord, isResumeRequest, MAX_FRAME } from '../scenarios/control-relay.mjs';
 import { controlConnections, parentPid, resumeRequests, RELAY, RELAY_START_MS, stopRelays, verifyControlPipe, writeNativeHost } from '../scenarios/native-launcher.mjs';
 import { poll } from '../scenarios/folder-clock.mjs';
+import { monotonic } from '../scenarios/session-clock.mjs';
 
 const scratch = await mkdtemp(path.join(os.tmpdir(), 'control-relay-'));
 // A failing test must not leave hosts or relays behind (they would keep this process alive).
@@ -93,12 +94,12 @@ test('a resume request is a start command with a resumeCapture member, logged as
   for (const other of [{ type: 'command', action: 'start' }, { type: 'command', action: 'stop', resumeCapture: {} },
     { type: 'event', action: 'start', resumeCapture: {} }, [1], null, 'start'])
     assert.equal(isResumeRequest(other), false, JSON.stringify(other));
-  assert.deepEqual(frameRecord({ index: 4, atWall: 9, bytes: 99, message: resume('r-4', 'c', 5) }),
-    { frame: 4, atWall: 9, bytes: 99, type: 'command', action: 'start', requestId: 'r-4', resumeCapture: { captureId: 'c', timelineOriginMs: 5 } });
+  assert.deepEqual(frameRecord({ index: 4, atWall: 9, atMono: 19, bytes: 99, message: resume('r-4', 'c', 5) }),
+    { frame: 4, atWall: 9, atMono: 19, bytes: 99, type: 'command', action: 'start', requestId: 'r-4', resumeCapture: { captureId: 'c', timelineOriginMs: 5 } });
   assert.deepEqual(frameRecord({ index: 0, atWall: 1, bytes: 2, message: { type: 'command', action: 'start', resumeCapture: 'odd' } }).resumeCapture,
     { captureId: null, timelineOriginMs: null });
   assert.deepEqual(frameRecord({ index: 0, atWall: 1, bytes: 2, message: [3] }),
-    { frame: 0, atWall: 1, bytes: 2, type: null, action: null, requestId: null });
+    { frame: 0, atWall: 1, atMono: null, bytes: 2, type: null, action: null, requestId: null });
 });
 
 async function relayRun(name, input, chunk) {
@@ -118,7 +119,7 @@ test('the relay copies its input byte for byte, logs every frame and exits at th
   const filler = randomBytes(300000).toString('base64');  // frames larger than a pipe buffer
   const input = Buffer.concat([frame({ type: 'hello', filler }), frame(resume('r-1')), frame({ type: 'command', action: 'stop', requestId: 's' }),
     frame(resume('r-2', 'other', 'not a number'))]);
-  const started = Date.now();
+  const started = Date.now(), startedMono = monotonic();
   const { result, bytes, entries } = await relayRun('passthrough', input, 4093);
   assert.deepEqual(result, { code: 0, signal: null });
   assert.ok(bytes.equals(input), 'stdout is the input, unchanged');
@@ -128,6 +129,8 @@ test('the relay copies its input byte for byte, logs every frame and exits at th
     [0, 'hello', null, null, null], [1, 'command', 'start', 'r-1', { captureId: 'capture-1', timelineOriginMs: 1793880000000 }],
     [2, 'command', 'stop', 's', null], [3, 'command', 'start', 'r-2', { captureId: 'other', timelineOriginMs: 'not a number' }]]);
   assert.ok(frames.every(f => f.atWall >= started && f.atWall <= Date.now()));
+  // The evidence stamp: the shared monotonic clock, read by the relay in its own process.
+  assert.ok(frames.every(f => f.atMono >= startedMono && f.atMono <= monotonic()), 'every frame carries its monotonic stamp');
   assert.deepEqual(entries.at(-1), { ...entries.at(-1), end: true, bytes: input.length, frames: 4 });
   assert.ok(!entries.some(e => 'unparsable' in e));
 });
@@ -196,15 +199,15 @@ test('the observing launcher execs the host as the browser\'s child, numbers con
   assert.deepEqual(connections.map(c => [c.connection, c.pid, c.launchParent, c.live, c.parent]),
     [[1, first.child.pid, process.pid, true, process.pid], [2, second.child.pid, process.pid, true, process.pid]]);
   await assert.rejects(verifyControlPipe(host, process.pid + 100000, 'kill'), /kill: control host \d+ \(connection 1\) is not the browser's child/);
-  const origin = connections[0].resumes[0].atWall - 1000;
-  const requests = resumeRequests(connections, origin, Date.now());
+  const origin = connections[0].resumes[0].atMono - 1000;
+  const requests = resumeRequests(connections, origin, monotonic());
   assert.deepEqual(requests.map(r => [r.via, r.connection, r.requestId, r.captureId, r.timelineOriginMs]), [
     ['control-pipe', 1, 'r-1', 'capture-1', 1793880000000], ['control-pipe', 2, 'r-2', 'capture-1', 1793880000000], ['control-pipe', 2, 'r-3', 'old', 1]]);
   assert.equal(requests[0].atMs, 1000);
   assert.ok(requests.every((r, i) => i === 0 || r.atMs >= requests[i - 1].atMs), 'pipe order');
   assert.deepEqual(resumeRequests(connections, origin, origin), [], 'nothing before the window ends: []');
   // Pipe order is relay time across connections: a later connection's earlier frame comes first.
-  const at = (frame, atWall, requestId) => ({ frame, atWall, requestId, resumeCapture: { captureId: 'c', timelineOriginMs: 1 } });
+  const at = (frame, atMono, requestId) => ({ frame, atMono, requestId, resumeCapture: { captureId: 'c', timelineOriginMs: 1 } });
   assert.deepEqual(resumeRequests([{ connection: 1, resumes: [at(0, 1300, 'a'), at(1, 1300, 'b')] }, { connection: 2, resumes: [at(0, 1200, 'c'), at(1, 1300, 'd')] }], 1000, 1300)
     .map(r => [r.atMs, r.connection, r.requestId]), [[200, 2, 'c'], [300, 1, 'a'], [300, 1, 'b'], [300, 2, 'd']]);
   // The browser closes the port: each host exits, its relay sees the end of input and exits.
@@ -300,12 +303,41 @@ test('a relay that never starts, or stops before its input ends, fails the run',
   const exit = exited(run.child); run.child.stdin.end(); await exit;
 });
 
+// A frame's evidence time is its monotonic stamp (scenarios/session-clock.mjs). A logged frame whose
+// atMono is missing, null or not a number fails the run, naming its connection and frame, whether it
+// is a resume request or an ordinary frame; resumeRequests itself refuses it before filtering or
+// sorting (a missing stamp would drop the request, a null one place it at time zero).
+test('a frame without a finite monotonic stamp fails the run, resume request or not', async () => {
+  const resume = { type: 'command', action: 'start', requestId: 'a', resumeCapture: { captureId: 'c', timelineOriginMs: 1 } };
+  const hello = { type: 'hello', action: null, requestId: null };
+  const stamps = [['missing', {}], ['null', { atMono: null }], ['a string', { atMono: '12' }], ['a boolean', { atMono: true }]];
+  let n = 0;
+  for (const [kind, fields] of [['resume request', resume], ['ordinary frame', hello]]) {
+    for (const [what, stamp] of stamps) {
+      const observe = path.join(scratch, `unstamped-${n++}`), host = { observe, command: ['/nonexistent/host'] };
+      await mkdir(path.join(observe, '1'), { recursive: true });
+      await writeFile(path.join(observe, '1', 'host'), `999999 ${process.pid}\n`);
+      const frames = [{ frame: 0, atWall: 2, atMono: 2, bytes: 9, ...hello }, { frame: 1, atWall: 3, bytes: 9, ...fields, ...stamp }];
+      await writeFile(path.join(observe, '1', 'frames.jsonl'), [{ relay: 999998, startedWall: 1 }, ...frames].map(entry => JSON.stringify(entry) + '\n').join(''));
+      const shown = 'atMono' in stamp ? JSON.stringify(stamp.atMono) : 'missing';
+      await assert.rejects(verifyControlPipe(host, process.pid, 'stop', { running: async () => false }),
+        new RegExp(`^Error: stop: control connection 1's frame 1 has no monotonic stamp \\(atMono ${shown.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)$`), `${kind}, ${what}`);
+      if (kind === 'resume request') {
+        const [connection] = await controlConnections(host);
+        assert.throws(() => resumeRequests([connection], 0, Number.MAX_SAFE_INTEGER), /control connection 1's frame 1 has no monotonic stamp/, `resumeRequests: ${what}`);
+      }
+    }
+  }
+  // A stamped resume request still counts.
+  assert.deepEqual(resumeRequests([{ connection: 1, resumes: [{ frame: 0, atMono: 1500, ...resume }] }], 1000, 2000).map(r => r.atMs), [500]);
+});
+
 test('an input error fails the run; a resume request a failed forward never delivered is kept, marked undelivered', async () => {
   const observe = path.join(scratch, 'synthetic');
   const host = { observe, command: ['/nonexistent/host'] };
   await mkdir(path.join(observe, '1'), { recursive: true });
   await writeFile(path.join(observe, '1', 'host'), `999999 ${process.pid}\n`);
-  const r = (frame, requestId) => ({ frame, atWall: 1000 + frame, bytes: 9, type: 'command', action: 'start', requestId, resumeCapture: { captureId: 'c', timelineOriginMs: 1 } });
+  const r = (frame, requestId) => ({ frame, atWall: 1000 + frame, atMono: 1000 + frame, bytes: 9, type: 'command', action: 'start', requestId, resumeCapture: { captureId: 'c', timelineOriginMs: 1 } });
   const write = entries => writeFile(path.join(observe, '1', 'frames.jsonl'), entries.map(e => JSON.stringify(e) + '\n').join(''));
   await write([{ relay: 999998, startedWall: 1 }, r(0, 'a'), r(1, 'b'), { outputError: 'EPIPE', atWall: 1002, bytes: 13, undelivered: [1] }]);
   const [connection] = await verifyControlPipe(host, process.pid, 'stop');
@@ -327,7 +359,7 @@ test('a relay that logs a fault and exits between the first read and the livenes
   await mkdir(path.join(observe, '1'), { recursive: true });
   await writeFile(path.join(observe, '1', 'host'), `999999 ${process.pid}\n`);
   const log = path.join(observe, '1', 'frames.jsonl');
-  const clean = [{ relay: 999998, startedWall: 1 }, { frame: 0, atWall: 2, bytes: 9, type: 'hello', action: null, requestId: null }];
+  const clean = [{ relay: 999998, startedWall: 1 }, { frame: 0, atWall: 2, atMono: 2, bytes: 9, type: 'hello', action: null, requestId: null }];
   const unparsable = { unparsable: 'frame 1 (3 bytes): Unexpected token', offset: 13, atWall: 3 };
   const end = { end: true, atWall: 4, bytes: 20, frames: 1 };
   const cases = [
@@ -401,7 +433,7 @@ test('when the browser closes its end, the host meets a closed pipe one write la
       lines = await writes(3);
       assert.deepEqual([connections[0].outputError.outputError, connections[0].outputError.undelivered], ['EPIPE', [1]]);
       assert.deepEqual(connections[0].frames.map(f => f.requestId), ['t0', 't1'], 'both frames were read');
-      assert.deepEqual(resumeRequests(connections, 0, Date.now()).map(r => [r.requestId, r.delivered]), [['t0', true], ['t1', false]],
+      assert.deepEqual(resumeRequests(connections, 0, monotonic()).map(r => [r.requestId, r.delivered]), [['t0', true], ['t1', false]],
         'both are resume requests; the lost one is marked undelivered');
       await verifyControlPipe(host, process.pid, 'stop');
     }

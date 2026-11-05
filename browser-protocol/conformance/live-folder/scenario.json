@@ -47,7 +47,7 @@
   },
   "evidence": {
     "file": "evidence.json, written by the driver after Stop and before check.py runs",
-    "times": "Session-timeline milliseconds: Date.now() - timelineOriginMs, the origin read from the extension's service worker. May be negative before the folder exists (record).",
+    "times": "Session-timeline milliseconds on the monotonic clock (scenarios/session-clock.mjs): the origin, timelineOriginMs from the extension's service worker, is a wall-clock Date.now() mapped onto the monotonic clock once, as SPEC requires of capturing documents; the wall clock is never read again. May be negative before the folder exists (record).",
     "required": {
       "scenario": "\"live-folder/1\"",
       "app": "lowercase name of the writer under test: gnome, macos (synthetic for make.py)",
@@ -68,7 +68,7 @@
       "process": "The observation must not change the host's process ancestry, argv, environment or stdin: the Mac control host identifies its browser only by getppid() (BrowserInstance.parentBrowser, BrowserCompanionConnection.parentBrowserName), so a relay that spawned the host would run it with no identified browser, a configuration production never meets. For each control host the launcher records its own pid (the host's, after exec), and the driver checks that this pid's parent is the browser process and fails the run otherwise.",
       "request": "Every host-to-browser frame with type \"command\", action \"start\" and a resumeCapture member, from before record until the stop observation: one resumeRequests entry each, even when the extension later refuses or ignores it or never receives it (delivered false).",
       "fields": {
-        "atMs": "Date.now() when the relay has read the whole frame, before forwarding it, minus timelineOriginMs",
+        "atMs": "the relay's monotonic reading when it has read the whole frame, before forwarding it, on the session timeline (times above)",
         "via": "\"control-pipe\", the only observation accepted",
         "connection": "an integer >= 1: the control host that wrote the frame, numbered in launch order from 1 for the first control host the browser started in the run. Each launch is one control connection (its own hello): SPEC-CONTROL D52.5 allows one ask per loss and control connection",
         "requestId": "the frame's requestId, as written",
@@ -82,7 +82,7 @@
     "actions": {
       "record": "requested: record(); observed: status with path and captureId, and A's track holds 1000 ms of frames",
       "meOff": "requested: selectMe(false); observed: the last selection event shows me:false",
-      "mute": "requested: muteSlot(remote, 0) once F(A) >= MUTE_START_MS and the session clock (Date.now() - timelineOriginMs) >= MUTE_START_MS: F(A) may lead the session clock, so both; observed: replaceTrack(null) resolved",
+      "mute": "requested: muteSlot(remote, 0) once F(A) >= MUTE_START_MS and the session clock (times above) >= MUTE_START_MS: F(A) may lead the session clock, so both; observed: replaceTrack(null) resolved",
       "unmute": "requested: switchReceiveSlot(remote, 0, [A]) once F(A) >= mute + MUTE_MS and the session clock >= mute + MUTE_MS (mute is mute.requestedAtMs); observed: F(A) advanced by PROOF_MS",
       "lateRemote": "requested: switchReceiveSlot(remote, 1, [B]) after unmute, at or after LATE_REMOTE_MS; observed: a new sourceTrackId with PROOF_MS of frames",
       "meOn": "requested: selectMe(true) once S >= MIC_ON_MS; observed: selection me:true and a microphone span with PROOF_MS of frames",

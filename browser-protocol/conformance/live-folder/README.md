@@ -76,7 +76,7 @@ can run ahead of the session clock: the extension stamps each frame at the insta
 reaches the output (D61), output latency after it is rendered, and GNOME stores those
 stamps unclamped and checkpoints `session.json` right after an append. So the driver
 waits on both clocks: it asks for the mute once F(A) ≥ MUTE_START_MS and the session clock
-(`Date.now() − timelineOriginMs`) ≥ MUTE_START_MS, and for the unmute once both are at
+(monotonic, with the origin mapped once: `scenario.json` evidence.times) ≥ MUTE_START_MS, and for the unmute once both are at
 least mute.requested + MUTE_MS. The requests are session-clock times, so the lower bounds
 of O2.muteStart and O2.duration hold exactly, with no lead band (variant `folder-leads`:
 A's stamps 20 ms ahead). O2.silent then shows at least MUTE_MS − 2 × EDGE_MS of silence
@@ -116,8 +116,8 @@ one entry:
 ]
 ```
 
-`atMs` is `Date.now()` when the relay has read the whole frame, before forwarding it, minus
-`timelineOriginMs`. `connection` numbers the control host that wrote it, in launch order
+`atMs` is the relay's monotonic reading when it has read the whole frame, before forwarding it, on
+the session timeline (origin `timelineOriginMs`, mapped once). `connection` numbers the control host that wrote it, in launch order
 from 1: each launch is one control connection with its own hello, and D52.5 allows one ask
 per loss and control connection (a reconnect asks once more). The identity a request must name (`captureId`, `timelineOriginMs`) is
 the one the extension's service worker holds for the recording, read at record. This is

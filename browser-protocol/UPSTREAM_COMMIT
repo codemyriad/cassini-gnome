@@ -1,26 +1,26 @@
-tree 5bfc7d2f3f114a5e05e1fb0c13afb7fa61f957e0
-parent e68ebca2ff45e8d2b720a85fae4abb557a4865d4
-parent 497285aa7ea1df40d03af7a900505196841dd180
-author Silvio Tomatis <silviot@gmail.com> 1793874991 +0100
-committer GitHub <noreply@github.com> 1793874991 +0100
+tree 2b50a2bb4ed9e1aa7f46181e660ed16f31007321
+parent 54e0006b815906a6d6b1f2291540452cd55ba881
+parent caf5a8b825c004ed08e42f6a510af7754f12afad
+author Silvio Tomatis <silviot@gmail.com> 1793880891 +0100
+committer GitHub <noreply@github.com> 1793880891 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq7FwvCRC1aQ7uu5UhlAAAf7QQABkvE5QTPAFq1uaUYgd2tSp5
- W4Wib5CHUb3zoxC1WO2YtWHhyKoK4vqIVb/vrPKRvmb0hYQ8pAyvxjjIMG4vG842
- 7bow14DV3MkylHjeX203Dq48Gw+yrhq/hwMfpttTMCn8XdrGnWy6hm6Zw+sj/l8+
- tE7SmSg05m9otkt6FmCab2+xK/6Gp0x1UdxrhcXXtqGeUCMwmcn4A6mohzPtwXil
- ddXriwCpjMZlXxaUvtHblvzbDfgpRezfhqaRwmv1xOUovOjE2PJMVuUUWJYm5si3
- LYIQ/L9Z+R1O0CF8znQ3KAdL7NHE8Kh4lJfj1K97gcIjN/aJyC20fU5uxJVATzHe
- dUbLIsxDxbQc0697BBm7eECAbgtpSRThwsS1AFdXcqTL/jJNpStv/AJePl8MGAVU
- YbWp4PkPhxvXZyBgq2EgTrq2qGn15i+zNFztdcq6bqiGcPJ7IrKil0PLUgYoeXvg
- Z9Ufyc4ezAVGMN9Dc7+L0EdwIagRWdY2QoRI62vGLRQoImikQAtdQsYSQz768gib
- 1hd4c6hpNVRBqgCz6Ebkg4v+WkqWz00iBzJpI3jZ5+hwFWxIlOMZQFo52BMPYxEt
- O6LdbEZdkiA/djiE6rjKQenzx0qf4jp2mb11iGKrPLOxADEGvjK5gk8eF5qadFN2
- bUbl9+o1qUXbS7zU4mBS
- =qfEw
+ wsFcBAABCAAQBQJq7HM7CRC1aQ7uu5UhlAAARIoQAJyp+IxYoaab56R7EaRwUI3Z
+ 6TU79z053rgqvcRr6W8VfC6Bghxzdes+tga+8StKzwaDdubWptaCUCArVfH4z5c1
+ Af6zuZ8Gud/fnLDkxG8GGU2iPx8yqt2vHIuTXBe1crH5gVQVJF699Bv2YtILd1S0
+ hd4mVuNCLLwl3NpufIA45AO2KCbh6lXyjrQZdL8JHiyTf7ScA7fPONfCcRG9m8MI
+ gPcjPgxpcLQ5W9b4qiWFjZotAlsDhDsUoECG6FbERhliAl+t7Hn6joxkzzxyLAUV
+ 80t4Zi+q8JBi4z8TLLWLXyFD51PE3HHqk/mZ+OMHj8Gr19IiKbs6Pcdmx+D/328u
+ Rf73fpp7Mbb0tqjfTvxamSIzRKPTfPIqzE9udJE1Oxkon4P3Xn437bxXR8LVRj2H
+ xZ9ov7yq3ZrehWnf7Q59QRRelCDnZnviAch9Vmz5eV0y+C0WA8D61VNAKVF5FmOC
+ rU5tDfTs6fSLFjRNAXALxTlN35DtNe5vhaDBWoxmwBrhn/s7pXCzV1hfxlq9fQ4k
+ ph7eAMn3PYpKoS/1xfhDPAVDIEdJdtAssFVVUPO8h1/2l1vtpsHJ1qc9AlUD6v5q
+ gJ10a1wNRjBKfH0wxZYbbgV/Yta54AnDcMHSU5OTfepZsThExKU5Ep2HahUFdgMg
+ PrJBdOJ4TE/AdOQ0YPlA
+ =n4bg
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #54 from codemyriad/fix/capture-graph-keeps-real-time
+Merge pull request #55 from codemyriad/fix/driver-monotonic-session-clock
 
-Keep the capture context on real time: an inaudible constant in the capture graph (D68.1)
+Live-folder driver: a monotonic session clock, the origin mapped once (D68, Mac #148)

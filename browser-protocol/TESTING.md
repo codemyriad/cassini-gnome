@@ -200,8 +200,11 @@ own: the adapter passes the pages and the extension's service worker.
 - Clock: `scenarios/folder-clock.mjs` reads `session.json` (tolerating a missing or
   half-written file) for S, the latest track end, and F(source), one source's. Every
   step waits on the folder or the app with a bound from `scenario.json` and fails with
-  the step's name (E1). Times are `Date.now()` minus the session origin the extension
-  holds, so they are app-neutral: the `chrome.storage.session` `cassiniSessions[]` entry of
+  the step's name (E1). Times are on the session timeline of `scenarios/session-clock.mjs`:
+  the origin the extension holds (a wall-clock `Date.now()`) is mapped onto the system's
+  monotonic clock once, as SPEC requires of capturing documents, and the wall clock is never
+  read again, so a drifting or stepping wall clock (a hosted VM's ran 500 ppm fast) moves no
+  requested or observed time. They are app-neutral: the `chrome.storage.session` `cassiniSessions[]` entry of
   the meeting tab gives the evidence's `captureId` and integer `timelineOriginMs`.
 - Mute: asked once F(A) and the session clock both reach `MUTE_START_MS`, unmuted once both
   reach `mute.requested + MUTE_MS` (O2.muteStart, O2.duration).
@@ -216,8 +219,9 @@ own: the adapter passes the pages and the extension's service worker.
   `/dev/null`, stdout the browser's pipe) and execs the host with only its stdout into the
   FIFO. The launcher keeps its files private with `umask 077` and gives the host the
   browser's umask back before the exec. The relay copies the FIFO to the browser byte for
-  byte, one blocking write per read, logs each native-messaging frame (`Date.now()` once
-  the frame is whole, before forwarding) and exits at the end of its input; an unreadable
+  byte, one blocking write per read, logs each native-messaging frame (stamped once the
+  frame is whole, before forwarding: `atWall` for people, `atMono` on the same monotonic
+  clock for the evidence) and exits at the end of its input; an unreadable
   frame is logged and still forwarded. When the browser closes its end, the relay learns it
   from the next forward (EPIPE), logs `outputError` with the frames it did not deliver
   (`undelivered`: still resume requests, the host asked, written with `delivered: false`)
