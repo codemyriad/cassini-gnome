@@ -106,7 +106,9 @@ RUNNER_SELECTOR = re.compile(
     r"^\$\{\{ vars\.(?P<var>CM_RUNNER(?:_DESKTOP)?) == 'hetzner' && "
     r"fromJSON\('\[\"self-hosted\",\"cm-hetzner\"\]'\) \|\| 'ubuntu-26\.04' \}\}$"
 )
-CM_RUNNER_PINNED = "${{ vars.CM_RUNNER == 'hetzner' && fromJSON('[\"self-hosted\",\"cm-hetzner\"]') || 'ubuntu-26.04' }}"
+CM_RUNNER_PINNED = (
+    "${{ vars.CM_RUNNER == 'hetzner' && fromJSON('[\"self-hosted\",\"cm-hetzner\"]') || 'ubuntu-26.04' }}"
+)
 
 
 def select_runner(runs_on, variables):
@@ -119,9 +121,17 @@ def select_runner(runs_on, variables):
 
 
 def runs_on_values():
+    """(workflow, runs-on) for every job; a block runs-on (a YAML list or mapping) is joined into one string."""
     for workflow in sorted(WORKFLOWS.glob("*.yml")):
-        for value in re.findall(r"^    runs-on: (.+)$", workflow.read_text(), re.M):
-            yield workflow.name, value
+        lines = workflow.read_text().splitlines()
+        for i, line in enumerate(lines):
+            if match := re.match(r"^    runs-on:(.*)$", line):
+                value = [match.group(1).strip()]
+                for following in lines[i + 1 :]:
+                    if not following.startswith("      "):
+                        break
+                    value.append(following.strip())
+                yield workflow.name, "\n".join(v for v in value if v)
 
 
 def test_package_builds_run_on_the_pinned_runner_image():
@@ -160,8 +170,17 @@ def test_runner_selection_falls_back_to_github_for_every_other_value():
     assert moved, "no job reads a runner variable"
     for name, value in moved:
         var = RUNNER_SELECTOR.match(value)["var"]
-        for setting in (None, "", " ", "garbage{", '["self-hosted","cm-hetzner"]',
-                        '["self-hosted","cm-hetzner-typo"]', "hetzner-typo", "true", "github"):
+        for setting in (
+            None,
+            "",
+            " ",
+            "garbage{",
+            '["self-hosted","cm-hetzner"]',
+            '["self-hosted","cm-hetzner-typo"]',
+            "hetzner-typo",
+            "true",
+            "github",
+        ):
             variables = {} if setting is None else {var: setting}
             assert select_runner(value, variables) == "ubuntu-26.04", (name, setting)
         for setting in ("hetzner", "Hetzner"):
@@ -185,3 +204,10 @@ def test_runner_variables_move_the_intended_jobs():
     for name, value in runs_on_values():
         if name.startswith("release"):
             assert "vars." not in value, (name, value)
+
+
+def test_every_runs_on_is_a_hosted_image_or_the_selector():
+    # Nothing else may reach runs-on: no literal self-hosted labels, no variable in a block-style runs-on.
+    hosted = re.compile(r"^(?:ubuntu|macos|windows)-[0-9a-z.-]+$")
+    for name, value in runs_on_values():
+        assert hosted.match(value) or RUNNER_SELECTOR.match(value), (name, value)
