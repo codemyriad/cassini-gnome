@@ -17,9 +17,10 @@ What it does not cover: in the same reproduction one real os.fsync on roy's
 disk (not the injected delay) stalled for several seconds, under writeback from
 other containers: a capture-facts job (16 fsyncs, 2.4 s injected) did not
 finish within 18 s, its thread inside the real fsync. Stalls of 10 s and more
-were seen there. These bounds are sized against the modelled work,
-not against such host I/O stalls; whether CI must outlast them is the
-coordinator's call, never a reason to raise a bound here (D66).
+were seen there. These bounds are sized for CI hosts (GitHub's and our Hetzner
+runners), not for such host I/O stalls (coordinator decision, 2026-11-05): a
+roy-local failure during a 10 s disk stall is a roy problem, not a test defect,
+and never a reason to raise a bound here (D66).
 """
 
 import threading
