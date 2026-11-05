@@ -156,13 +156,23 @@ def test_a_checkpoint_fsyncs_an_ended_track_once_and_then_never_again(tmp_path, 
 
 
 class ManualClock:
-    """A SessionClock whose now() the test sets: the Stop boundary is exact."""
+    """A SessionClock whose now() the test sets: the Stop boundary is exact. Each
+    read is noted with its thread's name, so a test can wait for one."""
 
     def __init__(self, origin_ms):
         self.origin_ms, self.ms = origin_ms, 0.0
+        self.reads, self.readers = threading.Condition(), set()
 
     def now(self):
+        with self.reads:
+            self.readers.add(threading.current_thread().name)
+            self.reads.notify_all()
         return self.ms
+
+    def read_by(self, name):
+        """Waits (bounded) until the thread `name` has read this clock."""
+        with self.reads:
+            return self.reads.wait_for(lambda: name in self.readers, BOUND)
 
     def at(self, _monotonic_ns):
         return self.ms
@@ -261,7 +271,7 @@ def drain_across_stop(tap, start, clock):
     tap.drained.set()
 
 
-def assert_kept_before_stop(capture, start):
+def assert_kept_before_stop(capture, start, reason="user"):
     saved = capture.host.session.manifest
     (track,) = saved["tracks"]
     # Everything before the boundary, and the first 5 ms of the straddling buffer.
@@ -269,7 +279,7 @@ def assert_kept_before_stop(capture, start):
     assert track["endOffsetMs"] == pytest.approx(start + 945)
     assert "gapFrames" not in track and not [g for g in track.get("gaps", []) if g["kind"] != "prefix"]
     assert saved["state"] == "completed" and saved.get("problemKind") is None
-    assert saved["events"][-1] == dict(type="end", atMs=pytest.approx(start + 945), reason="user")
+    assert saved["events"][-1] == dict(type="end", atMs=pytest.approx(start + 945), reason=reason)
     pcm = (capture.directory / track["file"]).read_bytes()[44:]
     assert pcm[: 60 * 960] == tone(60 * 480) and pcm[60 * 960 :] == tone(34 * 480 + 240, value=9)
 
@@ -283,6 +293,56 @@ def test_stop_records_the_queued_audio_captured_before_it_and_cuts_the_straddlin
     thread.join(BOUND)
     assert not thread.is_alive() and "error" not in result
     assert_kept_before_stop(capture, start)
+
+
+@pytest.mark.parametrize("route", ["stop", "policy", "browser-stop"])
+def test_stop_pressed_while_a_stalled_checkpoint_holds_the_capture_lock_keeps_its_moment(tmp_path, route):
+    """#230 review: another thread holds capture.lock (a checkpoint stalled on
+    storage) when Stop is pressed at 945 ms; storage recovers 2 s later. Stop's
+    moment is when it was pressed, not when the lock came free: the audio queued
+    from before it is kept, the audio after it stays out, and the end is at 945 ms.
+    Routes: a direct Stop, a policy lifecycle Stop (callEnded) and the browser's
+    Stop message."""
+    taps = DrainingTaps()
+    capture, clock = start_capture(tmp_path, taps, microphone=True, others_source="browser")
+    tap, start = record_live(capture, clock)
+    held, release = threading.Event(), threading.Event()
+
+    def hold():
+        with capture.lock:
+            held.set()
+            assert release.wait(3 * BOUND)  # Bound only: the test releases it.
+
+    holder = threading.Thread(target=hold, name="test-stall")
+    holder.start()
+    assert held.wait(BOUND)
+    presses = {
+        "stop": capture.stop,
+        "policy": lambda: capture.stop(reason="callEnded"),
+        "browser-stop": lambda: capture.handle(dict(type="stop", captureId="stall")),
+    }
+    result = {}
+
+    def run():
+        try:
+            result["stopped"] = presses[route]()
+        except BaseException as error:  # pragma: no cover - asserted below
+            result["error"] = error
+
+    thread = threading.Thread(target=run, name="test-stop")
+    thread.start()
+    # Stop's moment is read while the stall still holds the lock.
+    marked = clock.read_by("test-stop")
+    clock.ms = start + 2945  # Storage recovers 2 s after Stop.
+    release.set()
+    holder.join(BOUND)
+    assert tap.draining.wait(BOUND)
+    drain_across_stop(tap, start, clock)
+    thread.join(BOUND)
+    assert not thread.is_alive() and "error" not in result, result
+    assert capture.stop_at_ms == pytest.approx(start + 945)
+    assert marked, "Stop's moment waited for the capture lock"
+    assert_kept_before_stop(capture, start, reason="callEnded" if route == "policy" else "user")
 
 
 @pytest.fixture
@@ -421,3 +481,79 @@ def test_a_buffer_after_the_session_finished_is_never_written(tmp_path):
     system.append(tone(480), start + 10)
     assert session.writers[microphone].frames == 480
     assert [t["kind"] for t in session.manifest["tracks"]] == ["microphone"]
+
+
+def test_the_native_recorder_keeps_the_stop_moment_through_a_held_pcm_lock(tmp_path):
+    """The native-only recorder: a stalled checkpoint holds its PCM lock when Stop
+    is pressed, and the stall lasts 1 s of audio past Stop. Its taps capture into
+    their queues until the drain's EOS reaches them, after the lock is free. The
+    audio queued before Stop is kept up to Stop's moment, the audio after it stays
+    out, and the end event is at that moment, not at the drain's end (D4)."""
+    from test_recorder import spin_until
+
+    recorder = native_recorder.NativeRecorder()
+    finished, errors = [], []
+    recorder.connect("finished", lambda _r, path: finished.append(path))
+    recorder.connect("error", lambda _r, message: errors.append(message))
+    holder = None
+    release = threading.Event()
+    try:
+        recorder.start(tmp_path, test=True, observe_output=False)
+        spin_until(
+            lambda: (
+                not recorder.starting
+                and len(recorder._track_ids) == 2
+                and all(t["frames"] >= 9600 for t in recorder.session.manifest["tracks"])
+            )
+        )
+        pipeline = recorder.pipeline
+        # Audio time reaching each tap's queue: the newest input's end, as it enters.
+        reached, arrivals = {}, threading.Condition()
+
+        def entering(_pad, info, kind):
+            buffer = info.get_buffer()
+            with arrivals:
+                reached[kind] = (buffer.pts + buffer.duration) / Gst.MSECOND
+                arrivals.notify_all()
+            return Gst.PadProbeReturn.OK
+
+        for kind, branch in recorder._branches.items():
+            pad = branch.get_by_name("tap-queue").get_static_pad("sink")
+            pad.add_probe(Gst.PadProbeType.BUFFER, entering, kind)
+        held = threading.Event()
+
+        def hold():
+            with recorder._lock:
+                held.set()
+                assert release.wait(BOUND)  # Bound only: the test releases it.
+
+        holder = threading.Thread(target=hold, name="test-stall")
+        holder.start()
+        assert held.wait(BOUND)
+        pressed = recorder._elapsed_ms(pipeline)
+        recorder.stop()
+        with arrivals:  # The stall goes on for 1 s of audio past Stop.
+            assert arrivals.wait_for(lambda: len(reached) == 2 and min(reached.values()) >= pressed + 1000, BOUND)
+        release.set()
+        holder.join(BOUND)
+        spin_until(lambda: bool(finished))
+        manifest = recorder.session.manifest
+        assert not errors and manifest["state"] == "completed", (errors, manifest.get("problem"))
+        ends = {t["kind"]: t["endOffsetMs"] for t in manifest["tracks"]}
+        # Everything before Stop is kept and nothing after it. The test source
+        # generates each 1024-frame buffer (21.3 ms) at its start: the one
+        # written whole just before Stop can end up to that much after it.
+        slack = 1024 * 1000 / 48000
+        assert all(pressed - slack <= end <= pressed + slack for end in ends.values()), (pressed, ends)
+        # D4: the latest of Stop's moment, the last event and every track end.
+        end = manifest["events"][-1]
+        assert end["type"] == "end" and end["reason"] == "user"
+        assert end["atMs"] == pytest.approx(max(recorder._stop_at_ms, *ends.values())), (pressed, end, ends)
+    finally:
+        release.set()
+        if holder is not None:
+            holder.join(BOUND)
+        if recorder.pipeline is not None:
+            recorder._begin_finish()
+            spin_until(lambda: recorder.pipeline is None)
+        recorder._executor.shutdown()

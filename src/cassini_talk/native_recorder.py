@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from gi.repository import GLib, GObject, Gst
 
-from .capture_sources import canonical_order, change_time, selected_pcm
+from .capture_sources import canonical_order, change_time, pcm_before, selected_pcm
 from .native_timing import NS, NativeTimeline
 from .recorder import CAPTURE_CONVERT, TAP_QUEUE, request_eos
 from .recording_details import ACMeter, space_left
@@ -83,6 +83,11 @@ class NativeRecorder(GObject.Object):
         self.starting = False
         self.levels = [0.0, 0.0]
         self._start_us = GLib.get_monotonic_time()
+        # R93-2: Stop's moment on the pipeline clock (session time), fixed when
+        # Stop is pressed. A tap queue's audio captured before it is recorded
+        # by the drain; audio after it is not, and the end event is stamped
+        # there, not when the drain ends (D4).
+        self._stop_at_ms = None
         self.line = None
         self.minutes_left = 0
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-native-io")
@@ -153,6 +158,7 @@ class NativeRecorder(GObject.Object):
         self.starting = True
         self._start_us = GLib.get_monotonic_time()
         self._stop_requested = False
+        self._stop_at_ms = None
         self.session = None
         self.stopping = self._finishing = False
         self._problem = self.line = self.end_reason = None
@@ -906,9 +912,14 @@ class NativeRecorder(GObject.Object):
                         GLib.idle_add(self.emit, "changed")
                     original_frames = len(data) // (channels * 2)
                     data, offset = selected_pcm(data, pts / Gst.MSECOND, rate, channels, self._boundaries[identifier])
+                    skipped = original_frames - len(data) // (channels * 2)
+                    cut = self._stop_at_ms
+                    if cut is not None:
+                        # Queued across Stop's moment: only what was captured before it.
+                        data = pcm_before(data, offset, rate, channels, cut)
                     if data:
                         frames = len(data) // (channels * 2)
-                        host_ns = pts + (original_frames - frames) * NS // rate
+                        host_ns = pts + skipped * NS // rate
                         timeline = self._timelines.setdefault(stored, NativeTimeline(rate))
                         offset, gap = timeline.map(host_ns, frames, offset)
                         # A shifted source has no clock observations (see _pts_shift).
@@ -1013,8 +1024,15 @@ class NativeRecorder(GObject.Object):
             self._begin_finish(problem)
         return False
 
+    def _mark_stop(self):
+        """Fix Stop's moment once, when it is pressed: never after the PCM lock,
+        which a stalled checkpoint can hold while the taps' queues fill."""
+        if self._stop_at_ms is None and self.pipeline is not None and not self._finishing:
+            self._stop_at_ms = self._elapsed_ms(self.pipeline)
+
     def stop(self):
         self.end_reason = self.end_reason or "user"
+        self._mark_stop()
         if self.starting:
             self._stop_requested = True
             self._open_wake.set()
@@ -1095,7 +1113,11 @@ class NativeRecorder(GObject.Object):
         self._timeout = self._disk_timer = 0
         pipeline, session = self.pipeline, self.session
         reason = "error" if problem else (self.end_reason or "user")
-        at_ms = max(0, (GLib.get_monotonic_time() - self._start_us) / 1000)
+        # D4: a Stop's end is its moment, raised by finish() to the last event
+        # and every track end; the drain's length moves nothing.
+        at_ms = self._stop_at_ms
+        if at_ms is None:
+            at_ms = max(0, (GLib.get_monotonic_time() - self._start_us) / 1000)
 
         def finish():
             from .library_publication import root_for, submit_stopped

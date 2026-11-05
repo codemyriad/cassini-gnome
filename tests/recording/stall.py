@@ -12,8 +12,12 @@ Each case blocks both taps' writers the way R93's runs were blocked, then saves:
   fsync     one checkpoint fsync, under capture.lock, takes 2.5 s
   fsynceach every fsync of one checkpoint takes 0.7 s (R93's swapping host)
   stop      Stop is pressed on another thread 2 s into a capture.lock hold: the
-            audio the queues hold from before it is saved, up to the Stop moment,
-            and the end event is at that moment, however long the save took (D4)
+            audio the queues hold from before it is saved, up to the Stop moment
+            (the broker's paths mark Stop, then save)
+  stopdirect the same with a direct capture.stop() (GNOME's own Stop, a
+            policy Stop): it fixes Stop's moment before it waits for the lock
+            the stall holds, which is held 2 s more. In both, the end event is
+            at the Stop moment, however long the save took (D4)
   overrun   the documented limit: capture.lock is held until both 10 s queues
             are full, then 2 s more. pulsesrc drops that, and a loss of 1 s or
             more is saved as an input gap (truthful; relabelling it as writer
@@ -350,6 +354,32 @@ def stop_during(seconds):
     return stall
 
 
+def stop_direct_during(seconds):
+    """A direct capture.stop() mid-stall: its Stop moment is fixed at once, while
+    the stall goes on for `seconds` more; its save follows once the lock is free."""
+
+    def stall(capture, _levels, observer):
+        pressed, threads = {}, []
+
+        def until():
+            observer.after(seconds)
+            pressed["ms"] = capture.elapsed_ms()
+            stop = threading.Thread(target=capture.stop, name="stall-direct-stop")
+            stop.start()
+            threads.append(stop)
+            # Bound only; under the 10 s queue, so a Stop that waits for the
+            # lock is still saved and its late moment recorded.
+            pressed["marked"] = capture.stop_requested.wait(5)
+            observer.after(seconds)  # Storage recovers later still.
+
+        hold_lock(capture, until).join(BOUND)
+        threads[0].join(BOUND)
+        assert not threads[0].is_alive(), "the direct Stop never finished"
+        return dict(stopAtMs=capture.stop_at_ms, pressedMs=pressed["ms"], markedInStall=pressed["marked"])
+
+    return stall
+
+
 def overrun(extra):
     def stall(capture, levels, observer):
         def until():
@@ -368,6 +398,7 @@ CASES = {
     "fsync-2.5": (slow_fsync(2.5), "no-loss"),
     "fsynceach-0.7": (slow_fsync(0.7, each=True), "no-loss"),
     "stop-2.0": (stop_during(2.0), "stop"),
+    "stopdirect-2.0": (stop_direct_during(2.0), "stop"),
     "overrun-2.0": (overrun(2.0), "limit"),
 }
 
@@ -383,6 +414,9 @@ def main(names):
                 assert_no_loss(record)
             elif expect == "stop":
                 assert_no_loss(record)
+                if "pressedMs" in record:
+                    assert record["markedInStall"], "a direct Stop waited for capture.lock to mark its moment"
+                    assert abs(record["stopAtMs"] - record["pressedMs"]) <= 20, record
                 for track in record["tracks"]:
                     # Everything captured before Stop is saved, up to the Stop moment.
                     assert abs(track["endOffsetMs"] - record["stopAtMs"]) <= 20, (track, record["stopAtMs"])

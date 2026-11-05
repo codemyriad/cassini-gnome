@@ -129,16 +129,19 @@ class BrowserCapture:
     def directory(self):
         return self.host.session.directory if self.host.session and not self.discarded else None
 
-    def request_stop(self):
+    def request_stop(self, at_ms=None):
         """Mark the user's Stop moment once: the stop boundary, then stop_requested.
 
         A tap's queue can still hold audio captured before Stop (up to 10 s
         during a host stall, R93-2); its drain records that audio up to the
-        boundary instead of discarding it (D47)."""
+        boundary instead of discarding it (D47). It never takes the capture
+        lock, which a stalled checkpoint can hold: Stop is marked when it is
+        pressed, not when storage recovers. `at_ms` is a Stop moment read
+        earlier (a browser Stop, read before its admission took the lock)."""
         with self._stop_mark:
             if not self.stop_requested.is_set():
                 if self.session_clock is not None:
-                    self.stop_at_ms = self.elapsed_ms()
+                    self.stop_at_ms = self.elapsed_ms() if at_ms is None else at_ms
                 self.stop_requested.set()
 
     def _end_ms(self):
@@ -1087,6 +1090,9 @@ class BrowserCapture:
 
     def handle(self, message):
         if message.get("type") == "stop":
+            # R93-2: the Stop moment is when it arrives, read before the lock
+            # (a stalled checkpoint can hold it), so audio after it stays out.
+            arrived = self.elapsed_ms() if self.session_clock is not None else None
             # Source-summary admission reads the current selection and merges
             # accounting. Serialize it with PCM/source changes; device shutdown
             # below still happens outside the writer lock.
@@ -1100,7 +1106,7 @@ class BrowserCapture:
                 return dict(type="stopped", path=str(self.directory))
             if reason == "user":
                 self.user_stopped = True
-            return self.stop(message.get("problem"), reason=reason)
+            return self.stop(message.get("problem"), reason=reason, at_ms=arrived)
         with self.lock:
             if self.finished or self.stopping or self.stop_requested.is_set():
                 if self.host.source_outcomes and message.get("type") == "sources":
@@ -1123,9 +1129,10 @@ class BrowserCapture:
             self.spectrogram.release_if_idle()
         return result
 
-    def stop(self, problem=None, *, reason=None, discard=None):
+    def stop(self, problem=None, *, reason=None, discard=None, at_ms=None):
         """Finish this capture. `discard` (the start refusals) removes a folder
-        nothing opened into, unless the user already typed into it (D58)."""
+        nothing opened into, unless the user already typed into it (D58).
+        `at_ms`: the Stop moment, when it was read before this call."""
         from .session_events import END_REASONS
 
         if reason is not None and (not isinstance(reason, str) or reason not in END_REASONS):
@@ -1134,9 +1141,11 @@ class BrowserCapture:
             self._publication_cancel.set()
             if self._publication_future is not None:
                 self._publication_future.cancel()
+        self.end_reason = self.end_reason or reason or ("error" if problem else "user")
+        # R93-2: Stop's moment is fixed before the capture lock, which a stalled
+        # checkpoint can hold for seconds; audio captured after it stays out.
+        self.request_stop(at_ms)
         with self.lock:
-            self.end_reason = self.end_reason or reason or ("error" if problem else "user")
-            self.request_stop()
             self.resume_asks.clear()  # A result after Stop writes nothing.
         if self.starting and not self.ready.wait(12):
             raise TimeoutError("Native capture did not finish starting")
