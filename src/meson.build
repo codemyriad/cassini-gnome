@@ -139,6 +139,7 @@ talk_sources = files(
   'cassini_talk/capture_report.py',
   'cassini_talk/source_report.py',
   'cassini_talk/call_lifecycle.py',
+  'cassini_talk/session_clock.py',
   'cassini_talk/session_events.py',
   'cassini_talk/what_is_recorded.py',
   'cassini_talk/strings.py',

@@ -83,24 +83,56 @@ function alive(pid) {
   return true;
 }
 
-// On Linux the process must still be the host the launcher exec'd (not a zombie, its argv
-// holding the command in order: a #! script's interpreter comes first), so a recycled pid
-// is never mistaken for it. Elsewhere liveness is kill(pid, 0).
-async function stillHost(pid, command) {
-  if (!alive(pid)) return false;
-  let stat, argv;
-  try {
-    stat = await readFile(`/proc/${pid}/stat`, 'utf8');
-    argv = (await readFile(`/proc/${pid}/cmdline`, 'utf8')).split('\0');
-  } catch (error) {
-    if (gone(error) && process.platform !== 'linux') return true;
-    if (gone(error)) return false;
-    throw error;
+// A process's exact argv, or null once it is gone or a zombie: /proc on Linux; elsewhere
+// (macOS) the kernel's KERN_PROCARGS2 through python3's ctypes, since ps joins the arguments
+// with spaces (paths may hold spaces) and escapes control characters, so their boundaries
+// cannot be read back. The driver already needs python3 (check.py).
+const PROCARGS = `
+import ctypes, ctypes.util, json, sys
+libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+def argv(pid):
+    mib = (ctypes.c_int * 3)(1, 49, pid)  # CTL_KERN, KERN_PROCARGS2: argc, exec path, argv
+    size = ctypes.c_size_t(0)
+    if libc.sysctl(mib, 3, None, ctypes.byref(size), None, 0) != 0: return None
+    buffer = ctypes.create_string_buffer(size.value)
+    if libc.sysctl(mib, 3, buffer, ctypes.byref(size), None, 0) != 0: return None
+    raw = buffer.raw[:size.value]
+    if len(raw) < 5: return None
+    argc, at = int.from_bytes(raw[:4], sys.byteorder), raw.find(b'\\0', 4)
+    if at < 0: return None
+    while at < len(raw) and raw[at] == 0: at += 1
+    parts = raw[at:].split(b'\\0')
+    return [p.decode('utf-8', 'surrogateescape') for p in parts[:argc]] if 0 < argc <= len(parts) else None
+print(json.dumps(argv(int(sys.argv[1]))))
+`;
+export async function processArgv(pid) {
+  if (process.platform === 'linux') {
+    try {
+      const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
+      if (stat.slice(stat.lastIndexOf(')') + 2).startsWith('Z')) return null;
+      const argv = (await readFile(`/proc/${pid}/cmdline`, 'utf8')).split('\0');
+      return argv.at(-1) === '' ? argv.slice(0, -1) : argv;  // the kernel ends each argument with NUL
+    } catch (error) { if (gone(error)) return null; throw error; }
   }
-  if (stat.slice(stat.lastIndexOf(')') + 2).startsWith('Z')) return false;
-  let at = 0;
-  for (const part of argv) if (part === command[at]) at++;
-  return at === command.length;
+  return new Promise((resolve, reject) => execFile('python3', ['-I', '-c', PROCARGS, String(pid)], (error, stdout, stderr) =>
+    error ? reject(new Error(`reading the argv of ${pid} needs python3: ${stderr || error.message}`)) : resolve(JSON.parse(stdout))));
+}
+
+// Whether argv runs command: command's arguments as one contiguous run, whole arguments only
+// (a #! script's interpreter comes first, the browser's own arguments follow).
+export function runsCommand(argv, command) {
+  if (!Array.isArray(argv)) return false;
+  for (let at = 0; at + command.length <= argv.length; at++)
+    if (command.every((part, i) => argv[at + i] === part)) return true;
+  return false;
+}
+
+// The process must still be the host the launcher exec'd: not gone, not a zombie, and running
+// the host's whole command, so neither a recycled pid (another program, or the same
+// interpreter with other arguments) nor the launcher still waiting to exec
+// (/bin/sh <launcher>) is mistaken for it.
+async function stillHost(pid, command) {
+  return alive(pid) && runsCommand(await processArgv(pid), command);
 }
 
 // Every pid a launcher recorded for this host, oldest file order, with whether it is live.
@@ -174,17 +206,10 @@ export async function controlConnections(host) {
   }));
 }
 
-// Whether pid is still a running control relay (not gone, not a zombie, its argv the relay).
+// Whether pid is still a running control relay: not gone, not a zombie, and the relay script
+// one of its arguments exactly (never a similarly named file such as control-relay.mjs.backup).
 async function relayRunning(pid) {
-  if (!alive(pid)) return false;
-  try {
-    const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
-    if (stat.slice(stat.lastIndexOf(')') + 2).startsWith('Z')) return false;
-    return (await readFile(`/proc/${pid}/cmdline`, 'utf8')).split('\0').includes(RELAY);
-  } catch (error) {
-    if (gone(error)) return process.platform !== 'linux';
-    throw error;
-  }
+  return alive(pid) && ((await processArgv(pid))?.includes(RELAY) ?? false);
 }
 
 async function relayErr(host, connection) {
@@ -200,6 +225,9 @@ async function relayErr(host, connection) {
 async function connectionFault(host, c, browserPid, label, relayStartMs, now) {
   if (c.unparsable) return `${label}: control connection ${c.connection} wrote a frame the relay cannot read: ${JSON.stringify(c.unparsable)}`;
   if (c.inputError) return `${label}: control connection ${c.connection}'s relay could not read the host's output: ${JSON.stringify(c.inputError)}`;
+  // Every frame's evidence time is its monotonic stamp: a frame without one is never dropped silently.
+  const unstamped = c.frames.find(frame => !stamped(frame));
+  if (unstamped) return `${label}: ${unstampedFrame(c, unstamped)}`;
   if (c.pid === null) return null;  // the launcher is still starting it
   if (c.launchParent !== browserPid || (c.live && c.parent !== browserPid))
     return `${label}: control host ${c.pid} (connection ${c.connection}) is not the browser's child: ` +
@@ -237,14 +265,28 @@ export async function verifyControlPipe(host, browserPid, label,
 }
 
 // The resumeRequests evidence (scenario.json resumeObservation.fields): every resume request
-// read up to untilWall, in pipe order (relay time, then launch order and frame order), each
+// read up to untilMono, in pipe order (relay time, then launch order and frame order), each
 // with delivered (false: the relay's forward of it to the browser failed).
-export function resumeRequests(connections, origin, untilWall) {
-  return connections.flatMap(c => c.resumes.filter(r => r.atWall <= untilWall).map(r => ({ c, r })))
-    .sort((x, y) => x.r.atWall - y.r.atWall || x.c.connection - y.c.connection || x.r.frame - y.r.frame)
-    .map(({ c, r }) => ({ atMs: r.atWall - origin, via: 'control-pipe', connection: c.connection, requestId: r.requestId,
+// Times are the relay's monotonic stamps (atMono) on the session timeline: originMono is the
+// driver's session clock origin on the same clock (scenarios/session-clock.mjs).
+export function resumeRequests(connections, originMono, untilMono) {
+  // Every stamp is validated before any filtering or sorting: a missing one would drop the request
+  // (undefined <= n is false) and a null one would place it at time zero.
+  for (const c of connections) {
+    const unstamped = c.resumes.find(r => !stamped(r));
+    if (unstamped) throw new Error(unstampedFrame(c, unstamped));
+  }
+  return connections.flatMap(c => c.resumes.filter(r => r.atMono <= untilMono).map(r => ({ c, r })))
+    .sort((x, y) => x.r.atMono - y.r.atMono || x.c.connection - y.c.connection || x.r.frame - y.r.frame)
+    .map(({ c, r }) => ({ atMs: r.atMono - originMono, via: 'control-pipe', connection: c.connection, requestId: r.requestId,
       captureId: r.resumeCapture.captureId, timelineOriginMs: r.resumeCapture.timelineOriginMs, delivered: r.delivered !== false }));
 }
+
+// A logged frame's evidence time is its monotonic stamp (scenarios/session-clock.mjs): a finite
+// number, never missing, null or a string.
+const stamped = frame => typeof frame.atMono === 'number' && Number.isFinite(frame.atMono);
+const unstampedFrame = (c, frame) => `control connection ${c.connection}'s frame ${frame.frame} has no monotonic stamp ` +
+  `(atMono ${'atMono' in frame ? JSON.stringify(frame.atMono) : 'missing'})`;
 
 // Ends relays still running (their host gone and input not closed, or a launch cut short).
 // Returns the pids it signalled.
@@ -252,36 +294,24 @@ export async function stopRelays(host) {
   const stopped = [];
   for (const c of await controlConnections(host)) {
     if (c.relay === null || c.ended || c.outputError) continue;
-    try {
-      const argv = (await readFile(`/proc/${c.relay}/cmdline`, 'utf8')).split('\0');
-      if (!argv.includes(RELAY)) continue;
-    } catch (error) { if (gone(error) && process.platform === 'linux') continue; if (!gone(error)) throw error; }
+    // Only a pid that is still the relay: never a process that reused its pid.
+    if (!await relayRunning(c.relay)) continue;
     try { process.kill(c.relay, 'SIGTERM'); stopped.push(c.relay); } catch (error) { if (error.code !== 'ESRCH') throw error; }
   }
   return stopped;
 }
 
-// A process's command line as one string ('' once it is gone): /proc on Linux, ps elsewhere.
-async function commandLine(pid) {
-  if (process.platform === 'linux') {
-    try { return (await readFile(`/proc/${pid}/cmdline`, 'utf8')).split('\0').join(' '); }
-    catch (error) { if (gone(error)) return ''; throw error; }
-  }
-  return new Promise(resolve => execFile('ps', ['-o', 'args=', '-p', String(pid)], (error, stdout) => resolve(error ? '' : stdout.trim())));
-}
-
 // Ends the launchers that never became their host: a launcher whose relay never opened the
 // FIFO waits in open() for good, and the browser closing its pipes does not end it (it reads
 // neither). Such a pid still runs the launcher script, not the host it would have exec'd:
-// its command line alone decides, never `live` (off Linux liveness is kill(pid, 0), which a
-// waiting launcher passes as well as its host would). A relay that had not started yet sees
+// its argv decides: the launcher path as one whole argument (`live` excludes it as the host). A relay that had not started yet sees
 // its writer gone and ends by itself (scenarios/control-relay.mjs). Returns the pids it killed.
 export async function stopLaunchers(host) {
   if (!host?.launcher) return [];
   const killed = [];
   for (const c of await controlConnections(host)) {
     if (c.pid === null || !alive(c.pid)) continue;
-    if (!(await commandLine(c.pid)).includes(host.launcher)) continue;
+    if (!((await processArgv(c.pid))?.includes(host.launcher) ?? false)) continue;
     try { process.kill(c.pid, 'SIGKILL'); killed.push(c.pid); } catch (error) { if (error.code !== 'ESRCH') throw error; }
   }
   return killed;

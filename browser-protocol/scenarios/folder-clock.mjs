@@ -7,6 +7,7 @@
 // the app has written; waits compare against them, never against elapsed time (E1).
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { monotonic } from './session-clock.mjs';
 
 export const POLL_MS = 100;
 
@@ -82,14 +83,14 @@ export function folderClock(directory, { pollMs = POLL_MS } = {}) {
     // fails with the label and the last folder state, never returns quietly.
     async waitFolder(pred, label, boundMs) {
       if (!Number.isFinite(boundMs) || boundMs <= 0) throw new RangeError(`${label}: bound must be positive`);
-      const end = Date.now() + boundMs;
+      const end = monotonic() + boundMs;
       for (;;) {
         const manifest = await clock.read();
         if (manifest) {
           const value = await pred(manifest);
           if (value) return value;
         }
-        if (Date.now() >= end) throw new Error(`Timed out after ${boundMs} ms: ${label} (${clock.describe()})`);
+        if (monotonic() >= end) throw new Error(`Timed out after ${boundMs} ms: ${label} (${clock.describe()})`);
         await pause(pollMs);
       }
     },
@@ -105,12 +106,12 @@ export function folderClock(directory, { pollMs = POLL_MS } = {}) {
 
 // A bounded poll of anything that is not the folder (an app status, a page, a pid file).
 export async function poll(check, label, boundMs, { pollMs = POLL_MS } = {}) {
-  const end = Date.now() + boundMs;
+  const end = monotonic() + boundMs;
   let last;
   for (;;) {
     last = await check();
     if (last) return last;
-    if (Date.now() >= end) throw new Error(`Timed out after ${boundMs} ms: ${label}`);
+    if (monotonic() >= end) throw new Error(`Timed out after ${boundMs} ms: ${label}`);
     await pause(pollMs);
   }
 }

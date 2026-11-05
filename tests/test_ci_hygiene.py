@@ -38,6 +38,18 @@ def test_every_job_has_a_timeout():
     assert missing == []
 
 
+def test_no_job_or_step_hides_its_failure():
+    # D66/R93: a red job is root-fixed, never hidden. continue-on-error would let a
+    # failing job (shared test 2's live-folder, gating since R93) pass its workflow.
+    hidden = [
+        f"{workflow.name}:{line.strip()}"
+        for workflow in sorted(WORKFLOWS.glob("*.yml"))
+        for line in workflow.read_text().splitlines()
+        if re.match(r"\s*(-\s+)?continue-on-error:", line)
+    ]
+    assert hidden == []
+
+
 def commands(script):
     """A shell script's commands, continuation lines joined."""
     return re.sub(r"\\\n\s*", " ", script.read_text()).splitlines()
