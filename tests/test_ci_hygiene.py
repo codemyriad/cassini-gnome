@@ -180,7 +180,14 @@ def test_release_ships_the_flatpak_main_tested_and_refuses_it_without_an_update_
     assert "release-check.yml" not in release and "name: flatpak-stable" in flatpak
     assert "run-id: ${{ needs.main-inputs.outputs.run_id }}" in flatpak
     assert "build-aux/ci/flatpak_bundle.py dist/cassini-talk.flatpak" in flatpak
-    assert re.search(r"^    needs: \[deb, packages, flatpak\]$", release, re.M)
+    # Option B: the native release never waits for the Flatpak, and nothing but
+    # flatpak-release, after the unchanged G15 job passes, ever attaches one.
+    jobs_ = dict(jobs(WORKFLOWS / "release.yml"))
+    assert re.search(r"^    needs: \[deb, packages\]$", jobs_["publish"], re.M)
+    assert "flatpak" not in jobs_["publish"].replace("source/", "")
+    assert re.search(r"^    needs: \[publish, flatpak\]$", jobs_["flatpak-release"], re.M)
+    assert "name: release-flatpak" in jobs_["flatpak-release"]
+    assert sum("release-flatpak" in block or ".flatpak" in block for name, block in jobs_.items()) == 2
     assert not any("release-check.yml" in w.read_text() for w in WORKFLOWS.glob("*.yml"))
     stable = (WORKFLOWS / "flatpak.yml").read_text()
     assert "--repo-url" not in stable and "build-aux/ci/validate_installed.py" in stable

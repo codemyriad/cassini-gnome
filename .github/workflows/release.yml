@@ -71,7 +71,8 @@ jobs:
 
   # G15: the stable Flatpak main built, validated and smoke-tested, not a
   # rebuild. It ships only when the signed D45.1 repository it names serves
-  # its exact commit; until then this job fails the release instead.
+  # its exact commit; until then this job fails, and the release ships
+  # without a Flatpak (flatpak-release never runs).
   flatpak:
     name: Reuse the verified stable Flatpak
     needs: main-inputs
@@ -98,21 +99,49 @@ jobs:
           path: dist/cassini-talk.flatpak
           if-no-files-found: error
 
+  # Option B (coordinator, 2026-11-05): the native packages and the GitHub
+  # release do not wait for the Flatpak. G15 is unchanged: the flatpak job
+  # above still refuses a bundle the signed D45.1 remote does not serve, and
+  # only flatpak-release, after it passes, attaches the Flatpak.
   publish:
-    needs: [deb, packages, flatpak]
+    needs: [deb, packages]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v7
+        with:
+          path: source
       - uses: actions/download-artifact@v8
         with:
+          name: release-deb
           path: artifacts
-          merge-multiple: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-packages
+          path: artifacts
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -R artifacts
           # The packages carry the x86_64 writing-down engine: amd64 .debs
-          # (one per base), x86_64 RPMs and Arch package, an x86_64 Flatpak.
-          mapfile -d '' bundles < <(find artifacts -type f \( -name '*.deb' -o -name '*.flatpak' -o -name '*.x86_64.rpm' -o -name '*.pkg.tar.zst' \) -print0)
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes "${bundles[@]}"
+          # (one per base), x86_64 RPMs and the Arch package.
+          mapfile -d '' bundles < <(find artifacts -type f \( -name '*.deb' -o -name '*.x86_64.rpm' -o -name '*.pkg.tar.zst' \) -print0)
+          # The tagged version's NEWS section, in plain language, then GitHub's PR list.
+          python3 source/build-aux/ci/release_notes.py "$GITHUB_REF_NAME" > notes.md
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file notes.md --generate-notes "${bundles[@]}"
+
+  flatpak-release:
+    name: Attach the verified stable Flatpak
+    needs: [publish, flatpak]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-flatpak
+          path: dist
+      - name: Attach the Flatpak to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/cassini-talk.flatpak --repo "$GITHUB_REPOSITORY"

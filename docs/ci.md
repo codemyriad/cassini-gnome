@@ -149,8 +149,12 @@ the bundle with `build-aux/ci/flatpak_bundle.py` and fails unless the bundle
 names that remote and carries a public key, and the remote, fetched at tag
 time, serves summaries (legacy and indexed) whose signatures gpgv accepts with
 that key alone, listing the bundle's ref at the bundle's own commit, and that
-commit with a valid signature. So **no release can ship until D45.1 is
-published, serving the exact commit main built**. CI itself never runs this
+commit with a valid signature. So **no Flatpak can ship until D45.1 is
+published, serving the exact commit main built**. The native packages and the
+GitHub release do not wait for it (option B, 2026-11-05): `publish` needs only
+the Debian and RPM/Arch jobs, and `flatpak-release` attaches the Flatpak to the
+release only after the guard passes. Until then that job fails visibly and the
+release has no Flatpak. CI itself never runs this
 check. `tests/test_flatpak_release_guard.py` runs it against a real signed
 repository and bundles made by flatpak and ostree with throwaway keys
 (`tests/flatpak/make-release-fixture.sh`).
@@ -177,11 +181,11 @@ Native package scripts validate the installed metadata and launcher after the
 package-manager install, in addition to their unchanged clean-container offline
 smoke tests. No validator error is suppressed.
 
-The draft `release/0.3.0` PR uses the coordinator-approved provisional metainfo
-date `2026-10-29`. The coordinator confirms the version and updates the date in
-that PR before tagging. Keep it a draft until then; running the version/tag-name
-check does not create a tag or publish a release. Review fixes for #76–#85 also
-land before the release is finalised.
+A release PR (`release/X.Y.Z`) bumps every version that check reads and adds the
+NEWS section, which the tag workflow publishes as the release notes
+(`build-aux/ci/release_notes.py`, ahead of GitHub's generated PR list). After it
+merges and main's run is green, the tag `vX.Y.Z` on that merge builds nothing new:
+it publishes what main tested.
 
 ## Measurements and validation
 
