@@ -112,7 +112,7 @@ def test_the_brokers_stopping_status_wins_over_a_held_activity_poll(application_
     path = "/library/Recording-" + identifier
     replies = queue.Queue()
     # The real BrowserActivity; each poll answers only when the test says so.
-    monkeypatch.setattr(capture_activity, "read_browser_activity", lambda *_: replies.get())
+    monkeypatch.setattr(capture_activity, "read_browser_activity", lambda *_, **__: replies.get())
     changes = []
     activity = capture_activity.BrowserActivity(lambda: changes.append(1), interval_ms=3_600_000)
     try:

@@ -11,8 +11,13 @@ from .browser_service import read_packet, send_packet, service_path
 from .capture_guard import browser_capture_busy
 from .library import meeting_id
 
+# A broker that accepted a status poll but did not answer within the bound.
+# It has not said that nothing records: it is busy (its once-a-second session
+# checkpoint fsyncs under the capture lock that a status reply also takes).
+UNANSWERED = object()
 
-def read_browser_activity(path=None, with_connection=False, with_paths=False):
+
+def read_browser_activity(path=None, with_connection=False, with_paths=False, *, unanswered=None):
     try:
         with socket.socket(socket.AF_UNIX) as connection:
             connection.settimeout(0.25)
@@ -32,7 +37,9 @@ def read_browser_activity(path=None, with_connection=False, with_paths=False):
         if with_paths:
             return result, connected, paths
         return (result, connected) if with_connection else result
-    except (OSError, ValueError, TypeError, AttributeError):
+    except (OSError, ValueError, TypeError, AttributeError) as error:
+        if unanswered is not None and isinstance(error, TimeoutError):
+            return unanswered
         return ({}, False, {}) if with_paths else (({}, False) if with_connection else {})
 
 
@@ -88,7 +95,7 @@ class BrowserActivity:
         if self.closed:
             return GLib.SOURCE_REMOVE
         if self.future is None:
-            self.future = self.executor.submit(read_browser_activity, self.path, True, True)
+            self.future = self.executor.submit(read_browser_activity, self.path, True, True, unanswered=UNANSWERED)
             self.future.add_done_callback(lambda future: GLib.idle_add(self._complete, future))
         return GLib.SOURCE_CONTINUE
 
@@ -96,8 +103,11 @@ class BrowserActivity:
         if not future.done():
             return False
         self.future = None
-        if not self.closed:
-            value, connected, paths = future.result()
+        # Unanswered is unknown, not idle: publishing "nothing records" for one
+        # late reply unbinds a live meeting's views and tears its meter down.
+        # Keep what the broker last said until it answers or its socket goes.
+        if not self.closed and (result := future.result()) is not UNANSWERED:
+            value, connected, paths = result
             if value != self.snapshot or connected != self.connected or paths != self.paths:
                 self.snapshot = value
                 self.connected = connected

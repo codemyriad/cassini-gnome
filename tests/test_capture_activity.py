@@ -103,6 +103,82 @@ def test_slow_broker_is_bounded_and_does_not_block_main_context(tmp_path):
     assert not read_browser_activity(tmp_path / "absent.sock")
 
 
+def test_an_unanswered_poll_keeps_the_live_capture_and_a_real_reply_clears_it(tmp_path):
+    """A broker that is late (its session checkpoint fsyncs under the capture
+    lock that a status reply takes) has not said that nothing records. Treating
+    the timeout as idle dropped the live meeting for one poll, which unbound its
+    spectrogram and closed the meter subscription (the spectrogram-browser flake)."""
+    import queue
+    import socket
+    import threading
+
+    from gi.repository import GLib
+
+    from cassini_talk.browser_service import read_packet
+
+    session = capture(tmp_path, completed=False)
+    identifier, directory = session.manifest["id"], str(session.directory)
+    path = tmp_path / "late.sock"
+    replies, polled, release = queue.Queue(), threading.Event(), threading.Event()
+    live = dict(statuses=[dict(recording=True, path=directory)], connectedBrowsers=1)
+
+    def serve(server):
+        while (answer := replies.get()) is not None:
+            connection = server.accept()[0]
+            with connection, connection.makefile("rwb") as stream:
+                assert read_packet(stream) == dict(role="app", action="status")
+                if answer == "late":
+                    polled.set()
+                    release.wait()  # Never answers: the client's own bound ends the poll.
+                else:
+                    send_packet(stream, answer)
+
+    def pump(condition):
+        expired = []
+        source = GLib.timeout_add_seconds(5, lambda: expired.append(True) or GLib.SOURCE_REMOVE)
+        try:
+            while not condition():
+                assert not expired, "activity poll did not complete"
+                GLib.MainContext.default().iteration(True)
+        finally:
+            if not expired:
+                GLib.source_remove(source)
+
+    changes = []
+    with socket.socket(socket.AF_UNIX) as server:
+        server.bind(str(path))
+        server.listen()
+        thread = threading.Thread(target=serve, args=(server,))
+        thread.start()
+        replies.put(live)
+        watcher = BrowserActivity(lambda: changes.append(dict(watcher.snapshot)), path=path, interval_ms=3_600_000)
+        try:
+            pump(lambda: watcher.future is None)
+            assert changes == [{identifier: "recording"}] and watcher.connected
+
+            replies.put("late")
+            watcher.poll()
+            pump(lambda: polled.is_set() and watcher.future is None)
+            assert watcher.snapshot == {identifier: "recording"}, "A late reply is unknown, not idle"
+            assert watcher.paths == {identifier: directory} and watcher.connected
+            assert len(changes) == 1, "A late reply must not publish a change"
+
+            release.set()
+            replies.put(dict(statuses=[], connectedBrowsers=1))
+            watcher.poll()
+            pump(lambda: watcher.future is None)
+            assert watcher.snapshot == {} and watcher.paths == {}
+            assert changes == [{identifier: "recording"}, {}]
+        finally:
+            watcher.close()
+            release.set()
+            replies.put(None)
+            thread.join(5)
+    assert not thread.is_alive()
+    # Without a broker it still reads as idle, as before.
+    assert read_browser_activity(path, True, True, unanswered=object()) == ({}, False, {})
+
+
 def test_native_identity_only_comes_from_controller_owned_session(tmp_path):
     session = capture(tmp_path)
     recorder = SimpleNamespace(pipeline=object(), session=session, stopping=False)
