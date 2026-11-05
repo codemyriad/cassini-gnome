@@ -1,10 +1,19 @@
 name: Shared recording contract
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 permissions:
   contents: read
+# D66: a PR push runs once, and a newer push to the same PR cancels its superseded run.
+# Pushes to main each get their own group: GitHub would otherwise drop a pending main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   contract:
     runs-on: ubuntu-24.04
+    # p95 3.2 min over 178 green runs (2026-10-29..11-04), slowest 6.1 min: 10 min is about 3x p95.
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
@@ -17,6 +26,10 @@ jobs:
       - run: python3 -m unittest discover -s tests -p "test_*.py"
       - run: python3 conformance/check-native-fixture.py
       - run: python3 conformance/check-session-events.py
+      - name: Shared scenario modules parse; live-folder driver and control relay unit tests
+        run: |
+          for file in scenarios/*.mjs tests/*.mjs; do node --check "$file"; done
+          node --test tests/live-folder-driver.test.mjs tests/control-relay.test.mjs
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - name: Isolated output device for generated tab tone

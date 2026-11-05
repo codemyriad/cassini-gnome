@@ -1,0 +1,93 @@
+{
+  "name": "live-folder",
+  "version": 1,
+  "decision": "D68 (shared test 2): the coordinator owns these constants and bands; apps never loosen them in their own PRs, and bands only tighten from at least 10 measured runs.",
+  "corpus": {
+    "file": "../multistream/corpus.json",
+    "constants": ["LATE_REMOTE_MS", "BLEED_DB", "SPAN_RATIO_MIN", "SPARSE_DENSITY_MAX"]
+  },
+  "constants": {
+    "MUTE_START_MS": 5000,
+    "MUTE_MS": 60000,
+    "MIC_ON_MS": 90000,
+    "KILL_AT_MS": 95000,
+    "STOP_AFTER_RESTORE_MS": 5000,
+    "ACTION_SLACK_MS": 1500,
+    "RESUME_BOUND_MS": 30000,
+    "SILENT_DBFS": -50,
+    "EDGE_MS": 1000,
+    "MUTE_JITTER_MS": 500,
+    "PROOF_MS": 2000,
+    "TONE_A_HZ": 1540,
+    "TONE_B_HZ": 2090
+  },
+  "topology": {
+    "peers": 1,
+    "slots": [
+      {"slot": 0, "role": "A", "tone": "TONE_A_HZ", "sends": "from record; replaceTrack(null) for the mute"},
+      {"slot": 1, "role": "B", "tone": "TONE_B_HZ", "sends": "from lateRemote, after LATE_REMOTE_MS"},
+      {"slot": 2, "role": "C", "tone": null, "sends": "never: connected recvonly, no track"}
+    ]
+  },
+  "driver": {
+    "pollMs": 100,
+    "boundsMs": {
+      "setup": 20000,
+      "record": 20000,
+      "meOff": 12000,
+      "muteHold": 75000,
+      "unmute": 10000,
+      "lateRemote": 20000,
+      "meOn": 15000,
+      "lost": 15000,
+      "restore": 30000,
+      "stop": 30000
+    },
+    "note": "Upper bounds of the E1 waits, failing with their step name; revisit at 2-4x the measured p95 (D66). restore is RESUME_BOUND_MS."
+  },
+  "evidence": {
+    "file": "evidence.json, written by the driver after Stop and before check.py runs",
+    "times": "Session-timeline milliseconds: Date.now() - timelineOriginMs, the origin read from the extension's service worker. May be negative before the folder exists (record).",
+    "required": {
+      "scenario": "\"live-folder/1\"",
+      "app": "lowercase name of the writer under test: gnome, macos (synthetic for make.py)",
+      "protocolCommit": "40 lowercase hex: the protocol commit the app vendors",
+      "extensionVersion": "the loaded extension's manifest version",
+      "newFolders": "names of the Recording-* folders that appeared in the Library during the run",
+      "actions": "{name: {requestedAtMs, observedAtMs}} for every name in actions below; requestedAtMs <= observedAtMs",
+      "slotC": "{connectionState, packetsReceived}: slot C's peer state and inbound-rtp packetsReceived sampled just before Stop",
+      "maxSourceCount": "the highest meeting-row sourceCount seen",
+      "nativeTones": "{microphone: Hz}: the tone the app's test microphone plays",
+      "captureId": "the recording's captureId as the extension's service worker holds it (chrome.storage.session cassiniSessions[] entry of the meeting tab, read at record): the identity a resume must name",
+      "timelineOriginMs": "that entry's startedAt, an integer: the origin of every time above and the other half of the recording's identity",
+      "resumeRequests": "every resume request the app sent during the run, in pipe order, as resumeObservation below defines it: [{atMs, via, connection, requestId, captureId, timelineOriginMs}]; [] when there was none"
+    },
+    "resumeObservation": {
+      "via": "control-pipe",
+      "point": "The app adapter registers the app's production control host (native messaging host io.codemyriad.cassini.control) through a driver-owned launcher (scenarios/native-launcher.mjs) that keeps the host the browser's direct child. The launcher, which the browser starts, starts a relay detached from itself (stdin /dev/null, stdout the browser's pipe it inherited, input a private FIFO), then execs the production host with its argv and the browser's arguments, its environment and its stdin unchanged and only its stdout redirected into that FIFO. The relay copies the FIFO to the browser's pipe byte for byte, unchanged and unbuffered, exits at the end of its input, and parses that host-to-browser direction as native messaging frames (a 4-byte native-endian length, then that many bytes of UTF-8 JSON). The browser-to-host direction is not touched. Every control host of the run is launched this way, reconnects included.",
+      "process": "The observation must not change the host's process ancestry, argv, environment or stdin: the Mac control host identifies its browser only by getppid() (BrowserInstance.parentBrowser, BrowserCompanionConnection.parentBrowserName), so a relay that spawned the host would run it with no identified browser, a configuration production never meets. For each control host the launcher records its own pid (the host's, after exec), and the driver checks that this pid's parent is the browser process and fails the run otherwise.",
+      "request": "Every host-to-browser frame with type \"command\", action \"start\" and a resumeCapture member, from before record until the stop observation: one resumeRequests entry each, even when the extension later refuses or ignores it.",
+      "fields": {
+        "atMs": "Date.now() when the relay has read the whole frame, before forwarding it, minus timelineOriginMs",
+        "via": "\"control-pipe\", the only observation accepted",
+        "connection": "an integer >= 1: the control host that wrote the frame, numbered in launch order from 1 for the first control host the browser started in the run. Each launch is one control connection (its own hello): SPEC-CONTROL D52.5 allows one ask per loss and control connection",
+        "requestId": "the frame's requestId, as written",
+        "captureId": "the frame's resumeCapture.captureId, as written (any JSON value)",
+        "timelineOriginMs": "the frame's resumeCapture.timelineOriginMs, as written (any JSON value)"
+      },
+      "unusable": "A host-to-browser frame the relay cannot read as JSON fails the run: the driver writes no evidence.",
+      "independence": "These are the bytes the app's control host wrote to the browser, copied by a driver process before the extension reads them: no app log, status, reader or self-report is consulted, and the extension's own checks, coalescing or refusal cannot hide or add a request. The host runs as in production (same parent, argv, environment and stdin), so the observation does not change what it sends. The identity it is compared with comes from the extension, not from the app."
+    },
+    "actions": {
+      "record": "requested: record(); observed: status with path and captureId, and A's track holds 1000 ms of frames",
+      "meOff": "requested: selectMe(false); observed: the last selection event shows me:false",
+      "mute": "requested: muteSlot(remote, 0) once F(A) >= MUTE_START_MS and the session clock (Date.now() - timelineOriginMs) >= MUTE_START_MS: F(A) may lead the session clock, so both; observed: replaceTrack(null) resolved",
+      "unmute": "requested: switchReceiveSlot(remote, 0, [A]) once F(A) >= mute + MUTE_MS and the session clock >= mute + MUTE_MS (mute is mute.requestedAtMs); observed: F(A) advanced by PROOF_MS",
+      "lateRemote": "requested: switchReceiveSlot(remote, 1, [B]) after unmute, at or after LATE_REMOTE_MS; observed: a new sourceTrackId with PROOF_MS of frames",
+      "meOn": "requested: selectMe(true) once S >= MIC_ON_MS; observed: selection me:true and a microphone span with PROOF_MS of frames",
+      "kill": "requested: SIGKILL of the one live audio-host pid once S >= KILL_AT_MS; observed: othersSource system/lost",
+      "restore": "requested: the kill's observation; observed: othersSource browser/restored and new span ids under A's and B's keys, each with PROOF_MS of frames",
+      "stop": "requested: stop() once S >= restore + STOP_AFTER_RESTORE_MS; observed: state is not recording and the end event is written"
+    }
+  }
+}

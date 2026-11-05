@@ -135,3 +135,90 @@ and a played session with an unknown offset. Each app runs its own consumers on
 the folders and checks its results file with `placement.py check`, then repeats
 on the three app mutants (`make.py --mutant`, `check --mutant`) so that numbers
 copied from `bursts.json` fail; see the folder's README.
+
+## Shared test 2: live folder oracle (D68)
+
+`conformance/live-folder/` holds the scenario constants and the `evidence.json`
+contract (`scenario.json`), the coordinator-owned oracle (`check.py`) and a
+synthetic passing run with 40 named mutants and 4 variant writer forms (`make.py`,
+pinned byte for byte by `materialized.sha256` on Linux and macOS Python 3.9). The
+shared driver runs the scenario against each app's real writer: a 60 s
+`replaceTrack(null)` mute with A the only open source, a late remote, a connected
+slot that never sends, Me off then on at 90 s, and a forced resume (SIGKILL of the
+audio host: system/lost, one `resume-capture-v1`, browser/restored with new spans
+under the same keys). The driver reads each resume request off the app's control
+pipe itself, copying the host's stdout through a relay while the launcher execs the
+host, which stays the browser's direct child, and records each request with the recording
+identity it names and its time (`scenario.json` `resumeObservation`).
+`check.py check` then checks the folder against the evidence brackets and those
+requests, the scenario and corpus constants and PCM it measures itself, never
+through an app reader; `check.py compare` lines two apps' results up.
+`tests/test_live_folder_oracle.py` proves the base run and the variants pass, each
+mutant and evidence fault fails exactly its rules, every rule is shown failing at
+least once, GNOME's rotated `spans` are read piece by piece and must tile the logical track, and that `check.py`
+needs only the standard library. See the folder's README for every rule.
+
+### The driver (`scenarios/live-folder.mjs`)
+
+`runLiveFolder({meeting, remote, app, worker, out})` runs the scenario through an app
+adapter (`record`, `selectMe`, `snapshot`, `meetingRow`, `stop`, `audioHostPids`,
+`folders`, `controlHost`, `browserPid`, optional `saved`; the header of the file lists the contract), writes
+`evidence.json` and runs `check.py` before the app quits. It needs no Playwright of its
+own: the adapter passes the pages and the extension's service worker.
+
+- Topology: `connectReceiveSlots(meeting, remote, [[A], null, null], {play: true})`, three
+  recvonly slots on one peer. A `null` slot is connected and never gets a track; `muteSlot`
+  mutes a slot with `replaceTrack(null)`, so no RTP flows (the real SFU shape). `play`
+  makes the page play each slot through an `<audio>` element, as meeting pages do:
+  nothing pulls an unplayed receiver, so its jitter buffer fills until the capture starts
+  and the recording then lags the sender by 1-2 s (measured on roy: about 50 ms when
+  played). That lag carried A's tone up to 1.4 s past the mute and failed O2.silent in
+  two of six runs; the driver records A's jitter-buffer delay in `evidence.json` notes.
+- Clock: `scenarios/folder-clock.mjs` reads `session.json` (tolerating a missing or
+  half-written file) for S, the latest track end, and F(source), one source's. Every
+  step waits on the folder or the app with a bound from `scenario.json` and fails with
+  the step's name (E1). Times are `Date.now()` minus the session origin the extension
+  holds, so they are app-neutral: the `chrome.storage.session` `cassiniSessions[]` entry of
+  the meeting tab gives the evidence's `captureId` and integer `timelineOriginMs`.
+- Mute: asked once F(A) and the session clock both reach `MUTE_START_MS`, unmuted once both
+  reach `mute.requested + MUTE_MS` (O2.muteStart, O2.duration).
+- Forced resume: `scenarios/native-launcher.mjs` registers the app's production hosts
+  through a POSIX `sh` launcher that writes its pid to `<pids>/<name>-<pid>.pid` and execs
+  the host, so the test kills exactly the session's audio host. The driver waits for
+  `system/lost` before `browser/restored` (a restore with no committed loss fails at once).
+- Resume requests (`scenario.json` `resumeObservation`): the adapter registers its control
+  host with `writeNativeHost({..., observe})`. That launcher takes the first free
+  `<observe>/<n>` (mkdir, so connections count from 1 in launch order), records `$$ $PPID`
+  there, makes a FIFO in it, starts `scenarios/control-relay.mjs` detached (stdin
+  `/dev/null`, stdout the browser's pipe) and execs the host with only its stdout into the
+  FIFO. The launcher keeps its files private with `umask 077` and gives the host the
+  browser's umask back before the exec. The relay copies the FIFO to the browser byte for
+  byte, one blocking write per read, logs each native-messaging frame (`Date.now()` once
+  the frame is whole, before forwarding) and exits at the end of its input; an unreadable
+  frame is logged and still forwarded. When the browser closes its end, the relay learns it
+  from the next forward (EPIPE), logs `outputError` with the frames it did not deliver
+  (`undelivered`, never counted) and closes the FIFO: the host's first write after the
+  close still succeeds into the FIFO, its next one fails as without the relay (Node cannot
+  poll a pipe's write end for the hangup). At setup, record, kill, restore and stop the
+  driver fails the run if a control host's launch parent or live parent is not
+  `browserPid()`, a relay logged an unparsable frame or an input error, a relay has not
+  started within `RELAY_START_MS` of its launch (the host then waits on the FIFO), or a
+  relay stopped before the end of its input; `notes.browserPid` and
+  `notes.controlParents` keep what each check saw. After the stop observation it writes
+  `resumeRequests` in pipe order.
+- The mute is held until A's own frames cover `MUTE_MS`; on every poll A must keep one
+  span, stay open and see no `othersSource` event. Me on waits for the microphone span
+  that starts at the `me:true` selection's `atMs`.
+
+`node --test tests/live-folder-driver.test.mjs` checks the folder clock against
+`make.py`'s synthetic folder, its tolerant reads and labelled bounds, the launcher
+(pid, arguments, exec, host-name prefixes) and the constants the driver reads;
+`node --test tests/control-relay.test.mjs` checks the frame reader across chunk
+boundaries, the relay's byte-exact passthrough, unparsable and cut-off frames, and the
+observing launcher (the host stays the spawner's child, connections in launch order, the
+parent check, resume requests in pipe order, stuck relays stopped, the browser-to-host
+bytes untouched, the host's umask, a relay that never starts or dies, the browser closing
+its end on a real pipe) with no browser.
+Protocol CI runs both with `node --check` of every scenario. There is no Playwright run of the
+driver here (no protocol host can resume or select): GNOME's `live-folder` job and the
+Mac self-test run it against the real writers.

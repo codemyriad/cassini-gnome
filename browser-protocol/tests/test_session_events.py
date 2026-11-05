@@ -48,6 +48,25 @@ class SessionEventsTests(unittest.TestCase):
         session = dict(self.session, tracks=[tracks['microphone-1'], tie])
         self.assertEqual(annotations.others_presence(session), [[1000.0625, 2000.0625]])
 
+    def test_a_track_with_no_known_start_adds_no_presence(self):
+        """startOffsetMs is optional (readers also accept null): a track with no known start has no
+        extent, so it adds no presence and never aborts the oracle (a 0-frame declaration that Mac
+        commits before its restore)."""
+        tracks = {track['id']: track for track in self.session['tracks']}
+        remote = dict(tracks['browser-1'], frames=8000, startOffsetMs=1000, endOffsetMs=2000, gaps=[])
+        session = dict(self.session, tracks=[tracks['microphone-1'], remote])
+        present = annotations.others_presence(session)
+        for start in ('missing', None):
+            with self.subTest(startOffsetMs=start):
+                declared = dict(remote, id='declared', file='track-declared.wav', frames=0, ended=True)
+                declared.pop('endOffsetMs')
+                declared.pop('startOffsetMs')
+                if start is None:
+                    declared.update(startOffsetMs=None, endOffsetMs=None)
+                with_declared = dict(self.session, tracks=[tracks['microphone-1'], remote, declared])
+                annotations.validate(with_declared)
+                self.assertEqual(annotations.others_presence(with_declared), present)
+
     def test_legacy_and_null_annotations_do_not_infer_a_fallback(self):
         for value in [None, []]:
             self.session['events'] = value

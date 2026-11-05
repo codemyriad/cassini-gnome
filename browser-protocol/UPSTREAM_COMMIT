@@ -1,26 +1,12 @@
-tree 52d0deeec758d89340aab335bf85d90a3891a30f
-parent 3882189667cd1b857d0025d89f9d02ed87cce283
-parent fd3b4a0432ce3aebedfcb20fa5a41dbcc99ed627
-author Silvio Tomatis <silviot@gmail.com> 1793816217 +0100
-committer GitHub <noreply@github.com> 1793816217 +0100
-gpgsig -----BEGIN PGP SIGNATURE-----
- 
- wsFcBAABCAAQBQJq63aZCRC1aQ7uu5UhlAAA0wYQAA5L4E4g6RAyUX8eVJu63GWq
- vpOJGl26ejGagnsbHVx6XGlzvpR5XuMU2XC4wbGa+xddEUOrWhVjMXT5E0CatTkq
- 74jppxhVJ0zlEcI7iJjQNPgDbwPYaEkqVCkpvWTtl8ACEW5A0fQXgGBEvlua9a0d
- 3v+EXWN7oaruwVPSiqHXxqjsKSIUPtPSGj8CaLbXULVAzNlW6c6ZcYW58pvQ9u1b
- aw9ZQ+eiUF7uvoJf/RCsCH4HAPsT/wi1YUTflSIGj6wLuov0es4ZiYRJVi3eip33
- 4hXByI9HXiwfj7BMBV78DkvVvfcum0DoCf4oxB10frFhkKTJO/GfOuyeyGji6T1N
- dQMTQEgfzf4RpavH+v0TwAbruPnwskmw5FRGnf2DZy8aqR0nyyq47OrDLGicau9h
- cF1RXwcPyljmYnjIlaQ1mKW2fqy82TkXyRaOgW02t2zevsDWxtjvwX7NjMF39rhC
- qY2E9iRmpXOKhAaA0KpRFo6mup/3TyUnoTMlmvqYiz24qmkwA0L9CtEg0cQnQikJ
- PqZJadwO5x01FOxdd1WCxslCdxEW9Ix8WBMdC2eTKg7NyKc+zgKRGos2I3HeHvCO
- XAizdNpNN+bkQH/MCEUCUCinZ6e99KM9J3uVTG2B5m69Q3pwdtJ5UTqekeOFiY4h
- VYz9KQhBzwMsoCMc4GDx
- =05s4
- -----END PGP SIGNATURE-----
- 
+tree 88dacceb041082367ee33adcbf9cba9aa4dc1c68
+parent a575eba938f869f31ab542f593231800f720c635
+parent a47d29341152c7c6c667520fd62bf12b469d6a81
+author Silvio Tomatis <silviot@gmail.com> 1793842014 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793842014 +0100
 
-Merge pull request #48 from codemyriad/conformance/presence-from-placement
+Merge protocol main (final live-folder oracle, #49) into the driver
 
-Presence starts at the D55 placement (R88, D67 item 7)
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+# Conflicts:
+#	SHA256SUMS
