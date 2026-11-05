@@ -88,6 +88,8 @@ class NativeRecorder(GObject.Object):
         # by the drain; audio after it is not, and the end event is stamped
         # there, not when the drain ends (D4).
         self._stop_at_ms = None
+        # R93-2: an armed side Stop kept to drain (its input reached its queue first).
+        self._drain_armed = False
         self.line = None
         self.minutes_left = 0
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-native-io")
@@ -159,6 +161,7 @@ class NativeRecorder(GObject.Object):
         self._start_us = GLib.get_monotonic_time()
         self._stop_requested = False
         self._stop_at_ms = None
+        self._drain_armed = False
         self.session = None
         self.stopping = self._finishing = False
         self._problem = self.line = self.end_reason = None
@@ -276,6 +279,7 @@ class NativeRecorder(GObject.Object):
                     refuse_at=0,
                 )
                 attempts[kind] = attempt
+                self._watch_input(kind, attempt)
                 sink = branch.get_by_name(kind)
                 if sink is not None:
                     pad = sink.get_static_pad("sink")
@@ -354,15 +358,48 @@ class NativeRecorder(GObject.Object):
         if branch.get_parent() == pipeline:
             pipeline.remove(branch)
 
-    def _retire_armed(self, pipeline):
-        """Release every armed side at the end; returns their kinds (they never heard)."""
+    @staticmethod
+    def _watch_input(kind, attempt):
+        """R93-2: note when a side's input reaches its tap queue (the appsink in a
+        branch without one). A first buffer can wait there, or behind the PCM
+        lock, when Stop comes: Stop then drains the side (_retire_armed)."""
+        branch = attempt["branch"]
+        element = branch.get_by_name("tap-queue") or branch.get_by_name(kind)
+        if element is None:
+            return  # A stand-in branch that fails before any input.
+
+        def entered(_pad, _info):
+            attempt["received"] = True
+            return Gst.PadProbeReturn.OK
+
+        element.get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER | Gst.PadProbeType.BUFFER_LIST, entered)
+
+    def _retire_armed(self, pipeline, *, keep_received=False):
+        """Release the armed sides at the end; returns their kinds (they never heard).
+
+        keep_received (Stop): an armed side whose input already reached its
+        queue is kept, and its EOS no longer held back, so the drain records
+        what it captured before Stop's moment (_admit; a side that received
+        only later audio records nothing). Every other armed side is released.
+        Returns the kept sides' kinds too."""
+        kept = []
         with self._lock:
             armed = [(kind, a) for kind, a in self._pending_sources.items() if a.get("armed") and not a["retired"]]
+            if keep_received:
+                kept = [(kind, a) for kind, a in armed if a.get("received")]
+                armed = [(kind, a) for kind, a in armed if not a.get("received")]
+                for _kind, attempt in kept:
+                    attempt["draining"] = True
+                    if "hold" in attempt:
+                        pad, probe = attempt.pop("hold")
+                        pad.remove_probe(probe)
             for kind, attempt in armed:
                 self._retire_attempt(kind, attempt)
             self.unheard |= {kind for kind, _attempt in armed}
         for _kind, attempt in armed:
             self._detach(pipeline, attempt)
+        if keep_received:
+            return [kind for kind, _attempt in armed], [kind for kind, _attempt in kept]
         return [kind for kind, _attempt in armed]
 
     def _armed_failed(self, kind, attempt):
@@ -426,7 +463,7 @@ class NativeRecorder(GObject.Object):
     def _late_opened(self, kind):
         """An armed side heard its first buffer after its start or turn-on was decided."""
         LOG.info("Native %s side (%s) opened on its first buffer", SIDES[kind], kind)
-        if self._mute_observer:
+        if self._mute_observer and not self.stopping:
             self._mute_observer.refresh()
         self.emit("changed")
         return False
@@ -497,12 +534,21 @@ class NativeRecorder(GObject.Object):
         is admitted), and a buffer at or after it refuses the microphone.
         D58.1: the others' side has no deadline, and an armed side (its start
         or turn-on already decided) commits on its first buffer, however late.
-        A turn-on still being decided (_select) only signals.
+        A turn-on still being decided (_select) only signals. R93-2: once Stop
+        is pressed, an armed side Stop kept (its input had reached its queue)
+        commits on a buffer captured before Stop's moment, and only on such
+        a buffer.
         """
         if "window" not in attempt and not attempt.get("armed"):
             self._signal(attempt)
             return False
-        if attempt["error"] or attempt["retired"] or self.stopping or self._start_cancelled(attempt["pipeline"]):
+        if attempt["error"] or attempt["retired"]:
+            return False
+        if self.stopping:
+            heard = attempt.get("armed") and self._stop_at_ms is not None and pts_ms < self._stop_at_ms
+            if not heard or self._finishing or self.pipeline is not attempt["pipeline"]:
+                return False
+        elif self._start_cancelled(attempt["pipeline"]):
             return False
         if attempt["deadline"] is not None and self._open_clock() >= attempt["deadline"]:
             attempt["error"] = attempt["message"] = NO_SAMPLE
@@ -688,6 +734,7 @@ class NativeRecorder(GObject.Object):
                     armed=False,
                 )
                 prepared[kind] = attempt
+                self._watch_input(kind, attempt)
                 with self._lock:
                     self._pending_sources[kind] = attempt
                 pipeline.add(branch)
@@ -1053,8 +1100,10 @@ class NativeRecorder(GObject.Object):
         # Classify off GTK too: a writer may currently hold the sample lock.
         # D58.1: an armed side that never heard a buffer is released too: no
         # track and no refusal. If no side ever opened, nothing recorded.
+        # R93-2: an armed side whose first buffer is still queued (or waits
+        # behind the PCM lock) heard it before Stop: it drains like an open side.
         def retire():
-            self._retire_armed(pipeline)
+            _released, kept = self._retire_armed(pipeline, keep_received=True)
             with self._lock:
                 empty = [
                     branch
@@ -1062,11 +1111,12 @@ class NativeRecorder(GObject.Object):
                     if self.session.writers[self._track_ids[kind]].frames == 0
                 ]
                 self._retired_branches.update(empty)
-                nothing = not self.session.manifest["tracks"]
+                nothing = not self.session.manifest["tracks"] and not kept
+                self._drain_armed = bool(kept)
             for branch in empty:
                 branch.set_state(Gst.State.NULL)
                 pipeline.remove(branch)
-            return len(empty) == len(self._branches), nothing
+            return len(empty) == len(self._branches) and not kept, nothing
 
         future = self._executor.submit(retire)
         future.add_done_callback(lambda f: GLib.idle_add(self._empty_sources_stopped, f, pipeline))
@@ -1105,6 +1155,12 @@ class NativeRecorder(GObject.Object):
         self._finishing = True
         self.stopping = True
         self._open_wake.set()
+        if self._drain_armed and self.session is not None and not self.session.manifest["tracks"]:
+            # R93-2: the armed side Stop drained heard nothing before Stop's
+            # moment, and no other side opened: nothing recorded (D58 point 2).
+            # discard() still keeps a folder whose track a late commit opened.
+            self._discard = True
+            problem = problem or (self._nothing_cause() if self.refusals else None)
         self._problem = problem
         self.emit("changed")
         for timer in (self._timeout, self._disk_timer):

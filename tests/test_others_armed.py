@@ -26,6 +26,7 @@ from test_native_sides import (  # noqa: E402
     BOUND,
     CAUSES,
     FRAME,
+    FRAME_NS,
     Sides,
     browser_start,
     close,
@@ -962,6 +963,148 @@ def test_an_armed_tap_whose_first_buffer_waits_behind_the_capture_lock_drains_at
     assert drained, "Stop skipped the drain of a tap with pre-Stop input queued"
     assert len(received) == 10 and not failures, (len(received), failures)
     assert b"".join(received) == bytes(10 * 960)
+
+
+def stop_with_an_armed_buffer_on_its_way(tmp_path, monkeypatch, plan, captured, order):
+    """The native-only recorder, its others' side armed (silent so far), on
+    branches with the real tap queue. 10 ms frames of computer sound reach the
+    others' queue, and the first one is still on its way to the writer as Stop
+    is pressed. `captured` places them: "before" Stop (100 ms ending as Stop is
+    pressed) or "after" it (one frame stamped 5 s on). `order` decides which
+    runs first once the first frame and Stop meet, both being possible:
+    "stop-first": Stop's release of the armed sides (the frame is held between
+    the queue and the writer meanwhile); "callback-first": the frame's callback,
+    which waited behind the PCM lock (a checkpoint stalled on storage) while
+    Stop's release waits behind other IO work. Returns (recorder, signals,
+    session, first frame's ms)."""
+    from cassini_talk.recorder import TAP_QUEUE
+
+    parse = Gst.parse_bin_from_description
+    monkeypatch.setattr(
+        Gst,
+        "parse_bin_from_description",
+        lambda description, ghost: parse(description.replace(" ! appsink", f" ! {TAP_QUEUE} ! appsink"), ghost),
+    )
+    recorder, sides, signals = start(tmp_path, plan)
+    session, pipeline = recorder.session, recorder.pipeline
+    holder, release, gate = None, threading.Event(), threading.Event()
+    try:
+        attempt = recorder._pending_sources["system"]
+        assert attempt["armed"] and attempt["branch"].get_by_name("tap-queue") is not None
+        clock, base = pipeline.get_clock(), pipeline.get_base_time()
+        count = 10 if captured == "before" else 1
+        # The frames end at, or start after, Stop's moment: the pipeline runs
+        # their length first (a clock wait for that running time, no sleep).
+        Gst.Clock.id_wait(clock.new_single_shot_id(base + count * FRAME_NS))
+        reached, admitted = threading.Event(), threading.Event()
+
+        def entering(*_):
+            if not reached.is_set():
+                reached.set()
+                if order == "stop-first":
+                    assert release.wait(3 * BOUND)  # Bound only: the test releases it.
+            return Gst.PadProbeReturn.OK
+
+        sink = attempt["branch"].get_by_name("system").get_static_pad("sink")
+        sink.add_probe(Gst.PadProbeType.BUFFER, entering)
+        admit = recorder._admit
+
+        def admitting(*args):
+            try:
+                return admit(*args)
+            finally:
+                admitted.set()
+
+        recorder._admit = admitting
+        if order == "callback-first":
+            held = threading.Event()
+
+            def hold():
+                with recorder._lock:
+                    held.set()
+                    assert release.wait(3 * BOUND)  # Bound only: the test releases it.
+
+            holder = threading.Thread(target=hold, name="test-stall")
+            holder.start()
+            assert held.wait(BOUND)
+            recorder._executor.submit(gate.wait, 3 * BOUND)  # Other IO work ahead of Stop's release.
+        now = clock.get_time() - base
+        first = now - count * FRAME_NS if captured == "before" else now + 5 * Gst.SECOND
+        for index in range(count):
+            buffer = Gst.Buffer.new_wrapped(FRAME)
+            buffer.pts, buffer.duration = first + index * FRAME_NS, FRAME_NS
+            assert sides.sources["system"].emit("push-buffer", buffer) == Gst.FlowReturn.OK
+        assert reached.wait(BOUND)  # The first frame is on its way to the writer.
+        assert "system" in recorder._pending_sources and not admitted.is_set()
+        recorder.stop()
+        assert recorder._stop_at_ms >= now / Gst.MSECOND
+        if order == "stop-first":
+            spin_until(lambda: attempt["retired"] or attempt.get("draining"))
+            release.set()  # The frame goes on to the writer.
+        else:
+            release.set()  # The stall ends; the frame's callback takes the lock.
+            holder.join(BOUND)
+            assert admitted.wait(BOUND)
+            gate.set()
+        spin_until(lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing)
+    finally:
+        release.set()
+        gate.set()
+        if holder is not None:
+            holder.join(BOUND)
+        close(recorder)
+    return recorder, signals, session, first / Gst.MSECOND
+
+
+ORDERS = pytest.mark.parametrize("order", ["stop-first", "callback-first"])
+
+
+@ORDERS
+@pytest.mark.parametrize("microphone", ["ok", "fail"])
+def test_native_an_armed_side_whose_first_buffer_is_on_its_way_at_stop_records_it(
+    tmp_path, monkeypatch, microphone, order
+):
+    """R93-2 (#230 review): the native-only recorder. The others' side heard its
+    first buffers before Stop, but they were still queued, the first one on its
+    way to the writer (or waiting behind the PCM lock), as Stop was pressed.
+    They were heard before Stop: Stop drains them into a track that opens at the
+    first and ends at Stop's moment (D4), instead of releasing the side as one
+    that never heard a buffer. With the microphone refused, they keep the folder."""
+    plan = {"microphone": ("ok", 0.1) if microphone == "ok" else ("fail", 0), "system": ("never", 0)}
+    recorder, signals, session, first = stop_with_an_armed_buffer_on_its_way(
+        tmp_path, monkeypatch, plan, "before", order
+    )
+    assert names(signals) == ["started", "finished"], signals
+    assert not recorder.discarded and recorder.unheard == set()
+    stored = saved(session)
+    assert stored["state"] == "completed" and "problem" not in stored
+    assert [t["kind"] for t in stored["tracks"]] == (["microphone"] if microphone == "ok" else []) + ["system"]
+    system = stored["tracks"][-1]
+    # Every frame heard before Stop is kept, from the first one on.
+    assert system["frames"] == 10 * 480 and system["startOffsetMs"] == pytest.approx(first)
+    assert system["endOffsetMs"] == pytest.approx(first + 100) and system["endOffsetMs"] <= recorder._stop_at_ms
+    end = stored["events"][-1]
+    assert end["type"] == "end" and end["reason"] == "user"
+    assert end["atMs"] == pytest.approx(max(recorder._stop_at_ms, *(t["endOffsetMs"] for t in stored["tracks"])))
+
+
+@ORDERS
+def test_native_an_armed_side_heard_only_after_stop_records_nothing_and_never_waits_out_the_drain(
+    tmp_path, monkeypatch, order
+):
+    """Its only frame reached the queue before Stop's release but was captured
+    after Stop's moment: the side drains (its EOS is not held back, so the
+    recording does not wait out the 10 s bound) and opens no track. With the
+    microphone refused nothing opened: no folder, the start banner (D58 point 2)."""
+    plan = {"microphone": ("fail", 0), "system": ("never", 0)}
+    recorder, signals, session, _first = stop_with_an_armed_buffer_on_its_way(
+        tmp_path, monkeypatch, plan, "after", order
+    )
+    assert recorder.discarded and not session.directory.exists() and not list(tmp_path.iterdir())
+    assert names(signals) == ["started", "error", "finished"] and signals[-1] == ("finished", "")
+    assert signals[1][1] != "Timed out while saving the recording."
+    assert [(r["side"], r["code"]) for r in R.banner(recorder.refusals)["refusals"]] == [("me", "deviceUnavailable")]
+    assert recorder.unheard == {"system"}
 
 
 @pytest.mark.parametrize("kind", ["microphone", "system"])

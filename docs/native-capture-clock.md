@@ -71,9 +71,9 @@ pressed, before any capture or PCM lock a stalled checkpoint may hold, on every
 Stop path. The end event is stamped at it, raised only to the last event and
 every track end (D4), however long the drain takes. A tap that never received a
 buffer has nothing to drain and is released at once; an armed others' tap
-whose first buffer reached its queue drains like any other. In the native-only
-recorder, a side still armed at Stop is released without a drain, as before
-the queue (a follow-up).
+whose first buffer reached its queue drains like any other, in the broker and
+in the native-only recorder alike. Its track opens at its first buffer captured
+before the Stop moment; one that received only later audio records nothing.
 
 `tests/test_native_timing.py` drives the real native input callback with the
 pinned GNOME fixture and compares the entire manifest and WAV bytes. It also
