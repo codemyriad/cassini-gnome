@@ -142,7 +142,7 @@ def guards(cases,lines):
     (low,)=[r for r in session['captureOutcome']['sources'] if r['captureOutcome']=='lowAudio']
     assert meeting['transcript']['status']=='done' and low['trackIds'] and set(low['trackIds'])<=listed
     name={'text':low['label']}
-    assert [line['id'] for line in lines[case]['audio'] if line['args']['source']==name]==['details.sources.lowAudio']
+    assert [line['id'] for line in lines[case]['audio'] if line['args']['source']==name]==['details.sources.lowAudio.underSecond']
     assert not silent_sources(case)
 
 

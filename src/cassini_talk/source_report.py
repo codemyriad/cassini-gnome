@@ -6,7 +6,7 @@ from fractions import Fraction
 
 from .capture_report import from_session, stored
 from .strings import text
-from .ux_formats import meeting_duration
+from .ux_formats import details_duration
 
 
 @dataclass(frozen=True)
@@ -37,15 +37,36 @@ class SourceFact:
         return self.label or text("details.source.unknown")
 
     @property
-    def line(self):
+    def under_second(self):
+        """D58.4: a finished low-audio source under 1 s says so in words, not as a number."""
+        return self.expected and self.final and self.outcome == "lowAudio" and self.audio_ms < 1000
+
+    @property
+    def line_id(self):
+        """The catalog id of the Audio sources line this source shows (shared test 8).
+
+        It names the line actually shown: a live lowAudio source reads as captured,
+        a not-selected one as notSelected, and a live source not yet heard shows
+        only its name, so it has no catalog id ("")."""
         outcome = "notSelected" if not self.expected else self.outcome
         # During startup only actual failures warn. Partial live receipt is a
         # factual count, not a claim that this source has finished too short.
         if not self.final and outcome == "neverAudio":
-            return self.name  # Announced, not yet received: make no success claim.
+            return ""  # Announced, not yet received: make no success claim.
         if not self.final and outcome == "lowAudio":
-            outcome = "captured"
-        return text("details.sources." + outcome, source=self.name, duration=meeting_duration(self.audio_ms))
+            return "details.sources.captured"
+        if self.under_second:
+            return "details.sources.lowAudio.underSecond"
+        return "details.sources." + outcome
+
+    @property
+    def line(self):
+        line_id = self.line_id
+        if not line_id:
+            return self.name
+        if self.under_second:
+            return text(line_id, source=self.name)
+        return text(line_id, source=self.name, duration=details_duration(self.audio_ms))
 
     def silent(self, silent_tracks):
         """D67.1 (LIBRARY-RULES R13): a finished, captured source whose every track the
@@ -68,10 +89,10 @@ class SourceFact:
         # describe that same hole: show unequal counters separately, never sum.
         if self.padding_ms:
             rows.append(
-                text("details.sources.gap", source=self.name, duration=meeting_duration(float(self.padding_ms)))
+                text("details.sources.gap", source=self.name, duration=details_duration(float(self.padding_ms)))
             )
         if self.dropped_ms and self.dropped_ms != self.padding_ms:
-            rows.append(text("details.health.dropped") + ": " + meeting_duration(float(self.dropped_ms)))
+            rows.append(text("details.health.dropped") + ": " + details_duration(float(self.dropped_ms)))
         return tuple(rows)
 
 

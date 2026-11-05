@@ -57,6 +57,17 @@ def talk_time(ms):
     return text("format.talkTime", m=minutes, s=seconds) if minutes else f"{seconds} s"
 
 
+def details_duration(ms):
+    """Recording details durations (D58.4), never rounded down to whole minutes.
+
+    talkTime of the floored seconds: "45 s" under a minute, "1 min 27 s" under an
+    hour, "1 h 02 min" after. A positive amount under one second shows as "1 s",
+    never "0 s" (Mac parity); the low-audio line says it in words instead
+    (details.sources.lowAudio.underSecond).
+    """
+    return talk_time(max(1000, ms) if type(ms) in (int, float) and ms > 0 else ms)
+
+
 def confirmed_speech(ms):
     return text("format.confirmedSpeech", duration=meeting_duration(ms))
 

@@ -17678,6 +17678,39 @@
    }
   },
   {
+   "id": "details.sources.lowAudio.underSecond",
+   "en": "{source}: less than a second of audio was received.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "warning",
+   "boards": [],
+   "milestone": "D58.4",
+   "placeholders": {
+    "source": "source display name (person, This computer, Microphone)"
+   },
+   "note": "Coordinator (D58.4, Mac QA L1). Used instead of details.sources.lowAudio when the received audio is under 1 s, so no rounded duration ('0 s', 'under 1 min') is shown.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{source}: ricevuto meno di un secondo di audio."
+    },
+    "fr": {
+     "text": "{source} : moins d'une seconde de son reçue."
+    },
+    "es": {
+     "text": "{source}: se recibió menos de un segundo de audio."
+    },
+    "pt-BR": {
+     "text": "{source}: menos de um segundo de áudio recebido."
+    },
+    "pt-PT": {
+     "text": "{source}: foi recebido menos de um segundo de áudio."
+    }
+   }
+  },
+  {
    "id": "details.sources.silent",
    "en": "{source}: no speech heard.",
    "platforms": [
@@ -17707,6 +17740,35 @@
     },
     "pt-PT": {
      "text": "{source}: não foi detetada fala."
+    }
+   }
+  },
+  {
+   "id": "details.sources.silent.othersPermissionHint",
+   "en": "If others were speaking, check that Cassini can record this computer's sound.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "hint",
+   "boards": [],
+   "milestone": "D58.3",
+   "note": "Coordinator (D58.3, Mac QA R2, Codex #145). Shown after Stop, under the silent line, only for a native This computer (system audio) source whose whole track is digital silence. Paired with errors.othersPermission.action (Open System Settings). Conditional wording: a quiet call and a denied permission look the same.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Se altri stavano parlando, verifica che Cassini possa registrare l'audio di questo computer."
+    },
+    "fr": {
+     "text": "Si d'autres personnes parlaient, vérifiez que Cassini peut enregistrer le son de cet ordinateur."
+    },
+    "es": {
+     "text": "Si otras personas estaban hablando, comprueba que Cassini pueda grabar el sonido de este ordenador."
+    },
+    "pt-BR": {
+     "text": "Se outras pessoas estavam falando, verifique se o Cassini pode gravar o som deste computador."
+    },
+    "pt-PT": {
+     "text": "Se outras pessoas estavam a falar, verifique se o Cassini pode gravar o som deste computador."
     }
    }
   },

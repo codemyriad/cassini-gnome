@@ -241,9 +241,9 @@ with tempfile.TemporaryDirectory() as temporary:
             assert len(dialog.report.sources) == 5
             source_lines = [row.line for row in dialog.report.sources]
             assert source_lines == [
-                "Guest: under 1 min recorded.",
+                "Guest: 2 s recorded.",
                 "Guest",
-                "Guest: under 1 min recorded.",
+                "Guest: 1 s recorded.",
                 "Guest: audio couldn’t be recorded.",
                 "Guest: not selected for recording.",
             ]

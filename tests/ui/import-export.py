@@ -71,6 +71,83 @@ def labels(widget, *, visible=False):
     return values
 
 
+def each_dispatch(check, timed_out=lambda: "Import/export GUI condition timed out"):
+    """until() at single-dispatch resolution, bounded by the same 12 s: no chooser state is skipped."""
+    expired = []
+    bound = GLib.timeout_add_seconds(12, lambda: expired.append(True))
+    context = GLib.MainContext.default()
+    while not check():
+        assert not expired, timed_out()
+        context.iteration(True)
+    if not expired:
+        GLib.source_remove(bound)
+
+
+def descendants(widget):
+    child = widget.get_first_child()
+    while child:
+        yield child
+        yield from descendants(child)
+        child = child.get_next_sibling()
+
+
+# shown_folder() reads GTK's private path bar: GtkPathBar (CSS name "pathbar") holds
+# one ToggleButton per folder, with the shown folder's button active and labelled.
+# Nothing public says when the chooser has shown its folder. If GTK rebuilds that
+# bar, ready_chooser() fails at once or names this structure in its timeout.
+PATH_BAR_STRUCTURE = "GTK's private chooser path bar (CSS 'pathbar' > active Gtk.ToggleButton > Gtk.Label)"
+
+
+def path_bar(chooser):
+    return next((w for w in descendants(chooser) if w.get_css_name() == "pathbar"), None)
+
+
+def shown_folder(chooser):
+    """The folder name the chooser's path bar has finished showing, or None while it resolves."""
+    bar = path_bar(chooser)
+    for button in descendants(bar) if bar else ():
+        if isinstance(button, Gtk.ToggleButton) and button.get_active():
+            return next((w.get_text() for w in descendants(button) if isinstance(w, Gtk.Label)), None)
+    return None
+
+
+def ready_chooser(folder=None):
+    """The open chooser once its path bar shows its folder, as a person first sees it.
+
+    GTK's path bar resolves each ancestor of the folder with its own async query and
+    only then shows its buttons. A chooser destroyed inside that walk makes GTK
+    remove the half-built buttons from its already disposed box (GTK 4.22
+    gtkpathbar.c gtk_path_bar_set_file_finish: "gtk_box_remove: assertion
+    'GTK_IS_BOX (box)' failed"); a new folder set inside it makes GTK remove buttons
+    it never added ("gtk_widget_get_parent (child) == (GtkWidget *)box"). No person
+    can answer, close or redirect the chooser in those milliseconds, so the test
+    acts on it only after this event, never mid-walk.
+    """
+    each_dispatch(lambda: any(isinstance(w, Gtk.FileChooserDialog) for w in Gtk.Window.get_toplevels()))
+    chooser = next(w for w in Gtk.Window.get_toplevels() if isinstance(w, Gtk.FileChooserDialog))
+    # The chooser builds its path bar with itself, so a missing one is a GTK change.
+    assert path_bar(chooser) is not None, f"{PATH_BAR_STRUCTURE} not found: update shown_folder()"
+
+    def shown():
+        current = chooser.get_current_folder()
+        return (
+            current is not None
+            and (folder is None or current.get_path() == str(folder))
+            and shown_folder(chooser) == current.get_basename()
+        )
+
+    def timed_out():
+        current = chooser.get_current_folder()
+        return (
+            f"Chooser never showed {folder or 'its folder'}: current folder "
+            f"{current.get_path() if current else None!r}, path bar shows {shown_folder(chooser)!r}. "
+            f"If {PATH_BAR_STRUCTURE} changed, update shown_folder()"
+        )
+
+    each_dispatch(shown, timed_out)
+    return chooser
+
+
 with tempfile.TemporaryDirectory() as temporary:
     tmp = Path(temporary)
     subprocess.run([sys.executable, str(ROOT / "ux/library-vectors/make.py"), str(tmp / "fixtures")], check=True)
@@ -183,13 +260,10 @@ with tempfile.TemporaryDirectory() as temporary:
     destination.mkdir()
     window.toasts.dismiss_all()  # Earlier deliberate failure feedback was already checked.
     dialog.export_button.emit("clicked")
-    until(lambda: any(isinstance(w, Gtk.FileChooserDialog) for w in Gtk.Window.get_toplevels()))
-    chooser = next(w for w in Gtk.Window.get_toplevels() if isinstance(w, Gtk.FileChooserDialog))
+    chooser = ready_chooser()
     assert dialog.choosing and not hasattr(dialog, "future"), "No export job before the chooser grants a destination"
     chooser.set_current_folder(Gio.File.new_for_path(str(destination)))
-    until(
-        lambda: chooser.get_current_folder() is not None and chooser.get_current_folder().get_path() == str(destination)
-    )
+    ready_chooser(destination)
     chooser.response(Gtk.ResponseType.ACCEPT)
     until(lambda: dialog.closed and dialog.output is not None)
     assert app.recording_settings.get_string("export-folder-uri") == destination.as_uri()
@@ -218,12 +292,11 @@ with tempfile.TemporaryDirectory() as temporary:
     assert dialog.destination.get_uri() == destination.as_uri(), "A later export must remember the granted URI"
     dialog.markdown.set_active(True)
     dialog.choose.emit("clicked")
-    until(lambda: any(isinstance(w, Gtk.FileChooserDialog) for w in Gtk.Window.get_toplevels()))
-    chooser = next(w for w in Gtk.Window.get_toplevels() if isinstance(w, Gtk.FileChooserDialog))
+    chooser = ready_chooser(destination)
     selected = tmp / "Chosen export folder"
     selected.mkdir()
     chooser.set_current_folder(Gio.File.new_for_path(str(selected)))
-    until(lambda: chooser.get_current_folder() is not None and chooser.get_current_folder().get_path() == str(selected))
+    ready_chooser(selected)
     chooser.response(Gtk.ResponseType.ACCEPT)
     until(lambda: not dialog.choosing)
     assert dialog.folder.get_text() == "Save to Chosen export folder" and not list(selected.iterdir())
@@ -267,17 +340,30 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog = window.export_dialog
     previous_uri = app.recording_settings.get_string("export-folder-uri")
     dialog.choose.emit("clicked")
-    until(lambda: any(isinstance(w, Gtk.FileChooserDialog) for w in Gtk.Window.get_toplevels()))
-    chooser = next(w for w in Gtk.Window.get_toplevels() if isinstance(w, Gtk.FileChooserDialog))
+    chooser = ready_chooser(selected)
     chooser.response(Gtk.ResponseType.CANCEL)
+    del chooser  # GTK alone owns a closed chooser, as in the app.
     until(lambda: not dialog.choosing)
     assert not dialog.closed and dialog.export_button.get_sensitive() and not hasattr(dialog, "future")
     assert app.recording_settings.get_string("export-folder-uri") == previous_uri
-    # Cancelling Export itself must also close its outstanding native chooser.
-    dialog.choose.emit("clicked")
-    until(lambda: any(isinstance(w, Gtk.FileChooserDialog) for w in Gtk.Window.get_toplevels()))
-    dialog.cancel()
-    until(lambda: dialog.closed and not any(isinstance(w, Gtk.FileChooserDialog) for w in Gtk.Window.get_toplevels()))
+    # Cancelling Export itself must also close its outstanding native chooser,
+    # at each main-loop step after the chooser is shown. Closed inside GTK's own
+    # path-bar walk instead (no ready_chooser), some step makes GTK print the
+    # gtk_box_remove criticals the stderr check above fails on.
+    for steps in range(10):
+        if steps:
+            window.show_export()
+            dialog = window.export_dialog
+        dialog.choose.emit("clicked")
+        ready_chooser(selected)
+        for _ in range(steps):
+            GLib.MainContext.default().iteration(False)
+        dialog.cancel()
+        until(
+            lambda dialog=dialog: (
+                dialog.closed and not any(isinstance(w, Gtk.FileChooserDialog) for w in Gtk.Window.get_toplevels())
+            )
+        )
     # Cancel through the actual dialog close path while a real long PCM export
     # is running; no mocked encoder, output or user audio device.
     window.show_export()

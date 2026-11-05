@@ -153,15 +153,15 @@ def test_unselected_source_stays_neutral_through_actual_publication_and_cache_de
 def test_approved_source_copy_keeps_outcomes_and_unequal_loss_counters_separate():
     rows = sources(session(), {}, live=False)
     assert [row.line for row in rows] == [
-        "Guest: under 1 min recorded.",
+        "Guest: 2 s recorded.",
         "Guest: no audio was received.",
-        "Guest: only under 1 min of audio was received.",
+        "Guest: less than a second of audio was received.",
         "Guest: audio couldn’t be recorded.",
     ]
-    assert rows[0].gap_lines == ("Guest: under 1 min of audio is missing.", "Dropped audio: under 1 min")
+    assert rows[0].gap_lines == ("Guest: 1 s of audio is missing.", "Dropped audio: 1 s")
     live = sources(session(), {}, live=True)
     assert live[1].line == "Guest"
-    assert live[2].line == "Guest: under 1 min recorded."
+    assert live[2].line == "Guest: 1 s recorded."
     value = session()
     value["captureOutcome"]["sources"][3]["captureExpected"] = False
     unused = sources(value, {}, live=False)[3]
@@ -278,3 +278,166 @@ def test_isolated_native_writer_failure_warns_while_healthy_browser_audio_contin
         assert not session.finished
     finally:
         host.close()
+
+
+# D58.4 (Mac QA L1): Details durations are never rounded down to whole minutes.
+# The rule is Mac's detailsDuration (cassini-mac #150): talkTime of the floored
+# seconds, with a positive amount under one second shown as 1 s, never 0 s.
+DETAILS_DURATIONS = (
+    (0, "0 s"),
+    (Fraction(1000, 48000), "1 s"),  # one padding frame at 48 kHz
+    (400, "1 s"),
+    (999, "1 s"),
+    (999.9, "1 s"),
+    (1000, "1 s"),
+    (1999, "1 s"),
+    (43000, "43 s"),
+    (59400, "59 s"),
+    (59600, "59 s"),
+    (59999, "59 s"),
+    (60000, "1 min 0 s"),
+    (61000, "1 min 1 s"),
+    (87000, "1 min 27 s"),
+    (3599999, "59 min 59 s"),
+    (3600000, "1 h 00 min"),
+    (3725000, "1 h 02 min"),
+)
+
+
+@pytest.mark.parametrize("ms, shown", DETAILS_DURATIONS, ids=lambda value: str(value))
+def test_details_durations_are_whole_seconds_under_a_minute_and_never_zero_when_positive(ms, shown):
+    from cassini_talk.i18n import using_language
+    from cassini_talk.ux_formats import details_duration
+
+    with using_language("en"):
+        assert details_duration(float(ms) if isinstance(ms, Fraction) else ms) == shown
+
+
+@pytest.mark.parametrize("ms", (float("nan"), float("inf"), -1, None, "1000"))
+def test_details_duration_refuses_what_talk_time_refuses(ms):
+    from cassini_talk.ux_formats import details_duration
+
+    with pytest.raises(ValueError):
+        details_duration(ms)
+
+
+def one_source(outcome, ms, tracks=None, **row):
+    rows = [
+        dict(
+            sourceTrackId="s",
+            kind="remote",
+            label="Guest",
+            captureOutcome=outcome,
+            audioMs=ms,
+            trackIds=["t"] if tracks else [],
+            **row,
+        )
+    ]
+    return dict(captureOutcome=dict(sources=rows), tracks=tracks or [])
+
+
+@pytest.mark.parametrize("ms", (1, 400, 500, 999, 999.9))
+def test_a_saved_low_audio_source_under_a_second_says_so_in_words(ms):
+    from cassini_talk.capture_details import audio_lines
+    from cassini_talk.i18n import using_language
+
+    with using_language("en"):
+        (row,) = sources(one_source("lowAudio", ms), {}, live=False)
+        assert row.line == "Guest: less than a second of audio was received." and row.problem
+        (line,) = audio_lines((row,), [])
+        assert (line.id, line.text, line.warning) == (
+            "details.sources.lowAudio.underSecond",
+            "Guest: less than a second of audio was received.",
+            True,
+        )
+        # Live, low audio still reads as captured, with its (never zero) seconds.
+        (live,) = sources(one_source("lowAudio", ms), {}, live=True)
+        assert live.line == "Guest: 1 s recorded." and not live.problem
+        # The line id names the line shown, as on Mac: captured, not lowAudio.
+        assert audio_lines((live,), [])[0].id == "details.sources.captured"
+
+
+@pytest.mark.parametrize(
+    "outcome, ms, shown",
+    (
+        ("lowAudio", 1000, "Guest: only 1 s of audio was received."),  # another writer's stored row
+        ("lowAudio", 1500, "Guest: only 1 s of audio was received."),
+        ("captured", 0, "Guest: 0 s recorded."),
+        ("captured", 400, "Guest: 1 s recorded."),
+        ("captured", 1000, "Guest: 1 s recorded."),
+        ("captured", 59400, "Guest: 59 s recorded."),
+        ("captured", 59600, "Guest: 59 s recorded."),
+        ("captured", 60000, "Guest: 1 min 0 s recorded."),
+        ("captured", 61000, "Guest: 1 min 1 s recorded."),
+        ("captured", 3725000, "Guest: 1 h 02 min recorded."),
+    ),
+)
+def test_saved_source_lines_show_details_durations(outcome, ms, shown):
+    from cassini_talk.capture_details import audio_lines
+    from cassini_talk.i18n import using_language
+
+    with using_language("en"):
+        (row,) = sources(one_source(outcome, ms), {}, live=False)
+        assert row.line == shown
+        assert audio_lines((row,), [])[0].id == "details.sources." + outcome
+
+
+def test_a_low_audio_source_that_was_not_selected_keeps_the_neutral_line():
+    (row,) = sources(one_source("lowAudio", 500, captureExpected=False), {}, live=False)
+    assert row.line == "Guest: not selected for recording." and not row.under_second and not row.problem
+    assert row.line_id == "details.sources.notSelected"
+
+
+@pytest.mark.parametrize(
+    "outcome, final, line_id, shown",
+    (
+        ("lowAudio", False, "details.sources.captured", "Guest: 2 s recorded."),
+        ("lowAudio", True, "details.sources.lowAudio", "Guest: only 2 s of audio was received."),
+        ("neverAudio", False, "", "Guest"),
+        ("neverAudio", True, "details.sources.neverAudio", "Guest: no audio was received."),
+        ("captured", False, "details.sources.captured", "Guest: 2 s recorded."),
+    ),
+)
+def test_the_line_id_names_the_line_shown(outcome, final, line_id, shown):
+    from cassini_talk.i18n import using_language
+
+    with using_language("en"):
+        (row,) = sources(one_source(outcome, 2000), {}, live=not final)
+        assert (row.line_id, row.line) == (line_id, shown)
+
+
+@pytest.mark.parametrize(
+    "gap, dropped, shown",
+    (
+        (1, 0, ("Guest: 1 s of audio is missing.",)),
+        (14400, 0, ("Guest: 1 s of audio is missing.",)),  # 300 ms
+        (0, 14400, ("Dropped audio: 1 s",)),
+        (48000 * 59 + 28800, 0, ("Guest: 59 s of audio is missing.",)),  # 59.6 s
+        (48000 * 60, 48000 * 61, ("Guest: 1 min 0 s of audio is missing.", "Dropped audio: 1 min 1 s")),
+    ),
+)
+def test_gap_and_dropped_lines_are_never_zero_or_whole_minutes(gap, dropped, shown):
+    from cassini_talk.i18n import using_language
+
+    track = dict(id="t", frames=48000 * 120, sampleRate=48000, gapFrames=gap, droppedFrames=dropped)
+    with using_language("en"):
+        (row,) = sources(one_source("captured", 120000, [track]), {}, live=False)
+        assert row.gap_lines == shown
+
+
+@pytest.mark.parametrize("lang", ("en", "it", "fr", "es", "pt-BR", "pt-PT"))
+def test_under_second_line_is_the_shared_catalog_text_in_every_language(lang):
+    import json
+    from pathlib import Path
+
+    from cassini_talk import strings
+    from cassini_talk.i18n import using_language
+
+    catalog = json.loads(Path(strings.__file__).with_name("strings.json").read_bytes())
+    (entry,) = [e for e in catalog["entries"] if e["id"] == "details.sources.lowAudio.underSecond"]
+    assert "gnome" in entry["platforms"] and set(entry["l10n"]) == {"it", "fr", "es", "pt-BR", "pt-PT"}
+    template = entry["en"] if lang == "en" else entry["l10n"][lang]["text"]
+    with using_language(lang):
+        (row,) = sources(one_source("lowAudio", 480), {}, live=False)
+        assert row.line == template.format(source="Guest")
+        assert not any(ch.isdigit() for ch in row.line)
