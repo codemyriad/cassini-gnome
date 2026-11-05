@@ -13,6 +13,12 @@ sys.path.insert(0, str(ROOT))
 from verify import verify
 
 class PinningTests(unittest.TestCase):
+    def test_real_time_capture_can_replace_an_installed_0212_companion(self):
+        manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
+        parts = tuple(int(part) for part in manifest['version'].split('.'))
+        self.assertGreater(parts + (0,) * (4 - len(parts)), (0, 2, 12, 0),
+                           'D68.1 keeps each capture context on real time: local installers never replace equal 0.2.12')
+
     def test_clock_and_document_facts_can_replace_an_installed_0211_companion(self):
         manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
         parts = tuple(int(part) for part in manifest['version'].split('.'))

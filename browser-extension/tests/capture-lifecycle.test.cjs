@@ -9,7 +9,7 @@ async function mocked(run) {
  class Graph {connect(value){return value}disconnect(){this.disconnected=true}}
  class Context {
   sampleRate=48000;state='running';currentTime=0;destination=new Graph();listeners=new Set();audioWorklet={addModule:async()=>{}};
-  constructor(){contexts.push(this)}createMediaStreamSource(){return new Graph()}createGain(){return Object.assign(new Graph(),{gain:{value:0}})}
+  constructor(){contexts.push(this)}createMediaStreamSource(){return new Graph()}createGain(){return Object.assign(new Graph(),{gain:{value:0}})}createConstantSource(){return Object.assign(new Graph(),{offset:{value:0},start(){}})}
   addEventListener(_event,fn){this.listeners.add(fn)}removeEventListener(_event,fn){this.listeners.delete(fn)}
   getOutputTimestamp(){return {contextTime:1,performanceTime:1000}}
   async resume(){if(this.state==='suspended'){now+=500;this.state='running';this.listeners.forEach(fn=>fn())}}

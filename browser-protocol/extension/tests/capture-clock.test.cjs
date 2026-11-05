@@ -11,7 +11,7 @@ async function exercise(timestamp, { timeOrigin = 100000, currentTime = 0, clock
   const originals = new Map(['AudioContext', 'AudioWorkletNode', 'performance'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   const wall = Date.now;
   let now = 100;
-  const nodes = [], packets = [], failures = [], warnings = [], clockRequests = [];
+  const nodes = [], packets = [], failures = [], warnings = [], clockRequests = [], contexts = [];
   class GraphNode {
     connect(target) { return target; }
     disconnect() {}
@@ -24,8 +24,17 @@ async function exercise(timestamp, { timeOrigin = 100000, currentTime = 0, clock
     state = 'running';
     destination = new GraphNode();
     audioWorklet = { addModule: async () => {} };
+    constants = [];
+    constructor() { contexts.push(this); }
     createMediaStreamSource() { return new GraphNode(); }
     createGain() { return Object.assign(new GraphNode(), { gain: { value: 1 } }); }
+    createConstantSource() {
+      const constant = Object.assign(new GraphNode(), { offset: { value: 1 }, started: false, targets: [] });
+      constant.connect = target => { constant.targets.push(target); return target; };
+      constant.start = () => { constant.started = true; };
+      this.constants.push(constant);
+      return constant;
+    }
     async resume() { this.state = "running"; }
     async close() { this.state = 'closed'; }
   }
@@ -62,7 +71,7 @@ async function exercise(timestamp, { timeOrigin = 100000, currentTime = 0, clock
     for (const recorder of recorders) await recorder.stop();
     assert.deepEqual(failures, []);
     assert.deepEqual(warnings, retries, 'no span aborted or retried unless expected');
-    return { audio: packets.filter(packet => packet.type === 'audio'), tracks: packets.filter(packet => packet.type === 'track'), clockRequests };
+    return { audio: packets.filter(packet => packet.type === 'audio'), tracks: packets.filter(packet => packet.type === 'track'), clockRequests, contexts };
   } finally {
     Date.now = wall;
     for (const [key, descriptor] of originals) {
@@ -167,6 +176,32 @@ test('a second span on a shared context repeats every clock field without recali
   close(byId('test-0')[0], 0, 'frame 0 of the calibration raised by 95 ms');
 });
 
+// D68.1: Chromium suspends a context whose output stays all zeros for 30 s onto a timer that can
+// run far slower than real time. Each capture context, a page's shared one included, gets exactly
+// one inaudible constant into its destination, started, and never into the worklet's input.
+test('each capture context keeps real time with one inaudible constant into its destination', async () => {
+  for (const [label, options] of [['its own context', {}], ['a shared context with two spans', { spans: 2 }]]) {
+    const { contexts } = await exercise(undefined, options);
+    assert.equal(contexts.length, 1, label);
+    const [context] = contexts;
+    assert.equal(context.constants.length, 1, `${label}: one constant per context`);
+    const [constant] = context.constants;
+    assert.equal(constant.offset.value, 6e-8, `${label}: -144 dBFS, below one 16-bit step`);
+    assert.equal(constant.targets.length, 1, `${label}: one connection`);
+    assert.equal(constant.targets[0], context.destination, `${label}: into the destination itself`);
+    assert.ok(constant.started, `${label}: started`);
+  }
+});
+
+// D39 installers replace an installed companion only with a strictly newer one, so the D68.1
+// capture fix ships as 0.2.13 or later.
+test('the companion that keeps capture on real time is 0.2.13 or later', () => {
+  const { version } = JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'manifest.json'), 'utf8'));
+  const [major, minor, patch] = version.split('.').map(Number);
+  assert.ok(major > 0 || minor > 2 || (minor === 2 && patch >= 13), `manifest version ${version}`);
+  assert.match(source, /export function keepRealTime\(context\)/, 'capture.js keeps each context on real time');
+});
+
 test('ten-second source budget pipelines four requests, counts drops and leaves other sources running', async () => {
   const originals = new Map(['AudioContext', 'AudioWorkletNode'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   const nodes = [], packets = [], failures = [], warnings = [], last = new Map();
@@ -184,6 +219,7 @@ test('ten-second source budget pipelines four requests, counts drops and leaves 
     audioWorklet = { addModule: async () => {} };
     createMediaStreamSource() { return new GraphNode(); }
     createGain() { return Object.assign(new GraphNode(), { gain: { value: 1 } }); }
+    createConstantSource() { return Object.assign(new GraphNode(), { offset: { value: 1 }, start() {} }); }
     async resume() { this.state = "running"; } async close() { this.state = 'closed'; }
     getOutputTimestamp() { return { contextTime: 0, performanceTime: 0 }; }
   }

@@ -102,18 +102,12 @@ jobs:
   # No retries (D66). The scenario takes about 115 s; a local run on roy took
   # about 130 s with setup, so the run's bound is 360 s and the job's, with
   # installs, 15 min; revisit both at 2-4x the measured p95 after 10 runs.
-  # Not yet gating: on roy about 1 run in 3 fails when a seconds-long machine stall hits
-  # the run, and two open product findings turn such a stall into an oracle failure (the
-  # extension's render-frame clock keeps the stalled time lost and later sources inherit
-  # it; the app records the dropped input as a gap and saves interrupted). Hosted-runner
-  # rates are not measured yet. It still runs on every PR, shows red in the job list and
-  # uploads its evidence (pressure.log tells a stalled machine apart); Recording's result
-  # ignores it. green_main.py still requires every main job, this one included, to
-  # succeed before a release. Remove this line once those findings are fixed and ten
-  # hosted runs pass.
+  # Gating since R93 (26/26 hosted passes; extension 0.2.13's real-time capture clock
+  # pinned). A failure is root-fixed per D66, never un-gated: test_ci_hygiene refuses
+  # any job or step that hides its failure. pressure.log in the uploaded evidence tells
+  # a stalled machine apart.
   live-folder:
     runs-on: ubuntu-26.04
-    continue-on-error: true
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7

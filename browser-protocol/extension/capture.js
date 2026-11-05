@@ -12,6 +12,25 @@ async function bounded(promise, message, schedule = setTimeout, cancel = clearTi
   } finally { cancel(timer); }
 }
 
+// D68.1: Chromium moves an AudioContext whose output has been all zeros for about 30 s (its
+// silent sink suspender) off the audio device onto a timer, which on some machines delivers far
+// less than real time (0.3-0.5 on some CI virtual machines). The capture graph's output is silent by design,
+// and the worklet stamps every frame by its context's render clock, so every track would fall
+// behind the session. An inaudible constant (6e-8, -144 dBFS, below one 16-bit step) into the
+// destination keeps the context on the device clock. Once per context, shared ones included;
+// it never reaches the PCM (the worklet reads only its source).
+export const KEEP_REAL_TIME_LEVEL = 6e-8;
+const keepingRealTime = new WeakMap();
+export function keepRealTime(context) {
+  if (keepingRealTime.has(context)) return keepingRealTime.get(context);
+  const constant = context.createConstantSource();
+  constant.offset.value = KEEP_REAL_TIME_LEVEL;
+  constant.connect(context.destination);
+  constant.start();
+  keepingRealTime.set(context, constant);
+  return constant;
+}
+
 // D58 (R79): a classified start failure. `resultCode` is the open control-result
 // vocabulary (SPEC-CONTROL "Result codes"), never the audio-plane `code`.
 const classified = resultCode => error => {
@@ -140,6 +159,7 @@ async function captureOnce({ stream, id, label, kind, origin, workletURL, send, 
     // PCM is admitted or timestamp adjusted during this readiness handshake.
     const ready = new Promise(resolve => { node.port.onmessage = ({data}) => {if (data.ready) resolve();}; });
     node.connect(silent).connect(context.destination);
+    keepRealTime(context);
     if (audible) source.connect(context.destination);
     await wait(context.resume(), "Click somewhere in the meeting page so the browser allows audio, then try again. Or record the whole tab.").catch(classified("audioBlocked"));
     if (context.state !== "running") throw Object.assign(new Error("Audio capture is suspended. Interact with the meeting page, then try again or use Tab audio."), { resultCode: "audioBlocked" });

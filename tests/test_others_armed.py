@@ -852,9 +852,12 @@ def silent_device(monkeypatch):
 
 def test_a_silent_system_tap_starts_armed_and_stops_without_waiting(silent_device):
     from cassini_talk.native_tap import NativeTap
+    from cassini_talk.session_clock import SessionClock
 
     received, failures = [], []
-    tap = NativeTap("system", 0, lambda data, *_a, **_k: received.append(data), failures.append, test=True)
+    tap = NativeTap(
+        "system", SessionClock(0), lambda data, *_a, **_k: received.append(data), failures.append, test=True
+    )
     tap.start()  # Returns after its window: armed, not refused.
     assert not tap.heard.is_set() and tap.error is None
     device = silent_device[0].get_by_name("device")
@@ -866,8 +869,9 @@ def test_a_silent_system_tap_starts_armed_and_stops_without_waiting(silent_devic
 
 def test_a_never_heard_system_tap_stops_at_once(silent_device):
     from cassini_talk.native_tap import NativeTap
+    from cassini_talk.session_clock import SessionClock
 
-    tap = NativeTap("system", 0, lambda *_a, **_k: None, lambda _m: None, test=True)
+    tap = NativeTap("system", SessionClock(0), lambda *_a, **_k: None, lambda _m: None, test=True)
     tap.start()
     # Like a Pulse read on a suspended monitor, this device never lets an EOS through.
     pad = silent_device[0].get_by_name("device").get_static_pad("src")
@@ -885,8 +889,9 @@ def test_a_never_heard_system_tap_stops_at_once(silent_device):
 @pytest.mark.parametrize("kind", ["microphone", "system"])
 def test_a_silent_tap_window(silent_device, kind):
     from cassini_talk.native_tap import NativeTap
+    from cassini_talk.session_clock import SessionClock
 
-    tap = NativeTap(kind, 0, lambda *_a, **_k: None, lambda _m: None, test=True)
+    tap = NativeTap(kind, SessionClock(0), lambda *_a, **_k: None, lambda _m: None, test=True)
     if kind == "microphone":
         with pytest.raises(OSError, match="did not produce a sample"):
             tap.start()  # The microphone keeps its bound.
@@ -897,9 +902,10 @@ def test_a_silent_tap_window(silent_device, kind):
 
 def test_an_explicit_tap_error_carries_its_code(silent_device):
     from cassini_talk.native_tap import CaptureError, NativeTap
+    from cassini_talk.session_clock import SessionClock
 
     silent_device.deny = True
-    tap = NativeTap("system", 0, lambda *_a, **_k: None, lambda _m: None, test=True)
+    tap = NativeTap("system", SessionClock(0), lambda *_a, **_k: None, lambda _m: None, test=True)
     with pytest.raises(CaptureError) as raised:
         tap.start()
     assert raised.value.refusal_code == "permissionDenied" and str(raised.value) == "Access denied"

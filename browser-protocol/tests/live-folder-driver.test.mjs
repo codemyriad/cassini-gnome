@@ -5,13 +5,14 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { closeSync, constants, openSync } from 'node:fs';
-import { mkdtemp, open, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, open, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { eventsOf, extent, F, folderClock, S } from '../scenarios/folder-clock.mjs';
-import { controlConnections, hostPids, livePids, stopLaunchers, stopRelays, writeNativeHost } from '../scenarios/native-launcher.mjs';
+import { controlConnections, hostPids, livePids, processArgv, RELAY, runsCommand, stopLaunchers, stopRelays, writeNativeHost } from '../scenarios/native-launcher.mjs';
 import * as driver from '../scenarios/live-folder.mjs';
+import { sessionClock } from '../scenarios/session-clock.mjs';
 const { loadScenario, runLiveFolder } = driver;
 import { poll } from '../scenarios/folder-clock.mjs';
 
@@ -35,6 +36,59 @@ async function synthetic() {
   const [folder] = (await readdir(out)).filter(name => name.startsWith('Recording-'));
   return path.join(out, folder);
 }
+
+// The driver's session clock is monotonic (scenarios/session-clock.mjs): the origin is mapped onto
+// it once, as SPEC requires of capturing documents. A hosted VM's wall clock ran 500 ppm fast and
+// put an app's monotonic me:true stamp 38 ms before the driver's wall-clock request (Mac #148).
+// The synthetic run's evidence holds the true instants. Measured through the driver's clock, every
+// oracle verdict stays the same under a drifting wall clock (1000 ppm: enough on the synthetic
+// run's 50 ms meOn margin) and under a 2 s step, while the old reading (Date.now() - origin)
+// changes them.
+test('a drifting or stepping wall clock never changes the oracle\'s verdicts', async () => {
+  const folder = await synthetic(), out = path.dirname(folder);
+  const base = JSON.parse(await readFile(path.join(out, 'evidence.json'), 'utf8')), origin = base.timelineOriginMs;
+  const failing = async (evidence, name) => {
+    const file = path.join(out, `${name}.evidence.json`), result = path.join(out, `${name}.result.json`);
+    await writeFile(file, JSON.stringify(evidence, null, 1) + '\n');
+    await driver.runOracle({ folder, evidence: file, result, ms: 60000 });
+    const checks = JSON.parse(await readFile(result, 'utf8')).checks;
+    return checks.flatMap(check => Object.entries(check.measured).filter(([, rule]) => !rule.passed).map(([id]) => id)).sort();
+  };
+  const before = await failing(base, 'base');
+  for (const [name, drift, step] of [['drift', 1e-3, 0], ['step', 0, 2000]]) {
+    let t = 0;  // true session ms
+    const mono = () => 7_000_000 + t;
+    const wall = () => origin + t * (1 + drift) + (t >= 50_000 ? step : 0);
+    const anchor = t = base.actions.record.observedAtMs;  // the driver maps the origin when it reads it, at record
+    const clock = sessionClock(origin, { wall, mono });
+    const measured = via => ({ ...base,
+      actions: Object.fromEntries(Object.entries(base.actions).map(([key, a]) => [key, { requestedAtMs: via(a.requestedAtMs), observedAtMs: via(a.observedAtMs) }])),
+      resumeRequests: base.resumeRequests.map(r => ({ ...r, atMs: via(r.atMs) })) });
+    const monotonicRun = measured(ms => { t = ms; return clock.at(mono()); });
+    // Only the drift before the mapping remains.
+    const bound = drift * anchor + 0.01;
+    for (const [key, a] of Object.entries(monotonicRun.actions)) {
+      assert.ok(Math.abs(a.requestedAtMs - base.actions[key].requestedAtMs) <= bound, `${name}: ${key} requested ${a.requestedAtMs}`);
+      assert.ok(Math.abs(a.observedAtMs - base.actions[key].observedAtMs) <= bound, `${name}: ${key} observed ${a.observedAtMs}`);
+    }
+    // now() follows the monotonic clock whatever the wall clock does after the mapping.
+    t = 90_000;
+    assert.ok(Math.abs(clock.now() - 90_000) <= bound, `${name}: now() ${clock.now()}`);
+    const viaWall = await failing(measured(ms => { t = ms; return wall() - origin; }), `${name}-wall`);
+    assert.deepEqual(await failing(monotonicRun, `${name}-monotonic`), before, `${name}: the monotonic session clock keeps every verdict`);
+    assert.ok(viaWall.includes('O5.selection') && viaWall.some(id => !before.includes(id)),
+      `${name}: a wall-clock session clock changes verdicts (me:true falls before the request, as on the hosted VM): ${JSON.stringify(viaWall)}`);
+  }
+});
+
+// The driver and its folder clock never read the wall clock: every time they record or wait on
+// is monotonic (only the extension's origin is wall-clock, mapped once by sessionClock).
+test('the driver and the folder clock read no wall clock', async () => {
+  for (const file of ['scenarios/live-folder.mjs', 'scenarios/folder-clock.mjs']) {
+    const code = (await readFile(path.join(root, file), 'utf8')).split('\n').filter(line => !line.trim().startsWith('//')).join('\n');
+    assert.doesNotMatch(code, /\bDate\.now\b|\bDate\(|timeOrigin/, `${file} reads the wall clock`);
+  }
+});
 
 test('the folder clock reads make.py\'s synthetic run as the oracle places it', async () => {
   const folder = await synthetic();
@@ -189,6 +243,11 @@ test('a failure after Record stops the recording, runs cleanup once and stops th
   const partial = JSON.parse(await readFile(path.join(run.out, 'evidence.partial.json'), 'utf8'));
   assert.match(partial.notes.failure, /injected failure after Record/);
   assert.equal(partial.captureId, 'capture-test');
+  // The real driver's record times are session times on its monotonic clock: small and ordered,
+  // never a monotonic reading against the wall-clock origin, nor a wall reading.
+  const record = partial.actions.record;
+  assert.ok(record.requestedAtMs >= -BOUND && record.requestedAtMs <= record.observedAtMs && record.observedAtMs < BOUND,
+    `record on the session timeline: ${JSON.stringify(record)}`);
   await holder.close();
 });
 
@@ -258,35 +317,70 @@ test('a relay that starts only after teardown killed its launcher sees the end o
   assert.deepEqual([after.ended, after.frames.length, after.inputError, after.outputError], [true, 0, null, null]);
 });
 
-// macOS has no /proc: native-launcher.mjs takes its other branches (kill(pid, 0), ps). This
-// child process runs them on Linux: process.platform darwin, /proc reads failing as there,
-// and the system ps answering for the pid.
-const AS_ON_MACOS = `
-import { createRequire, syncBuiltinESMExports } from 'node:module';
-const require = createRequire(import.meta.url);
-Object.defineProperty(process, 'platform', { value: 'darwin' });
-const fsp = require('node:fs/promises'), readFile = fsp.readFile;
-fsp.readFile = (file, ...rest) => String(file).startsWith('/proc/')
-  ? Promise.reject(Object.assign(new Error('no /proc on macOS'), { code: 'ENOENT' })) : readFile(file, ...rest);
-syncBuiltinESMExports();
-const { controlConnections, stopLaunchers } = await import(process.argv[1]);
-const host = JSON.parse(process.argv[2]);
-const [c] = await controlConnections(host);
-console.log(JSON.stringify({ live: c.live, killed: await stopLaunchers(host) }));
-`;
-
-test('on macOS too, stopLaunchers kills a launcher still waiting on its FIFO', async () => {
-  const run = await controlRun('macos-launcher', { node: '/bin/false' });
+test('stopLaunchers kills a launcher still waiting on its FIFO, which is never the live host', async () => {
+  const run = await controlRun('waiting-launcher', { node: '/bin/false' });
   await poll(async () => (await controlConnections(run.host))[0]?.pid, 'the launcher records the connection', BOUND, { pollMs: 5 });
-  const child = spawn(process.execPath, ['--input-type=module', '-e', AS_ON_MACOS, path.join(root, 'scenarios/native-launcher.mjs'), JSON.stringify(run.host)],
-    { stdio: ['ignore', 'pipe', 'inherit'] });
-  let text = '';
-  child.stdout.on('data', chunk => { text += chunk; });
-  assert.deepEqual(await exitOf(child), { code: 0, signal: null });
-  // Off Linux liveness is kill(pid, 0), so the waiting launcher reads as a live host; only
-  // its command line (the launcher script, not the host's) tells them apart.
-  assert.deepEqual(JSON.parse(text), { live: true, killed: [run.browser.pid] });
+  // /bin/sh <launcher> never runs the host's command: not live, and killed by its argv.
+  assert.equal((await controlConnections(run.host))[0].live, false);
+  assert.deepEqual(await stopLaunchers(run.host), [run.browser.pid]);
   assert.deepEqual(await exitOf(run.browser), { code: null, signal: 'SIGKILL' });
+});
+
+// A process that waits until it is killed, with exactly this argv (argv[0] as given).
+const WAIT = 'setTimeout(() => {}, 600000)';
+async function waiting(file, args) {
+  const child = spawn(file, args, { stdio: 'ignore' });
+  children.add(child);
+  await poll(async () => runsCommand(await processArgv(child.pid), [file, ...args]), `${path.basename(file)} runs`, BOUND, { pollMs: 5 });
+  return child;
+}
+
+test('a recycled pid is never the host: the whole command, argument by argument, with spaces in paths', async () => {
+  // The host's interpreter is reached through a path with spaces, as a Mac app bundle's is.
+  const folder = path.join(scratch, 'Installed Cassini.app', 'Contents');
+  execFileSync('mkdir', ['-p', folder]);
+  const node = path.join(folder, 'node');
+  await symlink(process.execPath, node);
+  const host = { pidDirectory: path.join(scratch, 'recycled-pids'), name: 'io.example.audio', command: [node, '-e', WAIT] };
+  execFileSync('mkdir', ['-p', host.pidDirectory]);
+  const record = async child => writeFile(path.join(host.pidDirectory, `${host.name}-${child.pid}.pid`), `${child.pid}\n`);
+  // The host, with the browser's arguments after its command.
+  const real = await waiting(node, ['-e', WAIT, 'chrome-extension://abc/']);
+  // Pids the launcher once recorded, now other processes: the same interpreter with another
+  // script, the host's path only as an argument, and the command's words joined into one argument.
+  const decoys = [await waiting(node, ['-e', WAIT + ' ']), await waiting(process.execPath, ['-e', WAIT, node]),
+    await waiting(process.execPath, ['-e', WAIT, [node, '-e', WAIT].join(' ')])];
+  for (const child of [real, ...decoys]) await record(child);
+  assert.deepEqual(await livePids(host), [real.pid]);
+  for (const child of [real, ...decoys]) child.kill('SIGKILL');
+});
+
+test('stopRelays and stopLaunchers signal only the exact relay script and launcher, never a similarly named process', async () => {
+  const observe = path.join(scratch, 'similar-names');
+  const launcher = path.join(scratch, 'similar', 'io.example.control.launcher');
+  const host = { observe, command: ['/nonexistent/host'], launcher };
+  const relay = await waiting(process.execPath, ['-e', WAIT, RELAY]);
+  const relayLike = await waiting(process.execPath, ['-e', WAIT, RELAY + '.backup']);
+  const launcherLike = await waiting(process.execPath, ['-e', WAIT, launcher + '.old']);
+  const launcherReal = await waiting(process.execPath, ['-e', WAIT, launcher]);
+  // Four connections as their logs read: two relays still running, two launchers.
+  const connection = async (n, { relayPid = null, hostPid = null }) => {
+    const directory = path.join(observe, String(n));
+    execFileSync('mkdir', ['-p', directory]);
+    if (hostPid !== null) await writeFile(path.join(directory, 'host'), `${hostPid} ${process.pid}\n`);
+    await writeFile(path.join(directory, 'frames.jsonl'), relayPid === null ? '' : JSON.stringify({ relay: relayPid, startedWall: 1 }) + '\n');
+  };
+  await connection(1, { relayPid: relay.pid });
+  await connection(2, { relayPid: relayLike.pid });
+  await connection(3, { hostPid: launcherLike.pid });
+  await connection(4, { hostPid: launcherReal.pid });
+  assert.deepEqual(await stopRelays(host), [relay.pid]);
+  assert.deepEqual(await exitOf(relay), { code: null, signal: 'SIGTERM' });
+  assert.deepEqual(await stopLaunchers(host), [launcherReal.pid]);
+  assert.deepEqual(await exitOf(launcherReal), { code: null, signal: 'SIGKILL' });
+  assert.deepEqual([relayLike.exitCode, relayLike.signalCode, launcherLike.exitCode, launcherLike.signalCode], [null, null, null, null],
+    'the similarly named processes survive');
+  relayLike.kill('SIGKILL'); launcherLike.kill('SIGKILL');
 });
 
 test('check.py is bounded: one that never exits is killed and fails the run', async () => {
@@ -300,6 +394,8 @@ test('check.py is bounded: one that never exits is killed and fails the run', as
   await assert.rejects(driver.runOracle({ python, folder: directory, evidence: path.join(directory, 'evidence.json'),
     result: path.join(directory, 'result.json'), ms: 300 }), /check\.py did not finish within 300 ms/);
   assert.ok(Date.now() - started < BOUND);
-  const pid = Number((await readFile(path.join(directory, 'pid'), 'utf8')).trim());
-  assert.ok(await ended(pid), 'the hung check.py was killed');
+  // The kill may come before the stand-in ran its first command (macOS checks a new
+  // executable on its first exec): then no pid was recorded and nothing else ran.
+  const recorded = await readFile(path.join(directory, 'pid'), 'utf8').catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+  if (recorded !== null) assert.ok(await ended(Number(recorded.trim())), 'the hung check.py was killed');
 });

@@ -13,6 +13,7 @@ from .capture_sources import BrowserStreams, canonical_order, change_time, selec
 from .recording_session import BrowserHost, ProtocolError, stop_reason
 from .refusals import SIDES, NothingOpened, StartCancelled, entry
 from .refusals import append as append_refusal
+from .session_clock import SessionClock
 from .session_events import source_state
 from .spectro_source import SpectroSource
 
@@ -103,6 +104,9 @@ class BrowserCapture:
         self.stopped = threading.Event()
         self.stop_requested = threading.Event()
         self.origin_ms = None
+        # D61 one clock base: timelineOriginMs mapped onto CLOCK_MONOTONIC once
+        # per capture (start); resumes, fallbacks and new spans keep it.
+        self.session_clock = None
         self.line = None
         self.minutes_left = 0
         self._pcm_stopped = threading.Event()
@@ -158,9 +162,11 @@ class BrowserCapture:
                 armed[kind] = state["at"] if state["refuse_at"] is None else state["refuse_at"]
         return armed
 
-    def start(self, message, *, others_source="browser", reason="start", refusals=()):
+    def start(self, message, *, others_source="browser", reason="start", refusals=(), session_clock=None):
         """Start this capture. `refusals` are start refusals made before the folder
-        existed (a rejected browser Start): they are stored with the start events."""
+        existed (a rejected browser Start): they are stored with the start events.
+        `session_clock` is the mapping of an origin GNOME picked itself
+        (SessionClock()); otherwise the message's origin is mapped here, once."""
         identifier = message.get("captureId")
         origin = message.get("timelineOriginMs")
         microphone = message.get("microphone", True)
@@ -182,6 +188,9 @@ class BrowserCapture:
                 if self.finished or self.stop_requested.is_set():
                     raise ProtocolError("state", "Recording start was cancelled")
                 self.capture_id, self.origin_ms = identifier, origin
+                if session_clock is None or session_clock.origin_ms != origin:
+                    session_clock = SessionClock(origin)
+                self.session_clock = session_clock
                 self.call_generation = generation
                 self.audio_connected = others_source == "browser"
                 self.starting = True
@@ -461,7 +470,7 @@ class BrowserCapture:
             if active:
                 self.changed(self, "error")
 
-        tap = factory(kind, self.origin_ms, append, failed, level=level)
+        tap = factory(kind, self.session_clock, append, failed, level=level)
         state["tap"] = tap
         return tap, state
 
@@ -1187,4 +1196,6 @@ class BrowserCapture:
                     self.stop(str(error))
 
     def elapsed_ms(self):
-        return max(0.0, time.time_ns() / 1_000_000 - self.origin_ms)
+        """Session time now, on the capture's one monotonic mapping (D61): a wall
+        clock that steps or drifts during the capture moves no stamp."""
+        return max(0.0, self.session_clock.now())

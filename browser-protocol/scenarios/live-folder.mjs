@@ -40,6 +40,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { connectReceiveSlots, muteSlot, switchReceiveSlot } from './product-topologies.mjs';
 import { eventsOf, extent, folderClock, poll, tracksOf } from './folder-clock.mjs';
+import { monotonic, sessionClock } from './session-clock.mjs';
 import { controlConnections, RELAY_START_MS, resumeRequests, stopLaunchers, stopRelays, verifyControlPipe } from './native-launcher.mjs';
 
 const ORACLE = path.resolve(import.meta.dirname, '../conformance/live-folder');
@@ -131,11 +132,13 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
 
   async function scenario() {
     const { constants: C, bounds, pollMs, oracle } = await loadScenario();
-    const wall = () => Date.now();
+    // Every requested and observed time is a monotonic reading (scenarios/session-clock.mjs), mapped
+    // onto the session timeline once the extension's origin is known: the apps' timeline too.
+    const now = monotonic;
     const actions = {}, notes = { steps: [] };
-    let origin = null, clock = null, captureId = null, maxSourceCount = 0, slotC = null, before = null, newFolders = null;
+    let origin = null, timeline = null, clock = null, captureId = null, maxSourceCount = 0, slotC = null, before = null, newFolders = null;
     let requests = null, browserPid = null;
-    const session = at => at - origin;
+    const session = at => timeline.at(at);
     // Every control host the browser's child, every frame readable (resumeObservation.process, unusable).
     // notes.controlParents keeps, per check, each connection's launch parent and its parent then
     // (null once exited), so the parent-pid proof can be read back from the evidence.
@@ -145,8 +148,9 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
       return connections;
     };
     const step = (name, requested, observed) => {
-      actions[name] = { requestedWall: requested, observedWall: observed };
-      log(`live-folder: ${name} requested ${origin === null ? '-' : session(requested)} observed ${origin === null ? '-' : session(observed)} (session ms)`);
+      actions[name] = { requested, observed };
+      const shown = at => (timeline === null ? '-' : Math.round(session(at)));
+      log(`live-folder: ${name} requested ${shown(requested)} observed ${shown(observed)} (session ms)`);
     };
     const row = async () => {
       const value = await app.meetingRow();
@@ -160,8 +164,8 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
     const evidence = () => ({
       scenario: 'live-folder/1', app: app.name, protocolCommit: app.protocolCommit,
       extensionVersion: notes.extensionVersion, newFolders,
-      actions: Object.fromEntries(Object.entries(actions).map(([name, { requestedWall, observedWall }]) =>
-        [name, { requestedAtMs: session(requestedWall), observedAtMs: session(observedWall) }])),
+      actions: Object.fromEntries(Object.entries(actions).map(([name, { requested, observed }]) =>
+        [name, { requestedAtMs: session(requested), observedAtMs: session(observed) }])),
       slotC, maxSourceCount, nativeTones: app.nativeTones, captureId, timelineOriginMs: origin, resumeRequests: requests, notes,
     });
 
@@ -189,7 +193,7 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
         'setup: the browser started a control host through the observing launcher', bounds.setup, { pollMs });
 
       // 1. Record.
-      let requested = wall();
+      let requested = now();
       recordAsked = true;
       await app.record();
       const status = await poll(async () => { const value = await app.snapshot(); return value?.path && value.captureId ? value : null; },
@@ -200,7 +204,7 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
         const track = remoteTracks(manifest).find(t => lengthMs(t) >= 1000);
         return track?.sourceTrackId;
       }, 'record: A has 1000 ms of frames', bounds.record);
-      const recorded = wall();
+      const recorded = now();
       // The recording's identity and timeline origin, as the extension's service worker holds
       // them for the meeting tab: app-neutral, and what a resume request must name.
       const entry = await poll(() => worker.evaluate(async tab => {
@@ -212,6 +216,8 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
       assert.ok(typeof entry[0].captureId === 'string' && entry[0].captureId, `record: the entry's captureId ${JSON.stringify(entry[0])}`);
       assert.ok(Number.isSafeInteger(entry[0].startedAt) && entry[0].startedAt >= 0, `record: the entry's startedAt ${JSON.stringify(entry[0])}`);
       ({ captureId, startedAt: origin } = entry[0]);
+      // SPEC: the wall-clock origin is mapped onto the monotonic clock once; never the wall clock again.
+      timeline = sessionClock(origin);
       if (notes.appCaptureId !== captureId) log(`live-folder: the app reports captureId ${notes.appCaptureId}, the extension ${captureId}`);
       step('record', requested, recorded);
       await pipe('record');
@@ -223,54 +229,54 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
       if (app.startsWithMeOff) {
         actions.meOff = { ...actions.record };
       } else {
-        requested = wall();
+        requested = now();
         await app.selectMe(false);
         await clock.waitFolder(manifest => eventsOf(manifest, 'selection').at(-1)?.me === false,
           'meOff: the last selection event shows me:false', bounds.meOff);
-        step('meOff', requested, wall());
+        step('meOff', requested, now());
       }
 
       // 3. Mute A once F(A) >= MUTE_START_MS and the session clock >= MUTE_START_MS: F(A) may
       // lead the session clock (D61 output-time stamps), so both. A is then the only open source.
-      await clock.waitFolder(() => clock.F(keyA) >= C.MUTE_START_MS && session(wall()) >= C.MUTE_START_MS,
+      await clock.waitFolder(() => clock.F(keyA) >= C.MUTE_START_MS && timeline.now() >= C.MUTE_START_MS,
         `mute: F(A) and the session clock reach ${C.MUTE_START_MS} ms`, C.MUTE_START_MS + bounds.record);
       const spansA = new Set(tracksOf(clock.manifest, keyA).map(t => t.id)), othersBefore = others(clock.manifest).length;
       const receiverAtMute = await receiverStats(meeting, 0);
       notes.receiverA = { atRecord: receiverAtRecord, atMute: receiverAtMute, playoutMsBeforeMute: playoutMs(receiverAtRecord, receiverAtMute) };
-      requested = wall();
+      requested = now();
       await muteSlot(remote, 0);
-      step('mute', requested, wall());
+      step('mute', requested, now());
       log(`live-folder: A's mean jitter-buffer delay before the mute ${notes.receiverA.playoutMsBeforeMute} ms`);
 
       // 4. Hold the mute for MUTE_MS of A's own frames: one span, no source change, never ended.
       // Stalled frames fail the bound: that stall is what this step is here to catch.
-      const muteAt = session(actions.mute.requestedWall);
+      const muteAt = session(actions.mute.requested);
       await clock.waitFolder(manifest => {
         const ids = tracksOf(manifest, keyA).map(t => t.id);
         assert.deepEqual(ids.filter(id => !spansA.has(id)), [], `muteHold: A opened a new span during the mute`);
         assert.equal(others(manifest).length, othersBefore, `muteHold: an othersSource event during the mute: ${JSON.stringify(others(manifest).at(-1))}`);
         assert.ok(!tracksOf(manifest, keyA).some(t => t.ended === true), 'muteHold: A ended during the mute');
-        return clock.F(keyA) >= muteAt + C.MUTE_MS && session(wall()) >= muteAt + C.MUTE_MS;
+        return clock.F(keyA) >= muteAt + C.MUTE_MS && timeline.now() >= muteAt + C.MUTE_MS;
       }, `muteHold: F(A) and the session clock reach mute + ${C.MUTE_MS} ms`, bounds.muteHold);
-      requested = wall();
+      requested = now();
       const unmutedFrom = clock.F(keyA);
       await switchReceiveSlot(remote, 0, [C.TONE_A_HZ]);
       await clock.waitFolder(() => clock.F(keyA) >= unmutedFrom + C.PROOF_MS, `unmute: F(A) advances ${C.PROOF_MS} ms`, bounds.unmute);
-      step('unmute', requested, wall());
+      step('unmute', requested, now());
 
       // 5. Late remote: B starts sending on its pre-negotiated slot.
       await untilS(C.LATE_REMOTE_MS, 'lateRemote');
-      requested = wall();
+      requested = now();
       await switchReceiveSlot(remote, 1, [C.TONE_B_HZ]);
       const keyB = await clock.waitFolder(manifest => remoteTracks(manifest).find(t => t.sourceTrackId !== keyA && lengthMs(t) >= C.PROOF_MS)?.sourceTrackId,
         `lateRemote: a new sourceTrackId with ${C.PROOF_MS} ms of frames`, bounds.lateRemote);
-      step('lateRemote', requested, wall());
+      step('lateRemote', requested, now());
       notes.keyB = keyB;
 
       // 6. Me on at MIC_ON_MS. The microphone span starts at the me:true selection's atMs
       // (a late first buffer is a prefix gap, inside the span), so wait for that span.
       await untilS(C.MIC_ON_MS, 'meOn');
-      requested = wall();
+      requested = now();
       await app.selectMe(true);
       await clock.waitFolder(manifest => {
         const on = eventsOf(manifest, 'selection').at(-1);
@@ -278,7 +284,7 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
         return tracksOf(manifest, track => track.kind === 'microphone')
           .some(t => extent(t) && extent(t)[0] >= on.atMs - 1 && lengthMs(t) >= C.PROOF_MS);
       }, `meOn: selection me:true and a microphone span from it with ${C.PROOF_MS} ms`, bounds.meOn);
-      step('meOn', requested, wall());
+      step('meOn', requested, now());
 
       // 7. Forced resume: SIGKILL the session's one audio host. The app commits its fallback
       // (system/lost) first; only then may the resume complete (browser/restored), so the
@@ -291,7 +297,7 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
       const spansBefore = new Set(remoteTracks(clock.manifest).map(t => t.id));
       const othersAtKill = others(clock.manifest).length;
       notes.killedPid = pids[0];
-      requested = wall();
+      requested = now();
       process.kill(pids[0], 'SIGKILL');
       const lost = await clock.waitFolder(manifest => {
         const after = others(manifest).slice(othersAtKill);
@@ -301,34 +307,34 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
           `kill: browser/restored before any system/lost: ${JSON.stringify(after)}`);
         return lostAt >= 0 ? after[lostAt] : null;
       }, 'kill: othersSource system/lost', bounds.lost);
-      step('kill', requested, wall());
-      requested = actions.kill.observedWall;
+      step('kill', requested, now());
+      requested = actions.kill.observed;
       await clock.waitFolder(manifest => {
         const restored = others(manifest).some(e => e.source === 'browser' && e.reason === 'restored' && e.atMs >= lost.atMs);
         const fresh = key => remoteTracks(manifest).some(t => t.sourceTrackId === key && !spansBefore.has(t.id) && lengthMs(t) >= C.PROOF_MS);
         return restored && fresh(keyA) && fresh(keyB);
       }, `restore: browser/restored and new spans under A and B with ${C.PROOF_MS} ms each`, bounds.restore);
-      step('restore', requested, wall());
+      step('restore', requested, now());
       await pipe('restore');
       assert.equal((await app.folders()).length, folderCount, 'restore: the resume made another Recording-* folder');
       notes.audioHostsAfterResume = await app.audioHostPids();
 
       // 8. Stop, after STOP_AFTER_RESTORE_MS more. Slot C's stats are the page-side evidence
       // that a connected remote with no packets existed (P4).
-      await untilS(session(actions.restore.observedWall) + C.STOP_AFTER_RESTORE_MS, 'stop');
+      await untilS(session(actions.restore.observed) + C.STOP_AFTER_RESTORE_MS, 'stop');
       const stats = await receiverStats(meeting, 2);
       slotC = { connectionState: stats.connectionState, packetsReceived: stats.packetsReceived };
       await row();
-      requested = wall();
+      requested = now();
       stopAsked = true;
       await app.stop();
       await clock.waitFolder(manifest => manifest.state !== 'recording' && eventsOf(manifest).at(-1)?.type === 'end',
         'stop: the folder leaves recording and ends with an end event', bounds.stop);
-      step('stop', requested, wall());
+      step('stop', requested, now());
       // Every resume request up to the stop observation, reconnects included. A relay logs a
       // frame before forwarding it, so none the extension acted on is missing here.
       const connections = await pipe('stop');
-      requests = resumeRequests(connections, origin, actions.stop.observedWall);
+      requests = resumeRequests(connections, timeline.originMono, actions.stop.observed);
       notes.controlConnections = connections.map(c => ({ connection: c.connection, pid: c.pid, launchParent: c.launchParent,
         live: c.live, parent: c.parent, frames: c.frames.length, resumes: c.resumes.length,
         ...(c.outputError ? { outputError: c.outputError } : {}) }));
@@ -351,7 +357,7 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
       notes.failure = error.stack;
       notes.folder = clock?.describe();
       try { notes.controlConnections ??= (await controlConnections(app.controlHost)).map(({ frames, ...c }) => ({ ...c, frames: frames.length })); } catch {}
-      try { await writeFile(path.join(out, 'evidence.partial.json'), JSON.stringify({ ...evidence(), actions: origin === null ? actions : evidence().actions }, null, 1) + '\n'); } catch {}
+      try { await writeFile(path.join(out, 'evidence.partial.json'), JSON.stringify({ ...evidence(), actions: timeline === null ? actions : evidence().actions }, null, 1) + '\n'); } catch {}
       throw error;
     }
   }

@@ -171,8 +171,12 @@ own: the adapter passes the pages and the extension's service worker.
   bounded by `CLEANUP_MS`; then `stopRelays` ends any control relay still running and
   `stopLaunchers` kills any control launcher still waiting in `open()` on its FIFO (its
   relay never opened it: the launcher reads neither of the browser's pipes, so the
-  browser's exit does not end it). A launcher is told from its host by its command line
-  alone (on macOS liveness is `kill(pid, 0)`, which both pass). A relay spawned but not yet
+  browser's exit does not end it). Every identity is read from the process's exact argv
+  (`/proc` on Linux; on macOS the kernel's `KERN_PROCARGS2` through `python3`, since `ps`
+  joins arguments with spaces): a host runs its whole command as consecutive arguments, a
+  relay has `control-relay.mjs` and a launcher its launcher path as one whole argument, and a
+  zombie is none of them. So a recycled pid, a similarly named process or a launcher still
+  waiting is never taken for the host or the relay. A relay spawned but not yet
   started at teardown cannot be found by its log line; it watches its writer instead (the
   launcher's pid, passed as its third argument) until its FIFO is open, and once that pid
   is gone it opens the FIFO for writing itself without blocking and closes it, so it reads
@@ -196,8 +200,11 @@ own: the adapter passes the pages and the extension's service worker.
 - Clock: `scenarios/folder-clock.mjs` reads `session.json` (tolerating a missing or
   half-written file) for S, the latest track end, and F(source), one source's. Every
   step waits on the folder or the app with a bound from `scenario.json` and fails with
-  the step's name (E1). Times are `Date.now()` minus the session origin the extension
-  holds, so they are app-neutral: the `chrome.storage.session` `cassiniSessions[]` entry of
+  the step's name (E1). Times are on the session timeline of `scenarios/session-clock.mjs`:
+  the origin the extension holds (a wall-clock `Date.now()`) is mapped onto the system's
+  monotonic clock once, as SPEC requires of capturing documents, and the wall clock is never
+  read again, so a drifting or stepping wall clock (a hosted VM's ran 500 ppm fast) moves no
+  requested or observed time. They are app-neutral: the `chrome.storage.session` `cassiniSessions[]` entry of
   the meeting tab gives the evidence's `captureId` and integer `timelineOriginMs`.
 - Mute: asked once F(A) and the session clock both reach `MUTE_START_MS`, unmuted once both
   reach `mute.requested + MUTE_MS` (O2.muteStart, O2.duration).
@@ -212,8 +219,9 @@ own: the adapter passes the pages and the extension's service worker.
   `/dev/null`, stdout the browser's pipe) and execs the host with only its stdout into the
   FIFO. The launcher keeps its files private with `umask 077` and gives the host the
   browser's umask back before the exec. The relay copies the FIFO to the browser byte for
-  byte, one blocking write per read, logs each native-messaging frame (`Date.now()` once
-  the frame is whole, before forwarding) and exits at the end of its input; an unreadable
+  byte, one blocking write per read, logs each native-messaging frame (stamped once the
+  frame is whole, before forwarding: `atWall` for people, `atMono` on the same monotonic
+  clock for the evidence) and exits at the end of its input; an unreadable
   frame is logged and still forwarded. When the browser closes its end, the relay learns it
   from the next forward (EPIPE), logs `outputError` with the frames it did not deliver
   (`undelivered`: still resume requests, the host asked, written with `delivered: false`)
@@ -239,8 +247,11 @@ own: the adapter passes the pages and the extension's service worker.
 failure after Record: Stop, one cleanup, the relay stopped; a failure while the control
 launcher starts: one cleanup, the launcher waiting on its FIFO killed; a failing or missing
 cleanup never hides the run's failure; a relay that starts only after teardown killed its
-launcher ends by itself; on macOS's branches, with no `/proc`, the waiting launcher is
-still killed; a `check.py` that never exits is killed at its bound);
+launcher ends by itself; the waiting launcher is never live and is still killed; a recycled
+pid running the same interpreter, or the host's path only as an argument, is never the host
+(paths with spaces); a process named like the relay or the launcher (`control-relay.mjs.backup`)
+is never signalled; a `check.py` that never exits is killed at its bound; CI runs this file
+on macOS too, in `launcher-macos`);
 `node --test tests/control-relay.test.mjs` checks the frame reader across chunk
 boundaries, the relay's byte-exact passthrough, unparsable and cut-off frames, and the
 observing launcher (the host stays the spawner's child, connections in launch order, the
