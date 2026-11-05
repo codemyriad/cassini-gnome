@@ -55,7 +55,6 @@
   "test_export.py": 0.2,
   "test_export_failures.py": 0.0,
   "test_flatpak_bridge.py": 2.7,
-  "test_flatpak_repository.py": 0.0,
   "test_folder_player.py": 1.4,
   "test_gap_ranges.py": 2.5,
   "test_i18n.py": 0.3,
