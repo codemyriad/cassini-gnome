@@ -25,8 +25,8 @@ def test_every_builder_cache_key_hashes_its_own_manifest():
         assert re.search(r"^\s+cache: ", step, re.M) is None, (name, "cache: false also stops the restore")
         keys.setdefault(key, set()).add(manifest)
     # The devel profile. The stable one is built by flatpak-builder itself in
-    # flatpak.yml, with no action cache, as our closest test of the Flatpak
-    # Flathub will build (D45.3).
+    # flatpak.yml, with no action cache, as CI's build check of the stable
+    # Flatpak (D45.4: never published).
     assert len(keys) == 1, keys
     prefixes = {key.split("${{")[0] for key in keys}
     assert len(prefixes) == len(keys), keys  # One manifest's entry never shadows another's.

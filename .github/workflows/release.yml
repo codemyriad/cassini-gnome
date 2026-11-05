@@ -69,11 +69,9 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  # D45.3 (Silvio, 2026-11-05): Flathub is the Flatpak channel (listing
-  # pending). Flathub builds, signs, hosts and updates io.codemyriad.CassiniTalk
-  # from the manifest in its own repository, not on this tag push, so a release
-  # attaches no Flatpak bundle: one without an update remote must not be
-  # offered. The release ships the Debian, RPM and Arch packages.
+  # D45.4 (Silvio, 2026-11-05): Linux ships the Debian, RPM and Arch packages
+  # only. No Flatpak is published anywhere; a release never publishes or
+  # attaches one (CI still builds it, as a check).
   publish:
     needs: [deb, packages]
     runs-on: ubuntu-latest

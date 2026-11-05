@@ -145,21 +145,14 @@ supply a release. No tag or publication is created to validate this wiring.
 release with those packages and the tagged version's NEWS section
 (`build-aux/ci/release_notes.py`).
 
-The Flatpak's channel is Flathub (D45.3, 2026-11-05), and its listing is still
-pending: the `io.codemyriad.CassiniTalk` submission is being prepared. Once
-listed, Flathub builds, signs, hosts and updates it from the manifest in its
-`flathub/io.codemyriad.CassiniTalk` repository, which pins a release tag.
-Pushing our tag builds nothing there: a release reaches Flathub when that
-manifest is moved to the new tag. We run no Flatpak repository and hold no
-Flatpak signing key, so a release attaches no Flatpak bundle: one without an
-update remote must not be offered. This replaces G15's guard, which refused to
-ship the bundle until our own signed D45.1 repository served it. Main's stable
-Flatpak is still built without an update remote, validated and smoke-tested in
-`flatpak.yml` below; it is a test package from main only. It is the closest
-test we run of Flathub's build, not the same build: the in-repo manifest builds
-the checkout (a `dir` source) where Flathub's builds the tagged sources, and
-Flathub's permissions follow its review (`--talk-name=org.freedesktop.Flatpak`,
-for example, is granted only by exception).
+Linux ships the deb, rpm and Arch packages only; no Flatpak is published
+anywhere (D45.4, 2026-11-05, replacing D45.3's Flathub plan, which Flathub's
+generative-AI policy rules out). We run no Flatpak repository and hold no
+signing key, and a release never publishes or attaches a Flatpak bundle. This
+replaces G15's guard, which refused to ship the bundle until our own signed
+D45.1 repository served it. Main's stable Flatpak is still built without an
+update remote, validated and smoke-tested in `flatpak.yml` below, as a build
+check; it is a test package from main only.
 
 Every PR checks the version across Meson, NEWS, metainfo, the man page and all
 native recipes, in Lint (`source.yml`). `flatpak.yml` builds the stable Flatpak,

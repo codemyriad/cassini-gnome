@@ -200,9 +200,9 @@ def release_started(text):
     return bool(re.search(r"\btags", filters)) or not re.search(r"\bbranches", filters)
 
 
-def test_release_ships_the_native_packages_and_leaves_the_flatpak_to_flathub():
-    # D45.3: Flathub will build, sign, host and update the Flatpak; we hold no
-    # signing key and run no repository. A release ships the native packages
+def test_release_ships_the_native_packages_and_never_a_flatpak():
+    # D45.4: no Flatpak is published anywhere; we hold no signing key and run
+    # no repository, and CI builds the Flatpak only as a check. A release ships the native packages
     # (publish needs exactly deb and packages), never downloads main's
     # flatpak-stable and never attaches a .flatpak: a bundle without an update
     # remote must not be offered. No workflow calls Release preparation.
