@@ -91,7 +91,7 @@ SOURCE_STEP = """
 GATE = """
   pytest-coverage:
     name: Pytest coverage
-    needs: [source, deb, rpm-arch]
+    needs: [source, deb, rpm-arch, meson-tests]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
@@ -103,6 +103,11 @@ GATE = """
           path: ${{ runner.temp }}/pytest
       - name: Every skipped pytest suite ran in full in a package job of the same release
         run: python3 build-aux/ci/check_pytest_ran.py --gate "$RUNNER_TEMP/pytest"
+      - name: The Meson tests ran and passed
+        if: ${{ !cancelled() }}
+        env:
+          MESON_TESTS: ${{ needs.meson-tests.result }}
+        run: test "$MESON_TESTS" = success || { echo "::error::Meson tests $MESON_TESTS, not success"; exit 1; }
 """
 PYTEST_OPTIONS = {"faulthandler_timeout": 30, "pythonpath": ["src"], "testpaths": ["tests"]}
 BUILDS = {
@@ -580,8 +585,18 @@ MUTATIONS = {
     "ci gate dropped": ("ci.yml", "  pytest-coverage:\n", "  pytest-coverage-disabled:\n"),
     "ci gate does not wait for deb": (
         "ci.yml",
+        "    needs: [source, deb, rpm-arch, meson-tests]\n",
+        "    needs: [source, rpm-arch, meson-tests]\n",
+    ),
+    "ci gate does not wait for the Meson tests": (
+        "ci.yml",
+        "    needs: [source, deb, rpm-arch, meson-tests]\n",
         "    needs: [source, deb, rpm-arch]\n",
-        "    needs: [source, rpm-arch]\n",
+    ),
+    "ci gate accepts skipped Meson tests": (
+        "ci.yml",
+        'test "$MESON_TESTS" = success ||',
+        'test "$MESON_TESTS" != failure ||',
     ),
     "pr-paths packages not always": ("build-aux/ci/pr-paths.json", '    "packages",\n', ""),
     "source fedora single-quoted pytest-in": (

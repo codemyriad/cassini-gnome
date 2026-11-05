@@ -1,2 +1,13 @@
-FROM ubuntu:26.04
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Two stages (tests/harness-image.sh): run.sh builds `harness` once per week and
+# input change, CI caches it, and every run brings it up to the current archive.
+# BASE is pinned to a digest by run.sh.
+ARG BASE=ubuntu:26.04
+ARG HARNESS=harness
+FROM ${BASE} AS harness
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pytest gcc libc6-dev libstdc++6 python3-numpy python3-onnxruntime python3-gi python3-jsonschema gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good xvfb xauth dbus-x11 libglib2.0-bin libglib2.0-dev-bin libxml2-utils && rm -rf /var/lib/apt/lists/*
+
+# Every run (D68): the current archive, so the cached harness and the distro
+# libraries the worker tests run against are never older than this run's indexes.
+FROM ${HARNESS}
+RUN apt-get update && apt-get -y --no-install-recommends dist-upgrade && rm -rf /var/lib/apt/lists/*

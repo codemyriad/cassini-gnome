@@ -84,6 +84,22 @@ jobs:
         with:
           name: deb-${{ strategy.job-index }}
           path: dist/*.deb
+      # C (D66): the harness images of tests/harness-image.sh, from a cache main
+      # saves and pull requests only read; their key changes every week and with
+      # every input. run.sh builds an image the cache did not hold.
+      - name: Harness image cache key
+        id: harness
+        if: matrix.base == 'ubuntu:26.04'
+        run: build-aux/ci/harness-cache.sh key build-refresh browser-setup >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v6
+        id: harness-cache
+        if: matrix.base == 'ubuntu:26.04'
+        with:
+          path: ${{ steps.harness.outputs.path }}
+          key: ${{ steps.harness.outputs.key }}
+      - name: Load the cached harness images
+        if: matrix.base == 'ubuntu:26.04' && steps.harness-cache.outputs.cache-hit == 'true'
+        run: build-aux/ci/harness-cache.sh load "${{ steps.harness.outputs.path }}"
       - name: Installed package restarts after upgrades and preserves active audio
         if: matrix.base == 'ubuntu:26.04'
         run: tests/build-refresh/run.sh dist/cassini-talk_*.deb "$RUNNER_TEMP/build-refresh"
@@ -119,3 +135,11 @@ jobs:
         with:
           name: browser-startup-installed
           path: ${{ runner.temp }}/browser-startup/
+      - name: Save the harness images (main only)
+        if: matrix.base == 'ubuntu:26.04' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.harness-cache.outputs.cache-hit != 'true'
+        run: build-aux/ci/harness-cache.sh save "${{ steps.harness.outputs.path }}" build-refresh browser-setup
+      - uses: actions/cache/save@v6
+        if: matrix.base == 'ubuntu:26.04' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.harness-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.harness.outputs.path }}
+          key: ${{ steps.harness.outputs.key }}
