@@ -394,7 +394,12 @@ class NativeRecorder(GObject.Object):
                 self._unstored.append(item)
                 self._discard = True
             else:
-                self.session.refuse(item)
+                # Nothing reads this future: a failed checkpoint is logged
+                # here, and the retired branch is still released below.
+                try:
+                    self.session.refuse(item)
+                except Exception:
+                    LOG.exception("Could not record an armed refusal")
         LOG.warning("Native %s side (%s) did not open: %s", SIDES[kind], kind, item.get("message"))
         self._detach(pipeline, attempt)
         if nothing:

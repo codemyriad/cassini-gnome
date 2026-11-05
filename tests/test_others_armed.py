@@ -468,6 +468,41 @@ def bus_error(recorder, source, code, cause="Fake monitor went away"):
         recorder._message(None, Gst.Message.new_error(source, error, "scripted"))
 
 
+def test_an_armed_refusal_whose_checkpoint_fails_is_logged_and_still_releases_its_branch(tmp_path, caplog):
+    # The refusal runs on the IO worker, whose future nothing reads. When its
+    # checkpoint fails (a full disk), the failure is logged, the refused branch
+    # is still released, and Stop ends on the pipeline's EOS, not its timeout.
+    caplog.set_level(logging.WARNING, logger="cassini_talk.native_recorder")
+    recorder, sides, signals = start(tmp_path, QUIET)
+    session = recorder.session
+    attempt = recorder._pending_sources["system"]
+    done, threads = watch_armed_failed(recorder), on_main_loop(recorder)
+
+    def full(*_items):
+        raise OSError("No space left on device")
+
+    session.refuse = full
+    try:
+        sides.now = BOUND + 20
+        bus_error(recorder, sides.sources["system"], DENIED)
+        assert done.wait(5)  # Bound only: the worker's refusal has returned.
+        assert attempt["retired"] and attempt["branch"].get_parent() is None
+        failures = [r for r in caplog.records if r.getMessage() == "Could not record an armed refusal"]
+        assert len(failures) == 1 and isinstance(failures[0].exc_info[1], OSError)
+        ran = threading.Event()
+        GLib.idle_add(ran.set)
+        spin_until(ran.is_set)
+        assert threads and all(threads) and not recorder._finishing
+        recorder.stop()
+        spin_until(lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing)
+    finally:
+        close(recorder)
+    assert names(signals) == ["started", "finished"] and all(threads)
+    stored = saved(session)
+    assert stored["state"] == "completed" and "problem" not in stored and "refusals" not in stored
+    assert [(t["kind"], t["frames"]) for t in stored["tracks"]] == [("microphone", 480)]
+
+
 def test_an_eos_never_overtakes_a_committed_side_s_error_still_waiting_for_the_lock(tmp_path):
     # A committed side's error waits on the bus worker for the PCM lock (a
     # writer's checkpoint holds it); the pipeline's EOS that follows must not
