@@ -22,8 +22,8 @@ from test_ci_release import module
         ("src/cassini_talk/player.py", {"boards", "library", "offline"}),
         ("src/cassini_talk/library.py", {"boards", "library", "offline"}),
         ("src/cassini_talk/parakeet.py", {"boards", "library", "offline"}),
-        ("tests/parakeet/queue_probe.py", {"boards", "offline"}),
-        ("tests/diarization/queue_probe.py", {"boards", "offline"}),
+        ("tests/parakeet/queue_probe.py", {"offline"}),
+        ("tests/diarization/queue_probe.py", {"offline"}),
         ("tests/test_diarization_models.py", {"boards", "offline"}),
         ("tests/ux/diarization/golden.json", {"boards", "library", "offline"}),
         ("tests/ui/quit.py", {"boards"}),
@@ -32,8 +32,11 @@ from test_ci_release import module
         ("tests/desktop_services.py", {"boards"}),
         ("tests/recording/readiness.py", {"boards"}),
         ("tests/conftest.py", {"boards"}),
-        ("tests/test_future_ui_dependency.py", {"boards"}),
-        ("tests/new_helpers.py", {"boards"}),
+        # G: tests Boards never reads no longer run it; the guard below keeps
+        # the list complete as Boards' scripts change.
+        ("tests/test_future_ui_dependency.py", set()),
+        ("tests/new_helpers.py", set()),
+        ("tests/recording/run.sh", set()),
         ("tests/ux/states-vectors.json", {"boards", "library"}),
         ("whistle/pins.json", {"boards", "offline"}),
         ("browser-extension/manifest.json", {"boards"}),
@@ -191,10 +194,10 @@ def test_transitive_dependencies_run_both_engine_and_library_checks(path):
 
 
 def test_boards_pr_filter_matches_every_file_boards_reads():
-    # D20: a file Boards reads that its PR filter misses would let a PR
-    # changing only that file skip Boards; build-aux/ci/boards_inputs.py
-    # --why PATH says how the scan reached a file, --patterns tests/ prints
-    # the globs.
+    # G (D20): Boards' PR filter lists the tests it reads, not tests/**. A
+    # file Boards reads that the filter misses would let a PR changing only
+    # that file skip Boards; build-aux/ci/boards_inputs.py --why PATH says
+    # how the scan reached a file, --patterns tests/ prints the globs.
     boards_inputs = module("boards_inputs")
     files = boards_inputs.inputs()
     # The scan follows the workflow, its scripts, Python imports through
