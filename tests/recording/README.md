@@ -131,8 +131,8 @@ runs the vendored oracle (`conformance/live-folder/check.py`); `result.json` and
 `check.log` stay in the run's artifacts, next to the Library. Every wait is on the
 folder's own clock (`session.json`) or the app, bounded by `scenario.json`; nothing is
 retried. The tab and the private sink stay unmuted, so the system fallback hears the tab.
-CI runs it as the `live-folder` job, in parallel with `capture`; until its open product
-findings are fixed it is `continue-on-error` (it still runs and uploads evidence).
+CI runs it as the `live-folder` job, in parallel with `capture`; it gates Recording
+(since R93), and a failure is root-fixed, never un-gated (D66).
 For failures, the run also keeps `broker.log` (the adapter starts the production broker
 itself, with its log, before the app; `ensure_service` would discard it), `audio-host.log`,
 and `pages-console.log`: both pages' consoles plus a passive main-world observer of the
