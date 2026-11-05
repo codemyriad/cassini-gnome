@@ -16,9 +16,15 @@ LOG = logging.getLogger(__name__)
 
 
 class BrowserWatch:
-    def __init__(self, changed, *, path=None, profiles_changed=None):
+    def __init__(
+        self, changed, *, path=None, profiles_changed=None, unanswered=None, interval_ms=500, clock=time.monotonic
+    ):
+        # changed(snapshot, received_at) for each reply; unanswered(failed_at)
+        # for each failed poll. Both stamps are taken on the worker (broker_silent).
         self.changed, self.path = changed, path
         self.profiles_changed = profiles_changed
+        self.unanswered = unanswered
+        self.clock = clock
         self._profiles = self._delivered_profiles = None
         self._profile_checked = float("-inf")
         self.closed = threading.Event()
@@ -28,7 +34,7 @@ class BrowserWatch:
         self.generation = time.monotonic_ns()
         self.future = None
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-browser-watch")
-        self.timer = GLib.timeout_add(500, self.poll)
+        self.timer = GLib.timeout_add(interval_ms, self.poll)
         self.poll()
 
     def _read(self):
@@ -77,11 +83,18 @@ class BrowserWatch:
                 raise OSError("Browser inventory unavailable")
             return value
 
+    def _poll_once(self):
+        try:
+            value = self._read()
+        except Exception as error:
+            return self.clock(), None, error
+        return self.clock(), value, None
+
     def poll(self):
         if self.closed.is_set():
             return GLib.SOURCE_REMOVE
         if self.future is None:
-            self.future = self.executor.submit(self._read)
+            self.future = self.executor.submit(self._poll_once)
             self.future.add_done_callback(lambda future: GLib.idle_add(self._received, future))
         return GLib.SOURCE_CONTINUE
 
@@ -93,17 +106,17 @@ class BrowserWatch:
             if self._profiles is not None and self._profiles != self._delivered_profiles:
                 self._delivered_profiles = self._profiles
                 self.profiles_changed()
-            try:
-                value = future.result()
-            except Exception:
-                LOG.exception("Browser inventory update failed")
+            at, value, error = future.result()
+            if error is not None:
+                LOG.error("Browser inventory update failed", exc_info=error)
                 with self.lock:
                     if self.lease is not None:
                         self.lease.close()
                         self.lease = None
-            else:
-                if value is not None:
-                    self.changed(value)
+                if self.unanswered is not None:
+                    self.unanswered(at)
+            elif value is not None:
+                self.changed(value, at)
         return GLib.SOURCE_REMOVE
 
     def set_active(self, active):

@@ -16,12 +16,51 @@ from .library import meeting_id
 # It has not said that nothing records: it is busy (its once-a-second session
 # checkpoint fsyncs under the capture lock that a status reply also takes).
 UNANSWERED = object()
-# How long unanswered polls may keep the last known capture. A frozen broker
-# that still holds its socket must not keep a meeting "recording" forever. The
-# extension gives up on a broker that has not acked a packet for 10 s ("Cassini
-# stopped responding", background.js) and ends its capture, so after as long
-# the Library stops believing in it too.
+# How long a broker's last answer outlives polls that go unanswered. A frozen
+# broker that still holds its socket must not keep a meeting "recording"
+# forever. The extension gives up on a broker that has not acked a packet for
+# 10 s ("Cassini stopped responding", background.js) and ends its capture, so
+# after as long the app stops believing in it too.
 UNANSWERED_BOUND = 10.0
+
+
+def broker_silent(answered_at, failed_at):
+    """The one expiry rule for every cache of broker capture state.
+
+    The app's broker snapshot (BrowserWatch, also handed to each window) and
+    each Library window's BrowserActivity keep the broker's last answer while
+    a poll goes unanswered: a late broker has not said that nothing records.
+    That answer stands only until a poll fails UNANSWERED_BOUND or more after
+    it was received; the cache then reads as idle, as an answer that nothing
+    records would. Both are monotonic stamps taken on the poll's worker as the
+    reply or the failure came, so a stalled main loop neither ages an answer
+    nor hides the silence of a poll that blocked.
+    """
+    return answered_at is None or failed_at - answered_at >= UNANSWERED_BOUND
+
+
+def standing_broker_caches(app, browser=None):
+    """Which caches of broker capture state Library, Record and Quit read.
+
+    The app's snapshot (with the windows' copies of it) and the Library
+    windows' BrowserActivity caches hold replies to the same broker's status
+    poll, each stamped with its monotonic receive time (``answered_at``). The
+    newest successful reply wins: a cache whose reply is older than another's
+    has been superseded and does not count, whatever order the callbacks ran
+    in. A cache without a receive time (nothing answered yet) stands. Returns
+    whether the app's snapshots stand, and the BrowserActivity caches that do.
+    """
+    sources = [s for w in app.get_windows() if (s := getattr(w, "_activity_source", None)) is not None]
+    if browser is not None and all(s is not browser for s in sources):
+        sources.append(browser)
+    app_at = getattr(app, "_browser_answered_at", None)
+    stamps = [at for at in (app_at, *(getattr(s, "answered_at", None) for s in sources)) if at is not None]
+    newest = max(stamps, default=None)
+
+    def stands(at):
+        return at is None or at >= newest
+
+    return stands(app_at), [s for s in sources if stands(getattr(s, "answered_at", None))]
 
 
 def read_browser_activity(path=None, with_connection=False, with_paths=False, *, unanswered=None):
@@ -73,11 +112,16 @@ def recorder_activity(windows):
 
 def application_activity(app, browser=None, fallback=()):
     """One controller projection for both immediate and periodic Library refresh."""
-    activity = dict(browser.snapshot) if browser is not None else dict(fallback)
+    app_stands, sources = standing_broker_caches(app, browser)
+    activity = {}
+    if browser is None:
+        activity.update(fallback)
+    for source in sources:
+        activity.update(source.snapshot)
     activity.update(recorder_activity(app.get_windows() + [app]))
     if recovery := getattr(app, "library_recovery", None):
         activity.update(recovery.activity)
-    for state in getattr(app, "_browser_snapshot", {}).get("statuses", []):
+    for state in getattr(app, "_browser_snapshot", {}).get("statuses", []) if app_stands else ():
         if browser_capture_busy(state) and isinstance(state.get("path"), str):
             identifier = meeting_id(Path(state["path"]))
             if identifier:
@@ -95,17 +139,21 @@ class BrowserActivity:
         self.closed = False
         self.future = None
         self.clock = clock
-        # When the current streak of unanswered polls began; None while answered.
-        self.unanswered_since = None
+        # Monotonic receive time of the answer the snapshot holds (broker_silent).
+        self.answered_at = None
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-activity")
         self.timer = GLib.timeout_add(interval_ms, self.poll)
         self.poll()
+
+    def _read(self):
+        result = read_browser_activity(self.path, True, True, unanswered=UNANSWERED)
+        return self.clock(), result
 
     def poll(self):
         if self.closed:
             return GLib.SOURCE_REMOVE
         if self.future is None:
-            self.future = self.executor.submit(read_browser_activity, self.path, True, True, unanswered=UNANSWERED)
+            self.future = self.executor.submit(self._read)
             self.future.add_done_callback(lambda future: GLib.idle_add(self._complete, future))
         return GLib.SOURCE_CONTINUE
 
@@ -118,17 +166,17 @@ class BrowserActivity:
         # Unanswered is unknown, not idle: publishing "nothing records" for one
         # late reply unbinds a live meeting's views and tears its meter down.
         # Keep what the broker last said until it answers, its socket goes, or
-        # it stays silent for UNANSWERED_BOUND; then it reads as idle, as a
-        # reply that nothing records (or a missing broker) would.
-        if (result := future.result()) is UNANSWERED:
-            now = self.clock()
-            if self.unanswered_since is None:
-                self.unanswered_since = now
-            if now - self.unanswered_since < UNANSWERED_BOUND:
+        # it stays silent for UNANSWERED_BOUND (broker_silent); then it reads
+        # as idle, as a reply that nothing records (or a missing broker) would.
+        at, result = future.result()
+        if result is UNANSWERED:
+            if not broker_silent(self.answered_at, at):
                 return GLib.SOURCE_REMOVE
             result = ({}, False, {})
+        elif self.answered_at is not None and at < self.answered_at:
+            return GLib.SOURCE_REMOVE  # An older answer never replaces a newer one.
         else:
-            self.unanswered_since = None
+            self.answered_at = at
         value, connected, paths = result
         if value != self.snapshot or connected != self.connected or paths != self.paths:
             self.snapshot = value

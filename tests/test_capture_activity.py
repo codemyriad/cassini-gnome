@@ -69,7 +69,7 @@ def test_browser_watch_delivers_profile_changes_once_off_the_worker(service, mon
         browser_watch, "time", SimpleNamespace(monotonic=lambda: now[0], monotonic_ns=browser_watch.time.monotonic_ns)
     )
     watcher = browser_watch.BrowserWatch(
-        lambda _: None, path=service[1], profiles_changed=lambda: notifications.append(threading.get_ident())
+        lambda *_: None, path=service[1], profiles_changed=lambda: notifications.append(threading.get_ident())
     )
     try:
         spin_until(lambda: watcher.future is None)
@@ -183,8 +183,10 @@ def test_an_unanswered_poll_keeps_the_live_capture_and_a_real_reply_clears_it(tm
 
 def test_unanswered_polls_keep_the_live_capture_only_up_to_the_bound(tmp_path, monkeypatch):
     """A broker that is late is unknown, not idle, but a frozen broker that still
-    holds its socket must not keep a meeting "recording" forever: after
-    UNANSWERED_BOUND of unanswered polls the Library reads it as idle, once."""
+    holds its socket must not keep a meeting "recording" forever: once a poll
+    fails UNANSWERED_BOUND after the last answer the Library reads it as idle, once."""
+    from concurrent.futures import Future
+
     from cassini_talk import capture_activity
     from cassini_talk.capture_activity import UNANSWERED, UNANSWERED_BOUND
 
@@ -208,36 +210,42 @@ def test_unanswered_polls_keep_the_live_capture_only_up_to_the_bound(tmp_path, m
 
     try:
         pump(lambda: watcher.future is None)
-        assert holds_live() and changes == [{identifier: "recording"}]
+        assert holds_live() and changes == [{identifier: "recording"}] and watcher.answered_at == 0
 
         # Before the bound the last answer stands and nothing is published.
         poll(UNANSWERED, 1)
-        poll(UNANSWERED, 1 + UNANSWERED_BOUND - 0.1)
+        poll(UNANSWERED, UNANSWERED_BOUND - 0.1)
         assert holds_live() and len(changes) == 1
-        # At the bound the frozen broker reads as idle, published exactly once.
-        poll(UNANSWERED, 1 + UNANSWERED_BOUND)
+        # A poll failing at the bound after the last answer reads as idle, published once.
+        poll(UNANSWERED, UNANSWERED_BOUND)
         assert (watcher.snapshot, watcher.connected, watcher.paths) == ({}, False, {})
         assert changes == [{identifier: "recording"}, {}]
-        poll(UNANSWERED, 2 + UNANSWERED_BOUND)
+        poll(UNANSWERED, 1 + UNANSWERED_BOUND)
         assert len(changes) == 2, "Further unanswered polls publish no more changes"
         # A real reply after that restores the capture.
         poll(live, 13)
         assert holds_live() and changes[-1] == {identifier: "recording"} and len(changes) == 3
 
-        # A real reply ends the streak: silence is timed from the next miss.
+        # Each answer restarts the bound: silence is timed from the last answer.
         poll(UNANSWERED, 14)
-        poll(UNANSWERED, 14 + UNANSWERED_BOUND - 0.1)
-        poll(live, 14 + UNANSWERED_BOUND - 0.05)
+        poll(UNANSWERED, 13 + UNANSWERED_BOUND - 0.1)
+        poll(live, 13 + UNANSWERED_BOUND - 0.05)
         poll(UNANSWERED, 30)
-        poll(UNANSWERED, 30 + UNANSWERED_BOUND - 0.1)
-        assert holds_live() and len(changes) == 3, "An answer must reset the unanswered streak"
+        poll(UNANSWERED, 13 + 2 * UNANSWERED_BOUND - 0.15)
+        assert holds_live() and len(changes) == 3, "An answer must restart the bound"
 
-        # So does a missing broker (mid-streak here), which reads as idle at once.
+        # A missing broker is an answer that nothing records: idle at once.
         poll(({}, False, {}), 41)
-        assert watcher.unanswered_since is None and changes[3:] == [{}]
+        assert watcher.answered_at == 41 and changes[3:] == [{}]
         poll(live, 42)
         assert holds_live() and changes[3:] == [{}, {identifier: "recording"}]
         assert not replies
+
+        # An answer received before the one held never replaces it, whenever it lands.
+        older = Future()
+        older.set_result((41.5, ({}, False, {})))
+        watcher._complete(older)
+        assert holds_live() and watcher.answered_at == 42 and len(changes) == 5
     finally:
         watcher.close()
 
@@ -290,7 +298,9 @@ def test_desktop_probe_failure_preserves_watch_lease_and_status_polling(service,
     monkeypatch.setattr(flatpak_bridge.subprocess, "run", run)
     statuses, profiles = [], []
     watcher = browser_watch.BrowserWatch(
-        statuses.append, path=service[1], profiles_changed=lambda: profiles.append(watcher._profiles)
+        lambda value, _at: statuses.append(value),
+        path=service[1],
+        profiles_changed=lambda: profiles.append(watcher._profiles),
     )
     try:
         spin_until(lambda: watcher.future is None and watcher.lease is not None)

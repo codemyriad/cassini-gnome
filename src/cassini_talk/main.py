@@ -89,6 +89,8 @@ class CassiniApplication(Adw.Application):
         self.native_captures = {}
         self._last_native = None
         self._browser_snapshot = {}
+        # Monotonic receive time of the broker reply _browser_snapshot holds.
+        self._browser_answered_at = None
         self.browser_watch = None
         self._companion_ready = not self.in_flatpak
         self.browser_connection = None
@@ -457,7 +459,11 @@ class CassiniApplication(Adw.Application):
         if self.browser_watch is None and os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1":
             from .browser_watch import BrowserWatch
 
-            self.browser_watch = BrowserWatch(self._browser_changed, profiles_changed=self.retry_browser_connection)
+            self.browser_watch = BrowserWatch(
+                self._browser_changed,
+                profiles_changed=self.retry_browser_connection,
+                unanswered=self._browser_unanswered,
+            )
 
     def retry_browser_connection(self, *_, force=False):
         if self.browser_connection and not self._quitting:
@@ -587,20 +593,34 @@ class CassiniApplication(Adw.Application):
         self.set_auto_recording_hold(enabled)
         return token
 
-    def finish_auto_recording_change(self, token, snapshot):
+    def finish_auto_recording_change(self, token, snapshot, received_at=None):
         if self._auto_recording_pending and self._auto_recording_pending[0] == token:
             self._auto_recording_pending = None
             if snapshot is not None:
-                self._browser_changed(snapshot)
+                self._browser_changed(snapshot, received_at)
             else:
                 self.set_auto_recording_hold(self._browser_snapshot.get("autoRecord", False))
         self.release()
         return False
 
-    def _browser_changed(self, snapshot):
+    def _browser_changed(self, snapshot, received_at=None):
+        """A broker reply (BrowserWatch's poll or Settings' configure), stamped
+        with its monotonic receive time, or this snapshot expired (no stamp)."""
         # BrowserActivity can lag Watch by a tick. Its stale window snapshot
         # must not hide the broker's recording -> idle transition.
         was_recording = any(s.get("recording") for s in self._browser_snapshot.get("statuses", ()))
+        answered_at = getattr(self, "_browser_answered_at", None)
+        if received_at is not None and answered_at is not None and received_at < answered_at:
+            # The newer reply wins: one received earlier but delivered later
+            # (a configure reply after a Watch poll) carries only its preference,
+            # which its revision orders below.
+            snapshot = dict(
+                self._browser_snapshot,
+                autoRecord=snapshot.get("autoRecord", False),
+                autoRecordRevision=snapshot.get("autoRecordRevision", 0),
+            )
+        elif received_at is not None:
+            self._browser_answered_at = received_at
         snapshot = dict(snapshot)
         revision = snapshot.get("autoRecordRevision", 0)
         if type(revision) is not int or revision < self._auto_recording_revision:
@@ -629,27 +649,46 @@ class CassiniApplication(Adw.Application):
             else:
                 self.build_refresh.capture_changed()
 
+    def _browser_unanswered(self, failed_at):
+        """BrowserWatch's poll failed. The last reply's capture state stands
+        until the broker has been silent for the bound (broker_silent), then
+        reads as idle in the app's and windows' snapshots, as a reply that
+        nothing records would. A newer reply, from either path, restores it."""
+        from .capture_activity import broker_silent
+
+        answered_at = getattr(self, "_browser_answered_at", None)
+        if self._browser_snapshot.get("statuses") and broker_silent(answered_at, failed_at):
+            self._browser_changed(dict(self._browser_snapshot, statuses=[]))
+
     def browser_capture_active(self):
-        return any(s.get("recording") for s in self._browser_snapshot.get("statuses", [])) or any(
-            (getattr(window, "_activity_source", None) and window._activity_source.snapshot)
-            or any(status.get("recording") for status in getattr(window, "_browser_snapshot", {}).get("statuses", []))
-            for window in self.get_windows()
-        )
+        from .capture_activity import standing_broker_caches
+
+        app_stands, sources = standing_broker_caches(self)
+        snapshots = [self, *self.get_windows()] if app_stands else []
+        return any(
+            s.get("recording")
+            for target in snapshots
+            for s in getattr(target, "_browser_snapshot", {}).get("statuses", [])
+        ) or any(source.snapshot for source in sources)
 
     def recording_to_stop(self):
         """What Record stops, named: a recording that runs or starts. A browser
         capture that only saves (stopped, still publishing) is not one: Record
         then starts a new recording (D18) instead of a silent Stop, while the
         top bar already shows the app as ready. A test recording never counts."""
+        from .capture_activity import standing_broker_caches
         from .capture_guard import recorder_busy
         from .library import meeting_id
 
         reasons = []
         if self._record_start_future:
             reasons.append("start")
-        statuses = [*self._browser_snapshot.get("statuses", [])]
-        for window in self.get_windows():
-            statuses.extend(getattr(window, "_browser_snapshot", {}).get("statuses", []))
+        # Only broker replies that stand count: each cache expires on its own
+        # (broker_silent) and the newest reply among them wins.
+        app_stands, sources = standing_broker_caches(self)
+        statuses = []
+        for target in [self, *self.get_windows()] if app_stands else ():
+            statuses.extend(getattr(target, "_browser_snapshot", {}).get("statuses", []))
         # The broker's per-capture phase is the one start_all uses: a capture
         # that is stopping never blocks a new session.
         if any(s.get("phase") == "recording" if "phase" in s else s.get("recording") for s in statuses):
@@ -658,9 +697,8 @@ class CassiniApplication(Adw.Application):
         # BrowserActivity cache of it: a cached "recording" for a capture the
         # broker already reports stopping must not turn Record into Stop.
         reported = {meeting_id(Path(s["path"])) for s in statuses if isinstance(s.get("path"), str)}
-        for window in self.get_windows():
-            source = getattr(window, "_activity_source", None)
-            for identifier, state in ((source and source.snapshot) or {}).items():
+        for source in sources:
+            for identifier, state in (source.snapshot or {}).items():
                 if state == "recording" and identifier not in reported:
                     reasons.append("browser activity")
         if any(recorder_busy(r) for r in self.native_captures.values()):
