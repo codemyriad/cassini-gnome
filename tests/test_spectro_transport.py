@@ -3,8 +3,10 @@
 """Private meter role, independent sessions, lifecycle and split-line GTK IO."""
 
 import base64
+import contextlib
 import ctypes.util
 import json
+import select
 import socket
 import threading
 
@@ -261,3 +263,132 @@ def test_window_mapping_controls_real_broker_feed_without_stopping_capture(serve
         hub.close()
         proxy.handle(dict(type="stop"))
         proxy.close()
+
+
+def test_a_stalled_view_keeps_its_meter_feed_and_then_gets_the_newest_columns():
+    """A view whose GTK main loop stops reading (CI: blocked while a slow fallback
+    held the capture lock) keeps its live picture. The broker never blocks on
+    it and never drops it: columns wait in the bounded lanes, oldest dropped."""
+    from types import SimpleNamespace
+
+    from recording.readiness import wait_until
+
+    from cassini_talk.spectro_source import SpectroSource
+    from cassini_talk.spectro_transport import serve_meter
+
+    class Rounds(threading.Event):
+        """Counts the meter loop's rounds: it checks for shutdown on each."""
+
+        count = 0
+
+        def is_set(self):
+            self.count += 1
+            return super().is_set()
+
+    source = SpectroSource()
+    capture = SimpleNamespace(
+        directory="/session",
+        finished=False,
+        spectrogram=source,
+        lock=threading.Lock(),
+        _sync_spectrogram=lambda: None,
+        elapsed_ms=lambda: 0,
+    )
+    service = SimpleNamespace(lock=threading.Lock(), captures={"capture": capture}, closed=Rounds())
+    broker, view = socket.socketpair(socket.AF_UNIX)
+    # The kernel's minimum: a few packets fill it, as ~3 s of packets fill the
+    # default one while a stalled view reads nothing.
+    broker.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1)
+    failures = []
+
+    def run():
+        try:
+            with broker.makefile("rwb") as stream:
+                serve_meter(service, broker, stream, "/session")
+        except BaseException as error:
+            failures.append(error)
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    witness = source.subscribe()
+    try:
+        wait_until(lambda: len(source.subscribers) == 2, "the view subscribed")
+        wait_until(
+            lambda: not select.select([], [broker], [], 0)[1] or not worker.is_alive(),
+            "the stalled view's socket is full",
+            timeout=10,
+        )
+        # The send that filled the socket may have taken all of its packet; the
+        # loop's next round then drains once more to build the packet it cannot
+        # send. Once a round has started after that one, nothing drains the
+        # view's lane until the view reads again.
+        rounds = service.closed.count
+        wait_until(
+            lambda: service.closed.count >= rounds + 2 or not worker.is_alive(),
+            "the meter loop holds a packet its stalled view cannot take",
+            timeout=10,
+        )
+        newest = None
+        for n in range(15):
+            # 75 columns: more than a lane holds while nothing drains it.
+            feed_tone(source, n)
+            newest = witness_newest(source, witness, newest)
+        assert newest is not None
+        rounds = service.closed.count
+        # 25 rounds of 40 ms outlast the 0.5 s send bound that used to end the
+        # feed; a producer blocked on the view makes no round at all.
+        wait_until(
+            lambda: service.closed.count >= rounds + 25 or not worker.is_alive(),
+            "the meter loop kept running while its view read nothing",
+            timeout=10,
+        )
+        assert worker.is_alive() and len(source.subscribers) == 2, failures
+        # Bounded: the stalled view's lane is full and kept the newest columns.
+        (stalled,) = source.subscribers - {witness}
+        with source.queue_lock:
+            lane = list(stalled.lanes["others"])
+        assert len(lane) == stalled.lanes["others"].maxlen and lane[-1][0] == newest
+        view.setblocking(False)
+        buffer, slots = bytearray(), []
+
+        def read():
+            with contextlib.suppress(BlockingIOError):
+                buffer.extend(view.recv(65536))
+            while b"\n" in buffer:
+                line, _, rest = buffer.partition(b"\n")
+                buffer[:] = rest
+                _now, lanes, _finished = decode_columns(json.loads(line))
+                slots.extend(slot for slot, _flags, _bands in lanes["others"])
+            return newest in slots
+
+        wait_until(read, "the resumed view received the newest column", timeout=10)
+        assert slots == sorted(slots) and not failures
+        view.close()
+        wait_until(lambda: not worker.is_alive(), "the view's EOF ended its feed", timeout=10)
+        assert source.subscribers == {witness} and not failures
+    finally:
+        view.close()
+        service.closed.set()
+        worker.join(5)
+        broker.close()
+    assert not worker.is_alive()
+
+
+def feed_tone(source, n):
+    source.feed(
+        "voice",
+        tone(4800, amplitude=500),
+        n * 100,
+        rate=48000,
+        channels=1,
+        kind="remote",
+        start_ms=0,
+        now_ms=n * 100,
+        level=0.3,
+    )
+
+
+def witness_newest(source, witness, newest):
+    """Drains a reading observer so it never overflows; its newest others slot."""
+    columns = source.drain(witness, 0)["others"]
+    return columns[-1][0] if columns else newest
