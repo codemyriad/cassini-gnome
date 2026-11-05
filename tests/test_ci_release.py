@@ -259,7 +259,7 @@ def test_release_sums_cover_exactly_the_five_packages_by_name(tmp_path):
 
 
 @pytest.mark.parametrize("drop", [0, 2, 4])
-def test_release_assets_refuse_a_missing_or_extra_package(tmp_path, drop):
+def test_release_sums_refuse_a_missing_or_extra_package(tmp_path, drop):
     assets = module("release_sums")
     names = [
         "a~ubuntu26.04_amd64.deb",
