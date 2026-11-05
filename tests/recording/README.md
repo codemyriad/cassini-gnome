@@ -118,6 +118,34 @@ proof also requires `pactl` (`pulseaudio-utils`), always given the explicit priv
 socket. It refuses the default desktop server.
 `CASSINI_TEST_EXTENSION` can select an exact upstream checkout for cross-app PR review.
 
+## Shared live folder (shared test 2, D68)
+
+`CASSINI_RUN_TIMEOUT=360 CASSINI_TEST_BUILD=$PWD/_build tests/recording/run.sh node tests/recording/live-folder.mjs`
+runs the protocol's shared driver (`browser-protocol/scenarios/live-folder.mjs`) through
+the real app, its production audio and control hosts and the vendored extension: a 60 s
+`replaceTrack(null)` mute with A the only open source, a late remote B, a connected slot
+that never sends, Me off and back on at 90 s through the real What is recorded dialog, and
+a forced resume (SIGKILL of the session's audio host, whose pid the shared launcher
+records). After Stop, and before the app quits, the driver writes `evidence.json` and
+runs the vendored oracle (`conformance/live-folder/check.py`); `result.json` and
+`check.log` stay in the run's artifacts, next to the Library. Every wait is on the
+folder's own clock (`session.json`) or the app, bounded by `scenario.json`; nothing is
+retried. The tab and the private sink stay unmuted, so the system fallback hears the tab.
+CI runs it as the `live-folder` job, in parallel with `capture`; until its open product
+findings are fixed it is `continue-on-error` (it still runs and uploads evidence).
+For failures, the run also keeps `broker.log` (the adapter starts the production broker
+itself, with its log, before the app; `ensure_service` would discard it), `audio-host.log`,
+and `pages-console.log`: both pages' consoles plus a passive main-world observer of the
+extension's page/relay traffic (track, trackEnd, sources, warnings, errors, failed acks)
+and, every 2 s per track, the newest chunk's `offsetMs` against wall time, all in wall ms
+comparable with `evidence.json` `timelineOriginMs`. `pressure.log` samples host and cgroup
+CPU, IO and memory pressure each second, to tell a stalled machine from a product fault.
+The control host is registered through the shared observing launcher
+(`writeNativeHost({observe})`): it stays the browser's child, and a relay copies its
+stdout to the browser and logs every frame, so the driver writes each resume request into
+`evidence.json` `resumeRequests` from the pipe itself. `control-pipe/<n>/` keeps each
+control connection's `host` (pid and launch parent), `frames.jsonl` and `relay.err`.
+
 ## Readiness and native repeat validation (R3)
 
 Startup sequencing uses bounded conditions rather than elapsed sleeps. Native
