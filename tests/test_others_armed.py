@@ -503,6 +503,39 @@ def test_an_armed_refusal_whose_checkpoint_fails_is_logged_and_still_releases_it
     assert [(t["kind"], t["frames"]) for t in stored["tracks"]] == [("microphone", 480)]
 
 
+@pytest.mark.parametrize("others", [False, True])
+def test_a_try_again_after_the_worker_found_nothing_open_commits_nothing(tmp_path, others):
+    # The microphone was refused at start and the armed others now fail: the
+    # IO worker decides that nothing opened and queues the finish to the main
+    # loop. A Try again the user sent before that finish ran must not commit a
+    # side, which the finish would then end as "nothing opened".
+    recorder, sides, signals = start(tmp_path, {"microphone": ("fail", 0), "system": ("never", 0)})
+    session = recorder.session
+    try:
+        assert recorder.armed_sides() == {"system": 0} and kinds_of(session) == []
+        del sides.plan["microphone"]  # Try again finds a working (test) microphone,
+        if others:
+            del sides.plan["system"]  # and computer sound that delivers.
+        done = watch_armed_failed(recorder)
+        sides.now = BOUND + 20
+        bus_error(recorder, sides.sources["system"], DENIED)
+        assert done.wait(5)  # Bound only: the worker decided.
+        assert recorder._discard and not recorder._finishing
+        future = recorder.select(True, others)  # The main loop has not run the finish yet.
+        with pytest.raises(ValueError):
+            future.result(10)  # Bound only: the turn-on opens its devices, then commits nothing.
+        assert kinds_of(session) == [] and not recorder._pending_sources
+        spin_until(lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing)
+    finally:
+        close(recorder)
+    assert recorder.discarded and not session.directory.exists() and not list(tmp_path.iterdir())
+    assert names(signals) == ["started", "error", "finished"] and signals[-1] == ("finished", "")
+    assert [(r["side"], r["code"]) for r in recorder.refusals] == [
+        ("me", "deviceUnavailable"),
+        ("others", "permissionDenied"),
+    ]
+
+
 def test_an_eos_never_overtakes_a_committed_side_s_error_still_waiting_for_the_lock(tmp_path):
     # A committed side's error waits on the bus worker for the PCM lock (a
     # writer's checkpoint holds it); the pipeline's EOS that follows must not

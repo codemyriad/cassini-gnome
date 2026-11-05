@@ -699,7 +699,15 @@ class NativeRecorder(GObject.Object):
             opening = None
             elapsed = self._elapsed_ms(pipeline)
             with self._lock:
-                if self.pipeline is not pipeline or self.stopping or self._finishing or self._stop_requested:
+                # _discard: an armed refusal on this worker found nothing open
+                # and queued the finish to the main loop; nothing commits now.
+                if (
+                    self.pipeline is not pipeline
+                    or self.stopping
+                    or self._finishing
+                    or self._stop_requested
+                    or self._discard
+                ):
                     raise ValueError("No source change is available")
                 for kind, attempt in prepared.items():
                     if attempt["error"]:
