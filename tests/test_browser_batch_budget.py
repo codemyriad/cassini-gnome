@@ -6,16 +6,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from durable import saved
 from test_browser_service import service, wait_for  # noqa: F401
 from test_browser_sessions import Extension
 
 import cassini_talk.browser_service as browser_service
 from cassini_talk.browser_service import request
-
-# A hang guard on the fallback's durable save (about 15 fsyncs, 1.9 s on a real
-# disk), as test_call_lifecycle.HOLD_BOUND: the 2 s wait_for bound before it was
-# sized for in-memory state changes and failed on a CI disk stall.
-SAVE_BOUND = 10  # seconds
 
 
 def fake_deadlines(server, monkeypatch):
@@ -173,9 +169,7 @@ def test_a_native_fallback_crossing_the_deadline_is_saved_and_never_left_recordi
             # Its start and save write the folder durably (about 15 fsyncs on a
             # real disk): wait for that save itself, bounded only against a hang.
             (capture,) = started
-            assert capture.stopped.wait(SAVE_BOUND), (
-                f"the native fallback did not finish its save within {SAVE_BOUND} s"
-            )
+            saved(capture)
             assert capture.finished
             assert (capture.directory is not None) is audible
             assert any(server.capture_parent.rglob("session.json")) is audible

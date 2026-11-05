@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from broker_fixture import stop_broker
+from durable import durable
 
 from cassini_talk.browser_service import BrowserService, connect, read_packet, request, send_packet
 
@@ -50,6 +51,12 @@ def service(tmp_path):
 
 
 def wait_for(check):
+    """Poll broker state that nothing signals (its listing over the socket,
+    connected browsers, pending commands); 2 s bounds in-memory changes only.
+
+    A wait on durable work ends on its event instead (tests/durable.py): a
+    capture's save on `saved`, a fallback on the service's CaptureChanges.
+    """
     deadline = time.monotonic() + 2
     while time.monotonic() < deadline:
         value = check()
@@ -484,8 +491,12 @@ def test_command_failure_is_visible_and_no_retry_loop(service):
         assert request(path=path)["meetings"][0]["error"] == "No accessible audio"
         server.policy()
         assert len(next(iter(server.browsers.values())).attempted) == 1
-        directory = wait_for(lambda: next((c.directory for c in server.captures.values() if c.directory), None))
-        assert directory.parent == server.capture_parent
+        # The rejected start's native fallback starts on a worker and writes
+        # its folder durably: wait for that start, not a 2 s poll.
+        capture = wait_for(lambda: next(iter(server.captures.values()), None))
+        durable(capture.ready, "the native fallback did not start")
+        directory = capture.directory
+        assert directory is not None and directory.parent == server.capture_parent
     finally:
         stream.close()
         connection.close()

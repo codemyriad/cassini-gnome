@@ -4,6 +4,7 @@
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
+from durable import Changes, Finished
 from test_library import capture
 from test_transcription import until
 from test_voice_queue import Models, meeting
@@ -17,7 +18,7 @@ from cassini_talk.voice_store import VoiceStore
 
 def test_cancel_queued_and_running_transcription_keeps_other_meeting(tmp_path, monkeypatch):
     sessions = [capture(tmp_path) for _ in range(3)]
-    children, finished = [], []
+    children, finished, changes = [], Finished(), Changes()
 
     class FastClient:
         def __init__(self, *_args, **_kwargs):
@@ -50,12 +51,15 @@ time.sleep(30)
         children.append(client)
         return client
 
-    queue = TranscriptionQueue(lambda _: None, finished.append, client_factory=factory, root=tmp_path, bundle=tmp_path)
+    queue = TranscriptionQueue(changes, finished, client_factory=factory, root=tmp_path, bundle=tmp_path)
     try:
         for session in sessions:
             assert queue.enqueue(session.directory)
         first, queued, other = [s.directory for s in sessions]
-        until(lambda: (first / "transcript.json").exists() and b"Partial" in (first / "transcript.json").read_bytes())
+        changes.wait(
+            lambda: (first / "transcript.json").exists() and b"Partial" in (first / "transcript.json").read_bytes(),
+            "the first job did not publish its partial words",
+        )
         until(lambda: read_metadata(queued)["transcript"]["status"] == "queued")
         child = children[0].process
         with ThreadPoolExecutor(1) as worker:
@@ -72,7 +76,7 @@ time.sleep(30)
             assert child.poll() is not None, "Trash exclusion returned before the child exited"
             assert read_metadata(first)["transcript"]["status"] == "running", "cancellation marked partial words failed"
             first.rename(tmp_path / "private-trash-active")
-        until(lambda: other in finished)
+        finished.wait(3)  # The two cancelled jobs and the other one.
         assert read_metadata(other)["transcript"]["status"] == "done"
         assert not first.exists() and not queued.exists(), "a late job recreated a removed folder"
         assert sorted(finished) == sorted([first, queued, other])
@@ -86,7 +90,7 @@ def test_cancel_running_voice_job_keeps_next_meeting_and_no_private_print(tmp_pa
 
     directories = [meeting(tmp_path) for _ in range(2)]
     entered, release = threading.Event(), threading.Event()
-    finished, failures, clients = [], [], []
+    finished, failures, clients = Finished(), [], []
     store = VoiceStore(tmp_path / "private")
     store.refresh()
 
@@ -119,7 +123,7 @@ def test_cancel_running_voice_job_keeps_next_meeting_and_no_private_print(tmp_pa
     monkeypatch.setattr(voice_models, "VoiceJobClient", Client)
     queue = TranscriptionQueue(
         lambda _: None,
-        finished.append,
+        finished,
         root=tmp_path,
         bundle=tmp_path,
         voice_models=ReadyModels(),
@@ -133,7 +137,7 @@ def test_cancel_running_voice_job_keeps_next_meeting_and_no_private_print(tmp_pa
         with queue.cancel_meeting(directories[0]):
             assert directories[0] not in queue.voice_pending
             directories[0].rename(tmp_path / "private-trash-voice")
-        until(lambda: len(finished) == 2)
+        finished.wait(2, exactly=True)
         assert not failures and not directories[0].exists()
         assert not (store.root / "meetings" / (directories[0].name + ".json")).exists()
         assert store.meeting(directories[1])["speakers"]["others"]["embedding"] == embedding()

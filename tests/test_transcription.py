@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import pytest
+from durable import Changes, Finished, durable
 from test_library import capture, write_metadata
 
 from cassini_talk.library import LibraryScanner
@@ -20,30 +21,17 @@ def configured_library(tmp_path, monkeypatch):
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
 
 
-def until(check):
-    deadline = time.monotonic() + 5
+def until(check, bound=5):
+    """Poll queue state that has no event to wait on; `bound` only limits it.
+
+    A job's completion has one: wait on durable.Finished instead.
+    """
+    deadline = time.monotonic() + bound
     while time.monotonic() < deadline:
         if check():
             return
         time.sleep(0.005)
     assert check(), "Queue did not reach expected state"
-
-
-class Finished:
-    """The queue's finished callback as a completion event (E1): waits end when it fires."""
-
-    def __init__(self):
-        self.directories = []
-        self._condition = threading.Condition()
-
-    def __call__(self, directory):
-        with self._condition:
-            self.directories.append(directory)
-            self._condition.notify_all()
-
-    def wait(self, count, timeout=5):
-        with self._condition:
-            assert self._condition.wait_for(lambda: len(self.directories) >= count, timeout), "Queue did not finish"
 
 
 def capture_hashes(session):
@@ -69,7 +57,7 @@ def test_done_empty_transcript_can_be_written_again_through_the_normal_queue(tmp
     assert not replace(meeting, duration_ms=0).no_speech
     assert not replace(meeting, transcript="none").no_speech
     before = capture_hashes(session)
-    completed = []
+    completed = Finished()
 
     class Client:
         def __init__(self, *_args, **_kw):
@@ -95,10 +83,10 @@ def test_done_empty_transcript_can_be_written_again_through_the_normal_queue(tmp
             )
             return dict(diagnostics=[])
 
-    queue = TranscriptionQueue(lambda _: None, completed.append, client_factory=Client, bundle=tmp_path)
+    queue = TranscriptionQueue(lambda _: None, completed, client_factory=Client, bundle=tmp_path)
     try:
         assert queue.enqueue(session.directory)
-        until(lambda: bool(completed))
+        completed.wait(1)
         updated = LibraryScanner(tmp_path).scan().meetings[0]
         assert updated.transcript == "done" and [w.text for w in updated.words] == ["Recovered"]
         assert not updated.no_speech and not updated.can_write_down
@@ -112,7 +100,7 @@ def test_fifo_queue_marks_waiting_job_queued_and_preserves_capture_and_user_meta
     write_metadata(sessions[0].directory, futureMember={"keep": True}, title="Before", titleSource="user")
     before = [capture_hashes(s) for s in sessions]
     entered, release = threading.Event(), threading.Event()
-    calls, finished, states = [], [], []
+    calls, finished, states = [], Finished(), []
 
     class Client:
         def __init__(self, *args, **kwargs):
@@ -128,7 +116,9 @@ def test_fifo_queue_marks_waiting_job_queued_and_preserves_capture_and_user_meta
             calls.append(Path(tracks[0]["path"]).parent)
             if len(calls) == 1:
                 entered.set()
-                assert release.wait(3)
+                # Held while the test queues the second job and commits two
+                # metadata edits: 8 fsyncs before release.set().
+                durable(release, "the test did not release the first job")
             notify(dict(type="planned", etaMinutes=1))
             for order, track in enumerate(tracks):
                 notify(
@@ -146,10 +136,10 @@ def test_fifo_queue_marks_waiting_job_queued_and_preserves_capture_and_user_meta
     def changed(directory):
         states.append((directory, read_metadata(directory)["transcript"]["status"]))
 
-    queue = TranscriptionQueue(changed, finished.append, client_factory=Client, bundle=tmp_path)
+    queue = TranscriptionQueue(changed, finished, client_factory=Client, bundle=tmp_path)
     try:
         assert queue.enqueue(sessions[0].directory)
-        until(entered.is_set)
+        durable(entered, "the first job did not start")
         assert not queue.enqueue(sessions[0].directory)
         assert queue.enqueue(sessions[1].directory)
         until(lambda: (sessions[1].directory / "meeting.json").exists())
@@ -159,7 +149,7 @@ def test_fifo_queue_marks_waiting_job_queued_and_preserves_capture_and_user_meta
             sessions[1].directory, speakers=[dict(id="me", name="Named while queued", provenance="user", colourIndex=0)]
         )
         release.set()
-        until(lambda: len(finished) == 2)
+        finished.wait(2, exactly=True)
         assert calls == [s.directory for s in sessions]
         assert read_metadata(sessions[1].directory)["speakers"][0]["name"] == "Named while queued"
         assert before == [capture_hashes(s) for s in sessions]
@@ -181,7 +171,7 @@ def test_fifo_queue_marks_waiting_job_queued_and_preserves_capture_and_user_meta
 def test_worker_failure_becomes_retryable_without_changing_audio(tmp_path):
     session = capture(tmp_path)
     before = capture_hashes(session)
-    finished = []
+    finished = Finished()
 
     class Client:
         fail = True
@@ -203,15 +193,15 @@ def test_worker_failure_becomes_retryable_without_changing_audio(tmp_path):
             notify(dict(type="planned", etaMinutes=0))
             return dict(diagnostics=[])
 
-    queue = TranscriptionQueue(lambda _: None, finished.append, client_factory=Client, bundle=tmp_path)
+    queue = TranscriptionQueue(lambda _: None, finished, client_factory=Client, bundle=tmp_path)
     try:
         queue.enqueue(session.directory)
-        until(lambda: len(finished) == 1)
+        finished.wait(1, exactly=True)
         metadata = read_metadata(session.directory)
         assert metadata["transcript"]["status"] == "failed" and metadata["error"]["id"] == "transcribe-failed"
         assert Client.closed == 1
         assert queue.enqueue(session.directory)
-        until(lambda: len(finished) == 2)
+        finished.wait(2, exactly=True)
         assert read_metadata(session.directory)["transcript"]["status"] == "done"
         assert capture_hashes(session) == before
     finally:
@@ -323,18 +313,18 @@ def test_newer_metadata_is_not_overwritten_and_unsafe_metadata_is_not_followed(t
     path = session.directory / "meeting.json"
     write_metadata(session.directory, version=2)
     before = path.read_bytes()
-    finished = []
-    queue = TranscriptionQueue(lambda _: None, finished.append, bundle=tmp_path)
+    finished = Finished()
+    queue = TranscriptionQueue(lambda _: None, finished, bundle=tmp_path)
     try:
         queue.enqueue(session.directory)
-        until(lambda: bool(finished))
+        finished.wait(1)
         assert path.read_bytes() == before and not (session.directory / "transcript.json").exists()
         path.unlink()
         target = tmp_path / "outside.json"
         target.write_bytes(before)
         path.symlink_to(target)
         queue.enqueue(session.directory)
-        until(lambda: len(finished) == 2)
+        finished.wait(2, exactly=True)
         assert target.read_bytes() == before and path.is_symlink()
     finally:
         queue.close()
@@ -395,7 +385,7 @@ def test_close_cancels_real_busy_child_without_blocking_or_failing_partial_work(
     from test_whistle_spike import child_client
 
     sessions = [capture(tmp_path) for _ in range(3)]
-    children, finished = [], []
+    children, finished, changes = [], Finished(), Changes()
 
     def factory(bundle, **kwargs):
         client = child_client(
@@ -413,18 +403,21 @@ time.sleep(30)
         children.append(client)
         return client
 
-    queue = TranscriptionQueue(lambda _: None, finished.append, client_factory=factory, bundle=tmp_path)
+    queue = TranscriptionQueue(changes, finished, client_factory=factory, bundle=tmp_path)
     for session in sessions:
         assert queue.enqueue(session.directory)
     first = sessions[0].directory
-    until(lambda: (first / "transcript.json").exists() and b"Preserved" in (first / "transcript.json").read_bytes())
+    changes.wait(
+        lambda: (first / "transcript.json").exists() and b"Preserved" in (first / "transcript.json").read_bytes(),
+        "the first job did not publish its partial words",
+    )
     until(lambda: all((s.directory / "meeting.json").exists() for s in sessions))
     partial = (first / "transcript.json").read_bytes()
     child = children[0].process
     start = time.monotonic()
     queue.close()
     assert time.monotonic() - start < 0.5, "close waited for child inference on the calling thread"
-    until(lambda: len(finished) == 3)
+    finished.wait(3, exactly=True)
     until(lambda: child.poll() is not None)
     assert len(set(finished)) == 3 and not queue.pending
     assert read_metadata(first)["transcript"]["status"] == "running"
@@ -566,7 +559,7 @@ def test_retry_keeps_partial_words_until_recomputation_catches_up(tmp_path, stat
     atomic_json(session.directory / "transcript.json", body)
     before = (session.directory / "transcript.json").read_bytes()
     waiting, release = threading.Event(), threading.Event()
-    finished, visible = [], []
+    finished, visible = Finished(), []
 
     class Client:
         def __init__(self, *args, **kwargs):
@@ -597,14 +590,14 @@ def test_retry_keeps_partial_words_until_recomputation_catches_up(tmp_path, stat
         meeting = LibraryScanner(tmp_path).scan().meetings[0]
         visible.append((meeting.transcript, len(meeting.words)))
 
-    queue = TranscriptionQueue(changed, finished.append, client_factory=Client, bundle=tmp_path)
+    queue = TranscriptionQueue(changed, finished, client_factory=Client, bundle=tmp_path)
     try:
         assert queue.enqueue(session.directory, resume=resume)
-        until(waiting.is_set)
+        durable(waiting, "the job did not reach recognition")
         assert (session.directory / "transcript.json").read_bytes() == before
         assert visible and all(count == 50 for state, count in visible if state in ("queued", "running")), visible
         release.set()
-        until(lambda: bool(finished))
+        finished.wait(1)
         result = json.loads((session.directory / "transcript.json").read_text())
         assert result["items"][0]["text"] == "Recomputed" and len(result["items"]) == 1
         assert read_metadata(session.directory)["transcript"]["status"] == "done"

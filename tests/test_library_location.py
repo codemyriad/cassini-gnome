@@ -6,6 +6,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from durable import DURABLE_BOUND, durable
 
 from cassini_talk import library_location as location
 from cassini_talk.library import LibraryCollectionScanner, library_root
@@ -137,7 +138,8 @@ def test_new_recording_does_not_wait_for_old_meeting_copy(roots, monkeypatch):
 
     def blocked(source, target, **kwargs):
         entered.set()
-        assert proceed.wait(5)
+        # Held while the test's start writes its folder durably (7 fsyncs).
+        durable(proceed, "the test did not release the move")
         return original(source, target, **kwargs)
 
     monkeypatch.setattr(library_move, "move_folder", blocked)
@@ -147,7 +149,9 @@ def test_new_recording_does_not_wait_for_old_meeting_copy(roots, monkeypatch):
         browser = BrowserHost()
         started = pool.submit(browser.handle, dict(type="start"))
         try:
-            started.result(timeout=2)
+            # Its folder is written durably (7 fsyncs); a start blocked by the
+            # move would wait for `proceed`, which is set only after this.
+            started.result(timeout=DURABLE_BOUND)
             assert browser.session.directory.parent == new / ".cassini/sessions"
         finally:
             proceed.set()
@@ -292,19 +296,19 @@ def test_actual_transcription_queue_keeps_old_paths_and_accepts_new_root_after_m
     queue = TranscriptionQueue(lambda _: None, lambda _: completed.set(), client_factory=Client, bundle=tmp_path)
     try:
         assert queue.enqueue(recording.directory)
-        assert entered.wait(3)
+        durable(entered, "the job did not start")
         location.request(new)
         assert len(location.process()["pending"]) == 1
         assert recording.directory.is_dir() and str(old) in paths[0]
         release.set()
-        assert completed.wait(3)
+        durable(completed, "the first job did not finish")
         assert location.process()["pending"] == []
         another = session(new)
         another.finish()
         entered.clear()
         completed.clear()
         assert queue.enqueue(another.directory)
-        assert completed.wait(3)
+        durable(completed, "the second job did not finish")
         assert str(new) in paths[1]
     finally:
         release.set()

@@ -7,6 +7,7 @@ import wave
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from durable import DURABLE_BOUND, saved
 from test_browser_attempt_reset import announce
 from test_browser_capture import server, start, stream  # noqa: F401
 from test_browser_service import no_command, service, wait_for  # noqa: F401
@@ -56,7 +57,7 @@ def test_batch_timeout_retires_a_late_start_and_its_status_or_audio(server, with
             announce(extension)
         wait_for(lambda: not any(s["recording"] for s in request(path=path)["statuses"]))
         if capture is not None:
-            wait_for(lambda: capture.finished)
+            saved(capture)
             track = capture.host.session.manifest["tracks"][0]
             with wave.open(str(capture.directory / track["file"])) as audio:
                 assert audio.readframes(audio.getnframes()).endswith(b"\x64\x00\xc8\x00\x2c\x01\x90\x01")
@@ -97,7 +98,7 @@ def test_stop_during_recovery_retires_the_start_a_replacement_reports_as_recordi
         replacement.answer(stopping)
         wait_for(lambda: not any(s["recording"] for s in request(path=path)["statuses"]))
         if capture is not None:
-            wait_for(lambda: capture.finished)
+            saved(capture)
         assert no_command(replacement.connection, replacement.stream)
     finally:
         if capture is not None:
@@ -111,7 +112,10 @@ def test_stop_during_recovery_retires_the_start_a_replacement_reports_as_recordi
 
 def test_capture_opened_after_stop_dispatch_is_saved_when_its_identity_arrives(server):  # noqa: F811
     broker, path, _ = server
-    broker.command_timeout = 1
+    # The Stop's command timer runs while the late capture starts, which writes
+    # its folder durably (7 fsyncs), and the Stop then joins that capture's save
+    # (3 more): the command and both replies are bounded against that work.
+    broker.command_timeout = DURABLE_BOUND
     extension = peer(path)
     client = BrowserAudioProxy(path=path)
     capture = None
@@ -127,11 +131,11 @@ def test_capture_opened_after_stop_dispatch_is_saved_when_its_identity_arrives(s
             active = state(extension, path=str(capture.directory))
             result(extension, start_command, dict(active, sessions=[active]))
             extension.answer(stop_command)
-            saved = stopping.result(1)
+            stopped = stopping.result(DURABLE_BOUND)
             with contextlib.suppress(ValueError):
-                starting.result(1)
-        wait_for(lambda: capture.finished)
-        assert saved["stoppedPath"] == str(capture.directory)
+                starting.result(DURABLE_BOUND)
+        saved(capture)
+        assert stopped["stoppedPath"] == str(capture.directory)
     finally:
         if capture is not None:
             capture.stop()

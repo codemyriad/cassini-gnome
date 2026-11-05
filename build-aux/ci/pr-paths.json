@@ -36,6 +36,7 @@
       "tests/dc/probe.py",
       "tests/desktop_services.py",
       "tests/details_fixture.py",
+      "tests/durable.py",
       "tests/harness-image.sh",
       "tests/library_v2_support.py",
       "tests/recording/readiness.py",

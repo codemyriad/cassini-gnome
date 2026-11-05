@@ -13,6 +13,7 @@ try:
 except ValueError:
     pytest.skip("Real publication requires GStreamer", allow_module_level=True)
 
+from durable import DURABLE_BOUND, durable
 from library_v2_support import simple_session
 
 from cassini_talk import library_location as location
@@ -197,8 +198,8 @@ def test_editor_queued_on_old_library_lock_follows_the_completed_pair(tmp_path, 
     monkeypatch.setattr(journal.LibraryLock, "__enter__", enter)
     monkeypatch.setattr(library_move_pair, "CHECKPOINT", pause)
     with ThreadPoolExecutor(max_workers=1) as executor:
-        assert executor.submit(location.process).result(timeout=10)["pending"] == []
-    editor.join(5)
+        assert executor.submit(location.process).result(timeout=DURABLE_BOUND)["pending"] == []
+    editor.join(DURABLE_BOUND)  # Its edit commits durably at the destination.
     assert not editor.is_alive(), "Queued editor deadlocked after the move"
     assert errors == []
     (meeting,) = LibraryCollectionScanner().scan().meetings
@@ -223,7 +224,8 @@ def test_copy_is_outside_both_library_locks_and_a_changed_source_retries(tmp_pat
     def paused(source, target, **kwargs):
         if str(target).endswith("/audio.opus"):
             entered.set()
-            assert release.wait(5), "Test did not release the staged audio copy"
+            # Held while the test commits a metadata edit durably (12 fsyncs).
+            durable(release, "the test did not release the staged audio copy")
         return original(source, target, **kwargs)
 
     monkeypatch.setattr(library_move_pair, "_copy", paused)
@@ -355,7 +357,7 @@ def test_old_path_editor_queued_across_published_move_crash_uses_destination(tmp
             location.process()
         assert directory.exists(), "Crash must retain the stale source folder"
         source_before = (directory / "meeting.json").read_bytes()
-        assert edit.result(timeout=5)["title"] == "Edit routed after crash"
+        assert edit.result(timeout=DURABLE_BOUND)["title"] == "Edit routed after crash"
         target = new / ".cassini/sessions" / directory.name
         assert read_metadata(target)["title"] == "Edit routed after crash"
         assert (directory / "meeting.json").read_bytes() == source_before

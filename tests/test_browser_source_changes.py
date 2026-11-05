@@ -5,6 +5,7 @@ import json
 import wave
 
 import pytest
+from durable import saved, tracks_bound
 from test_browser_capture import Tap, remote, server, start  # noqa: F401
 
 from cassini_talk.browser_audio_proxy import BrowserAudioProxy
@@ -93,8 +94,6 @@ def test_failed_replacement_keeps_old_source_and_manifest(server, via_callback):
 
 @pytest.mark.parametrize("limit", ["tracks", "events"])
 def test_browser_close_failure_finalizes_and_releases_microphone(server, limit):  # noqa: F811
-    from test_browser_service import wait_for
-
     service, path, _ = server
     client = BrowserAudioProxy(path=path)
     start(client, "close-limit")
@@ -113,7 +112,8 @@ def test_browser_close_failure_finalizes_and_releases_microphone(server, limit):
             )
             capture.host.session.checkpoint()
     client.close()
-    wait_for(lambda: capture.finished)
+    # At the track limit its save closes 64 tracks (66 fsyncs).
+    saved(capture, tracks_bound(64))
     assert capture.microphone.stopped
     assert all(tap.stopped for tap in Tap.instances)
     assert not capture.stopping and capture.stopped.is_set()

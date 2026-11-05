@@ -5,7 +5,7 @@ import hashlib
 
 import pytest
 import test_model_download
-from test_transcription import until
+from durable import idle
 
 from cassini_talk import campplus_model, diarization_models
 from cassini_talk.model_download import ModelStore
@@ -52,7 +52,7 @@ def fixture(tmp_path, monkeypatch):
             user_agent="CassiniTalk/test (GNOME; Linux; source)",
         )
         models = VoiceModels(tmp_path / "bundle", lambda: None, store=store, client_factory=Probe)
-        until(lambda: not models.snapshot()["busy"])
+        idle(models)
         yield models, store, server
         models.close()
         models._thread.join(2)
@@ -63,7 +63,7 @@ def fixture(tmp_path, monkeypatch):
 
 def download(models):
     assert models.download()
-    until(lambda: not models.snapshot()["busy"])
+    idle(models)
 
 
 def test_optional_model_requires_tell_apart_and_remove_preserves_private_voices(fixture, tmp_path):
@@ -82,7 +82,7 @@ def test_optional_model_requires_tell_apart_and_remove_preserves_private_voices(
     private.parent.mkdir()
     private.write_bytes(b"pending-private-store")
     assert models.remove()
-    until(lambda: not models.snapshot()["busy"])
+    idle(models)
     assert not models.snapshot()["ready"] and not notice.parent.exists()
     assert private.read_bytes() == b"pending-private-store"
 
@@ -104,7 +104,7 @@ def test_unsupported_capability_keeps_weights_for_remove_and_retry(fixture, fiel
     assert models.snapshot()["downloaded"] and store.installed(campplus_model.MODEL_ID, campplus_model.REVISION)
     models.client_factory = Probe
     assert models.retry()
-    until(lambda: not models.snapshot()["busy"])
+    idle(models)
     assert models.snapshot()["ready"] and not models.snapshot()["error"]
 
 

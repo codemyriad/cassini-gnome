@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from broker_fixture import stop_broker
+from durable import durable
 from test_browser_capture import Tap, stream
 from test_browser_service import wait_for
 from test_browser_sessions import Extension
@@ -251,7 +252,7 @@ def test_frozen_audio_transport_falls_back_and_keeps_me(broker):
         assert not lost.is_set() and not capture.browser_lost
         clock.now = PCM_STALE_AFTER
         service.tick()
-        assert lost.wait(5)
+        durable(lost, "the fallback did not commit")
         (event,) = lost_events(capture)
         assert event["source"] == "system"
         assert capture.native_taps.keys() == {"microphone", "system"}
@@ -293,7 +294,7 @@ def test_stuck_audio_reply_is_bounded_by_the_write_deadline(broker, caplog):
             wait_for(overdue)
         assert "Closing a browser peer that stopped reading" in caplog.text
         assert "stopped sending audio" not in caplog.text
-        assert lost.wait(5)
+        durable(lost, "the fallback did not commit")
         assert lost_events(capture)
         sender.join(5)
         assert not sender.is_alive()
@@ -396,7 +397,7 @@ def test_a_rejoined_span_is_recorded_and_watched_again(broker):
         # The new open span re-arms the watchdog: freezing now still falls back.
         clock.now += 0.5
         service.tick()
-        assert lost.wait(5)
+        durable(lost, "the fallback did not commit")
         assert len(lost_events(capture)) == 1
         capture.stop()
     finally:
@@ -532,7 +533,7 @@ def test_every_frame_on_the_audio_transport_counts(broker, kind):
         clock.now = 30 + PCM_STALE_AFTER
         service.tick()
         assert transport.shut_down.is_set()
-        assert lost.wait(5)
+        durable(lost, "the fallback did not commit")
     finally:
         client.close()
 
@@ -616,7 +617,8 @@ def test_an_open_span_quiet_from_zero_is_closed_at_exactly_45_seconds(broker):
         clock.now = 45
         service.tick()
         assert transport.shut_down.is_set()
-        assert lost.wait(5) and lost_events(capture)
+        durable(lost, "the fallback did not commit")
+        assert lost_events(capture)
     finally:
         client.close()
 
@@ -886,7 +888,8 @@ def test_a_reloaded_documents_new_span_still_arms_the_watchdog(broker, order):
         clock.now = PCM_STALE_AFTER
         service.tick()
         assert transport.shut_down.is_set()
-        assert lost.wait(5) and len(lost_events(capture)) == 1
+        durable(lost, "the fallback did not commit")
+        assert len(lost_events(capture)) == 1
         capture.stop()
     finally:
         client.close()
@@ -986,7 +989,8 @@ def test_a_frozen_companions_transport_is_closed_on_a_control_loss_fallback(brok
         # Control was lost and policy committed computer sound; the audio
         # transport is still attached but nothing arrives on it any more.
         capture.fallback()
-        assert lost.wait(5) and capture.browser_lost and capture.audio_connected
+        durable(lost, "the fallback did not commit")
+        assert capture.browser_lost and capture.audio_connected
         (transport,) = service._audio_transports
         clock.now = PCM_STALE_AFTER - 0.001
         service.tick()
@@ -1043,7 +1047,8 @@ def test_an_old_documents_late_span_stays_dormant_after_the_window_closes(broker
         clock.now = PCM_STALE_AFTER * 11
         service.tick()
         assert transport.shut_down.is_set()
-        assert lost.wait(5) and len(lost_events(capture)) == 1
+        durable(lost, "the fallback did not commit")
+        assert len(lost_events(capture)) == 1
         capture.stop()
     finally:
         client.close()

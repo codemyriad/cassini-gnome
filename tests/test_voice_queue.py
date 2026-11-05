@@ -5,6 +5,7 @@ import json
 from concurrent.futures import CancelledError
 
 import pytest
+from durable import Finished
 from test_transcription import until
 from test_voice_store import embedding
 
@@ -44,7 +45,7 @@ def test_foreground_writing_preempts_historical_job_without_losing_its_hold(tmp_
     store = VoiceStore(tmp_path / "private")
     store.refresh()
     entered, cancelled = threading.Event(), threading.Event()
-    completed, background = [], []
+    completed, background = Finished(), []
     started = []
 
     class ReadyModels(Models):
@@ -96,7 +97,7 @@ def test_foreground_writing_preempts_historical_job_without_losing_its_hold(tmp_
     monkeypatch.setattr(voice_models, "VoiceJobClient", Background)
     queue = TranscriptionQueue(
         lambda _: None,
-        completed.append,
+        completed,
         root=tmp_path,
         client_factory=Foreground,
         diarization_models=ReadyModels(),
@@ -109,7 +110,7 @@ def test_foreground_writing_preempts_historical_job_without_losing_its_hold(tmp_
         assert queue.enqueue(foreground)
         if during_probe:
             cancelled.set()
-        until(lambda: bool(completed))
+        completed.wait(1)
         assert ("Background" in started) != during_probe
         assert background == [(old, True)] and completed == [foreground]
         assert not store.preparation(old)[1] and store.preparation(foreground)[1]
@@ -224,7 +225,7 @@ def test_optional_voice_step_preserves_transcript_and_obeys_generation_and_cance
     key = "Received-12345678-1234-4234-8234-123456789abc"
     store.commit_job(key, {"guest": dict(embedding=embedding(), seconds=8)}, 0)
     store.remember(key, "guest", "Alice")
-    finished = []
+    finished = Finished()
     if failure == "cleared-before":
         update_metadata(
             directory, speakers=[dict(id="others", name=None, provenance="unnamed", colourIndex=0, nameCleared=True)]
@@ -282,7 +283,7 @@ def test_optional_voice_step_preserves_transcript_and_obeys_generation_and_cance
 
     queue = TranscriptionQueue(
         lambda _: None,
-        finished.append,
+        finished,
         bundle=tmp_path,
         root=tmp_path,
         client_factory=Client,
@@ -291,7 +292,7 @@ def test_optional_voice_step_preserves_transcript_and_obeys_generation_and_cance
         voice_store=store,
     )
     assert queue.enqueue(directory)
-    until(lambda: bool(finished))
+    finished.wait(1)
     metadata = read_metadata(directory)
     if failure == "cancel":
         assert metadata["transcript"]["status"] in ("queued", "running")
@@ -391,10 +392,10 @@ def test_merge_and_undo_coalesce_to_latest_print_without_releasing_hold_early(tm
             return {"others": dict(embedding=embedding(len(captures)), seconds=8)}
 
     monkeypatch.setattr(voice_models, "VoiceJobClient", Client)
-    finished, failed = [], []
+    finished, failed = Finished(), []
     queue = TranscriptionQueue(
         lambda _: None,
-        finished.append,
+        finished,
         bundle=tmp_path,
         root=tmp_path,
         diarization_models=ReadyModels(),
@@ -410,7 +411,7 @@ def test_merge_and_undo_coalesce_to_latest_print_without_releasing_hold_early(tm
     assert not queue.recompute_voices(directory, {"old", "others"}, failed.append)
     assert not finished
     release.set()
-    until(lambda: bool(finished))
+    finished.wait(1)
     assert len(captures) == 2 and captures[0] == [] and captures[1] == [{"from": "old", "into": "others"}]
     assert finished == [directory] and not failed
     assert store.meeting(directory)["speakers"]["others"]["embedding"] == embedding(2)
@@ -427,7 +428,7 @@ def test_request_at_completion_boundary_runs_instead_of_stranding_a_rerun(tmp_pa
     directory = meeting(tmp_path)
     store = VoiceStore(tmp_path / "private")
     store.refresh()
-    captures, finished, failed, submitted = [], [], [], []
+    captures, finished, failed, submitted = [], Finished(), [], []
     armed = False
 
     class ReadyModels(Models):
@@ -466,7 +467,7 @@ def test_request_at_completion_boundary_runs_instead_of_stranding_a_rerun(tmp_pa
     monkeypatch.setattr(voice_models, "VoiceJobClient", Client)
     queue = TranscriptionQueue(
         lambda _: None,
-        finished.append,
+        finished,
         bundle=tmp_path,
         root=tmp_path,
         diarization_models=ReadyModels(),
@@ -477,7 +478,7 @@ def test_request_at_completion_boundary_runs_instead_of_stranding_a_rerun(tmp_pa
     queue._idle = threading.Condition(queue.lock.inner)
     try:
         assert queue.recompute_voices(directory, {"others"}, failed.append)
-        until(lambda: bool(finished))
+        finished.wait(1)
         queue.executor.submit(lambda: None).result(timeout=4)
         assert submitted == [True] and len(captures) == 2
         assert finished == [directory, directory] and not failed
