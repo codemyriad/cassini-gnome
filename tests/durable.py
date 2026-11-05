@@ -32,7 +32,7 @@ FSYNCS_PER_TRACK = 7  # what each track adds to a fallback or a shutdown (6.25 m
 
 
 def tracks_bound(tracks):
-    """DURABLE_BOUND plus the fsyncs a capture's `tracks` add to its fallback or save."""
+    """DURABLE_BOUND plus the fsyncs a capture's `tracks` add to its fallback, save or checkpoint."""
     return FSYNC_BOUND * (DURABLE_FSYNCS + FSYNCS_PER_TRACK * tracks)
 
 

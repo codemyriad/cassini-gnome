@@ -13,7 +13,7 @@ try:
 except ValueError:
     pytest.skip("Real publication requires GStreamer", allow_module_level=True)
 
-from durable import DURABLE_BOUND
+from durable import DURABLE_BOUND, durable
 from library_v2_support import simple_session
 
 from cassini_talk import library_location as location
@@ -224,7 +224,8 @@ def test_copy_is_outside_both_library_locks_and_a_changed_source_retries(tmp_pat
     def paused(source, target, **kwargs):
         if str(target).endswith("/audio.opus"):
             entered.set()
-            assert release.wait(5), "Test did not release the staged audio copy"
+            # Held while the test commits a metadata edit durably (12 fsyncs).
+            durable(release, "the test did not release the staged audio copy")
         return original(source, target, **kwargs)
 
     monkeypatch.setattr(library_move_pair, "_copy", paused)

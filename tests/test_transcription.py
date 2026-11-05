@@ -116,7 +116,9 @@ def test_fifo_queue_marks_waiting_job_queued_and_preserves_capture_and_user_meta
             calls.append(Path(tracks[0]["path"]).parent)
             if len(calls) == 1:
                 entered.set()
-                assert release.wait(3)
+                # Held while the test queues the second job and commits two
+                # metadata edits: 8 fsyncs before release.set().
+                durable(release, "the test did not release the first job")
             notify(dict(type="planned", etaMinutes=1))
             for order, track in enumerate(tracks):
                 notify(

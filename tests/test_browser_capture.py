@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from broker_fixture import stop_broker
-from durable import DURABLE_BOUND, CaptureChanges, saved
+from durable import DURABLE_BOUND, CaptureChanges, durable, saved, tracks_bound
 
 from cassini_talk.browser_audio_proxy import BrowserAudioProxy
 from cassini_talk.browser_service import BrowserService, request
@@ -416,7 +416,9 @@ def test_rejected_change_restores_browser_pcm_after_stream_selection(server, mon
     class ReadyTap(Tap):
         def start(self):
             entered.set()
-            assert release.wait(3)
+            # Held while the test adds a 64th track: its checkpoint syncs every
+            # open track's WAV (66 fsyncs) before release.set().
+            durable(release, "the test did not release the native tap", tracks_bound(64))
             super().start()
 
     try:

@@ -158,7 +158,9 @@ def test_fifo_reads_model_when_job_starts_and_remove_keeps_loaded_job(
             calls.append(self.kind)
             if len(calls) == 1:
                 entered.set()
-                assert release.wait(3)
+                # Held while the test queues the second job and removes or
+                # selects a model, durably, before release.set().
+                durable(release, "the test did not release the first job")
             notify(dict(type="planned", etaMinutes=0))
             notify(
                 dict(

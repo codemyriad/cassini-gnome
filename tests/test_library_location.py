@@ -6,7 +6,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from durable import DURABLE_BOUND
+from durable import DURABLE_BOUND, durable
 
 from cassini_talk import library_location as location
 from cassini_talk.library import LibraryCollectionScanner, library_root
@@ -138,7 +138,8 @@ def test_new_recording_does_not_wait_for_old_meeting_copy(roots, monkeypatch):
 
     def blocked(source, target, **kwargs):
         entered.set()
-        assert proceed.wait(5)
+        # Held while the test's start writes its folder durably (7 fsyncs).
+        durable(proceed, "the test did not release the move")
         return original(source, target, **kwargs)
 
     monkeypatch.setattr(library_move, "move_folder", blocked)
