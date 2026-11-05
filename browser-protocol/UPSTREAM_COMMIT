@@ -1,26 +1,26 @@
 tree de07ec56a312c4d37e174ebd3a8939d15d46d24c
-parent d8f4c28fa2bb1cbf7a834b83bb66480f5294617a
-author Silvio Tomatis <silviot@gmail.com> 1793846187 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793846187 +0100
+parent a47d29341152c7c6c667520fd62bf12b469d6a81
+parent 79ca06f77f876ab0216fba86fe64bd9b0dae2cc1
+author Silvio Tomatis <silviot@gmail.com> 1793846815 +0100
+committer GitHub <noreply@github.com> 1793846815 +0100
+gpgsig -----BEGIN PGP SIGNATURE-----
+ 
+ wsFcBAABCAAQBQJq6+4fCRC1aQ7uu5UhlAAA6XoQAKpgAYss/+JTulLxe1/zmvjb
+ U8gfwlAfbRnDLlfADAAnZod1DNni463Er0NYJBG114PrlBtcFxzvhJPopFxuc+SZ
+ pdwdpD7LT7h9PV18PCDT8CyOIj2fmjJ6PxZ9mBb5xJ1nrfay6WcnvMrljGGRUfww
+ VWPwrRdVT7S4jq7pEgSC2AdHZcl5W4rXv9IcJjKzwRyB0b6XCmHg2mnNxFaLQ8cP
+ 9RoNqnETdVWkCyhjPucVUeHBKFwc8rOCngCUEv90dM49YexXdWbPyEn0GE/2BzsG
+ 1sCsLa7w1YHfrcc9GJE4gg7vqHJVlJ4kPEN0/zWmJpRqarA0h0W2xds+5Swsv2Mg
+ eWduarnWh/uu4c81OyoWCA19vY+YFES/MulEmaXVEnYSGoL7TJ4ThLp1C9feXD84
+ MUmjmsC/jgE0OXvPMrlO5dwrD1lZfr3YeVDY55XNmRteJ7dg9scmzm16K2ABHzZY
+ FZ8MmkHDUndiauLqNk2APfnwHz3vKad9j2DJGlE+3bdV5xHzjWhzZ3g0gkbP8x00
+ IJfT6qmJ2j4F52W1RBqAJszjFnjPBxSbxe3sx4i9mkviNDuJ3Wvy3EZplU05pR/W
+ ivS4a15e3wUQjs9xCJUjPRM2M7S3t56VYxUKP8doEy+Vl2LV8EwZxRCY/gLwQkkj
+ 0m4pmCFM0/II1vyECoIz
+ =wtpw
+ -----END PGP SIGNATURE-----
+ 
 
-live-folder driver: late relays end by themselves, launchers told by command line, check.py bounded (#52 review)
+Merge pull request #52 from codemyriad/scenarios/live-folder-driver
 
-- A relay spawned but not yet started at teardown has no start line, so stopRelays
-  cannot find it; once stopLaunchers killed its launcher (the FIFO's only writer-to-be)
-  it would wait in open() for good. The launcher now passes its pid ("$$", later the
-  host's) to the relay, which watches it until the FIFO is open; once it is gone the
-  relay opens the FIFO for writing without blocking and closes it, so its read open
-  completes and reads the end of input (writerGone, then end). Bytes a host wrote just
-  before exiting are still forwarded first. This also covers the browser ending a launch
-  before its host started.
-- stopLaunchers decides by the command line alone (the launcher script, not the host),
-  never by live: off Linux liveness is kill(pid, 0), so on macOS a launcher waiting on
-  its FIFO read as a live host and was never killed.
-- check.py runs through runOracle, bounded by CHECK_MS (killed with SIGKILL): a hang
-  now fails the run, which is then torn down, instead of never reaching teardown.
-
-Tests (each fails on d8f4c28): a relay released only after teardown killed its launcher
-is gone with its end logged; stopLaunchers on macOS's branches (platform darwin, no
-/proc, ps) kills the waiting launcher; a check.py that never exits is killed at its bound.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Shared test 2 driver: the live-folder scenario through an app adapter (D68 PR-2)
