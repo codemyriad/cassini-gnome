@@ -145,6 +145,13 @@ The control host is registered through the shared observing launcher
 stdout to the browser and logs every frame, so the driver writes each resume request into
 `evidence.json` `resumeRequests` from the pipe itself. `control-pipe/<n>/` keeps each
 control connection's `host` (pid and launch parent), `frames.jsonl` and `relay.err`.
+The adapter's `cleanup()`, which the driver awaits on every path, stops the recording,
+quits the app and closes both browsers, ends the relays, launchers, broker and
+microphone producer, and leaves no process: an app that does not exit within 10 s of
+the quit request is killed even when the request itself got no answer (a wedged app),
+and a last backstop kills it if every earlier step failed. `evidence.cleanup` in
+`live-folder-results.json` says what each step did. `node --test
+tests/recording/app-exit.test.mjs` checks the quit step against a wedged app.
 
 ## Readiness and native repeat validation (R3)
 

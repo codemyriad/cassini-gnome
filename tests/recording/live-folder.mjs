@@ -21,6 +21,7 @@ const protocol = path.join(root, 'browser-protocol');
 const {runLiveFolder} = await import(path.join(protocol, 'scenarios/live-folder.mjs'));
 const {livePids, stopLaunchers, stopRelays, writeNativeHost} = await import(path.join(protocol, 'scenarios/native-launcher.mjs'));
 const {poll} = await import(path.join(protocol, 'scenarios/folder-clock.mjs'));
+const {exitWithin, quitApp} = await import('./app-exit.mjs');
 const artifacts = process.env.CASSINI_TEST_ARTIFACTS;
 const library = path.join(artifacts, 'Library');
 process.env.CASSINI_LIBRARY_DIR = library;
@@ -95,12 +96,10 @@ async function browserPid() {
  assert.equal(found.length, 1, `one browser process for ${profile}, found ${JSON.stringify(found)}`);
  return found[0];
 }
-// A child's exit, or false once ms pass (a bound on that process's own exit, not a wait).
-const exitWithin = (child, ms) => child.exitCode !== null || child.signalCode !== null ? Promise.resolve(true)
- : new Promise(resolve => {const timer = setTimeout(() => resolve(false), ms); child.once('exit', () => {clearTimeout(timer); resolve(true);});});
 // The driver's adapter cleanup() (and this script's own finally): stop the app's recording,
-// quit the app, close both browsers, end the relays, any control launcher left waiting on
-// its FIFO, the broker, the microphone producer and any host still alive. Idempotent (one
+// quit the app (killed at the bound even when it answers nothing), close both browsers, end
+// the relays, any control launcher left waiting on its FIFO, the broker, the microphone
+// producer, and as backstops the app and any host still alive. Idempotent (one
 // run, whoever asks first); bounded per step; evidence.cleanup says what each step did.
 // The control-pipe logs stay in the profile for the finally below to copy.
 function cleanup({failed = false} = {}) {
@@ -116,11 +115,8 @@ function cleanup({failed = false} = {}) {
    });
    // A quit while the stopped recording still saves can outlast the quit bound.
    await step('saved', () => poll(async () => (await call()).recordReady, 'cleanup: nothing is saving before quit', 30000));
-   await step('quit', async () => {
-    const quit = exitWithin(ui, 10000); // bound on the app's exit
-    await call({action: 'quit'}); ui.stdin.end();
-    if (!await quit) {ui.kill('SIGKILL'); return 'killed';}
-   });
+   // Bound on the app's exit; killed then even if the quit request failed (a wedged app).
+   await step('quit', () => quitApp(ui, () => call({action: 'quit'}), 10000));
   }
   if (microphone) await step('microphone', async () => {
    const exited = exitWithin(microphone, 5000); // bound on the producer's exit
@@ -147,7 +143,13 @@ function cleanup({failed = false} = {}) {
   });
   // Killed by us (signal SIGTERM) means it ran, so held the serve lock, for the whole run.
   if (broker) evidence.broker = {exitCode: broker.exitCode, signal: broker.signalCode};
-  // Backstop: no production host outlives the run (the browser's exit normally ends them).
+  // Backstops: neither the app (should every step above have failed) nor a production host
+  // outlives the run (the browser's exit normally ends the hosts).
+  if (ui && ui.exitCode === null && ui.signalCode === null) await step('appKilled', async () => {
+   ui.stdin.end(); ui.kill('SIGKILL');
+   if (!await exitWithin(ui, 10000)) throw new Error(`the app ${ui.pid} did not exit 10 s after SIGKILL`);
+   return ui.pid;
+  });
   await step('hostsKilled', async () => {
    const killed = [];
    for (const host of Object.values(registered)) for (const pid of await livePids(host)) {
