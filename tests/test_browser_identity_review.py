@@ -6,6 +6,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from durable import saved
 from test_browser_capture import server  # noqa: F401
 from test_browser_service import meeting, no_command, service, wait_for  # noqa: F401
 from test_control_reconnect import inventory, live, lose, peer
@@ -285,7 +286,7 @@ def test_lifecycle_tab_close_still_notifies_the_extension_after_local_binding_is
         wait_for(lambda: broker._capture_lifecycles[capture.capture_id].closed is not None)
         broker._capture_lifecycles[capture.capture_id].closed = time.monotonic() - 2.1
         broker.policy()
-        wait_for(lambda: capture.finished)
+        saved(capture)
         command = extension.receive()
         assert command["action"] == "stop" and command["reason"] == "tabClosed"
         assert command["tabId"] == 3

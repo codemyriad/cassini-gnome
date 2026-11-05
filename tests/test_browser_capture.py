@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from broker_fixture import stop_broker
+from durable import DURABLE_BOUND, CaptureChanges, saved
 
 from cassini_talk.browser_audio_proxy import BrowserAudioProxy
 from cassini_talk.browser_service import BrowserService, request
@@ -55,6 +56,8 @@ def server(tmp_path):
         tap_factory=Tap,
         notifier=lambda _title, _stop: None,
     )
+    # A fallback's commit and a stop's save write durably: tests wait on them as they commit.
+    service.changes = CaptureChanges(service)
     path = tmp_path / "broker/browser.sock"
     ready = threading.Event()
     worker = threading.Thread(target=service.serve, args=(path, ready), daemon=True)
@@ -298,7 +301,7 @@ def test_two_stop_requests_join_one_native_finalization(server):
             assert entered.wait(1)
             second = pool.submit(capture.stop)
             release.set()
-            assert first.result(2)["path"] == second.result(2)["path"]
+            assert first.result(DURABLE_BOUND)["path"] == second.result(DURABLE_BOUND)["path"]
         assert capture.finished
     finally:
         client.close()
@@ -314,7 +317,8 @@ def test_rejected_browser_start_uses_its_own_system_fallback_without_forcing_mic
         with ThreadPoolExecutor(1) as pool:
             pending = pool.submit(request, "start-all", path=path, microphone=False)
             peer.answer(peer.receive(), ok=False)
-            result = pending.result(2)
+            # Its system fallback starts a folder durably (7 fsyncs).
+            result = pending.result(DURABLE_BOUND)
         assert result["attempted"] == 1 and not result["failures"]
         active = [s for s in result["statuses"] if s["recording"]]
         assert len(active) == 1
@@ -533,9 +537,10 @@ def test_a_call_stopped_while_its_browser_is_away_stays_stopped(server):
     bind_capture(peer, capture)
     peer.close()
     client.close()
-    wait_for(lambda: capture.browser_lost and not service.browsers)
+    service.changes.wait(lambda: capture.browser_lost, "the capture did not fall back")
+    wait_for(lambda: not service.browsers)
     request("stop-all", path=path)
-    wait_for(lambda: capture.finished)
+    saved(capture)
     # The extension's new worker reports the call that is still open.
     peer = Extension(path, (3,), instance="4242:99")
     try:
@@ -568,7 +573,7 @@ def test_independent_call_hangup_stops_without_system_fallback(server):
         command = peer.receive()
         assert command["action"] == "stop"
         peer.answer(command)
-        wait_for(lambda: capture.finished)
+        saved(capture)
         manifest = json.loads((capture.directory / "session.json").read_text())
         assert manifest["state"] == "completed"
         assert not any(t["kind"] == "system" for t in manifest["tracks"])
@@ -594,7 +599,7 @@ def test_reload_fallback_survives_return_but_stops_when_call_does_not_return(ser
         command = peer.receive()
         assert command["action"] == "stop"
         peer.answer(command)
-        wait_for(lambda: capture.browser_lost)
+        service.changes.wait(lambda: capture.browser_lost, "the capture did not fall back")
         assert not capture.finished and set(capture.native_taps) == {"microphone", "system"}
         peer.inventory((3,))
         wait_for(lambda: "reload" not in service._capture_missing_since)
@@ -604,7 +609,7 @@ def test_reload_fallback_survives_return_but_stops_when_call_does_not_return(ser
         with service.lock:
             service._capture_missing_since["reload"] = time.monotonic() - 120.01
         service.policy()
-        wait_for(lambda: capture.finished)
+        saved(capture)
         assert all(tap.stopped for tap in Tap.instances)
         assert json.loads((capture.directory / "session.json").read_text())["state"] == "completed"
     finally:
@@ -626,13 +631,13 @@ def test_disconnected_fallback_is_saved_after_bounded_browser_return_grace(serve
     peer.close()
     wait_for(lambda: not service.browsers)
     client.close()
-    wait_for(lambda: capture.browser_lost)
+    service.changes.wait(lambda: capture.browser_lost, "the capture did not fall back")
     service.policy()
     assert not capture.finished
     with service.lock:
         service._capture_missing_since["disconnected"] = time.monotonic() - 120.01
     service.policy()
-    wait_for(lambda: capture.finished)
+    saved(capture)
     assert all(tap.stopped for tap in Tap.instances)
     assert json.loads((capture.directory / "session.json").read_text())["state"] == "completed"
 
@@ -655,8 +660,6 @@ def test_unbound_audio_client_is_not_mistaken_for_a_disconnected_call(server):
 
 
 def test_unobserved_audio_disconnect_still_starts_bounded_fallback_grace(server):
-    from test_browser_service import wait_for
-
     service, path, _ = server
     client = BrowserAudioProxy(path=path)
     try:
@@ -665,7 +668,7 @@ def test_unobserved_audio_disconnect_still_starts_bounded_fallback_grace(server)
         capture = service.captures["unobserved-loss"]
         assert "unobserved-loss" not in service._capture_observed
         client.close()
-        wait_for(lambda: capture.browser_lost)
+        service.changes.wait(lambda: capture.browser_lost, "the capture did not fall back")
         service.policy()
         assert "unobserved-loss" in service._capture_missing_since
         assert service._capture_missing_since["unobserved-loss"] == capture.browser_lost_since
@@ -674,7 +677,7 @@ def test_unobserved_audio_disconnect_still_starts_bounded_fallback_grace(server)
             service._capture_missing_since.pop("unobserved-loss")
             capture.browser_lost_since = time.monotonic() - 120.01
         service.policy()
-        wait_for(lambda: capture.finished)
+        saved(capture)
         assert all(tap.stopped for tap in Tap.instances)
         assert json.loads((capture.directory / "session.json").read_bytes())["state"] == "completed"
     finally:
@@ -796,7 +799,7 @@ def test_initial_system_fallback_expires_when_control_left_before_first_policy(s
     with service.lock:
         capture.browser_lost_since = time.monotonic() - 120.01
     service.policy()
-    wait_for(lambda: capture.finished)
+    saved(capture)
     assert all(tap.stopped for tap in Tap.instances)
     assert json.loads((capture.directory / "session.json").read_bytes())["state"] == "completed"
 
@@ -819,7 +822,7 @@ def test_lost_page_draining_browser_audio_uses_recovery_grace_not_call_end(serve
         wait_for(lambda: next(iter(service.browsers.values())).states[3].get("stopping"))
         send_packet(peer.stream, dict(type="meetings", meetings=[dict(meeting(), sourceCount=0)]))
         peer.answer(peer.receive())
-        wait_for(lambda: capture.browser_lost)
+        service.changes.wait(lambda: capture.browser_lost, "the capture did not fall back")
         assert not capture.finished and set(capture.native_taps) == {"microphone", "system"}
         with service.lock:
             service._capture_missing_since["draining"] = time.monotonic() - 2.01
@@ -977,7 +980,8 @@ def test_user_stop_joins_pending_automatic_stop_and_finishes_its_capture(server,
             automatic = pool.submit(service.command, identifier, "stop", preserve_capture=preserve_capture)
             command = peer.receive()
             user = pool.submit(request, "stop-all", path=path)
-            wait_for(lambda: capture.finished and ("4242:99", 3) in service.stopped_calls)
+            saved(capture)
+            wait_for(lambda: ("4242:99", 3) in service.stopped_calls)
             assert service.stopped_calls[("4242:99", 3)][0] == meeting()["url"]
             # The user sees the completed local save even if the page has not
             # acknowledged the automatic/fallback stop yet.
@@ -1090,7 +1094,8 @@ def test_initial_system_stand_in_retains_the_selected_logical_call_generation(se
             command = peer.receive()
             assert command["callGeneration"] == "call-before-browser-audio"
             peer.answer(command, ok=False)
-            result = pending.result(2)
+            # Its system stand-in starts a folder durably (6 fsyncs).
+            result = pending.result(DURABLE_BOUND)
         assert not result["failures"]
         (capture,) = service.captures.values()
         assert capture.browser_lost and not capture.audio_connected

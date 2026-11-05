@@ -6,6 +6,7 @@ from dataclasses import replace
 from uuid import uuid4
 
 import pytest
+from durable import DURABLE_BOUND, saved
 from test_browser_capture import bind_capture, remote, server, start  # noqa: F401
 from test_browser_service import meeting, wait_for
 from test_browser_sessions import Extension
@@ -133,11 +134,11 @@ def test_grace_is_bounded_and_does_not_restart_the_two_minute_return_timer(serve
         age(service, CONTROL_RECONNECT_GRACE + 0.1)
         packet(client, 1)
         service.policy()
-        wait_for(lambda: capture.browser_lost)
+        service.changes.wait(lambda: capture.browser_lost, "the capture did not fall back")
         assert not capture.finished
         age(service, 120.01)
         service.policy()
-        wait_for(lambda: capture.finished)
+        saved(capture)
         assert capture.host.session.manifest["events"][-1]["reason"] == "pageGone"
     finally:
         capture.stop()
@@ -150,7 +151,7 @@ def test_a_real_audio_eof_does_not_wait_for_control_reconnect_grace(server):  # 
     try:
         lose(service, extension)
         client.close()
-        wait_for(lambda: capture.browser_lost)
+        service.changes.wait(lambda: capture.browser_lost, "the capture did not fall back")
         assert not capture.finished and "system" in capture.native_taps
     finally:
         capture.stop()
@@ -172,7 +173,7 @@ def test_another_profile_or_browser_cannot_adopt_or_extend_this_captures_grace(s
         assert "retained" in service._control_reconnects
         age(service, CONTROL_RECONNECT_GRACE + 0.1)
         service.policy()
-        wait_for(lambda: capture.browser_lost)
+        service.changes.wait(lambda: capture.browser_lost, "the capture did not fall back")
     finally:
         capture.stop()
         for extension in others:
@@ -235,7 +236,7 @@ def test_explicit_tab_close_keeps_two_second_stop_and_never_starts_system(server
         wait_for(lambda: service._capture_lifecycles["retained"].closed is not None)
         service._capture_lifecycles["retained"].closed = time.monotonic() - CALL_END_GRACE - 0.1
         service.policy()
-        wait_for(lambda: capture.finished)
+        saved(capture)
         assert not any(t["kind"] == "system" for t in capture.host.session.manifest["tracks"])
         assert capture.host.session.manifest["events"][-1]["reason"] == "tabClosed"
     finally:
@@ -253,7 +254,7 @@ def test_an_open_audio_socket_without_fresh_pcm_does_not_get_the_control_only_gr
         capture.streams.tracks["voice"].received_at = time.monotonic() - CALL_END_GRACE - 0.2
         assert capture.audio_connected and not capture.browser_ready
         service.policy()
-        wait_for(lambda: capture.browser_lost)
+        service.changes.wait(lambda: capture.browser_lost, "the capture did not fall back")
     finally:
         capture.stop()
         client.close()
@@ -324,7 +325,7 @@ def test_hangup_during_control_reconnect_stops_after_two_seconds_without_system(
         assert not capture.browser_lost and lifecycle.missing is None
         lifecycle.ended = time.monotonic() - CALL_END_GRACE - 0.01
         service.policy()
-        wait_for(lambda: capture.finished)
+        saved(capture)
         assert capture.host.session.manifest["events"][-1]["reason"] == "callEnded"
         assert not any(track["kind"] == "system" for track in capture.host.session.manifest["tracks"])
     finally:
@@ -351,7 +352,7 @@ def test_navigation_after_healthy_control_gap_gets_its_own_two_second_grace(serv
         assert not capture.browser_lost
         lifecycle.missing -= CALL_END_GRACE + 0.1
         service.policy()
-        wait_for(lambda: capture.browser_lost)
+        service.changes.wait(lambda: capture.browser_lost, "the capture did not fall back")
     finally:
         capture.stop()
         extension.close()
@@ -378,7 +379,7 @@ def test_absent_fallback_tab_does_not_reuse_a_stale_present_page_as_hangup(serve
         assert not capture.finished
         lifecycle.missing = time.monotonic() - 120.1
         service.policy()
-        wait_for(lambda: capture.finished)
+        saved(capture)
         assert capture.host.session.manifest["events"][-1]["reason"] == "pageGone"
     finally:
         capture.stop()
@@ -391,7 +392,10 @@ def test_fallback_stop_saves_its_local_path_without_waiting_for_browser_ack(serv
     from concurrent.futures import ThreadPoolExecutor
 
     service, path, _ = server
-    service.command_timeout = 0.3
+    # The page never acknowledges this Stop. The Stop's reply comes after the
+    # local save (durable, up to DURABLE_BOUND) and must not wait for the ack,
+    # which would hold it for the whole, longer, command timeout.
+    service.command_timeout = 2 * DURABLE_BOUND
     client = None
     if retained_audio:
         extension, client, capture = live(service, path)
@@ -405,7 +409,7 @@ def test_fallback_stop_saves_its_local_path_without_waiting_for_browser_ack(serv
         identifier = next(s["id"] for s in request(path=path)["statuses"] if s.get("captureId") == capture.capture_id)
         with ThreadPoolExecutor(1) as pool:
             stopped = pool.submit(request, "stop", path=path, id=identifier)
-            result = stopped.result(0.2)
+            result = stopped.result(DURABLE_BOUND)
         assert capture.finished and result["stoppedPath"] == str(capture.directory)
         assert all(tap.stopped for _identifier, tap in capture.native_taps.values())
         assert capture.host.session.manifest["events"][-1]["reason"] == "user"

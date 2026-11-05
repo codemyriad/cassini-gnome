@@ -15,6 +15,7 @@ try:
 except ValueError:
     pytest.skip("Real publication tests require GStreamer", allow_module_level=True)
 
+from durable import DURABLE_BOUND, saved
 from test_browser_capture import Tap, remote
 from test_recorder import spin_until
 
@@ -112,7 +113,7 @@ def test_browser_stop_ack_does_not_wait_for_encoder_and_keeps_saving_owner(tmp_p
         assert capture.stop()["type"] == "stopped"  # A second Stop also only joins PCM teardown.
         assert events.count("finished") == 0
         release.set()
-        assert capture.stopped.wait(5)
+        saved(capture)
         assert capture.finished and not capture.stopping and not capture_busy(sid)
         assert events.count("finished") == 1 and capture.publication
         (meeting,) = LibraryScanner(root).scan().meetings
@@ -135,7 +136,8 @@ def test_quit_cancels_native_publish_queued_behind_another_capture(tmp_path, mon
 
     def occupied():
         entered.set()
-        assert release.wait(5)
+        # Released after the test saves a capture durably.
+        assert release.wait(DURABLE_BOUND)
 
     executor.submit(occupied)
     assert entered.wait(2)
@@ -207,7 +209,7 @@ def test_browser_rpc_stop_acknowledges_pcm_and_returns_saving_paths_for_quit(tmp
         quitting = request("stop-all", path=socket)
         assert quitting["stoppedPaths"] == [path]
         release.set()
-        assert capture.stopped.wait(5)
+        saved(capture)
     finally:
         release.set()
         client.close()

@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 from broker_fixture import stop_broker
+from durable import CaptureChanges, tracks_bound
 from test_browser_capture import Tap
 from test_browser_liveness import Clock, Settled, me_frames
 from test_browser_service import wait_for
@@ -24,25 +25,8 @@ VECTORS = json.loads((ROOT / "browser-protocol/conformance/control/resume-captur
 CONTROL = ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1"]
 
 
-class Changes:
-    """Capture changes as they commit; waits are on this condition, never a sleep."""
-
-    def __init__(self):
-        self.condition = threading.Condition()
-        self.seen = []
-
-    def add(self, capture, event):
-        with self.condition:
-            self.seen.append((capture.capture_id, event, capture.browser_lost))
-            self.condition.notify_all()
-
-    def wait(self, check):
-        with self.condition:
-            assert self.condition.wait_for(check, 5), "the capture did not reach the expected state"
-
-
 @pytest.fixture
-def broker(tmp_path, monkeypatch):
+def broker(tmp_path):
     Tap.instances = []
     clock = Clock()
     service = BrowserService(
@@ -52,14 +36,8 @@ def broker(tmp_path, monkeypatch):
         notifier=lambda _title, _stop: None,
         clock=clock,
     )
-    changes = Changes()
-    changed = service._capture_changed
-
-    def observe(capture, event):
-        changed(capture, event)
-        changes.add(capture, event)
-
-    monkeypatch.setattr(service, "_capture_changed", observe)
+    # Capture changes as they commit; waits are on them, never a sleep.
+    changes = CaptureChanges(service)
     path = tmp_path / "broker/browser.sock"
     ready = threading.Event()
     worker = threading.Thread(target=service.serve, args=(path, ready), daemon=True)
@@ -98,7 +76,9 @@ def started(broker, identifier="F", *, generation="call-A", document="doc-1"):
 def lose(broker, client, capture):
     """The audio transport closes (EOF); the capture falls back to system/lost."""
     client.close()
-    broker.changes.wait(lambda: capture.browser_lost)
+    # The fallback ends every track durably: bounded against their count.
+    tracks = len(capture.host.session.manifest["tracks"])
+    broker.changes.wait(lambda: capture.browser_lost, "the capture did not fall back", tracks_bound(tracks))
     wait_for(lambda: not broker.service._audio_transports)
 
 
