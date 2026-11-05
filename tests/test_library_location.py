@@ -296,19 +296,19 @@ def test_actual_transcription_queue_keeps_old_paths_and_accepts_new_root_after_m
     queue = TranscriptionQueue(lambda _: None, lambda _: completed.set(), client_factory=Client, bundle=tmp_path)
     try:
         assert queue.enqueue(recording.directory)
-        assert entered.wait(3)
+        durable(entered, "the job did not start")
         location.request(new)
         assert len(location.process()["pending"]) == 1
         assert recording.directory.is_dir() and str(old) in paths[0]
         release.set()
-        assert completed.wait(3)
+        durable(completed, "the first job did not finish")
         assert location.process()["pending"] == []
         another = session(new)
         another.finish()
         entered.clear()
         completed.clear()
         assert queue.enqueue(another.directory)
-        assert completed.wait(3)
+        durable(completed, "the second job did not finish")
         assert str(new) in paths[1]
     finally:
         release.set()

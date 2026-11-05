@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from durable import DURABLE_BOUND
 
 from cassini_talk import library_move
 
@@ -191,7 +192,7 @@ def test_cross_device_copy_does_not_hold_the_metadata_lock_or_block_quit(tmp_pat
             LOCK.release()
         finally:
             proceed.set()
-        assert moving.result(timeout=3).destination == target / NAME
+        assert moving.result(timeout=DURABLE_BOUND).destination == target / NAME  # A durable copy.
 
 
 def test_cancel_during_cross_device_copy_keeps_complete_original(tmp_path, monkeypatch):

@@ -744,7 +744,8 @@ def test_lost_audio_acknowledgement_keeps_native_mic_and_falls_back(server, monk
                 else dict(type="stop" if reply_type == "stopped" else "invalid-message")
             )
             send(peer_stream, packet)
-        assert accepted.wait(3), "The real audio actor did not reach its acknowledgement"
+        # The actor starts the capture (or adds its track) durably first.
+        durable(accepted, "the real audio actor did not reach its acknowledgement")
         capture = service.captures["ack-loss"]
         microphone = capture.microphone
         # Retire the actual peer after acceptance but before its reply. This
@@ -753,7 +754,8 @@ def test_lost_audio_acknowledgement_keeps_native_mic_and_falls_back(server, monk
         peer_stream.close()
         peer.close()
         release.set()
-        assert done.wait(5), "The vanished audio peer stranded the capture actor"
+        # It falls back, or stops, durably before it ends.
+        durable(done, "the vanished audio peer stranded the capture actor")
         assert not failures
         if reply_type in ("error", "stopped"):
             assert capture.finished and not capture.browser_lost

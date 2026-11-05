@@ -270,7 +270,7 @@ def test_existing_transcription_queue_commits_words_after_concurrent_title_edit(
     )
     try:
         assert queue.enqueue(directory)
-        assert progress_written.wait(5)
+        durable(progress_written, "the job did not write its progress")
         # Progress is transient: it does not rewrite all Opus headers/words for
         # each segment. User edits meanwhile still commit through the journal.
         assert original.exists()
@@ -348,7 +348,7 @@ def test_failed_write_down_leaves_the_published_files_words_as_they_were(publish
     try:
         assert queue.enqueue(directory)
         with done:
-            assert done.wait_for(lambda: len(finished) == 1, 10)
+            assert done.wait_for(lambda: len(finished) == 1, DURABLE_BOUND)
         (meeting,) = LibraryScanner(root).scan().meetings
         assert (meeting.transcript, meeting.words) == ("failed", ())
         embedded = portable.read_meeting(str(meeting.audio_file))
@@ -362,7 +362,7 @@ def test_failed_write_down_leaves_the_published_files_words_as_they_were(publish
         assert [item["text"] for item in meeting_store.transcript_snapshot(directory)["items"]] == ["Partial", "words"]
         assert queue.enqueue(directory)
         with done:
-            assert done.wait_for(lambda: len(finished) == 2, 10)
+            assert done.wait_for(lambda: len(finished) == 2, DURABLE_BOUND)
         (meeting,) = LibraryScanner(root).scan().meetings
         assert meeting.transcript == "done" and [w.text for w in meeting.words] == ["Partial", "words", "again"]
         assert not journal.pending(journal.Layout(root)).entries

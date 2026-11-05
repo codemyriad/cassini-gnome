@@ -5,6 +5,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from broker_fixture import stop_broker
+from durable import saved
 from test_browser_capture import Tap, bind_capture, remote, start
 from test_browser_service import wait_for
 from test_browser_sessions import Extension
@@ -79,7 +80,7 @@ def test_record_after_stop_starts_while_the_stop_is_unanswered_and_publication_i
         assert recordings_started(application_class, result).recording_failure is None
 
         release.set()
-        assert old.stopped.wait(5)
+        saved(old)  # Its publication commits durably.
         # The old capture's publication must not mark the new session stopped.
         assert tab_status(socket)["captureId"] == live["captureId"] and tab_status(socket)["phase"] == "recording"
     finally:

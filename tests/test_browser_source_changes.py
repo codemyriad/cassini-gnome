@@ -5,7 +5,7 @@ import json
 import wave
 
 import pytest
-from durable import saved
+from durable import saved, tracks_bound
 from test_browser_capture import Tap, remote, server, start  # noqa: F401
 
 from cassini_talk.browser_audio_proxy import BrowserAudioProxy
@@ -112,7 +112,8 @@ def test_browser_close_failure_finalizes_and_releases_microphone(server, limit):
             )
             capture.host.session.checkpoint()
     client.close()
-    saved(capture)
+    # At the track limit its save closes 64 tracks (66 fsyncs).
+    saved(capture, tracks_bound(64))
     assert capture.microphone.stopped
     assert all(tap.stopped for tap in Tap.instances)
     assert not capture.stopping and capture.stopped.is_set()

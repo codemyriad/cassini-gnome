@@ -198,8 +198,8 @@ def test_editor_queued_on_old_library_lock_follows_the_completed_pair(tmp_path, 
     monkeypatch.setattr(journal.LibraryLock, "__enter__", enter)
     monkeypatch.setattr(library_move_pair, "CHECKPOINT", pause)
     with ThreadPoolExecutor(max_workers=1) as executor:
-        assert executor.submit(location.process).result(timeout=10)["pending"] == []
-    editor.join(5)
+        assert executor.submit(location.process).result(timeout=DURABLE_BOUND)["pending"] == []
+    editor.join(DURABLE_BOUND)  # Its edit commits durably at the destination.
     assert not editor.is_alive(), "Queued editor deadlocked after the move"
     assert errors == []
     (meeting,) = LibraryCollectionScanner().scan().meetings
