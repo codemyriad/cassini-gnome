@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """G13/G14: every job and every local test run has a time budget, and CI runs on pushes to main only."""
 
+import fnmatch
 import os
 import re
 import shutil
@@ -173,18 +174,118 @@ def test_package_builds_run_on_the_pinned_runner_image():
         assert images and set(images) <= {"ubuntu-26.04", CM_RUNNER_PINNED}, (name, images)
 
 
-def test_release_ships_the_flatpak_main_tested_and_refuses_it_without_an_update_remote():
-    # G15: no rebuild at tag time, and no workflow calls Release preparation.
-    release = (WORKFLOWS / "release.yml").read_text()
-    flatpak = dict(jobs(WORKFLOWS / "release.yml"))["flatpak"]
-    assert "release-check.yml" not in release and "name: flatpak-stable" in flatpak
-    assert "run-id: ${{ needs.main-inputs.outputs.run_id }}" in flatpak
-    assert "build-aux/ci/flatpak_bundle.py dist/cassini-talk.flatpak" in flatpak
-    assert re.search(r"^    needs: \[deb, packages, flatpak\]$", release, re.M)
+# A step that publishes to a GitHub release, whatever the tool: the gh CLI, the
+# REST API (gh api, curl to /releases or uploads.github.com) or an action.
+RELEASE_UPLOAD = re.compile(
+    r"\bgh release\b|/releases\b|uploads\.github\.com|^\s*(?:- )?uses: *[^\s#@]*release[^\s#@]*@",
+    re.I | re.M,
+)
+
+
+def release_started(text):
+    # True when a release, a ref creation or a tag push can start the workflow.
+    # A push with no branch filter fires on tags too; one with only branch
+    # filters does not.
+    on = re.search(r"^on:(.*)\n((?:[ \t].*\n|\n)*)", text, re.M)
+    if not on:
+        return False
+    if re.search(r"\b(?:release|create)\b", on.group(1)) or re.search(r"^  (?:release|create):", on.group(2), re.M):
+        return True
+    if re.search(r"\bpush\b", on.group(1)):
+        return True
+    push = re.search(r"^  push:(.*)\n((?:    .*\n|\n)*)", on.group(2), re.M)
+    if not push:
+        return False
+    filters = push.group(1) + push.group(2)
+    return bool(re.search(r"\btags", filters)) or not re.search(r"\bbranches", filters)
+
+
+def test_release_ships_the_native_packages_and_never_a_flatpak():
+    # D45.4: no Flatpak is published anywhere; we hold no signing key and run
+    # no repository, and CI builds the Flatpak only as a check. A release ships the native packages
+    # (publish needs exactly deb and packages), never downloads main's
+    # flatpak-stable and never attaches a .flatpak: a bundle without an update
+    # remote must not be offered. No workflow calls Release preparation.
+    def code(block):
+        return "\n".join(line for line in block.splitlines() if not line.lstrip().startswith("#"))
+
+    release = dict(jobs(WORKFLOWS / "release.yml"))
+    assert set(release) == {"main-inputs", "deb", "packages", "publish"}
+    assert re.findall(r"^    needs: (.+)$", release["publish"], re.M) == ["[deb, packages]"]
+    assert re.findall(r"^          name: (\S+)$", release["publish"], re.M) == ["release-deb", "release-packages"]
+    # Every download selects its artifacts by a name or pattern that cannot
+    # reach main's Flatpak: no download-everything.
+    for name, block in release.items():
+        for step in re.split(r"\n(?=      - )", code(block)):
+            if "actions/download-artifact" in step:
+                chosen = re.findall(r"^          (?:name|pattern): *[\"']?([^\"'\s]+)", step, re.M)
+                assert len(chosen) == 1, (name, step)
+                assert not fnmatch.fnmatchcase("flatpak-stable", chosen[0]), (name, chosen)
+    # Shipping jobs: every job of a workflow a tag, release or ref creation
+    # starts, of the workflows those call, and every job anywhere that
+    # publishes to a GitHub release by any means.
+    by_name = {w.name: w for w in WORKFLOWS.glob("*.yml") if "\njobs:\n" in w.read_text()}
+    released = sorted(w for w, path in by_name.items() if release_started(path.read_text()))
+    assert "release.yml" in released, released
+    shipping = {}
+    while released:
+        workflow = released.pop()
+        for name, block in jobs(by_name[workflow]):
+            if f"{workflow}:{name}" not in shipping:
+                shipping[f"{workflow}:{name}"] = code(block)
+                released += re.findall(r"^    uses: \./\.github/workflows/(\S+\.yml)", block, re.M)
+    for workflow, path in by_name.items():
+        for name, block in jobs(path):
+            if RELEASE_UPLOAD.search(code(block)):
+                shipping.setdefault(f"{workflow}:{name}", code(block))
+    assert "release.yml:publish" in shipping
+    for name, block in shipping.items():
+        assert "flatpak-stable" not in block and ".flatpak" not in block.lower(), name
+        assert "release-flatpak" not in block, name
     assert not any("release-check.yml" in w.read_text() for w in WORKFLOWS.glob("*.yml"))
+    # Main still builds, validates and smoke-tests the stable profile Flathub
+    # will build, without an update remote.
     stable = (WORKFLOWS / "flatpak.yml").read_text()
     assert "--repo-url" not in stable and "build-aux/ci/validate_installed.py" in stable
     assert "name: flatpak-stable" in stable
+
+
+def test_release_upload_pattern_sees_every_publishing_route():
+    for line in (
+        "gh release upload v1 x.deb",
+        "gh api -X POST repos/o/r/releases/1/assets --input x",
+        "curl -T x https://uploads.github.com/repos/o/r/releases/1/assets?name=x",
+        "      - uses: softprops/action-gh-release@v2",
+        "      - uses: actions/upload-release-asset@v1",
+        "      - uses: ncipollo/release-action@v1",
+    ):
+        assert RELEASE_UPLOAD.search(line), line
+    for line in (
+        "      - uses: actions/upload-artifact@v7",
+        "      - uses: actions/download-artifact@v8",
+        "    uses: ./.github/workflows/flatpak.yml",
+        "python3 build-aux/ci/release_metadata.py --tag v1",
+    ):
+        assert not RELEASE_UPLOAD.search(line), line
+    for on in (
+        'on:\n  push:\n    tags: ["v*"]\n',
+        "on:\n  push:\n",
+        "on:\n  push:\n    paths: [src/**]\n",
+        "on:\n  push: {tags: [v*]}\n",
+        "on:\n  push:\n    branches: [main]\n    tags: [v*]\n",
+        "on:\n  release:\n    types: [published]\n",
+        "on:\n  create:\n",
+        "on: [push, pull_request]\n",
+        "on: release\n",
+    ):
+        assert release_started(on + "jobs:\n"), on
+    for on in (
+        "on:\n  push:\n    branches: [main]\n  pull_request:\n",
+        "on:\n  push: {branches: [main]}\n",
+        "on:\n  workflow_call:\n  workflow_dispatch:\n",
+        "on:\n  schedule:\n    - cron: '1 2 * * *'\n",
+    ):
+        assert not release_started(on + "jobs:\n"), on
 
 
 def test_runner_variables_only_select_constant_labels():

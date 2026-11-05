@@ -2,8 +2,8 @@ name: Release preparation
 
 # Dispatch it on a release branch to check its version metadata before
 # tagging. Every PR runs the same check in Lint (source.yml, G16); the stable
-# Flatpak is built, validated and smoke-tested in flatpak.yml, and the tag
-# workflow ships that bundle (G15), so nothing calls this workflow.
+# Flatpak is built, validated and smoke-tested in flatpak.yml as a check and
+# never published (D45.4), so nothing calls this workflow.
 on:
   workflow_dispatch:
 

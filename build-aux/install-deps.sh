@@ -38,8 +38,7 @@ Install these with your package manager (names vary between distributions):
            glib-compile-resources and glib-compile-schemas (glib dev tools),
            optional: desktop-file-validate, appstreamcli,
            gtk4-update-icon-cache, python3 pytest, jsonschema and
-           rfc3339-validator (the protocol conformance tests), gpgv
-           (the release guard's tests)
+           rfc3339-validator (the protocol conformance tests)
   runtime: python3 (>= 3.11), PyGObject, GTK 4 (>= 4.18) and
            libadwaita (>= 1.8) with their GObject introspection typelibs,
            GStreamer 1.x typelib, gst-plugins-base and gst-plugins-good
@@ -75,21 +74,21 @@ case $family in
   apt)
     build="gcc libc6-dev meson ninja-build python3 gettext libglib2.0-bin libglib2.0-dev-bin
            desktop-file-utils appstream libgtk-4-bin python3-pytest
-           python3-jsonschema python3-rfc3339-validator gpgv"
+           python3-jsonschema python3-rfc3339-validator"
     runtime="python3 python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0
              gstreamer1.0-plugins-base gstreamer1.0-plugins-good
              python3-numpy" ;;
   dnf)
     build="gcc glibc-devel meson ninja-build python3 gettext glib2 glib2-devel
            desktop-file-utils appstream gtk4-devel-tools python3-pytest
-           python3-jsonschema python3-rfc3339-validator gnupg2-verify"
+           python3-jsonschema python3-rfc3339-validator"
     runtime="python3 python3-gobject gobject-introspection gtk4 libadwaita gstreamer1
              gstreamer1-plugins-base gstreamer1-plugins-good
              python3-numpy" ;;
   zypper)
     build="gcc glibc-devel meson ninja python3 gettext-tools glib2-tools glib2-devel
            desktop-file-utils AppStream gtk4-tools python3-pytest
-           python3-jsonschema python3-rfc3339-validator gpg2"
+           python3-jsonschema python3-rfc3339-validator"
     # Resolves to the primary Python flavour.
     runtime="python3 python3-gobject typelib-1_0-Gtk-4_0 typelib-1_0-Adw-1
              typelib-1_0-Gst-1_0 gstreamer-plugins-base gstreamer-plugins-good
@@ -97,7 +96,7 @@ case $family in
   pacman)
     build="gcc glibc meson ninja python gettext glib2 glib2-devel desktop-file-utils
            appstream gtk4 python-pytest pkgconf
-           python-jsonschema python-rfc3339-validator gnupg"
+           python-jsonschema python-rfc3339-validator"
     runtime="python python-gobject gtk4 libadwaita gstreamer
              gst-plugins-base gst-plugins-good python-numpy" ;;
   apk)
@@ -105,7 +104,7 @@ case $family in
     # tests: busybox has neither.
     build="build-base meson samurai python3 gettext glib glib-dev desktop-file-utils
            appstream gtk4.0 py3-pytest
-           py3-jsonschema py3-rfc3339-validator gpgv bash coreutils"
+           py3-jsonschema py3-rfc3339-validator bash coreutils"
     # No NumPy: the pinned engine cannot run on musl, so
     # writing down is not available on Alpine.
     runtime="python3 py3-gobject3 gtk4.0 libadwaita gstreamer coreutils
