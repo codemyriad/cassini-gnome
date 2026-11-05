@@ -9,6 +9,11 @@ from gi.repository import GLib, GObject, Gst
 
 from .i18n import gettext as _
 
+# D56: a track is silent only when every PCM16 sample is 0. audioconvert's default
+# TPDF dither turns digital silence from a float source into +-1 noise (a quarter
+# of the samples), so every capture tap converts without dither, as export does.
+CAPTURE_CONVERT = "audioconvert dithering=0 noise-shaping=0"
+
 
 def capture_pipeline(microphone=True, desktop=True, test=False):
     if not microphone and not desktop:
@@ -23,7 +28,7 @@ def capture_pipeline(microphone=True, desktop=True, test=False):
                 else f'pulsesrc device={device} client-name="Cassini Recording" provide-clock=false'
             )
             sources.append(
-                f"{source} ! queue ! audioconvert ! audioresample ! "
+                f"{source} ! queue ! {CAPTURE_CONVERT} ! audioresample ! "
                 f"audio/x-raw,format=S16LE,rate=48000,channels=1 ! capture.sink_{index}"
             )
     return (

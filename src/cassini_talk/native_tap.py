@@ -9,6 +9,7 @@ import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
 
+from .recorder import CAPTURE_CONVERT  # noqa: E402
 from .recording_details import ACMeter  # noqa: E402
 from .refusals import gst_code  # noqa: E402
 
@@ -55,7 +56,7 @@ class NativeTap:
             else f'pulsesrc name=capture-source device={device} provide-clock=false client-name="Cassini Recording"'
         )
         self.pipeline = Gst.parse_launch(
-            source + " ! queue ! audioconvert ! audioresample ! "
+            source + " ! queue ! " + CAPTURE_CONVERT + " ! audioresample ! "
             "audio/x-raw,format=S16LE,rate=48000,channels=1 ! "
             "appsink name=pcm emit-signals=true sync=false max-buffers=8 drop=false"
         )
