@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Release input provenance and CI accounting without publishing or GitHub writes."""
 
+import hashlib
 import importlib.util
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -219,3 +222,67 @@ def test_the_tag_workflow_publishes_the_news_section_as_release_notes():
     assert "--notes-file notes.md --generate-notes" in workflow
     version = module("release_metadata").check(root)["version"]
     assert module("release_notes").notes((root / "NEWS").read_text(), version).strip()
+
+
+def test_release_sums_cover_exactly_the_five_packages_by_name(tmp_path):
+    assets = module("release_sums")
+    contents = {
+        "deb/cassini-talk_0.4.0~ubuntu26.04_amd64.deb": b"ubuntu",
+        "deb/cassini-talk_0.4.0~debian-testing_amd64.deb": b"debian",
+        "rpm/cassini-talk-0.4.0-1.fc44.x86_64.rpm": b"fedora",
+        "rpm/cassini-talk-0.4.0-1.1.x86_64.rpm": b"opensuse",
+        "arch/cassini-talk-0.4.0-1-x86_64.pkg.tar.zst": b"arch",
+        "other/notes.txt": b"not a package",
+    }
+    for name, data in contents.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_bytes(data)
+    files = assets.packages(tmp_path)
+    sums = assets.write_sums(files, tmp_path / "SHA256SUMS")
+    lines = sums.read_text().splitlines()
+    expected = {
+        f"{hashlib.sha256(data).hexdigest()}  {Path(name).name}"
+        for name, data in contents.items()
+        if not name.startswith("other/")
+    }
+    assert len(lines) == 5 and set(lines) == expected
+    if shutil.which("sha256sum"):
+        flat = tmp_path / "published"
+        flat.mkdir()
+        for path in [*files, sums]:
+            shutil.copy(path, flat / path.name)
+        subprocess.run(["sha256sum", "--check", "--strict", "SHA256SUMS"], cwd=flat, check=True, capture_output=True)
+        (flat / files[0].name).write_bytes(b"tampered")
+        assert subprocess.run(
+            ["sha256sum", "--check", "--strict", "SHA256SUMS"], cwd=flat, capture_output=True
+        ).returncode
+
+
+@pytest.mark.parametrize("drop", [0, 2, 4])
+def test_release_assets_refuse_a_missing_or_extra_package(tmp_path, drop):
+    assets = module("release_sums")
+    names = [
+        "a~ubuntu26.04_amd64.deb",
+        "a~debian-testing_amd64.deb",
+        "a.fc44.x86_64.rpm",
+        "a.1.x86_64.rpm",
+        "a-x86_64.pkg.tar.zst",
+    ]
+    for name in names:
+        (tmp_path / name).write_bytes(name.encode())
+    (tmp_path / names[drop]).unlink()
+    with pytest.raises(ValueError, match="Expected"):
+        assets.packages(tmp_path)
+    (tmp_path / names[drop]).write_bytes(b"back")
+    (tmp_path / ("extra-" + names[drop])).write_bytes(b"extra")
+    with pytest.raises(ValueError, match="Expected"):
+        assets.packages(tmp_path)
+
+
+def test_the_tag_workflow_attaches_sha256sums_and_verifies_the_published_files():
+    workflow = (Path(__file__).parents[1] / ".github/workflows/release.yml").read_text()
+    assert "release_sums.py artifacts --sums SHA256SUMS" in workflow
+    assert '--generate-notes "${assets[@]}"' in workflow
+    assert 'gh release download "$GITHUB_REF_NAME"' in workflow
+    assert "sha256sum --check --strict SHA256SUMS" in workflow
+    assert 'test "$(wc -l < SHA256SUMS)" -eq 5' in workflow

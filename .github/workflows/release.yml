@@ -93,9 +93,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -R artifacts
-          # The packages carry the x86_64 writing-down engine: amd64 .debs
-          # (one per base), x86_64 RPMs and the Arch package.
-          mapfile -d '' bundles < <(find artifacts -type f \( -name '*.deb' -o -name '*.x86_64.rpm' -o -name '*.pkg.tar.zst' \) -print0)
+          # The packages carry the x86_64 writing-down engine: exactly two amd64
+          # .debs (one per base), two x86_64 RPMs and the Arch package, plus their
+          # SHA256SUMS (sha256sum -c format, by file name), which is attached too.
+          mapfile -t assets < <(python3 source/build-aux/ci/release_sums.py artifacts --sums SHA256SUMS)
           # The tagged version's NEWS section, in plain language, then GitHub's PR list.
           python3 source/build-aux/ci/release_notes.py "$GITHUB_REF_NAME" > notes.md
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file notes.md --generate-notes "${bundles[@]}"
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file notes.md --generate-notes "${assets[@]}"
+      # What a downloader gets: every attached package, fetched back from the
+      # release, matches its SHA256SUMS line, and nothing is missing or extra.
+      - name: Verify the published packages against SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir published
+          cd published
+          sha256sum --check --strict SHA256SUMS
+          test "$(wc -l < SHA256SUMS)" -eq 5
+          diff <(ls | grep -vx SHA256SUMS | sort) <(cut -d' ' -f3- SHA256SUMS | sort)
