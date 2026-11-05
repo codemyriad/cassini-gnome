@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 import test_model_download
+from durable import Finished, durable, idle
 from test_library import capture
 from test_transcription import until
 
@@ -43,7 +44,7 @@ def model_fixture(remote, tmp_path, monkeypatch):
     )
     persisted, notifications = [], []
     models = SpeechModels("whistle", persisted.append, lambda: notifications.append(True), store=store)
-    until(lambda: not models.snapshot()["busy"])
+    idle(models)
     yield models, store, remote, persisted
     models.close()
     models._thread.join(2)
@@ -52,7 +53,7 @@ def model_fixture(remote, tmp_path, monkeypatch):
 
 def downloaded(models):
     assert models.download()
-    until(lambda: not models.snapshot()["busy"])
+    idle(models)
     assert models.snapshot()["downloaded"] and not models.snapshot()["error"]
 
 
@@ -65,7 +66,7 @@ def test_download_is_explicit_pinned_and_never_selects_itself(model_fixture):
     assert models.select(MODEL_ID) and persisted[-1] == MODEL_ID
     assert models.remove() and persisted[-1] == "whistle"
     assert models.snapshot()["selected"] == "whistle"
-    until(lambda: not models.snapshot()["busy"])
+    idle(models)
     assert not (store.root / MODEL_ID / REVISION).exists()
     assert models.snapshot()["notice"] == "models.parakeetUltra.removedFallback"
 
@@ -74,7 +75,7 @@ def test_changed_manifest_is_rejected_before_any_weight_request(model_fixture):
     models, store, remote, _ = model_fixture
     remote.manifest["artifacts"][0]["uncompressed_sha256"] = "0" * 64
     assert models.download()
-    until(lambda: not models.snapshot()["busy"])
+    idle(models)
     assert models.snapshot()["error"] and not models.snapshot()["downloaded"]
     assert [path for path, _ in remote.requests] == ["/manifest.json"]
     assert not (store.root / MODEL_ID / REVISION).exists()
@@ -117,7 +118,7 @@ def test_initial_verification_is_offline_and_invalid_selection_is_reset(model_fi
     before, persisted = len(remote.requests), []
     second = SpeechModels(MODEL_ID, persisted.append, lambda: None, store=store)
     try:
-        until(lambda: not second.snapshot()["busy"])
+        idle(second)
         assert persisted == ["whistle"] and not second.snapshot()["downloaded"]
         assert len(remote.requests) == before and not (store.root / MODEL_ID / REVISION).exists()
     finally:
@@ -136,7 +137,7 @@ def test_fifo_reads_model_when_job_starts_and_remove_keeps_loaded_job(
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(root))
     sessions = [capture(root), capture(root)]
     entered, release = threading.Event(), threading.Event()
-    calls, finished, active = [], [], set()
+    calls, finished, active = [], Finished(), set()
 
     class Client:
         kind = "whistle"
@@ -179,22 +180,22 @@ def test_fifo_reads_model_when_job_starts_and_remove_keeps_loaded_job(
             super().start()
 
     models.client_factory = Parakeet
-    queue = TranscriptionQueue(lambda _: None, finished.append, bundle=tmp_path, client_factory=Client, models=models)
+    queue = TranscriptionQueue(lambda _: None, finished, bundle=tmp_path, client_factory=Client, models=models)
     try:
         assert queue.enqueue(sessions[0].directory)
-        until(entered.is_set)
+        durable(entered, "the first job did not start")
         assert queue.enqueue(sessions[1].directory)
         until(lambda: (sessions[1].directory / "meeting.json").exists())
         if first_model == MODEL_ID:
             assert models.remove() and persisted[-1] == "whistle"
-            until(lambda: not models.snapshot()["busy"])
+            idle(models)
             assert not (store.root / MODEL_ID / REVISION).exists()
             expected = [MODEL_ID, "whistle"]
         else:
             models.select(MODEL_ID)
             expected = ["whistle", MODEL_ID]
         release.set()
-        until(lambda: len(finished) == 2)
+        finished.wait(2)
         assert calls == expected
         for session, kind in zip(sessions, expected, strict=True):
             metadata = read_metadata(session.directory)
@@ -267,7 +268,7 @@ def test_remove_during_native_load_persists_fallback_without_deleting_loading_fi
         assert path.is_file(), "Removal raced the in-progress native model load"
         release.set()
         owner.join(2)
-        until(lambda: not models.snapshot()["busy"])
+        idle(models)
         assert loaded and not path.exists()
     finally:
         release.set()
@@ -289,7 +290,7 @@ def test_cancel_explicit_download_keeps_controller_retryable(model_fixture, monk
     monkeypatch.setattr(models.store, "fetch_manifest", fetch)
     assert models.download() and entered.wait(1)
     models.cancel_download()
-    until(lambda: not models.snapshot()["busy"])
+    idle(models)
     assert not models.snapshot()["error"] and models.snapshot()["selected"] == "whistle"
     monkeypatch.setattr(models.store, "fetch_manifest", original)
     downloaded(models)
@@ -308,7 +309,7 @@ def test_try_again_can_recover_a_damaged_published_revision(model_fixture, damag
     }[damage]
     (directory / name).write_bytes(b"damaged")
     assert models.download()
-    until(lambda: not models.snapshot()["busy"])
+    idle(models)
     assert models.snapshot()["error"] and not models.snapshot()["downloaded"]
     assert not directory.exists()
     downloaded(models)
@@ -327,7 +328,7 @@ def test_initial_inspection_rejects_missing_attribution_or_unchecked_files(model
         (directory / {"receipt": ".cassini-model.json", "notice": ".cassini-NOTICE.txt"}[damage]).unlink()
     second = SpeechModels(MODEL_ID, persisted.append, lambda: None, store=store)
     try:
-        until(lambda: not second.snapshot()["busy"])
+        idle(second)
         assert not second.snapshot()["downloaded"] and second.snapshot()["selected"] == "whistle"
         assert not directory.exists()
     finally:
@@ -347,7 +348,7 @@ def test_cancel_after_atomic_publish_keeps_completed_download_visible(model_fixt
     downloaded(models)
     assert store.installed(MODEL_ID, REVISION) and models.select(MODEL_ID)
     assert models.remove()
-    until(lambda: not models.snapshot()["busy"])
+    idle(models)
     assert not (store.root / MODEL_ID / REVISION).exists()
 
 
@@ -360,7 +361,7 @@ def test_valid_revision_restores_about_notice_before_model_use(model_fixture):
     (store.root / "NOTICE.txt").unlink()
     second = SpeechModels(MODEL_ID, lambda _: None, lambda: None, store=store)
     try:
-        until(lambda: not second.snapshot()["busy"])
+        idle(second)
         assert second.snapshot()["downloaded"] and has_downloaded_models(store.root)
         assert (store.root / "NOTICE.txt").read_bytes() == test_model_download.NOTICE
     finally:

@@ -6,7 +6,7 @@ import json
 import threading
 
 import pytest
-from test_transcription import until
+from durable import Finished, durable
 
 from cassini_talk.diarization import voice_source
 from cassini_talk.library import LibraryScanner
@@ -45,7 +45,7 @@ def test_voice_publication_and_diarization_failures_preserve_words_and_capture(t
         dict(text="One", startMs=10, endMs=800, lowConfidenceSpeaker=True),
         dict(text="Two", startMs=1010, endMs=1800),
     ]
-    finished = []
+    finished = Finished()
 
     class Client:
         def __init__(self, *_args, **_kwargs):
@@ -88,7 +88,7 @@ def test_voice_publication_and_diarization_failures_preserve_words_and_capture(t
 
     queue = TranscriptionQueue(
         lambda _: None,
-        finished.append,
+        finished,
         bundle=tmp_path,
         root=tmp_path,
         client_factory=Client,
@@ -96,7 +96,7 @@ def test_voice_publication_and_diarization_failures_preserve_words_and_capture(t
     )
     try:
         assert queue.enqueue(session.directory)
-        until(lambda: len(finished) == 1)
+        finished.wait(1)
         metadata = read_metadata(session.directory)
         assert metadata["transcript"]["status"] == "done" and metadata["privateField"] == "preserved"
         assert metadata["notes"] == [dict(atMs=100, text="Keep this")]
@@ -138,10 +138,10 @@ print(json.dumps(dict(type='recognised',summary=dict(language='en',diagnostics=[
 os._exit(77)
 """,
     )
-    finished = []
+    finished = Finished()
     queue = TranscriptionQueue(
         lambda _: None,
-        finished.append,
+        finished,
         root=tmp_path,
         bundle=tmp_path,
         client_factory=lambda *_args, **_kwargs: client,
@@ -149,7 +149,7 @@ os._exit(77)
     )
     try:
         assert queue.enqueue(session.directory)
-        until(lambda: len(finished) == 1)
+        finished.wait(1)
         assert read_metadata(session.directory)["transcript"]["status"] == "done"
         body = json.loads((session.directory / "transcript.json").read_bytes())
         assert body["items"] == [dict(text="Kept", startMs=10, endMs=800, speaker="others")]
@@ -220,7 +220,7 @@ def file_snapshot(directory):
 
 def test_close_after_worker_return_does_not_flush_buffered_words(system_capture, tmp_path):
     session = system_capture
-    snapshots, finished = [], []
+    snapshots, finished = [], Finished()
 
     class Client(CompletedClient):
         def before_return(self):
@@ -229,7 +229,7 @@ def test_close_after_worker_return_does_not_flush_buffered_words(system_capture,
 
     queue = TranscriptionQueue(
         lambda _: None,
-        finished.append,
+        finished,
         root=tmp_path,
         bundle=tmp_path,
         client_factory=Client,
@@ -237,7 +237,7 @@ def test_close_after_worker_return_does_not_flush_buffered_words(system_capture,
     )
     try:
         assert queue.enqueue(session.directory)
-        until(lambda: len(finished) == 1)
+        finished.wait(1)
         assert len(snapshots) == 1
         assert file_snapshot(session.directory) == snapshots[0], "Queue committed files after close"
         body = json.loads((session.directory / "transcript.json").read_bytes())
@@ -260,7 +260,7 @@ def test_cancelled_attribution_remains_running_and_restart_redoes_missing_turns(
         speakers=[dict(id="others~1", name="Alice", provenance="user", colourIndex=0, voiceSource=source)],
     )
     entered, release = threading.Event(), threading.Event()
-    completed_flushes, finished = [], []
+    completed_flushes, finished = [], Finished()
     apply = diarization.apply_transcript
     flush = transcript_publish.TranscriptPublisher.flush
 
@@ -278,7 +278,7 @@ def test_cancelled_attribution_remains_running_and_restart_redoes_missing_turns(
     monkeypatch.setattr(transcript_publish.TranscriptPublisher, "flush", observed)
     queue = TranscriptionQueue(
         lambda _: None,
-        finished.append,
+        finished,
         root=tmp_path,
         bundle=tmp_path,
         client_factory=CompletedClient,
@@ -286,14 +286,14 @@ def test_cancelled_attribution_remains_running_and_restart_redoes_missing_turns(
     )
     try:
         assert queue.enqueue(session.directory)
-        until(entered.is_set)
+        durable(entered, "the job did not reach diarization")
         assert not completed_flushes, "Final flush happened before speaker assignment"
         assert read_metadata(session.directory)["transcript"]["status"] == "running"
         assert not (session.directory / "speaker-turns.json").exists()
         queue.close()
         before = file_snapshot(session.directory)
         release.set()
-        until(lambda: len(finished) == 1)
+        finished.wait(1)
         assert file_snapshot(session.directory) == before
         assert not completed_flushes
     finally:
@@ -302,7 +302,7 @@ def test_cancelled_attribution_remains_running_and_restart_redoes_missing_turns(
     monkeypatch.setattr(diarization, "apply_transcript", apply)
     resumed = TranscriptionQueue(
         lambda _: None,
-        finished.append,
+        finished,
         root=tmp_path,
         bundle=tmp_path,
         client_factory=CompletedClient,
@@ -310,7 +310,7 @@ def test_cancelled_attribution_remains_running_and_restart_redoes_missing_turns(
     )
     try:
         assert resumed.enqueue(session.directory, resume=True)
-        until(lambda: len(finished) == 2)
+        finished.wait(2)
         metadata = read_metadata(session.directory)
         assert metadata["transcript"]["status"] == "done"
         body = json.loads((session.directory / "transcript.json").read_bytes())
@@ -328,7 +328,7 @@ def test_transcribing_reports_a_queued_or_running_job_until_it_finishes(tmp_path
     session.add_track("room", "The others", "system", 16000, 1)
     session.append("room", b"\x01\x00" * 32000, 0)
     session.finish()
-    entered, release, finished = threading.Event(), threading.Event(), []
+    entered, release, finished = threading.Event(), threading.Event(), Finished()
 
     class Client:
         def __init__(self, *_args, **_kwargs):
@@ -346,7 +346,7 @@ def test_transcribing_reports_a_queued_or_running_job_until_it_finishes(tmp_path
             notify(dict(type="recognised", summary=dict(language="en", diagnostics=[]), etaMinutes=0))
             return dict(diagnostics=[])
 
-    queue = TranscriptionQueue(lambda _: None, finished.append, bundle=tmp_path, root=tmp_path, client_factory=Client)
+    queue = TranscriptionQueue(lambda _: None, finished, bundle=tmp_path, root=tmp_path, client_factory=Client)
     try:
         assert not queue.transcribing(session.directory)
         assert queue.enqueue(session.directory)
@@ -354,7 +354,7 @@ def test_transcribing_reports_a_queued_or_running_job_until_it_finishes(tmp_path
         assert entered.wait(10)
         assert queue.transcribing(session.directory)
         release.set()
-        until(lambda: len(finished) == 1)
+        finished.wait(1)
         assert not queue.transcribing(session.directory)
     finally:
         release.set()

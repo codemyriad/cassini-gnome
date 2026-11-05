@@ -9,6 +9,7 @@ import threading
 import wave
 
 import pytest
+from durable import durable
 from test_voice_store import embedding
 
 from cassini_talk.library import LibraryScanner
@@ -141,7 +142,7 @@ def run(root, directory, client, *, resume=False, store=None):
     )
     try:
         assert queue.enqueue(directory, resume=resume)
-        assert done.wait(10), "Queue did not finish"
+        durable(done, "the queue did not finish")
     finally:
         queue.close()
     metadata = read_metadata(directory)

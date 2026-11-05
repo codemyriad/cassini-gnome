@@ -4,8 +4,8 @@
 from types import SimpleNamespace
 
 import pytest
+from durable import Finished
 from test_library import capture, fingerprint, write_metadata
-from test_transcription import until
 
 from cassini_talk.capture_facts import record_end, separation_result, separation_unavailable
 from cassini_talk.library import LibraryScanner
@@ -119,7 +119,7 @@ def test_successful_job_records_this_attempt_wall_time_and_skip_reason(
         ),
     )
     before = {p.name: p.read_bytes() for p in session.directory.iterdir() if p.name != "meeting.json"}
-    done = []
+    done = Finished()
     clock = iter((10.0, 14.25))
 
     class Client:
@@ -151,7 +151,7 @@ def test_successful_job_records_this_attempt_wall_time_and_skip_reason(
     models = SimpleNamespace(request=lambda *_args, **_kwargs: None, snapshot=lambda: dict(downloaded=False))
     queue = TranscriptionQueue(
         lambda _: None,
-        done.append,
+        done,
         bundle=tmp_path,
         root=tmp_path,
         client_factory=Client,
@@ -160,7 +160,7 @@ def test_successful_job_records_this_attempt_wall_time_and_skip_reason(
     )
     try:
         assert queue.enqueue(session.directory, resume=resumed)
-        until(lambda: done)
+        done.wait(1)
         metadata = read_metadata(session.directory)
         assert metadata["transcript"]["status"] == "done"
         assert metadata["title"] == "Edited during writing" and metadata["notes"] == [dict(atMs=2, text="Keep")]

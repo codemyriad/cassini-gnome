@@ -15,9 +15,9 @@ try:
 except ValueError:
     pytest.skip("Real publication tests require GStreamer", allow_module_level=True)
 
+from durable import Finished, durable
 from library_v2_support import simple_session
 from test_recorder import spin_until
-from test_transcription import Finished
 
 from cassini_talk import library_publication
 from cassini_talk.library import LibraryScanner
@@ -315,7 +315,7 @@ def test_file_only_write_down_recreates_only_optional_working_cache(tmp_path, mo
     )
     try:
         assert queue.enqueue(directory)
-        assert completed.wait(5)
+        durable(completed, "the write-down did not finish")
         assert seen
         (meeting,) = LibraryScanner(tmp_path).scan().meetings
         assert meeting.transcript == "done" and meeting.words[0].text == "From the file"

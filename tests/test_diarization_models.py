@@ -7,7 +7,7 @@ import time
 
 import pytest
 import test_model_download
-from test_transcription import until
+from durable import durable, idle
 
 from cassini_talk import diarization_models, nemotron_model
 from cassini_talk.diarization_models import DiarizationModels
@@ -52,7 +52,7 @@ def fixture(remote, tmp_path, monkeypatch):
         tmp_path / "models", origin=remote.origin, fixture=True, user_agent="CassiniTalk/test (GNOME; Linux; source)"
     )
     models = DiarizationModels(tmp_path / "bundle", lambda: None, store=store, client_factory=Probe)
-    until(lambda: not models.snapshot()["busy"])
+    idle(models)
     yield models, store, remote
     models.close()
     models._thread.join(2)
@@ -61,7 +61,7 @@ def fixture(remote, tmp_path, monkeypatch):
 
 def download(models):
     assert models.download()
-    until(lambda: not models.snapshot()["busy"])
+    idle(models)  # The download installs the model durably (14 fsyncs).
 
 
 def test_explicit_pinned_download_runtime_gate_remove_and_notice(fixture):
@@ -76,7 +76,7 @@ def test_explicit_pinned_download_runtime_gate_remove_and_notice(fixture):
     models.measured(0.012)
     assert models.request(store.root, origin="own")["realtimeFactor"] == 0.012
     assert models.remove() and not models.snapshot()["ready"]
-    until(lambda: not models.snapshot()["busy"])
+    idle(models)
     assert not store.installed(nemotron_model.MODEL_ID, nemotron_model.REVISION)
 
 
@@ -104,7 +104,7 @@ def test_runtime_failure_keeps_verified_weights_and_retry_recovers(fixture, fail
     assert store.installed(nemotron_model.MODEL_ID, nemotron_model.REVISION)
     models.client_factory = Probe
     assert models.retry()
-    until(lambda: not models.snapshot()["busy"])
+    idle(models)
     assert models.snapshot()["ready"] and not models.snapshot()["error"]
 
 
@@ -162,8 +162,9 @@ def test_close_signals_a_busy_capability_child_without_joining_gtk(fixture):
             release.set()
 
     models.client_factory = Busy
-    assert models.download() and entered.wait(2)
+    assert models.download()
+    durable(entered, "the download did not reach the runtime start")
     started = time.monotonic()
     models.close()
     assert time.monotonic() - started < 0.1
-    until(lambda: not models.snapshot()["busy"])
+    idle(models)

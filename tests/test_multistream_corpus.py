@@ -9,6 +9,7 @@ import threading
 from pathlib import Path
 
 import pytest
+from durable import durable
 
 from cassini_talk.diarization import group_tracks
 from cassini_talk.library import LibraryScanner
@@ -129,7 +130,7 @@ def test_shared_public_corpus_keeps_source_spans_calls_and_word_attribution_sepa
     )
     try:
         assert queue.enqueue(first.directory)
-        assert completed.wait(10), "The corpus transcript was not published"
+        durable(completed, "the corpus transcript was not published")
         assert read_metadata(first.directory)["transcript"]["status"] == "done"
         words = json.loads((first.directory / "transcript.json").read_text())["items"]
         assert len(words) == len(expected)
