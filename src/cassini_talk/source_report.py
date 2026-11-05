@@ -43,21 +43,30 @@ class SourceFact:
 
     @property
     def line_id(self):
-        """The catalog id of this source's Audio sources line (shared test 8)."""
-        return "details.sources.lowAudio.underSecond" if self.under_second else "details.sources." + self.outcome
+        """The catalog id of the Audio sources line this source shows (shared test 8).
 
-    @property
-    def line(self):
+        It names the line actually shown: a live lowAudio source reads as captured,
+        a not-selected one as notSelected, and a live source not yet heard shows
+        only its name, so it has no catalog id ("")."""
         outcome = "notSelected" if not self.expected else self.outcome
         # During startup only actual failures warn. Partial live receipt is a
         # factual count, not a claim that this source has finished too short.
         if not self.final and outcome == "neverAudio":
-            return self.name  # Announced, not yet received: make no success claim.
+            return ""  # Announced, not yet received: make no success claim.
         if not self.final and outcome == "lowAudio":
-            outcome = "captured"
+            return "details.sources.captured"
         if self.under_second:
-            return text("details.sources.lowAudio.underSecond", source=self.name)
-        return text("details.sources." + outcome, source=self.name, duration=details_duration(self.audio_ms))
+            return "details.sources.lowAudio.underSecond"
+        return "details.sources." + outcome
+
+    @property
+    def line(self):
+        line_id = self.line_id
+        if not line_id:
+            return self.name
+        if self.under_second:
+            return text(line_id, source=self.name)
+        return text(line_id, source=self.name, duration=details_duration(self.audio_ms))
 
     def silent(self, silent_tracks):
         """D67.1 (LIBRARY-RULES R13): a finished, captured source whose every track the

@@ -353,7 +353,8 @@ def test_a_saved_low_audio_source_under_a_second_says_so_in_words(ms):
         # Live, low audio still reads as captured, with its (never zero) seconds.
         (live,) = sources(one_source("lowAudio", ms), {}, live=True)
         assert live.line == "Guest: 1 s recorded." and not live.problem
-        assert audio_lines((live,), [])[0].id == "details.sources.lowAudio"
+        # The line id names the line shown, as on Mac: captured, not lowAudio.
+        assert audio_lines((live,), [])[0].id == "details.sources.captured"
 
 
 @pytest.mark.parametrize(
@@ -384,6 +385,25 @@ def test_saved_source_lines_show_details_durations(outcome, ms, shown):
 def test_a_low_audio_source_that_was_not_selected_keeps_the_neutral_line():
     (row,) = sources(one_source("lowAudio", 500, captureExpected=False), {}, live=False)
     assert row.line == "Guest: not selected for recording." and not row.under_second and not row.problem
+    assert row.line_id == "details.sources.notSelected"
+
+
+@pytest.mark.parametrize(
+    "outcome, final, line_id, shown",
+    (
+        ("lowAudio", False, "details.sources.captured", "Guest: 2 s recorded."),
+        ("lowAudio", True, "details.sources.lowAudio", "Guest: only 2 s of audio was received."),
+        ("neverAudio", False, "", "Guest"),
+        ("neverAudio", True, "details.sources.neverAudio", "Guest: no audio was received."),
+        ("captured", False, "details.sources.captured", "Guest: 2 s recorded."),
+    ),
+)
+def test_the_line_id_names_the_line_shown(outcome, final, line_id, shown):
+    from cassini_talk.i18n import using_language
+
+    with using_language("en"):
+        (row,) = sources(one_source(outcome, 2000), {}, live=not final)
+        assert (row.line_id, row.line) == (line_id, shown)
 
 
 @pytest.mark.parametrize(
