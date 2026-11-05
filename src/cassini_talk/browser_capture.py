@@ -762,8 +762,11 @@ class BrowserCapture:
     def resume(self, message):
         """R3/R4: attach a new audio transport to this recording, or refuse.
 
-        Validation shares Stop's critical section: Stop sets stop_requested
-        under the capture lock, and a source change in progress holds the
+        Validation shares Stop's critical section: Stop marks stop_requested
+        before it takes the capture lock (R93-2: a stalled checkpoint must not
+        move its moment), then takes that lock to drop pending resume asks, so
+        a resume validated under the lock either sees the mark or finished
+        attaching before Stop goes on. A source change in progress holds the
         transition lock, so a committing fallback is waited out, not misread.
         A refusal changes nothing. On success nothing but the attachment
         changes: no folder, clock, microphone, selection or title. The source
