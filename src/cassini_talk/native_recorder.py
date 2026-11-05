@@ -22,8 +22,14 @@ RATE = 48000
 # A source's input stamps can never lead the pipeline clock; see _input_pts.
 FUTURE_PTS_SLACK_NS = 10 * NS
 WRAP_TOLERANCE_NS = 2 * NS
-# R79 §1: a side has opened when its first buffer is admitted within this bound.
+# R79 §1: the microphone has opened when its first buffer is admitted within
+# this bound. D58.1: the others' side (computer sound) has no such bound: a
+# quiet computer is the normal case. It stays armed and opens on its first
+# buffer, however late; this window only decides whether an explicit error
+# refuses it before the start (or a turn-on) is decided.
 OPEN_TIMEOUT_S = 3
+# The sides refused when no first buffer arrives within OPEN_TIMEOUT_S.
+BOUNDED = frozenset({"microphone"})
 START_FAILURE = "Could not start audio capture. Check your audio devices and GStreamer plugins."
 # A failed state change reports no cause of its own (no bus error came with it).
 STATE_FAILURE = "Could not start native audio capture"
@@ -80,6 +86,8 @@ class NativeRecorder(GObject.Object):
         self.line = None
         self.minutes_left = 0
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-native-io")
+        # Bus errors and EOS, in order, off the main loop (_bus_message).
+        self._bus_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-native-bus")
         self._lock = threading.Lock()
         self._finishing = False
         self._problem = None
@@ -109,9 +117,27 @@ class NativeRecorder(GObject.Object):
         # D58: the start's refusals, for the start banner when nothing opened.
         self.refusals = []
         self._discard = self.discarded = False
+        # D58: start refusals not yet stored in the session (none opened yet).
+        self._unstored = []
+        # D58.1: the sides still armed (never heard) when the recording ended.
+        self.unheard = set()
         # The start's open phase reads these; tests replace them with a fake clock.
         self._open_clock = time.monotonic
         self._open_wait = threading.Event.wait
+        # A turn-on's bounded wait for its first buffer or an error.
+        self._turn_on_wait = threading.Event.wait
+
+    def armed_sides(self):
+        """D58.1: each side selected and waiting for its first buffer, with its
+        attempt's time (0 at start, the turn-on's time otherwise).
+
+        The recording page calls this on the GTK main loop, so it never waits on
+        _lock: Stop holds it across file I/O. The pending map is copied in one
+        step (atomic under the GIL) and each attempt is only ever replaced or
+        updated whole, so the snapshot is at worst one change behind.
+        """
+        pending = tuple(self._pending_sources.items())
+        return {kind: attempt.get("refuse_at", 0) for kind, attempt in pending if attempt.get("armed")}
 
     @property
     def activity(self):
@@ -150,6 +176,8 @@ class NativeRecorder(GObject.Object):
         self.output_muted = False
         self._open_wake = threading.Event()
         self.refusals = []
+        self._unstored = []
+        self.unheard = set()
         self._discard = self.discarded = False
         self._observe_output = observe_output
         future = self._executor.submit(self._prepare, Path(parent) if parent is not None else None)
@@ -210,16 +238,19 @@ class NativeRecorder(GObject.Object):
         """Open each requested side on its own and in parallel (R79 §1).
 
         This is _select's open-then-commit for every side at start. Each side
-        changes state on its own thread and has its own deadline, taken before
-        its state change. It opens when its first buffer is admitted before
-        that deadline: _sample then commits its track, WAV and boundary at
-        once and records that buffer, whatever the other side is doing.
-        Before that, a failed state change, a bus error or no sample refuses
-        only that side. Returns the committed kinds and the refused sides'
-        errors; a Stop returns at once, without waiting on a state change.
+        changes state on its own thread and has its own window, taken before
+        its state change. It opens when its first buffer is admitted: _sample
+        then commits its track, WAV and boundary at once and records that
+        buffer, whatever the other side is doing. Before that, a failed state
+        change or a bus error refuses only that side, and so does no sample
+        within the window for the microphone. D58.1: the others' side is never
+        refused for silence: when its window passes without a buffer or an
+        error it stays armed, and opens on its first buffer however late.
+        Returns the committed kinds, the refused sides' errors and the armed
+        kinds; a Stop returns at once, without waiting on a state change.
         """
         pipeline, wake = self.pipeline, self._open_wake
-        attempts, refused = {}, {}
+        attempts, refused, armed = {}, {}, []
         try:
             for kind in kinds:
                 branch = self._branch(kind)
@@ -232,14 +263,19 @@ class NativeRecorder(GObject.Object):
                     committed=False,
                     settled=False,
                     retired=False,
+                    armed=False,
                     message=None,
+                    identifier=kind,
+                    filename=f"track-{kind}.wav",
+                    refuse_at=0,
                 )
                 attempts[kind] = attempt
                 sink = branch.get_by_name(kind)
                 if sink is not None:
                     pad = sink.get_static_pad("sink")
                     attempt["hold"] = pad, pad.add_probe(Gst.PadProbeType.EVENT_DOWNSTREAM, self._hold_eos)
-                attempt["deadline"] = self._open_clock() + OPEN_TIMEOUT_S
+                attempt["window"] = self._open_clock() + OPEN_TIMEOUT_S
+                attempt["deadline"] = attempt["window"] if kind in BOUNDED else None
                 with self._lock:
                     self._pending_sources[kind] = attempt
                 pipeline.add(branch)
@@ -253,42 +289,141 @@ class NativeRecorder(GObject.Object):
                     now = self._open_clock()
                     for kind in tuple(undecided):
                         attempt = attempts[kind]
-                        if not attempt["committed"] and not attempt["error"] and now >= attempt["deadline"]:
-                            attempt["error"] = attempt["message"] = NO_SAMPLE
-                        if attempt["error"]:
-                            refused[kind] = attempt["error"]
-                        if attempt["committed"] or attempt["error"]:
+                        if attempt["committed"] or attempt["error"] or now >= attempt["window"]:
                             undecided.discard(kind)
                 if undecided and not self._start_cancelled(pipeline):
-                    self._open_wait(wake, min(attempts[kind]["deadline"] for kind in undecided) - now)
+                    self._open_wait(wake, min(attempts[kind]["window"] for kind in undecided) - now)
         finally:
             for kind, attempt in attempts.items():
-                branch = attempt["branch"]
                 with self._lock:
                     if attempt["committed"]:
                         continue
-                    attempt["retired"] = True
-                    settled = attempt["settled"]
-                    self._retired_branches.add(branch)
-                    self._pending_sources.pop(kind, None)
-                # A state change still under way keeps its branch's state lock:
-                # detach the branch now, and its own thread stops it (below).
-                if settled:
-                    branch.set_state(Gst.State.NULL)
-                if branch.get_parent() == pipeline:
-                    pipeline.remove(branch)
+                    if attempt["error"]:
+                        refused[kind] = attempt["error"]
+                    elif not self._start_cancelled(pipeline) and self._open_clock() >= attempt["window"]:
+                        if kind in BOUNDED:
+                            refused[kind] = attempt["error"] = attempt["message"] = NO_SAMPLE
+                        else:
+                            # D58.1: silent so far, not refused. From here an
+                            # error refuses it through _armed_failed.
+                            attempt["armed"] = True
+                            armed.append(kind)
+                            continue
+                    self._retire_attempt(kind, attempt)
+                self._detach(pipeline, attempt)
         # A side can commit after the last pass, until a Stop is seen: its
         # attempt, not the pass, says it opened.
         committed = [kind for kind in kinds if attempts.get(kind, {}).get("committed")]
         for kind, error in refused.items():
             LOG.warning("Native %s side (%s) did not open at start: %s", SIDES[kind], kind, error)
+        for kind in armed:
+            LOG.info("Native %s side (%s) heard nothing yet; it opens on its first buffer", SIDES[kind], kind)
         # D58: start refusals use atMs 0, in the order the sides are requested.
         self.refusals = [self._refusal(0, kind, attempts[kind]) for kind in kinds if kind in refused]
-        if committed and self.refusals:
+        self._unstored = list(self.refusals)
+        if (committed or armed) and self.refusals:
             with self._lock:
                 if not self._start_cancelled(pipeline):
                     self.session.refuse(*self.refusals)
-        return committed, refused
+                    self._unstored = []
+        return committed, refused, armed
+
+    def _retire_attempt(self, kind, attempt):
+        """Retire an uncommitted attempt (lock held); _detach then releases its branch."""
+        attempt["retired"] = True
+        self._retired_branches.add(attempt["branch"])
+        if self._pending_sources.get(kind) is attempt:
+            self._pending_sources.pop(kind)
+
+    @staticmethod
+    def _detach(pipeline, attempt):
+        """Release a retired attempt's branch (lock not held).
+
+        A state change still under way keeps its branch's state lock: detach
+        the branch now, and its own thread stops it (_change_side_state).
+        """
+        branch = attempt["branch"]
+        if attempt.get("settled", True):
+            branch.set_state(Gst.State.NULL)
+        if branch.get_parent() == pipeline:
+            pipeline.remove(branch)
+
+    def _retire_armed(self, pipeline):
+        """Release every armed side at the end; returns their kinds (they never heard)."""
+        with self._lock:
+            armed = [(kind, a) for kind, a in self._pending_sources.items() if a.get("armed") and not a["retired"]]
+            for kind, attempt in armed:
+                self._retire_attempt(kind, attempt)
+            self.unheard |= {kind for kind, _attempt in armed}
+        for _kind, attempt in armed:
+            self._detach(pipeline, attempt)
+        return [kind for kind, _attempt in armed]
+
+    def _armed_failed(self, kind, attempt):
+        """D58.1: an explicit error refuses an armed side that never heard a buffer.
+
+        It is refused at its attempt's time (0 at start, the turn-on's time
+        otherwise) and the recording goes on. Nothing else changes. If no side
+        has opened and none is armed any more, nothing records (D58 point 2).
+
+        It runs on the IO worker: the refusal's checkpoint fsyncs under the
+        PCM lock, which a writer can hold across slow storage. Only the UI
+        signal and the finish go back to the main loop.
+        """
+        pipeline = attempt["pipeline"]
+        with self._lock:
+            if (
+                attempt["retired"]
+                or attempt["committed"]
+                or self._pending_sources.get(kind) is not attempt
+                or self.pipeline is not pipeline
+                or self.stopping
+                or self._finishing
+                or self.session is None
+                or self.session.finished
+            ):
+                return
+            self._retire_attempt(kind, attempt)
+            item = self._refusal(attempt["refuse_at"], kind, attempt)
+            nothing = not self.session.manifest["tracks"] and not any(
+                a.get("armed") for a in self._pending_sources.values()
+            )
+            if attempt["refuse_at"] == 0:
+                self.refusals.append(item)
+            if nothing:
+                self._unstored.append(item)
+                self._discard = True
+            else:
+                # Nothing reads this future: a failed checkpoint is logged
+                # here, and the retired branch is still released below.
+                try:
+                    self.session.refuse(item)
+                except Exception:
+                    LOG.exception("Could not record an armed refusal")
+        LOG.warning("Native %s side (%s) did not open: %s", SIDES[kind], kind, item.get("message"))
+        self._detach(pipeline, attempt)
+        if nothing:
+            GLib.idle_add(self._armed_nothing, pipeline)
+        else:
+            GLib.idle_add(self.emit, "changed")
+
+    def _armed_nothing(self, pipeline):
+        """The last armed side was refused and none opened: nothing records (main loop)."""
+        if self.pipeline is pipeline:
+            self._begin_finish(self._nothing_cause())
+        return False
+
+    def _nothing_cause(self):
+        causes = [r.get("message") for r in self.refusals if r.get("message") not in (None, STATE_FAILURE)]
+        return causes[0] if causes else START_FAILURE
+
+    def _late_opened(self, kind):
+        """An armed side heard its first buffer after its start or turn-on was decided."""
+        LOG.info("Native %s side (%s) opened on its first buffer", SIDES[kind], kind)
+        if self._mute_observer:
+            self._mute_observer.refresh()
+        self.emit("changed")
+        return False
 
     def _change_side_state(self, kind, attempt):
         """One side's state change, off the start's wait and the other side's."""
@@ -303,6 +438,7 @@ class NativeRecorder(GObject.Object):
             # ready means decided: a state change that worked decides nothing.
             if attempt["error"]:
                 self._signal(attempt)
+                self._armed_error(kind, attempt)
             else:
                 attempt["wake"].set()
         if retired:
@@ -311,15 +447,31 @@ class NativeRecorder(GObject.Object):
             GLib.idle_add(self._begin_finish, STATE_FAILURE)
 
     def _refusal(self, at_ms, kind, attempt):
-        """The refusal a side that never opened records: GNOME knows only deviceUnavailable."""
+        """The refusal a side that never opened records."""
         from .refusals import entry
 
         code, message = self._classify(kind, attempt)
         return entry(at_ms, SIDES[kind], code, message=message)
 
     @staticmethod
-    def _classify(_kind, attempt):
-        return "deviceUnavailable", attempt.get("message") or attempt.get("error")
+    def _classify(kind, attempt):
+        """D58.1: the others' side's code follows the explicit error: permissionDenied
+        only when GStreamer reports the access as not authorized, deviceUnavailable
+        for anything else (a failed state change, a missing device, a creation
+        failure). The microphone keeps its D58 classification."""
+        from .refusals import gst_code
+
+        code = gst_code(attempt.get("gerror")) if kind == "system" else "deviceUnavailable"
+        return code, attempt.get("message") or attempt.get("error")
+
+    def _armed_error(self, kind, attempt):
+        """Under the lock: an armed side's error is refused on the IO worker,
+        never on the main loop (_armed_failed)."""
+        if attempt.get("armed") and attempt["error"] and not attempt.get("failing"):
+            attempt["failing"] = True
+            # A closed worker: this recording has finished; nothing is refused.
+            with contextlib.suppress(RuntimeError):
+                self._executor.submit(self._armed_failed, kind, attempt)
 
     @staticmethod
     def _hold_eos(_pad, info):
@@ -334,19 +486,24 @@ class NativeRecorder(GObject.Object):
     def _admit(self, kind, attempt, pts_ms):
         """A pending side's buffer, under the lock: True when it is recorded.
 
-        A start side commits on its first buffer stamped before its deadline;
-        the stamp is taken here, when the buffer is admitted. A buffer at or
-        after the deadline refuses the side. A turn-on (_select) only signals.
+        A start side commits on its first buffer; the microphone's must be
+        stamped before its deadline (the stamp is taken here, when the buffer
+        is admitted), and a buffer at or after it refuses the microphone.
+        D58.1: the others' side has no deadline, and an armed side (its start
+        or turn-on already decided) commits on its first buffer, however late.
+        A turn-on still being decided (_select) only signals.
         """
-        if "deadline" not in attempt:
+        if "window" not in attempt and not attempt.get("armed"):
             self._signal(attempt)
             return False
-        if attempt["error"] or attempt["retired"] or self._start_cancelled(attempt["pipeline"]):
+        if attempt["error"] or attempt["retired"] or self.stopping or self._start_cancelled(attempt["pipeline"]):
             return False
-        if self._open_clock() >= attempt["deadline"]:
+        if attempt["deadline"] is not None and self._open_clock() >= attempt["deadline"]:
             attempt["error"] = attempt["message"] = NO_SAMPLE
         else:
             self._commit_side(kind, attempt, pts_ms)
+            if attempt["armed"]:
+                GLib.idle_add(self._late_opened, kind)
         self._signal(attempt)
         return attempt["committed"]
 
@@ -357,21 +514,22 @@ class NativeRecorder(GObject.Object):
         return max(0, (clock.get_time() - pipeline.get_base_time()) / Gst.MSECOND) if clock is not None else 0
 
     def _commit_side(self, kind, attempt, at_ms):
-        """Commit a start side at its first admitted buffer (lock held)."""
+        """Commit a start or armed side at its first admitted buffer (lock held)."""
         from .strings import text
 
         # The track starts at its first buffer. The other side's frames do
         # not move it: change_time's overlap rule is for spans of one source.
-        at = max(at_ms, *(e["atMs"] for e in self.session.manifest.get("events", [])))
+        at = max([at_ms, *(e["atMs"] for e in self.session.manifest.get("events", []))])
         label = text("common.me" if kind == "microphone" else "common.theOthers")
+        identifier = attempt["identifier"]
         # One checkpoint holds the track with its start.
         with self.session.change([]):
-            self.session.add_track(kind, label, kind, RATE, 1, filename=f"track-{kind}.wav")
+            self.session.add_track(identifier, label, kind, RATE, 1, filename=attempt["filename"])
             self.session.manifest["tracks"][-1]["startOffsetMs"] = at
             canonical_order(self.session.manifest["tracks"])
-        self.spectrogram.declare(kind, kind=kind, now_ms=at)
-        self._spectro_starts[kind] = at
-        self._track_ids[kind] = kind
+        self.spectrogram.declare(identifier, kind=kind, now_ms=at)
+        self._spectro_starts[identifier] = at
+        self._track_ids[kind] = identifier
         self._boundaries[kind] = at
         self._branches[kind] = attempt["branch"]
         self._pending_sources.pop(kind)
@@ -385,8 +543,8 @@ class NativeRecorder(GObject.Object):
         if self._finishing:
             return False  # A committed side already failed; its finish reports it.
         try:
-            committed, refused = future.result()
-            if not committed:
+            committed, refused, armed = future.result()
+            if not committed and not armed:
                 if self._stop_requested:
                     # Stopped before any side opened: no recording either. The
                     # blank folder goes (unless typed into), with no banner and
@@ -402,6 +560,7 @@ class NativeRecorder(GObject.Object):
                 self._discard = True
                 self._begin_finish(causes[0] if causes else START_FAILURE)
                 return False
+            # D58.1: an armed side records nothing yet; the start is still a recording.
             if self.minutes_left < 10:
                 self.line = "errors.diskLow.line"
             if observe:
@@ -494,7 +653,11 @@ class NativeRecorder(GObject.Object):
         if self._stop_requested:
             raise ValueError("No source change is available")
         desired = {kind for kind, enabled in (("microphone", me), ("system", others)) if enabled}
-        removed, added = self._track_ids.keys() - desired, desired - self._track_ids.keys()
+        with self._lock:
+            armed = {kind for kind, attempt in self._pending_sources.items() if attempt.get("armed")}
+        # D58.1: an armed side (selected, nothing heard yet) is kept, not reopened.
+        present = self._track_ids.keys() | armed
+        removed, added = present - desired, desired - present
         # A side refused at start stays selected without a track; turning it
         # off still records the choice.
         current = source_state(self.session.manifest.get("events"))
@@ -508,7 +671,16 @@ class NativeRecorder(GObject.Object):
             for kind in sorted(added):
                 opening = kind
                 branch = self._branch(kind)
-                attempt = dict(branch=branch, ready=threading.Event(), error=None, message=None)
+                attempt = dict(
+                    branch=branch,
+                    ready=threading.Event(),
+                    error=None,
+                    message=None,
+                    pipeline=pipeline,
+                    committed=False,
+                    retired=False,
+                    armed=False,
+                )
                 prepared[kind] = attempt
                 with self._lock:
                     self._pending_sources[kind] = attempt
@@ -516,7 +688,10 @@ class NativeRecorder(GObject.Object):
                 if not branch.sync_state_with_parent():
                     attempt["message"] = attempt["message"] or STATE_FAILURE
                     raise OSError(STATE_FAILURE)
-                if not attempt["ready"].wait(3):
+                # The microphone must deliver within the bound. D58.1: for the
+                # others' side this window only waits for an explicit error;
+                # heard or not, it is then turned on.
+                if not self._turn_on_wait(attempt["ready"], OPEN_TIMEOUT_S) and kind in BOUNDED:
                     attempt["message"] = attempt["message"] or NO_SAMPLE
                     raise OSError(NO_SAMPLE)
                 if attempt["error"]:
@@ -524,7 +699,15 @@ class NativeRecorder(GObject.Object):
             opening = None
             elapsed = self._elapsed_ms(pipeline)
             with self._lock:
-                if self.pipeline is not pipeline or self.stopping or self._finishing or self._stop_requested:
+                # _discard: an armed refusal on this worker found nothing open
+                # and queued the finish to the main loop; nothing commits now.
+                if (
+                    self.pipeline is not pipeline
+                    or self.stopping
+                    or self._finishing
+                    or self._stop_requested
+                    or self._discard
+                ):
                     raise ValueError("No source change is available")
                 for kind, attempt in prepared.items():
                     if attempt["error"]:
@@ -540,28 +723,46 @@ class NativeRecorder(GObject.Object):
                 elif "system" in added and not current.others:
                     events.append(dict(atMs=at, type="othersSource", source="system", reason="user"))
                 identifiers = dict(self._track_ids)
-                retired_ids = [identifiers[kind] for kind in removed]
+                retired_ids = [identifiers[kind] for kind in removed if kind in identifiers]
                 retired_system = identifiers.get("system") if "system" in removed else None
+                # D58.1: a side that heard nothing yet gets its track at its first buffer.
+                heard = {kind for kind, attempt in prepared.items() if attempt["ready"].is_set()}
                 with self.session.change(events):
                     for kind in removed:
-                        self.session.end_track(identifiers.pop(kind))
-                    for kind in sorted(added):
+                        if kind in identifiers:
+                            self.session.end_track(identifiers.pop(kind))
+                    for kind in sorted(heard):
                         identifier = kind + "-" + str(uuid4())
                         self.session.add_track(
                             identifier, text("common.me" if kind == "microphone" else "common.theOthers"), kind, RATE, 1
                         )
                         self.session.manifest["tracks"][-1]["startOffsetMs"] = at
                         identifiers[kind] = identifier
-                for kind in added:
+                for kind in heard:
                     self.spectrogram.declare(identifiers[kind], kind=kind, now_ms=at)
                     self._spectro_starts[identifiers[kind]] = at
                 self._track_ids = identifiers
-                retired = [self._branches.pop(kind) for kind in removed]
+                retired = [self._branches.pop(kind) for kind in removed if kind in self._branches]
                 self._retired_branches.update(retired)
+                disarmed = [
+                    (kind, self._pending_sources[kind])
+                    for kind in removed
+                    if self._pending_sources.get(kind, {}).get("armed")
+                ]
+                for kind, attempt in disarmed:
+                    self._retire_attempt(kind, attempt)
                 for kind, attempt in prepared.items():
                     self._boundaries[kind] = at
-                    self._branches[kind] = attempt["branch"]
-                    self._pending_sources.pop(kind)
+                    if kind in heard:
+                        self._branches[kind] = attempt["branch"]
+                        self._pending_sources.pop(kind)
+                    else:
+                        # Armed: refused only by an explicit error, at this turn-on's time.
+                        identifier = kind + "-" + str(uuid4())
+                        attempt.update(armed=True, refuse_at=at, identifier=identifier, filename=None, deadline=None)
+                        LOG.info(
+                            "Native %s side (%s) heard nothing yet; it opens on its first buffer", SIDES[kind], kind
+                        )
                 committed = True
             for identifier in retired_ids:
                 self.spectrogram.retire(identifier)
@@ -573,6 +774,8 @@ class NativeRecorder(GObject.Object):
             for branch in retired:
                 branch.set_state(Gst.State.NULL)
                 pipeline.remove(branch)
+            for _kind, attempt in disarmed:
+                self._detach(pipeline, attempt)
             return source_state(self.session.manifest.get("events"))
         except OSError:
             if opening in prepared:
@@ -680,6 +883,7 @@ class NativeRecorder(GObject.Object):
             return Gst.FlowReturn.EOS
         buffer = sample.get_buffer()
         raw, shift, path = buffer.pts, 0, None
+        branch = sink.get_parent() if isinstance(sink, Gst.Element) else None
         try:
             if raw == Gst.CLOCK_TIME_NONE:
                 raise ValueError("Audio source has no clock timestamp")
@@ -688,6 +892,8 @@ class NativeRecorder(GObject.Object):
             picture = None
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
+                if not self._owns(identifier, attempt, branch):
+                    return Gst.FlowReturn.OK  # A retired branch's late buffer.
                 if attempt is not None and not self._admit(identifier, attempt, pts / Gst.MSECOND):
                     return Gst.FlowReturn.OK  # Uncommitted readiness PCM is discarded.
                 stored = self._track_ids.get(identifier)
@@ -742,14 +948,26 @@ class NativeRecorder(GObject.Object):
             )
             with self._lock:
                 attempt = self._pending_sources.get(identifier)
+                if not self._owns(identifier, attempt, branch):
+                    return Gst.FlowReturn.ERROR  # A retired branch fails alone.
                 if attempt is not None:
                     attempt["error"] = attempt["error"] or str(error)
                     attempt["message"] = attempt.get("message") or str(error)
                     self._signal(attempt)
+                    self._armed_error(identifier, attempt)
                 else:
                     GLib.idle_add(self._begin_finish, str(error))
             return Gst.FlowReturn.ERROR
         return Gst.FlowReturn.OK
+
+    def _owns(self, kind, attempt, branch):
+        """Whether a buffer's branch is this side's current one (lock held).
+
+        A turned-off side's branch can still deliver while its state change
+        finishes; the next turn-on's attempt, or the track it committed, must
+        not take that buffer as its own. None: a stand-in sink with no branch.
+        """
+        return branch is None or branch == (attempt["branch"] if attempt is not None else self._branches.get(kind))
 
     @staticmethod
     def _signal(attempt):
@@ -758,11 +976,22 @@ class NativeRecorder(GObject.Object):
             attempt["wake"].set()
 
     def _message(self, _bus, message):
+        """A bus error or EOS is handled on the bus worker, never on the main
+        loop: telling whose error it is takes the PCM lock, which a refusal's
+        or a writer's checkpoint holds across slow storage. Both go through
+        the same worker so an EOS never overtakes the error before it."""
+        if message.type in (Gst.MessageType.ERROR, Gst.MessageType.EOS):
+            # A closed worker: this recording has finished.
+            with contextlib.suppress(RuntimeError):
+                self._bus_worker.submit(self._bus_message, self.pipeline, message)
+
+    def _bus_message(self, pipeline, message):
+        problem = None
         if message.type == Gst.MessageType.ERROR:
             error, debug = message.parse_error()
             problem = error.message
             with self._lock:
-                for attempt in self._pending_sources.values():
+                for kind, attempt in self._pending_sources.items():
                     branch = attempt["branch"]
                     if message.src == branch or message.src.has_as_ancestor(branch):
                         # The first error names the cause; a stream error follows it.
@@ -770,13 +999,19 @@ class NativeRecorder(GObject.Object):
                             from .refusals import gst_message
 
                             attempt["error"], attempt["message"] = problem, gst_message(error, debug)
+                            attempt["gerror"] = error
                         self._signal(attempt)
+                        self._armed_error(kind, attempt)
                         return
                 if any(message.src == b or message.src.has_as_ancestor(b) for b in self._retired_branches):
                     return  # A failed/deselected device must not stop the old source.
+        GLib.idle_add(self._bus_finish, pipeline, problem)
+
+    def _bus_finish(self, pipeline, problem):
+        """A committed side's error, or the pipeline's EOS, ends this recording (main loop)."""
+        if self.pipeline is pipeline:
             self._begin_finish(problem)
-        elif message.type == Gst.MessageType.EOS:
-            self._begin_finish()
+        return False
 
     def stop(self):
         self.end_reason = self.end_reason or "user"
@@ -798,7 +1033,10 @@ class NativeRecorder(GObject.Object):
         # not put that event ahead of the NULL transition that unlocks its
         # read. Retire only empty branches; healthy queues still drain by EOS.
         # Classify off GTK too: a writer may currently hold the sample lock.
+        # D58.1: an armed side that never heard a buffer is released too: no
+        # track and no refusal. If no side ever opened, nothing recorded.
         def retire():
+            self._retire_armed(pipeline)
             with self._lock:
                 empty = [
                     branch
@@ -806,10 +1044,11 @@ class NativeRecorder(GObject.Object):
                     if self.session.writers[self._track_ids[kind]].frames == 0
                 ]
                 self._retired_branches.update(empty)
+                nothing = not self.session.manifest["tracks"]
             for branch in empty:
                 branch.set_state(Gst.State.NULL)
                 pipeline.remove(branch)
-            return len(empty) == len(self._branches)
+            return len(empty) == len(self._branches), nothing
 
         future = self._executor.submit(retire)
         future.add_done_callback(lambda f: GLib.idle_add(self._empty_sources_stopped, f, pipeline))
@@ -818,7 +1057,13 @@ class NativeRecorder(GObject.Object):
         if self.pipeline is not pipeline or self._finishing:
             return False
         try:
-            if future.result():
+            empty, nothing = future.result()
+            if nothing:
+                # No side ever opened (D58 point 2): no folder; the refused
+                # sides' start banner, if any side was refused.
+                self._discard = True
+                self._begin_finish(self._nothing_cause() if self.refusals else None)
+            elif empty:
                 self._begin_finish()
             else:
                 request_eos(pipeline, self._eos_rejected)
@@ -859,13 +1104,14 @@ class NativeRecorder(GObject.Object):
                 self._mute_observer.close(at_ms)
                 self._mute_observer = None
             if pipeline is not None:
+                self._retire_armed(pipeline)
                 pipeline.set_state(Gst.State.NULL)
             try:
                 if self._discard:
                     with self._lock:
                         self.discarded = session.discard()
                         if not self.discarded:
-                            session.refuse(*self.refusals)  # A folder kept for typed content.
+                            session.refuse(*self._unstored)  # A folder kept for typed content.
                     if self.discarded:
                         self.spectrogram.finish()
                         return
@@ -950,6 +1196,7 @@ class NativeRecorder(GObject.Object):
         if self.pipeline is not None or self.starting or self.stopping or self._finishing:
             raise RuntimeError("Capture has not finished")
         self._executor.shutdown(wait=False)
+        self._bus_worker.shutdown(wait=False)
 
     def cancel_publication(self):
         """An explicit Quit keeps the stopped WAVs without waiting for encode."""
