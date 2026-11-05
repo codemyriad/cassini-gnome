@@ -11,6 +11,9 @@ from pathlib import Path
 WORKFLOWS = ("ci.yml",)
 PACKAGES = {"deb-0", "deb-1", "rpm-fedora", "rpm-opensuse", "arch", "flatpak-stable"}
 BUILD_PRODUCTS = {"ci-core", "ci-boards", "ci-offline"}
+# Jobs a release needs to have run, not merely not failed: since H the Meson
+# tests are a job of their own beside Build's products (ci.yml callers' names).
+REQUIRED_JOBS = ("Build / ", "Meson tests / ")
 
 
 def api(repo, path):
@@ -35,6 +38,15 @@ def select_runs(runs, commit):
             raise ValueError(f"Main {workflow} is not green for {commit}: {run.get('html_url')}")
         chosen[workflow] = run
     return chosen
+
+
+def validate_jobs(jobs, url):
+    # A continue-on-error matrix job must not silently supply release inputs.
+    if not jobs or any(j.get("conclusion") != "success" for j in jobs):
+        raise ValueError(f"Every main job must succeed before release: {url}")
+    for prefix in REQUIRED_JOBS:
+        if not any(j.get("name", "").startswith(prefix) for j in jobs):
+            raise ValueError(f"No {prefix.removesuffix(' / ')} job in this main run: {url}")
 
 
 def validate_artifacts(artifacts):
@@ -65,11 +77,8 @@ def main():
         parser.error("An exact commit SHA is required")
     runs = pages(args.repo, f"actions/runs?head_sha={args.commit}&event=push&branch=main", "workflow_runs")
     chosen = select_runs(runs, args.commit)
-    # A continue-on-error matrix job must not silently supply release inputs.
     for run in chosen.values():
-        jobs = pages(args.repo, f"actions/runs/{run['id']}/jobs?filter=latest", "jobs")
-        if not jobs or any(j.get("conclusion") != "success" for j in jobs):
-            raise ValueError(f"Every main job must succeed before release: {run['html_url']}")
+        validate_jobs(pages(args.repo, f"actions/runs/{run['id']}/jobs?filter=latest", "jobs"), run["html_url"])
     ci = chosen["ci.yml"]
     artifacts = pages(args.repo, f"actions/runs/{ci['id']}/artifacts", "artifacts")
     validate_artifacts(artifacts)
