@@ -11,11 +11,13 @@ Each case blocks both taps' writers the way R93's runs were blocked, then saves:
             packet) for 3.5 s, then 8 s
   fsync     one checkpoint fsync, under capture.lock, takes 2.5 s
   fsynceach every fsync of one checkpoint takes 0.7 s (R93's swapping host)
-  stop      Stop is pressed 2 s into a capture.lock hold: the audio the queues
-            hold from before it is saved, up to the Stop moment
+  stop      Stop is pressed on another thread 2 s into a capture.lock hold: the
+            audio the queues hold from before it is saved, up to the Stop moment
   overrun   the documented limit: capture.lock is held until both 10 s queues
-            are full, then 2 s more. pulsesrc drops that, and it is saved as an
-            input gap (truthful; relabelling it as writer loss is a follow-up).
+            are full, then 2 s more. pulsesrc drops that, and a loss of 1 s or
+            more is saved as an input gap (truthful; relabelling it as writer
+            loss is a follow-up). A writer slower than real time while it
+            catches up can lose more than the 2 s.
 
 A stall's length is audio time heard by an independent observer pulsesrc on the
 same Pulse server, never wall time; each tap queue's level is observed on every
@@ -322,18 +324,26 @@ def slow_fsync(seconds, *, each=False):
 
 
 def stop_during(seconds):
-    """Stop is pressed mid-stall, as the browser's Stop marks it (request_stop,
-    without the capture lock); the save follows once the lock is free."""
+    """Stop is pressed mid-stall, as the broker's Stop paths mark it: request_stop
+    on another thread, which needs no capture.lock (the stall still holds it);
+    the save follows once the lock is free."""
 
     def stall(capture, _levels, observer):
         pressed = {}
 
-        def until():
-            observer.after(seconds)
+        def press():
             pressed["ms"] = capture.elapsed_ms()
             getattr(capture, "request_stop", capture.stop_requested.set)()
 
+        def until():
+            observer.after(seconds)
+            stop = threading.Thread(target=press, name="stall-stop")
+            stop.start()
+            stop.join(BOUND)  # Bound only: marking Stop never waits for capture.lock.
+            pressed["blocked"] = stop.is_alive()
+
         hold_lock(capture, until).join(BOUND)
+        assert pressed.get("blocked") is False, "marking Stop waited for capture.lock"
         return dict(stopAtMs=getattr(capture, "stop_at_ms", None) or pressed["ms"])
 
     return stall

@@ -236,27 +236,31 @@ def stop_in_background(capture, tap):
     return thread, result
 
 
-def test_stop_records_the_queued_audio_captured_before_it_and_cuts_the_straddling_buffer(tmp_path):
-    taps = DrainingTaps()
-    capture, clock = start_capture(tmp_path, taps, microphone=True, others_source="browser")
+def record_live(capture, clock):
+    """The microphone's device delivers 10 ms buffers back to back; 600 ms reach
+    the WAV live. Stop comes 345 ms later (on the capture's one clock), while
+    the tap's queue still holds the buffers captured since. Returns the tap and
+    its track's start."""
     identifier, tap = capture.native_taps["microphone"]
     session = capture.host.session
-    track = next(t for t in session.manifest["tracks"] if t["id"] == identifier)
-    start = track["startOffsetMs"]
-    # The device delivers 10 ms buffers back to back; 600 ms reach the WAV live.
+    start = next(t for t in session.manifest["tracks"] if t["id"] == identifier)["startOffsetMs"]
     for index in range(60):
         tap.append(tone(480), start + index * 10)
     assert session.writers[identifier].frames == 60 * 480
-    # Stop 345 ms later. The tap's queue still holds the 34 buffers captured
-    # since, one straddling the Stop moment, and two captured after it.
     clock.ms = start + 945
-    thread, result = stop_in_background(capture, tap)  # The Stop boundary is clock.ms.
+    return tap, start
+
+
+def drain_across_stop(tap, start):
+    """The drain: 34 buffers captured before Stop, one straddling its moment and
+    two captured after it, then EOS."""
     for index in range(60, 97):
         tap.append(tone(480, value=9), start + index * 10)
     tap.drained.set()
-    thread.join(BOUND)
-    assert not thread.is_alive() and "error" not in result
-    saved = session.manifest
+
+
+def assert_kept_before_stop(capture, start):
+    saved = capture.host.session.manifest
     (track,) = saved["tracks"]
     # Everything before the boundary, and the first 5 ms of the straddling buffer.
     assert track["frames"] == 94 * 480 + 240
@@ -266,6 +270,106 @@ def test_stop_records_the_queued_audio_captured_before_it_and_cuts_the_straddlin
     assert saved["events"][-1] == dict(type="end", atMs=pytest.approx(start + 945), reason="user")
     pcm = (capture.directory / track["file"]).read_bytes()[44:]
     assert pcm[: 60 * 960] == tone(60 * 480) and pcm[60 * 960 :] == tone(34 * 480 + 240, value=9)
+
+
+def test_stop_records_the_queued_audio_captured_before_it_and_cuts_the_straddling_buffer(tmp_path):
+    taps = DrainingTaps()
+    capture, clock = start_capture(tmp_path, taps, microphone=True, others_source="browser")
+    tap, start = record_live(capture, clock)
+    thread, result = stop_in_background(capture, tap)  # The Stop boundary is clock.ms.
+    drain_across_stop(tap, start)
+    thread.join(BOUND)
+    assert not thread.is_alive() and "error" not in result
+    assert_kept_before_stop(capture, start)
+
+
+@pytest.fixture
+def broker(tmp_path):
+    """The served broker, its native taps scripted (DrainingTaps)."""
+    from broker_fixture import stop_broker
+
+    from cassini_talk.browser_service import BrowserService
+
+    taps = DrainingTaps()
+    service = BrowserService(
+        tmp_path / "config.json",
+        capture_parent=tmp_path / "library",
+        tap_factory=taps,
+        notifier=lambda _title, _stop: None,
+    )
+    path = tmp_path / "broker/browser.sock"
+    ready = threading.Event()
+    worker = threading.Thread(target=service.serve, args=(path, ready), daemon=True)
+    worker.start()
+    assert ready.wait(BOUND)
+    yield service, path
+    stop_broker(service, worker, path)
+
+
+@pytest.mark.parametrize("route", ["stop-all", "stop", "command", "cancel"])
+def test_each_broker_stop_path_fixes_the_stop_moment_so_queued_audio_before_it_is_kept(broker, route):
+    """The broker marks Stop before capture.stop() runs: GNOME's Stop and Quit
+    (stop-all), a user's Stop of one call, a policy Stop of it (not the user's)
+    and a cancelled capture. Each must fix the Stop moment as it marks Stop;
+    marking it bare leaves no boundary, and the drain would drop every queued
+    buffer captured before Stop."""
+    from test_browser_capture import bind_capture
+    from test_browser_capture import start as start_audio
+    from test_browser_sessions import Extension
+
+    from cassini_talk.browser_audio_proxy import BrowserAudioProxy
+    from cassini_talk.browser_service import request
+
+    service, path = broker
+    client = BrowserAudioProxy(path=path)
+    peer = None
+    try:
+        start_audio(client, "stall")
+        capture = service.captures["stall"]
+        if route in ("stop", "command"):
+            peer = Extension(path, (3,))
+            bind_capture(peer, capture)
+            identifier = next(m["id"] for m in request(path=path)["meetings"] if m["tabId"] == 3)
+        # The capture's one clock, set by the test from here on: the Stop moment is exact.
+        clock = ManualClock(capture.session_clock.origin_ms)
+        clock.ms = capture.session_clock.now()
+        capture.session_clock = clock
+        tap, start = record_live(capture, clock)
+        stops = {
+            "stop-all": lambda: request("stop-all", path=path),
+            "stop": lambda: request("stop", path=path, id=identifier),
+            "command": lambda: service.command(identifier, "stop", user=False),
+        }
+        result = {}
+        if route == "cancel":
+            with service.lock:
+                service._cancel_capture("stall")
+        else:
+
+            def run():
+                try:
+                    result["stopped"] = stops[route]()
+                except BaseException as error:  # pragma: no cover - asserted below
+                    result["error"] = error
+
+            thread = threading.Thread(target=run, name="test-broker-stop")
+            thread.start()
+        assert capture.stop_requested.wait(BOUND)
+        assert tap.draining.wait(BOUND)
+        drain_across_stop(tap, start)
+        if peer is not None:
+            command = peer.receive()  # Sent once the local save is done.
+            assert (command["action"], command["tabId"]) == ("stop", 3)
+            peer.answer(command)
+        if route != "cancel":
+            thread.join(BOUND)
+            assert not thread.is_alive() and "error" not in result and "error" not in result["stopped"], result
+        assert capture.stopped.wait(BOUND) and capture.finished
+        assert_kept_before_stop(capture, start)
+    finally:
+        client.close()
+        if peer is not None:
+            peer.close()
 
 
 @pytest.mark.parametrize("first_ms, opens", [(-20, True), (-5, True), (0, False), (10, False)])
