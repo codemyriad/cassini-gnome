@@ -39,7 +39,7 @@ jobs:
 
   distros:
     name: Build and test on ${{ matrix.image }}
-    runs-on: ${{ vars.CM_RUNNER != '' && fromJSON(vars.CM_RUNNER) || 'ubuntu-26.04' }}
+    runs-on: ${{ vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false

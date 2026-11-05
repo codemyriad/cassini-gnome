@@ -97,9 +97,31 @@ def test_release_metadata_runs_in_lint_and_release_preparation_has_no_pr_trigger
     assert "pull_request" not in trigger and "workflow_dispatch:" in trigger
 
 
-# The CM_RUNNER repository variable may move a job to the cm-hetzner runners, whose job
-# containers are Ubuntu 26.04 too; unset, the job keeps the pinned GitHub image.
-CM_RUNNER_PINNED = "${{ vars.CM_RUNNER != '' && fromJSON(vars.CM_RUNNER) || 'ubuntu-26.04' }}"
+# Runner selection: the CM_RUNNER / CM_RUNNER_DESKTOP repository variables move a job to the
+# cm-hetzner runners (Ubuntu 26.04 job containers) only when set to exactly "hetzner". The labels
+# are a constant; the variable is never parsed, so any other value (unset, empty, a typo, JSON)
+# keeps the pinned GitHub image instead of failing the expression or queueing for missing labels.
+CM_HETZNER = ["self-hosted", "cm-hetzner"]
+RUNNER_SELECTOR = re.compile(
+    r"^\$\{\{ vars\.(?P<var>CM_RUNNER(?:_DESKTOP)?) == 'hetzner' && "
+    r"fromJSON\('\[\"self-hosted\",\"cm-hetzner\"\]'\) \|\| 'ubuntu-26\.04' \}\}$"
+)
+CM_RUNNER_PINNED = "${{ vars.CM_RUNNER == 'hetzner' && fromJSON('[\"self-hosted\",\"cm-hetzner\"]') || 'ubuntu-26.04' }}"
+
+
+def select_runner(runs_on, variables):
+    """What GitHub picks for a runs-on value, given the repository variables (a model of the
+    expression above: `==` compares strings case-insensitively, an unset variable is '')."""
+    match = RUNNER_SELECTOR.match(runs_on)
+    if match is None:
+        return runs_on
+    return CM_HETZNER if (variables.get(match["var"]) or "").casefold() == "hetzner" else "ubuntu-26.04"
+
+
+def runs_on_values():
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        for value in re.findall(r"^    runs-on: (.+)$", workflow.read_text(), re.M):
+            yield workflow.name, value
 
 
 def test_package_builds_run_on_the_pinned_runner_image():
@@ -122,3 +144,44 @@ def test_release_ships_the_flatpak_main_tested_and_refuses_it_without_an_update_
     stable = (WORKFLOWS / "flatpak.yml").read_text()
     assert "--repo-url" not in stable and "build-aux/ci/validate_installed.py" in stable
     assert "name: flatpak-stable" in stable
+
+
+def test_runner_variables_only_select_constant_labels():
+    # A variable that reaches runs-on must go through the allowlisted selector: never
+    # fromJSON(vars.X) or any other form that parses or forwards the variable's value.
+    for name, value in runs_on_values():
+        if "vars." in value:
+            assert RUNNER_SELECTOR.match(value), (name, value)
+            assert "fromJSON(vars" not in value, (name, value)
+
+
+def test_runner_selection_falls_back_to_github_for_every_other_value():
+    moved = [(name, value) for name, value in runs_on_values() if "vars." in value]
+    assert moved, "no job reads a runner variable"
+    for name, value in moved:
+        var = RUNNER_SELECTOR.match(value)["var"]
+        for setting in (None, "", " ", "garbage{", '["self-hosted","cm-hetzner"]',
+                        '["self-hosted","cm-hetzner-typo"]', "hetzner-typo", "true", "github"):
+            variables = {} if setting is None else {var: setting}
+            assert select_runner(value, variables) == "ubuntu-26.04", (name, setting)
+        for setting in ("hetzner", "Hetzner"):
+            assert select_runner(value, {var: setting}) == CM_HETZNER, (name, setting)
+        # One variable never moves the other variable's jobs.
+        other = "CM_RUNNER_DESKTOP" if var == "CM_RUNNER" else "CM_RUNNER"
+        assert select_runner(value, {other: "hetzner"}) == "ubuntu-26.04", (name, other)
+
+
+def test_runner_variables_move_the_intended_jobs():
+    expected = {
+        "CM_RUNNER": {"build.yml", "deb.yml", "packages.yml", "flatpak.yml", "source.yml", "rpm-canary.yml"},
+        "CM_RUNNER_DESKTOP": {"recording.yml", "ux-shot.yml", "whistle.yml"},
+    }
+    found = {"CM_RUNNER": set(), "CM_RUNNER_DESKTOP": set()}
+    for name, value in runs_on_values():
+        if match := RUNNER_SELECTOR.match(value):
+            found[match["var"]].add(name)
+    assert found == expected
+    # Release workflows always run on GitHub-hosted runners.
+    for name, value in runs_on_values():
+        if name.startswith("release"):
+            assert "vars." not in value, (name, value)
