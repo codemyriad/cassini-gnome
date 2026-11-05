@@ -12,10 +12,17 @@ failed. A fallback's work grows with the capture's tracks: about 6.25 fsyncs a
 track plus 11. On roy's real disk one fsync takes about 0.12 s (15 in 1.86 s);
 the reproduction took up to 0.38 s. FSYNC_BOUND allows 0.6 s for each. A bound
 is never waited out by a passing test.
+
+What it does not cover: in the same reproduction one real os.fsync on roy's
+disk (not the injected delay) stalled for several seconds, under writeback from
+other containers: a capture-facts job (16 fsyncs, 2.4 s injected) did not
+finish within 18 s, its thread inside the real fsync. Stalls of 10 s and more
+were seen there. These bounds are sized against the modelled work,
+not against such host I/O stalls; whether CI must outlast them is the
+coordinator's call, never a reason to raise a bound here (D66).
 """
 
 import threading
-import time
 
 FSYNC_BOUND = 0.6  # seconds allowed for one fsync
 DURABLE_FSYNCS = 30  # the most fsyncs one wait here sits through, with room (24 measured)
@@ -45,13 +52,16 @@ def durable(event, what, bound=DURABLE_BOUND):
 def idle(models, bound=DURABLE_BOUND):
     """Wait for a model job (a download installs its files durably) to end.
 
-    Polled, as the one exception: SpeechModels stops calling `changed` once it
-    is cancelled, so no event covers every job.
+    Every busy period runs on the thread SpeechModels._launch starts, and that
+    thread clears busy as its last step, cancelled or not; so joining it ends on
+    the job's end. The lock makes the thread read the one of the current job:
+    busy refuses a new launch until it clears.
     """
-    deadline = time.monotonic() + bound
-    while models.snapshot()["busy"]:
-        assert time.monotonic() < deadline, f"the model job did not end within {bound} s"
-        time.sleep(0.01)
+    with models.lock:
+        thread = models._thread
+    thread.join(bound)
+    assert not thread.is_alive(), f"the model job did not end within {bound} s"
+    assert not models.snapshot()["busy"], "the model job ended but left the models busy"
 
 
 class Changes:
