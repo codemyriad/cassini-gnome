@@ -72,7 +72,7 @@ required to differ from the four states.
 | `t8-retry-failed-stale-silent` | R13.1 "the transcript is done" | both tracks zeros; the first write-down was done with no speech (`silentTracks` lists both); Try again failed, so that writingDown is still stored | Needs attention; no silent line |
 | `t8-silent-per-source` | R13.1 "every track", R13.3 place | rejoins (D63 #1): Bruno's two tracks both silent, Ana's first track silent and her return track spoke; sources mic, Bruno, Ana | "Bruno: no speech heard." right after Bruno's line, before Ana's; none for Ana |
 | `t8-none-referenced-words` (also R3) | D67.8a "shows them as stored, as for failed" | status none, never written down here, but meeting.json references a readable sidecar with 3 words (another or an older writer); same audio and words as `t8-failed-referenced-words` | no badge; names Me, Ana (R7); no quote (R8.5); can write down (R9); the 3 words are visible |
-| `t8-low-audio-silent` | D67.8b, R13.1 "captured" | Ana sent 500 ms of zeros (lowAudio; session interrupted, `problemKind: capture`); done; `silentTracks: ["guest"]`, her only track | Ana's `details.sources.lowAudio` warning (duration 500 ms) and no silent line; Interrupted at 00:00:10 |
+| `t8-low-audio-silent` | D67.8b, R13.1 "captured" | Ana sent 500 ms of zeros (lowAudio; session interrupted, `problemKind: capture`); done; `silentTracks: ["guest"]`, her only track | Ana's `details.sources.lowAudio.underSecond` warning ("less than a second", D58.4) and no silent line; Interrupted at 00:00:10 |
 
 `expected/t8-*.json` are rows as for the other cases. `outcome-lines.json` adds,
 per case, the Details "Audio sources" lines as catalog ids with their placeholder

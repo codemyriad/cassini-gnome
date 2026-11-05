@@ -300,13 +300,10 @@
           "problem": false
         },
         {
-          "id": "details.sources.lowAudio",
+          "id": "details.sources.lowAudio.underSecond",
           "args": {
             "source": {
               "text": "Ana"
-            },
-            "duration": {
-              "ms": 500
             }
           },
           "problem": true
