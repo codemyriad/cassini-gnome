@@ -8,6 +8,20 @@ between two monotonic readings, and the wall clock is never read again for that 
 A wall clock that steps (settimeofday, chrony makestep, a VM resync) or drifts during
 the capture then moves no stamp, as the extension and the protocol driver
 (scenarios/session-clock.mjs) also measure on the monotonic clock.
+
+What one mapping per party cannot fix: each party maps the same origin with its own wall
+reading. The extension maps it per document, at each AudioContext's calibration
+(capture.js measure(): Date.now(), performance.now(), Date.now()); GNOME maps it once at
+BrowserCapture.start(); the protocol driver maps it when it learns the origin
+(sessionClock()). A wall step S that lands before all of these readings shifts every
+party equally, so nothing is misaligned. A step that lands between the extension's
+calibration and GNOME's start (readings typically a few hundred ms apart) leaves the
+browser's PCM S away from GNOME's events and native PCM for the whole capture; the
+driver has the same exposure between its mapping and the others'. And after a mid-capture step, a browser
+resume calibrates a new document on the stepped wall clock, so browser spans after it sit
+S away from GNOME's kept mapping. That follows from SPEC's per-document mapping, not from
+GNOME: re-mapping GNOME at the resume would instead put GNOME's own stamps before and
+after it on two bases.
 """
 
 import time
