@@ -34,8 +34,27 @@ jobs:
           grep -E '^([^ ]+ ){4}/var/lib/flatpak ' /proc/self/mountinfo || { echo '::error::infra: /var/lib/flatpak is not a separate mount; the container lost its -v /var/lib/flatpak volume'; exit 1; }
           { flatpak info --system org.gnome.Sdk//50 && flatpak info --system org.gnome.Platform//50; } >/dev/null || { echo '::error::infra: the /var/lib/flatpak volume was not filled from the image (no system GNOME 50 SDK)'; exit 1; }
           flatpak update --system -y --noninteractive org.gnome.Sdk//50 org.gnome.Platform//50 || { echo '::error::infra: Flatpak SDK update failed; "Invalid cross-device link" above is overlayfs EXDEV on this runner pool; rerun'; exit 1; }
+      # F (D66): the pinned host Trash portal (fuse and xdg-desktop-portal, about
+      # 30 s to compile), from a cache main saves and pull requests only restore.
+      # The key names every input of that build: the script (its pins and build
+      # flags), the job's container image above (the SDK it compiles against),
+      # and the runner's architecture and kind. The prepare step runs on a hit
+      # too: it rebuilds unless the restored marker names the same pins and
+      # prefix and the portal is there, so the tree it leaves is the one a fresh
+      # build makes, at the same path, with the same rpath.
+      - uses: actions/cache/restore@v6
+        id: trash-portal
+        with:
+          path: _ci-trash-portal
+          key: trash-portal-${{ runner.arch }}-${{ runner.environment }}-1de59efef01a946d-${{ hashFiles('tests/flatpak/prepare_trash_portal.py') }}
       - name: Prepare the pinned host Trash portal in the SDK
         run: python3 tests/flatpak/prepare_trash_portal.py --output "$PWD/_ci-trash-portal"
+      - name: Save the Trash portal build (main only)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.trash-portal.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: _ci-trash-portal
+          key: ${{ steps.trash-portal.outputs.cache-primary-key }}
       # Pinned (G4). flathub-infra/flatpak-github-actions has no tags and was
       # archived on 2025-04-24; this is the master SHA @master resolved to on
       # 2026-11-03 (last commit "Close this branch", README only).
@@ -56,11 +75,13 @@ jobs:
           path: ${{ runner.temp }}/parakeet-models
           key: parakeet-ultra-18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
       # The same offline check as the other packages: install the bundle and
-      # write the D11 goldens down in a sandbox with --unshare=network.
+      # check it in a sandbox with --unshare=network. F (D20): the devel bundle
+      # runs every check but the engines' golden decodes, whose payload it still
+      # verifies: both manifests take the same pinned engine sources and differ
+      # only in the ID and -Dprofile, which no recognition code reads. The stable
+      # bundle below, the one a release ships (G15), decodes the full goldens.
       - name: Smoke-test the installed Flatpak offline
-        env:
-          CASSINI_PARAKEET_TEST_CACHE: ${{ runner.temp }}/parakeet-models
-        run: build-aux/flatpak/smoke.sh cassini-talk-devel.flatpak io.codemyriad.CassiniTalk.Devel
+        run: build-aux/flatpak/smoke.sh cassini-talk-devel.flatpak io.codemyriad.CassiniTalk.Devel --without-goldens
       # Keep stable-profile build/install coverage; D51 removes only old-ID
       # rebase/migration work, not validation of the release package itself.
       # It builds against the system SDK the steps above already updated (G4
@@ -72,6 +93,8 @@ jobs:
       # The tag workflow refuses a bundle without one
       # (build-aux/ci/flatpak_bundle.py), so no release ships this way.
       - name: Build, validate and freshly install the stable Cassini talk profile
+        env:
+          CASSINI_PARAKEET_TEST_CACHE: ${{ runner.temp }}/parakeet-models
         run: |
           flatpak-builder --install-deps-from=flathub --force-clean --disable-rofiles-fuse \
             --repo="$RUNNER_TEMP/talk-stable-repo" "$RUNNER_TEMP/talk-stable-build" \

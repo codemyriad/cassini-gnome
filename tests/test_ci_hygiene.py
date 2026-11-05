@@ -245,17 +245,53 @@ def steps(workflow):
     return re.split(r"\n(?=      - )", workflow.read_text())[1:]
 
 
+MAIN_ONLY = "github.event_name != 'pull_request' && github.ref == 'refs/heads/main'"
+
+
+def step_field(step, name):
+    match = re.search(rf"^\s+{name}: (.+)$", step, re.M)
+    return match and match[1].strip()
+
+
+def test_every_cache_save_is_main_only_and_saves_what_a_restore_read():
+    # D66: an explicit actions/cache/save runs on main pushes only, only when its
+    # restore missed, and saves exactly the path and key that restore looked up.
+    found = []
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        restores = {}
+        for step in steps(workflow):
+            if "uses: actions/cache/restore@" in step:
+                restores[step_field(step, "id")] = step
+            if "uses: actions/cache/save@" not in step:
+                continue
+            condition = step_field(step, "if") or ""
+            assert MAIN_ONLY in condition, (workflow.name, step)
+            restore_id = re.fullmatch(r".* && steps\.([\w-]+)\.outputs\.cache-hit != 'true'", condition)[1]
+            restore = restores[restore_id]
+            assert step_field(step, "path") == step_field(restore, "path"), (workflow.name, step)
+            key = step_field(step, "key")
+            assert key in (step_field(restore, "key"), f"${{{{ steps.{restore_id}.outputs.cache-primary-key }}}}")
+            found.append((workflow.name, restore_id))
+    assert sorted(found) == [
+        ("background-apps.yml", "harness-cache"),
+        ("deb.yml", "harness-cache"),
+        ("flatpak.yml", "trash-portal"),
+        ("whistle.yml", "harness-cache"),
+    ]
+
+
 def test_harness_image_caches_are_saved_from_main_only():
     # D66: a pull request restores caches and never saves one. The harness
     # images are only ever restored, then saved by an explicit main-only step.
     # The older restore-and-save caches are pinned in D66_SAVE_ON_PR_DEBT below.
-    main_only = "github.event_name != 'pull_request' && github.ref == 'refs/heads/main'"
     saves, restores = [], []
     for workflow in sorted(WORKFLOWS.glob("*.yml")):
         for step in steps(workflow):
-            if "uses: actions/cache/save@" in step or "harness-cache.sh save" in step:
+            if ("uses: actions/cache/save@" in step and "steps.harness.outputs.key" in step) or (
+                "harness-cache.sh save" in step
+            ):
                 saves.append(workflow.name)
-                assert re.search(r"^        if: .*" + re.escape(main_only), step, re.M), (workflow.name, step)
+                assert re.search(r"^        if: .*" + re.escape(MAIN_ONLY), step, re.M), (workflow.name, step)
             if "harness-cache" in step and "uses: actions/cache@" in step:
                 raise AssertionError(f"{workflow.name}: harness images through actions/cache, which saves on PRs")
             if "uses: actions/cache/restore@" in step and "steps.harness.outputs.key" in step:
