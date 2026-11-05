@@ -70,6 +70,21 @@
   </screenshots>
 
   <releases>
+    <release version="0.4.0" date="2026-11-05">
+      <description>
+        <p>Cassini is now called Cassini talk. Recording starts reliably on a silent computer,
+        and a source that cannot open says why.</p>
+        <ul>
+          <li>Silent sources are saved as exact silence, and every track is placed at the same start
+          for playback, transcripts and speakers</li>
+          <li>Set up the browser companion from Cassini, keep browser recordings through page reloads,
+          and record automatically with no window open</li>
+          <li>A live spectrogram, Recording details and a test recording while you record</li>
+          <li>Move meetings to Trash with Undo, rename with F2, and use Cassini in Italian, French,
+          Spanish and Portuguese</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-10-29">
       <description>
         <p>Keep recordings and received meetings in the Library, follow their transcripts,

@@ -1,3 +1,41 @@
+Version 0.4.0
+~~~~~~~~~~~~~
+Released: 2026-11-05
+
+Cassini is now called Cassini talk. Your Library stays in Music/Cassini.
+
+- Recording starts reliably when the computer is silent: the other people's
+  side waits for the first sound instead of failing the start
+- When a microphone or the computer's sound cannot open, Cassini says why and
+  keeps recording what did open; if nothing opened, no empty meeting is left
+  behind. Quit no longer waits for a microphone that never delivers audio
+- Silent sources are saved as exact silence, so writing down and speaker
+  separation skip them instead of reading noise
+- Every part of Cassini places each track at the same start, so playback,
+  transcripts and speakers line up; words stay inside the time a person was
+  present, and a turn never spans a gap. Cassini for Mac passes the same check
+- Browser meetings: set up the companion from Cassini, connect in the
+  background, keep recording through page reloads, record automatically only
+  once a call has really started, and record with no window open. Browser and
+  computer audio share one clock, even when the system clock is adjusted
+  during a meeting. The companion is now version 0.2.13: a long silent stretch
+  no longer slows a browser recording's clock
+- GNOME and Mac pass the same end-to-end tests: a recording followed live
+  while it is in progress (shared test 2), and the same three outcome files
+  (shared test 8)
+- While recording: a live spectrogram for each side, Recording details that
+  show what is being captured, a warning when muted output would silence the
+  computer's sound, and a test recording to check your setup
+- Library: move meetings to Trash with five seconds to undo, rename with F2,
+  and keep each saved meeting as a portable Cassini file
+- Writing down shows its progress before the first words, reads a track again
+  without voice detection when it finds too few words there, and names the app
+  version when it downloads models
+- Translated into Italian, French, Spanish and Portuguese (Brazil and Portugal)
+- Many capture fixes: interrupted and re-anchored inputs, frozen browser
+  connections, and a live spectrum that no longer stops after the window
+  stalls
+
 Version 0.3.0
 ~~~~~~~~~~~~~
 Released: 2026-10-29
