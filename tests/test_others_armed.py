@@ -887,6 +887,51 @@ def test_a_never_heard_system_tap_stops_at_once(silent_device):
     assert time.monotonic() - began < 5
 
 
+def test_a_tap_stop_sealed_drops_what_its_device_delivers_after_stop(silent_device):
+    """R93-2: Stop seals a tap that never received a buffer, and releases it at
+    once. Its device can still deliver before the teardown: that buffer was
+    captured after Stop and never enters the tap's queue (BrowserCapture's cut
+    at the Stop moment is the other line of defence)."""
+    from cassini_talk.native_tap import NativeTap
+    from cassini_talk.session_clock import SessionClock
+
+    received, failures = [], []
+    tap = NativeTap(
+        "system", SessionClock(0), lambda data, *_a, **_k: received.append(data), failures.append, test=True
+    )
+    tap.start()  # Armed: nothing delivered yet.
+    device = silent_device[0].get_by_name("device")
+    left, seen = threading.Condition(), []
+
+    def leaving(_pad, info):
+        with left:
+            seen.append("buffer" if info.type & Gst.PadProbeType.BUFFER else info.get_event().type)
+            left.notify_all()
+        return Gst.PadProbeReturn.OK
+
+    queue = tap.pipeline.get_by_name("tap-queue").get_static_pad("src")
+    queue.add_probe(Gst.PadProbeType.BUFFER | Gst.PadProbeType.EVENT_DOWNSTREAM, leaving)
+
+    class Late(threading.Event):
+        """Set by Stop once it sealed the tap, before its teardown: the device
+        delivers then, and its end of stream marks that the buffer went by."""
+
+        delivered = False
+
+        def set(self):
+            if not self.delivered:
+                self.delivered = True
+                assert device.emit("push-buffer", Gst.Buffer.new_wrapped(bytes(960))) == Gst.FlowReturn.OK
+                assert device.emit("end-of-stream") == Gst.FlowReturn.OK
+                with left:
+                    assert left.wait_for(lambda: Gst.EventType.EOS in seen, BOUND)
+            super().set()
+
+    tap.ended = Late()
+    tap.stop()
+    assert tap.ended.delivered and "buffer" not in seen and not received and not failures, (seen, len(received))
+
+
 class Signalled(threading.Event):
     """An Event that also wakes `condition` when it is set."""
 
