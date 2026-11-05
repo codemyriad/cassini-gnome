@@ -12,7 +12,8 @@ Each case blocks both taps' writers the way R93's runs were blocked, then saves:
   fsync     one checkpoint fsync, under capture.lock, takes 2.5 s
   fsynceach every fsync of one checkpoint takes 0.7 s (R93's swapping host)
   stop      Stop is pressed on another thread 2 s into a capture.lock hold: the
-            audio the queues hold from before it is saved, up to the Stop moment
+            audio the queues hold from before it is saved, up to the Stop moment,
+            and the end event is at that moment, however long the save took (D4)
   overrun   the documented limit: capture.lock is held until both 10 s queues
             are full, then 2 s more. pulsesrc drops that, and a loss of 1 s or
             more is saved as an input gap (truthful; relabelling it as writer
@@ -385,6 +386,9 @@ def main(names):
                 for track in record["tracks"]:
                     # Everything captured before Stop is saved, up to the Stop moment.
                     assert abs(track["endOffsetMs"] - record["stopAtMs"]) <= 20, (track, record["stopAtMs"])
+                # D4: the end is the latest of Stop, the last event and every track end.
+                latest = max(record["stopAtMs"], *(t["endOffsetMs"] for t in record["tracks"]))
+                assert abs(record["end"]["atMs"] - latest) <= 1, (record["end"], latest)
             else:
                 # Past the 10 s queue, pulsesrc overruns: an input gap of at least
                 # 1 s on both sides, saved interrupted (until writer loss is relabelled).

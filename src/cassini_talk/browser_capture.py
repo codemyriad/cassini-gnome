@@ -141,6 +141,11 @@ class BrowserCapture:
                     self.stop_at_ms = self.elapsed_ms()
                 self.stop_requested.set()
 
+    def _end_ms(self):
+        """D4: the end event's time is the Stop moment, never the drain's end;
+        finish() raises it to the last event and every track end."""
+        return self.elapsed_ms() if self.stop_at_ms is None else self.stop_at_ms
+
     def _native_cut(self):
         """The session offset from which native PCM is no longer recorded (lock
         held): None while recording, the Stop boundary once Stop was requested,
@@ -1153,7 +1158,7 @@ class BrowserCapture:
         try:
             with self.transition:
                 if self._mute_observer:
-                    self._mute_observer.close(self.elapsed_ms())
+                    self._mute_observer.close(self._end_ms())
                     self._mute_observer = None
                 for _identifier, tap in tuple(self.native_taps.values()):
                     try:
@@ -1174,8 +1179,9 @@ class BrowserCapture:
                         if not self.discarded:
                             self.host.session.refuse(*discard)  # A folder kept for typed content.
                     if not self.discarded:
+                        # D4: stamped at the Stop moment; the drain's length moves nothing.
                         self.host.session.finish(
-                            problem, reason=self.end_reason, at_ms=self.elapsed_ms(), retain_lease=True
+                            problem, reason=self.end_reason, at_ms=self._end_ms(), retain_lease=True
                         )
                     self.host.stopped = True
                 self.spectrogram.finish()

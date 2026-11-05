@@ -251,11 +251,13 @@ def record_live(capture, clock):
     return tap, start
 
 
-def drain_across_stop(tap, start):
+def drain_across_stop(tap, start, clock):
     """The drain: 34 buffers captured before Stop, one straddling its moment and
-    two captured after it, then EOS."""
+    two captured after it, then EOS. Draining takes time: the clock is 2 s past
+    Stop when it ends, and the end event must still be at the Stop moment (D4)."""
     for index in range(60, 97):
         tap.append(tone(480, value=9), start + index * 10)
+    clock.ms = start + 2945
     tap.drained.set()
 
 
@@ -277,7 +279,7 @@ def test_stop_records_the_queued_audio_captured_before_it_and_cuts_the_straddlin
     capture, clock = start_capture(tmp_path, taps, microphone=True, others_source="browser")
     tap, start = record_live(capture, clock)
     thread, result = stop_in_background(capture, tap)  # The Stop boundary is clock.ms.
-    drain_across_stop(tap, start)
+    drain_across_stop(tap, start, clock)
     thread.join(BOUND)
     assert not thread.is_alive() and "error" not in result
     assert_kept_before_stop(capture, start)
@@ -356,7 +358,7 @@ def test_each_broker_stop_path_fixes_the_stop_moment_so_queued_audio_before_it_i
             thread.start()
         assert capture.stop_requested.wait(BOUND)
         assert tap.draining.wait(BOUND)
-        drain_across_stop(tap, start)
+        drain_across_stop(tap, start, clock)
         if peer is not None:
             command = peer.receive()  # Sent once the local save is done.
             assert (command["action"], command["tabId"]) == ("stop", 3)
@@ -385,6 +387,7 @@ def test_an_armed_tap_whose_first_buffer_was_queued_before_stop_opens_its_track(
     thread, result = stop_in_background(capture, tap)
     tap.append(tone(480), boundary + first_ms)
     tap.append(tone(480), boundary + first_ms + 10)
+    clock.ms = boundary + 2000  # The drain took 2 s.
     tap.drained.set()
     thread.join(BOUND)
     assert not thread.is_alive() and "error" not in result
@@ -393,6 +396,7 @@ def test_an_armed_tap_whose_first_buffer_was_queued_before_stop_opens_its_track(
         (track,) = capture.host.session.manifest["tracks"]
         assert track["startOffsetMs"] == pytest.approx(boundary + first_ms)
         assert track["endOffsetMs"] == pytest.approx(boundary)
+        assert capture.host.session.manifest["events"][-1]["atMs"] == pytest.approx(boundary)
         assert result["stopped"]["path"] is not None
     else:
         assert result["stopped"]["path"] is None and capture.discarded
