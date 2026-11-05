@@ -10,11 +10,25 @@ from .browser_service import read_packet, send_packet, service_path
 from .capture_guard import browser_capture_busy
 from .library import meeting_id
 
-# A broker that did not answer a status poll: it timed out (busy: its
-# once-a-second session checkpoint fsyncs under the capture lock that a status
-# reply also takes), refused or dropped the connection, or replied an error. It
-# has not said that nothing records.
+# A broker that is there but did not answer a status poll. It has not said that
+# nothing records, so each cache keeps its last answer up to the bound:
+# - TimeoutError: no reply within the poll's bound; a busy broker (its
+#   once-a-second session checkpoint fsyncs under the capture lock that a
+#   status reply also takes) answers late.
+# - BlockingIOError (EAGAIN) on connect: its listen backlog is full; it still
+#   listens, but its accept loop is stuck.
+# - EOF, a reset or a broken pipe before the reply: it accepted the poll and
+#   dropped it unanswered.
+# - A malformed, partial or error reply: it spoke, but said nothing of its
+#   captures.
 UNANSWERED = object()
+# A connect that finds no broker: its socket is gone (ENOENT; a broker that
+# exits unlinks it) or nothing listens on it (ECONNREFUSED; one that crashed
+# left it behind). A broker that listens, however stuck, never refuses: a full
+# backlog fails with EAGAIN. This is a definite answer, not silence: no broker
+# runs, so nothing records. It is stamped like a reply, and is the newest one,
+# so it supersedes every older live cache at once (standing_broker_caches).
+BROKER_ABSENT = (FileNotFoundError, ConnectionRefusedError)
 # How long a broker's last answer outlives polls that go unanswered. A frozen
 # broker that still holds its socket must not keep a meeting "recording"
 # forever. The extension gives up on a broker that has not acked a packet for
@@ -63,12 +77,14 @@ def standing_broker_caches(app, browser=None):
 
 
 def read_browser_activity(path=None, with_connection=False, with_paths=False, *, unanswered=None):
-    """The broker's capture state. With `unanswered`, only a status reply the
-    broker sent is an answer: any failure (a timeout, a connect that fails, as a
-    stalled broker's full backlog does, an EOF or an error reply) returns
-    `unanswered`, as BrowserWatch treats the same failures, so the caller keeps
-    its last answer up to the bound (broker_silent). Without it, as before, a
-    failure reads as idle."""
+    """The broker's capture state. No broker (BROKER_ABSENT) reads as idle: an
+    answer that nothing records. With `unanswered`, any other failure, from a
+    broker that is there but did not answer (UNANSWERED: a timeout, a full
+    backlog, an EOF, a malformed or error reply), returns `unanswered`, as
+    BrowserWatch treats the same failures, so the caller keeps its last answer
+    up to the bound (broker_silent). Without it, as before, every failure reads
+    as idle."""
+    idle = ({}, False, {}) if with_paths else (({}, False) if with_connection else {})
     try:
         with socket.socket(socket.AF_UNIX) as connection:
             connection.settimeout(0.25)
@@ -90,10 +106,10 @@ def read_browser_activity(path=None, with_connection=False, with_paths=False, *,
         if with_paths:
             return result, connected, paths
         return (result, connected) if with_connection else result
+    except BROKER_ABSENT:
+        return idle
     except (OSError, ValueError, TypeError, AttributeError):
-        if unanswered is not None:
-            return unanswered
-        return ({}, False, {}) if with_paths else (({}, False) if with_connection else {})
+        return idle if unanswered is None else unanswered
 
 
 def recorder_activity(windows):
@@ -184,7 +200,9 @@ class BrowserActivity:
         # silent for UNANSWERED_BOUND (broker_silent); then it reads as idle,
         # as a reply that nothing records would. Only a reply is stamped: a
         # failure stamped as an answer would be the newest one and hide the
-        # app's live snapshot (standing_broker_caches).
+        # app's live snapshot (standing_broker_caches). No broker at all is an
+        # answer (BROKER_ABSENT): read_browser_activity returns idle for it,
+        # stamped here like any reply, so it is the newest at once.
         at, result = future.result()
         if result is UNANSWERED:
             if not broker_silent(self.answered_at, at):

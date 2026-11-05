@@ -17,13 +17,25 @@ LOG = logging.getLogger(__name__)
 
 class BrowserWatch:
     def __init__(
-        self, changed, *, path=None, profiles_changed=None, unanswered=None, interval_ms=500, clock=time.monotonic
+        self,
+        changed,
+        *,
+        path=None,
+        profiles_changed=None,
+        unanswered=None,
+        absent=None,
+        interval_ms=500,
+        clock=time.monotonic,
     ):
-        # changed(snapshot, received_at) for each reply; unanswered(failed_at)
-        # for each failed poll. Both stamps are taken on the worker (broker_silent).
+        # changed(snapshot, received_at) for each reply; absent(found_at) for a
+        # poll that found no broker (BROKER_ABSENT: nothing records, an answer);
+        # unanswered(failed_at) for any other failed poll (UNANSWERED: a broker
+        # that is there but did not answer). Every stamp is taken on the worker
+        # (broker_silent).
         self.changed, self.path = changed, path
         self.profiles_changed = profiles_changed
         self.unanswered = unanswered
+        self.absent = absent
         self.clock = clock
         self._profiles = self._delivered_profiles = None
         self._profile_checked = float("-inf")
@@ -113,7 +125,11 @@ class BrowserWatch:
                     if self.lease is not None:
                         self.lease.close()
                         self.lease = None
-                if self.unanswered is not None:
+                from .capture_activity import BROKER_ABSENT
+
+                if self.absent is not None and isinstance(error, BROKER_ABSENT):
+                    self.absent(at)
+                elif self.unanswered is not None:
                     self.unanswered(at)
             elif value is not None:
                 self.changed(value, at)

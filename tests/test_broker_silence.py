@@ -3,6 +3,7 @@
 
 import socket
 from concurrent.futures import Future, ThreadPoolExecutor
+from functools import partial
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -18,7 +19,9 @@ def broker(application_class, monkeypatch):  # noqa: F811
     """The real BrowserWatch (the app's snapshot, copied to each window) and a
     Library window's real BrowserActivity, both seeded with a live recording
     answered at 0 and stamped on their workers by one injected monotonic clock.
-    Each poll takes the next scripted answer; the test waits on its completion."""
+    The app starts its watch as it does in production. Each poll takes the
+    next scripted answer (a reply, an exception to raise, or a callable that
+    reads); the test waits on its completion."""
     from cassini_talk import browser_service, browser_watch, capture_activity
     from cassini_talk.capture_activity import application_activity
     from cassini_talk.capture_guard import capture_targets
@@ -37,7 +40,9 @@ def broker(application_class, monkeypatch):  # noqa: F811
         reply = watch_replies.pop(0)
         if reply is silent:
             raise TimeoutError("broker did not answer")
-        return reply
+        if isinstance(reply, BaseException):
+            raise reply
+        return reply(_watch) if callable(reply) else reply
 
     def activity_read(*args, **kwargs):
         reply = activity_replies.pop(0)
@@ -45,6 +50,9 @@ def broker(application_class, monkeypatch):  # noqa: F811
 
     monkeypatch.setattr(browser_watch.BrowserWatch, "_read", watch_read)
     monkeypatch.setattr(capture_activity, "read_browser_activity", activity_read)
+    # The app's own wiring (_start_browser_watch); only its timer is held off.
+    monkeypatch.setattr(browser_watch, "BrowserWatch", partial(browser_watch.BrowserWatch, interval_ms=3_600_000))
+    monkeypatch.delenv("CASSINI_SCREENSHOT_ISOLATED", raising=False)
 
     library = window()
     app, events = app_with(application_class, windows=[library])
@@ -62,6 +70,8 @@ def broker(application_class, monkeypatch):  # noqa: F811
         _record_start_executor=executor,
         _quitting=False,
         _capture_exiting=False,
+        browser_watch=None,
+        retry_browser_connection=lambda *_args, **_kwargs: None,
         _pending_recording=None,
         _show_pending_recording=lambda: None,
         browser_companion_available=True,
@@ -78,6 +88,8 @@ def broker(application_class, monkeypatch):  # noqa: F811
     for name in (
         "_browser_changed",
         "_browser_unanswered",
+        "_browser_absent",
+        "_start_browser_watch",
         "_stop_browser_watch",
         "_expire_unwatched",
         "_unwatched_expiry",
@@ -99,9 +111,8 @@ def broker(application_class, monkeypatch):  # noqa: F811
         lambda: published.append(application_activity(app, activity)), interval_ms=3_600_000, clock=lambda: now[0]
     )
     library._activity_source = activity
-    watch = app.browser_watch = browser_watch.BrowserWatch(
-        app._browser_changed, unanswered=app._browser_unanswered, interval_ms=3_600_000, clock=lambda: now[0]
-    )
+    app._start_browser_watch()
+    watch = app.browser_watch
 
     def settle():
         pump(lambda: watch.future is None and activity.future is None, "broker polls")
@@ -241,34 +252,113 @@ def test_a_silent_broker_reads_idle_in_library_record_and_quit_and_the_newest_re
     assert not b.watch_replies and not b.activity_replies
 
 
-def test_a_library_poll_that_fails_is_not_an_answer_that_nothing_records(broker, tmp_path):
-    """A stalled broker (still listening, its accept loop stuck) fills its
-    backlog: the Library's next connect fails at once (EAGAIN), well within the
-    bound. That failure is no reply. Stamped as an answer it was the newest one,
-    so Watch's live reply stopped counting and the meeting read idle everywhere."""
+def lease_connect(path):
+    """BrowserWatch's first step against `path`, its lease connect, for a watch
+    poll: it raises what a poll raises there."""
+    from cassini_talk import browser_service
+
+    def read(_watch):
+        browser_service.connect(path, timeout=0.8).close()
+        raise AssertionError(f"something accepted on {path}")
+
+    return read
+
+
+@pytest.fixture(params=["missing", "refused"])
+def exited(request, tmp_path):
+    """The socket of a broker that exited: gone (serve() unlinks it on its way
+    out: ENOENT) or left behind with nothing listening (a crash: ECONNREFUSED)."""
+    path = tmp_path / "broker.sock"
+    if request.param == "refused":
+        with socket.socket(socket.AF_UNIX) as server:
+            server.bind(str(path))
+            server.listen()
+    return path
+
+
+def test_a_broker_that_exited_reads_idle_at_once_in_library_record_and_quit(broker, exited):
+    """No broker is an answer: nothing records. A missing or refused socket was
+    treated as a broker that did not answer, so after the broker exited both
+    caches kept their live answer for up to UNANSWERED_BOUND: the Library still
+    showed the meeting recording, Record stayed Stop and Quit stayed busy
+    (Codex, #217 re-review). Each cache now stamps the finding like a reply, so
+    it is the newest and supersedes the other's older live answer at once."""
+    from cassini_talk import browser_service
+
+    b, app = broker, broker.app
+    gone = lease_connect(exited)
+    error = ConnectionRefusedError if exited.exists() else FileNotFoundError
+    with pytest.raises(error):
+        browser_service.connect(exited, timeout=0.8)
+    b.activity.path = exited
+
+    # The app's watch finds no broker; the Library's live answer at 0 is older.
+    b.published.clear()
+    b.poll(1, watch_reply=gone)
+    assert b.readings() == b.idle
+    assert app._browser_answered_at == 1 and b.activity.answered_at == 0
+    assert b.library._browser_snapshot["statuses"] == []
+    assert b.published and b.published[-1] == {}, "The Library hears of it at once"
+
+    # A broker that answers again, with the meeting, is newer still.
+    b.poll(2, b.live_watch, b.live_activity)
+    assert b.readings() == b.recording
+
+    # The Library finds no broker; the app's live answer at 2 is older.
+    b.published.clear()
+    b.poll(3, activity_reply=b.read_activity)
+    assert b.readings() == b.idle
+    assert b.activity.answered_at == 3 and b.activity.snapshot == {} and not b.activity.connected
+    assert app._browser_snapshot["statuses"] == [b.status], "The app's older answer is held, superseded"
+    assert b.published and b.published[-1] == {}
+
+    # Both find no broker, and keep reading idle while it stays away.
+    b.poll(4, b.live_watch, b.live_activity)
+    assert b.readings() == b.recording
+    b.poll(5, gone, b.read_activity)
+    assert b.readings() == b.idle
+    b.poll(100, gone, b.read_activity)
+    assert b.readings() == b.idle
+    assert app._browser_answered_at == 100 and b.activity.answered_at == 100
+    assert not b.watch_replies and not b.activity_replies
+
+
+def test_a_broker_that_is_there_but_silent_keeps_the_capture_until_the_bound(broker, tmp_path):
+    """A frozen broker still listens: its full backlog fails a connect with
+    EAGAIN, never ECONNREFUSED. That, a timeout, an EOF, a reset or a malformed
+    reply is a broker that did not answer, not one that is gone: both caches
+    keep the live answer, and Library, Record and Quit with them, until the
+    bound from that answer, then read idle."""
+    from cassini_talk import browser_service
     from cassini_talk.capture_activity import UNANSWERED_BOUND
 
     b = broker
-    read_browser_activity = b.read_activity
     stalled = tmp_path / "stalled.sock"
     with socket.socket(socket.AF_UNIX) as server, socket.socket(socket.AF_UNIX) as queued:
         server.bind(str(stalled))
         server.listen(0)
         queued.settimeout(0.25)
         queued.connect(str(stalled))  # The backlog's one slot; nobody accepts it.
-        b.poll(5, watch_reply=b.live_watch)
+        with pytest.raises(BlockingIOError):
+            browser_service.connect(stalled, timeout=0.8)
         b.activity.path = stalled
-        b.poll(6, activity_reply=read_browser_activity)
-        assert b.readings() == b.recording, "A full backlog is a late broker, not an idle one"
-    # The broker's socket gone (ENOENT) is no answer either: it is a broker that
-    # stopped answering, bounded like any other.
-    b.activity.path = tmp_path / "gone.sock"
-    b.poll(7, activity_reply=read_browser_activity)
-    assert b.readings() == b.recording
-    assert b.activity.answered_at == 0 and b.app._browser_answered_at == 5
-    # Silent for the bound from Watch's last reply: idle everywhere, as before.
-    b.poll(5 + UNANSWERED_BOUND, b.silent, read_browser_activity)
-    assert b.readings() == b.idle
+        frozen = lease_connect(stalled)
+        for at, watch_failure in (
+            (1, frozen),
+            (2, b.silent),
+            (3, OSError("Browser inventory unavailable")),  # EOF or an error reply (BrowserWatch._read).
+            (4, ValueError("Invalid control packet size")),  # A partial or malformed reply.
+            (5, ConnectionResetError()),
+            (UNANSWERED_BOUND - 0.1, frozen),
+        ):
+            b.poll(at, watch_failure, b.read_activity)
+            assert b.readings() == b.recording, f"Still the last answer at {at} s"
+        assert b.app._browser_answered_at == 0 and b.activity.answered_at == 0
+        b.published.clear()
+        b.poll(UNANSWERED_BOUND, frozen, b.read_activity)
+        assert b.readings() == b.idle
+        assert b.published and b.published[-1] == {}
+    assert not b.watch_replies and not b.activity_replies
 
 
 def test_records_own_start_reply_is_a_stamped_answer(broker):

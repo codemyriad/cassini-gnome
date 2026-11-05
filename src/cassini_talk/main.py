@@ -467,6 +467,7 @@ class CassiniApplication(Adw.Application):
                 self._browser_changed,
                 profiles_changed=self.retry_browser_connection,
                 unanswered=self._browser_unanswered,
+                absent=self._browser_absent,
                 clock=self._broker_clock,
             )
 
@@ -703,6 +704,14 @@ class CassiniApplication(Adw.Application):
         answered_at = getattr(self, "_browser_answered_at", None)
         if self._browser_snapshot.get("statuses") and broker_silent(answered_at, failed_at):
             self._browser_changed(dict(self._browser_snapshot, statuses=[]))
+
+    def _browser_absent(self, found_at):
+        """BrowserWatch's poll found no broker (BROKER_ABSENT): its socket is gone
+        or nothing listens on it. That is an answer, received at `found_at`:
+        nothing records. Stamped like a reply, it is the newest, so it also
+        supersedes an older live BrowserActivity cache (standing_broker_caches)
+        and Library, Record and Quit read idle at once, not after the bound."""
+        self._browser_changed(dict(self._browser_snapshot, statuses=[]), found_at)
 
     def browser_capture_active(self):
         """Whether a browser recording runs: both caches project the broker's

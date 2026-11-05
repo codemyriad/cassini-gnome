@@ -250,12 +250,14 @@ def test_unanswered_polls_keep_the_live_capture_only_up_to_the_bound(tmp_path, m
         watcher.close()
 
 
-def test_only_a_brokers_reply_is_an_answer(tmp_path):
-    """With `unanswered`, only a status reply the broker sent is an answer. A
-    connect that fails (no socket, refused, a stalled broker's full backlog),
-    an EOF before the reply or an error reply is a broker that did not answer:
-    BrowserActivity keeps its last answer up to the bound (broker_silent), as
-    BrowserWatch does for the same failures, instead of a newest "idle"."""
+def test_only_a_brokers_reply_or_its_absence_is_an_answer(tmp_path):
+    """With `unanswered`, a status reply the broker sent is an answer, and so
+    is no broker at all (no socket, or one nothing listens on): idle, nothing
+    records. A broker that is there but did not answer (a stalled broker's full
+    backlog, an EOF before the reply, a malformed or error reply) returns
+    `unanswered`: BrowserActivity keeps its last answer up to the bound
+    (broker_silent), as BrowserWatch does for the same failures, instead of a
+    newest "idle"."""
     import socket
     import threading
 
@@ -265,10 +267,10 @@ def test_only_a_brokers_reply_is_an_answer(tmp_path):
     def read(path):
         return read_browser_activity(path, True, True, unanswered=UNANSWERED)
 
-    assert read(tmp_path / "absent.sock") is UNANSWERED
+    assert read(tmp_path / "absent.sock") == ({}, False, {}), "No socket: no broker, nothing records"
     with socket.socket(socket.AF_UNIX) as refused:
         refused.bind(str(tmp_path / "refused.sock"))  # Bound, never listening.
-        assert read(tmp_path / "refused.sock") is UNANSWERED
+        assert read(tmp_path / "refused.sock") == ({}, False, {}), "Refused: no broker listens"
     with socket.socket(socket.AF_UNIX) as stalled, socket.socket(socket.AF_UNIX) as queued:
         stalled.bind(str(tmp_path / "stalled.sock"))
         stalled.listen(0)
@@ -277,7 +279,8 @@ def test_only_a_brokers_reply_is_an_answer(tmp_path):
         assert read(tmp_path / "stalled.sock") is UNANSWERED
 
     path = tmp_path / "broker.sock"
-    replies = [None, dict(error="Browser inventory unavailable"), dict(statuses=[], connectedBrowsers=1)]
+    partial = b'{"statuses": ['  # Cut short: no newline, then EOF.
+    replies = [None, dict(error="Browser inventory unavailable"), partial, dict(statuses=[], connectedBrowsers=1)]
     with socket.socket(socket.AF_UNIX) as server:
         server.bind(str(path))
         server.listen()
@@ -287,7 +290,9 @@ def test_only_a_brokers_reply_is_an_answer(tmp_path):
                 connection = server.accept()[0]
                 with connection, connection.makefile("rwb") as stream:
                     read_packet(stream)
-                    if reply is not None:
+                    if isinstance(reply, bytes):
+                        stream.write(reply)
+                    elif reply is not None:
                         send_packet(stream, reply)
 
         thread = threading.Thread(target=serve)
@@ -295,6 +300,7 @@ def test_only_a_brokers_reply_is_an_answer(tmp_path):
         try:
             assert read(path) is UNANSWERED, "EOF before a reply is no answer"
             assert read(path) is UNANSWERED, "An error reply is no answer"
+            assert read(path) is UNANSWERED, "A partial reply is no answer"
             assert read(path) == ({}, True, {}), "A reply that nothing records is one"
         finally:
             thread.join(5)
