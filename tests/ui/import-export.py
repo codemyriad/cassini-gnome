@@ -71,13 +71,13 @@ def labels(widget, *, visible=False):
     return values
 
 
-def each_dispatch(check):
+def each_dispatch(check, timed_out=lambda: "Import/export GUI condition timed out"):
     """until() at single-dispatch resolution, bounded by the same 12 s: no chooser state is skipped."""
     expired = []
     bound = GLib.timeout_add_seconds(12, lambda: expired.append(True))
     context = GLib.MainContext.default()
     while not check():
-        assert not expired, "Import/export GUI condition timed out"
+        assert not expired, timed_out()
         context.iteration(True)
     if not expired:
         GLib.source_remove(bound)
@@ -91,9 +91,20 @@ def descendants(widget):
         child = child.get_next_sibling()
 
 
+# shown_folder() reads GTK's private path bar: GtkPathBar (CSS name "pathbar") holds
+# one ToggleButton per folder, with the shown folder's button active and labelled.
+# Nothing public says when the chooser has shown its folder. If GTK rebuilds that
+# bar, ready_chooser() fails at once or names this structure in its timeout.
+PATH_BAR_STRUCTURE = "GTK's private chooser path bar (CSS 'pathbar' > active Gtk.ToggleButton > Gtk.Label)"
+
+
+def path_bar(chooser):
+    return next((w for w in descendants(chooser) if w.get_css_name() == "pathbar"), None)
+
+
 def shown_folder(chooser):
     """The folder name the chooser's path bar has finished showing, or None while it resolves."""
-    bar = next((w for w in descendants(chooser) if w.get_css_name() == "pathbar"), None)
+    bar = path_bar(chooser)
     for button in descendants(bar) if bar else ():
         if isinstance(button, Gtk.ToggleButton) and button.get_active():
             return next((w.get_text() for w in descendants(button) if isinstance(w, Gtk.Label)), None)
@@ -114,6 +125,8 @@ def ready_chooser(folder=None):
     """
     each_dispatch(lambda: any(isinstance(w, Gtk.FileChooserDialog) for w in Gtk.Window.get_toplevels()))
     chooser = next(w for w in Gtk.Window.get_toplevels() if isinstance(w, Gtk.FileChooserDialog))
+    # The chooser builds its path bar with itself, so a missing one is a GTK change.
+    assert path_bar(chooser) is not None, f"{PATH_BAR_STRUCTURE} not found: update shown_folder()"
 
     def shown():
         current = chooser.get_current_folder()
@@ -123,7 +136,15 @@ def ready_chooser(folder=None):
             and shown_folder(chooser) == current.get_basename()
         )
 
-    each_dispatch(shown)
+    def timed_out():
+        current = chooser.get_current_folder()
+        return (
+            f"Chooser never showed {folder or 'its folder'}: current folder "
+            f"{current.get_path() if current else None!r}, path bar shows {shown_folder(chooser)!r}. "
+            f"If {PATH_BAR_STRUCTURE} changed, update shown_folder()"
+        )
+
+    each_dispatch(shown, timed_out)
     return chooser
 
 
