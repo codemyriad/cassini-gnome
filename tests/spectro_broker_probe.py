@@ -39,13 +39,18 @@ def main():
     worker.start()
     assert ready.wait(5), "private broker socket was not ready"
     proxy = BrowserAudioProxy(path=socket_path)
+    # One instant is both the declared timeline origin and the producer's
+    # clock, as a browser stamps offsetMs from capture time: chunk n is
+    # captured at origin + n chunks. What is captured while Start and the
+    # tracks are handled (session checkpoints fsync) is sent once they are.
+    origin_ms, origin = int(time.time() * 1000), time.monotonic()
     proxy.handle(
         dict(
             type="start",
             version=1,
             independent=True,
             captureId="spectrogram-four-voices",
-            timelineOriginMs=int(time.time() * 1000),
+            timelineOriginMs=origin_ms,
             microphone=True,
             title="Spectrogram browser measurement",
         )
@@ -64,7 +69,6 @@ def main():
     closed, errors = threading.Event(), []
 
     def send_audio():
-        origin = time.monotonic()
         seq = 0
         try:
             while not closed.is_set():
