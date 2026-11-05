@@ -9,6 +9,7 @@ sound server. The taps here are scripted: every wait is on an event the code
 under test sets, with a bound only as an upper limit (E1).
 """
 
+import base64
 import os
 import struct
 import threading
@@ -210,13 +211,15 @@ class DrainingTaps:
         return tap
 
 
-def start_capture(tmp_path, taps, *, microphone, others_source):
+def start_capture(tmp_path, taps, *, microphone, others_source, features=()):
     from cassini_talk.browser_capture import BrowserCapture
 
     origin = int(time.time() * 1000)
     clock = ManualClock(origin)
     capture = BrowserCapture(lambda *_: None, parent=tmp_path, tap_factory=taps)
     message = dict(type="start", captureId="stall", timelineOriginMs=origin, microphone=microphone)
+    if features:
+        message["features"] = list(features)
     if others_source == "system":
         capture.browser_lost = True
         capture.start(message, others_source="system", reason="missing", session_clock=clock)
@@ -271,14 +274,19 @@ def drain_across_stop(tap, start, clock):
     tap.drained.set()
 
 
-def assert_kept_before_stop(capture, start, reason="user"):
+def assert_kept_before_stop(capture, start, reason="user", *, others=(), problem_kind=None):
+    """`others`: the kinds of the other tracks saved (a browser span's)."""
     saved = capture.host.session.manifest
-    (track,) = saved["tracks"]
+    (track,) = [t for t in saved["tracks"] if t["kind"] == "microphone"]
+    assert sorted(t["kind"] for t in saved["tracks"] if t is not track) == sorted(others)
     # Everything before the boundary, and the first 5 ms of the straddling buffer.
     assert track["frames"] == 94 * 480 + 240
     assert track["endOffsetMs"] == pytest.approx(start + 945)
     assert "gapFrames" not in track and not [g for g in track.get("gaps", []) if g["kind"] != "prefix"]
-    assert saved["state"] == "completed" and saved.get("problemKind") is None
+    if problem_kind is None:
+        assert saved["state"] == "completed" and saved.get("problemKind") is None
+    else:
+        assert saved.get("problemKind") == problem_kind
     assert saved["events"][-1] == dict(type="end", atMs=pytest.approx(start + 945), reason=reason)
     pcm = (capture.directory / track["file"]).read_bytes()[44:]
     assert pcm[: 60 * 960] == tone(60 * 480) and pcm[60 * 960 :] == tone(34 * 480 + 240, value=9)
@@ -343,6 +351,236 @@ def test_stop_pressed_while_a_stalled_checkpoint_holds_the_capture_lock_keeps_it
     assert capture.stop_at_ms == pytest.approx(start + 945)
     assert marked, "Stop's moment waited for the capture lock"
     assert_kept_before_stop(capture, start, reason="callEnded" if route == "policy" else "user")
+
+
+class OrderedLock:
+    """capture.lock as a test orders it: each thread's first wait for it is noted,
+    and the `gated` thread may take it only once `go` is set. The lock itself is
+    the capture's own RLock, so every other acquisition is unchanged."""
+
+    def __init__(self, lock, gated, go):
+        self.lock, self.gated, self.go = lock, gated, go
+        self.arrivals, self.waiting = threading.Condition(), set()
+
+    def acquire(self, blocking=True, timeout=-1):
+        name = threading.current_thread().name
+        with self.arrivals:
+            self.waiting.add(name)
+            self.arrivals.notify_all()
+        if name == self.gated:
+            assert self.go.wait(BOUND)  # Bound only: the test sets it.
+        return self.lock.acquire(blocking, timeout)
+
+    def release(self):
+        self.lock.release()
+
+    def __enter__(self):
+        return self.acquire()
+
+    def __exit__(self, *_):
+        self.release()
+
+    def waited_by(self, name):
+        """Waits (bounded) until the thread `name` asked for the lock."""
+        with self.arrivals:
+            return self.arrivals.wait_for(lambda: name in self.waiting, BOUND)
+
+
+def guest_audio(offset_ms, frames, sequence):
+    return dict(
+        type="audio",
+        id="guest",
+        sequence=sequence,
+        offsetMs=offset_ms,
+        pcm=base64.b64encode(tone(frames, value=3)).decode(),
+    )
+
+
+def stall_holding(capture):
+    """Another thread holds capture.lock, as a checkpoint stalled on storage.
+    Returns (holder, release)."""
+    held, release = threading.Event(), threading.Event()
+
+    def hold():
+        with capture.lock:
+            held.set()
+            assert release.wait(3 * BOUND)  # Bound only: the test releases it.
+
+    holder = threading.Thread(target=hold, name="test-stall")
+    holder.start()
+    assert held.wait(BOUND)
+    return holder, release
+
+
+def in_thread(name, call):
+    result = {}
+
+    def run():
+        try:
+            result["value"] = call()
+        except BaseException as error:  # asserted by the callers
+            result["error"] = error
+
+    thread = threading.Thread(target=run, name=name)
+    thread.start()
+    return thread, result
+
+
+@pytest.mark.parametrize("outcomes", [False, True], ids=["plain", "source-outcomes"])
+def test_pcm_queued_behind_a_stall_that_wins_the_lock_before_a_browser_stop_saves_nothing_after_it(tmp_path, outcomes):
+    """#230 review: a checkpoint stalled on storage holds capture.lock when the
+    browser's Stop message arrives at 945 ms. The tap's buffers captured while
+    storage stalled (600 ms to 2950 ms) and a browser PCM frame are queued on
+    the same lock. When it comes free at 2950 ms they take it before the Stop
+    handler does. Stop's boundary was published when it arrived: nothing after
+    945 ms is saved, and the end is at 945 ms. On 979431a the queued callbacks
+    saved the audio through 2950 ms, and the end was stamped there."""
+    taps = DrainingTaps()
+    features = ("source-outcomes-v1",) if outcomes else ()
+    capture, clock = start_capture(tmp_path, taps, microphone=True, others_source="browser", features=features)
+    declared = dict(type="track", id="guest", label="Guest", kind="remote", sampleRate=48000, channels=1)
+    if outcomes:
+        declared["sourceTrackId"] = "guest"
+    assert capture.handle(declared)["type"] == "ack"
+    # The guest's span delivered 10 ms before Stop.
+    assert capture.handle(guest_audio(0, 480, 0))["type"] == "ack"
+    tap, start = record_live(capture, clock)  # Stop's moment: start + 945.
+    go = threading.Event()
+    ordered = capture.lock = OrderedLock(capture.lock, "test-stop", go)
+    holder, release = stall_holding(capture)
+    stop = dict(type="stop", captureId="stall")
+    if outcomes:
+        stop["discoveredSources"] = [dict(sourceTrackId="guest", kind="remote"), dict(sourceTrackId="pip", kind="tab")]
+    stopper, stopped = in_thread("test-stop", lambda: capture.handle(stop))
+    assert ordered.waited_by("test-stop")  # The Stop handler waits for the lock.
+
+    def queued():
+        # Captured while storage stalled: 600 ms to 2950 ms, then the guest's
+        # next frame, sent at 1500 ms.
+        for index in range(60, 295):
+            tap.append(tone(480, value=9), start + index * 10)
+        try:
+            return capture.handle(guest_audio(start + 1500, 480, 1))
+        except Exception as error:  # A plain capture refuses it by raising.
+            return error
+
+    feeder, fed = in_thread("test-pcm", queued)
+    assert ordered.waited_by("test-pcm")
+    clock.ms = start + 2950  # Storage recovers 2 s after Stop.
+    release.set()
+    holder.join(BOUND)
+    feeder.join(BOUND)  # The queued callbacks ran first: the Stop handler is gated.
+    assert not feeder.is_alive() and "error" not in fed, fed
+    go.set()
+    assert tap.draining.wait(BOUND)
+    tap.drained.set()  # Everything the tap queued was delivered above.
+    stopper.join(BOUND)
+    assert not stopper.is_alive() and "error" not in stopped, stopped
+    assert stopped["value"]["type"] == "stopped", stopped
+    manifest = capture.host.session.manifest
+    microphone = next(t for t in manifest["tracks"] if t["kind"] == "microphone")
+    guest = next(t for t in manifest["tracks"] if t["kind"] == "remote")
+    # Saved through, ended at, the guest's frames: nothing after Stop.
+    saved = (microphone["endOffsetMs"] - start, manifest["events"][-1]["atMs"] - start, guest["frames"])
+    assert saved == (pytest.approx(945), pytest.approx(945), 480), saved
+    assert capture.stop_at_ms == pytest.approx(start + 945)
+    # A source-outcomes capture expects its guest: 10 ms is lowAudio (D47 file is truth).
+    assert_kept_before_stop(capture, start, others=("remote",), problem_kind="capture" if outcomes else None)
+    if outcomes:
+        sources = {s["sourceTrackId"]: s for s in capture.host.session.manifest["captureOutcome"]["sources"]}
+        assert sources["guest"]["audioMs"] == pytest.approx(10)
+        assert sources["pip"]["kind"] == "tab"  # Stop's summary was merged.
+
+
+@pytest.mark.parametrize("refusal", ["identity", "kind", "reason", "lost"])
+def test_a_refused_or_lost_browser_stop_during_a_stall_marks_nothing(tmp_path, refusal):
+    """A Stop refused (another capture's identity, a source summary that
+    conflicts with a declared kind, an invalid reason) or a first Stop for a lost
+    browser (Q4: the fallback) marks no Stop. The audio queued behind the stall
+    after its arrival is saved, and the recording goes on."""
+    from cassini_talk.recording_session import ProtocolError
+
+    taps = DrainingTaps()
+    capture, clock = start_capture(
+        tmp_path, taps, microphone=True, others_source="browser", features=("source-outcomes-v1",)
+    )
+    declared = dict(type="track", id="guest", label="Guest", kind="remote", sampleRate=48000, channels=1)
+    assert capture.handle(dict(declared, sourceTrackId="guest"))["type"] == "ack"
+    tap, start = record_live(capture, clock)
+    holder, release = stall_holding(capture)
+    stop = dict(
+        identity=dict(type="stop", captureId="another"),
+        kind=dict(type="stop", captureId="stall", discoveredSources=[dict(sourceTrackId="guest", kind="tab")]),
+        reason=dict(type="stop", captureId="stall", reason="whenever"),
+        lost=dict(type="stop", captureId="stall", failureReason="lost"),
+    )[refusal]
+    stopper, stopped = in_thread("test-stop", lambda: capture.handle(stop))
+    assert clock.read_by("test-stop")
+    assert not capture.stop_requested.is_set()
+    feeder, fed = in_thread("test-pcm", lambda: [tap.append(tone(480), start + i * 10) for i in range(60, 120)])
+    clock.ms = start + 2950
+    release.set()
+    holder.join(BOUND)
+    feeder.join(BOUND)
+    stopper.join(BOUND)
+    assert not feeder.is_alive() and not stopper.is_alive() and "error" not in fed
+    if refusal == "reason":
+        assert isinstance(stopped.get("error"), ProtocolError), stopped
+    elif refusal == "lost":
+        assert stopped["value"]["type"] == "stopped" and capture.browser_lost  # Q4: the fallback.
+    else:
+        assert stopped["value"]["type"] == "error" and stopped["value"]["scope"] == "command", stopped
+    assert not capture.stop_requested.is_set() and capture.stop_at_ms is None and not capture.finished
+    microphone = next(t for t in capture.host.session.manifest["tracks"] if t["kind"] == "microphone")
+    assert capture.host.session.writers[microphone["id"]].frames == 120 * 480  # Nothing cut.
+    tap.drained.set()
+    for other in taps.taps.values():
+        other.drained.set()
+    capture.stop()
+
+
+def test_a_declaration_racing_an_admitted_browser_stop_adds_no_source_its_summary_did_not_see(tmp_path, monkeypatch):
+    """A Stop's source summary is validated without the capture lock. A track
+    declaration that already holds the lock (it passed the Stop check before the
+    Stop arrived) and has not yet added its new source identity must not add it
+    once the Stop is admitted: the summary validated is the one merged, and a
+    conflicting kind cannot refuse an admitted Stop after its boundary was
+    published. The declaration is refused instead."""
+    taps = DrainingTaps()
+    capture, clock = start_capture(
+        tmp_path, taps, microphone=True, others_source="browser", features=("source-outcomes-v1",)
+    )
+    tap, start = record_live(capture, clock)
+    ledger = capture.host.session.capture_record
+    observe, inside, go = ledger.observe, threading.Event(), threading.Event()
+
+    def held_observe(*args, **kwargs):
+        if threading.current_thread().name == "test-declare":
+            inside.set()
+            assert go.wait(BOUND)  # Bound only: the test lets it go on.
+        return observe(*args, **kwargs)
+
+    monkeypatch.setattr(ledger, "observe", held_observe)
+    declared = dict(type="track", id="late", label="Late", kind="remote", sampleRate=48000, channels=1)
+    declarer, declaration = in_thread("test-declare", lambda: capture.handle(dict(declared, sourceTrackId="late")))
+    assert inside.wait(BOUND)  # It holds capture.lock, past the Stop check.
+    stop = dict(type="stop", captureId="stall", discoveredSources=[dict(sourceTrackId="late", kind="tab")])
+    stopper, stopped = in_thread("test-stop", lambda: capture.handle(stop))
+    # Admitted, and its boundary published, while the declaration holds the lock.
+    assert capture.stop_requested.wait(BOUND)
+    assert capture.stop_at_ms == pytest.approx(start + 945)
+    go.set()
+    declarer.join(BOUND)
+    assert not declarer.is_alive() and "error" not in declaration, declaration
+    assert declaration["value"]["type"] == "error", declaration
+    assert tap.draining.wait(BOUND)
+    tap.drained.set()
+    stopper.join(BOUND)
+    assert not stopper.is_alive() and stopped["value"]["type"] == "stopped", stopped
+    manifest = capture.host.session.manifest
+    assert [t["kind"] for t in manifest["tracks"]] == ["microphone"]
+    sources = {s["sourceTrackId"]: s["kind"] for s in manifest["captureOutcome"]["sources"]}
+    assert sources == {"late": "tab"}
 
 
 @pytest.fixture

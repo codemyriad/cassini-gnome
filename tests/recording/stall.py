@@ -16,8 +16,12 @@ Each case blocks both taps' writers the way R93's runs were blocked, then saves:
             (the broker's paths mark Stop, then save)
   stopdirect the same with a direct capture.stop() (GNOME's own Stop, a
             policy Stop): it fixes Stop's moment before it waits for the lock
-            the stall holds, which is held 2 s more. In both, the end event is
-            at the Stop moment, however long the save took (D4)
+            the stall holds, which is held 2 s more
+  stopbrowser the same with the browser's Stop message: it is admitted and its
+            boundary published before it waits for the lock, so the tap
+            callbacks queued behind the stall, which can take the lock before
+            it, save nothing after it. In all three, the end event is at the
+            Stop moment, however long the save took (D4)
   overrun   the documented limit: capture.lock is held until both 10 s queues
             are full, then 2 s more. pulsesrc drops that, and a loss of 1 s or
             more is saved as an input gap (truthful; relabelling it as writer
@@ -354,17 +358,23 @@ def stop_during(seconds):
     return stall
 
 
-def stop_direct_during(seconds):
-    """A direct capture.stop() mid-stall: its Stop moment is fixed at once, while
-    the stall goes on for `seconds` more; its save follows once the lock is free."""
+def stop_direct_during(seconds, *, browser=False):
+    """A direct capture.stop() (or the browser's Stop message) mid-stall: its Stop
+    moment is fixed at once, while the stall goes on for `seconds` more; its save
+    follows once the lock is free."""
 
     def stall(capture, _levels, observer):
         pressed, threads = {}, []
+        press = capture.stop
+        if browser:
+
+            def press():
+                return capture.handle(dict(type="stop", captureId=capture.capture_id))
 
         def until():
             observer.after(seconds)
             pressed["ms"] = capture.elapsed_ms()
-            stop = threading.Thread(target=capture.stop, name="stall-direct-stop")
+            stop = threading.Thread(target=press, name="stall-direct-stop")
             stop.start()
             threads.append(stop)
             # Bound only; under the 10 s queue, so a Stop that waits for the
@@ -399,6 +409,7 @@ CASES = {
     "fsynceach-0.7": (slow_fsync(0.7, each=True), "no-loss"),
     "stop-2.0": (stop_during(2.0), "stop"),
     "stopdirect-2.0": (stop_direct_during(2.0), "stop"),
+    "stopbrowser-2.0": (stop_direct_during(2.0, browser=True), "stop"),
     "overrun-2.0": (overrun(2.0), "limit"),
 }
 

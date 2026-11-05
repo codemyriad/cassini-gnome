@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Append-only browser source accounting; silence is received audio, padding is not."""
 
+import threading
 from fractions import Fraction
 
 from .recording_session import KINDS, ProtocolError, label_text, optional_string, source_track_identity
@@ -15,6 +16,13 @@ class CaptureRecord:
         # The app records Me natively: an announced page microphone (local)
         # source is never expected, so it cannot mark the capture interrupted.
         self.native_me = False
+        # R93-2: a browser Stop's source summary is validated without the
+        # capture lock, which a stalled checkpoint can hold. This leaf lock
+        # orders that validation against every new source identity, and a Stop
+        # admitted under it seals the identities: none joins after it, so the
+        # summary validated is the one merged under the capture lock later.
+        self._identities = threading.Lock()
+        self.sealed = False
 
     def _expectable(self, kind):
         return not (self.native_me and kind == "local")
@@ -24,16 +32,47 @@ class CaptureRecord:
         if identity is None or not isinstance(kind, str) or kind not in KINDS or type(failed) is not bool:
             raise ProtocolError("source", "Invalid discovered audio source")
         label = label_text(optional_string(label, kind, "source"))
-        source = self.seen.setdefault(identity, dict(kind=kind, label=label, failed=False, expected=False))
+        with self._identities:
+            if self.sealed and identity not in self.seen:
+                raise ProtocolError("state", "No active recording")  # It came after an admitted Stop.
+            source = self.seen.setdefault(identity, dict(kind=kind, label=label, failed=False, expected=False))
         if source["kind"] != kind:
             raise ProtocolError("source", "Conflicting source kind")
         source["failed"] |= failed
         source["expected"] = source.get("expected", True) or expected and self._expectable(kind)
 
-    def discover(self, sources, *, expected=lambda _kind: True):
+    def discover(self, sources, *, expected=lambda _kind: True, admitted=False):
+        """Merge discovered sources. `admitted`: the summary of the Stop that
+        admit_stop() admitted, which alone may add identities once they are sealed."""
+        # Validate the entire request before changing the durable accounting.
+        proposed = self._proposed(sources, expected)
+        with self._identities:
+            if self.sealed and not admitted and proposed.seen.keys() - self.seen.keys():
+                raise ProtocolError("state", "No active recording")  # It came after an admitted Stop.
+            self.seen = proposed.seen
+
+    def admit_stop(self, sources, mark):
+        """R93-2: a browser Stop's summary, validated without the capture lock.
+
+        Returns (refusal, marked): its refusal (a ProtocolError) without
+        calling mark(), or None and what mark() returned. When mark() returns
+        true (the Stop is marked), the identities are sealed in the same
+        critical section, so no source seen after the validation can make the
+        merge under the capture lock refuse a Stop already marked. mark() may
+        raise: nothing is sealed."""
+        with self._identities:
+            try:
+                self._proposed(sources, lambda _kind: True)
+            except ProtocolError as error:
+                return error, False
+            marked = mark()
+            self.sealed = self.sealed or marked
+        return None, marked
+
+    def _proposed(self, sources, expected):
+        """This record with `sources` merged into a copy (it raises their refusal)."""
         if not isinstance(sources, list):
             raise ProtocolError("source", "Invalid discovered audio sources")
-        # Validate the entire request before changing the durable accounting.
         proposed = CaptureRecord()
         proposed.native_me = self.native_me
         proposed.seen = {key: dict(value) for key, value in self.seen.items()}
@@ -51,7 +90,7 @@ class CaptureRecord:
                 failed=source.get("failed", False),
                 expected=expected(source["kind"]),
             )
-        self.seen = proposed.seen
+        return proposed
 
     def admit(self, identifier, frames):
         self.received[identifier] = self.received.get(identifier, 0) + frames

@@ -1096,15 +1096,32 @@ class BrowserCapture:
             # R93-2: the Stop moment is when it arrives, read before the lock
             # (a stalled checkpoint can hold it), so audio after it stays out.
             arrived = self.elapsed_ms() if self.session_clock is not None else None
+
+            def mark():
+                # Decided before it is marked: an invalid reason refuses it, and
+                # a first Stop for a lost browser is the fallback (Q4), not a Stop.
+                stop_reason(message)
+                if not self.stop_requested.is_set() and message.get("failureReason") == "lost":
+                    return False
+                self.request_stop(arrived)
+                return True
+
+            # The Stop is admitted and its boundary published before it waits
+            # for the lock: callbacks queued on that lock behind a stalled
+            # checkpoint can take it first, and must find the boundary (#230).
+            # A refused Stop marks nothing.
+            refused, marked = self.host.admit_stop(message, mark)
+            if refused is not None:
+                return refused
             # Source-summary admission reads the current selection and merges
             # accounting. Serialize it with PCM/source changes; device shutdown
             # below still happens outside the writer lock.
             with self.lock:
-                refused = self.host.prepare_stop(message)
+                refused = self.host.prepare_stop(message, admitted=marked)
             if refused is not None:
                 return refused
             reason = stop_reason(message)
-            if not self.stop_requested.is_set() and message.get("failureReason") == "lost":
+            if not marked and not self.stop_requested.is_set():
                 self.fallback()
                 return dict(type="stopped", path=str(self.directory))
             if reason == "user":

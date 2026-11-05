@@ -897,7 +897,9 @@ class BrowserHost:
         sink = self.audio_sink
         return sink is None or sink.browser and (sink.me if kind in ("microphone", "local") else sink.others)
 
-    def prepare_stop(self, message):
+    def prepare_stop(self, message, *, admitted=False):
+        """A Stop's refusal, or None once its source summary is merged (writer
+        lock held). `admitted`: admit_stop() admitted this Stop and marked it."""
         if not self.source_outcomes:
             return None
         if message.get("captureId") != self.capture_id:
@@ -907,10 +909,32 @@ class BrowserHost:
                 return dict(type="error", code="state", message="Capture already saved", scope="command")
             return dict(type="stopped", path=str(self.session.directory))
         try:
-            self.session.capture_record.discover(message.get("discoveredSources", []), expected=self._source_selected)
+            self.session.capture_record.discover(
+                message.get("discoveredSources", []), expected=self._source_selected, admitted=admitted
+            )
         except ProtocolError as error:
             return dict(type="error", code=error.code, message=str(error), scope="command")
         return None
+
+    def admit_stop(self, message, mark):
+        """R93-2: decide a Stop's refusal without the writer lock, which a stalled
+        checkpoint can hold, and mark it (mark()) only when it is not refused.
+
+        Returns (refusal, marked). Every refusal prepare_stop() makes is decided
+        here first: the capture identity and the feature are fixed at start, a
+        finished session stays finished, and the summary is validated against
+        the identities seen so far, which admit_stop() then seals. A finished
+        session is left to prepare_stop() unmarked: its answer needs no Stop."""
+        if not self.source_outcomes:
+            return None, mark()
+        if message.get("captureId") != self.capture_id:
+            return dict(type="error", code="state", message="Capture identity does not match", scope="command"), False
+        if self.session.finished:
+            return None, False
+        error, marked = self.session.capture_record.admit_stop(message.get("discoveredSources", []), mark)
+        if error is not None:
+            return dict(type="error", code=error.code, message=str(error), scope="command"), False
+        return None, marked
 
     def _handle(self, message, *, started_at=None):
         kind = message.get("type")
