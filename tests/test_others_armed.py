@@ -406,6 +406,7 @@ def test_an_armed_refusal_persists_off_the_main_loop_and_stop_still_completes(tm
         return refuse(*items)
 
     session.checkpoint, session.refuse = slow_checkpoint, counted_refuse
+    threads = on_main_loop(recorder)
     try:
         sides.now = BOUND + 20
         post_error(sides, "system", DENIED)
@@ -429,12 +430,121 @@ def test_an_armed_refusal_persists_off_the_main_loop_and_stop_still_completes(tm
         close(recorder)
     assert names(signals) == ["started", "finished"] and not recorder.discarded
     assert released == [True], "the main loop waited for the blocked checkpoint"
+    assert threads and all(threads), "a refusal's UI signal was emitted off the main loop"
     assert len(refused) == 1 and len(blocked) == 1
     stored = saved(session)
     assert stored["state"] == "completed" and "problem" not in stored
     assert [(r["atMs"], r["side"], r["code"]) for r in stored["refusals"]] == [(0, "others", "permissionDenied")]
     assert recorder.refusals == stored["refusals"] and [t["kind"] for t in stored["tracks"]] == ["microphone"]
     assert refusals(caplog) == ["Native others side (system) did not open: " + stored["refusals"][0]["message"]]
+
+
+def on_main_loop(recorder):
+    """Whether each "changed" signal was emitted on the main thread, in order."""
+    threads = []
+    recorder.connect("changed", lambda *_: threads.append(threading.current_thread() is threading.main_thread()))
+    return threads
+
+
+def watch_armed_failed(recorder):
+    """An event set once each armed refusal's IO-worker run has returned."""
+    done, armed_failed = threading.Event(), recorder._armed_failed
+
+    def watched(*args):
+        try:
+            return armed_failed(*args)
+        finally:
+            done.set()
+
+    recorder._armed_failed = watched
+    return done
+
+
+def bus_error(recorder, source, code, cause="Fake monitor went away"):
+    """What GTK's bus watch does with a device's error and its stream error:
+    hand them to the recorder, with no main-loop turn in between."""
+    for problem in (cause, "Internal data stream error."):
+        error = GLib.Error.new_literal(Gst.ResourceError.quark(), problem, int(code))
+        recorder._message(None, Gst.Message.new_error(source, error, "scripted"))
+
+
+def test_an_eos_never_overtakes_a_committed_side_s_error_still_waiting_for_the_lock(tmp_path):
+    # A committed side's error waits on the bus worker for the PCM lock (a
+    # writer's checkpoint holds it); the pipeline's EOS that follows must not
+    # finish the recording first, as if it had ended cleanly.
+    recorder, sides, signals = start(tmp_path, {"microphone": ("ok", 0.1), "system": ("ok", 0.2)})
+    session = recorder.session
+    try:
+        assert kinds_of(session) == ["microphone", "system"]
+        error = GLib.Error.new_literal(
+            Gst.ResourceError.quark(), "Fake microphone went away", int(Gst.ResourceError.READ)
+        )
+        with recorder._lock:
+            recorder._message(None, Gst.Message.new_error(sides.sources["microphone"], error, "scripted"))
+            recorder._message(None, Gst.Message.new_eos(recorder.pipeline))
+            ran = threading.Event()
+            GLib.idle_add(ran.set)
+            spin_until(ran.is_set)
+            assert not recorder._finishing  # Neither has acted while the error waits.
+        spin_until(lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing)
+    finally:
+        close(recorder)
+    assert names(signals) == ["started", "error", "finished"] and ("error", "Fake microphone went away") in signals
+    stored = saved(session)
+    assert stored["state"] == "interrupted" and stored["problem"] == "Fake microphone went away"
+
+
+def test_a_turned_off_branch_s_failing_sample_neither_refuses_nor_ends_the_side_s_next_turn_on(tmp_path, quiet_turn_on):
+    # As above, a turned-off armed branch still delivers; this time its sample
+    # fails. Only the side's current branch may refuse it or end the recording.
+    recorder, sides, signals = start(tmp_path, QUIET)
+    old = recorder._pending_sources["system"]
+    try:
+        session = recorder.session
+        recorder._turn_on_wait = quiet_turn_on
+        source, sink = sides.sources["system"], old["branch"].get_by_name("system")
+        with recorder._lock:
+            old["settled"] = False
+        turn_on(recorder, True, False)
+        turn_on(recorder, True, True)
+        new = recorder._pending_sources["system"]
+        assert new is not old and new["armed"]
+        input_pts = recorder._input_pts
+
+        def failing(sink_, identifier, pts, frames):
+            if sink_ is sink:
+                raise ValueError("Scripted failure of the turned-off branch")
+            return input_pts(sink_, identifier, pts, frames)
+
+        recorder._input_pts = failing
+        handled = threading.Event()  # Connected after the recorder's own handler: runs once it returned.
+        sink.connect("new-sample", lambda *_: (handled.set(), Gst.FlowReturn.OK)[1])
+
+        def late_failure():
+            handled.clear()
+            buffer = Gst.Buffer.new_wrapped(FRAME)
+            buffer.pts = recorder.pipeline.get_clock().get_time() - recorder.pipeline.get_base_time()
+            assert source.emit("push-buffer", buffer) == Gst.FlowReturn.OK
+            assert handled.wait(5)  # Bound only: the retired branch's sample failed.
+            recorder._executor.submit(lambda: None).result(5)  # Bound only: any refusal it queued ran.
+            ran = threading.Event()
+            GLib.idle_add(ran.set)
+            spin_until(ran.is_set)  # And any finish it queued.
+
+        late_failure()
+        assert recorder._pending_sources.get("system") is new and not new["error"] and not new["retired"]
+        assert "refusals" not in session.manifest and not recorder._finishing
+        sides.fire("system")
+        spin_until(lambda: recorder._track_ids.get("system") is not None)
+        late_failure()
+        assert not recorder._finishing and "error" not in names(signals)
+        stop(recorder, signals)
+    finally:
+        old["branch"].set_state(Gst.State.NULL)
+        close(recorder)
+    stored = saved(session)
+    assert stored["state"] == "completed" and "refusals" not in stored and "problem" not in stored
+    assert [(t["kind"], t["frames"]) for t in stored["tracks"]] == [("microphone", 480), ("system", 480)]
 
 
 def test_an_armed_turn_on_refused_by_an_explicit_error_is_refused_at_its_time(tmp_path, quiet_turn_on):
