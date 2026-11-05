@@ -298,6 +298,10 @@ def test_boards_scan_follows_variable_rooted_and_joined_paths(tmp_path):
     for name in ("a.json", "b.json", "c.json", "unrelated.json"):
         write(f"tests/data/{name}", "{}")
     write("tests/fixtures/f.bin")
+    # A build that ran in the checkout: its products are named but are no source.
+    write("build-aux/boards.sh", (tmp_path / "build-aux/boards.sh").read_text() + "cp _build-core/src/lib.so out/\n")
+    write("_build-core/build.ninja")
+    write("_build-core/src/lib.so")
     assert boards_inputs.inputs(tmp_path) == [
         ".github/workflows/ux-shot.yml",
         "build-aux/boards.sh",

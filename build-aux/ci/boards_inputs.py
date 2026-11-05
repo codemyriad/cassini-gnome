@@ -55,12 +55,25 @@ PATH_CLASSES = {"Path", "PurePath", "PosixPath", "PurePosixPath"}
 SKIP_PARTS = {"__pycache__", ".git"}
 
 
+@functools.cache
+def build_directory(directory):
+    """A Meson build directory: its files are build products, which no PR changes."""
+    return (directory / "build.ninja").is_file() or (directory / "meson-private").is_dir()
+
+
 def relative(path, root=ROOT):
     try:
         rel = path.resolve().relative_to(root.resolve())
     except ValueError:
         return None
-    return None if not rel.parts or SKIP_PARTS & set(rel.parts) else rel.as_posix()
+    if not rel.parts or SKIP_PARTS & set(rel.parts):
+        return None
+    # Only source files count: a workflow that copies _build-core/src/x names a
+    # file that exists only once that build ran in the checkout (Meson tests).
+    base = root.resolve()
+    if any(build_directory(base.joinpath(*rel.parts[:n])) for n in range(1, len(rel.parts))):
+        return None
+    return rel.as_posix()
 
 
 @functools.cache
