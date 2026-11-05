@@ -5,8 +5,9 @@
 // unchanged and unbuffered (one blocking write per read, before the next read), and exits
 // at the end of its input. On the way it reads the bytes as native messaging frames
 // (4-byte native-endian length, then that many bytes of UTF-8 JSON) and appends one JSON
-// line per frame to its log, stamped with Date.now() once the whole frame has been read
-// and before it is forwarded. A frame it cannot read is logged as `unparsable`; it keeps
+// line per frame to its log, stamped once the whole frame has been read and before it is
+// forwarded: atWall (Date.now(), for people) and atMono (the monotonic clock of
+// scenarios/session-clock.mjs, which the evidence uses). A frame it cannot read is logged as `unparsable`; it keeps
 // copying (the browser sees what the host wrote) but reads no further frames, and the
 // driver fails the run. The browser-to-host direction never passes through here.
 //
@@ -34,13 +35,14 @@ import { execFileSync } from 'node:child_process';
 import { closeSync, constants, createReadStream, openSync, readFileSync, writeSync } from 'node:fs';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { monotonic } from './session-clock.mjs';
 
 export const MAX_FRAME = 1024 * 1024;  // Chrome's limit for host-to-browser messages
 export const WRITER_POLL_MS = 100;  // how often a relay whose FIFO is not open yet checks its writer
 const decoder = new TextDecoder('utf-8', { fatal: true });
 
-// Frames out of a byte stream that may arrive in any chunking. push(chunk, atWall) returns
-// the frames completed by that chunk ({index, atWall, bytes, message}); once a frame is
+// Frames out of a byte stream that may arrive in any chunking. push(chunk, atWall, atMono)
+// returns the frames completed by that chunk ({index, atWall, atMono, bytes, message}); once a frame is
 // unreadable, `failure` says why and every later push returns []. end() reports a frame
 // cut off by the end of input.
 export class FrameReader {
@@ -52,7 +54,7 @@ export class FrameReader {
     this.count = 0;
     this.failure = null;
   }
-  push(chunk, atWall) {
+  push(chunk, atWall, atMono = null) {
     if (this.failure) return [];
     this.buffer = this.buffer.length ? Buffer.concat([this.buffer, chunk]) : Buffer.from(chunk);
     const frames = [];
@@ -66,7 +68,7 @@ export class FrameReader {
       catch (error) { return this.fail(`frame ${this.count} (${length} bytes): ${error.message}`, frames); }
       this.buffer = this.buffer.subarray(4 + length);
       this.offset += 4 + length;
-      frames.push({ index: this.count++, atWall, bytes: length, end: this.offset, message });
+      frames.push({ index: this.count++, atWall, atMono, bytes: length, end: this.offset, message });
     }
     return frames;
   }
@@ -88,9 +90,9 @@ export const isResumeRequest = message => message !== null && typeof message ===
 
 // One log line per frame: type, action and requestId as written, and for a resume request
 // resumeCapture's captureId and timelineOriginMs as written (null when absent).
-export function frameRecord({ index, atWall, bytes, message }) {
+export function frameRecord({ index, atWall, atMono = null, bytes, message }) {
   const object = message !== null && typeof message === 'object' && !Array.isArray(message);
-  const record = { frame: index, atWall, bytes, type: object ? message.type ?? null : null,
+  const record = { frame: index, atWall, atMono, bytes, type: object ? message.type ?? null : null,
     action: object ? message.action ?? null : null, requestId: object ? message.requestId ?? null : null };
   if (isResumeRequest(message)) {
     const target = message.resumeCapture;
@@ -160,8 +162,9 @@ export function relay(input, logPath, { output = 1, writer = null, writerPollMs 
     };
     stream.on('data', chunk => {
       if (finished) return;
-      const atWall = Date.now();
-      const frames = reader.push(chunk, atWall);
+      // The wall time for the log; the monotonic one (scenarios/session-clock.mjs) for the evidence.
+      const atWall = Date.now(), atMono = monotonic();
+      const frames = reader.push(chunk, atWall, atMono);
       for (const frame of frames) note(frameRecord(frame));
       report();
       try { writeAll(output, chunk); total += chunk.length; }

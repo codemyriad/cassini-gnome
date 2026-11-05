@@ -354,8 +354,12 @@ class LiveFolderOracle(unittest.TestCase):
         # for the mute before MUTE_START_MS or the unmute before mute + MUTE_MS on the session
         # clock; O2.muteStart and O2.duration hold the requests exactly (variant folder-leads).
         actions = json.loads((LIVE / 'scenario.json').read_text())['evidence']['actions']
-        self.assertIn('once F(A) >= MUTE_START_MS and the session clock (Date.now() - timelineOriginMs) >= '
+        self.assertIn('once F(A) >= MUTE_START_MS and the session clock (times above) >= '
                       'MUTE_START_MS', actions['mute'])
+        # The session clock is monotonic, with the wall-clock origin mapped once (Mac #148).
+        times = json.loads((LIVE / 'scenario.json').read_text())['evidence']['times']
+        self.assertIn('mapped onto the monotonic clock once', times)
+        self.assertIn('the wall clock is never read again', times)
         self.assertIn('once F(A) >= mute + MUTE_MS and the session clock >= mute + MUTE_MS', actions['unmute'])
         session, tracks, evidence = make.run('folder-leads')
         mute, unmute = evidence['actions']['mute'], evidence['actions']['unmute']

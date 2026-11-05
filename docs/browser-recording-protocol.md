@@ -3,7 +3,7 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `54e0006b` (protocol main with PR #54, D68.1: every capture AudioContext keeps real time; on #45 and #44: a return before the fallback commits restores at once; either writer form, with the absence in the file), ships companion 0.2.13, whose capture contexts feed an inaudible constant (6e-8) to their output so Chromium never moves a silent capture graph onto a slow timer, and whose browser `track` packets carry
+The current pin, `ab2823c2` (protocol main with PR #55, D68: the live-folder driver's monotonic session clock; on #54, D68.1: every capture AudioContext keeps real time; on #45 and #44: a return before the fallback commits restores at once; either writer form, with the absence in the file), ships companion 0.2.13, whose capture contexts feed an inaudible constant (6e-8) to their output so Chromium never moves a silent capture graph onto a slow timer, and whose browser `track` packets carry
 the D61 clock facts (copied into session.json and x["codemyriad.io"].tracks, record-only)
 and the span's `documentGeneration` (a live watchdog hint, never written to files). Its
 `ok:false` results carry a D58 result `code`, and its native resume packet carries the
@@ -49,7 +49,9 @@ An active capture's ended physical span returns `state/source/retired:true`;
 its cleanup and in-flight chunks cannot mean the whole capture was saved.
 Capture finalization returns `state/command`. Failed spans are fenced locally,
 healthy sources and the microphone continue, and a live source retries a new ID.
-The pin is protocol main 54e0006b (PR #54, D68.1: an inaudible 6e-8 ConstantSource feeds each
+The pin is protocol main ab2823c2 (PR #55, D68: the live-folder driver times every request and
+observation on the monotonic clock, its session origin mapped once, and the control relay stamps
+each frame on it too), on 54e0006b (PR #54, D68.1: an inaudible 6e-8 ConstantSource feeds each
 capture AudioContext's output, so Chromium's silent-sink suspender never moves it onto a slow timer;
 captured PCM is unchanged; companion 0.2.13), on e68ebca (PR #53: the live-folder driver reads a
 process's exact argv, `/proc` on Linux and `KERN_PROCARGS2` on macOS, and a host runs its whole
