@@ -14,6 +14,14 @@
 # texts exact, word times within 80 ms (D11.3). It refuses to run unless the
 # only network interface is loopback, so run it in a container started with
 # --network none (or flatpak run --unshare=network).
+#
+# --engines checks both engines' installed payloads the same way (the Whistle
+# bundle's hashes, the private ONNX Runtime, the pinned Parakeet runtime, no
+# network) without decoding the goldens, and imports, uses and checks the
+# bundle's NumPy wheel against its RECORD (the devel bundle's NumPy stage comes
+# from the flatpak-builder cache, the stable bundle's is built fresh). CI's Flatpak job uses it for the devel
+# bundle only: its engines come from the same pinned sources as the stable
+# bundle's, which runs the full goldens in the same job (F, D20).
 import argparse
 import json
 import os
@@ -23,12 +31,80 @@ import sys
 import tempfile
 from pathlib import Path
 
+
+def verify_record(name, removed=("*.la", "*.a")):
+    """Check every file a wheel installed in site-packages against its RECORD.
+
+    Console scripts outside site-packages are skipped, and so are files whose
+    name matches `removed`: the Flatpak manifests' unrooted cleanup globs, which
+    delete them wherever they are (NumPy's static libraries among them). A
+    missing RECORD, file or SHA-256 match exits. RECORD is read directly:
+    Distribution.files leaves out missing files."""
+    import base64
+    import csv
+    import fnmatch
+    import hashlib
+    import posixpath
+    from importlib import metadata
+
+    try:
+        distribution = metadata.distribution(name)
+    except metadata.PackageNotFoundError:
+        sys.exit(f"installed {name} has no distribution metadata")
+    rows = [row for row in csv.reader((distribution.read_text("RECORD") or "").splitlines()) if row]
+    rows = [
+        row
+        for row in rows
+        if len(row) > 1
+        and row[1]
+        and not row[0].startswith("../")
+        and not any(fnmatch.fnmatch(posixpath.basename(row[0]), glob) for glob in removed)
+    ]
+    if not rows:
+        sys.exit(f"installed {name} has no hashed RECORD to check its files against")
+    for path, hashed, *_ in rows:
+        algorithm, _, expected = hashed.partition("=")
+        if algorithm != "sha256":
+            sys.exit(f"installed {name} RECORD uses {algorithm} for {path}, not sha256")
+        try:
+            data = Path(distribution.locate_file(path)).read_bytes()
+        except OSError as error:
+            sys.exit(f"installed {name} is incomplete: {path}: {error}")
+        digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode()
+        if digest != expected:
+            sys.exit(f"installed {name} does not match its RECORD: {path}")
+    return distribution
+
+
+def verify_numpy():
+    """Import the bundle's NumPy, check it against its RECORD and compute with it.
+
+    The Flatpak devel bundle's python3-numpy stage usually comes from the
+    flatpak-builder cache (G8) while the stable bundle builds it fresh, so
+    without the devel goldens this is what exercises the devel bundle's NumPy."""
+    import numpy
+
+    distribution = verify_record("numpy")
+    if Path(numpy.__file__).resolve().parent != Path(distribution.locate_file("numpy")).resolve():
+        sys.exit(f"NumPy imported from {numpy.__file__}, not from its checked RECORD")
+    matrix = numpy.arange(12, dtype=numpy.float32).reshape(3, 4)
+    samples = numpy.frombuffer(numpy.arange(4, dtype=numpy.int16).tobytes(), dtype=numpy.int16)
+    if float(numpy.trace(matrix @ matrix.T)) != 506.0 or float(numpy.exp(samples * 0.0).sum()) != 4.0:
+        sys.exit("NumPy smoke computation gave a wrong result")
+    return numpy.__version__
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("datadir", nargs="?", default="/usr/share/cassini-talk", type=Path)
 parser.add_argument("--whistle", type=Path, metavar="GOLDENS", help="also run the offline D11 goldens")
 parser.add_argument("--parakeet", type=Path, metavar="MODEL", help="also run D16 using cached fixture weights")
 parser.add_argument("--parakeet-tests", type=Path, metavar="TESTS", help="path to tests/parakeet")
+parser.add_argument("--engines", action="store_true", help="verify both engines' payloads offline, no goldens")
 args = parser.parse_args()
+if args.engines and (args.whistle or args.parakeet):
+    parser.error("--engines verifies the payloads only; --whistle and --parakeet already do that and more")
+if args.parakeet and not args.parakeet_tests:
+    parser.error("--parakeet requires --parakeet-tests")
 
 # D45.2/D51: every package must be a fresh current-name installation, not a
 # compatibility layout. This check also runs inside the installed Flatpak.
@@ -111,7 +187,7 @@ finally:
     zstd.ZSTD_freeDStream(stream)
 print("model unpack runtime smoke test passed: libzstd")
 
-if args.whistle:
+if args.whistle or args.engines:
     import importlib.util  # noqa: E402
 
     from cassini_talk.transcription import unavailable_reason  # noqa: E402
@@ -131,40 +207,40 @@ if args.whistle:
     interfaces = {name for _, name in socket.if_nameindex()}
     if interfaces != {"lo"}:
         sys.exit(f"writing-down smoke test must run without a network, but this has {sorted(interfaces)}")
-    env = dict(os.environ, CASSINI_WHISTLE_NETWORK_NONE="1", PYTHONDONTWRITEBYTECODE="1")
-    with tempfile.TemporaryDirectory() as temporary:
-        report = Path(temporary) / "golden.json"
-        probe = subprocess.run(
-            [sys.executable, str(args.whistle / "pipeline_probe.py"), str(bundle), str(report)]
-            + ["--modules", str(args.datadir)],
-            env=env,
-            capture_output=True,
-            text=True,
-            cwd=temporary,
-        )
-        if probe.returncode != 0:
-            print(probe.stdout[-20000:], probe.stderr, sep="\n", file=sys.stderr)
-            sys.exit("writing-down smoke test failed: the D11 goldens did not match")
-        result = json.loads(report.read_text())
-    import numpy
+    if args.whistle:
+        env = dict(os.environ, CASSINI_WHISTLE_NETWORK_NONE="1", PYTHONDONTWRITEBYTECODE="1")
+        with tempfile.TemporaryDirectory() as temporary:
+            report = Path(temporary) / "golden.json"
+            probe = subprocess.run(
+                [sys.executable, str(args.whistle / "pipeline_probe.py"), str(bundle), str(report)]
+                + ["--modules", str(args.datadir)],
+                env=env,
+                capture_output=True,
+                text=True,
+                cwd=temporary,
+            )
+            if probe.returncode != 0:
+                print(probe.stdout[-20000:], probe.stderr, sep="\n", file=sys.stderr)
+                sys.exit("writing-down smoke test failed: the D11 goldens did not match")
+            result = json.loads(report.read_text())
+        import numpy
 
-    pinned = json.loads((bundle / "pins.json").read_text())["onnxruntime"]["version"]
-    if result["vad"]["version"] != pinned:
-        sys.exit(f"writing-down smoke test failed: the child ran ONNX Runtime {result['vad']['version']}, not {pinned}")
-    print(f"NumPy {numpy.__version__}, private ONNX Runtime {pinned} in {runtime}, {result['vad']['providers']}")
-    for case in result["cases"]:
-        print(
-            f"{case['golden']}: {case['segments']} segments exact, {case['words']} words, "
-            f"text exact {case['wordTextMatches']}, max word time difference {case['maxBoundaryDeltaMs']} ms"
-        )
-    print("writing-down smoke test passed offline (D11.3)")
+        pinned = json.loads((bundle / "pins.json").read_text())["onnxruntime"]["version"]
+        if result["vad"]["version"] != pinned:
+            sys.exit(f"writing-down smoke test failed: the child ran ONNX Runtime {result['vad']['version']}, not {pinned}")
+        print(f"NumPy {numpy.__version__}, private ONNX Runtime {pinned} in {runtime}, {result['vad']['providers']}")
+        for case in result["cases"]:
+            print(
+                f"{case['golden']}: {case['segments']} segments exact, {case['words']} words, "
+                f"text exact {case['wordTextMatches']}, max word time difference {case['maxBoundaryDeltaMs']} ms"
+            )
+        print("writing-down smoke test passed offline (D11.3)")
 
-if args.parakeet:
+if args.parakeet or args.engines:
     from cassini_talk.sherpa_runtime import runtime_path, verify_runtime
 
-    if not args.parakeet_tests:
-        parser.error("--parakeet requires --parakeet-tests")
     verify_runtime(runtime_path())
+if args.parakeet:
     # No model download, no distro engine, and no fallback to a source build.
     with tempfile.TemporaryDirectory() as temporary:
         subprocess.run(
@@ -179,3 +255,6 @@ if args.parakeet:
             check=True,
         )
     print("Parakeet package smoke passed offline: two goldens and two real FIFO jobs")
+if args.engines:
+    print(f"NumPy {verify_numpy()} imported, computed with and checked against its RECORD")
+    print("both engines' installed payloads verified offline; goldens not requested")
