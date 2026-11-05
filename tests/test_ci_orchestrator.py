@@ -270,3 +270,41 @@ def test_boards_scan_follows_imports_constants_and_scripts(tmp_path):
         "tests/helpers/helper.py",
         "tests/helpers/test_dep.py",
     ]
+
+
+def test_boards_scan_follows_variable_rooted_and_joined_paths(tmp_path):
+    # "$root/x" in shell and os.path.join(ROOT, "x") or Path(ROOT, "x") in
+    # Python are this repository's usual idioms; the scan must read them.
+    boards_inputs = module("boards_inputs")
+
+    def write(path, text=""):
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_text(text)
+
+    write(".github/workflows/ux-shot.yml", "run: build-aux/boards.sh\n")
+    write(
+        "build-aux/boards.sh",
+        'root=$(cd "$(dirname "$0")/.." && pwd)\npython3 "$root/tests/ui/board.py"\n"${root}/tests/run.sh"\n',
+    )
+    write("tests/run.sh")
+    write(
+        "tests/ui/board.py",
+        "import os\nfrom pathlib import Path\nROOT = Path(__file__).parents[2]\n"
+        'A = os.path.join(ROOT, "tests", "data", "a.json")\n'
+        'B = Path(ROOT, "tests", "data", "b.json")\n'
+        'C = (ROOT / "tests").joinpath("data", "c.json")\n'
+        'D = os.path.join(str(ROOT), "tests", "fixtures")\n',
+    )
+    for name in ("a.json", "b.json", "c.json", "unrelated.json"):
+        write(f"tests/data/{name}", "{}")
+    write("tests/fixtures/f.bin")
+    assert boards_inputs.inputs(tmp_path) == [
+        ".github/workflows/ux-shot.yml",
+        "build-aux/boards.sh",
+        "tests/data/a.json",
+        "tests/data/b.json",
+        "tests/data/c.json",
+        "tests/fixtures/f.bin",
+        "tests/run.sh",
+        "tests/ui/board.py",
+    ]

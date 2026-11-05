@@ -15,12 +15,14 @@ checks it). The scan is static and errs on the side of listing too much:
   product it tests (build.yml).
 - Workflows and shell scripts: every word, outside comments, naming a file
   from the repository root (the job's working directory) or the script's own
-  directory; a word with a "/" may also name a directory, read as a whole.
+  directory, also with a leading "$var/" or "${var}/" dropped ("$root/x");
+  a word with a "/" may also name a directory, read as a whole.
 - Python: every module it imports (absolute ones from its own directory or
   any directory a scanned file puts on sys.path, rescanned until no new
   sys.path entry appears; relative ones from its package). Every string
-  constant and every `base / "a" / "b"` chain naming a file or, for a chain
-  or a word with a "/", a directory read as a whole. A bare file name inside
+  constant, every `base / "a" / "b"` chain and every os.path.join(base, "a",
+  "b"), Path(base, "a", "b") or base.joinpath("a", "b") call naming a file
+  or, for a chain, a call or a word with a "/", a directory read as a whole. A bare file name inside
   prose ("see README.md") names the file's neighbour only. Docstrings and
   sys.path entries themselves are not inputs.
 - Pytest: a scanned test_*.py or conftest.py also reads pyproject.toml and
@@ -47,6 +49,9 @@ SEEDS = (".github/workflows/ux-shot.yml", ".github/workflows/build.yml")
 PRODUCT_MESON = "meson.build"
 WORD = re.compile(r"[A-Za-z0-9_.@+-]+(?:/[A-Za-z0-9_.@+-]+)*")
 COMMENT = re.compile(r"(?:^|(?<=\s))#.*$", re.M)
+# "$root/tests/x.sh": the variable is a directory, the rest a repository path.
+SHELL_VARIABLE = re.compile(r"\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/")
+PATH_CLASSES = {"Path", "PurePath", "PosixPath", "PurePosixPath"}
 SKIP_PARTS = {"__pycache__", ".git"}
 
 
@@ -96,6 +101,42 @@ def constant_chain(node):
     return "/".join(reversed(parts)) if parts else None
 
 
+def joined_path(node):
+    """The constant parts of os.path.join(x, "a", "b"), Path(x, "a", "b") or
+    x.joinpath("a", "b") joined ("a/b"), with the constant leading arguments
+    only, and the constant parts of a `/` chain x.joinpath extends; or None.
+    """
+    if not isinstance(node, ast.Call):
+        return None
+    function = node.func
+    name = function.attr if isinstance(function, ast.Attribute) else getattr(function, "id", None)
+    if name == "join":
+        # os.path.join or posixpath.join, not str.join.
+        module = function.value if isinstance(function, ast.Attribute) else None
+        if not (
+            isinstance(module, ast.Attribute)
+            and module.attr == "path"
+            and getattr(module.value, "id", None) == "os"
+            or getattr(module, "id", None) in {"posixpath", "path"}
+        ):
+            return None
+    elif name != "joinpath" and name not in PATH_CLASSES:
+        return None
+    args = list(node.args)
+    prefix = []
+    if name == "joinpath":
+        if (chain := constant_chain(function.value)) is not None:
+            prefix.append(chain)
+    elif args and not (isinstance(args[0], ast.Constant) and isinstance(args[0].value, str)):
+        args = args[1:]
+    parts = []
+    for arg in args:
+        if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str)):
+            break
+        parts.append(arg.value)
+    return "/".join(prefix + parts) if parts else None
+
+
 def is_sys_path(node):
     if isinstance(node, ast.Subscript):
         node = node.value
@@ -135,6 +176,15 @@ def words_in(node):
                 chained |= {id(link), id(link.right)}
                 link = link.left
             yield chain + "/"
+        elif (joined := joined_path(child)) is not None:
+            # Its arguments name parts of one path, and are still read alone;
+            # a chain joinpath extends is only a part, like a chain's links.
+            if isinstance(child.func, ast.Attribute) and child.func.attr == "joinpath":
+                link = child.func.value
+                while isinstance(link, ast.BinOp):
+                    chained |= {id(link), id(link.right)}
+                    link = link.left
+            yield joined + "/"
         elif isinstance(child, ast.Constant) and isinstance(child.value, str) and id(child) not in docstrings:
             if WORD.fullmatch(child.value):
                 yield child.value
@@ -257,7 +307,8 @@ def scan(search, root=ROOT, origin=None):
                     if (root / parent / "conftest.py").is_file():
                         found[(parent / "conftest.py").as_posix()] = "pytest"
         elif path.suffix in {".sh", ".yml", ".yaml"}:
-            for word in WORD.findall(COMMENT.sub("", path.read_text())):
+            text = COMMENT.sub("", path.read_text())
+            for word in {*WORD.findall(text), *WORD.findall(SHELL_VARIABLE.sub("", text))}:
                 found.update(dict.fromkeys(resolve(word, [".", here], root), word))
         for item, word in found.items():
             for reached in sorted(tree(item, root)) if (root / item).is_dir() else [item]:
