@@ -12,9 +12,10 @@ from .browser_service import read_packet, send_packet, service_path
 from .capture_guard import browser_capture_busy
 from .library import meeting_id
 
-# A broker that accepted a status poll but did not answer within the bound.
-# It has not said that nothing records: it is busy (its once-a-second session
-# checkpoint fsyncs under the capture lock that a status reply also takes).
+# A broker that did not answer a status poll: it timed out (busy: its
+# once-a-second session checkpoint fsyncs under the capture lock that a status
+# reply also takes), refused or dropped the connection, or replied an error. It
+# has not said that nothing records.
 UNANSWERED = object()
 # How long a broker's last answer outlives polls that go unanswered. A frozen
 # broker that still holds its socket must not keep a meeting "recording"
@@ -64,6 +65,12 @@ def standing_broker_caches(app, browser=None):
 
 
 def read_browser_activity(path=None, with_connection=False, with_paths=False, *, unanswered=None):
+    """The broker's capture state. With `unanswered`, only a status reply the
+    broker sent is an answer: any failure (a timeout, a connect that fails, as a
+    stalled broker's full backlog does, an EOF or an error reply) returns
+    `unanswered`, as BrowserWatch treats the same failures, so the caller keeps
+    its last answer up to the bound (broker_silent). Without it, as before, a
+    failure reads as idle."""
     try:
         with socket.socket(socket.AF_UNIX) as connection:
             connection.settimeout(0.25)
@@ -71,6 +78,8 @@ def read_browser_activity(path=None, with_connection=False, with_paths=False, *,
             with connection.makefile("rwb") as stream:
                 send_packet(stream, dict(role="app", action="status"))
                 value = read_packet(stream)
+        if unanswered is not None and (not isinstance(value, dict) or value.get("error")):
+            return unanswered
         result, paths = {}, {}
         for status in (value or {}).get("statuses", []):
             if isinstance(status, dict) and browser_capture_busy(status) and isinstance(status.get("path"), str):
@@ -83,8 +92,8 @@ def read_browser_activity(path=None, with_connection=False, with_paths=False, *,
         if with_paths:
             return result, connected, paths
         return (result, connected) if with_connection else result
-    except (OSError, ValueError, TypeError, AttributeError) as error:
-        if unanswered is not None and isinstance(error, TimeoutError):
+    except (OSError, ValueError, TypeError, AttributeError):
+        if unanswered is not None:
             return unanswered
         return ({}, False, {}) if with_paths else (({}, False) if with_connection else {})
 
@@ -165,9 +174,11 @@ class BrowserActivity:
             return GLib.SOURCE_REMOVE
         # Unanswered is unknown, not idle: publishing "nothing records" for one
         # late reply unbinds a live meeting's views and tears its meter down.
-        # Keep what the broker last said until it answers, its socket goes, or
-        # it stays silent for UNANSWERED_BOUND (broker_silent); then it reads
-        # as idle, as a reply that nothing records (or a missing broker) would.
+        # Keep what the broker last said until it answers again or stays
+        # silent for UNANSWERED_BOUND (broker_silent); then it reads as idle,
+        # as a reply that nothing records would. Only a reply is stamped: a
+        # failure stamped as an answer would be the newest one and hide the
+        # app's live snapshot (standing_broker_caches).
         at, result = future.result()
         if result is UNANSWERED:
             if not broker_silent(self.answered_at, at):

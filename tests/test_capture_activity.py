@@ -177,8 +177,8 @@ def test_an_unanswered_poll_keeps_the_live_capture_and_a_real_reply_clears_it(tm
             replies.put(None)
             thread.join(5)
     assert not thread.is_alive()
-    # Without a broker it still reads as idle, as before.
-    assert read_browser_activity(path, True, True, unanswered=object()) == ({}, False, {})
+    # Without a broker, and nothing answered yet, it still reads as idle.
+    assert read_browser_activity(path, True, True) == ({}, False, {})
 
 
 def test_unanswered_polls_keep_the_live_capture_only_up_to_the_bound(tmp_path, monkeypatch):
@@ -234,8 +234,8 @@ def test_unanswered_polls_keep_the_live_capture_only_up_to_the_bound(tmp_path, m
         poll(UNANSWERED, 13 + 2 * UNANSWERED_BOUND - 0.15)
         assert holds_live() and len(changes) == 3, "An answer must restart the bound"
 
-        # A missing broker is an answer that nothing records: idle at once.
-        poll(({}, False, {}), 41)
+        # A reply that nothing records is idle at once; a failure is no reply.
+        poll(({}, True, {}), 41)
         assert watcher.answered_at == 41 and changes[3:] == [{}]
         poll(live, 42)
         assert holds_live() and changes[3:] == [{}, {identifier: "recording"}]
@@ -248,6 +248,59 @@ def test_unanswered_polls_keep_the_live_capture_only_up_to_the_bound(tmp_path, m
         assert holds_live() and watcher.answered_at == 42 and len(changes) == 5
     finally:
         watcher.close()
+
+
+def test_only_a_brokers_reply_is_an_answer(tmp_path):
+    """With `unanswered`, only a status reply the broker sent is an answer. A
+    connect that fails (no socket, refused, a stalled broker's full backlog),
+    an EOF before the reply or an error reply is a broker that did not answer:
+    BrowserActivity keeps its last answer up to the bound (broker_silent), as
+    BrowserWatch does for the same failures, instead of a newest "idle"."""
+    import socket
+    import threading
+
+    from cassini_talk.browser_service import read_packet
+    from cassini_talk.capture_activity import UNANSWERED
+
+    def read(path):
+        return read_browser_activity(path, True, True, unanswered=UNANSWERED)
+
+    assert read(tmp_path / "absent.sock") is UNANSWERED
+    with socket.socket(socket.AF_UNIX) as refused:
+        refused.bind(str(tmp_path / "refused.sock"))  # Bound, never listening.
+        assert read(tmp_path / "refused.sock") is UNANSWERED
+    with socket.socket(socket.AF_UNIX) as stalled, socket.socket(socket.AF_UNIX) as queued:
+        stalled.bind(str(tmp_path / "stalled.sock"))
+        stalled.listen(0)
+        queued.settimeout(0.25)
+        queued.connect(str(tmp_path / "stalled.sock"))  # Fills the backlog; nobody accepts.
+        assert read(tmp_path / "stalled.sock") is UNANSWERED
+
+    path = tmp_path / "broker.sock"
+    replies = [None, dict(error="Browser inventory unavailable"), dict(statuses=[], connectedBrowsers=1)]
+    with socket.socket(socket.AF_UNIX) as server:
+        server.bind(str(path))
+        server.listen()
+
+        def serve():
+            for reply in replies:
+                connection = server.accept()[0]
+                with connection, connection.makefile("rwb") as stream:
+                    read_packet(stream)
+                    if reply is not None:
+                        send_packet(stream, reply)
+
+        thread = threading.Thread(target=serve)
+        thread.start()
+        try:
+            assert read(path) is UNANSWERED, "EOF before a reply is no answer"
+            assert read(path) is UNANSWERED, "An error reply is no answer"
+            assert read(path) == ({}, True, {}), "A reply that nothing records is one"
+        finally:
+            thread.join(5)
+    assert not thread.is_alive()
+    # Callers without the sentinel (the relocator) still read a failure as idle.
+    assert read_browser_activity(tmp_path / "absent.sock", True, True) == ({}, False, {})
 
 
 def test_native_identity_only_comes_from_controller_owned_session(tmp_path):

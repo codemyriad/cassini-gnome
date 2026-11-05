@@ -89,8 +89,12 @@ class CassiniApplication(Adw.Application):
         self.native_captures = {}
         self._last_native = None
         self._browser_snapshot = {}
-        # Monotonic receive time of the broker reply _browser_snapshot holds.
+        # Monotonic receive time of the broker reply _browser_snapshot holds,
+        # on this clock (broker_silent); _browser_expiry tokens the timer that
+        # expires it while no BrowserWatch polls.
         self._browser_answered_at = None
+        self._broker_clock = time.monotonic
+        self._browser_expiry = 0
         self.browser_watch = None
         self._companion_ready = not self.in_flatpak
         self.browser_connection = None
@@ -463,7 +467,44 @@ class CassiniApplication(Adw.Application):
                 self._browser_changed,
                 profiles_changed=self.retry_browser_connection,
                 unanswered=self._browser_unanswered,
+                clock=self._broker_clock,
             )
+
+    def _stop_browser_watch(self):
+        """The companion went unavailable: the watch closes, and no failed poll
+        follows to expire its snapshot, so a timer does at the same bound."""
+        if self.browser_watch:
+            self.browser_watch.close()
+            self.browser_watch = None
+        self._expire_unwatched()
+
+    def _expire_unwatched(self, token=None):
+        """While no BrowserWatch polls, the snapshot's capture state expires by a
+        one-shot timer UNANSWERED_BOUND after its last reply (broker_silent), as
+        a failed poll would expire it. A newer arming supersedes this one."""
+        import math
+
+        from .capture_activity import UNANSWERED_BOUND
+
+        if token is None:
+            self._browser_expiry += 1
+            token = self._browser_expiry
+        if not self._browser_snapshot.get("statuses"):
+            return
+        answered_at = self._browser_answered_at
+        remaining = 0.0 if answered_at is None else answered_at + UNANSWERED_BOUND - self._broker_clock()
+        GLib.timeout_add(max(0, math.ceil(remaining * 1000)), self._unwatched_expiry, token)
+
+    def _unwatched_expiry(self, token):
+        from .capture_activity import broker_silent
+
+        if token == self._browser_expiry and self.browser_watch is None and not self._quitting:
+            now = self._broker_clock()
+            if broker_silent(self._browser_answered_at, now):
+                self._browser_unanswered(now)
+            else:
+                self._expire_unwatched(token)  # Early by the clock: wait out the rest.
+        return GLib.SOURCE_REMOVE
 
     def retry_browser_connection(self, *_, force=False):
         if self.browser_connection and not self._quitting:
@@ -479,8 +520,7 @@ class CassiniApplication(Adw.Application):
         if self._companion_ready:
             self._start_browser_watch()
         elif self.browser_watch:
-            self.browser_watch.close()
-            self.browser_watch = None
+            self._stop_browser_watch()
         for window in self.get_windows():
             if previous != self._companion_ready and hasattr(window, "companion_available_changed"):
                 window.companion_available_changed()
@@ -604,8 +644,9 @@ class CassiniApplication(Adw.Application):
         return False
 
     def _browser_changed(self, snapshot, received_at=None):
-        """A broker reply (BrowserWatch's poll or Settings' configure), stamped
-        with its monotonic receive time, or this snapshot expired (no stamp)."""
+        """A broker reply (BrowserWatch's poll, Settings' configure or Record's
+        start-all), stamped with its monotonic receive time, or this snapshot
+        expired (no stamp)."""
         # BrowserActivity can lag Watch by a tick. Its stale window snapshot
         # must not hide the broker's recording -> idle transition.
         was_recording = any(s.get("recording") for s in self._browser_snapshot.get("statuses", ()))
@@ -642,6 +683,8 @@ class CassiniApplication(Adw.Application):
         self.set_auto_recording_hold(desired[1] if desired else snapshot.get("autoRecord", False))
         for window in self.get_windows():
             window._browser_snapshot = snapshot
+        if received_at is not None and getattr(self, "browser_watch", None) is None:
+            self._expire_unwatched()  # A reply while no watch polls: bounded all the same.
         self._native_changed()
         if self.build_refresh:
             if was_recording and not any(s.get("recording") for s in snapshot.get("statuses", ())):
@@ -650,10 +693,11 @@ class CassiniApplication(Adw.Application):
                 self.build_refresh.capture_changed()
 
     def _browser_unanswered(self, failed_at):
-        """BrowserWatch's poll failed. The last reply's capture state stands
-        until the broker has been silent for the bound (broker_silent), then
-        reads as idle in the app's and windows' snapshots, as a reply that
-        nothing records would. A newer reply, from either path, restores it."""
+        """BrowserWatch's poll failed (or, with no watch, its expiry timer
+        fired). The last reply's capture state stands until the broker has
+        been silent for the bound (broker_silent), then reads as idle in the
+        app's and windows' snapshots, as a reply that nothing records would.
+        A newer reply, from any path, restores it."""
         from .capture_activity import broker_silent
 
         answered_at = getattr(self, "_browser_answered_at", None)
@@ -661,6 +705,9 @@ class CassiniApplication(Adw.Application):
             self._browser_changed(dict(self._browser_snapshot, statuses=[]))
 
     def browser_capture_active(self):
+        """Whether a browser recording runs: both caches project the broker's
+        state the same way, "recording" only, so whichever answered last a
+        capture that only saves reads the same (it is not one)."""
         from .capture_activity import standing_broker_caches
 
         app_stands, sources = standing_broker_caches(self)
@@ -669,7 +716,7 @@ class CassiniApplication(Adw.Application):
             s.get("recording")
             for target in snapshots
             for s in getattr(target, "_browser_snapshot", {}).get("statuses", [])
-        ) or any(source.snapshot for source in sources)
+        ) or any(state == "recording" for source in sources for state in (source.snapshot or {}).values())
 
     def recording_to_stop(self):
         """What Record stops, named: a recording that runs or starts. A browser
@@ -824,13 +871,17 @@ class CassiniApplication(Adw.Application):
                 player.pause()
         self.hold()
 
+        received = []
+
         def start():
             target = browser_service.ensure_service()
-            return browser_service.request("start-all", path=target, groupId=group)
+            reply = browser_service.request("start-all", path=target, groupId=group)
+            received.append(self._broker_clock())  # A broker reply: stamped like Watch's.
+            return reply
 
         self._record_start_future = self._record_start_executor.submit(start)
         self._record_start_future.add_done_callback(
-            lambda future: GLib.idle_add(self._recordings_started, future, generation)
+            lambda future: GLib.idle_add(self._recordings_started, future, generation, None, received)
         )
 
     def retry_meeting(self, entry):
@@ -851,13 +902,17 @@ class CassiniApplication(Adw.Application):
         only = dict(id=entry["id"], callGeneration=entry.get("callGeneration"))
         self.hold()
 
+        received = []
+
         def start():
             target = browser_service.ensure_service()
-            return browser_service.request("start-all", path=target, groupId=group, only=only)
+            reply = browser_service.request("start-all", path=target, groupId=group, only=only)
+            received.append(self._broker_clock())
+            return reply
 
         self._record_start_future = self._record_start_executor.submit(start)
         self._record_start_future.add_done_callback(
-            lambda future: GLib.idle_add(self._recordings_started, future, generation, entry)
+            lambda future: GLib.idle_add(self._recordings_started, future, generation, entry, received)
         )
         self._native_changed()
 
@@ -887,7 +942,9 @@ class CassiniApplication(Adw.Application):
             and not meetings[entry["id"]].get("recording")
         ]
 
-    def _recordings_started(self, future, generation, retried=None):
+    def _recordings_started(self, future, generation, retried=None, received=()):
+        """start-all's reply; `received` holds its monotonic receive time,
+        stamped on the worker: it is a broker reply like Watch's, newest wins."""
         self._record_start_future = None
         self._record_start_group = None
         try:
@@ -899,7 +956,7 @@ class CassiniApplication(Adw.Application):
                 or snapshot.get("cancelled")
             ):
                 return False
-            self._browser_changed(snapshot)
+            self._browser_changed(snapshot, received[0] if received else None)
             if retried is not None:
                 # A D17 retry: a new failure replaces its line; success or a gone
                 # call clears it (pruning); attempted 0 keeps it.

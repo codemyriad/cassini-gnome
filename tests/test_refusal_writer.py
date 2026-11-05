@@ -427,7 +427,7 @@ def recordings_started(application, snapshot):
         recording_failure=None,
         recording_error=None,
         _pending_recording=None,
-        _browser_changed=lambda _snapshot: None,
+        _browser_changed=lambda _snapshot, _received_at=None: None,
         start_native=lambda: pytest.fail("A browser meeting failed: no native start"),
         get_windows=lambda: [],
         _native_changed=lambda: None,
