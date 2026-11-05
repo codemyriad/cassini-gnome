@@ -19,7 +19,7 @@ assert.match(process.env.PULSE_SERVER || '', /^unix:\/tmp\/cassini-audio-/);
 const root = path.resolve(import.meta.dirname, '../..');
 const protocol = path.join(root, 'browser-protocol');
 const {runLiveFolder} = await import(path.join(protocol, 'scenarios/live-folder.mjs'));
-const {livePids, stopRelays, writeNativeHost} = await import(path.join(protocol, 'scenarios/native-launcher.mjs'));
+const {livePids, stopLaunchers, stopRelays, writeNativeHost} = await import(path.join(protocol, 'scenarios/native-launcher.mjs'));
 const {poll} = await import(path.join(protocol, 'scenarios/folder-clock.mjs'));
 const artifacts = process.env.CASSINI_TEST_ARTIFACTS;
 const library = path.join(artifacts, 'Library');
@@ -32,7 +32,7 @@ const server = createServer((_req, res) => {res.setHeader('Content-Type', 'text/
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const TITLE = 'Shared live folder meeting', MICROPHONE_HZ = 660;
 const evidence = {console: [], log: []}, pending = [];
-let context, remoteBrowser, ui, microphone, broker, controlHost;
+let context, remoteBrowser, ui, microphone, broker, controlHost, registered = {}, cleaning = null;
 const log = line => {evidence.log.push(line); console.log(line);};
 // Failure evidence: the meeting and remote pages' consoles (wall ms, comparable with
 // evidence.json timelineOriginMs) go to a file as they arrive, so a hard bound keeps them.
@@ -95,6 +95,67 @@ async function browserPid() {
  assert.equal(found.length, 1, `one browser process for ${profile}, found ${JSON.stringify(found)}`);
  return found[0];
 }
+// A child's exit, or false once ms pass (a bound on that process's own exit, not a wait).
+const exitWithin = (child, ms) => child.exitCode !== null || child.signalCode !== null ? Promise.resolve(true)
+ : new Promise(resolve => {const timer = setTimeout(() => resolve(false), ms); child.once('exit', () => {clearTimeout(timer); resolve(true);});});
+// The driver's adapter cleanup() (and this script's own finally): stop the app's recording,
+// quit the app, close both browsers, end the relays, any control launcher left waiting on
+// its FIFO, the broker, the microphone producer and any host still alive. Idempotent (one
+// run, whoever asks first); bounded per step; evidence.cleanup says what each step did.
+// The control-pipe logs stay in the profile for the finally below to copy.
+function cleanup({failed = false} = {}) {
+ return cleaning ??= (async () => {
+  const done = evidence.cleanup = {failed};
+  const step = async (name, run) => {try {done[name] = (await run()) ?? 'done';} catch (error) {done[name] = String(error?.stack || error);}};
+  if (ui && ui.exitCode === null && ui.signalCode === null) {
+   if (failed) await step('failureState', async () => {evidence.failureState = await call();});
+   await step('stopRecording', async () => {
+    if (!(await call()).statuses.some(s => s.recording)) return 'none';
+    await call({action: 'stop-all'});
+    await poll(async () => !(await call()).statuses.some(s => s.recording), 'cleanup: the app stops its recording', 15000);
+   });
+   await step('quit', async () => {
+    const quit = exitWithin(ui, 10000); // bound on the app's exit
+    await call({action: 'quit'}); ui.stdin.end();
+    if (!await quit) {ui.kill('SIGKILL'); return 'killed';}
+   });
+  }
+  if (microphone) await step('microphone', async () => {
+   const exited = exitWithin(microphone, 5000); // bound on the producer's exit
+   microphone.kill();
+   if (!await exited) {microphone.kill('SIGKILL'); return 'killed';}
+  });
+  // Closing the browser closes each host's stdin; the host exits and its relay sees the end
+  // of its input. Bounded: a browser that does not close is killed.
+  for (const [name, close] of [['context', () => context?.close()], ['remoteBrowser', () => remoteBrowser?.close()]])
+   await step(name, () => Promise.race([close(), new Promise((_, reject) => setTimeout(() => reject(new Error(`${name} did not close in 20 s`)), 20000).unref())]));
+  await step('browserKilled', async () => {
+   // The persistent context's browser, if close() left it running.
+   try {const pid = await browserPid(); process.kill(pid, 'SIGKILL'); return pid;} catch {return 'none';}
+  });
+  server.close();
+  if (controlHost) {
+   await step('relaysStopped', () => stopRelays(controlHost));
+   await step('launchersKilled', () => stopLaunchers(controlHost));
+  }
+  if (broker && broker.exitCode === null && broker.signalCode === null) await step('broker', async () => {
+   const exited = exitWithin(broker, 10000); // bound on the broker's exit
+   broker.kill('SIGTERM');
+   if (!await exited) {broker.kill('SIGKILL'); return 'killed';}
+  });
+  // Killed by us (signal SIGTERM) means it ran, so held the serve lock, for the whole run.
+  if (broker) evidence.broker = {exitCode: broker.exitCode, signal: broker.signalCode};
+  // Backstop: no production host outlives the run (the browser's exit normally ends them).
+  await step('hostsKilled', async () => {
+   const killed = [];
+   for (const host of Object.values(registered)) for (const pid of await livePids(host)) {
+    try {process.kill(pid, 'SIGKILL'); killed.push(pid);} catch (error) {if (error.code !== 'ESRCH') throw error;}
+   }
+   return killed;
+  });
+  return done;
+ })();
+}
 async function recordingFolders() {
  const names = new Set();
  for (const parent of [library, path.join(library, '.cassini', 'sessions')]) {
@@ -117,7 +178,6 @@ try {
   'io.codemyriad.cassini': `import sys\nsys.path.insert(0,${JSON.stringify(root + '/src')})\nsys.stderr=open(${JSON.stringify(path.join(artifacts, 'audio-host.log'))},'a',buffering=1)\nfrom cassini_talk.browser_host import main\nsys.exit(main(directory=${JSON.stringify(library)},open_completed=False))\n`,
   'io.codemyriad.cassini.control': `import sys\nsys.path.insert(0,${JSON.stringify(root + '/src')})\nsys.stderr=open(${JSON.stringify(path.join(artifacts, 'control-host.log'))},'a',buffering=1)\nfrom cassini_talk.browser_control_host import main\nsys.exit(main())\n`,
  };
- const registered = {};
  for (const [name, script] of Object.entries(shims)) {
   const file = path.join(hosts, name + '.py');
   await writeFile(file, script, {mode: 0o600});
@@ -193,7 +253,7 @@ try {
   },
   audioHostPids: () => livePids(registered['io.codemyriad.cassini']),
   folders: recordingFolders,
-  controlHost, browserPid,
+  controlHost, browserPid, cleanup,
  };
  const started = Date.now();
  const outcome = await runLiveFolder({meeting, remote, app, worker, out: artifacts, log, python: '/usr/bin/python3'});
@@ -204,38 +264,21 @@ try {
  log(`PASS shared live folder (D68): check.py passed in ${evidence.scenarioMs} ms of scenario`);
 } catch (error) {
  evidence.failure = error.stack;
- try {evidence.failureState = await call();} catch {}
+ // A failure before the driver's teardown: the app's state now (the driver's cleanup takes it
+ // itself before quitting the app).
+ if (!cleaning && ui && ui.exitCode === null) try {evidence.failureState = await call();} catch {}
+ await cleanup({failed: true});
  throw error;
 }
 finally {
- if (ui && ui.exitCode === null) {
-  try {
-   const exited = new Promise(resolve => ui.once('exit', resolve));
-   await call({action: 'quit'}); ui.stdin.end();
-   await Promise.race([exited, new Promise(resolve => setTimeout(resolve, 10000))]); // bound on the app's exit
-  } catch {}
-  if (ui.exitCode === null) ui.kill();
- }
- microphone?.kill();
- await context?.close(); await remoteBrowser?.close(); server.close();
- // Closing the browser closes each control host's stdin; the host exits and its relay sees
- // the end of its input. A relay still running here (a launch cut short) is ended.
+ await cleanup();
  // The relays' logs are evidence; their FIFOs stay in the private profile, which goes.
  if (controlHost) try {
-  evidence.relaysStopped = await stopRelays(controlHost);
   for (const connection of await readdir(controlHost.observe)) for (const file of ['host', 'frames.jsonl', 'relay.err']) {
    await mkdir(path.join(artifacts, 'control-pipe', connection), {recursive: true});
    await copyFile(path.join(controlHost.observe, connection, file), path.join(artifacts, 'control-pipe', connection, file)).catch(error => {if (error.code !== 'ENOENT') throw error;});
   }
- } catch (error) {evidence.relaysStopped = String(error);}
- if (broker && broker.exitCode === null && broker.signalCode === null) {
-  const exited = new Promise(resolve => broker.once('exit', resolve));
-  broker.kill('SIGTERM');
-  await Promise.race([exited, new Promise(resolve => setTimeout(resolve, 10000))]); // bound on the broker's exit
-  if (broker.exitCode === null && broker.signalCode === null) broker.kill('SIGKILL');
- }
- // Killed by us (signal SIGTERM) means it ran, so held the serve lock, for the whole run.
- if (broker) evidence.broker = {exitCode: broker.exitCode, signal: broker.signalCode};
+ } catch (error) {evidence.controlPipeCopy = String(error);}
  clearInterval(pressure);
  await new Promise(resolve => pageLog.end(resolve));
  await new Promise(resolve => pressureLog.end(resolve));
