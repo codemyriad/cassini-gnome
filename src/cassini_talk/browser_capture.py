@@ -1161,14 +1161,14 @@ class BrowserCapture:
             # for the lock: callbacks queued on that lock behind a stalled
             # checkpoint can take it first, and must find the boundary (#230).
             # A refused Stop marks nothing.
-            refused, marked = self.host.admit_stop(message, mark)
+            refused, marked, admitted = self.host.admit_stop(message, mark)
             if refused is not None:
                 return refused
             # Source-summary admission reads the current selection and merges
             # accounting. Serialize it with PCM/source changes; device shutdown
             # below still happens outside the writer lock.
             with self.lock:
-                refused = self.host.prepare_stop(message, admitted=marked)
+                refused = self.host.prepare_stop(message, admitted=admitted)
             if refused is not None:
                 return refused
             reason = stop_reason(message)

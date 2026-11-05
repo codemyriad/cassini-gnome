@@ -821,6 +821,53 @@ def test_the_broker_never_waits_for_a_stalled_capture_lock_off_the_stop_path(tmp
     capture.stop()
 
 
+def test_only_the_first_marked_browser_stop_may_add_sources_after_the_seal(tmp_path):
+    """Two browser Stops for one capture (an old transport's and a resumed
+    one's) both wait on a stalled capture.lock. Stop A arrives first: admitted,
+    its moment (945 ms) marked, the identities sealed. Stop B's summary names A's
+    new source with another kind; it was validated before A merged. When the
+    stall ends B takes the lock first. B must not merge a source after the seal:
+    it is refused, and A, whose moment is already the boundary, is never refused
+    afterwards. On ad5d337 B merged first and A was refused ("Conflicting source
+    kind") while its moment stayed the boundary of B's Stop."""
+    taps = DrainingTaps()
+    capture, clock = start_capture(
+        tmp_path, taps, microphone=True, others_source="browser", features=("source-outcomes-v1",)
+    )
+    tap, start = record_live(capture, clock)  # A arrives at 945 ms.
+    go = threading.Event()
+    ordered = capture.lock = OrderedLock(capture.lock, "test-stop-a", go)
+    holder, release = stall_holding(capture)
+    stopper_b = None
+    try:
+        a = dict(type="stop", captureId="stall", discoveredSources=[dict(sourceTrackId="x", kind="remote")])
+        stopper_a, stopped_a = in_thread("test-stop-a", lambda: capture.handle(a))
+        assert ordered.waited_by("test-stop-a")
+        assert capture.stop_requested.is_set() and capture.stop_at_ms == pytest.approx(start + 945)
+        clock.ms = start + 1500
+        b = dict(type="stop", captureId="stall", discoveredSources=[dict(sourceTrackId="x", kind="tab")])
+        stopper_b, stopped_b = in_thread("test-stop-b", lambda: capture.handle(b))
+        assert ordered.waited_by("test-stop-b")
+        clock.ms = start + 2950
+        release.set()
+        holder.join(BOUND)
+        stopper_b.join(BOUND)  # B takes the lock first: A is gated.
+        assert not stopper_b.is_alive(), "B was not refused: it merged and stopped" if tap.draining.is_set() else ""
+        assert "error" not in stopped_b, stopped_b
+        assert stopped_b["value"]["type"] == "error" and stopped_b["value"]["scope"] == "command", stopped_b
+        assert not capture.finished
+    finally:
+        release.set()
+        go.set()
+    assert tap.draining.wait(BOUND)
+    drain_across_stop(tap, start, clock)
+    stopper_a.join(BOUND)
+    assert not stopper_a.is_alive() and stopped_a.get("value", {}).get("type") == "stopped", stopped_a
+    sources = {s["sourceTrackId"]: s["kind"] for s in capture.host.session.manifest["captureOutcome"]["sources"]}
+    assert sources == {"x": "remote"}  # A's summary, merged.
+    assert_kept_before_stop(capture, start, problem_kind="capture")  # x was expected and never heard.
+
+
 @pytest.mark.parametrize("first_ms, opens", [(-20, True), (-5, True), (0, False), (10, False)])
 def test_an_armed_tap_whose_first_buffer_was_queued_before_stop_opens_its_track(tmp_path, first_ms, opens):
     """D58.1: a silent system tap is armed. Its first buffer, captured before

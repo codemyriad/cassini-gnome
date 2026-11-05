@@ -18,9 +18,10 @@ class CaptureRecord:
         self.native_me = False
         # R93-2: a browser Stop's source summary is validated without the
         # capture lock, which a stalled checkpoint can hold. This leaf lock
-        # orders that validation against every new source identity, and a Stop
-        # admitted under it seals the identities: none joins after it, so the
-        # summary validated is the one merged under the capture lock later.
+        # orders that validation against every new source identity, and the
+        # first Stop marked under it seals the identities: none but its own
+        # summary's joins after it, so the summary validated is the one merged
+        # under the capture lock later.
         self._identities = threading.Lock()
         self.sealed = False
 
@@ -43,7 +44,8 @@ class CaptureRecord:
 
     def discover(self, sources, *, expected=lambda _kind: True, admitted=False):
         """Merge discovered sources. `admitted`: the summary of the Stop that
-        admit_stop() admitted, which alone may add identities once they are sealed."""
+        sealed the identities (admit_stop()), which alone may add identities
+        once they are sealed."""
         # Validate the entire request before changing the durable accounting.
         proposed = self._proposed(sources, expected)
         with self._identities:
@@ -54,20 +56,25 @@ class CaptureRecord:
     def admit_stop(self, sources, mark):
         """R93-2: a browser Stop's summary, validated without the capture lock.
 
-        Returns (refusal, marked): its refusal (a ProtocolError) without
-        calling mark(), or None and what mark() returned. When mark() returns
-        true (the Stop is marked), the identities are sealed in the same
-        critical section, so no source seen after the validation can make the
-        merge under the capture lock refuse a Stop already marked. mark() may
-        raise: nothing is sealed."""
+        Returns (refusal, marked, sealing): its refusal (a ProtocolError)
+        without calling mark(), or None, what mark() returned, and whether
+        this Stop sealed the identities. The first Stop that mark() marks seals
+        them in the same critical section, so no source seen after its
+        validation can make its merge under the capture lock refuse it once
+        its moment is the boundary. Only that Stop may add identities after
+        the seal (discover(admitted=True)): a later Stop was validated without
+        the sealing Stop's summary, which may name its new sources with
+        another kind, so its own new sources are refused instead, whichever
+        merges first. mark() may raise: nothing is sealed."""
         with self._identities:
             try:
                 self._proposed(sources, lambda _kind: True)
             except ProtocolError as error:
-                return error, False
+                return error, False, False
             marked = mark()
+            sealing = marked and not self.sealed
             self.sealed = self.sealed or marked
-        return None, marked
+        return None, marked, sealing
 
     def _proposed(self, sources, expected):
         """This record with `sources` merged into a copy (it raises their refusal)."""
