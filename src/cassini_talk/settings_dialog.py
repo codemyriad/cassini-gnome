@@ -2,6 +2,7 @@
 """D15 native Preferences. Broker IO runs off GTK; every visible label is shared copy."""
 
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Event
@@ -598,7 +599,7 @@ class SettingsDialog(Adw.PreferencesDialog):
     def _call(self, action, values):
         values = dict(values)
         token = values.pop("_preferenceToken", None)
-        result = None
+        result = received_at = None
         try:
             target = browser_service.ensure_service(
                 self.service_path, cancelled=self.cancelled if action == "status" else None
@@ -606,12 +607,14 @@ class SettingsDialog(Adw.PreferencesDialog):
             with browser_service.connect(target, timeout=0.8) as connection, connection.makefile("rwb") as stream:
                 browser_service.send_packet(stream, dict(role="app", action=action, **values))
                 result = browser_service.read_packet(stream)
+                # When the broker answered: a Watch poll answered later wins.
+                received_at = time.monotonic()
                 if result is None or result.get("error"):
                     raise ValueError("Browser connection unavailable")
                 return result
         finally:
             if token is not None:
-                GLib.idle_add(self.app.finish_auto_recording_change, token, result)
+                GLib.idle_add(self.app.finish_auto_recording_change, token, result, received_at)
 
     def _received(self, future):
         if not future.done():

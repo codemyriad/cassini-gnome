@@ -33,8 +33,29 @@ from cassini_talk.capture_activity import BrowserActivity  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
 
 
-def until(predicate, description):
-    return wait_until(predicate, description, timeout=15)
+def until(predicate, description, diagnostics=lambda: {}):
+    return wait_until(predicate, description, timeout=15, diagnostics=diagnostics)
+
+
+def spectrogram_state(window, model=None, views=()):
+    """Which session the window holds, so a stall explains itself."""
+    sessions = window.spectrograms.sessions
+    result = dict(sessions=len(sessions), live=bool(window.live_meeting()))
+    result.update(viewsDrawn=[bool(v.model and v.texture) for v in views])
+    for view in sessions.values():
+        client = getattr(view.feed, "client", None)
+        result.update(
+            held=model is None or view.model is model,
+            last=view.model.last,
+            heard={side: any(bands) for side, bands in view.model.bands.items()},
+            late=view.model.late,
+            ended=view.ended,
+            feedDone=view.feed.done,
+            meterProblem=repr(getattr(client, "problem", None)),
+        )
+    if model is not None:
+        result["heldLast"] = model.last
+    return result
 
 
 def reply(child, command=None):
@@ -84,11 +105,16 @@ with tempfile.TemporaryDirectory() as temporary:
                 and all(any(views[0].model.bands[s]) for s in ("me", "others"))
             ),
             "broker PCM reaches both actual application lanes",
+            lambda: spectrogram_state(window, views=views),
         )
         assert len(window.spectrograms.sessions) == 1
         model = views[0].model
         assert all(v.model is model for v in views)
-        until(lambda: model.last is not None and model.last >= 200, "four-second browser history")
+        until(
+            lambda: model.last is not None and model.last >= 200,
+            "four-second browser history",
+            lambda: spectrogram_state(window, model),
+        )
         frames = []
         measure = os.environ.get("CASSINI_SPECTRO_MEASURE") == "D"
         if measure:
@@ -152,6 +178,15 @@ with tempfile.TemporaryDirectory() as temporary:
                     and any(any(model.cell("others", slot)[1] or ()) for slot in range(prior + 1, model.last + 1))
                 ),
                 "system fallback span reached the visible spectrum",
+                lambda: dict(
+                    spectrogram_state(window, model),
+                    prior=prior,
+                    othersHeardSincePrior=sum(
+                        bool(model.cell("others", slot)[1] and any(model.cell("others", slot)[1]))
+                        for slot in range(prior + 1, (model.last or prior) + 1)
+                    ),
+                    delayMs=round(model.delay.value),
+                ),
             )
         scale = window.get_scale_factor()
         assert scale == int(os.environ.get("CASSINI_SCREENSHOT_SCALE", "1"))

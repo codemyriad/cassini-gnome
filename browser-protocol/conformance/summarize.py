@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Summarize real saved WAVs in bounded memory. --start is session-relative seconds."""
-import argparse, json, math, pathlib, struct, unicodedata, wave
+import argparse, importlib.util, json, math, pathlib, struct, unicodedata, wave
+_spec=importlib.util.spec_from_file_location('pcm',pathlib.Path(__file__).resolve().parent/'pcm.py');pcm=importlib.util.module_from_spec(_spec);_spec.loader.exec_module(pcm)
 p=argparse.ArgumentParser();p.add_argument('folder',type=pathlib.Path);p.add_argument('--start',type=float);p.add_argument('--duration',type=float);p.add_argument('--tones',default='');a=p.parse_args()
 assert a.start is None or a.start>=0
 assert a.duration is None or a.duration>0
@@ -27,14 +28,7 @@ for t in m['tracks']:
     peak0=max(map(abs,samples));peak=max(peak,peak0);squares+=sum(v*v for v in samples);count+=len(samples)
     if peak0/32768>0.003:active+=len(samples)/ch/rate
     if tones and not power and peak0/32768>0.003:
-     n=len(samples)//ch
-     for frequency in tones:
-      coeff=2*math.cos(2*math.pi*frequency/rate);value=0
-      for channel in range(ch):
-       q1=q2=0.0
-       for sample in samples[channel::ch]:q0=sample+coeff*q1-q2;q2=q1;q1=q0
-       value+=(q1*q1+q2*q2-coeff*q1*q2)/(n*n*32768**2)
-      power[frequency]=value/ch
+     for frequency in tones:power[frequency]=sum(pcm.goertzel(samples[channel::ch],rate,frequency) for channel in range(ch))/ch
     left-=len(samples)//ch
    assert count>0,'selected interval contains no saved samples'
    rms=math.sqrt(squares/count)/32768

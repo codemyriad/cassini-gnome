@@ -10,7 +10,7 @@ permissions:
   contents: read
 jobs:
   pinned-offline-recognition:
-    runs-on: ubuntu-26.04
+    runs-on: ${{ vars.CM_RUNNER_DESKTOP == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
@@ -77,6 +77,20 @@ jobs:
         run: |
           python3 build-aux/ci/product.py unpack _ci-offline _ci-download/offline.tar --commit "$GITHUB_SHA" --profile offline
           echo "OFFLINE_STAGE=$PWD/_ci-offline/install" >> "$GITHUB_ENV"
+      # C (D66): the harness images of tests/harness-image.sh, from a cache main
+      # saves and pull requests only read; their key changes every week and with
+      # every input. run.sh builds an image the cache did not hold.
+      - name: Harness image cache key
+        id: harness
+        run: build-aux/ci/harness-cache.sh key whistle >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v6
+        id: harness-cache
+        with:
+          path: ${{ steps.harness.outputs.path }}
+          key: ${{ steps.harness.outputs.key }}
+      - name: Load the cached harness images
+        if: steps.harness-cache.outputs.cache-hit == 'true'
+        run: build-aux/ci/harness-cache.sh load "${{ steps.harness.outputs.path }}"
       - name: Native constructor guard, both goldens and real GTK queue without network
         run: tests/whistle/run.sh "$OFFLINE_STAGE/usr/share/cassini-talk/whistle" "$PWD/whistle-artifacts" "$OFFLINE_STAGE"
       - name: Both Parakeet goldens and ABI through isolated per-job workers
@@ -85,6 +99,14 @@ jobs:
         run: tests/diarization/run.sh "$OFFLINE_STAGE/usr/share/cassini-talk/whistle" "$RUNNER_TEMP/nemotron-models" "$RUNNER_TEMP/diarization-input.wav" "$PWD/diarization-artifacts" "$OFFLINE_STAGE" "$RUNNER_TEMP/parakeet-models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"
       - name: D25 installed extractor, S-9 vectors and model comparisons without network
         run: tests/voices/run.sh "$OFFLINE_STAGE/usr/share/cassini-talk/whistle" "$RUNNER_TEMP/voice-models" "$RUNNER_TEMP/diarization-input.wav" "$PWD/voice-artifacts" "$OFFLINE_STAGE" "$RUNNER_TEMP/nemotron-models" "$RUNNER_TEMP/parakeet-models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"
+      - name: Save the harness images (main only)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.harness-cache.outputs.cache-hit != 'true'
+        run: build-aux/ci/harness-cache.sh save "${{ steps.harness.outputs.path }}" whistle
+      - uses: actions/cache/save@v6
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.harness-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.harness.outputs.path }}
+          key: ${{ steps.harness.outputs.key }}
       - uses: actions/upload-artifact@v7
         if: always()
         with:

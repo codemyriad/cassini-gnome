@@ -50,6 +50,25 @@ def test_release_requires_the_exact_commit_and_every_latest_main_workflow():
         policy.select_runs(good + [dict(good[0], id=100, conclusion="failure")], "a" * 40)
 
 
+def test_release_requires_every_job_green_and_the_build_and_meson_test_jobs_present():
+    policy = module("green_main")
+    good = [
+        dict(name="Build / Meson build profiles", conclusion="success"),
+        dict(name="Meson tests / Meson tests (minimal environment)", conclusion="success"),
+        dict(name="Desktop / GNOME 50 / installed deb and Flatpak", conclusion="success"),
+    ]
+    policy.validate_jobs(good, "u")
+    for bad in (
+        [],
+        good[1:],
+        [good[0], good[2]],
+        [dict(job, conclusion="skipped") if job is good[1] else job for job in good],
+        good + [dict(name="Offline / pinned-offline-recognition", conclusion="failure")],
+    ):
+        with pytest.raises(ValueError):
+            policy.validate_jobs(bad, "u")
+
+
 def test_release_requires_all_unexpired_package_artifacts():
     policy = module("green_main")
     good = [dict(name=name, expired=False) for name in policy.PACKAGES | policy.BUILD_PRODUCTS]

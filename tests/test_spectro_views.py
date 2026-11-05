@@ -321,6 +321,41 @@ def test_failed_subscription_is_latched_without_a_frame_or_retry_storm():
         hub.close()
 
 
+@pytest.mark.parametrize("broker", ["absent", "not listening"])
+def test_a_missing_broker_is_one_line_and_a_static_picture(tmp_path, caplog, broker):
+    import socket
+
+    path = tmp_path / "browser.sock"
+    if broker == "not listening":
+        stale = socket.socket(socket.AF_UNIX)
+        stale.bind(str(path))
+        stale.close()
+    window, strip = Window(), Strip()
+    hub = WindowSpectrograms(window)
+    try:
+        hub.bind(strip, "one", lambda columns: BrokerFeed(path, tmp_path / "Recording-x", columns))
+        assert hub.sessions["one"].ended and not window.ticks
+        (record,) = [r for r in caplog.records if r.name == "cassini_talk.spectro_views"]
+        assert record.levelname == "WARNING" and record.exc_info is None and str(path) in record.getMessage()
+    finally:
+        hub.close()
+
+
+def test_an_unexpected_subscription_failure_keeps_its_traceback(caplog):
+    window, strip = Window(), Strip()
+    hub = WindowSpectrograms(window)
+
+    def fail(_columns):
+        raise PermissionError("Synthetic refused meter socket")
+
+    try:
+        hub.bind(strip, "one", fail)
+        (record,) = [r for r in caplog.records if r.name == "cassini_talk.spectro_views"]
+        assert record.levelname == "ERROR" and record.exc_info[0] is PermissionError
+    finally:
+        hub.close()
+
+
 def test_saving_phase_releases_feed_and_keeps_the_last_mapped_picture_static():
     window, feeds, strip = Window(), Feeds(), Strip()
     hub = WindowSpectrograms(window)

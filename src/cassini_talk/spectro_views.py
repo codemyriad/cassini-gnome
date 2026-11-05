@@ -192,6 +192,12 @@ class WindowSpectrograms:
                 model = DisplayModel()
                 try:
                     feed = StoppedFeed() if binding.stopping else binding.factory(model.ingest)
+                except (FileNotFoundError, ConnectionRefusedError) as error:
+                    # No broker listens: it ended after the status poll that
+                    # showed this capture, or a fixture marks one recording
+                    # without a broker. The static picture is the answer.
+                    LOG.warning("No recording sound indicator to subscribe to: %s", error)
+                    feed = StoppedFeed()
                 except Exception:
                     # A picture never prevents controls, capture or saved audio.
                     LOG.exception("Could not subscribe to the recording sound indicator")

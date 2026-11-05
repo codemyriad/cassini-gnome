@@ -110,7 +110,7 @@ class MeterClient:
         if code not in (0, errno.EINPROGRESS, errno.EAGAIN, errno.EWOULDBLOCK):
             self.socket.close()
             self._closed = True
-            raise OSError(code, "Could not connect recording meter")
+            raise OSError(code, "Could not connect recording meter", str(path))
         self.watch = GLib.io_add_watch(
             self.socket, GLib.PRIORITY_DEFAULT, GLib.IO_OUT | GLib.IO_HUP | GLib.IO_ERR, self._connected
         )

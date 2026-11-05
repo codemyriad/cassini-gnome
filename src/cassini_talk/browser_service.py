@@ -163,12 +163,26 @@ def connect(path=None, *, timeout=30):
     return connection
 
 
-def ensure_service(path=None, *, cancelled=None):
+# A connect that finds no broker: its socket is gone (one that exits unlinks
+# it) or nothing listens on it (one that crashed left it behind). A broker that
+# listens, however stuck, never refuses: a full backlog fails with EAGAIN.
+BROKER_ABSENT = (FileNotFoundError, ConnectionRefusedError)
+
+
+def ensure_service(path=None, *, cancelled=None, absent=None):
+    """The broker's socket, spawning a broker if none answers. absent(error),
+    if given, hears at once that the first connect found no broker
+    (BROKER_ABSENT), before the spawn and its wait of up to 5 s: an exiting
+    broker still holds its lock while it stops its captures, so the new one
+    may not take over within it."""
     target = Path(path or service_path())
     try:
         connection = connect(target, timeout=0.5)
         connection.close()
         return target
+    except BROKER_ABSENT as error:
+        if absent is not None:
+            absent(error)
     except OSError:
         pass
     if cancelled is not None and cancelled.is_set():
