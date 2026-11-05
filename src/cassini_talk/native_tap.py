@@ -47,6 +47,14 @@ class NativeTap:
         self.ready = threading.Event()
         # D58.1: a first buffer was delivered (ready is also set by an error).
         self.heard = threading.Event()
+        # R93-2: a buffer reached the tap's queue. It is set before heard: a
+        # first buffer can wait behind the capture lock, or in the queue, when
+        # Stop comes. Stop drains such a tap; only a tap whose device never
+        # delivered a buffer has nothing to drain. Sealed by that Stop, a later
+        # buffer (captured after it) is dropped at the queue.
+        self.received = False
+        self._sealed = False
+        self._input = threading.Lock()
         self.closed = threading.Event()
         self.error = None
         self.refusal_code = "deviceUnavailable"
@@ -73,6 +81,9 @@ class NativeTap:
         self.anchor_clock = self.clock.get_time()
         self.anchor_session = self.session_clock.at((before + time.monotonic_ns()) // 2)
         self.pipeline.get_by_name("pcm").connect("new-sample", self._sample)
+        self.pipeline.get_by_name("tap-queue").get_static_pad("sink").add_probe(
+            Gst.PadProbeType.BUFFER | Gst.PadProbeType.BUFFER_LIST, self._entered
+        )
         self.thread = threading.Thread(target=self._messages, name="cassini-" + self.kind, daemon=True)
         self.thread.start()
         try:
@@ -96,6 +107,13 @@ class NativeTap:
             self.refusal_code = gst_code(gerror)
             self.ready.set()
             self.failed(self.error)
+
+    def _entered(self, _pad, _info):
+        with self._input:
+            if self._sealed:
+                return Gst.PadProbeReturn.DROP
+            self.received = True
+        return Gst.PadProbeReturn.OK
 
     def _sample(self, sink):
         sample = sink.emit("pull-sample")
@@ -145,9 +163,14 @@ class NativeTap:
         # EOS can block while Pulse finishes a read. Neither GTK nor a session
         # writer lock waits inside send_event; NULL also releases that sender.
         sender = None
-        # A tap that never delivered a buffer (D58.1: a silent computer) has
-        # nothing to drain: Pulse may never finish the read EOS would wait on.
-        if not self.heard.is_set():
+        # A tap whose device never delivered a buffer (D58.1: a silent computer)
+        # has nothing to drain: Pulse may never finish the read EOS would wait
+        # on. An armed tap with input queued, or its first buffer still on its
+        # way to the writer (heard is set only once it is written), drains it
+        # like any other tap (R93-2).
+        with self._input:
+            self._sealed = not self.received
+        if self._sealed:
             self.ended.set()
         if not self.ended.is_set():
 

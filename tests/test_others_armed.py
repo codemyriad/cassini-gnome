@@ -886,6 +886,84 @@ def test_a_never_heard_system_tap_stops_at_once(silent_device):
     assert time.monotonic() - began < 5
 
 
+class Signalled(threading.Event):
+    """An Event that also wakes `condition` when it is set."""
+
+    def __init__(self, condition):
+        super().__init__()
+        self.condition = condition
+
+    def set(self):
+        super().set()
+        with self.condition:
+            self.condition.notify_all()
+
+
+def test_an_armed_tap_whose_first_buffer_waits_behind_the_capture_lock_drains_at_stop(silent_device):
+    """R93-2 (#230 review): heard is set only once the first buffer's append
+    returns. When the armed tap's first callback waits behind the capture lock
+    (a stalled checkpoint) as Stop comes, it and the buffers queued behind it
+    were captured before Stop: Stop drains them through EOS, instead of tearing
+    the tap down as one that never heard a buffer and flushing its queue."""
+    from cassini_talk.native_tap import NativeTap
+    from cassini_talk.session_clock import SessionClock
+
+    decided = threading.Condition()
+    entered, release = threading.Event(), threading.Event()
+    queued, received, failures = [], [], []
+
+    def append(data, offset, **_):
+        if not received and not entered.is_set():
+            entered.set()
+            assert release.wait(BOUND)  # The capture lock, held by a stalled checkpoint.
+        received.append(data)
+
+    tap = NativeTap("system", SessionClock(0), append, failures.append, test=True)
+    tap.ended = Signalled(decided)  # Set at once by a Stop that skips the drain.
+    tap.start()  # Armed: the silent device has delivered nothing yet.
+    queue = tap.pipeline.get_by_name("tap-queue")
+
+    def entering(_pad, info):
+        with decided:
+            if info.type & Gst.PadProbeType.BUFFER:
+                queued.append(info.get_buffer().get_size())
+            elif info.get_event().type == Gst.EventType.EOS:
+                queued.append("EOS")  # The drain began.
+            decided.notify_all()
+        return Gst.PadProbeReturn.OK
+
+    queue.get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER | Gst.PadProbeType.EVENT_DOWNSTREAM, entering)
+    device = silent_device[0].get_by_name("device")
+    assert device.emit("push-buffer", Gst.Buffer.new_wrapped(bytes(960))) == Gst.FlowReturn.OK
+    assert entered.wait(BOUND)
+    assert not tap.heard.is_set()  # Its first buffer is not written yet.
+    for _ in range(9):  # Queued behind it, all captured before Stop.
+        assert device.emit("push-buffer", Gst.Buffer.new_wrapped(bytes(960))) == Gst.FlowReturn.OK
+    with decided:
+        assert decided.wait_for(lambda: len(queued) == 10, BOUND)
+    result = {}
+
+    def stop():
+        try:
+            tap.stop()
+        except BaseException as error:  # pragma: no cover - asserted below
+            result["error"] = error
+
+    stopping = threading.Thread(target=stop, name="test-tap-stop")
+    stopping.start()
+    with decided:  # Stop decides: drain (EOS reaches the queue) or skip (ended at once).
+        assert decided.wait_for(lambda: "EOS" in queued or tap.ended.is_set(), BOUND)
+        drained = "EOS" in queued
+    release.set()  # The stall ends.
+    stopping.join(BOUND)
+    assert not stopping.is_alive() and "error" not in result, result
+    # Skipping the drain tears the pipeline down and flushes the queue: how much
+    # of it still slips through before the flush is a race, so the decision is checked.
+    assert drained, "Stop skipped the drain of a tap with pre-Stop input queued"
+    assert len(received) == 10 and not failures, (len(received), failures)
+    assert b"".join(received) == bytes(10 * 960)
+
+
 @pytest.mark.parametrize("kind", ["microphone", "system"])
 def test_a_silent_tap_window(silent_device, kind):
     from cassini_talk.native_tap import NativeTap
