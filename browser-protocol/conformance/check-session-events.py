@@ -8,17 +8,29 @@ import subprocess
 import sys
 import tempfile
 import wave
-from jsonschema import Draft202012Validator, FormatChecker
+from functools import lru_cache
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / 'conformance/session-events'
-SCHEMA = Draft202012Validator(json.loads((ROOT / 'schemas/session.schema.json').read_text()),
-                             format_checker=FormatChecker())
+
+
+@lru_cache(maxsize=None)
+def schema():
+    """The session schema validator. jsonschema is imported here, not at load, so the
+    stdlib-only live-folder oracle (conformance/live-folder/check.py) can reuse bounds()."""
+    from jsonschema import Draft202012Validator, FormatChecker
+    return Draft202012Validator(json.loads((ROOT / 'schemas/session.schema.json').read_text()),
+                                format_checker=FormatChecker())
 
 
 def validate(document):
     """JSON Schema plus S-6 bounds that JSON Schema cannot express."""
-    SCHEMA.validate(document)
+    schema().validate(document)
+    bounds(document)
+
+
+def bounds(document):
+    """The S-6 bounds JSON Schema cannot express; needs no jsonschema."""
     previous = 0
     ended = False
     source = None
@@ -87,11 +99,13 @@ def others_presence(document):
     """Independent presence oracle (D52.2): The others' span extents minus gap ranges, merged.
 
     An extent starts at the track's D55 placement and lasts its frames (R88, D67 item 7);
-    gap ranges stay absolute session times.
+    gap ranges stay absolute session times. A track with no known start (startOffsetMs is
+    optional, and readers accept null) has no extent: it adds no presence and is never
+    placed at an invented time.
     """
     spans = []
     for track in document['tracks']:
-        if track['kind'] in ('microphone', 'local'):
+        if track['kind'] in ('microphone', 'local') or track.get('startOffsetMs') is None:
             continue
         start = placed_ms(track['startOffsetMs'])
         end = start + track['frames'] * 1000 / track['sampleRate']
