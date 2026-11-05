@@ -92,6 +92,9 @@ jobs:
         with:
           name: recording-evidence
           path: tests/recording/artifacts/
+          # GNOME keeps a recording under Library/.cassini/sessions/Recording-*:
+          # without this, upload-artifact drops session.json and the WAVs.
+          include-hidden-files: true
           retention-days: 7
   # Shared test 2 (D68): the protocol's live-folder driver against the real app,
   # production native hosts and the vendored extension, judged by the vendored
@@ -156,4 +159,7 @@ jobs:
         with:
           name: live-folder-evidence
           path: tests/recording/artifacts/
+          # GNOME keeps a recording under Library/.cassini/sessions/Recording-*:
+          # without this, upload-artifact drops session.json and the WAVs.
+          include-hidden-files: true
           retention-days: 7

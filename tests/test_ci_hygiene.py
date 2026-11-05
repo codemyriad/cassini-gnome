@@ -88,6 +88,20 @@ def test_every_local_test_run_is_bounded():
     )
 
 
+def test_recording_evidence_uploads_keep_hidden_library_folders():
+    # GNOME keeps a recording under Library/.cassini/sessions/Recording-*, and
+    # upload-artifact leaves out hidden files by default: the evidence would lose
+    # its session.json and WAVs.
+    steps = [
+        block
+        for workflow in sorted(WORKFLOWS.glob("*.yml"))
+        for block in re.split(r"\n(?=      - )", workflow.read_text())
+        if "actions/upload-artifact@" in block and "tests/recording/artifacts" in block
+    ]
+    assert steps
+    assert all(re.search(r"^          include-hidden-files: true$", block, re.M) for block in steps)
+
+
 def test_ci_runs_on_pushes_to_main_only():
     trigger = re.search(r"^  push:\n    branches: (.+)$", (WORKFLOWS / "ci.yml").read_text(), re.M)
     assert trigger and trigger.group(1) == "[main]"
