@@ -14,6 +14,21 @@ from cassini_talk.browser_service import send_packet  # noqa: E402
 from cassini_talk.capture_activity import BrowserActivity, read_browser_activity, recorder_activity  # noqa: E402
 
 
+def pump(condition):
+    """Iterate the main context until condition holds; 5 s only bounds it (E1)."""
+    from gi.repository import GLib
+
+    expired = []
+    source = GLib.timeout_add_seconds(5, lambda: expired.append(True) or GLib.SOURCE_REMOVE)
+    try:
+        while not condition():
+            assert not expired, "activity poll did not complete"
+            GLib.MainContext.default().iteration(True)
+    finally:
+        if not expired:
+            GLib.source_remove(source)
+
+
 def test_real_broker_reports_canonical_recording_and_clears_on_stop(service, tmp_path):  # noqa: F811
     _, path = service
     session = capture(tmp_path)
@@ -54,7 +69,7 @@ def test_browser_watch_delivers_profile_changes_once_off_the_worker(service, mon
         browser_watch, "time", SimpleNamespace(monotonic=lambda: now[0], monotonic_ns=browser_watch.time.monotonic_ns)
     )
     watcher = browser_watch.BrowserWatch(
-        lambda _: None, path=service[1], profiles_changed=lambda: notifications.append(threading.get_ident())
+        lambda *_: None, path=service[1], profiles_changed=lambda: notifications.append(threading.get_ident())
     )
     try:
         spin_until(lambda: watcher.future is None)
@@ -101,6 +116,197 @@ def test_slow_broker_is_bounded_and_does_not_block_main_context(tmp_path):
             release.set()
             thread.join(2)
     assert not read_browser_activity(tmp_path / "absent.sock")
+
+
+def test_an_unanswered_poll_keeps_the_live_capture_and_a_real_reply_clears_it(tmp_path):
+    """A broker that is late (its session checkpoint fsyncs under the capture
+    lock that a status reply takes) has not said that nothing records. Treating
+    the timeout as idle dropped the live meeting for one poll, which unbound its
+    spectrogram and closed the meter subscription (the spectrogram-browser flake)."""
+    import queue
+    import socket
+    import threading
+
+    from cassini_talk.browser_service import read_packet
+
+    session = capture(tmp_path, completed=False)
+    identifier, directory = session.manifest["id"], str(session.directory)
+    path = tmp_path / "late.sock"
+    replies, polled, release = queue.Queue(), threading.Event(), threading.Event()
+    live = dict(statuses=[dict(recording=True, path=directory)], connectedBrowsers=1)
+
+    def serve(server):
+        while (answer := replies.get()) is not None:
+            connection = server.accept()[0]
+            with connection, connection.makefile("rwb") as stream:
+                assert read_packet(stream) == dict(role="app", action="status")
+                if answer == "late":
+                    polled.set()
+                    release.wait()  # Never answers: the client's own bound ends the poll.
+                else:
+                    send_packet(stream, answer)
+
+    changes = []
+    with socket.socket(socket.AF_UNIX) as server:
+        server.bind(str(path))
+        server.listen()
+        thread = threading.Thread(target=serve, args=(server,))
+        thread.start()
+        replies.put(live)
+        watcher = BrowserActivity(lambda: changes.append(dict(watcher.snapshot)), path=path, interval_ms=3_600_000)
+        try:
+            pump(lambda: watcher.future is None)
+            assert changes == [{identifier: "recording"}] and watcher.connected
+
+            replies.put("late")
+            watcher.poll()
+            pump(lambda: polled.is_set() and watcher.future is None)
+            assert watcher.snapshot == {identifier: "recording"}, "A late reply is unknown, not idle"
+            assert watcher.paths == {identifier: directory} and watcher.connected
+            assert len(changes) == 1, "A late reply must not publish a change"
+
+            release.set()
+            replies.put(dict(statuses=[], connectedBrowsers=1))
+            watcher.poll()
+            pump(lambda: watcher.future is None)
+            assert watcher.snapshot == {} and watcher.paths == {}
+            assert changes == [{identifier: "recording"}, {}]
+        finally:
+            watcher.close()
+            release.set()
+            replies.put(None)
+            thread.join(5)
+    assert not thread.is_alive()
+    # Without a broker, and nothing answered yet, it still reads as idle.
+    assert read_browser_activity(path, True, True) == ({}, False, {})
+
+
+def test_unanswered_polls_keep_the_live_capture_only_up_to_the_bound(tmp_path, monkeypatch):
+    """A broker that is late is unknown, not idle, but a frozen broker that still
+    holds its socket must not keep a meeting "recording" forever: once a poll
+    fails UNANSWERED_BOUND after the last answer the Library reads it as idle, once."""
+    from concurrent.futures import Future
+
+    from cassini_talk import capture_activity
+    from cassini_talk.capture_activity import UNANSWERED, UNANSWERED_BOUND
+
+    session = capture(tmp_path, completed=False)
+    identifier, directory = session.manifest["id"], str(session.directory)
+    live = ({identifier: "recording"}, True, {identifier: directory})
+    replies, now, changes = [live], [0.0], []
+    monkeypatch.setattr(capture_activity, "read_browser_activity", lambda *_args, **_kwargs: replies.pop(0))
+    watcher = BrowserActivity(
+        lambda: changes.append(dict(watcher.snapshot)), interval_ms=3_600_000, clock=lambda: now[0]
+    )
+
+    def poll(result, at):
+        now[0] = at
+        replies.append(result)
+        watcher.poll()
+        pump(lambda: watcher.future is None)
+
+    def holds_live():
+        return (watcher.snapshot, watcher.connected, watcher.paths) == live
+
+    try:
+        pump(lambda: watcher.future is None)
+        assert holds_live() and changes == [{identifier: "recording"}] and watcher.answered_at == 0
+
+        # Before the bound the last answer stands and nothing is published.
+        poll(UNANSWERED, 1)
+        poll(UNANSWERED, UNANSWERED_BOUND - 0.1)
+        assert holds_live() and len(changes) == 1
+        # A poll failing at the bound after the last answer reads as idle, published once.
+        poll(UNANSWERED, UNANSWERED_BOUND)
+        assert (watcher.snapshot, watcher.connected, watcher.paths) == ({}, False, {})
+        assert changes == [{identifier: "recording"}, {}]
+        poll(UNANSWERED, 1 + UNANSWERED_BOUND)
+        assert len(changes) == 2, "Further unanswered polls publish no more changes"
+        # A real reply after that restores the capture.
+        poll(live, 13)
+        assert holds_live() and changes[-1] == {identifier: "recording"} and len(changes) == 3
+
+        # Each answer restarts the bound: silence is timed from the last answer.
+        poll(UNANSWERED, 14)
+        poll(UNANSWERED, 13 + UNANSWERED_BOUND - 0.1)
+        poll(live, 13 + UNANSWERED_BOUND - 0.05)
+        poll(UNANSWERED, 30)
+        poll(UNANSWERED, 13 + 2 * UNANSWERED_BOUND - 0.15)
+        assert holds_live() and len(changes) == 3, "An answer must restart the bound"
+
+        # A reply that nothing records is idle at once; a failure is no reply.
+        poll(({}, True, {}), 41)
+        assert watcher.answered_at == 41 and changes[3:] == [{}]
+        poll(live, 42)
+        assert holds_live() and changes[3:] == [{}, {identifier: "recording"}]
+        assert not replies
+
+        # An answer received before the one held never replaces it, whenever it lands.
+        older = Future()
+        older.set_result((41.5, ({}, False, {})))
+        watcher._complete(older)
+        assert holds_live() and watcher.answered_at == 42 and len(changes) == 5
+    finally:
+        watcher.close()
+
+
+def test_only_a_brokers_reply_or_its_absence_is_an_answer(tmp_path):
+    """With `unanswered`, a status reply the broker sent is an answer, and so
+    is no broker at all (no socket, or one nothing listens on): idle, nothing
+    records. A broker that is there but did not answer (a stalled broker's full
+    backlog, an EOF before the reply, a malformed or error reply) returns
+    `unanswered`: BrowserActivity keeps its last answer up to the bound
+    (broker_silent), as BrowserWatch does for the same failures, instead of a
+    newest "idle"."""
+    import socket
+    import threading
+
+    from cassini_talk.browser_service import read_packet
+    from cassini_talk.capture_activity import UNANSWERED
+
+    def read(path):
+        return read_browser_activity(path, True, True, unanswered=UNANSWERED)
+
+    assert read(tmp_path / "absent.sock") == ({}, False, {}), "No socket: no broker, nothing records"
+    with socket.socket(socket.AF_UNIX) as refused:
+        refused.bind(str(tmp_path / "refused.sock"))  # Bound, never listening.
+        assert read(tmp_path / "refused.sock") == ({}, False, {}), "Refused: no broker listens"
+    with socket.socket(socket.AF_UNIX) as stalled, socket.socket(socket.AF_UNIX) as queued:
+        stalled.bind(str(tmp_path / "stalled.sock"))
+        stalled.listen(0)
+        queued.settimeout(0.25)
+        queued.connect(str(tmp_path / "stalled.sock"))  # Fills the backlog; nobody accepts.
+        assert read(tmp_path / "stalled.sock") is UNANSWERED
+
+    path = tmp_path / "broker.sock"
+    partial = b'{"statuses": ['  # Cut short: no newline, then EOF.
+    replies = [None, dict(error="Browser inventory unavailable"), partial, dict(statuses=[], connectedBrowsers=1)]
+    with socket.socket(socket.AF_UNIX) as server:
+        server.bind(str(path))
+        server.listen()
+
+        def serve():
+            for reply in replies:
+                connection = server.accept()[0]
+                with connection, connection.makefile("rwb") as stream:
+                    read_packet(stream)
+                    if isinstance(reply, bytes):
+                        stream.write(reply)
+                    elif reply is not None:
+                        send_packet(stream, reply)
+
+        thread = threading.Thread(target=serve)
+        thread.start()
+        try:
+            assert read(path) is UNANSWERED, "EOF before a reply is no answer"
+            assert read(path) is UNANSWERED, "An error reply is no answer"
+            assert read(path) is UNANSWERED, "A partial reply is no answer"
+            assert read(path) == ({}, True, {}), "A reply that nothing records is one"
+        finally:
+            thread.join(5)
+    assert not thread.is_alive()
+    # Callers without the sentinel (the relocator) still read a failure as idle.
+    assert read_browser_activity(tmp_path / "absent.sock", True, True) == ({}, False, {})
 
 
 def test_native_identity_only_comes_from_controller_owned_session(tmp_path):
@@ -151,7 +357,9 @@ def test_desktop_probe_failure_preserves_watch_lease_and_status_polling(service,
     monkeypatch.setattr(flatpak_bridge.subprocess, "run", run)
     statuses, profiles = [], []
     watcher = browser_watch.BrowserWatch(
-        statuses.append, path=service[1], profiles_changed=lambda: profiles.append(watcher._profiles)
+        lambda value, _at: statuses.append(value),
+        path=service[1],
+        profiles_changed=lambda: profiles.append(watcher._profiles),
     )
     try:
         spin_until(lambda: watcher.future is None and watcher.lease is not None)

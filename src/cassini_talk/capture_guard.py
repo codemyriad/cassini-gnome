@@ -34,22 +34,24 @@ def native_recorders(target):
 def capture_targets(app):
     from types import SimpleNamespace
 
+    from .capture_activity import standing_broker_caches
+
     native = [w for w in app.get_windows() if recorder_busy(getattr(w, "recorder", None))]
     native.extend(
         SimpleNamespace(recorder=recorder, open_result=False)
         for recorder in native_recorders(app)
         if recorder_busy(recorder)
     )
+    # Only broker replies that stand count: each cache expires on its own
+    # (broker_silent) and the newest reply among them wins.
+    app_stands, sources = standing_broker_caches(app)
+    snapshots = [app, *app.get_windows()] if app_stands else []
     browser = bool(getattr(app, "_record_start_future", None)) or any(
-        browser_capture_busy(s) for s in getattr(app, "_browser_snapshot", {}).get("statuses", [])
+        browser_capture_busy(s)
+        for target in snapshots
+        for s in getattr(target, "_browser_snapshot", {}).get("statuses", [])
     )
-    browser = browser or any(
-        getattr(w, "_activity_source", None) and w._activity_source.snapshot for w in app.get_windows()
-    )
-    browser = browser or any(
-        any(browser_capture_busy(s) for s in getattr(w, "_browser_snapshot", {}).get("statuses", []))
-        for w in app.get_windows()
-    )
+    browser = browser or any(source.snapshot for source in sources)
     return native, bool(browser)
 
 

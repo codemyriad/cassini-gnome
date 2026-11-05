@@ -923,7 +923,7 @@ def fake_app(application, **values):
         failure_entry=application.failure_entry,
     )
     app = SimpleNamespace(**dict(defaults, **values))
-    app._browser_changed = lambda snapshot: application._prune_recording_failures(app, snapshot)
+    app._browser_changed = lambda snapshot, _received_at=None: application._prune_recording_failures(app, snapshot)
     return app
 
 
