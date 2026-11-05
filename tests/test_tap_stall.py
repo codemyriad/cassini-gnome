@@ -606,7 +606,52 @@ def broker(tmp_path):
     stop_broker(service, worker, path)
 
 
-@pytest.mark.parametrize("stall", [False, True], ids=["", "stalled"])
+class LifecyclePeer:
+    """test_browser_sessions.Extension, advertising page-state-v1 as the
+    shipped extension does: the broker's lifecycle policy reads its captures."""
+
+    def __init__(self, path, tabs=(3,)):
+        from test_browser_service import meeting, wait_for
+
+        from cassini_talk.browser_service import connect, request, send_packet
+
+        self.path = path
+        self.connection = connect(path, timeout=2)
+        self.stream = self.connection.makefile("rwb")
+        self.sessions = {}
+        send_packet(self.stream, dict(role="extension", browserInstance=None))
+        capabilities = ["independent-sessions-v1", "page-state-v1"]
+        send_packet(self.stream, dict(type="hello", version=1, capabilities=capabilities))
+        send_packet(self.stream, dict(type="status", recording=False, sessions=[]))
+        send_packet(self.stream, dict(type="meetings", meetings=[meeting(tab) for tab in tabs]))
+        wait_for(lambda: len(request(path=path)["meetings"]) == len(tabs))
+
+    def receive(self):
+        from cassini_talk.browser_service import read_packet
+
+        return read_packet(self.stream)
+
+    def status(self, **values):
+        """The recording tab's status row again, with `values` (pageState...)."""
+        from cassini_talk.browser_service import send_packet
+
+        sessions = [dict(session, **values) for session in self.sessions.values()]
+        send_packet(self.stream, dict(type="status", recording=True, sessions=sessions))
+
+    def answer(self, command):
+        from cassini_talk.browser_service import send_packet
+
+        tab = command["tabId"]
+        value = dict(self.sessions.pop(tab, dict(tabId=tab)), recording=False)
+        result = dict(type="result", requestId=command["requestId"], ok=True, error=None)
+        send_packet(self.stream, dict(result, status=dict(value, sessions=list(self.sessions.values()))))
+
+    def close(self):
+        self.stream.close()
+        self.connection.close()
+
+
+@pytest.mark.parametrize("stall", [False, "capture", "policy", "status"], ids=["", "stalled", "policy", "status"])
 @pytest.mark.parametrize("route", ["stop-all", "stop", "command", "cancel"])
 def test_each_broker_stop_path_fixes_the_stop_moment_so_queued_audio_before_it_is_kept(broker, route, stall):
     """The broker marks Stop before capture.stop() runs: GNOME's Stop and Quit
@@ -618,9 +663,19 @@ def test_each_broker_stop_path_fixes_the_stop_moment_so_queued_audio_before_it_i
     `stall`: Stop is pressed at 945 ms while a checkpoint stalled on storage
     holds capture.lock. Stop's moment is still 945 ms, marked before the stall
     ends at 2945 ms (#230 review). On 979431a stop-all took every capture's
-    lock for its snapshot before it marked Stop."""
+    lock for its snapshot before it marked Stop.
+
+    "policy" and "status": a page-state-v1 control peer (the shipped extension)
+    records the call, so the broker's lifecycle policy reads the capture. The
+    stall begins and Stop is pressed only once the broker has asked for
+    capture.lock: its accept loop's periodic policy tick ("policy"), or the
+    peer's status naming the page state ("status"), which retires a gone
+    document's spans and runs the policy. On ad5d337 both waited for
+    capture.lock while holding the broker's lock (and the accept loop), so
+    every route marked Stop at 2945 ms, when storage recovered."""
     from test_browser_capture import bind_capture
     from test_browser_capture import start as start_audio
+    from test_browser_service import wait_for
     from test_browser_sessions import Extension
 
     from cassini_talk.browser_audio_proxy import BrowserAudioProxy
@@ -632,17 +687,33 @@ def test_each_broker_stop_path_fixes_the_stop_moment_so_queued_audio_before_it_i
     try:
         start_audio(client, "stall")
         capture = service.captures["stall"]
-        if route in ("stop", "command"):
-            peer = Extension(path, (3,))
+        lifecycle = stall in ("policy", "status")
+        if route in ("stop", "command") or lifecycle:
+            peer = LifecyclePeer(path) if lifecycle else Extension(path, (3,))
             bind_capture(peer, capture)
             identifier = next(m["id"] for m in request(path=path)["meetings"] if m["tabId"] == 3)
+        if lifecycle:
+            wait_for(lambda: capture.lifecycle_capable)  # The broker's policy reads this capture.
         # The capture's one clock, set by the test from here on: the Stop moment is exact.
         clock = ManualClock(capture.session_clock.origin_ms)
         clock.ms = capture.session_clock.now()
         capture.session_clock = clock
         tap, start = record_live(capture, clock)
         if stall:
+            ordered = capture.lock = OrderedLock(capture.lock, None, None)
             holder, release = stall_holding(capture)
+        if lifecycle:
+            with ordered.arrivals:
+                ordered.waiting.clear()
+            if stall == "status":
+                peer.status(pageState="present", documentGeneration="doc-1")
+            # The broker has asked for the stalled capture.lock: its accept
+            # loop's policy tick, or the reader handling the peer's status.
+            asker = "(serve)" if stall == "policy" else "(handle)"
+            with ordered.arrivals:
+                assert ordered.arrivals.wait_for(lambda: any(asker in n for n in ordered.waiting), BOUND), (
+                    ordered.waiting
+                )
         stops = {
             "stop-all": lambda: request("stop-all", path=path),
             "stop": lambda: request("stop", path=path, id=identifier),
@@ -676,7 +747,7 @@ def test_each_broker_stop_path_fixes_the_stop_moment_so_queued_audio_before_it_i
             canceller.join(BOUND)
         assert tap.draining.wait(BOUND)
         drain_across_stop(tap, start, clock)
-        if peer is not None:
+        if peer is not None and route != "cancel":  # A cancel sends no command.
             command = peer.receive()  # Sent once the local save is done.
             assert (command["action"], command["tabId"]) == ("stop", 3)
             peer.answer(command)
@@ -691,6 +762,63 @@ def test_each_broker_stop_path_fixes_the_stop_moment_so_queued_audio_before_it_i
         client.close()
         if peer is not None:
             peer.close()
+
+
+@pytest.mark.parametrize("step", ["tick", "ask", "cancel"])
+def test_the_broker_never_waits_for_a_stalled_capture_lock_off_the_stop_path(tmp_path, step):
+    """The broker's watchdog tick (on its accept loop), a resume ask (under its
+    lock) and a fallback's cancel (on the policy thread) each read or write a
+    capture. While a checkpoint stalled on storage holds capture.lock, none of
+    them waits for it: a Stop pressed meanwhile must reach the broker and be
+    marked when it is pressed (#230 review). The stale-PCM watchdog decides on
+    a later tick (a busy capture is the broker's own stall, not the peer's);
+    the ask is noted at once; the cancel waits off the policy thread. On
+    ad5d337 the ask and the cancel waited for the stall."""
+    from cassini_talk.browser_service import PCM_STALE_AFTER, AudioTransport, BrowserService
+
+    taps = DrainingTaps()
+    capture, clock = start_capture(tmp_path, taps, microphone=True, others_source="browser")
+    declared = dict(type="track", id="guest", label="Guest", kind="remote", sampleRate=48000, channels=1)
+    assert capture.handle(declared)["type"] == "ack"
+    assert capture.handle(guest_audio(0, 480, 0))["type"] == "ack"
+    if step == "tick":
+        capture.multistream_capable = True
+        transport = AudioTransport(None, lambda: 0.0)
+        transport.capture = capture
+        transport.last_inbound = -PCM_STALE_AFTER  # A remote span that went quiet.
+        assert transport.expired(0.0, wait=False) == "stopped sending audio"  # A free lock: as before.
+        call = lambda: transport.expired(0.0, wait=False)  # noqa: E731
+    elif step == "ask":
+        call = lambda: capture.mark_resume_ask("ask-1")  # noqa: E731
+    else:
+        service = BrowserService(
+            tmp_path / "config.json", capture_parent=tmp_path / "library", tap_factory=taps, notifier=lambda *_: None
+        )
+        capture.fallback_pending = True  # A fallback decided, its device not yet open.
+        call = lambda: service._cancel_fallback("stall", capture)  # noqa: E731
+    holder, release = stall_holding(capture)
+    try:
+        caller, called = in_thread("test-" + step, call)
+        caller.join(BOUND)  # Bound only: it returns while the stall goes on.
+        assert not caller.is_alive(), "it waited for the stalled capture lock"
+        assert "error" not in called, called
+        if step == "tick":
+            assert called["value"] is None  # Busy: the next tick decides.
+        elif step == "ask":
+            assert capture.resume_asks == {"ask-1": clock.ms}
+        else:
+            deferred = called["value"]
+            assert deferred is not None and not capture._fallback_cancelled  # Its own thread waits.
+    finally:
+        release.set()
+        holder.join(BOUND)
+    if step == "cancel":
+        deferred.join(BOUND)
+        assert not deferred.is_alive() and capture._fallback_cancelled  # Done once the lock is free.
+        capture.fallback_pending = False
+    for tap in taps.taps.values():
+        tap.drained.set()
+    capture.stop()
 
 
 @pytest.mark.parametrize("first_ms, opens", [(-20, True), (-5, True), (0, False), (10, False)])

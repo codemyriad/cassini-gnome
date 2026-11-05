@@ -237,7 +237,9 @@ class Transport:
         self.write_started = None
         self.shut_down = threading.Event()
 
-    def expired(self, now):
+    def expired(self, now, *, wait=True):
+        """Why this peer must be closed now, or None. wait=False never waits
+        for a capture's lock (the broker's tick: #230)."""
         started = self.write_started
         if started is not None and now - started >= WRITE_DEADLINE:
             return "stopped reading"
@@ -265,7 +267,7 @@ class AudioTransport(Transport):
         # Wire span ids declared on this transport; they end when it closes.
         self.spans = set()
 
-    def expired(self, now):
+    def expired(self, now, *, wait=True):
         capture = self.capture
         if (
             capture is not None
@@ -273,7 +275,9 @@ class AudioTransport(Transport):
             and capture.multistream_capable
             and now - self.last_inbound >= PCM_STALE_AFTER
             and not (capture.finished or capture.stopping or capture.stop_requested.is_set())
-            and capture.remote_open()
+            # A busy capture lock (None) is the broker's own stall, not the
+            # peer's: the next tick decides.
+            and capture.remote_open(wait=wait)
         ):
             # Only a running remote recorder must keep sending. Before the first
             # PCM, or after every span ended (a guest left, the receiver dropped
@@ -281,7 +285,7 @@ class AudioTransport(Transport):
             # A control-loss fallback is no exception (D57): a frozen
             # companion's attached transport is closed, so a resume can follow.
             return "stopped sending audio"
-        return super().expired(now)
+        return super().expired(now, wait=wait)
 
 
 class BrowserConnection(Transport):
@@ -330,10 +334,10 @@ class BrowserConnection(Transport):
         self.resumes = {}
         self.closed = False
 
-    def expired(self, now):
+    def expired(self, now, *, wait=True):
         if self.last_ping is not None and now - self.last_inbound >= CONTROL_LOSS_AFTER:
             return "stopped answering pings"
-        return super().expired(now)
+        return super().expired(now, wait=wait)
 
     def send(self, packet):
         data = encode_packet(packet)
@@ -421,6 +425,9 @@ class BrowserService:
         self._pending_calls = {}
         self._cancelled_captures = {}
         self._cancel_capture_pending = set()
+        # The document changes a control packet reports, per reader thread:
+        # applied to their captures once the broker's lock is released (#230).
+        self._documents = threading.local()
         self.capture_parent, self.tap_factory = capture_parent, tap_factory
         self.applications = {}
         self.application_pids = {}
@@ -1389,6 +1396,13 @@ class BrowserService:
         """
         if page not in ("navigating", "present") and document is None:
             return
+        pending = getattr(self._documents, "pending", None)
+        if pending is not None:
+            # Under the broker's lock (update()): retiring spans takes the
+            # capture's lock, which a stalled checkpoint can hold, and a Stop
+            # pressed meanwhile needs the broker's lock to be marked (#230).
+            pending.append((owner, page, document))
+            return
         retired = owner.observe_document(document, navigating=page == "navigating", present=page == "present")
         if retired:
             logging.getLogger(__name__).debug("Retired %d spans of a gone document from the PCM watchdog", retired)
@@ -1472,6 +1486,18 @@ class BrowserService:
             self._cancel_capture(capture_id, identity, "callEnded")
 
     def update(self, browser, packet):
+        self._documents.pending = documents = []
+        try:
+            self._update(browser, packet)
+        finally:
+            # In report order, on this peer's reader thread, outside the
+            # broker's lock: they may wait for a stalled capture lock (#230).
+            self._documents.pending = None
+            for owner, page, document in documents:
+                self._observe_document(owner, page, document)
+        self.policy()
+
+    def _update(self, browser, packet):
         with self.lock:
             browser.last_inbound = self.clock()  # Every frame type proves liveness.
             kind = packet.get("type")
@@ -1614,7 +1640,6 @@ class BrowserService:
                 for tab, page in browser.page_states.items()
                 if tab in browser.states or tab in browser.meetings
             }
-        self.policy()
 
     def command(
         self,
@@ -2349,7 +2374,9 @@ class BrowserService:
         with self.lock:
             transports = [*self.browsers.values(), *self._audio_transports]
         for transport in transports:
-            reason = transport.expired(now)
+            # Never waits for a capture lock: this is the accept loop, and a
+            # Stop connecting meanwhile must be read when it is pressed (#230).
+            reason = transport.expired(now, wait=False)
             if reason is not None and not transport.shut_down.is_set():
                 logging.getLogger(__name__).warning("Closing a browser peer that %s", reason)
                 transport.shutdown()
@@ -2401,6 +2428,14 @@ class BrowserService:
                 ):
                     self._capture_missing_since.pop(key, None)
                     continue
+                # Read once, never waiting for capture.lock, which a checkpoint
+                # stalled on storage can hold for seconds: this runs under the
+                # broker's lock, on its accept loop or a control reader, and a
+                # Stop pressed meanwhile must reach the broker and be marked when
+                # it is pressed (#230). A busy capture is decided on a later tick.
+                readiness = capture.readiness(wait=False)
+                if readiness is None:
+                    continue
                 peer = observed.get(key)
                 reconnect = self._control_reconnects.get(key)
                 if reconnect is not None:
@@ -2430,7 +2465,7 @@ class BrowserService:
                             lifecycle.missing is not None
                             and "call-evidence-v1" in peer[0].capabilities
                             and meeting.get("heard") is not True
-                            and not capture.browser_ready_since(lifecycle.missing)
+                            and not readiness.since(lifecycle.missing)
                         ):
                             count = 0  # Returning pre-join slots are not received audio.
                     if page == "closed":
@@ -2440,7 +2475,7 @@ class BrowserService:
                         # A disconnect can be observed between two PCM buffers. Recent
                         # pre-disconnect PCM is still fresh; requiring the next
                         # buffer here prematurely invents a page-loss timer.
-                        fresh = capture.browser_ready_since()
+                        fresh = readiness.since()
                         if known_page and page == "present":
                             self._control_reconnects.pop(key, None)
                             if lifecycle.missing == reconnect.since:
@@ -2488,7 +2523,7 @@ class BrowserService:
                         count,
                         fallback=capture.browser_lost,
                         others=capture.others,
-                        restore_ready=capture.browser_ready and not capture.restore_blocked,
+                        restore_ready=readiness.ready and not capture.restore_blocked,
                         fallback_pending=capture.fallback_pending,
                         multistream=capture.multistream_capable,
                         # D52.5: another call's heard never arms this recording's
@@ -2500,7 +2535,7 @@ class BrowserService:
                         and peer[2] is not None
                         and meeting.get("sourceCountKnown", True),
                         control_alive=peer is not None,
-                        pcm_live=capture.multistream_capable and capture.browser_ready_since(recorded=True),
+                        pcm_live=capture.multistream_capable and readiness.since(recorded=True),
                         initial_missing=current.reason == "missing",
                         resume=resume,
                     )
@@ -2525,7 +2560,7 @@ class BrowserService:
                     if (
                         now - reconnect.since < CONTROL_RECONNECT_GRACE
                         and not capture.browser_lost
-                        and capture.browser_ready_since(reconnect.since)
+                        and readiness.since(reconnect.since)
                     ):
                         continue
                 # A lost audio/control peer can disappear before its first
@@ -2625,8 +2660,15 @@ class BrowserService:
 
         Sets the capture's cancel flag under the lock its commit checks, on the
         policy thread. A fallback that committed first stays (heard rule).
+        The policy thread can be the accept loop: while a stalled checkpoint
+        holds that lock, a thread of its own waits for it instead (never the
+        worker pool, see policy()), returned so it can be joined (#230).
         """
-        capture.cancel_fallback()
+        if capture.cancel_fallback(wait=False) is not None:
+            return None
+        waiter = threading.Thread(target=capture.cancel_fallback, name="cassini-fallback-cancel", daemon=True)
+        waiter.start()
+        return waiter
 
     def _capture_lifecycle(self, key, capture, identifier, action):
         try:
