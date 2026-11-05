@@ -375,6 +375,8 @@ def fake_wheel(site, name="cassini_fake"):
         )
     # A console script the manifest's cleanup removes: outside site-packages.
     rows.append("../../../bin/cassini-fake,sha256=AAAA,1")
+    # A static library the manifests' "*.a" cleanup deletes inside site-packages.
+    rows.append(f"{name}/lib/libfake.a,sha256=AAAA,1")
     rows.append(f"{info.name}/RECORD,,")
     (info / "RECORD").write_text("\n".join(rows) + "\n")
     return package, info
@@ -401,6 +403,17 @@ def test_verify_record_checks_every_installed_file_of_a_wheel(damage, tmp_path, 
     else:
         with pytest.raises(SystemExit, match="cassini_fake"):
             verify_record("cassini_fake")
+
+
+def test_verify_record_excuses_exactly_the_manifests_unrooted_cleanup_globs():
+    # The Flatpak build deletes these wherever they are (NumPy's libnpymath.a among
+    # them), so a RECORD row they match is not a missing file; rooted patterns
+    # (/include, /lib/pkgconfig) never reach site-packages.
+    default = smoke_installed_functions("verify_record")["verify_record"].__defaults__[0]
+    for name in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
+        manifest = json.loads((ROOT / f"build-aux/flatpak/{name}.json").read_text())
+        unrooted = [glob for glob in manifest["cleanup"] if not glob.startswith("/")]
+        assert sorted(unrooted) == sorted(default), name
 
 
 def test_verify_numpy_imports_computes_and_matches_its_record(monkeypatch):

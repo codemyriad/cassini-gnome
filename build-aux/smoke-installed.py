@@ -32,15 +32,19 @@ import tempfile
 from pathlib import Path
 
 
-def verify_record(name):
+def verify_record(name, removed=("*.la", "*.a")):
     """Check every file a wheel installed in site-packages against its RECORD.
 
-    Console scripts outside site-packages are skipped: the Flatpak manifest's
-    cleanup removes NumPy's. A missing RECORD, file or SHA-256 match exits.
-    RECORD is read directly: Distribution.files leaves out missing files."""
+    Console scripts outside site-packages are skipped, and so are files whose
+    name matches `removed`: the Flatpak manifests' unrooted cleanup globs, which
+    delete them wherever they are (NumPy's static libraries among them). A
+    missing RECORD, file or SHA-256 match exits. RECORD is read directly:
+    Distribution.files leaves out missing files."""
     import base64
     import csv
+    import fnmatch
     import hashlib
+    import posixpath
     from importlib import metadata
 
     try:
@@ -48,7 +52,14 @@ def verify_record(name):
     except metadata.PackageNotFoundError:
         sys.exit(f"installed {name} has no distribution metadata")
     rows = [row for row in csv.reader((distribution.read_text("RECORD") or "").splitlines()) if row]
-    rows = [row for row in rows if len(row) > 1 and row[1] and not row[0].startswith("../")]
+    rows = [
+        row
+        for row in rows
+        if len(row) > 1
+        and row[1]
+        and not row[0].startswith("../")
+        and not any(fnmatch.fnmatch(posixpath.basename(row[0]), glob) for glob in removed)
+    ]
     if not rows:
         sys.exit(f"installed {name} has no hashed RECORD to check its files against")
     for path, hashed, *_ in rows:
