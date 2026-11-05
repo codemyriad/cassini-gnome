@@ -214,6 +214,10 @@ class WAVWriter:
     def __init__(self, path, rate, channels, max_bytes=0xFFFFFFFF - 36):
         self.rate, self.channels, self.size = rate, channels, 0
         self.max_bytes = max_bytes
+        # Written since the last successful fsync. Every write ends in _header(),
+        # so a writer nothing reached since its last sync (an ended track) costs
+        # no fsync at the next checkpoint under the capture lock (R93-2).
+        self.dirty = False
         self.file = open(path, "x+b")  # noqa: SIM115 — owned until session finalization
         try:
             os.chmod(path, 0o600)
@@ -230,6 +234,7 @@ class WAVWriter:
         return self.size // (self.channels * 2)
 
     def _header(self):
+        self.dirty = True  # Before any byte moves, so a failed write still syncs.
         self.file.seek(0)
         self.file.write(
             struct.pack(
@@ -267,9 +272,11 @@ class WAVWriter:
             remaining -= count
 
     def sync(self):
-        if not self.file.closed:
-            self.file.flush()
-            os.fsync(self.file.fileno())
+        if self.file.closed or not self.dirty:
+            return
+        self.file.flush()
+        os.fsync(self.file.fileno())
+        self.dirty = False  # Only once durable: a failed fsync is retried and reported again.
 
     def close(self):
         try:

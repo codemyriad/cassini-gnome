@@ -51,7 +51,20 @@ The leading silence between a declared selection boundary and its first input
 buffer preserves alignment, without counting as a gap. Counted silence is
 included in both WAV and manifest frames. A recording with only input gaps ends
 as interrupted with `problemKind: gap`; a writer failure takes precedence as
-`io`. Native writes are synchronous, so no queued-writer loss counter is needed.
+`io`.
+
+Native writes are synchronous on the tap's streaming thread, under the capture
+lock, and a checkpoint can run there. Each tap therefore holds up to 10 s of
+audio in a GStreamer queue ahead of that writer (`TAP_QUEUE`, the same capacity
+as Mac's per-source writer queue), so a lock hold, a slow fsync or a stalled tap
+thread delays the audio without losing it (R93-2). The queue keeps each
+buffer's timestamp, so gap detection and clock anchors are unchanged. A stall
+longer than 10 s still overruns pulsesrc's ring buffer; that loss is saved as
+an `input` gap, which is truthful but mislabels host-side loss until it is
+recorded as `writer` loss. A checkpoint fsyncs only the WAVs written since the
+last one, so ended tracks cost nothing. Stop drains each tap (bounded at 10 s)
+and records the queued audio captured before the Stop moment, cutting the
+buffer that straddles it; audio captured after it is dropped.
 
 `tests/test_native_timing.py` drives the real native input callback with the
 pinned GNOME fixture and compares the entire manifest and WAV bytes. It also

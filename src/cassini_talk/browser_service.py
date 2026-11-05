@@ -517,7 +517,7 @@ class BrowserService:
         if identity is not None:
             owner.call_identity = identity
         owner.end_reason = owner.end_reason or reason
-        owner.stop_requested.set()
+        owner.request_stop()
         if capture_id not in self._cancel_capture_pending:
             self._cancel_capture_pending.add(capture_id)
             self.workers.submit(self._finish_cancelled_capture, capture_id, owner, reason)
@@ -1746,7 +1746,7 @@ class BrowserService:
                 self._remember_stop(browser, tab, True)
                 if capture is not None and not preserve_capture:
                     capture.end_reason = capture.end_reason or reason
-                    capture.stop_requested.set()
+                    capture.request_stop()
             if action == "start" and any(
                 p.get("action") == "start" for p in self._pending_calls.get(logical, {}).values()
             ):
@@ -1816,7 +1816,7 @@ class BrowserService:
                     pending["captures"].add(capture.capture_id)
                 if capture is not None and action == "stop" and not preserve_capture:
                     capture.end_reason = capture.end_reason or reason
-                    capture.stop_requested.set()
+                    capture.request_stop()
         if joining is not None:
             if capture is not None and not preserve_capture:
                 # Local save is authoritative. The existing browser Stop may
@@ -2303,7 +2303,7 @@ class BrowserService:
                     if quitting_pid is None:
                         self._remember_capture_stop(capture)
                     capture.end_reason = capture.end_reason or reason
-                    capture.stop_requested.set()
+                    capture.request_stop()
             # Save native-owned audio before waiting for any browser acknowledgement.
             jobs = [
                 ("capture:" + key, lambda capture=capture: capture.stop(reason=reason)) for key, capture in captures

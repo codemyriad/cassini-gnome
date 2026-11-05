@@ -13,7 +13,7 @@ from gi.repository import GLib, GObject, Gst
 
 from .capture_sources import canonical_order, change_time, selected_pcm
 from .native_timing import NS, NativeTimeline
-from .recorder import CAPTURE_CONVERT, request_eos
+from .recorder import CAPTURE_CONVERT, TAP_QUEUE, request_eos
 from .recording_details import ACMeter, space_left
 from .recording_session import RecordingSession
 from .spectro_source import SpectroSource
@@ -596,7 +596,7 @@ class NativeRecorder(GObject.Object):
         # A staged live sink must not start a new pipeline-wide preroll: that
         # would pause the confirmed sources while the replacement is tested.
         branch = Gst.parse_bin_from_description(
-            source + " ! queue ! " + CAPTURE_CONVERT + " ! audioresample ! "
+            source + " ! " + TAP_QUEUE + " ! " + CAPTURE_CONVERT + " ! audioresample ! "
             "audio/x-raw,format=S16LE,rate=48000,channels=1 ! "
             f"appsink name={kind} emit-signals=true sync=false async=false max-buffers=8 drop=false",
             False,

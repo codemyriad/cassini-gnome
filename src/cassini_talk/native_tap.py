@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """One independent native source, on a monotonic clock, without a GTK main loop."""
 
+import logging
 import threading
 import time
 
@@ -9,7 +10,7 @@ import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
 
-from .recorder import CAPTURE_CONVERT  # noqa: E402
+from .recorder import CAPTURE_CONVERT, TAP_QUEUE  # noqa: E402
 from .recording_details import ACMeter  # noqa: E402
 from .refusals import gst_code  # noqa: E402
 
@@ -17,6 +18,10 @@ from .refusals import gst_code  # noqa: E402
 # D58.1: for the others' side (computer sound) it is only the window in which an
 # explicit error refuses the tap at its open; silence never does.
 OPEN_TIMEOUT_S = 3
+# Stop drains the tap: EOS follows every buffer still queued (up to 10 s of
+# audio after a host stall, TAP_QUEUE) through the writer.
+DRAIN_TIMEOUT_S = 10
+LOG = logging.getLogger(__name__)
 NO_SAMPLE = "Native audio capture did not produce a sample"
 
 
@@ -56,7 +61,7 @@ class NativeTap:
             else f'pulsesrc name=capture-source device={device} provide-clock=false client-name="Cassini Recording"'
         )
         self.pipeline = Gst.parse_launch(
-            source + " ! queue ! " + CAPTURE_CONVERT + " ! audioresample ! "
+            source + " ! " + TAP_QUEUE + " ! " + CAPTURE_CONVERT + " ! audioresample ! "
             "audio/x-raw,format=S16LE,rate=48000,channels=1 ! "
             "appsink name=pcm emit-signals=true sync=false max-buffers=8 drop=false"
         )
@@ -153,7 +158,15 @@ class NativeTap:
 
             sender = threading.Thread(target=eos, name="cassini-source-eos", daemon=True)
             sender.start()
-        complete = self.ended.wait(10)
+        complete = self.ended.wait(DRAIN_TIMEOUT_S)
+        if not complete:
+            queue = pipeline.get_by_name("tap-queue")
+            LOG.warning(
+                "Native %s tap did not drain within %d s; %s ms of queued audio was not saved",
+                self.kind,
+                DRAIN_TIMEOUT_S,
+                "unknown" if queue is None else queue.get_property("current-level-time") // Gst.MSECOND,
+            )
         self.closed.set()
         pipeline.set_state(Gst.State.NULL)
         if self.thread is not None:

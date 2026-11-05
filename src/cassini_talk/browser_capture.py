@@ -3,13 +3,14 @@
 
 import contextlib
 import logging
+import math
 import threading
 import time
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from .capture_sources import BrowserStreams, canonical_order, change_time, selected_pcm
+from .capture_sources import BrowserStreams, canonical_order, change_time, pcm_before, selected_pcm
 from .recording_session import BrowserHost, ProtocolError, stop_reason
 from .refusals import SIDES, NothingOpened, StartCancelled, entry
 from .refusals import append as append_refusal
@@ -103,6 +104,12 @@ class BrowserCapture:
         self.ready = threading.Event()
         self.stopped = threading.Event()
         self.stop_requested = threading.Event()
+        # R93-2: the Stop moment on the session timeline, fixed when Stop is first
+        # requested. Native audio captured before it, still queued in a tap
+        # when Stop comes, is recorded; audio after it is not. None: no clock
+        # yet, so no native audio can be pending.
+        self.stop_at_ms = None
+        self._stop_mark = threading.Lock()  # A leaf lock: request_stop runs under other locks.
         self.origin_ms = None
         # D61 one clock base: timelineOriginMs mapped onto CLOCK_MONOTONIC once
         # per capture (start); resumes, fallbacks and new spans keep it.
@@ -121,6 +128,28 @@ class BrowserCapture:
     @property
     def directory(self):
         return self.host.session.directory if self.host.session and not self.discarded else None
+
+    def request_stop(self):
+        """Mark the user's Stop moment once: the stop boundary, then stop_requested.
+
+        A tap's queue can still hold audio captured before Stop (up to 10 s
+        during a host stall, R93-2); its drain records that audio up to the
+        boundary instead of discarding it (D47)."""
+        with self._stop_mark:
+            if not self.stop_requested.is_set():
+                if self.session_clock is not None:
+                    self.stop_at_ms = self.elapsed_ms()
+                self.stop_requested.set()
+
+    def _native_cut(self):
+        """The session offset from which native PCM is no longer recorded (lock
+        held): None while recording, the Stop boundary once Stop was requested,
+        -inf once the session finished or Stop has no boundary."""
+        if self.finished or self.host.session is None or self.host.session.finished:
+            return -math.inf
+        if not self.stop_requested.is_set():
+            return None
+        return -math.inf if self.stop_at_ms is None else self.stop_at_ms
 
     def snapshot(self):
         with self.lock:
@@ -368,9 +397,11 @@ class BrowserCapture:
                     # retired tap's buffer (one in flight while a deselect
                     # stops it) opens no track after its side was turned off.
                     return
+                cut = self._native_cut()
                 if not state["track"]:
-                    # D58.1: an armed tap opens on its first buffer, however late.
-                    if self.finished or self.stop_requested.is_set():
+                    # D58.1: an armed tap opens on its first buffer, however late,
+                    # if that buffer was captured before Stop (R93-2).
+                    if cut is not None and max(state["at"], offset) >= cut:
                         return
                     with self.host.session.change([]):
                         self._add_native(kind, max(state["at"], offset), identifier=identifier)
@@ -378,11 +409,15 @@ class BrowserCapture:
                     state["track"] = opened = True
                     self._sync_spectrogram()
                 track = next(t for t in self.host.session.manifest["tracks"] if t["id"] == identifier)
-                if not self.finished and not self.stop_requested.is_set() and not track.get("ended"):
+                if (cut is None or offset < cut) and not track.get("ended"):
                     original_offset = offset
                     selected, offset = selected_pcm(data, offset, 48000, 1, state["at"])
+                    skipped = (len(data) - len(selected)) // 2
+                    if cut is not None:
+                        # R93-2: a buffer queued across the Stop moment keeps
+                        # only the frames captured before it.
+                        selected = pcm_before(selected, offset, 48000, 1, cut)
                     if selected:
-                        skipped = (len(data) - len(selected)) // 2
                         stamp = round(original_offset * 1_000_000) if host_ns is None else host_ns
                         offset, gap = state["timeline"].map(stamp + skipped * NS // 48000, len(selected) // 2, offset)
                         self.host.session.append_native(
@@ -1096,7 +1131,7 @@ class BrowserCapture:
                 self._publication_future.cancel()
         with self.lock:
             self.end_reason = self.end_reason or reason or ("error" if problem else "user")
-            self.stop_requested.set()
+            self.request_stop()
             self.resume_asks.clear()  # A result after Stop writes nothing.
         if self.starting and not self.ready.wait(12):
             raise TimeoutError("Native capture did not finish starting")

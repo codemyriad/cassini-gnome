@@ -4,6 +4,7 @@
 import base64
 import errno
 import json
+import math
 import struct
 from pathlib import Path
 
@@ -518,7 +519,12 @@ def test_checkpoint_retires_only_the_writer_that_cannot_sync_and_keeps_healthy_p
     session = host.session
     session.add_track("native-mic", "Me", "microphone", 48000, 1, label_source="device")
     session.append_native("native-mic", b"\x02\x00" * 48000, 0)
+    # B's second second is not durable yet when its sync fails: a WAV with nothing
+    # written since its last fsync is not synced again (R93-2).
+    session._last_checkpoint = math.inf
+    assert host.handle(pcm("B", 48000, sequence=1, offset=1000, value=b"\x01\x00")) == dict(type="ack")
     writer = session.writers["B"]
+    assert writer.dirty
     if phase == "flush":
         real_file = writer.file
 
@@ -549,7 +555,7 @@ def test_checkpoint_retires_only_the_writer_that_cannot_sync_and_keeps_healthy_p
         assert not session.finished
         saved = json.loads((session.directory / "session.json").read_text())
         failed = next(t for t in saved["tracks"] if t["id"] == "B")
-        assert failed["ended"] and failed["problemKind"] == "io" and failed["frames"] == 48000
+        assert failed["ended"] and failed["problemKind"] == "io" and failed["frames"] == 96000
         assert next(t for t in saved["tracks"] if t["id"] == "A")["frames"] == 96000
         assert host.handle(pcm("A", 48000, sequence=2, offset=2000)) == dict(type="ack")
         session.append_native("native-mic", b"\x03\x00" * 48000, 1000)
@@ -557,7 +563,7 @@ def test_checkpoint_retires_only_the_writer_that_cannot_sync_and_keeps_healthy_p
         assert session.manifest["problemKind"] == "io"
         counts = {s["sourceTrackId"]: s for s in session.manifest["captureOutcome"]["sources"]}
         assert counts["receiver-A"]["audioMs"] == 3000 and counts["receiver-A"]["captureOutcome"] == "captured"
-        assert counts["receiver-B"]["audioMs"] == 1000 and counts["receiver-B"]["captureOutcome"] == "failed"
+        assert counts["receiver-B"]["audioMs"] == 2000 and counts["receiver-B"]["captureOutcome"] == "failed"
         assert next(t for t in session.manifest["tracks"] if t["id"] == "native-mic")["frames"] == 96000
         import wave
 
