@@ -28,9 +28,12 @@ class CaptureError(OSError):
 
 
 class NativeTap:
-    def __init__(self, kind, origin_ms, append, failed, *, level=lambda _: None, test=False):
+    """`session_clock` is the capture's SessionClock: its one mapping of the session
+    origin onto CLOCK_MONOTONIC (D61). The tap reads no wall clock."""
+
+    def __init__(self, kind, session_clock, append, failed, *, level=lambda _: None, test=False):
         Gst.init(None)
-        self.kind, self.origin_ms = kind, origin_ms
+        self.kind, self.session_clock = kind, session_clock
         self.append, self.failed, self.level = append, failed, level
         self.test = test
         self.pipeline = None
@@ -58,8 +61,11 @@ class NativeTap:
         )
         self.clock = Gst.SystemClock.obtain()
         self.pipeline.use_clock(self.clock)
+        # The pipeline clock read together with the monotonic clock: its times
+        # reach the session timeline through the capture's one mapping (D61).
+        before = time.monotonic_ns()
         self.anchor_clock = self.clock.get_time()
-        self.anchor_wall = time.time_ns() / 1_000_000
+        self.anchor_session = self.session_clock.at((before + time.monotonic_ns()) // 2)
         self.pipeline.get_by_name("pcm").connect("new-sample", self._sample)
         self.thread = threading.Thread(target=self._messages, name="cassini-" + self.kind, daemon=True)
         self.thread.start()
@@ -94,7 +100,7 @@ class NativeTap:
             base = self.pipeline.get_base_time()
             if buffer.pts == Gst.CLOCK_TIME_NONE or base == Gst.CLOCK_TIME_NONE:
                 raise ValueError("Audio source has no clock timestamp")
-            offset = self.anchor_wall - self.origin_ms + (base + buffer.pts - self.anchor_clock) / Gst.MSECOND
+            offset = self.anchor_session + (base + buffer.pts - self.anchor_clock) / Gst.MSECOND
             data = buffer.extract_dup(0, buffer.get_size())
             if self._ac_meter.feed(data):
                 self.level(self._ac_meter.level)

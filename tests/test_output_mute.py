@@ -320,6 +320,7 @@ def test_delayed_device_query_does_not_block_pcm_or_error_handling(tmp_path, mon
     from cassini_talk.browser_capture import BrowserCapture
     from cassini_talk.native_recorder import NativeRecorder
     from cassini_talk.recording_session import RecordingSession
+    from cassini_talk.session_clock import SessionClock
 
     entered, release, progressed = threading.Event(), threading.Event(), threading.Event()
     session = RecordingSession(tmp_path)
@@ -360,6 +361,7 @@ def test_delayed_device_query_does_not_block_pcm_or_error_handling(tmp_path, mon
         capture = BrowserCapture(lambda *_: None, tap_factory=Tap)
         capture.host.session = session
         capture.origin_ms = 0
+        capture.session_clock = SessionClock(0)
         tap, _state = capture._make_native("system", "system", active=True)
         capture.native_taps["system"] = "system", tap
 

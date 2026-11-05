@@ -101,11 +101,12 @@ def test_native_meter_ignores_dc_and_original_pcm_is_saved(tmp_path, offset):
 def test_browser_native_tap_measures_ac_without_replacing_pcm():
     _NativeRecorder, Gst = recorder_class()
     from cassini_talk.native_tap import NativeTap
+    from cassini_talk.session_clock import SessionClock
 
     received = []
-    tap = NativeTap("microphone", 0, lambda data, *_args, **_kw: received.append(data), pytest.fail)
+    tap = NativeTap("microphone", SessionClock(0), lambda data, *_args, **_kw: received.append(data), pytest.fail)
     tap.pipeline = SimpleNamespace(get_base_time=lambda: 0)
-    tap.anchor_wall = tap.anchor_clock = 0
+    tap.anchor_session = tap.anchor_clock = 0
     pcm = (-2060).to_bytes(2, "little", signed=True) * 4800
     buffer = SimpleNamespace(pts=0, get_size=lambda: len(pcm), extract_dup=lambda *_: pcm)
     sample = SimpleNamespace(get_buffer=lambda: buffer)
