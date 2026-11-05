@@ -1,12 +1,32 @@
-tree 88dacceb041082367ee33adcbf9cba9aa4dc1c68
-parent a575eba938f869f31ab542f593231800f720c635
-parent a47d29341152c7c6c667520fd62bf12b469d6a81
-author Silvio Tomatis <silviot@gmail.com> 1793842014 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1793842014 +0100
+tree 7e94cf0e95c454d008fd9a56f0092cd69a86f5f6
+parent b0a066d8e43e414932b22acd98aa5e18a6f62545
+author Silvio Tomatis <silviot@gmail.com> 1793844900 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793844900 +0100
 
-Merge protocol main (final live-folder oracle, #49) into the driver
+live-folder driver: rereads judged by every check, undelivered resume requests kept, teardown on every path (#52 Codex review)
+
+- verifyControlPipe: a relay found gone is judged on its reread log by the
+  same connectionFault() as the first read (unparsable, inputError, parent,
+  relay start), so a relay that logs a fault (and its end) and exits between
+  the first read and the liveness check fails the run instead of passing.
+  The liveness check is injectable (running) so a test drives that exact
+  interleaving.
+- Resume requests whose forward failed (outputError.undelivered) stay in
+  resumes and resumeRequests: the host asked. Each entry carries delivered
+  (false for those). Oracle: scenario.json resumeObservation.fields.delivered
+  (optional boolean), check.py refuses any other value, README documents it;
+  an undelivered extra request still fails O3.resumeOnce.
+- Adapter contract: cleanup({failed}), idempotent, leaves no process and
+  keeps controlHost.observe. runLiveFolder tears down in a finally on every
+  path: stop() if Record was asked and Stop was not, cleanup() once (bounded
+  by CLEANUP_MS), stopRelays(), and the new stopLaunchers() kills control
+  launchers still waiting in open() on a FIFO no relay opened. Each step is
+  attempted, reported in out/teardown.json and never hides the run's own
+  failure; a failed step fails a passing run.
+- Tests (each fails on b0a066d): the reread race (unparsable, unparsable +
+  end, inputError, inputError + end), undelivered requests kept and marked,
+  runLiveFolder with a failure injected after Record (Stop, one cleanup, the
+  relay stopped) and during the control launcher's startup (one cleanup, the
+  launcher waiting on its FIFO killed), a missing or failing cleanup.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-
-# Conflicts:
-#	SHA256SUMS

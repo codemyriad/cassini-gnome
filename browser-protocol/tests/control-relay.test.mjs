@@ -8,7 +8,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import { closeSync, constants, openSync, readSync } from 'node:fs';
-import { mkdir, open, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, open, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -300,7 +300,7 @@ test('a relay that never starts, or stops before its input ends, fails the run',
   const exit = exited(run.child); run.child.stdin.end(); await exit;
 });
 
-test('an input error fails the run; frames a failed forward never delivered are not resume requests', async () => {
+test('an input error fails the run; a resume request a failed forward never delivered is kept, marked undelivered', async () => {
   const observe = path.join(scratch, 'synthetic');
   const host = { observe, command: ['/nonexistent/host'] };
   await mkdir(path.join(observe, '1'), { recursive: true });
@@ -309,10 +309,48 @@ test('an input error fails the run; frames a failed forward never delivered are 
   const write = entries => writeFile(path.join(observe, '1', 'frames.jsonl'), entries.map(e => JSON.stringify(e) + '\n').join(''));
   await write([{ relay: 999998, startedWall: 1 }, r(0, 'a'), r(1, 'b'), { outputError: 'EPIPE', atWall: 1002, bytes: 13, undelivered: [1] }]);
   const [connection] = await verifyControlPipe(host, process.pid, 'stop');
-  assert.deepEqual(connection.resumes.map(f => f.requestId), ['a'], 'the undelivered frame is not observed');
+  assert.deepEqual(connection.resumes.map(f => [f.requestId, f.delivered]), [['a', true], ['b', false]],
+    'the host asked twice: both are observed, the one the browser never got is marked');
   assert.equal(connection.frames.length, 2);
+  assert.deepEqual(resumeRequests([connection], 1000, 2000).map(r => [r.atMs, r.requestId, r.delivered]), [[0, 'a', true], [1, 'b', false]]);
   await write([{ relay: 999998, startedWall: 1 }, { inputError: 'EIO', atWall: 2, bytes: 0 }]);
   await assert.rejects(verifyControlPipe(host, process.pid, 'stop'), /stop: control connection 1's relay could not read the host's output: .*EIO/);
+});
+
+// The race the reread exists for: the first read is clean and the relay still copying; then,
+// before the liveness check, the relay logs a fault (and maybe its end) and exits. The
+// liveness check (injected, so the interleaving is exact) finds it gone; the reread must be
+// judged by every check of the first read, never accepted for its end line alone.
+test('a relay that logs a fault and exits between the first read and the liveness check fails the run', async () => {
+  const observe = path.join(scratch, 'race');
+  const host = { observe, command: ['/nonexistent/host'] };
+  await mkdir(path.join(observe, '1'), { recursive: true });
+  await writeFile(path.join(observe, '1', 'host'), `999999 ${process.pid}\n`);
+  const log = path.join(observe, '1', 'frames.jsonl');
+  const clean = [{ relay: 999998, startedWall: 1 }, { frame: 0, atWall: 2, bytes: 9, type: 'hello', action: null, requestId: null }];
+  const unparsable = { unparsable: 'frame 1 (3 bytes): Unexpected token', offset: 13, atWall: 3 };
+  const end = { end: true, atWall: 4, bytes: 20, frames: 1 };
+  const cases = [
+    [[unparsable], /race: control connection 1 wrote a frame the relay cannot read/],
+    [[unparsable, end], /race: control connection 1 wrote a frame the relay cannot read/],  // the relay's own order at the end of input
+    [[{ inputError: 'EIO', atWall: 3, bytes: 13 }], /race: control connection 1's relay could not read the host's output: .*EIO/],
+    [[{ inputError: 'EIO', atWall: 3, bytes: 13 }, end], /race: control connection 1's relay could not read the host's output/],
+    [[], /race: control connection 1's relay 999998 stopped before the end of its input/],
+  ];
+  for (const [late, error] of cases) {
+    await writeFile(log, clean.map(e => JSON.stringify(e) + '\n').join(''));
+    const checked = [];
+    const running = async pid => { checked.push(pid); for (const e of late) await appendFile(log, JSON.stringify(e) + '\n'); return false; };
+    await assert.rejects(verifyControlPipe(host, process.pid, 'race', { running }), error, JSON.stringify(late));
+    assert.deepEqual(checked, [999998], 'the first read was clean, so the liveness check ran once');
+  }
+  // What the reread may accept: the end of input, or the browser's closed end, with no fault.
+  for (const late of [[end], [{ outputError: 'EPIPE', atWall: 3, bytes: 13, undelivered: [] }]]) {
+    await writeFile(log, clean.map(e => JSON.stringify(e) + '\n').join(''));
+    const running = async () => { for (const e of late) await appendFile(log, JSON.stringify(e) + '\n'); return false; };
+    const [connection] = await verifyControlPipe(host, process.pid, 'race', { running });
+    assert.ok(connection.ended || connection.outputError, 'the connection is the reread one');
+  }
 });
 
 // The browser's end of a host's stdout as Chrome makes it on POSIX: a real pipe (Node's
@@ -334,7 +372,7 @@ const TICKER = `const fs=require('fs');const out=process.argv[1];let n=0;
 process.stdin.on('data',c=>{for(const _ of c){const b=Buffer.from(JSON.stringify({type:'command',action:'start',requestId:'t'+n,resumeCapture:{captureId:'c',timelineOriginMs:1}}));
 const h=Buffer.alloc(4);h.writeUInt32LE(b.length);let r='ok';try{fs.writeSync(1,Buffer.concat([h,b]))}catch(e){r=e.code}fs.appendFileSync(out,r+'\\n');n++}}).on('end',()=>process.exit(0));`;
 
-test('when the browser closes its end, the host meets a closed pipe one write later and the lost frame is not observed', { skip: !LE }, async () => {
+test('when the browser closes its end, the host meets a closed pipe one write later and the lost frame is kept, undelivered', { skip: !LE }, async () => {
   const results = {};
   for (const plain of [true, false]) {
     const directory = path.join(scratch, plain ? 'close-plain' : 'close-observed');
@@ -363,7 +401,8 @@ test('when the browser closes its end, the host meets a closed pipe one write la
       lines = await writes(3);
       assert.deepEqual([connections[0].outputError.outputError, connections[0].outputError.undelivered], ['EPIPE', [1]]);
       assert.deepEqual(connections[0].frames.map(f => f.requestId), ['t0', 't1'], 'both frames were read');
-      assert.deepEqual(resumeRequests(connections, 0, Date.now()).map(r => r.requestId), ['t0'], 'only the delivered one is a resume request');
+      assert.deepEqual(resumeRequests(connections, 0, Date.now()).map(r => [r.requestId, r.delivered]), [['t0', true], ['t1', false]],
+        'both are resume requests; the lost one is marked undelivered');
       await verifyControlPipe(host, process.pid, 'stop');
     }
     results[plain ? 'plain' : 'observed'] = lines;

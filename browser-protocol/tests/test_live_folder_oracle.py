@@ -179,7 +179,10 @@ class LiveFolderOracle(unittest.TestCase):
                        lambda e: e['resumeRequests'][0].pop('connection'),
                        lambda e: e['resumeRequests'][0].update(connection=0),
                        lambda e: e['resumeRequests'][0].update(connection=True),
-                       lambda e: e['resumeRequests'][0].update(connection=1.0)):
+                       lambda e: e['resumeRequests'][0].update(connection=1.0),
+                       lambda e: e['resumeRequests'][0].update(delivered='no'),
+                       lambda e: e['resumeRequests'][0].update(delivered=None),
+                       lambda e: e['resumeRequests'][0].update(delivered=0)):
             process, result = self.evidence_case(change)
             self.assertEqual(process.returncode, 2)
             self.assertIn('unusable input: evidence', process.stderr)
@@ -194,6 +197,20 @@ class LiveFolderOracle(unittest.TestCase):
             with self.subTest(connection=connection):
                 process, result = self.evidence_case(second(connection))
                 self.assertEqual(failed(result)[1], rules, process.stdout)
+
+    def test_an_undelivered_resume_request_still_counts(self):
+        # scenario.json resumeObservation.fields.delivered: the relay's forward failed (the browser
+        # had closed its end), but the host asked, so the request is evidence like any other.
+        for delivered in (True, False):
+            with self.subTest(delivered=delivered):
+                process, result = self.evidence_case(lambda e: e['resumeRequests'][0].update(delivered=delivered))
+                self.assertEqual((process.returncode, failed(result)[1]), (0, []), process.stdout + process.stderr)
+        def extra(e):
+            e['resumeRequests'].append(dict(e['resumeRequests'][0], atMs=98410.25, requestId='resume-2', delivered=False))
+        process, result = self.evidence_case(extra)
+        self.assertEqual(failed(result)[1], ['O3.resumeOnce'], process.stdout)
+        fields = json.loads((LIVE / 'scenario.json').read_text())['evidence']['resumeObservation']['fields']
+        self.assertIn('The request still counts', fields['delivered'])
 
     def test_rotated_wavs_are_read_through_spans(self):
         # GNOME's RotatingWAV keeps one logical track in several WAVs, listed in `spans`.

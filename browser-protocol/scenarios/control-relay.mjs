@@ -12,8 +12,9 @@
 //
 // When the browser closes its end of the pipe, the relay learns it from its next forward,
 // which fails (EPIPE): it logs `outputError` with the frames that forward did not deliver
-// (`undelivered`, never counted as observed) and closes the FIFO, so the host's following
-// write fails as it would without the relay. The one difference from production: the host's
+// (`undelivered`: the host still asked, so they stay resume requests, marked delivered:
+// false) and closes the FIFO, so the host's following write fails as it would without the
+// relay. The one difference from production: the host's
 // first write after the close still succeeds (into the FIFO) instead of failing. Node has no
 // way to poll a pipe's write end for the hangup (libuv will not read a write-only pipe), and
 // the browser closes the control port only when the host's session is over, so this is

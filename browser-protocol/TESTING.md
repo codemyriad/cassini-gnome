@@ -162,9 +162,22 @@ needs only the standard library. See the folder's README for every rule.
 
 `runLiveFolder({meeting, remote, app, worker, out})` runs the scenario through an app
 adapter (`record`, `selectMe`, `snapshot`, `meetingRow`, `stop`, `audioHostPids`,
-`folders`, `controlHost`, `browserPid`, optional `saved`; the header of the file lists the contract), writes
+`folders`, `controlHost`, `browserPid`, `cleanup`, optional `saved`; the header of the file lists the contract), writes
 `evidence.json` and runs `check.py` before the app quits. It needs no Playwright of its
 own: the adapter passes the pages and the extension's service worker.
+
+- Teardown, on every path (a `finally`): if Record was asked and Stop was not, the driver
+  asks `stop()` (the stop bound); then it awaits the adapter's `cleanup({failed})` once,
+  bounded by `CLEANUP_MS`; then `stopRelays` ends any control relay still running and
+  `stopLaunchers` kills any control launcher still waiting in `open()` on its FIFO (its
+  relay never opened it: the launcher reads neither of the browser's pipes, so the
+  browser's exit does not end it). `cleanup()` ends everything the adapter started (the
+  app and its recording, the browsers, its broker and hosts) and leaves no process; it is
+  idempotent, so the adapter may also call it from its own `finally`, and it leaves
+  `controlHost.observe` in place for the driver. It runs after a failure's
+  `evidence.partial.json` and after `check.py`. `out/teardown.json` says what each step
+  did; a step that fails never skips the next, never hides the run's own failure, and
+  fails a run that otherwise passed.
 
 - Topology: `connectReceiveSlots(meeting, remote, [[A], null, null], {play: true})`, three
   recvonly slots on one peer. A `null` slot is connected and never gets a track; `muteSlot`
@@ -197,13 +210,16 @@ own: the adapter passes the pages and the extension's service worker.
   the frame is whole, before forwarding) and exits at the end of its input; an unreadable
   frame is logged and still forwarded. When the browser closes its end, the relay learns it
   from the next forward (EPIPE), logs `outputError` with the frames it did not deliver
-  (`undelivered`, never counted) and closes the FIFO: the host's first write after the
+  (`undelivered`: still resume requests, the host asked, written with `delivered: false`)
+  and closes the FIFO: the host's first write after the
   close still succeeds into the FIFO, its next one fails as without the relay (Node cannot
   poll a pipe's write end for the hangup). At setup, record, kill, restore and stop the
   driver fails the run if a control host's launch parent or live parent is not
   `browserPid()`, a relay logged an unparsable frame or an input error, a relay has not
   started within `RELAY_START_MS` of its launch (the host then waits on the FIFO), or a
-  relay stopped before the end of its input; `notes.browserPid` and
+  relay stopped before the end of its input (a relay found gone is judged on its log read
+  again, by every one of these checks: it may have logged its end, or a fault, just
+  before exiting); `notes.browserPid` and
   `notes.controlParents` keep what each check saw. After the stop observation it writes
   `resumeRequests` in pipe order.
 - The mute is held until A's own frames cover `MUTE_MS`; on every poll A must keep one
@@ -212,11 +228,16 @@ own: the adapter passes the pages and the extension's service worker.
 
 `node --test tests/live-folder-driver.test.mjs` checks the folder clock against
 `make.py`'s synthetic folder, its tolerant reads and labelled bounds, the launcher
-(pid, arguments, exec, host-name prefixes) and the constants the driver reads;
+(pid, arguments, exec, host-name prefixes), the constants the driver reads, and
+`runLiveFolder`'s teardown with fake pages and app around a real launcher and relay (a
+failure after Record: Stop, one cleanup, the relay stopped; a failure while the control
+launcher starts: one cleanup, the launcher waiting on its FIFO killed; a failing or missing
+cleanup never hides the run's failure);
 `node --test tests/control-relay.test.mjs` checks the frame reader across chunk
 boundaries, the relay's byte-exact passthrough, unparsable and cut-off frames, and the
 observing launcher (the host stays the spawner's child, connections in launch order, the
-parent check, resume requests in pipe order, stuck relays stopped, the browser-to-host
+parent check, resume requests in pipe order, undelivered requests kept and marked, a relay
+that logs a fault and exits between the first read and the liveness check, stuck relays stopped, the browser-to-host
 bytes untouched, the host's umask, a relay that never starts or dies, the browser closing
 its end on a real pipe) with no browser.
 Protocol CI runs both with `node --check` of every scenario. There is no Playwright run of the

@@ -124,7 +124,8 @@ def load_evidence(path):
         for index, request in enumerate(requests):
             if not (isinstance(request, dict) and _number(request.get('atMs')) and request.get('via') == VIA and
                     type(request.get('connection')) is int and request['connection'] >= 1 and
-                    {'requestId', 'captureId', 'timelineOriginMs'} <= set(request)):
+                    {'requestId', 'captureId', 'timelineOriginMs'} <= set(request) and
+                    type(request.get('delivered', True)) is bool):
                 problems.append(f'resumeRequests[{index}]')
     if problems:
         raise Unusable('evidence: missing or invalid ' + ', '.join(problems))

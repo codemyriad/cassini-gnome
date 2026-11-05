@@ -1,19 +1,31 @@
 // Unit tests for the live-folder driver's pieces that need no browser (shared test 2, D68):
 // the folder clock against make.py's synthetic folder, its tolerant reads and bounded
-// waits, the pid-recording native host launcher, and the scenario constants the driver uses.
+// waits, the pid-recording native host launcher, the scenario constants the driver uses,
+// and runLiveFolder's teardown on failure (fake pages and app, real launcher and relay).
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, open, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { eventsOf, extent, F, folderClock, S } from '../scenarios/folder-clock.mjs';
-import { hostPids, livePids, writeNativeHost } from '../scenarios/native-launcher.mjs';
-import { loadScenario } from '../scenarios/live-folder.mjs';
+import { controlConnections, hostPids, livePids, stopRelays, writeNativeHost } from '../scenarios/native-launcher.mjs';
+import { loadScenario, runLiveFolder } from '../scenarios/live-folder.mjs';
+import { poll } from '../scenarios/folder-clock.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const scratch = await mkdtemp(path.join(os.tmpdir(), 'live-folder-driver-'));
-test.after(() => rm(scratch, { recursive: true, force: true }));
+// A failing test must not leave launchers, hosts or relays behind.
+const children = new Set(), hosts = [];
+test.after(async () => {
+  for (const child of children) {
+    child.stdin?.destroy(); child.stdout?.destroy();
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+  }
+  for (const host of hosts) await stopRelays(host);
+  await rm(scratch, { recursive: true, force: true });
+});
+const BOUND = 10000;  // bound on each wait below; every wait ends on its event
 
 async function synthetic() {
   const out = path.join(scratch, `make-${Math.random().toString(36).slice(2)}`);
@@ -101,4 +113,118 @@ test('the driver reads scenario.json and the corpus constants it names', async (
   assert.equal(bounds.restore, constants.RESUME_BOUND_MS);
   for (const name of ['setup', 'record', 'meOff', 'muteHold', 'unmute', 'lateRemote', 'meOn', 'lost', 'restore', 'stop'])
     assert.ok(bounds[name] > 0, name);
+});
+
+// runLiveFolder with fake pages and a fake app around a real observing launcher and relay.
+// The test process plays the browser: it starts the control launcher itself.
+const exitOf = child => new Promise(resolve => child.exitCode !== null || child.signalCode !== null
+  ? resolve({ code: child.exitCode, signal: child.signalCode }) : child.once('exit', (code, signal) => resolve({ code, signal })));
+// Gone, or a zombie no one reaps (an orphaned relay's new parent may be a container's pid 1).
+async function ended(pid) {
+  try { process.kill(pid, 0); } catch { return true; }
+  try { const text = await readFile(`/proc/${pid}/stat`, 'utf8'); return text.slice(text.lastIndexOf(')') + 2).startsWith('Z'); }
+  catch { return process.platform === 'linux'; }
+}
+const HELLO = `const b=Buffer.from('{"type":"hello"}'),h=Buffer.alloc(4);h['writeUInt32'+require('os').endianness()](b.length);
+process.stdout.on('error',()=>{});process.stdout.write(Buffer.concat([h,b]));process.stdin.resume();process.stdin.on('end',()=>process.exit(0));`;
+const page = { evaluate: async () => ({}), waitForFunction: async () => {}, url: () => 'http://meeting.test/' };
+const worker = origin => ({
+  async evaluate(fn) {
+    const source = String(fn);
+    if (source.includes('getManifest')) return '0.0.0-test';
+    if (source.includes('tabs.query')) return [7];
+    if (source.includes('cassiniSessions')) return [{ tabId: 7, captureId: 'capture-test', startedAt: origin }];
+    throw new Error(`unexpected service worker call ${source}`);
+  },
+});
+async function controlRun(name, { node } = {}) {
+  const directory = path.join(scratch, name);
+  const host = await writeNativeHost({ manifestDirectory: path.join(directory, 'NativeMessagingHosts'), pidDirectory: path.join(directory, 'pids'),
+    observe: path.join(directory, 'control pipe'), name: 'io.example.control', command: [process.execPath, '-e', HELLO],
+    allowedOrigins: [], ...(node ? { node } : {}) });
+  hosts.push(host);
+  const browser = spawn(host.launcher, ['chrome-extension://abc/'], { stdio: ['pipe', 'pipe', 'inherit'] });
+  children.add(browser);
+  browser.stdout.resume();
+  const out = path.join(directory, 'out');
+  execFileSync('mkdir', ['-p', out]);
+  return { host, browser, out };
+}
+function fakeApp({ host, browser }, overrides) {
+  const calls = { record: 0, stop: 0, cleanup: [] };
+  const app = {
+    name: 'synthetic', protocolCommit: '0'.repeat(40), nativeTones: { microphone: 660 }, controlHost: host,
+    browserPid: async () => process.pid, meetingRow: async () => ({ sourceCount: 3, heard: true }), folders: async () => [],
+    audioHostPids: async () => [], snapshot: async () => null,
+    async record() { calls.record++; }, async stop() { calls.stop++; }, async selectMe() {},
+    // The browser closes: the host's stdin ends (a launcher blocked in open() never reads it).
+    async cleanup(options) { calls.cleanup.push(options); browser.stdin.end(); browser.stdout.destroy(); },
+    ...overrides,
+  };
+  return { app, calls };
+}
+
+test('a failure after Record stops the recording, runs cleanup once and stops the relays', async () => {
+  const run = await controlRun('after-record');
+  const [connection] = await poll(async () => { const c = await controlConnections(run.host); return c[0]?.relay && c[0].frames.length ? c : null; },
+    'the relay starts and logs the hello', BOUND, { pollMs: 5 });
+  // Something else keeps the FIFO open for writing, so the relay's input never ends when the
+  // browser closes: only stopRelays ends it.
+  const holder = await open(path.join(run.host.observe, '1', 'out'), 'w');
+  const folder = await synthetic();
+  const { app, calls } = fakeApp(run, {
+    snapshot: async () => (calls.record ? { path: folder, captureId: 'capture-test' } : null),
+    async selectMe() { throw new Error('injected failure after Record'); },
+  });
+  const logged = [];
+  await assert.rejects(runLiveFolder({ meeting: page, remote: page, app, worker: worker(Date.now()), out: run.out, log: line => logged.push(line) }),
+    /injected failure after Record/);
+  assert.deepEqual([calls.record, calls.stop, calls.cleanup], [1, 1, [{ failed: true }]], 'Record asked, so Stop asked; cleanup once');
+  assert.equal(await exitOf(run.browser).then(r => r.code), 0, 'the host saw its stdin end and exited');
+  await poll(() => ended(connection.relay), 'the relay is gone', BOUND, { pollMs: 5 });
+  const teardown = JSON.parse(await readFile(path.join(run.out, 'teardown.json'), 'utf8'));
+  assert.deepEqual(teardown, { failed: true, stop: 'done', cleanup: 'done', relaysStopped: [connection.relay], launchersKilled: [] });
+  const partial = JSON.parse(await readFile(path.join(run.out, 'evidence.partial.json'), 'utf8'));
+  assert.match(partial.notes.failure, /injected failure after Record/);
+  assert.equal(partial.captureId, 'capture-test');
+  await holder.close();
+});
+
+test('a failure during the control launcher\'s startup runs cleanup once and kills the launcher waiting on its FIFO', async () => {
+  // The relay's interpreter fails at once, so its FIFO is never opened for reading: the
+  // launcher waits in open() and reads nothing, so closing the browser does not end it.
+  const run = await controlRun('startup', { node: '/bin/false' });
+  const [pending] = await poll(async () => { const c = await controlConnections(run.host); return c[0]?.pid ? c : null; },
+    'the launcher records the connection', BOUND, { pollMs: 5 });
+  assert.equal(pending.pid, run.browser.pid);
+  // relayStartMs 0: the start bound has passed once the clock is past the launch.
+  await poll(() => Date.now() > pending.launchedWall, 'the clock passes the launch', BOUND, { pollMs: 1 });
+  const { app, calls } = fakeApp(run, { async record() { throw new Error('the run must fail at setup'); } });
+  await assert.rejects(runLiveFolder({ meeting: page, remote: page, app, worker: worker(Date.now()), out: run.out, log: () => {}, relayStartMs: 0 }),
+    /setup: control connection 1's relay did not start within 0 ms of the launch/);
+  assert.deepEqual([calls.stop, calls.cleanup], [0, [{ failed: true }]], 'no Record asked, so no Stop; cleanup once');
+  assert.deepEqual(await exitOf(run.browser), { code: null, signal: 'SIGKILL' }, 'the launcher was killed');
+  const teardown = JSON.parse(await readFile(path.join(run.out, 'teardown.json'), 'utf8'));
+  assert.deepEqual(teardown, { failed: true, cleanup: 'done', relaysStopped: [], launchersKilled: [run.browser.pid] });
+  assert.deepEqual(await controlConnections(run.host).then(c => c.map(x => [x.relay, x.live])), [[null, false]], 'no relay ever ran');
+});
+
+test('a failing cleanup or an adapter without one never hides the run\'s own failure', async () => {
+  const run = await controlRun('no-cleanup');
+  const relay = await poll(async () => (await controlConnections(run.host))[0]?.relay, 'the relay starts', BOUND, { pollMs: 5 });
+  const teardowns = [];
+  for (const cleanup of [undefined, async () => { throw new Error('cleanup broke'); }]) {
+    const { app } = fakeApp(run, { cleanup, async meetingRow() { throw new Error('injected setup failure'); } });
+    const logged = [];
+    await assert.rejects(runLiveFolder({ meeting: page, remote: page, app, worker: worker(Date.now()), out: run.out, log: line => logged.push(line) }),
+      /injected setup failure/);
+    assert.match(logged.join('\n'), cleanup ? /teardown: cleanup: cleanup broke/ : /teardown: cleanup: the adapter has no cleanup\(\)/);
+    teardowns.push(JSON.parse(await readFile(path.join(run.out, 'teardown.json'), 'utf8')));
+  }
+  // With no browser close, the first teardown ended the relay itself, and the next found none.
+  assert.deepEqual(teardowns.map(t => t.relaysStopped), [[relay], []]);
+  assert.match(teardowns[1].cleanup.error, /cleanup broke/);
+  await poll(() => ended(relay), 'the relay is gone', BOUND, { pollMs: 5 });
+  run.browser.stdin.end();
+  await exitOf(run.browser);
 });

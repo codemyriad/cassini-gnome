@@ -126,7 +126,10 @@ driver process before the extension reads them, so neither the app's own reports
 extension's checks, coalescing or refusal can hide or add one; and the host runs as in
 production, so the observation does not change what it sends. Requests are counted from
 before record until the stop observation, reconnects included; a frame the relay cannot
-read fails the run.
+read fails the run. An entry may carry `delivered` (a boolean, written by the driver):
+`false` when the relay's forward of that frame to the browser failed because the browser
+had closed its end, so the extension never read it. Such a request still counts, in
+O3.resumeOnce too: the host asked. Any other `delivered` value makes the evidence unusable.
 
 ## Checks
 

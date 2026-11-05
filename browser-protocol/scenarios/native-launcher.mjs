@@ -139,7 +139,9 @@ async function lines(file) {
 // {connection, pid, launchParent, launchedWall, live, parent, relay, frames, resumes,
 // unparsable, ended, outputError, inputError}. pid, launchParent and launchedWall (when the
 // launcher recorded them) are null until it has. parent is the pid's parent now, while it is
-// still the host (else null). resumes leaves out frames a failed forward never delivered.
+// still the host (else null). resumes is every resume request the relay read, each with
+// delivered: false when the forward that carried it failed (outputError.undelivered): the
+// host still asked, so it is still a request (scenario.json resumeObservation.request).
 export async function controlConnections(host) {
   let entries;
   try { entries = await readdir(host.observe); }
@@ -161,7 +163,8 @@ export async function controlConnections(host) {
       connection, pid, launchParent, launchedWall, live, parent: live ? await parentPid(pid) : null,
       relay: log.find(entry => 'relay' in entry)?.relay ?? null,
       frames: log.filter(entry => 'frame' in entry),
-      resumes: log.filter(entry => 'frame' in entry && 'resumeCapture' in entry && !undelivered.has(entry.frame)),
+      resumes: log.filter(entry => 'frame' in entry && 'resumeCapture' in entry)
+        .map(entry => ({ ...entry, delivered: !undelivered.has(entry.frame) })),
       unparsable: log.find(entry => 'unparsable' in entry) ?? null,
       ended: log.some(entry => entry.end === true),
       outputError,
@@ -188,41 +191,58 @@ async function relayErr(host, connection) {
   catch (error) { if (error.code === 'ENOENT') return ''; throw error; }
 }
 
+// Why one control connection, as read, fails the run (else null): a frame the relay could
+// not read, an input error, a host that is not the browser's child (when launched, and now
+// while it runs), or a relay that did not start within relayStartMs of the launch. A relay
+// that is neither ended nor met the browser's closed end must still be running: that is
+// checked by the caller, which reads the log again and applies this same function to it.
+async function connectionFault(host, c, browserPid, label, relayStartMs, now) {
+  if (c.unparsable) return `${label}: control connection ${c.connection} wrote a frame the relay cannot read: ${JSON.stringify(c.unparsable)}`;
+  if (c.inputError) return `${label}: control connection ${c.connection}'s relay could not read the host's output: ${JSON.stringify(c.inputError)}`;
+  if (c.pid === null) return null;  // the launcher is still starting it
+  if (c.launchParent !== browserPid || (c.live && c.parent !== browserPid))
+    return `${label}: control host ${c.pid} (connection ${c.connection}) is not the browser's child: ` +
+      `launched by ${c.launchParent}, parent now ${c.parent}, browser ${browserPid}`;
+  if (c.relay === null && now - c.launchedWall > relayStartMs)
+    return `${label}: control connection ${c.connection}'s relay did not start within ${relayStartMs} ms of the launch, ` +
+      `so its host waits on the FIFO and never runs${await relayErr(host, c.connection)}`;
+  return null;
+}
+const copying = c => c.relay !== null && !c.ended && !c.outputError;
+
 // The run fails unless every control host was the browser's child (when launched, and now
 // while it runs), its relay started within relayStartMs and is still copying (or ended
-// with its input, or met the browser's closed end), and every frame was readable.
+// with its input, or met the browser's closed end), and every frame was readable. A relay
+// found gone is judged on its log read again, by every check of the first read: it may
+// have logged its end just before exiting, or an unreadable frame or input error.
+// running(pid) is the liveness check (tests drive the interleaving through it).
 // Returns the connections.
-export async function verifyControlPipe(host, browserPid, label, { relayStartMs = RELAY_START_MS, now = Date.now() } = {}) {
+export async function verifyControlPipe(host, browserPid, label,
+  { relayStartMs = RELAY_START_MS, now = Date.now(), running = relayRunning } = {}) {
   let connections = await controlConnections(host);
   for (const c of connections) {
-    if (c.unparsable) throw new Error(`${label}: control connection ${c.connection} wrote a frame the relay cannot read: ${JSON.stringify(c.unparsable)}`);
-    if (c.inputError) throw new Error(`${label}: control connection ${c.connection}'s relay could not read the host's output: ${JSON.stringify(c.inputError)}`);
-    if (c.pid === null) continue;  // the launcher is still starting it
-    if (c.launchParent !== browserPid || (c.live && c.parent !== browserPid))
-      throw new Error(`${label}: control host ${c.pid} (connection ${c.connection}) is not the browser's child: ` +
-        `launched by ${c.launchParent}, parent now ${c.parent}, browser ${browserPid}`);
-    if (c.relay === null && now - c.launchedWall > relayStartMs)
-      throw new Error(`${label}: control connection ${c.connection}'s relay did not start within ${relayStartMs} ms of the launch, ` +
-        `so its host waits on the FIFO and never runs${await relayErr(host, c.connection)}`);
-    if (c.relay !== null && !c.ended && !c.outputError && !await relayRunning(c.relay)) {
-      // It may have logged its end just before exiting: read the log again before failing.
-      const again = (await controlConnections(host)).find(other => other.connection === c.connection);
-      if (!again.ended && !again.outputError && !again.inputError && !again.unparsable)
-        throw new Error(`${label}: control connection ${c.connection}'s relay ${c.relay} stopped before the end of its input` +
-          await relayErr(host, c.connection));
-      connections = connections.map(other => (other.connection === c.connection ? again : other));
-    }
+    const fault = await connectionFault(host, c, browserPid, label, relayStartMs, now);
+    if (fault) throw new Error(fault);
+    if (!copying(c) || await running(c.relay)) continue;
+    const again = (await controlConnections(host)).find(other => other.connection === c.connection);
+    const refault = again ? await connectionFault(host, again, browserPid, label, relayStartMs, now) : `${label}: control connection ${c.connection} is gone`;
+    if (refault) throw new Error(refault);
+    if (copying(again))
+      throw new Error(`${label}: control connection ${c.connection}'s relay ${c.relay} stopped before the end of its input` +
+        await relayErr(host, c.connection));
+    connections = connections.map(other => (other.connection === c.connection ? again : other));
   }
   return connections;
 }
 
 // The resumeRequests evidence (scenario.json resumeObservation.fields): every resume request
-// read up to untilWall, in pipe order (relay time, then launch order and frame order).
+// read up to untilWall, in pipe order (relay time, then launch order and frame order), each
+// with delivered (false: the relay's forward of it to the browser failed).
 export function resumeRequests(connections, origin, untilWall) {
   return connections.flatMap(c => c.resumes.filter(r => r.atWall <= untilWall).map(r => ({ c, r })))
     .sort((x, y) => x.r.atWall - y.r.atWall || x.c.connection - y.c.connection || x.r.frame - y.r.frame)
     .map(({ c, r }) => ({ atMs: r.atWall - origin, via: 'control-pipe', connection: c.connection, requestId: r.requestId,
-      captureId: r.resumeCapture.captureId, timelineOriginMs: r.resumeCapture.timelineOriginMs }));
+      captureId: r.resumeCapture.captureId, timelineOriginMs: r.resumeCapture.timelineOriginMs, delivered: r.delivered !== false }));
 }
 
 // Ends relays still running (their host gone and input not closed, or a launch cut short).
@@ -238,4 +258,28 @@ export async function stopRelays(host) {
     try { process.kill(c.relay, 'SIGTERM'); stopped.push(c.relay); } catch (error) { if (error.code !== 'ESRCH') throw error; }
   }
   return stopped;
+}
+
+// A process's command line as one string ('' once it is gone): /proc on Linux, ps elsewhere.
+async function commandLine(pid) {
+  if (process.platform === 'linux') {
+    try { return (await readFile(`/proc/${pid}/cmdline`, 'utf8')).split('\0').join(' '); }
+    catch (error) { if (gone(error)) return ''; throw error; }
+  }
+  return new Promise(resolve => execFile('ps', ['-o', 'args=', '-p', String(pid)], (error, stdout) => resolve(error ? '' : stdout.trim())));
+}
+
+// Ends the launchers that never became their host: a launcher whose relay never opened the
+// FIFO waits in open() for good, and the browser closing its pipes does not end it (it reads
+// neither). Such a pid still runs the launcher script, not the host it would have exec'd.
+// Returns the pids it killed.
+export async function stopLaunchers(host) {
+  if (!host?.launcher) return [];
+  const killed = [];
+  for (const c of await controlConnections(host)) {
+    if (c.pid === null || c.live || !alive(c.pid)) continue;
+    if (!(await commandLine(c.pid)).includes(host.launcher)) continue;
+    try { process.kill(c.pid, 'SIGKILL'); killed.push(c.pid); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+  }
+  return killed;
 }
