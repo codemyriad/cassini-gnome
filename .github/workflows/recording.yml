@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   capture:
-    runs-on: ubuntu-26.04
+    runs-on: ${{ vars.CM_RUNNER_DESKTOP == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
     # p95 is 13.5 min; a slow apt mirror once took 14.5 min of a 20 min budget (G10).
     timeout-minutes: 30
     steps:
@@ -59,7 +59,7 @@ jobs:
       # The canonical test tree includes its adjacent conformance vectors.
       # verify.py above proves the installed extension is byte-identical.
       - run: node --test browser-protocol/extension/tests/*.test.cjs
-      - run: node --test tests/recording/signal.test.mjs
+      - run: node --test tests/recording/signal.test.mjs tests/recording/app-exit.test.mjs
       - name: Repeat native capture readiness in three fresh isolated containers
         run: |
           for attempt in 1 2 3; do
@@ -92,4 +92,74 @@ jobs:
         with:
           name: recording-evidence
           path: tests/recording/artifacts/
+          # GNOME keeps a recording under Library/.cassini/sessions/Recording-*:
+          # without this, upload-artifact drops session.json and the WAVs.
+          include-hidden-files: true
+          retention-days: 7
+  # Shared test 2 (D68): the protocol's live-folder driver against the real app,
+  # production native hosts and the vendored extension, judged by the vendored
+  # check.py. In parallel with capture, never on its critical path (D68 item 7).
+  # No retries (D66). The scenario takes about 115 s; a local run on roy took
+  # about 130 s with setup, so the run's bound is 360 s and the job's, with
+  # installs, 15 min; revisit both at 2-4x the measured p95 after 10 runs.
+  # Not yet gating: on roy about 1 run in 3 fails when a seconds-long machine stall hits
+  # the run, and two open product findings turn such a stall into an oracle failure (the
+  # extension's render-frame clock keeps the stalled time lost and later sources inherit
+  # it; the app records the dropped input as a gap and saves interrupted). Hosted-runner
+  # rates are not measured yet. It still runs on every PR, shows red in the job list and
+  # uploads its evidence (pressure.log tells a stalled machine apart); Recording's result
+  # ignores it. green_main.py still requires every main job, this one included, to
+  # succeed before a release. Remove this line once those findings are fixed and ten
+  # hosted runs pass.
+  live-folder:
+    runs-on: ubuntu-26.04
+    continue-on-error: true
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: tests/recording/.node-version
+      - name: Install audio and isolated GUI test dependencies
+        run: |
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y python3-gi python3-numpy python3-jsonschema python3-rfc3339-validator gir1.2-gstreamer-1.0 \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good xvfb xauth xdotool dbus-x11 \
+            gir1.2-gtk-4.0 gir1.2-adw-1 meson ninja-build gettext \
+            libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream
+      - uses: actions/download-artifact@v8
+        if: inputs.product != ''
+        with:
+          name: ${{ inputs.product }}
+          path: _ci-download
+      - name: Use exact default-profile build product
+        if: inputs.product != ''
+        run: |
+          python3 build-aux/ci/product.py unpack _ci-core _ci-download/core.tar --commit "$GITHUB_SHA" --profile core
+          echo "CASSINI_RECORDING_BUILD=$PWD/_ci-core/build" >> "$GITHUB_ENV"
+      - name: Build default profile for standalone dispatch
+        if: inputs.product == ''
+        run: |
+          meson setup _recording-build
+          meson compile -C _recording-build
+          echo "CASSINI_RECORDING_BUILD=$PWD/_recording-build" >> "$GITHUB_ENV"
+      - run: python3 browser-protocol/verify.py --pinned browser-extension
+      - run: npm ci --prefix tests/recording
+      # The same key as capture and deb.yml's browser startup job: one shared entry.
+      # Restore only (D66): capture keeps the entry, so this job never saves one.
+      - uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: browser-startup-linux-x64-${{ hashFiles('tests/recording/package-lock.json') }}
+      - run: tests/recording/node_modules/.bin/playwright install --with-deps chromium
+      - name: Live folder through the real app, hosts and extension (shared test 2)
+        run: CASSINI_RUN_TIMEOUT=360 CASSINI_TEST_BUILD="$CASSINI_RECORDING_BUILD" tests/recording/run.sh node tests/recording/live-folder.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: live-folder-evidence
+          path: tests/recording/artifacts/
+          # GNOME keeps a recording under Library/.cassini/sessions/Recording-*:
+          # without this, upload-artifact drops session.json and the WAVs.
+          include-hidden-files: true
           retention-days: 7

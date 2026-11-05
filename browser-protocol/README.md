@@ -33,7 +33,9 @@ common part lives here, so there is one copy of it instead of two drifting ones.
   Error messages are deliberately not part of the contract, only error codes.
 * `scenarios/` has the audio helpers the browser tests in both apps share (tone
   generation and spectral power checks), so a test that proves "the 880 Hz source
-  did not bleed into the 440 Hz one" reads the same on both platforms.
+  did not bleed into the 440 Hz one" reads the same on both platforms. It also holds
+  the shared test 2 driver (`live-folder.mjs`, with `folder-clock.mjs`,
+  `native-launcher.mjs` and `control-relay.mjs`), which each app runs against its real writer; see TESTING.md.
 
 A few things that are easy to get wrong, and that the spec and vectors pin down: a track is
 a source, not a person (Google Meet, for one, multiplexes speakers over three receiver
