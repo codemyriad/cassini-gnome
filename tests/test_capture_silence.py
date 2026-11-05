@@ -12,6 +12,12 @@ are then read back as the Library scanner gives them to D56: every sample must
 be 0, the frame count is exact, and D56 itself calls each track silent. The
 stand-ins' own buffers are checked to be float zeros sent as data.
 
+The exact counts are what the same conversion chain makes of the same input,
+run on its own (converted_frames), so they hold on each distribution's
+GStreamer. The broker drops a side's PCM until that side commits (R79 §1), and
+its commit writes durable checkpoints: its stand-in sends its BUFFERS only once
+the side has committed, so no fsync latency decides how much is recorded.
+
 The legacy Recorder (recorder.Recorder, Ogg Opus) is not covered here: only
 recording_window.py uses it, and that window is not installed (see
 test_installed_modules.NOT_INSTALLED). test_capture_convert still runs its
@@ -22,6 +28,7 @@ import array
 import logging
 import math
 import re
+import threading
 import time
 import wave
 from itertools import pairwise
@@ -48,31 +55,62 @@ Gst.init(None)
 # 1.5 s of input in 10 ms device buffers: 46 whole D56 frames at 48 kHz, more
 # than the 32 that make a track count as sound, so dither would flip D56.
 BUFFERS = 150
-# Saved frames at 48 kHz for 1.5 s of input. At 48 kHz audioresample passes
-# through: 150 * 480. At 44.1 kHz the plain ratio is 66150 * 48000 / 44100 =
-# 72000; audioresample (default quality) holds back its filter latency, 35
-# output frames (its first buffer is 445 frames, not 480), and its drain at EOS
-# pushes out 34: 72000 - 35 + 34 = 71999. That depends only on the input and
-# its buffer layout, never on timing (the same -1 at 100, 150 and 151 buffers).
-EXPECTED = {48000: 72000, 44100: 71999}
+RATES = (44100, 48000)
 # Bounds only (E1): each wait ends on its event.
 BOUND_S = 30
 # The pulsesrc element of a capture description, up to its first link.
 PULSESRC = re.compile(r"pulsesrc [^!]*")
 
 
-def silence_source(rate):
-    """Live, finite float digital silence, without GAP flags.
+def silence_source(rate, buffers=BUFFERS, *, live=True):
+    """Float digital silence in 10 ms buffers, without GAP flags; endless
+    when `buffers` is None (Feed then ends it).
 
     audiotestsrc's wave=silence (and volume=0) mark their buffers GAP, which
     audioconvert passes through untouched, so they never meet the dither. A
     sine at 0 Hz is sin(0) = +0.0 in every sample, delivered as real data, as
     pulsesrc delivers a silent device. Feed checks every buffer it sends.
     """
+    count = "" if buffers is None else f" num-buffers={buffers}"
     return (
-        f"audiotestsrc name=capture-source wave=sine freq=0 is-live=true num-buffers={BUFFERS} "
+        f"audiotestsrc name=capture-source wave=sine freq=0 is-live={str(live).lower()}{count} "
         f"samplesperbuffer={rate // 100} ! audio/x-raw,format=F32LE,layout=interleaved,channels=2,rate={rate}"
     )
+
+
+def converted_frames(rate, buffers):
+    """The 48 kHz frames the capture conversion makes of `buffers` stand-in
+    buffers, counted on its own through to EOS.
+
+    At 48 kHz audioresample passes through: buffers * 480. At 44.1 kHz it holds
+    back its filter latency and its drain at EOS pushes out what it held; on
+    GStreamer 1.28 that is 72000 - 35 + 34 = 71999 frames for 150 buffers. The
+    chain alone sets the exact count, never timing, and the recorder must save
+    exactly that, so the reference is this run, not a number measured on one
+    GStreamer build.
+    """
+    pipeline = Gst.parse_launch(
+        silence_source(rate, buffers, live=False) + " ! queue ! " + CAPTURE_CONVERT + " ! audioresample ! "
+        "audio/x-raw,format=S16LE,rate=48000,channels=1 ! appsink name=pcm sync=false"
+    )
+    sink = pipeline.get_by_name("pcm")
+    frames = 0
+    pipeline.set_state(Gst.State.PLAYING)
+    try:
+        while (sample := sink.emit("try-pull-sample", BOUND_S * Gst.SECOND)) is not None:
+            frames += sample.get_buffer().get_size() // 2
+        assert sink.get_property("eos"), "the reference conversion did not reach EOS"
+        message = pipeline.get_bus().pop_filtered(Gst.MessageType.ERROR | Gst.MessageType.WARNING)
+        assert message is None, message and message.get_structure().to_string()
+    finally:
+        pipeline.set_state(Gst.State.NULL)
+    plain = buffers * (rate // 100) * 48000 // rate
+    if rate == 48000:
+        assert frames == plain
+    else:
+        # A sanity bound, not a tolerance on the recorder: under 1 ms off the ratio.
+        assert abs(frames - plain) < 48, (frames, plain)
+    return frames
 
 
 class Feed:
@@ -82,11 +120,18 @@ class Feed:
     non-zero bytes, GAP buffers), and the bus errors and warnings of the
     pipelines parsed whole (NativeTap); NativeRecorder's bus is watched by the
     test itself.
+
+    Without `committed`, each stand-in sends BUFFERS buffers and ends. With it
+    (kind -> Event, set as that side commits), a stand-in sends readiness
+    buffers until its side has committed, then exactly BUFFERS more, then EOS
+    (sent to the source, as pulsesrc ends). A buffer let through after the
+    commit started reaches the tap's append after the commit, never dropped as
+    readiness PCM, however long its checkpoints take.
     """
 
-    def __init__(self, monkeypatch, rate):
-        self.rate = rate
-        self.parsed, self.problems, self.sent = [], [], []
+    def __init__(self, monkeypatch, rate, committed=None):
+        self.rate, self.committed = rate, committed
+        self.parsed, self.problems, self.sent, self.enders = [], [], [], []
         for name in ("parse_launch", "parse_bin_from_description"):
             monkeypatch.setattr(Gst, name, self._parser(getattr(Gst, name)))
 
@@ -94,14 +139,16 @@ class Feed:
         def parse(description, *args):
             if "pulsesrc" not in description:
                 return original(description, *args)
-            description, count = PULSESRC.subn(silence_source(self.rate) + " ", description, count=1)
+            kind = "microphone" if "device=@DEFAULT_SOURCE@" in description else "system"
+            buffers = None if self.committed else BUFFERS
+            description, count = PULSESRC.subn(silence_source(self.rate, buffers) + " ", description, count=1)
             assert count == 1 and CAPTURE_CONVERT in description
             self.parsed.append(description)
             element = original(description, *args)
-            sent = dict(samples=0, nonzero=0, gaps=0)
+            sent = dict(kind=kind, samples=0, nonzero=0, gaps=0, readiness=0, after=0)
             self.sent.append(sent)
-            pad = element.get_by_name("capture-source").get_static_pad("src")
-            pad.add_probe(Gst.PadProbeType.BUFFER, self._check, sent)
+            source = element.get_by_name("capture-source")
+            source.get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, self._check, sent, source)
             if isinstance(element, Gst.Pipeline):
                 bus = element.get_bus()
                 bus.enable_sync_message_emission()
@@ -110,8 +157,19 @@ class Feed:
 
         return parse
 
-    @staticmethod
-    def _check(_pad, info, sent):
+    def _check(self, _pad, info, sent, source):
+        if self.committed is not None:
+            if not self.committed[sent["kind"]].is_set():
+                sent["readiness"] += 1
+            elif sent["after"] == BUFFERS:
+                return Gst.PadProbeReturn.DROP  # Sent between the last buffer and the EOS.
+            else:
+                sent["after"] += 1
+                if sent["after"] == BUFFERS:
+                    # Not from the streaming thread: basesrc pushes it next.
+                    ender = threading.Thread(target=source.send_event, args=(Gst.Event.new_eos(),))
+                    self.enders.append(ender)
+                    ender.start()
         buffer = info.get_buffer()
         data = buffer.extract_dup(0, buffer.get_size())
         sent["samples"] += len(data) // 4
@@ -124,10 +182,24 @@ class Feed:
             self.problems.append(f"{message.src.get_name()}: {message.get_structure()}")
 
     def check(self):
-        """Both sides' stand-ins sent all of their float zeros, as real data."""
+        """Both sides' stand-ins sent all of their float zeros, as real data.
+        Returns how many buffers each side's stand-in sent, by kind."""
         assert len(self.parsed) == 2 and not self.problems, self.problems
-        whole = dict(samples=BUFFERS * self.rate // 100 * 2, nonzero=0, gaps=0)
-        assert self.sent == [whole, whole]
+        for ender in self.enders:
+            ender.join(BOUND_S)
+            assert not ender.is_alive()
+        buffers = {}
+        for sent in self.sent:
+            if self.committed is None:
+                assert sent["readiness"] == sent["after"] == 0
+                buffers[sent["kind"]] = BUFFERS
+            else:
+                assert sent["after"] == BUFFERS, sent
+                buffers[sent["kind"]] = sent["readiness"] + BUFFERS
+            assert sent["samples"] == buffers[sent["kind"]] * self.rate // 100 * 2, sent
+            assert sent["nonzero"] == sent["gaps"] == 0, sent
+        assert sorted(buffers) == ["microphone", "system"]
+        return buffers
 
 
 def run_until(predicate):
@@ -176,7 +248,7 @@ def logged_warnings(caplog):
     return [r.getMessage() for r in records if r.levelno >= logging.WARNING]
 
 
-@pytest.mark.parametrize("rate", sorted(EXPECTED))
+@pytest.mark.parametrize("rate", RATES)
 def test_native_recording_of_float_silence_saves_only_zeros(tmp_path, monkeypatch, caplog, rate):
     """main.py's NativeRecorder: both sides, ended by their sources' EOS."""
     root = library(tmp_path, monkeypatch)
@@ -201,7 +273,8 @@ def test_native_recording_of_float_silence_saves_only_zeros(tmp_path, monkeypatc
         # _begin_finish, session.finish and the Library publication.
         run_until(lambda: finished)
         assert finished[0] and not errors and not logged_warnings(caplog)
-        feed.check()
+        assert feed.check() == dict(microphone=BUFFERS, system=BUFFERS)
+        expected = converted_frames(rate, BUFFERS)
         assert recorder.session.manifest["state"] == "completed"
         assert recorder.session.manifest["events"][-1]["type"] == "end"
         tracks = saved_tracks(root)
@@ -209,7 +282,7 @@ def test_native_recording_of_float_silence_saves_only_zeros(tmp_path, monkeypatc
         for kind, track in tracks.items():
             frames, nonzero = saved_pcm(track)
             assert nonzero == 0, f"{kind}: {nonzero} of {frames} saved samples are not zero ({rate} Hz input)"
-            assert frames == track.frames == EXPECTED[rate], kind
+            assert frames == track.frames == expected, kind
             assert silent(track), kind
     finally:
         if recorder.pipeline is not None and not recorder.stopping:
@@ -218,12 +291,24 @@ def test_native_recording_of_float_silence_saves_only_zeros(tmp_path, monkeypatc
         recorder.close()
 
 
-@pytest.mark.parametrize("rate", sorted(EXPECTED))
+@pytest.mark.parametrize("rate", RATES)
 def test_broker_native_taps_save_float_silence_as_zeros(tmp_path, monkeypatch, caplog, rate):
     """browser_capture's NativeTap sides (Me, and computer sound with no browser
     audio), stopped by BrowserCapture.stop after their sources ended."""
     root = library(tmp_path, monkeypatch)
-    feed = Feed(monkeypatch, rate)
+    committed = dict(microphone=threading.Event(), system=threading.Event())
+    feed = Feed(monkeypatch, rate, committed)
+    add_native = BrowserCapture._add_native
+
+    def committing(self, kind, *args, **kwargs):
+        # The commit adds the side's track under capture.lock, before its
+        # checkpoint; the tap's append waits on that lock, so every buffer the
+        # stand-in sends from here is appended to the committed side.
+        identifier = add_native(self, kind, *args, **kwargs)
+        committed[kind].set()
+        return identifier
+
+    monkeypatch.setattr(BrowserCapture, "_add_native", committing)
     caplog.set_level(logging.WARNING)
     taps, calls, failures = {}, {}, []
     capture = None
@@ -268,15 +353,16 @@ def test_broker_native_taps_save_float_silence_as_zeros(tmp_path, monkeypatch, c
         assert capture.stop()["type"] == "stopped"
         assert capture.stopped.wait(BOUND_S) and capture.publication is not None
         assert not capture.error and not failures and not logged_warnings(caplog)
-        feed.check()
+        buffers = feed.check()
         tracks = saved_tracks(root)
         assert sorted(tracks) == ["microphone", "system"]
         for kind, track in tracks.items():
             sizes = [size for size, _, _ in calls[kind]]
             saved = [0] + [frames for _, _, frames in calls[kind]]
             written = [after - before for before, after in pairwise(saved)]
-            # The tap delivered every frame of the input.
-            assert sum(sizes) == EXPECTED[rate], kind
+            # The tap delivered every frame of the input: its readiness
+            # buffers and the BUFFERS sent after the commit.
+            assert sum(sizes) == converted_frames(rate, buffers[kind]), kind
             # R79 §1: PCM before the side commits is readiness PCM and is not
             # recorded (at least the first buffer; how many is commit timing).
             first = next(index for index, value in enumerate(written) if value)
@@ -293,7 +379,8 @@ def test_broker_native_taps_save_float_silence_as_zeros(tmp_path, monkeypatch, c
             assert gaps == ([("prefix", prefix)] if prefix else []), kind
             # Every later buffer is saved whole: no truncation, padding or gap.
             assert written[first + 1 :] == sizes[first + 1 :], kind
-            # Enough converted silence to flip D56 if any of it were dithered.
+            # Enough converted silence to flip D56 if any of it were dithered:
+            # all BUFFERS sent after the commit are recorded.
             assert sum(sizes[first + 1 :]) >= MIN_FRAMES * frame_samples(48000)
             frames, nonzero = saved_pcm(track)
             assert nonzero == 0, f"{kind}: {nonzero} of {frames} saved samples are not zero ({rate} Hz input)"
