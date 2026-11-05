@@ -318,6 +318,16 @@ def test_a_stalled_view_keeps_its_meter_feed_and_then_gets_the_newest_columns():
             "the stalled view's socket is full",
             timeout=10,
         )
+        # The send that filled the socket may have taken all of its packet; the
+        # loop's next round then drains once more to build the packet it cannot
+        # send. Once a round has started after that one, nothing drains the
+        # view's lane until the view reads again.
+        rounds = service.closed.count
+        wait_until(
+            lambda: service.closed.count >= rounds + 2 or not worker.is_alive(),
+            "the meter loop holds a packet its stalled view cannot take",
+            timeout=10,
+        )
         newest = None
         for n in range(15):
             # 75 columns: more than a lane holds while nothing drains it.
@@ -333,8 +343,11 @@ def test_a_stalled_view_keeps_its_meter_feed_and_then_gets_the_newest_columns():
             timeout=10,
         )
         assert worker.is_alive() and len(source.subscribers) == 2, failures
-        # Bounded: the stalled view's lane dropped its oldest columns.
-        assert source.overflow > 0
+        # Bounded: the stalled view's lane is full and kept the newest columns.
+        (stalled,) = source.subscribers - {witness}
+        with source.queue_lock:
+            lane = list(stalled.lanes["others"])
+        assert len(lane) == stalled.lanes["others"].maxlen and lane[-1][0] == newest
         view.setblocking(False)
         buffer, slots = bytearray(), []
 
