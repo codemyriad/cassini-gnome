@@ -165,7 +165,9 @@ def test_a_native_fallback_crossing_the_deadline_is_saved_and_never_left_recordi
             # Its start and save write the folder durably (about 15 fsyncs on a
             # real disk): wait for that save itself, bounded only against a hang.
             (capture,) = started
-            assert capture.stopped.wait(SAVE_BOUND), f"the native fallback did not finish its save within {SAVE_BOUND} s"
+            assert capture.stopped.wait(SAVE_BOUND), (
+                f"the native fallback did not finish its save within {SAVE_BOUND} s"
+            )
             assert capture.finished and capture.directory is not None
             assert list(server.captures.values()) == [capture]
             assert not any(s["recording"] for s in request(path=path)["statuses"])
