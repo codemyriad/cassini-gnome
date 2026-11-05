@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""F: the Flatpak job builds the host Trash portal once per input (a main-saved cache)."""
+"""F: the Flatpak job builds the host Trash portal once per input (a main-saved
+cache), and decodes the engine goldens on the stable bundle only (D20)."""
 
 import hashlib
 import importlib.util
@@ -8,6 +9,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tarfile
 from pathlib import Path
 
@@ -176,3 +178,157 @@ def test_a_restored_portal_is_used_as_built_and_anything_else_is_rebuilt(portal,
         else:
             (elsewhere / "libexec/xdg-desktop-portal").unlink()
         assert prepare(elsewhere) == builds, change
+
+
+# D20: the devel bundle skips the engines' golden decodes only while they are
+# the stable bundle's: the same pinned sources, and code that never asks which
+# profile or application it runs as.
+
+
+def test_only_the_devel_smoke_skips_the_goldens_and_the_stable_one_runs_them_on_the_cached_model():
+    all_steps = steps()
+    devel = all_steps[index(lambda s: "smoke.sh cassini-talk-devel.flatpak" in s)]
+    stable = all_steps[index(lambda s: "smoke.sh cassini-talk.flatpak" in s)]
+    assert field(devel, "run") == (
+        "build-aux/flatpak/smoke.sh cassini-talk-devel.flatpak io.codemyriad.CassiniTalk.Devel --without-goldens"
+    )
+    assert "build-aux/flatpak/smoke.sh cassini-talk.flatpak io.codemyriad.CassiniTalk\n" in stable + "\n"
+    model = field(all_steps[index(lambda s: "key: parakeet-ultra-" in s)], "path")
+    assert field(stable, "CASSINI_PARAKEET_TEST_CACHE") == model
+    assert "CASSINI_PARAKEET_TEST_CACHE" not in devel
+    # Nothing else drops the goldens: not local builds, not another workflow.
+    users = [
+        str(path.relative_to(ROOT))
+        for path in [*ROOT.glob(".github/workflows/*.yml"), *ROOT.glob("build-aux/**/*.sh")]
+        if "--without-goldens" in path.read_text()
+    ]
+    assert sorted(users) == [".github/workflows/flatpak.yml", "build-aux/flatpak/smoke.sh"]
+
+
+def test_the_devel_and_stable_manifests_differ_only_in_the_id_and_the_profile():
+    devel, stable = (
+        json.loads((ROOT / f"build-aux/flatpak/{name}.json").read_text())
+        for name in ("io.codemyriad.CassiniTalk.Devel", "io.codemyriad.CassiniTalk")
+    )
+    assert (devel.pop("id"), stable.pop("id")) == ("io.codemyriad.CassiniTalk.Devel", "io.codemyriad.CassiniTalk")
+    (app,) = [module for module in devel["modules"] if module["name"] == "cassini-talk"]
+    options = app["config-opts"]
+    options[options.index("-Dprofile=development")] = "-Dprofile=default"
+    assert devel == stable
+    # Every engine source is a pinned download, so the same manifest means the same bytes.
+    files = [source for module in stable["modules"] for source in module["sources"] if source["type"] == "file"]
+    assert files and all(re.fullmatch(r"[0-9a-f]{64}", source["sha256"]) for source in files)
+
+
+PROFILE_BRANCH = re.compile(r"""profile["')]*\s*[!=]=\s*["'](?:development|default)["']|FLATPAK_ID["')]*\s*[!=]=""")
+
+
+def test_the_only_code_that_branches_on_the_profile_is_checked_on_both_bundles():
+    # The devel window's style (Desktop launches the devel bundle) and browser
+    # registration's protected build (companion_bridge.py runs on both bundles).
+    # A new branch on the profile or the Flatpak ID fails here: decide whether the
+    # devel bundle's goldens must come back before allowing it.
+    found = sorted(
+        f"{path.relative_to(ROOT)}: {line.strip()}"
+        for path in (ROOT / "src").rglob("*.py")
+        for line in path.read_text().splitlines()
+        if PROFILE_BRANCH.search(line)
+    )
+    assert found == [
+        'src/cassini_talk/main.py: if self.profile == "development":',
+        'src/cassini_talk/registration.py: return os.environ.get("FLATPAK_ID") != "io.codemyriad.CassiniTalk"',
+        'src/cassini_talk/registration.py: return value.get("profile") != "default" or value.get("bindir") '
+        'not in ("/usr/bin", "/usr/local/bin")',
+    ]
+    assert "protected_build" not in "".join(
+        (ROOT / f"src/cassini_talk/{name}.py").read_text()
+        for name in ("whistle_worker", "parakeet_worker", "whistle_client", "parakeet_client", "transcription")
+    )
+
+
+def fake_tools(directory):
+    """flatpak, python3 and uname that only record how smoke.sh called them."""
+    directory.mkdir(parents=True)
+    log = directory / "calls"
+    tools = {
+        "flatpak": 'printf "flatpak %s\\n" "$*" >> "$LOG"',
+        "uname": "echo x86_64",
+        "python3": "\n".join(
+            [
+                'printf "python3 %s\\n" "$*" >> "$LOG"',
+                'if [ "$1" = tests/parakeet/prepare_model.py ]; then',
+                '  mkdir -p "$3/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"',
+                "fi",
+            ]
+        ),
+    }
+    for name, body in tools.items():
+        (directory / name).write_text("#!/bin/sh\n" + body + "\n")
+        (directory / name).chmod(0o755)
+    return log
+
+
+def smoke(tmp_path, *extra):
+    bin_dir = tmp_path / "bin"
+    log = fake_tools(bin_dir)
+    environment = {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "LOG": str(log),
+        "HOME": str(tmp_path),
+        "CASSINI_PARAKEET_TEST_CACHE": str(tmp_path / "models"),
+    }
+    result = subprocess.run(
+        ["sh", str(ROOT / "build-aux/flatpak/smoke.sh"), "app.flatpak", "io.example.App", *extra],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    calls = (
+        log.read_text().replace(str(ROOT), "$ROOT").replace(str(tmp_path), "$TMP").splitlines() if log.exists() else []
+    )
+    # A developer's checkout may hold a built portal already; that call is not under test.
+    return result, [call for call in calls if "prepare_trash_portal.py" not in call]
+
+
+def test_smoke_without_goldens_runs_every_check_but_the_golden_decodes(tmp_path):
+    full, full_calls = smoke(tmp_path / "full")
+    light, light_calls = smoke(tmp_path / "light", "--without-goldens")
+    assert full.returncode == light.returncode == 0, (full.stderr, light.stderr)
+    model = "$TMP/models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"
+    shared = [
+        "flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo",
+        "flatpak install --user -y --noninteractive --reinstall --bundle app.flatpak",
+        "python3 tests/flatpak/library_persistence.py io.example.App --output $ROOT/flatpak-library-persistence.json",
+        "python3 tests/flatpak/companion_bridge.py io.example.App --output $ROOT/flatpak-companion-bridge.json",
+        "python3 tests/flatpak/trash.py io.example.App --output $ROOT/flatpak-trash.json"
+        " --portal-prefix $ROOT/_ci-trash-portal",
+    ]
+    run = (
+        "flatpak run --unshare=network --no-documents-portal --filesystem=$ROOT/build-aux:ro"
+        " --filesystem=$ROOT/tests:ro"
+    )
+    smoke_installed = "--command=python3 io.example.App -I $ROOT/build-aux/smoke-installed.py /app/share/cassini-talk"
+    assert full_calls == [
+        *shared,
+        "python3 tests/parakeet/prepare_model.py --cache $TMP/models",
+        f"{run} --filesystem={model}:ro {smoke_installed} --whistle $ROOT/tests/whistle --parakeet {model}"
+        " --parakeet-tests $ROOT/tests/parakeet",
+    ]
+    assert light_calls == [*shared, f"{run} {smoke_installed} --engines"]
+    wrong, calls = smoke(tmp_path / "wrong", "--no-goldens")
+    assert wrong.returncode == 2 and calls == []
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [["--engines", "--whistle", "w"], ["--engines", "--parakeet", "m", "--parakeet-tests", "t"], ["--parakeet", "m"]],
+)
+def test_smoke_installed_refuses_mixed_or_incomplete_engine_options(arguments, tmp_path):
+    result = subprocess.run(
+        [sys.executable, "-I", str(ROOT / "build-aux/smoke-installed.py"), str(tmp_path), *arguments],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 2 and "usage:" in result.stderr

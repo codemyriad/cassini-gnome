@@ -75,11 +75,13 @@ jobs:
           path: ${{ runner.temp }}/parakeet-models
           key: parakeet-ultra-18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9
       # The same offline check as the other packages: install the bundle and
-      # write the D11 goldens down in a sandbox with --unshare=network.
+      # check it in a sandbox with --unshare=network. F (D20): the devel bundle
+      # runs every check but the engines' golden decodes, whose payload it still
+      # verifies: both manifests take the same pinned engine sources and differ
+      # only in the ID and -Dprofile, which no recognition code reads. The stable
+      # bundle below, the one a release ships (G15), decodes the full goldens.
       - name: Smoke-test the installed Flatpak offline
-        env:
-          CASSINI_PARAKEET_TEST_CACHE: ${{ runner.temp }}/parakeet-models
-        run: build-aux/flatpak/smoke.sh cassini-talk-devel.flatpak io.codemyriad.CassiniTalk.Devel
+        run: build-aux/flatpak/smoke.sh cassini-talk-devel.flatpak io.codemyriad.CassiniTalk.Devel --without-goldens
       # Keep stable-profile build/install coverage; D51 removes only old-ID
       # rebase/migration work, not validation of the release package itself.
       # It builds against the system SDK the steps above already updated (G4
@@ -91,6 +93,8 @@ jobs:
       # The tag workflow refuses a bundle without one
       # (build-aux/ci/flatpak_bundle.py), so no release ships this way.
       - name: Build, validate and freshly install the stable Cassini talk profile
+        env:
+          CASSINI_PARAKEET_TEST_CACHE: ${{ runner.temp }}/parakeet-models
         run: |
           flatpak-builder --install-deps-from=flathub --force-clean --disable-rofiles-fuse \
             --repo="$RUNNER_TEMP/talk-stable-repo" "$RUNNER_TEMP/talk-stable-build" \

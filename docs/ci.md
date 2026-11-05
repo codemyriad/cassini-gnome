@@ -158,12 +158,17 @@ repository and bundles made by flatpak and ostree with throwaway keys
 Every PR checks the version across Meson, NEWS, metainfo, the man page and all
 native recipes, in Lint (`source.yml`). `flatpak.yml` builds the stable Flatpak,
 validates its exported desktop/AppStream files and launcher version in the SDK,
-then installs it and runs the normal offline smoke checks. The job's host
-Trash portal (fuse and xdg-desktop-portal, compiled by
-`tests/flatpak/prepare_trash_portal.py`) comes from a cache main saves and pull
-requests only restore, keyed on that script, the job's container image and the
-runner; the script rebuilds unless the restored tree names the same pins and
-prefix. The tag workflow
+then installs it and runs the normal offline smoke checks, the Whistle and
+Parakeet goldens included. The devel bundle the same job builds first runs
+every check but those golden decodes (`smoke.sh --without-goldens`, F): its
+engines come from the same pinned sources, it still verifies their installed
+payload offline, and its manifest differs from the stable one only in the ID
+and `-Dprofile`, which no recognition code reads (`tests/test_ci_flatpak_dedup.py`
+fails on a new branch on the profile). The job's host Trash portal (fuse and
+xdg-desktop-portal, compiled by `tests/flatpak/prepare_trash_portal.py`) comes
+from a cache main saves and pull requests only restore, keyed on that script,
+the job's container image and the runner; the script rebuilds unless the
+restored tree names the same pins and prefix. The tag workflow
 rejects a tag that disagrees with any package version. `release-check.yml` is
 dispatch-only: run it on a release branch to check its metadata before tagging.
 Native package scripts validate the installed metadata and launcher after the
