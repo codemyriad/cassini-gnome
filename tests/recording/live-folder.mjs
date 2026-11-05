@@ -114,6 +114,8 @@ function cleanup({failed = false} = {}) {
     await call({action: 'stop-all'});
     await poll(async () => !(await call()).statuses.some(s => s.recording), 'cleanup: the app stops its recording', 15000);
    });
+   // A quit while the stopped recording still saves can outlast the quit bound.
+   await step('saved', () => poll(async () => (await call()).recordReady, 'cleanup: nothing is saving before quit', 30000));
    await step('quit', async () => {
     const quit = exitWithin(ui, 10000); // bound on the app's exit
     await call({action: 'quit'}); ui.stdin.end();
