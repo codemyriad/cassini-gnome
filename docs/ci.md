@@ -19,9 +19,9 @@ manually, never main/nightly or the last potentially mergeable head.
 The PR checks list names the areas: Changed areas, Build, Meson tests, Source,
 Packaging, Recording, Boards, Library and Offline. Recording runs two jobs in parallel:
 `capture` and `live-folder` (shared test 2, D68), so the live folder never lengthens the
-capture critical path. `live-folder` is `continue-on-error` until its open GNOME and
-extension product findings are fixed: it runs and uploads evidence on every PR, but
-Recording's result ignores it (a failure still blocks `green_main.py` releases). Called workflows have `workflow_call`
+capture critical path. Both gate Recording: `live-folder` became gating at R93 (26/26
+hosted passes). A failure is root-fixed (D66), never un-gated; `test_ci_hygiene.py`
+refuses `continue-on-error` in every workflow. Called workflows have `workflow_call`
 and `workflow_dispatch`, without duplicate PR/push/nightly entry points. Each
 can still run alone; standalone dispatch builds its own required profile.
 
