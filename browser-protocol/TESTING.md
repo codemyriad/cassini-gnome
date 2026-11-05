@@ -171,8 +171,12 @@ own: the adapter passes the pages and the extension's service worker.
   bounded by `CLEANUP_MS`; then `stopRelays` ends any control relay still running and
   `stopLaunchers` kills any control launcher still waiting in `open()` on its FIFO (its
   relay never opened it: the launcher reads neither of the browser's pipes, so the
-  browser's exit does not end it). A launcher is told from its host by its command line
-  alone (on macOS liveness is `kill(pid, 0)`, which both pass). A relay spawned but not yet
+  browser's exit does not end it). Every identity is read from the process's exact argv
+  (`/proc` on Linux; on macOS the kernel's `KERN_PROCARGS2` through `python3`, since `ps`
+  joins arguments with spaces): a host runs its whole command as consecutive arguments, a
+  relay has `control-relay.mjs` and a launcher its launcher path as one whole argument, and a
+  zombie is none of them. So a recycled pid, a similarly named process or a launcher still
+  waiting is never taken for the host or the relay. A relay spawned but not yet
   started at teardown cannot be found by its log line; it watches its writer instead (the
   launcher's pid, passed as its third argument) until its FIFO is open, and once that pid
   is gone it opens the FIFO for writing itself without blocking and closes it, so it reads
@@ -239,8 +243,11 @@ own: the adapter passes the pages and the extension's service worker.
 failure after Record: Stop, one cleanup, the relay stopped; a failure while the control
 launcher starts: one cleanup, the launcher waiting on its FIFO killed; a failing or missing
 cleanup never hides the run's failure; a relay that starts only after teardown killed its
-launcher ends by itself; on macOS's branches, with no `/proc`, the waiting launcher is
-still killed; a `check.py` that never exits is killed at its bound);
+launcher ends by itself; the waiting launcher is never live and is still killed; a recycled
+pid running the same interpreter, or the host's path only as an argument, is never the host
+(paths with spaces); a process named like the relay or the launcher (`control-relay.mjs.backup`)
+is never signalled; a `check.py` that never exits is killed at its bound; CI runs this file
+on macOS too, in `launcher-macos`);
 `node --test tests/control-relay.test.mjs` checks the frame reader across chunk
 boundaries, the relay's byte-exact passthrough, unparsable and cut-off frames, and the
 observing launcher (the host stays the spawner's child, connections in launch order, the

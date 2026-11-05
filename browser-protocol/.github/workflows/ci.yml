@@ -11,8 +11,53 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  contract:
+  launcher-paths:
+    # Light gate for launcher-macos: did this change touch the launcher, the relay, their
+    # tests, what those tests import or read, the capture graph (D68.1), or this workflow?
+    # Unknown base: run it.
+    # A light job: a constant GitHub-hosted label (the CM_RUNNER selector stays the contract job's).
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.paths.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: paths
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          paths='^(scenarios/(native-launcher|control-relay|live-folder|folder-clock|product-topologies)\.mjs|tests/(live-folder-driver|control-relay)\.test\.mjs|conformance/multistream/corpus\.json|\.github/workflows/ci\.yml|extension/(capture|pcm-worklet)\.js|tests/capture-real-time\.mjs|package(-lock)?\.json)$|^conformance/live-folder/'
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then changed=true
+          elif git diff --name-only "$BASE" HEAD | grep -qE "$paths"; then changed=true
+          else changed=false; fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "launcher-macos needed: $changed (base ${BASE:-none})"
+  launcher-macos:
+    # The launcher and relay read process identity differently on macOS (no /proc:
+    # KERN_PROCARGS2 through python3), so their tests run there too, when launcher-paths says so.
+    # Same bound as the contract job, which runs these tests on Linux. D68.1: the capture clock
+    # check runs here too, because hosted macOS is where a suspended capture context falls behind.
+    needs: launcher-paths
+    if: needs.launcher-paths.outputs.changed == 'true'
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Live-folder driver and control relay unit tests on macOS
+        run: node --test tests/live-folder-driver.test.mjs tests/control-relay.test.mjs
+      - name: A capture over 30 s keeps real time (D68.1)
+        run: |
+          npm ci
+          npx playwright install chromium
+          node tests/capture-real-time.mjs
+  contract:
+    # CM_RUNNER=hetzner moves the job to the cm-hetzner runners; any other value keeps ubuntu-24.04.
+    runs-on: ${{ vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-24.04' }}
     # p95 3.2 min over 178 green runs (2026-10-29..11-04), slowest 6.1 min: 10 min is about 3x p95.
     timeout-minutes: 10
     steps:

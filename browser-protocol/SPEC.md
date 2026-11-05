@@ -118,6 +118,12 @@ happens before the track is declared. Later offsets come only from
 render frames. Different frames/devices remain approximately aligned, not sample-accurate
 conference clocks. Local sender mute/suspension produces silence.
 
+Since extension 0.2.13 (D68.1) every capture context keeps real time. A browser moves an
+AudioContext whose output has been all zeros for about 30 s onto a timer, which can run far
+slower than real time, and the capture graph's output is silent by design. So an inaudible
+constant (6e-8, -144 dBFS, below one 16-bit step) feeds each capture context's output, once per
+context. Captured PCM is unchanged: a silent input still records exactly zero.
+
 Since extension 0.2.12 a browser `track` carries three record-only clock facts. All spans on
 one AudioContext repeat the same values. Native tracks omit them.
 
