@@ -143,7 +143,8 @@ jobs:
       - run: python3 browser-protocol/verify.py --pinned browser-extension
       - run: npm ci --prefix tests/recording
       # The same key as capture and deb.yml's browser startup job: one shared entry.
-      - uses: actions/cache@v6
+      # Restore only (D66): capture keeps the entry, so this job never saves one.
+      - uses: actions/cache/restore@v6
         with:
           path: ~/.cache/ms-playwright
           key: browser-startup-linux-x64-${{ hashFiles('tests/recording/package-lock.json') }}
