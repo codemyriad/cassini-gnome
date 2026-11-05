@@ -3,6 +3,7 @@
 
 import hashlib
 import importlib.util
+import os
 import re
 import shutil
 import subprocess
@@ -282,7 +283,7 @@ def test_release_sums_refuse_a_missing_or_extra_package(tmp_path, drop):
 
 def test_the_tag_workflow_attaches_sha256sums_and_verifies_the_published_files():
     workflow = (Path(__file__).parents[1] / ".github/workflows/release.yml").read_text()
-    assert "release_sums.py artifacts --stage staged --sums SHA256SUMS" in workflow
+    assert "release_sums.py artifacts --stage staged --sums SHA256SUMS > assets.txt" in workflow
     assert '--generate-notes "${assets[@]}"' in workflow
     assert 'gh release download "$GITHUB_REF_NAME"' in workflow
     assert "sha256sum --check --strict SHA256SUMS" in workflow
@@ -321,3 +322,62 @@ def test_release_sums_refuse_two_packages_with_one_published_name(tmp_path):
     (tmp_path / "a.b.deb").write_bytes(b"2")
     with pytest.raises(ValueError, match="share a published name"):
         sums.stage(sorted(tmp_path.glob("*.deb")), tmp_path / "staged")
+
+
+def create_release_script():
+    """The release workflow's own "Create release" run block, as bash runs it."""
+    workflow = (Path(__file__).parents[1] / ".github/workflows/release.yml").read_text()
+    step = workflow.split("      - name: Create release\n", 1)[1]
+    block = step.split("        run: |\n", 1)[1].split("\n      - ", 1)[0]
+    return "\n".join(line.removeprefix("          ") for line in block.splitlines()) + "\n"
+
+
+def run_create_release(tmp_path, debs):
+    """Run that block under bash -e (as GitHub runs it) against fake artifacts and a fake gh."""
+    root = Path(__file__).parents[1]
+    (tmp_path / "source").symlink_to(root)
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    for name in [
+        *debs,
+        "cassini-talk-1-1.fc44.x86_64.rpm",
+        "cassini-talk-1-1.os.x86_64.rpm",
+        "cassini-talk-1-1-x86_64.pkg.tar.zst",
+    ]:
+        (artifacts / name).write_bytes(name.encode())
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "gh").write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$GH_CALLS"\n')
+    (bin_dir / "gh").chmod(0o755)
+    version = module("release_metadata").check(root)["version"]
+    env = dict(
+        os.environ,
+        PATH=f"{bin_dir}:{os.environ['PATH']}",
+        GH_CALLS=str(tmp_path / "gh-calls"),
+        GITHUB_REF_NAME="v" + version,
+        GITHUB_REPOSITORY="example/repo",
+    )
+    script = tmp_path / "create.sh"
+    script.write_text(create_release_script())
+    result = subprocess.run(["bash", "-e", str(script)], cwd=tmp_path, env=env, capture_output=True, text=True)
+    calls = (tmp_path / "gh-calls").read_text().splitlines() if (tmp_path / "gh-calls").exists() else None
+    return result, calls
+
+
+@pytest.mark.skipif(not shutil.which("bash"), reason="bash runs the workflow step")
+def test_a_refused_staging_never_creates_a_release(tmp_path):
+    # #229 Codex: staging in a process substitution lost its failure, so two .debs
+    # with one published name reached `gh release create` with zero assets.
+    result, calls = run_create_release(tmp_path, ["a~b_amd64.deb", "a.b_amd64.deb"])
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "share a published name" in result.stderr
+    assert calls is None, calls
+
+
+@pytest.mark.skipif(not shutil.which("bash"), reason="bash runs the workflow step")
+def test_a_good_staging_creates_the_release_with_six_assets(tmp_path):
+    result, calls = run_create_release(tmp_path, ["a~ubuntu_amd64.deb", "a~debian_amd64.deb"])
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert calls[:2] == ["release", "create"]
+    attached = [c for c in calls if c.startswith("staged/") or c == "SHA256SUMS"]
+    assert len(attached) == 6 and attached[-1] == "SHA256SUMS"

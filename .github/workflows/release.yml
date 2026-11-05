@@ -96,7 +96,11 @@ jobs:
           # The packages carry the x86_64 writing-down engine: exactly two amd64
           # .debs (one per base), two x86_64 RPMs and the Arch package, plus their
           # SHA256SUMS (sha256sum -c format, by file name), which is attached too.
-          mapfile -t assets < <(python3 source/build-aux/ci/release_sums.py artifacts --stage staged --sums SHA256SUMS)
+          # A checked command (bash -e stops here), not a process substitution, whose
+          # failure bash would discard: a refused set must never create a release.
+          python3 source/build-aux/ci/release_sums.py artifacts --stage staged --sums SHA256SUMS > assets.txt
+          mapfile -t assets < assets.txt
+          test "${#assets[@]}" -eq 6
           # The tagged version's NEWS section, in plain language, then GitHub's PR list.
           python3 source/build-aux/ci/release_notes.py "$GITHUB_REF_NAME" > notes.md
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file notes.md --generate-notes "${assets[@]}"
