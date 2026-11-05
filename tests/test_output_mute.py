@@ -387,8 +387,11 @@ def test_delayed_device_query_does_not_block_pcm_or_error_handling(tmp_path, mon
             assert progressed.wait(3), "Device query blocked the PCM/error-handler capture lock"
             pcm.result()
             if kind == "native":
+                from test_recorder import spin_until
+
                 # Dispatch the GTK bus-handler path on the main test thread,
-                # while the Pulse query is still blocked on the worker.
+                # while the Pulse query is still blocked on the worker: its
+                # bus worker takes the capture lock and ends the recording.
                 capture._message(
                     None,
                     SimpleNamespace(
@@ -397,7 +400,7 @@ def test_delayed_device_query_does_not_block_pcm_or_error_handling(tmp_path, mon
                         src=object(),
                     ),
                 )
-                assert error_handled.is_set()
+                spin_until(error_handled.is_set, timeout=3)
             assert session.manifest["tracks"][0]["frames"] == 480
             retire()
         finally:
@@ -407,6 +410,7 @@ def test_delayed_device_query_does_not_block_pcm_or_error_handling(tmp_path, mon
     session.finish()
     if kind == "native":
         capture._executor.shutdown()
+        capture._bus_worker.shutdown()
 
 
 @pytest.mark.parametrize("kind", ["native", "browser"])

@@ -208,6 +208,9 @@ class Taps:
         step = Taps.refused.get(self.kind)
         if step is not None:
             raise Injected(step)
+        # A side opens on its first buffer (D58.1: a silent system tap stays
+        # armed, without a track); this readiness PCM precedes the commit.
+        self.append(FRAME, 0)
 
     def stop(self):
         pass

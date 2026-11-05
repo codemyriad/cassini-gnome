@@ -134,12 +134,20 @@ def test_a_start_that_saw_the_deadline_before_its_result_was_read_is_unanswered(
         peer.close()
 
 
-def test_a_native_fallback_crossing_the_deadline_is_saved_and_never_left_recording(service, monkeypatch):  # noqa: F811
+@pytest.mark.parametrize("audible", [True, False], ids=["audible", "silent"])
+def test_a_native_fallback_crossing_the_deadline_is_saved_and_never_left_recording(service, monkeypatch, audible):  # noqa: F811
     import threading
+
+    from test_browser_capture import Tap
 
     from cassini_talk.browser_capture import BrowserCapture
 
     server, path = service
+    # An audible fallback opens its sides and keeps its folder. A silent one never
+    # opens (D58.1: the others stay armed, waiting for sound), so at Stop nothing
+    # opened and D58 point 2 leaves no folder. Either way the tab never stays recording.
+    if audible:
+        monkeypatch.setattr(server, "tap_factory", Tap)
     _futures, expire = fake_deadlines(server, monkeypatch)
     peer = Extension(path, (3,))
     entered, release = threading.Event(), threading.Event()
@@ -168,7 +176,9 @@ def test_a_native_fallback_crossing_the_deadline_is_saved_and_never_left_recordi
             assert capture.stopped.wait(SAVE_BOUND), (
                 f"the native fallback did not finish its save within {SAVE_BOUND} s"
             )
-            assert capture.finished and capture.directory is not None
+            assert capture.finished
+            assert (capture.directory is not None) is audible
+            assert any(server.capture_parent.rglob("session.json")) is audible
             assert list(server.captures.values()) == [capture]
             assert not any(s["recording"] for s in request(path=path)["statuses"])
     finally:

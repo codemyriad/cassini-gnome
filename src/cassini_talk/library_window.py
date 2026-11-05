@@ -787,9 +787,26 @@ class LibraryWindow(Adw.ApplicationWindow):
         if native is not None and native.session is not None:
             manifest = native.session.manifest
             tracks = [(t.get("kind"), t.get("ended"), t.get("startOffsetMs")) for t in manifest.get("tracks", ())]
-            return live_lines(manifest.get("refusals"), tracks, manifest.get("events") or ())
+            return live_lines(manifest.get("refusals"), tracks, manifest.get("events") or (), native.armed_sides())
         tracks = [(t.kind, t.ended, t.start_offset_ms) for t in meeting.tracks]
-        return live_lines(list(meeting.capture_refusals), tracks, meeting.capture_events)
+        return live_lines(list(meeting.capture_refusals), tracks, meeting.capture_events, self._armed_sides(meeting))
+
+    def _armed_sides(self, meeting):
+        """D58.1: a browser capture's sides waiting for their first buffer, from
+        its live status (the folder cannot say so)."""
+        if getattr(meeting, "id", None) is None:
+            return None
+        snapshots = getattr(self, "_browser_snapshot", {}), getattr(self.get_application(), "_browser_snapshot", {})
+        for snapshot in snapshots:
+            for status in snapshot.get("statuses", ()) if isinstance(snapshot, dict) else ():
+                if (
+                    isinstance(status, dict)
+                    and isinstance(status.get("path"), str)
+                    and meeting_id(Path(status["path"])) == meeting.id
+                    and isinstance(status.get("armed"), dict)
+                ):
+                    return status["armed"]
+        return None
 
     def _fill_recording_lines(self, box, line, minutes, message, banner, fallback=False, refused=(), meetings=()):
         from .inline_line import InlineLine
@@ -831,7 +848,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         for item in refused:
             if item["side"] == "browser":
                 continue
-            # Try again only for deviceUnavailable: GNOME never classifies a permission.
+            # Try again for every line but the microphone's permission line (D58.1:
+            # a refused computer sound has one line, whatever its code).
             retry = (
                 None
                 if item["id"] == "errors.micPermission.line"

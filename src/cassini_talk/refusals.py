@@ -3,8 +3,10 @@
 
 The rules are the protocol's (SPEC.md, "Refusals"; conformance/refusals). A
 side has opened when its first buffer is admitted within 3 s. Before that,
-a failure is a refusal. A refusal never changes state, problem, problemKind,
-the end reason, othersSource or captureOutcome.
+a failure is a refusal. D58.1: the others' side (computer sound) is never
+refused for silence or a missing buffer; it opens on its first buffer however
+late, and only an explicit error refuses it. A refusal never changes state,
+problem, problemKind, the end reason, othersSource or captureOutcome.
 """
 
 import re
@@ -60,6 +62,22 @@ def gst_message(error, debug):
     domain = getattr(error, "domain", None)
     head = f"{domain}:{getattr(error, 'code', '')}" if domain else ""
     return ": ".join(part for part in (head, debug or "") if part) or getattr(error, "message", "") or ""
+
+
+# GStreamer's GST_RESOURCE_ERROR_NOT_AUTHORIZED: the system denied the access.
+RESOURCE_DOMAIN = "gst-resource-error-quark"
+NOT_AUTHORIZED = 15
+
+
+def gst_code(error):
+    """D58.1: the D58 code of a native side's explicit GStreamer error.
+
+    permissionDenied only when the system reports the access as not authorized
+    (never inferred from silence or from text); any other failure, a missing
+    device or a capture that could not be created, is deviceUnavailable.
+    """
+    domain, code = getattr(error, "domain", None), getattr(error, "code", None)
+    return "permissionDenied" if domain == RESOURCE_DOMAIN and code == NOT_AUTHORIZED else "deviceUnavailable"
 
 
 class NothingOpened(OSError):
@@ -147,7 +165,7 @@ LIVE_KINDS = {
 }
 
 
-def live_lines(stored, tracks, events=()):
+def live_lines(stored, tracks, events=(), armed=None):
     """Recording page lines (R79 §3): one per refused side that records nothing now.
 
     `tracks` is (kind, ended, startOffsetMs) for each track. A refusal is
@@ -158,7 +176,19 @@ def live_lines(stored, tracks, events=()):
     the user turned off after its refusal shows none either. A refused resume
     (resumeRefused) never drives a line: it shows only in Details. Each line
     is keyed on (side, code, detail), never on stored text.
+
+    `armed` maps a track kind to the time of its attempt for a side that is
+    selected and waiting for its first buffer (D58.1: the others' side is never
+    refused for silence). The manifest cannot say so: Try again writes no
+    selection event and the track comes only at the first buffer. An attempt at
+    or after a refusal covers it like a track that started then, so waiting
+    for sound never shows a refusal; a later explicit error is its own refusal.
     """
+    armed = {
+        kind: at
+        for kind, at in (armed.items() if isinstance(armed, dict) else ())
+        if isinstance(kind, str) and isinstance(at, (int, float)) and not isinstance(at, bool)
+    }
     selections = [e for e in events if isinstance(e, dict) and e.get("type") == "selection"]
     last = selections[-1] if selections else {}
     latest = {}
@@ -167,7 +197,9 @@ def live_lines(stored, tracks, events=()):
             latest.pop(item["side"], None)
             latest[item["side"]] = item
     tracks = [(*track, None)[:3] for track in tracks]
-    live = {kind for kind, ended, _start in tracks if ended is not True}
+    # An armed side records the others from its device once it hears them.
+    live = {kind for kind, ended, _start in tracks if ended is not True} | armed.keys()
+    tracks += [(kind, True, at) for kind, at in armed.items()]  # Covers what came before it.
     result = []
     for side, item in latest.items():
         kinds = set(LIVE_KINDS[side])

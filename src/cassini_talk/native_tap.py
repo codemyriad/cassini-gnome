@@ -10,6 +10,21 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
 
 from .recording_details import ACMeter  # noqa: E402
+from .refusals import gst_code  # noqa: E402
+
+# The microphone must deliver its first buffer within this bound (R79 §1).
+# D58.1: for the others' side (computer sound) it is only the window in which an
+# explicit error refuses the tap at its open; silence never does.
+OPEN_TIMEOUT_S = 3
+NO_SAMPLE = "Native audio capture did not produce a sample"
+
+
+class CaptureError(OSError):
+    """An explicit capture failure, with the D58 code it is refused with."""
+
+    def __init__(self, message, refusal_code="deviceUnavailable"):
+        super().__init__(message)
+        self.refusal_code = refusal_code
 
 
 class NativeTap:
@@ -21,8 +36,11 @@ class NativeTap:
         self.pipeline = None
         self.ended = threading.Event()
         self.ready = threading.Event()
+        # D58.1: a first buffer was delivered (ready is also set by an error).
+        self.heard = threading.Event()
         self.closed = threading.Event()
         self.error = None
+        self.refusal_code = "deviceUnavailable"
         self.thread = None
         self._ac_meter = ACMeter()
 
@@ -47,20 +65,23 @@ class NativeTap:
         self.thread.start()
         try:
             if self.pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
-                raise OSError("Could not start native audio capture")
-            if not self.ready.wait(3):
-                raise OSError("Native audio capture did not produce a sample")
+                raise CaptureError("Could not start native audio capture")
+            # D58.1: a silent computer is not a failure: the others' tap stays
+            # armed and delivers its first buffer whenever sound comes.
+            if not self.ready.wait(OPEN_TIMEOUT_S) and self.kind != "system":
+                raise OSError(NO_SAMPLE)
             if self.error:
-                raise OSError(self.error)
+                raise CaptureError(self.error, self.refusal_code)
         except BaseException:
             self.closed.set()
             self.pipeline.set_state(Gst.State.NULL)
             self.thread.join(timeout=1)
             raise
 
-    def _fail(self, error):
+    def _fail(self, error, gerror=None):
         if self.error is None and not self.closed.is_set():
             self.error = str(error)
+            self.refusal_code = gst_code(gerror)
             self.ready.set()
             self.failed(self.error)
 
@@ -78,6 +99,7 @@ class NativeTap:
             if self._ac_meter.feed(data):
                 self.level(self._ac_meter.level)
             self.append(data, offset, host_ns=base + buffer.pts)
+            self.heard.set()
             self.ready.set()
         except Exception as error:
             self._fail(error)
@@ -93,7 +115,8 @@ class NativeTap:
                 if message is None:
                     continue
                 if message.type == Gst.MessageType.ERROR:
-                    self._fail(message.parse_error()[0].message)
+                    error = message.parse_error()[0]
+                    self._fail(error.message, error)
                     self.ended.set()
                     return
                 if message.type == Gst.MessageType.EOS:
@@ -110,6 +133,10 @@ class NativeTap:
         # EOS can block while Pulse finishes a read. Neither GTK nor a session
         # writer lock waits inside send_event; NULL also releases that sender.
         sender = None
+        # A tap that never delivered a buffer (D58.1: a silent computer) has
+        # nothing to drain: Pulse may never finish the read EOS would wait on.
+        if not self.heard.is_set():
+            self.ended.set()
         if not self.ended.is_set():
 
             def eos():

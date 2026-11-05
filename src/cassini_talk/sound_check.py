@@ -155,11 +155,13 @@ class Outcome:
         return self.refusal["code"] if self.refusal else None
 
 
-def judge_streams(directory, tracks, refusals):
+def judge_streams(directory, tracks, refusals, unheard=()):
     """One Outcome per stream: a track that opened is judged, any other is refused.
 
     A side without its own refusal (the start failed before any side opened)
     is deviceUnavailable: permissionDenied comes only from a known refusal.
+    D58.1: a side that stayed armed and never heard a buffer (`unheard`, the
+    computer sound on a quiet computer) was not refused: it is silent.
     """
     from .refusals import entry
 
@@ -174,6 +176,9 @@ def judge_streams(directory, tracks, refusals):
                 outcomes[kind] = Outcome(REFUSED, entry(0, SIDES[kind], "deviceUnavailable", message=str(error)))
             continue
         refusal = next((r for r in refusals if r.get("side") == SIDES[kind]), None)
+        if refusal is None and kind in unheard:
+            outcomes[kind] = Outcome(SILENT)
+            continue
         outcomes[kind] = Outcome(REFUSED, refusal or entry(0, SIDES[kind], "deviceUnavailable"))
     return outcomes
 
@@ -326,7 +331,8 @@ class SoundCheck(GObject.Object):
         session = recorder.session
         tracks = [dict(t) for t in session.manifest["tracks"]] if session is not None and path else []
         run.directory, run.tracks = (Path(path), tracks) if path else (None, [])
-        future = self._executor.submit(judge_streams, run.directory, tracks, list(recorder.refusals))
+        unheard = set(getattr(recorder, "unheard", ()))
+        future = self._executor.submit(judge_streams, run.directory, tracks, list(recorder.refusals), unheard)
         future.add_done_callback(lambda f: GLib.idle_add(self._judged, f, run))
         # Queued after the judging: a cancel from here deletes the folder once it is read.
         self.state = "judging"
