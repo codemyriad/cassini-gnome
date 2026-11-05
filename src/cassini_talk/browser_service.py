@@ -30,6 +30,7 @@ from .call_lifecycle import (
     ResumeInputs,
 )
 from .refusals import NothingOpened, StartCancelled, word
+from .session_clock import SessionClock
 from .session_events import source_state
 
 MAX_PACKET = 512 * 1024
@@ -2178,13 +2179,15 @@ class BrowserService:
                 capture = None
         if capture is None:
             return existing.snapshot()
+        # GNOME picks this origin: it and its monotonic mapping are one reading (D61).
+        session_clock = SessionClock()
         try:
             capture.start(
                 dict(
                     type="start",
                     version=1,
                     captureId=capture_id,
-                    timelineOriginMs=int(time.time() * 1000),
+                    timelineOriginMs=session_clock.origin_ms,
                     microphone=microphone,
                     title=meeting["title"],
                     callGeneration=capture_generation,
@@ -2192,6 +2195,7 @@ class BrowserService:
                 others_source="system",
                 reason="missing",
                 refusals=refusals,
+                session_clock=session_clock,
             )
         except Exception as error:
             capture.stop(str(error))
