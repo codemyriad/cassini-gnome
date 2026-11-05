@@ -1,3 +1,17 @@
+cassini-talk (0.4.0) unstable; urgency=medium
+
+  * First release as Cassini talk (D45).
+  * Start recording reliably when the computer is silent; say why a source
+    cannot open, and leave no empty meeting when nothing opened.
+  * Save silent sources as exact silence, so writing down skips them.
+  * Place every track at one start for playback, transcripts and speakers (D55).
+  * Set up and connect the browser companion from Cassini (0.2.13); keep
+    browser recordings through reloads, on one clock with the computer's audio.
+  * Add a live spectrogram, Recording details and a test recording; move
+    meetings to Trash with Undo; translate into five languages.
+
+ -- Silvio Tomatis <silviot@gmail.com>  Thu, 05 Nov 2026 16:00:00 +0100
+
 cassini-talk (0.3.0+talk1) UNRELEASED; urgency=medium
 
   * Rename the application and package to Cassini talk (D45).
