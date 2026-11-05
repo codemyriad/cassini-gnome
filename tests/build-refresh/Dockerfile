@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Two stages (tests/harness-image.sh): run.sh builds `harness` once per week and
 # input change, CI caches it, and every run brings it up to the current archive
-# and installs app.deb on top of it.
+# and installs app.deb on top of it. BASE is pinned to a digest by run.sh.
+ARG BASE=ubuntu:26.04
 ARG HARNESS=harness
-FROM ubuntu:26.04 AS harness
+FROM ${BASE} AS harness
 ENV DEBIAN_FRONTEND=noninteractive
 COPY depends /tmp/depends
 RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes && apt-get update && apt-get install -y --no-install-recommends \

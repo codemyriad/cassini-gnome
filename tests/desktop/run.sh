@@ -21,9 +21,14 @@ trap cleanup EXIT
 cp "$package" "$context/app.deb"
 "$source_root/tests/harness-image.sh" depends > "$context/depends"
 # The harness stage (tests/harness-image.sh): built when its tag is new, or loaded from CI's cache.
+# Its base is pinned to one digest (here, or for the whole job by CI's cache key)
+# that both its tag and its build name.
+export CASSINI_HARNESS_BASES
+CASSINI_HARNESS_BASES=$("$source_root/tests/harness-image.sh" pin desktop)
+base=$("$source_root/tests/harness-image.sh" base desktop)
 harness=$("$source_root/tests/harness-image.sh" tag desktop)
 if ! docker image inspect "$harness" >/dev/null 2>&1; then
-  docker build --pull --target harness --label cassini.scope=background-desktop-harness \
+  docker build --pull --target harness --build-arg BASE="$base" --label cassini.scope=background-desktop-harness \
     -t "$harness" -f "$source_root/tests/desktop/Dockerfile" "$context"
   "$source_root/tests/harness-image.sh" prune desktop
 fi

@@ -22,10 +22,15 @@ browser_cache=$(dirname "$(dirname "$(dirname "$browser_binary")")")
 test -x "$browser_binary"
 "$source_root/tests/harness-image.sh" depends > "$package_context/depends"
 # The harness stage (tests/harness-image.sh): built when its tag is new, or loaded from CI's cache.
+# Its base is pinned to one digest (here, or for the whole job by CI's cache key)
+# that both its tag and its build name.
+export CASSINI_HARNESS_BASES
+CASSINI_HARNESS_BASES=$("$source_root/tests/harness-image.sh" pin browser-setup)
+base=$("$source_root/tests/harness-image.sh" base browser-setup)
 harness=$("$source_root/tests/harness-image.sh" tag browser-setup)
 if ! docker image inspect "$harness" >/dev/null 2>&1; then
   docker build --pull --target harness --label cassini.scope=browser-startup-harness \
-    --build-arg BASE="${CASSINI_BROWSER_TEST_BASE:-ubuntu:26.04}" \
+    --build-arg BASE="$base" \
     -f "$source_root/tests/browser-setup/Dockerfile" -t "$harness" "$package_context"
   "$source_root/tests/harness-image.sh" prune browser-setup
 fi

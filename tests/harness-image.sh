@@ -6,37 +6,115 @@
 # archive (apt-get dist-upgrade, D68: the cache saves time, never freshness), then
 # installs app.deb on top, so apt resolves its dependencies there, every run.
 #
+#   tests/harness-image.sh pin NAME...  CASSINI_HARNESS_BASES, with every NAME's base pinned
+#   tests/harness-image.sh base NAME    NAME's base image at its digest, for --build-arg BASE
 #   tests/harness-image.sh tag NAME     the image tag for harness NAME
 #   tests/harness-image.sh depends      debian/control's static Depends, for apt-get satisfy
 #   tests/harness-image.sh prune NAME   remove NAME's harness images other than the current tag
 #
+# The harness stage is built FROM ${BASE}: the image its Dockerfile's ARG BASE
+# names (CASSINI_BROWSER_TEST_BASE for browser-setup), pinned to the digest of
+# this platform's manifest. CASSINI_HARNESS_BASES holds the pins, IMAGE@sha256:...
+# separated by spaces; an image it lacks is resolved from the registry, and a
+# base that cannot be resolved is an error, never an unpinned build. Pin once
+# (run.sh, or CI's cache key for the whole job) and reuse it: the tag and the
+# build then name the same base, so a cached harness and a fresh one are
+# byte for byte the same base. For an offline build, set CASSINI_HARNESS_BASES.
+#
 # The tag hashes every input of the harness stage (its Dockerfile, debian/control,
-# a non-default base, this script) and ends with the epoch, the ISO week unless
-# CASSINI_HARNESS_EPOCH says otherwise. A new week or any changed input names a
-# new image, built with --pull, so a harness is never older than a week and never
-# outlives the file that defines it. CI caches these images (saved from main only).
+# the pinned base, this script) and ends with the epoch, the ISO week unless
+# CASSINI_HARNESS_EPOCH says otherwise. A new week, a moved base or any changed
+# input names a new image, built with --pull, so a harness is never older than a
+# week or its base, and never outlives the file that defines it. CI caches these
+# images (saved from main only).
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 epoch=${CASSINI_HARNESS_EPOCH:-$(date -u +%G-W%V)}
 [[ $epoch =~ ^[0-9A-Za-z-]{1,32}$ ]] || { echo "CASSINI_HARNESS_EPOCH must be 1 to 32 letters, digits or dashes" >&2; exit 2; }
 
-inputs() {
+read -ra pinned <<<"${CASSINI_HARNESS_BASES:-}"
+for pin in "${pinned[@]}"; do
+  [[ $pin =~ ^[^@[:space:]]+@sha256:[0-9a-f]{64}$ ]] || { echo "CASSINI_HARNESS_BASES: $pin is not IMAGE@sha256:<64 hex digits>" >&2; exit 2; }
+done
+
+dockerfile() {
   case "$1" in
-    desktop) echo tests/desktop/Dockerfile debian/control ;;
-    build-refresh) echo tests/build-refresh/Dockerfile debian/control ;;
-    browser-setup) echo tests/browser-setup/Dockerfile debian/control ;;
+    desktop | build-refresh | browser-setup) echo "tests/$1/Dockerfile" ;;
     whistle) echo tests/whistle/Containerfile ;;
     *) echo "unknown harness: $1" >&2; return 2 ;;
   esac
 }
 
+inputs() {
+  dockerfile "$1"
+  if [ "$1" != whistle ]; then echo debian/control; fi
+}
+
+# The image the harness stage is built from, as its Dockerfile's ARG BASE names it.
+image() {
+  local file default
+  file=$(dockerfile "$1") || return
+  default=$(sed -n 's/^ARG BASE=\([^[:space:]]\{1,\}\)$/\1/p' "$root/$file")
+  [ "$(printf '%s\n' "$default" | wc -w)" = 1 ] || { echo "$file must name its base once, as ARG BASE=IMAGE" >&2; return 2; }
+  if [ "$1" = browser-setup ] && [ -n "${CASSINI_BROWSER_TEST_BASE:-}" ]; then default=$CASSINI_BROWSER_TEST_BASE; fi
+  echo "$default"
+}
+
+# IMAGE@DIGEST: the pin CASSINI_HARNESS_BASES holds for the image, or else the
+# digest of the manifest the registry serves this Docker host's platform.
+base() {
+  local reference name pin platform digest
+  reference=$(image "$1") || return
+  name=${reference%@*}
+  for pin in "${pinned[@]}"; do
+    if [ "${pin%@sha256:*}" = "$name" ]; then
+      echo "$pin"
+      return
+    fi
+  done
+  platform=$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}') || { echo "cannot ask Docker for its platform" >&2; return 1; }
+  # A multi-platform index: the one manifest for this platform. A single manifest: itself.
+  digest=$(docker buildx imagetools inspect --format '{{json .Manifest}}' "$reference" | python3 -I -c '
+import json, sys
+try:
+    manifest = json.load(sys.stdin)
+except ValueError:
+    sys.exit("no manifest")
+if "manifests" in manifest:
+    found = [m["digest"] for m in manifest["manifests"]
+             if "{}/{}".format(m.get("platform", {}).get("os"), m.get("platform", {}).get("architecture")) == sys.argv[1]]
+else:
+    found = [manifest["digest"]]
+if len(found) != 1:
+    sys.exit(f"{len(found)} manifests for {sys.argv[1]}")
+print(found[0])
+' "$platform") || digest=
+  [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] || {
+    echo "cannot resolve the $platform digest of $reference; to build offline, set CASSINI_HARNESS_BASES=$name@sha256:..." >&2
+    return 1
+  }
+  echo "$name@$digest"
+}
+
 case "${1:-}" in
+  pin)
+    shift
+    pins=("${pinned[@]}")
+    for name in "$@"; do
+      pin=$(base "$name")
+      # Pinned from here on: a second NAME on the same image never looks it up again.
+      if [[ " ${pins[*]} " != *" $pin "* ]]; then pins+=("$pin") pinned+=("$pin"); fi
+    done
+    echo "${pins[*]}"
+    ;;
+  base)
+    base "${2:?harness name}"
+    ;;
   tag)
     list=$(inputs "${2:?harness name}")
-    read -ra files <<<"$list"
-    base=
-    if [ "$2" = browser-setup ]; then base=${CASSINI_BROWSER_TEST_BASE:-}; fi
-    hash=$(cd "$root" && { cat "${files[@]}" tests/harness-image.sh; printf 'base=%s\n' "$base"; } | sha256sum | cut -c1-16)
+    mapfile -t files <<<"$list"
+    pin=$(base "$2")
+    hash=$(cd "$root" && { cat "${files[@]}" tests/harness-image.sh; printf 'base=%s\n' "$pin"; } | sha256sum | cut -c1-16)
     echo "cassini-harness-$2:$hash-$epoch"
     ;;
   depends)
@@ -55,7 +133,7 @@ case "${1:-}" in
       { grep -vxF "$current" || true; } | xargs -r docker image rm >/dev/null 2>&1 || true
     ;;
   *)
-    echo "usage: $0 tag NAME | depends | prune NAME" >&2
+    echo "usage: $0 pin NAME... | base NAME | tag NAME | depends | prune NAME" >&2
     exit 2
     ;;
 esac

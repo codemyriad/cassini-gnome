@@ -200,7 +200,7 @@ def test_harness_images_install_the_app_on_top_of_the_cached_stage():
     for name, path in HARNESS_IMAGES.items():
         text = "\n".join(line for line in (ROOT / path).read_text().splitlines() if not line.startswith("#"))
         harness, separator, current = text.partition("\nFROM ${HARNESS}\n")
-        assert separator and "ARG HARNESS=harness\n" in harness and re.search(r"^FROM \S+ AS harness$", harness, re.M)
+        assert separator and "ARG HARNESS=harness\n" in harness and "\nFROM ${BASE} AS harness\n" in harness
         assert current.startswith(REFRESH) or f"\n{REFRESH}" in current, name
         assert "dist-upgrade" not in harness, name
         if name == "whistle":
@@ -227,10 +227,14 @@ def test_harness_images_install_the_app_on_top_of_the_cached_stage():
             assert runs and not any(re.search(r'"\$harness"\s', line) for line in runs), script
 
 
+# Pinned bases (test_harness_base.py): no registry lookup, the same base every call.
+HARNESS_BASES = " ".join(f"{image}@sha256:{'0' * 64}" for image in ("ubuntu:26.04", "debian:testing"))
+
+
 def harness_tag(root, name, epoch="2026-W45", **env):
     return subprocess.run(
         ["bash", str(root / "tests/harness-image.sh"), "tag", name],
-        env={"PATH": os.environ["PATH"], "CASSINI_HARNESS_EPOCH": epoch, **env},
+        env={"PATH": os.environ["PATH"], "CASSINI_HARNESS_EPOCH": epoch, "CASSINI_HARNESS_BASES": HARNESS_BASES, **env},
         check=True,
         capture_output=True,
         text=True,

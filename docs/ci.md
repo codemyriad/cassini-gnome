@@ -102,12 +102,16 @@ prepared separately from runtime build inputs. Meson stays offline.
 
 The installed-package harnesses (Desktop, build refresh, browser setup) build
 in two stages (`tests/harness-image.sh`, C). The harness stage holds the Ubuntu
-base, the harness's own packages and the static `Depends` of `debian/control`;
-it is tagged with a hash of every input and the ISO week, and rebuilt with
-`--pull` whenever that tag is new, so it never outlives its Dockerfile, the
-control file or a week. The cache only saves download and unpack time, never
-freshness (D68): every run first runs `apt-get update` and `apt-get
-dist-upgrade`, so the base and the app's runtime libraries in the cached stage
+base, the harness's own packages and the static `Depends` of `debian/control`.
+Its base is the image the Dockerfile's `ARG BASE` names, pinned to the digest
+of the runner platform's manifest (`tests/harness-image.sh pin`/`base`; offline,
+set `CASSINI_HARNESS_BASES=IMAGE@sha256:...`): the harness stage is built
+`FROM` that pin, never the bare tag, and a base that cannot be resolved fails
+the run. The stage is tagged with a hash of every input, the pinned base and
+the ISO week, and rebuilt with `--pull` whenever that tag is new, so it never
+outlives its Dockerfile, the control file, its base or a week. The cache only
+saves download and unpack time, never freshness (D68): every run first runs
+`apt-get update` and `apt-get dist-upgrade`, so the base and the app's runtime libraries in the cached stage
 (GTK, libadwaita, GStreamer, PyGObject) are as current as an uncached build's,
 then installs app.deb, whose own dependencies apt resolves against the same
 indexes. That per-run stage is built with `--no-cache` and the tests still run
@@ -115,7 +119,10 @@ with `--network=none`. The offline worker image (`tests/whistle/Containerfile`)
 is tagged, rebuilt and brought up to the current archive the same way. CI
 keeps the harness stages in a cache that main saves and pull requests only
 restore (`build-aux/ci/harness-cache.sh`, D66); a miss just builds them. The
-products under test and the package builds' distro images are never cached.
+cache key's step resolves each base once and pins it for the whole job
+(`$GITHUB_ENV`), so the key, the restored tag and a fresh build name the same
+base even if the registry moves it mid-job. The products under test and the
+package builds' distro images are never cached.
 
 ## Releases
 

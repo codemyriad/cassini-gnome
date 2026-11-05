@@ -23,9 +23,14 @@ fi
 test -n "$sherpa_target"
 mkdir -p "$output"
 # The harness image (tests/harness-image.sh): built when its tag is new, or loaded from CI's cache.
+# Its base is pinned to one digest (here, or for the whole job by CI's cache key)
+# that both its tag and its build name.
+export CASSINI_HARNESS_BASES
+CASSINI_HARNESS_BASES=$("$root/tests/harness-image.sh" pin whistle)
+base=$("$root/tests/harness-image.sh" base whistle)
 harness=$("$root/tests/harness-image.sh" tag whistle)
 if ! docker image inspect "$harness" >/dev/null 2>&1; then
-  docker build --pull -q --target harness -t "$harness" - < "$root/tests/whistle/Containerfile"
+  docker build --pull -q --target harness --build-arg BASE="$base" -t "$harness" - < "$root/tests/whistle/Containerfile"
   "$root/tests/harness-image.sh" prune whistle
 fi
 # Every run: the cached harness brought up to the current archive (D68).
