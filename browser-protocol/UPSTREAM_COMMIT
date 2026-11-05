@@ -1,26 +1,26 @@
-tree de07ec56a312c4d37e174ebd3a8939d15d46d24c
-parent a47d29341152c7c6c667520fd62bf12b469d6a81
-parent 79ca06f77f876ab0216fba86fe64bd9b0dae2cc1
-author Silvio Tomatis <silviot@gmail.com> 1793846815 +0100
-committer GitHub <noreply@github.com> 1793846815 +0100
+tree 5bfc7d2f3f114a5e05e1fb0c13afb7fa61f957e0
+parent e68ebca2ff45e8d2b720a85fae4abb557a4865d4
+parent 497285aa7ea1df40d03af7a900505196841dd180
+author Silvio Tomatis <silviot@gmail.com> 1793874991 +0100
+committer GitHub <noreply@github.com> 1793874991 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq6+4fCRC1aQ7uu5UhlAAA6XoQAKpgAYss/+JTulLxe1/zmvjb
- U8gfwlAfbRnDLlfADAAnZod1DNni463Er0NYJBG114PrlBtcFxzvhJPopFxuc+SZ
- pdwdpD7LT7h9PV18PCDT8CyOIj2fmjJ6PxZ9mBb5xJ1nrfay6WcnvMrljGGRUfww
- VWPwrRdVT7S4jq7pEgSC2AdHZcl5W4rXv9IcJjKzwRyB0b6XCmHg2mnNxFaLQ8cP
- 9RoNqnETdVWkCyhjPucVUeHBKFwc8rOCngCUEv90dM49YexXdWbPyEn0GE/2BzsG
- 1sCsLa7w1YHfrcc9GJE4gg7vqHJVlJ4kPEN0/zWmJpRqarA0h0W2xds+5Swsv2Mg
- eWduarnWh/uu4c81OyoWCA19vY+YFES/MulEmaXVEnYSGoL7TJ4ThLp1C9feXD84
- MUmjmsC/jgE0OXvPMrlO5dwrD1lZfr3YeVDY55XNmRteJ7dg9scmzm16K2ABHzZY
- FZ8MmkHDUndiauLqNk2APfnwHz3vKad9j2DJGlE+3bdV5xHzjWhzZ3g0gkbP8x00
- IJfT6qmJ2j4F52W1RBqAJszjFnjPBxSbxe3sx4i9mkviNDuJ3Wvy3EZplU05pR/W
- ivS4a15e3wUQjs9xCJUjPRM2M7S3t56VYxUKP8doEy+Vl2LV8EwZxRCY/gLwQkkj
- 0m4pmCFM0/II1vyECoIz
- =wtpw
+ wsFcBAABCAAQBQJq7FwvCRC1aQ7uu5UhlAAAf7QQABkvE5QTPAFq1uaUYgd2tSp5
+ W4Wib5CHUb3zoxC1WO2YtWHhyKoK4vqIVb/vrPKRvmb0hYQ8pAyvxjjIMG4vG842
+ 7bow14DV3MkylHjeX203Dq48Gw+yrhq/hwMfpttTMCn8XdrGnWy6hm6Zw+sj/l8+
+ tE7SmSg05m9otkt6FmCab2+xK/6Gp0x1UdxrhcXXtqGeUCMwmcn4A6mohzPtwXil
+ ddXriwCpjMZlXxaUvtHblvzbDfgpRezfhqaRwmv1xOUovOjE2PJMVuUUWJYm5si3
+ LYIQ/L9Z+R1O0CF8znQ3KAdL7NHE8Kh4lJfj1K97gcIjN/aJyC20fU5uxJVATzHe
+ dUbLIsxDxbQc0697BBm7eECAbgtpSRThwsS1AFdXcqTL/jJNpStv/AJePl8MGAVU
+ YbWp4PkPhxvXZyBgq2EgTrq2qGn15i+zNFztdcq6bqiGcPJ7IrKil0PLUgYoeXvg
+ Z9Ufyc4ezAVGMN9Dc7+L0EdwIagRWdY2QoRI62vGLRQoImikQAtdQsYSQz768gib
+ 1hd4c6hpNVRBqgCz6Ebkg4v+WkqWz00iBzJpI3jZ5+hwFWxIlOMZQFo52BMPYxEt
+ O6LdbEZdkiA/djiE6rjKQenzx0qf4jp2mb11iGKrPLOxADEGvjK5gk8eF5qadFN2
+ bUbl9+o1qUXbS7zU4mBS
+ =qfEw
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #52 from codemyriad/scenarios/live-folder-driver
+Merge pull request #54 from codemyriad/fix/capture-graph-keeps-real-time
 
-Shared test 2 driver: the live-folder scenario through an app adapter (D68 PR-2)
+Keep the capture context on real time: an inaudible constant in the capture graph (D68.1)

@@ -3,7 +3,7 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `854f4ada` (protocol PR #45 on #44: a return before the fallback commits restores at once; either writer form, with the absence in the file), ships companion 0.2.12, whose browser `track` packets carry
+The current pin, `54e0006b` (protocol main with PR #54, D68.1: every capture AudioContext keeps real time; on #45 and #44: a return before the fallback commits restores at once; either writer form, with the absence in the file), ships companion 0.2.13, whose capture contexts feed an inaudible constant (6e-8) to their output so Chromium never moves a silent capture graph onto a slow timer, and whose browser `track` packets carry
 the D61 clock facts (copied into session.json and x["codemyriad.io"].tracks, record-only)
 and the span's `documentGeneration` (a live watchdog hint, never written to files). Its
 `ok:false` results carry a D58 result `code`, and its native resume packet carries the
@@ -49,7 +49,13 @@ An active capture's ended physical span returns `state/source/retired:true`;
 its cleanup and in-flight chunks cannot mean the whole capture was saved.
 Capture finalization returns `state/command`. Failed spans are fenced locally,
 healthy sources and the microphone continue, and a live source retries a new ID.
-The pin is protocol commit 854f4ada (PR #45: the uncommitted-return vector accepts GNOME's kept
+The pin is protocol main 54e0006b (PR #54, D68.1: an inaudible 6e-8 ConstantSource feeds each
+capture AudioContext's output, so Chromium's silent-sink suspender never moves it onto a slow timer;
+captured PCM is unchanged; companion 0.2.13), on e68ebca (PR #53: the live-folder driver reads a
+process's exact argv, `/proc` on Linux and `KERN_PROCARGS2` on macOS, and a host runs its whole
+command as consecutive arguments), on 98b3513 (PR #52, the shared test 2 live-folder driver, with
+#49's live-folder oracle, #48's presence from the D55 placement and #47's placement golden), on
+protocol commit 854f4ada (PR #45: the uncommitted-return vector accepts GNOME's kept
 othersSource as well as Mac's none/lost then browser/restored, both with the Others absent over the
 loss), on protocol commit dba4a327 (PR #44, Mac #134: a call that returns before its fallback
 commits restores at once, heard or not; GNOME keeps its written othersSource and writes nothing),
@@ -76,9 +82,9 @@ protocol PR #33, 941a82cb, which adds vectors
 only (a frame arriving at the 45 s deadline is too late; other-generation rows
 drive a lost recording's grace timers) to #32's D52.5 rules (ask-once resume, no
 second recording, the 45 s PCM_STALE_AFTER and its watchdog vectors), on top of #31's
-heartbeat-v1 and audio transport liveness (D52.4). Companion 0.2.12 answers the
-app's control pings (0.2.9), adds the result codes (0.2.10), the resume `requestId` (0.2.11)
-and the D61 track fields; see
+heartbeat-v1 and audio transport liveness (D52.4). Companion 0.2.13 answers the
+app's control pings (0.2.9), adds the result codes (0.2.10), the resume `requestId` (0.2.11),
+the D61 track fields (0.2.12) and real-time capture contexts (D68.1); see
 [call-lifecycle.md](call-lifecycle.md). Conformance
 runs give every case a private CASSINI_LIBRARY_DIR, which
 tests/conformance_host.py requires.

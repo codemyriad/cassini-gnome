@@ -154,6 +154,7 @@ async function blocked(configure) {
   class Context {
     sampleRate = 48000; state = 'running'; currentTime = 0; destination = new Graph(); audioWorklet = { addModule: async () => {} };
     createMediaStreamSource() { return new Graph(); } createGain() { return Object.assign(new Graph(), { gain: { value: 0 } }); }
+    createConstantSource() { return Object.assign(new Graph(), { offset: { value: 0 }, start() {} }); }
     addEventListener() {} removeEventListener() {} async resume() {} async close() { this.state = 'closed'; }
   }
   class Worklet extends Graph { constructor() { super(); this.port = { postMessage() {} }; } connect(target) { queueMicrotask(() => this.port.onmessage?.({ data: { ready: true } })); return target; } }
