@@ -8,10 +8,12 @@ none of them. Only the wall clock is faked here (time.time/time.time_ns); the mo
 clock is the real one, as the extension's and the protocol driver's are.
 """
 
+import datetime
 import struct
 import sys
 import threading
 import time
+import types
 
 import pytest
 from test_browser_resume_policy import peer, policy  # noqa: F401
@@ -59,9 +61,66 @@ class Wall:
 
 @pytest.fixture
 def wall(monkeypatch):
+    """Fake every wall reading the app could take: time.time/time_ns, a CLOCK_REALTIME
+    clock_gettime, datetime.now/utcnow/today and date.today in the loaded cassini_talk
+    modules, and GLib.get_real_time. Each one steps, drifts and is counted."""
     fake = Wall()
     monkeypatch.setattr(time, "time_ns", fake.time_ns)
     monkeypatch.setattr(time, "time", fake.time)
+    real_gettime, real_gettime_ns = time.clock_gettime, time.clock_gettime_ns
+
+    def clock_gettime_ns(clock):
+        return fake._read(sys._getframe(1)) if clock == time.CLOCK_REALTIME else real_gettime_ns(clock)
+
+    def clock_gettime(clock):
+        return fake._read(sys._getframe(1)) / 1e9 if clock == time.CLOCK_REALTIME else real_gettime(clock)
+
+    monkeypatch.setattr(time, "clock_gettime_ns", clock_gettime_ns)
+    monkeypatch.setattr(time, "clock_gettime", clock_gettime)
+
+    # datetime's C clock reads are not time.time: stand-in classes read the fake instead.
+    # Instances of the real classes still pass isinstance against a stand-in.
+    class StandIn(type):
+        def __instancecheck__(cls, instance):
+            return isinstance(instance, cls.__mro__[1])
+
+        def __subclasscheck__(cls, subclass):
+            return issubclass(subclass, cls.__mro__[1])
+
+    class Datetime(datetime.datetime, metaclass=StandIn):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.datetime.fromtimestamp(fake._read(sys._getframe(1)) / 1e9, tz)
+
+        @classmethod
+        def utcnow(cls):
+            utc = datetime.datetime.fromtimestamp(fake._read(sys._getframe(1)) / 1e9, datetime.UTC)
+            return utc.replace(tzinfo=None)
+
+        @classmethod
+        def today(cls):
+            return datetime.datetime.fromtimestamp(fake._read(sys._getframe(1)) / 1e9)
+
+    class Date(datetime.date, metaclass=StandIn):
+        @classmethod
+        def today(cls):
+            return datetime.date.fromtimestamp(fake._read(sys._getframe(1)) / 1e9)
+
+    stand_ins = {datetime.datetime: Datetime, datetime.date: Date}
+    as_module = types.SimpleNamespace(**{**vars(datetime), "datetime": Datetime, "date": Date})
+    for name, module in list(sys.modules.items()):
+        if name == "cassini_talk" or name.startswith("cassini_talk."):
+            for attribute, value in list(vars(module).items()):
+                if value is datetime:
+                    monkeypatch.setattr(module, attribute, as_module)
+                elif isinstance(value, type) and value in stand_ins:
+                    monkeypatch.setattr(module, attribute, stand_ins[value])
+    try:
+        from gi.repository import GLib
+    except (ImportError, ValueError):
+        pass
+    else:
+        monkeypatch.setattr(GLib, "get_real_time", lambda: fake._read(sys._getframe(1)) // 1000)
     return fake
 
 
@@ -104,6 +163,44 @@ class Taps:
 
 def last(session, **match):
     return [e for e in session.manifest["events"] if all(e.get(k) == v for k, v in match.items())][-1]
+
+
+def test_the_fake_wall_steps_and_counts_every_wall_reading_of_the_app(wall):
+    """The guard behind `wall.reads == 0`: a wall reading the app takes by any of these
+    routes is stepped with the fake and counted, so a reintroduced one fails the tests."""
+    from cassini_talk import browser_capture, recording_session
+
+    # Each reading is evaluated in a cassini_talk module's namespace, as the app's own is.
+    sources = {
+        "time.time": "time.time() * 1e9",
+        "time.time_ns": "time.time_ns()",
+        "clock_gettime_ns": "time.clock_gettime_ns(time.CLOCK_REALTIME)",
+        "clock_gettime": "time.clock_gettime(time.CLOCK_REALTIME) * 1e9",
+        "datetime.now": "recording_session.datetime.now(UTC).timestamp() * 1e9",
+        "datetime.utcnow": "browser_capture.datetime.utcnow().replace(tzinfo=UTC).timestamp() * 1e9",
+    }
+    app = dict(
+        __name__="cassini_talk.probe",
+        time=time,
+        UTC=datetime.UTC,
+        browser_capture=browser_capture,
+        recording_session=recording_session,
+    )
+    try:
+        from gi.repository import GLib
+    except (ImportError, ValueError):
+        pass
+    else:
+        sources["GLib.get_real_time"] = "GLib.get_real_time() * 1000"
+        app["GLib"] = GLib
+    wall.go(2000, 0)
+    for count, (name, source) in enumerate(sources.items(), 1):
+        before = time.monotonic_ns()
+        read = eval(source, app)
+        after = time.monotonic_ns()
+        assert before + BASE_NS + 2e9 - 1e6 <= read <= after + BASE_NS + 2e9 + 1e6, name
+        assert wall.reads == count, f"{name} is not counted"
+    assert time.clock_gettime_ns(time.CLOCK_MONOTONIC) > 0 and wall.reads == len(sources)
 
 
 def test_the_mapping_reads_the_wall_clock_once_and_never_again(wall):
@@ -159,7 +256,9 @@ def test_a_stepping_and_drifting_wall_clock_moves_no_capture_stamp(tmp_path, wal
 
     taps = Taps()
     capture = BrowserCapture(lambda *_: None, parent=tmp_path, tap_factory=taps)
-    origin = int(time.time() * 1000)
+    # The page set its origin 1.5 s before GNOME's start: start() maps that origin, not
+    # GNOME's own "now".
+    origin = int(time.time() * 1000) - 1500
     capture.start(
         dict(type="start", captureId="clock", timelineOriginMs=origin, microphone=True, callGeneration="g1"),
         others_source="system",
@@ -172,6 +271,7 @@ def test_a_stepping_and_drifting_wall_clock_moves_no_capture_stamp(tmp_path, wal
     try:
         _result, low, high = stamped(origin, lambda: capture.select(False, True))
         assert low <= last(session, type="selection", me=False)["atMs"] <= high
+        assert low >= 1500 - TOLERANCE_MS
 
         wall.step(-4000)  # Now 2 s behind, still drifting.
         taps.refuse.add("microphone")
@@ -239,7 +339,7 @@ def test_a_native_tap_opened_after_a_wall_step_stamps_pcm_on_the_monotonic_mappi
         return NativeTap(kind, clock, recording, failed, level=level, test=True)
 
     capture = BrowserCapture(lambda *_: None, parent=tmp_path, tap_factory=factory)
-    origin = int(time.time() * 1000)
+    origin = int(time.time() * 1000) - 1500  # The page's origin, 1.5 s before start.
     capture.start(dict(type="start", captureId="tap", timelineOriginMs=origin, microphone=True))
     try:
         assert taps == ["microphone"]
@@ -255,6 +355,7 @@ def test_a_native_tap_opened_after_a_wall_step_stamps_pcm_on_the_monotonic_mappi
             for offset, host_ns in list(buffers):
                 # GStreamer's SystemClock is CLOCK_MONOTONIC: base + pts is a monotonic reading.
                 assert offset == pytest.approx(expected(origin, host_ns), abs=TOLERANCE_MS)
+                assert offset >= 1500 - TOLERANCE_MS
         assert wall.reads == 0, "a tap reads no wall clock"
     finally:
         capture.stop()
