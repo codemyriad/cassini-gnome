@@ -15,6 +15,7 @@ from .folder_player import FolderPlayer
 from .i18n import gettext as _
 from .library import meeting_id
 from .library_monitor import LibraryMonitor
+from .listen import ListenController
 from .player import Player
 from .spectro_views import BrokerFeed, NativeFeed, WindowSpectrograms
 from .spectrogram_strip import SpectrogramStrip
@@ -80,6 +81,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._rate = 1.0
         self.player = Player()
         self._playback_failed = False
+        # D70: listening follows whichever Player the window holds; every path
+        # that stops or replaces playback stops listening too.
+        self.listen = ListenController(lambda: self.player)
         self._connect_player()
         self._fixture_activity = {}
         if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") == "1" and os.environ.get("CASSINI_SCREENSHOT_ACTIVITY"):
@@ -1130,6 +1134,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                 self._stop_playback()
             elif not row.meeting.has_audio:
                 self.player.stop()
+                self.listen.stop()
                 self._loaded_key = None
         self._preview_key = row.meeting.key
         self.selected = meeting = row.meeting
@@ -1320,6 +1325,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.player.set_rate(self._rate)
             self._connect_player()
         self._playback_failed = False
+        # A (re)load replaces what the player plays, so listening ends here too.
+        self.listen.stop()
         try:
             if isinstance(self.player, FolderPlayer):
                 self.player.load_tracks(meeting.tracks, meeting.duration_ms)
@@ -1335,6 +1342,7 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def _stop_playback(self, *, clear_selection=False):
         self.player.stop()
+        self.listen.stop()
         self._loaded_key = None
         if clear_selection:
             self._preview_key = None
@@ -1366,6 +1374,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             return
         if not self._ensure_player(meeting):
             desired = Player if meeting.audio_file is not None else FolderPlayer
+            self.listen.stop()
             self.player.shutdown()
             self.player = desired()
             self.player.set_rate(self._rate)
@@ -1520,6 +1529,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         for owner, handler in self._spectro_handlers:
             owner.disconnect(handler)
         self._spectro_handlers.clear()
+        self.listen.stop()
         self.player.shutdown()
         self.monitor.close()
         return False

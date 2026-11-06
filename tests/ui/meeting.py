@@ -45,6 +45,22 @@ def until(check):
     assert check(), "Meeting GUI condition timed out"
 
 
+def start_listening(window):
+    """D70: listen to the first speaker of the open meeting (UI entry points come later)."""
+    from cassini_talk.meeting_text import speaker_turns
+
+    turns = speaker_turns(window.meeting_page.meeting.words)
+    window.listen.set_turns(turns)
+    until(lambda: window.player._prerolled)
+    assert window.listen.start(turns[0].speaker)
+    assert window.listen.active and window.player.span_follow is not None
+
+
+def assert_stopped_listening(window):
+    assert not window.listen.active and window.listen.speaker is None
+    assert window.player.span_follow is None
+
+
 def labels(widget):
     result = [widget.get_label()] if isinstance(widget, Gtk.Label) else []
     child = widget.get_first_child()
@@ -261,8 +277,10 @@ with tempfile.TemporaryDirectory() as temporary:
     assert not page._companion.get_visible()
     page.set_connected(False)
     page._dismiss_card()
+    start_listening(window)
     window.back_to_library()
     until(lambda: window.meeting_page is None)
+    assert_stopped_listening(window)
     window.open_meeting(meeting)
     page = window.meeting_page
     assert not page._companion.get_visible(), "Not now must persist across page instances"
@@ -273,8 +291,12 @@ with tempfile.TemporaryDirectory() as temporary:
     metadata.write_text(json.dumps(value))
     until(lambda: window.meeting_page.meeting.transcript == "failed")
     assert "Could not write this meeting down. The audio is fine." in labels(page.lines)
+    start_listening(window)
+    window.toggle_search()
+    until(lambda: window.search_page is not None and window.meeting_page is None)
+    assert_stopped_listening(window)
     window.back_to_library()
-    until(lambda: window.meeting_page is None)
+    until(lambda: window.search_page is None)
     received = next(m for m in window.snapshot.meetings if m.origin == "received")
     app.open_in_new_window(Gio.File.new_for_path(str(received.audio_file)))
     until(lambda: not window.meeting_page and window.selected and window.selected.key == received.key)
@@ -296,9 +318,13 @@ with tempfile.TemporaryDirectory() as temporary:
     assert len(app.get_windows()) == 1, "File opens belong to the pushed reading page"
     # Library files opened via Open/CLI remain attached to live model updates.
     own = next(m for m in window.snapshot.meetings if m.title == "Client call, Rossi & Partners")
+    start_listening(window)
+    received_player = window.player
     app.open_in_new_window(Gio.File.new_for_path(str(own.directory / "session.json")))
     until(lambda: window.meeting_page and window.meeting_page.meeting.key == own.key)
     assert not window._external_meeting
+    assert window.player is not received_player, "Opening a folder meeting replaces the file player"
+    assert_stopped_listening(window)
     changed = json.loads((own.directory / "meeting.json").read_text())
     changed.update(title="Live Library rename", titleSource="user")
     (own.directory / "meeting.json").write_text(json.dumps(changed))

@@ -287,7 +287,7 @@ def test_voice_sample_waits_for_preroll_and_does_not_play_if_seek_fails(tmp_path
         assert not player.play_range(100, 500), "A sample must wait until its start/end seek can be applied"
         until(lambda: player._prerolled or errors)
         assert not errors
-        monkeypatch.setattr(player._pipeline, "seek", lambda *_args: False)
+        monkeypatch.setattr(player._pipeline, "send_event", lambda *_args: False)
         assert not player.play_range(100, 500) and not player.playing
         assert player._range_end is None and len(errors) == 1
     finally:
