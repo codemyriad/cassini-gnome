@@ -415,6 +415,8 @@ def _end(meeting, session):
     if isinstance(end, dict) and isinstance(end.get("reason"), str) and end["reason"] in ENDS:
         result = ENDS[end["reason"]]
         at = end.get("atMs")
+        if end["reason"] == "error" and writer_only(session):
+            return fmt.position(at) if type(at) is int and 0 <= at <= 9007199254740991 else UNKNOWN
         if type(at) is int and 0 <= at <= 9007199254740991:
             result = text("details.end.at", reason=result, time=fmt.position(at))
         return result

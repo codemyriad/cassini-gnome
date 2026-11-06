@@ -547,11 +547,11 @@ class NativeRecorder(GObject.Object):
             return False
         if attempt["error"] or attempt["retired"]:
             return False
+        at = max(pts_ms, attempt.get("refuse_at", 0))
         cut = getattr(attempt["branch"], "_selection_cut_ms", None)
-        if cut is not None and pts_ms >= cut:
+        if cut is not None and at >= cut:
             return False
-        if self.stopping:
-            at = max([pts_ms, *(e["atMs"] for e in self.session.manifest.get("events", []))])
+        if self.stopping or self._stop_requested:
             heard = attempt.get("armed") and self._stop_at_ms is not None and at < self._stop_at_ms
             if not heard or self._finishing or self.pipeline is not attempt["pipeline"]:
                 return False
@@ -576,9 +576,9 @@ class NativeRecorder(GObject.Object):
         """Commit a start or armed side at its first admitted buffer (lock held)."""
         from .strings import text
 
-        # The track starts at its first buffer. The other side's frames do
-        # not move it: change_time's overlap rule is for spans of one source.
-        at = max([at_ms, *(e["atMs"] for e in self.session.manifest.get("events", []))])
+        # The source's turn-on bounds its first buffer, not later events.
+        # Deselection is already committed while pre-cut PCM drains here.
+        at = max(at_ms, attempt.get("refuse_at", 0))
         label = text("common.me" if kind == "microphone" else "common.theOthers")
         identifier = attempt["identifier"]
         # One checkpoint holds the track with its start.
@@ -1224,7 +1224,9 @@ class NativeRecorder(GObject.Object):
     def _timed_out(self):
         self._drain_timed_out = True
         self._timeout = 0
-        self._begin_finish("Timed out while saving the recording.")
+        # Account for the queue's loss before deciding whether this is an
+        # unexplained failure or solely D69 writer loss (quiet under D69.2).
+        self._begin_finish(self._problem)
         return False
 
     def _begin_finish(self, problem=None):
@@ -1280,7 +1282,16 @@ class NativeRecorder(GObject.Object):
                                 self._timelines[identifier].flush_loss(
                                     session, identifier, admission, at_ms, inferred=self._drain_timed_out
                                 )
-                        session.finish(problem, reason=reason, at_ms=at_ms, retain_lease=True)
+                        final_problem = problem
+                        if self._drain_timed_out and not final_problem and not session._writer_losses:
+                            final_problem = "Timed out while saving the recording."
+                        self._problem = final_problem
+                        session.finish(
+                            final_problem,
+                            reason="error" if final_problem else reason,
+                            at_ms=at_ms,
+                            retain_lease=True,
+                        )
                 finally:
                     self.spectrogram.finish()
                 # Encoding never holds the PCM lock or GTK main context.
