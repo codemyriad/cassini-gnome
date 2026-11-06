@@ -20,9 +20,10 @@ from .library_files import regular
 from .recording_session import METADATA_LIMIT, strict_json
 from .refusals import read as read_refusals
 from .session_events import read_events
-from .source_report import SourceFact
+from .source_report import SourceFact, computer_busy_lines
 from .source_report import sources as source_facts
 from .strings import text
+from .writer_loss import writer_only
 
 UNKNOWN = text("details.unknown")
 BROWSER_SOURCES = {"chromium", "chrome", "firefox", "browser", "browser-host", "safari"}
@@ -160,6 +161,8 @@ class Report:
     refusals: tuple[dict, ...] = ()
     # D56/D67.1: the done write-down's writingDown.silentTracks, as stored.
     silent_tracks: frozenset[str] = frozenset()
+    # D69.2: quiet "the computer was too busy" lines, one per source at 1 s or more.
+    computer_busy: tuple[str, ...] = ()
 
     @property
     def audio(self):
@@ -178,6 +181,7 @@ class Report:
         lines.extend(["", text("details.sources.title")])
         for line in self.audio:
             lines.extend((line.text, *line.gap_lines))
+        lines.extend(self.computer_busy)
         # Copy details keeps every entry as stored: no merging, re-cut or normalizing.
         lines.extend("  " + json.dumps(item, ensure_ascii=False, separators=(",", ":")) for item in self.refusals)
         lines.extend(["", text("details.writing.title")])
@@ -401,12 +405,18 @@ def _end(meeting, session):
     events = read_events(session.get("events"))
     if events and events[-1]["type"] == "end":
         event = events[-1]
+        if event["reason"] == "error" and writer_only(session):
+            # D69.2: the stored error end is writer loss only, not an error to
+            # show; the file does not keep the stop's own cause, so only its time.
+            return fmt.position(int(event["atMs"]))
         return text("details.end.at", reason=ENDS[event["reason"]], time=fmt.position(int(event["atMs"])))
     details = meeting.metadata.get("recordingDetails") or {}
     end = details.get("end") if isinstance(details, dict) else None
     if isinstance(end, dict) and isinstance(end.get("reason"), str) and end["reason"] in ENDS:
         result = ENDS[end["reason"]]
         at = end.get("atMs")
+        if end["reason"] == "error" and writer_only(session):
+            return fmt.position(at) if type(at) is int and 0 <= at <= 9007199254740991 else UNKNOWN
         if type(at) is int and 0 <= at <= 9007199254740991:
             result = text("details.end.at", reason=result, time=fmt.position(at))
         return result
@@ -564,8 +574,9 @@ def read_details(meeting):
         ):
             if meeting.capture_source != "gnome" or any(field in t for t in raw_tracks):
                 health.append((title, _counter(raw_tracks, field)))
-        problem = clean(session.get("problemKind"))
-        if problem or meeting.capture_source != "gnome":
+        # D69.2: writer-only loss is no reported issue (the file keeps problemKind io).
+        problem = "" if writer_only(session) else clean(session.get("problemKind"))
+        if problem or meeting.capture_source != "gnome" and not writer_only(session):
             health.append((text("details.health.problem"), problem or UNKNOWN))
         health.append((text("details.health.offset"), _offset(fd, meeting) if fd is not None else UNKNOWN))
         from .output_mute import intervals
@@ -625,4 +636,5 @@ def read_details(meeting):
         source_facts(session, meeting.metadata, live=meeting.lifecycle in ("recording", "saving")),
         tuple(read_refusals(session.get("refusals"))),
         silent_tracks,
+        computer_busy_lines(raw_tracks) if meeting.lifecycle not in ("recording", "saving") else (),
     )

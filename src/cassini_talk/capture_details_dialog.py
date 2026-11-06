@@ -113,6 +113,8 @@ class RecordingDetailsDialog(Adw.Dialog):
             values[("source", index)] = source.text
             for gap_index, line in enumerate(source.gap_lines):
                 values[("source-gap", index, gap_index)] = line
+        for index, line in enumerate(report.computer_busy):
+            values[("computer-busy", index)] = line
         for group, rows in (("health", report.health), ("writing", report.writing)):
             for index, (_name, value) in enumerate(rows):
                 values[(group, index)] = value
@@ -122,6 +124,7 @@ class RecordingDetailsDialog(Adw.Dialog):
             tuple(k for k, _ in report.health),
             tuple(k for k, _ in report.writing),
             tuple((source.warning, len(source.gap_lines)) for source in report.audio),
+            len(report.computer_busy),
         )
         return shape, values
 
@@ -226,6 +229,9 @@ class RecordingDetailsDialog(Adw.Dialog):
             for gap_index, line in enumerate(source.gap_lines):
                 row.append(self._bound(("source-gap", index, gap_index), line, "small", "warning"))
             inventory.append(row)
+        for index, line in enumerate(report.computer_busy):
+            # D69.2: a quiet, neutral line; never the warning style.
+            inventory.append(self._bound(("computer-busy", index), line, "small", "dim-label"))
         self.body.append(inventory)
         for index, note in enumerate(report.notes):
             self.body.append(self._bound(("note", index), note, "small", "dim-label"))

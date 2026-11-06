@@ -16,6 +16,7 @@ import unicodedata
 from contextlib import contextmanager, suppress
 from copy import deepcopy
 from datetime import UTC, datetime
+from fractions import Fraction
 from pathlib import Path
 from uuid import uuid4
 
@@ -338,6 +339,7 @@ class RecordingSession:
             self._native_clock_origin_ns = time.monotonic_ns()
             self._native_clocks = {}
             self._long_gaps = set()
+            self._writer_losses = {}
             self.manifest = {
                 "version": 1,
                 "id": identifier,
@@ -581,7 +583,10 @@ class RecordingSession:
     def _end_gap(self, identifier, track, entry, kind, written):
         """Keep the range to the frames actually written, after a partial I/O failure too."""
         rate = track["sampleRate"]
-        if kind != "prefix":
+        if kind == "writer":
+            track["droppedFrames"] = track.get("droppedFrames", 0) + written
+            self._writer_losses[identifier] = self._writer_losses.get(identifier, 0) + written
+        elif kind != "prefix":
             track["gapFrames"] = track.get("gapFrames", 0) + written
             if written >= rate:
                 self._long_gaps.add(identifier)
@@ -638,17 +643,26 @@ class RecordingSession:
         if self.clock() - self._last_checkpoint >= 1:
             self.checkpoint()
 
-    def append_native(self, identifier, data, offset, *, gap_frames=0, host_ns=None):
+    def append_native(self, identifier, data, offset, *, gap_frames=0, writer_frames=0, host_ns=None):
         if self.finished or identifier not in self.writers:
             raise ProtocolError("chunk", "Invalid native audio source")
         writer = self.writers[identifier]
         track = next(t for t in self.manifest["tracks"] if t["id"] == identifier)
         if type(gap_frames) is not int or gap_frames < 0 or 0 < gap_frames < writer.rate or track.get("ended"):
             raise ProtocolError("chunk", "Invalid native input gap")
+        if type(writer_frames) is not int or writer_frames < 0:
+            raise ProtocolError("chunk", "Invalid native writer loss")
         # Validate before changing the WAV. Explicit native gaps can be longer
         # than the browser wire's bounded timestamp padding allowance.
         first, step = data[:MAX_CHUNK], writer.channels * 2
-        chunk_plan(writer.rate, writer.channels, writer.frames + gap_frames, track.get("startOffsetMs"), first, offset)
+        chunk_plan(
+            writer.rate,
+            writer.channels,
+            writer.frames + gap_frames + writer_frames,
+            track.get("startOffsetMs"),
+            first,
+            offset,
+        )
         if len(data) % step:
             raise ProtocolError("chunk", "Incomplete PCM frame")
         if gap_frames and track.get("startOffsetMs") is None:
@@ -669,7 +683,7 @@ class RecordingSession:
             if gap_frames:
                 before = writer.frames
                 # The gap began gap_frames before this buffer, however much of it is written.
-                at = self._native_gap_ms(identifier, host_ns, gap_frames)
+                at = self._native_gap_ms(identifier, host_ns, gap_frames + writer_frames)
                 gap = self._begin_gap(track, before, gap_frames, "input", at_ms=at)
                 try:
                     silence = getattr(writer, "silence_gap", writer.silence)
@@ -677,6 +691,8 @@ class RecordingSession:
                 finally:
                     self._end_gap(identifier, track, gap, "input", writer.frames - before)
                     track["frames"] = writer.frames
+            if writer_frames:
+                self.pad_native(identifier, writer_frames=writer_frames)
             if self.library_root is not None and host_ns is not None:
                 from .capture_clock import ClockAnchors
 
@@ -694,6 +710,42 @@ class RecordingSession:
             self._native_io_error = str(error)
             track["frames"] = writer.frames
             raise
+
+    def pad_native(self, identifier, *, gap_frames=0, writer_frames=0):
+        """Append explicit native absence on the sample timeline (including a tail)."""
+        writer = self.writers[identifier]
+        track = next(t for t in self.manifest["tracks"] if t["id"] == identifier)
+        if self.finished or track.get("ended") or track.get("startOffsetMs") is None:
+            raise ProtocolError("chunk", "Invalid native loss source")
+        if any(type(n) is not int or n < 0 for n in (gap_frames, writer_frames)):
+            raise ProtocolError("chunk", "Invalid native loss geometry")
+        for count, kind in ((gap_frames, "input"), (writer_frames, "writer")):
+            if not count:
+                continue
+            before = writer.frames
+            gap = self._begin_gap(track, before, count, kind)
+            try:
+                getattr(writer, "silence_gap", writer.silence)(count)
+            except Exception as error:
+                self._native_io_error = str(error)
+                raise
+            finally:
+                self._end_gap(identifier, track, gap, kind, writer.frames - before)
+                track["frames"] = writer.frames
+
+    def _writer_problems(self):
+        """D69: one stored sentence per source, its spans' exact writer loss summed
+        and rounded half-up once (writer_loss.source_key groups the spans)."""
+        from . import writer_loss
+
+        totals = {}
+        for track in self.manifest["tracks"]:
+            frames = self._writer_losses.get(track["id"], 0)
+            if frames:
+                key = writer_loss.source_key(track)
+                kind, duration = totals.get(key, (track["kind"], Fraction(0)))
+                totals[key] = kind, duration + Fraction(frames * 1000, track["sampleRate"])
+        return [writer_loss.sentence(writer_loss.rounded(duration), kind) for kind, duration in totals.values()]
 
     def finish(self, problem=None, *, problem_kind=None, reason=None, at_ms=None, retain_lease=False):
         from .capture_sources import change_time
@@ -730,7 +782,7 @@ class RecordingSession:
             problem, problem_kind = problem or "Some audio could not be saved.", "io"
         if self._native_io_error:
             problem, problem_kind = problem or self._native_io_error, "io"
-        elif not problem and gaps:
+        elif not problem and gaps and not self._writer_losses:
             problem = " ".join(
                 f"{t['gapFrames'] * 1000 // t['sampleRate']} ms of {t['kind']} input time was preserved as silence."
                 for t in gaps
@@ -739,6 +791,10 @@ class RecordingSession:
         problem_kind = problem_kind or ("capture" if problem else None)
         if failure:
             problem, problem_kind = str(failure), "io"
+        writer_problems = self._writer_problems()
+        if writer_problems:
+            problem = " ".join(filter(None, [problem, *writer_problems]))
+            problem_kind = "io"
         if not any(t["frames"] for t in self.manifest["tracks"]) and not problem:
             problem, problem_kind = (
                 "No audio samples were received. Check the selected sources and permissions.",
@@ -750,7 +806,7 @@ class RecordingSession:
         # A warning about earlier missing PCM does not change the explicit stop
         # cause. A failed capture or disk write is an actual error termination.
         end_reason = reason or ("error" if problem and problem_kind != "gap" else "user")
-        if failure or self._native_io_error:
+        if failure or self._native_io_error or writer_problems:
             end_reason = "error"
         elapsed = max(0, (self.clock() - self._started_at) * 1000) if at_ms is None else at_ms
         append_events(self.manifest, [dict(type="end", atMs=change_time(self, elapsed), reason=end_reason)])

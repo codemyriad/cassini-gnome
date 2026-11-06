@@ -33,6 +33,7 @@ class Replay:
         if self.negotiated:
             self.host.audio_sink = BrowserStreams(self.session, **selection)
         self.sequences, self.timelines = {}, {}
+        self.problem = case.get("problem")
 
     def track(self, id, kind="remote", rate=48000):
         declaration = dict(type="track", id=id, kind=kind, label="Guest", sampleRate=rate, channels=1)
@@ -70,12 +71,25 @@ class Replay:
             self.session.manifest["tracks"][-1]["startOffsetMs"] = boundaryMs
         self.timelines[id] = NativeTimeline(rate)
 
-    def input(self, id, hostMs, frames):
-        offset, gap = self.timelines[id].map(round(hostMs * 1_000_000), frames, hostMs)
-        self.session.append_native(id, b"\x01\x00" * frames, offset, gap_frames=gap)
+    def input(self, id, hostMs, frames, writerFrames=0, inferredFrames=0):
+        timeline = self.timelines[id]
+        offset, gap = timeline.map(
+            round(hostMs * 1_000_000), frames, hostMs, writer_frames=writerFrames, inferred_frames=inferredFrames
+        )
+        self.session.append_native(
+            id, b"\x01\x00" * frames, offset, gap_frames=gap, writer_frames=timeline.writer_frames
+        )
+
+    def writerTail(self, id, untilMs, resumeMs=None, writerFrames=None, inferredFrames=None):
+        gap, lost = self.timelines[id].tail(
+            untilMs, resume_ms=resumeMs, writer_frames=writerFrames, inferred_frames=inferredFrames
+        )
+        self.session.pad_native(id, gap_frames=gap, writer_frames=lost)
 
     def stop(self):
         stop = dict(type="stop", captureId="gaps") if self.negotiated else dict(type="stop")
+        if self.problem:
+            stop["problem"] = self.problem
         assert self.host.handle(stop)["type"] == "stopped"
         return json.loads((self.session.directory / "session.json").read_text())
 
@@ -105,6 +119,9 @@ def test_shared_writer_vectors_through_the_real_writers(tmp_path, case):
         replay.host.close()
     expected = case["expected"]
     assert (saved["state"], saved.get("problemKind")) == (expected["state"], expected["problemKind"])
+    assert saved["events"][-1]["reason"] == expected.get("endReason", "user")
+    if "problem" in expected:
+        assert saved.get("problem") == expected["problem"]
     assert [wire(t) for t in saved["tracks"]] == [t["wire"] for t in expected["tracks"]]
     for track, wanted in zip(saved["tracks"], expected["tracks"], strict=True):
         assert math.isclose(track["startOffsetMs"], wanted["startOffsetMs"], abs_tol=1e-6)

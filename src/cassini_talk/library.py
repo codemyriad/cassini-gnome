@@ -659,9 +659,13 @@ class LibraryScanner:
                 isinstance(t, dict) and t.get("gaps") is None and _integer(t.get("gapFrames")) and t["gapFrames"] > 0
                 for t in capture.get("tracks", [])
             )
+            from .writer_loss import writer_only
+
             if (
                 salvaged
+                # D69.2: writer-only loss is shown as a normal recording (no badge).
                 or capture.get("state") == "interrupted"
+                and not writer_only(capture)
                 or capture.get("state") == "recording"
                 and lifecycle == "saved"
                 or gap

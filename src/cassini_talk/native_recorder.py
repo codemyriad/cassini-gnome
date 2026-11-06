@@ -12,6 +12,7 @@ from uuid import uuid4
 from gi.repository import GLib, GObject, Gst
 
 from .capture_sources import canonical_order, change_time, pcm_before, selected_pcm
+from .native_queue import NativeQueue
 from .native_timing import NS, NativeTimeline
 from .recorder import CAPTURE_CONVERT, TAP_QUEUE, request_eos
 from .recording_details import ACMeter, space_left
@@ -88,6 +89,7 @@ class NativeRecorder(GObject.Object):
         # by the drain; audio after it is not, and the end event is stamped
         # there, not when the drain ends (D4).
         self._stop_at_ms = None
+        self._drain_timed_out = False
         # R93-2: an armed side Stop kept to drain (its input reached its queue first).
         self._drain_armed = False
         self.line = None
@@ -161,6 +163,7 @@ class NativeRecorder(GObject.Object):
         self._start_us = GLib.get_monotonic_time()
         self._stop_requested = False
         self._stop_at_ms = None
+        self._drain_timed_out = False
         self._drain_armed = False
         self.session = None
         self.stopping = self._finishing = False
@@ -544,8 +547,11 @@ class NativeRecorder(GObject.Object):
             return False
         if attempt["error"] or attempt["retired"]:
             return False
-        if self.stopping:
-            at = max([pts_ms, *(e["atMs"] for e in self.session.manifest.get("events", []))])
+        at = self._side_start_ms(attempt, pts_ms)
+        cut = getattr(attempt["branch"], "_selection_cut_ms", None)
+        if cut is not None and at >= cut:
+            return False
+        if self.stopping or self._stop_requested:
             heard = attempt.get("armed") and self._stop_at_ms is not None and at < self._stop_at_ms
             if not heard or self._finishing or self.pipeline is not attempt["pipeline"]:
                 return False
@@ -566,13 +572,22 @@ class NativeRecorder(GObject.Object):
         clock = pipeline.get_clock()
         return max(0, (clock.get_time() - pipeline.get_base_time()) / Gst.MSECOND) if clock is not None else 0
 
+    def _side_start_ms(self, attempt, pts_ms):
+        at = max(pts_ms, attempt.get("refuse_at", 0))
+        if getattr(attempt["branch"], "_selection_cut_ms", None) is None:
+            # A live attempt respects the latest committed selection. A
+            # retiring one instead drains within its already sealed span:
+            # its own deselection (or a later Stop) cannot move its start.
+            at = max([at, *(event["atMs"] for event in self.session.manifest.get("events", []))])
+        return at
+
     def _commit_side(self, kind, attempt, at_ms):
         """Commit a start or armed side at its first admitted buffer (lock held)."""
         from .strings import text
 
-        # The track starts at its first buffer. The other side's frames do
-        # not move it: change_time's overlap rule is for spans of one source.
-        at = max([at_ms, *(e["atMs"] for e in self.session.manifest.get("events", []))])
+        # A retiring side's own turn-on bounds its first buffer, even though
+        # its deselection is already committed while pre-cut PCM drains here.
+        at = self._side_start_ms(attempt, at_ms)
         label = text("common.me" if kind == "microphone" else "common.theOthers")
         identifier = attempt["identifier"]
         # One checkpoint holds the track with its start.
@@ -649,12 +664,25 @@ class NativeRecorder(GObject.Object):
         # A staged live sink must not start a new pipeline-wide preroll: that
         # would pause the confirmed sources while the replacement is tested.
         branch = Gst.parse_bin_from_description(
-            source + " ! " + TAP_QUEUE + " ! " + CAPTURE_CONVERT + " ! audioresample ! "
-            "audio/x-raw,format=S16LE,rate=48000,channels=1 ! "
+            source + " ! " + CAPTURE_CONVERT + " ! audioresample ! "
+            "audio/x-raw,format=S16LE,rate=48000,channels=1 ! " + TAP_QUEUE + " ! "
             f"appsink name={kind} emit-signals=true sync=false async=false max-buffers=8 drop=false",
             False,
         )
-        branch.get_by_name(kind).connect("new-sample", self._sample, kind)
+        branch._writer_queue = admission = NativeQueue()
+        sink = branch.get_by_name(kind)
+
+        def entered(_pad, info):
+            buffer = info.get_buffer()
+            frames = buffer.get_size() // 2
+            pts, _shift, _path = self._input_pts(sink, kind, buffer.pts, frames)
+            if self._stop_at_ms is not None:
+                admission.seal(self._stop_at_ms)
+            accepted = admission.enter(buffer.pts, frames, pts / Gst.MSECOND)
+            return Gst.PadProbeReturn.OK if accepted else Gst.PadProbeReturn.DROP
+
+        branch.get_by_name("tap-queue").get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER, entered)
+        sink.connect("new-sample", self._sample, kind)
         return branch
 
     def _output_sample(self):
@@ -751,7 +779,6 @@ class NativeRecorder(GObject.Object):
                 if attempt["error"]:
                     raise OSError(attempt["error"])
             opening = None
-            elapsed = self._elapsed_ms(pipeline)
             with self._lock:
                 # _discard: an armed refusal on this worker found nothing open
                 # and queued the finish to the main loop; nothing commits now.
@@ -767,7 +794,7 @@ class NativeRecorder(GObject.Object):
                     if attempt["error"]:
                         opening = kind
                         raise OSError(attempt["error"])
-                at = change_time(self.session, elapsed)
+                at = change_time(self.session, self._elapsed_ms(pipeline))
                 # A selection is written only when it changes (R82 1c): Try again
                 # on a side refused at start reopens it under the start selection.
                 changed = (me, others) != (current.me, current.others)
@@ -777,14 +804,10 @@ class NativeRecorder(GObject.Object):
                 elif "system" in added and not current.others:
                     events.append(dict(atMs=at, type="othersSource", source="system", reason="user"))
                 identifiers = dict(self._track_ids)
-                retired_ids = [identifiers[kind] for kind in removed if kind in identifiers]
                 retired_system = identifiers.get("system") if "system" in removed else None
                 # D58.1: a side that heard nothing yet gets its track at its first buffer.
                 heard = {kind for kind, attempt in prepared.items() if attempt["ready"].is_set()}
                 with self.session.change(events):
-                    for kind in removed:
-                        if kind in identifiers:
-                            self.session.end_track(identifiers.pop(kind))
                     for kind in sorted(heard):
                         identifier = kind + "-" + str(uuid4())
                         self.session.add_track(
@@ -796,15 +819,30 @@ class NativeRecorder(GObject.Object):
                     self.spectrogram.declare(identifiers[kind], kind=kind, now_ms=at)
                     self._spectro_starts[identifiers[kind]] = at
                 self._track_ids = identifiers
-                retired = [self._branches.pop(kind) for kind in removed if kind in self._branches]
-                self._retired_branches.update(retired)
+                retiring = {kind: self._branches[kind] for kind in removed if kind in self._branches}
+                self._retired_branches.update(retiring.values())
                 disarmed = [
                     (kind, self._pending_sources[kind])
                     for kind in removed
                     if self._pending_sources.get(kind, {}).get("armed")
                 ]
                 for kind, attempt in disarmed:
-                    self._retire_attempt(kind, attempt)
+                    admission = getattr(attempt["branch"], "_writer_queue", None)
+                    if admission is not None and admission.last_end_ms is not None:
+                        retiring[kind] = attempt["branch"]
+                        self._retired_branches.add(attempt["branch"])
+                        # A post-cut first buffer will not commit the side,
+                        # so _commit_side cannot release its held EOS for us.
+                        if "hold" in attempt:
+                            pad, probe = attempt.pop("hold")
+                            pad.remove_probe(probe)
+                    else:
+                        self._retire_attempt(kind, attempt)
+                for branch in retiring.values():
+                    branch._selection_cut_ms = at
+                    admission = getattr(branch, "_writer_queue", None)
+                    if admission is not None:
+                        admission.seal(at)
                 for kind, attempt in prepared.items():
                     self._boundaries[kind] = at
                     if kind in heard:
@@ -818,15 +856,28 @@ class NativeRecorder(GObject.Object):
                             "Native %s side (%s) heard nothing yet; it opens on its first buffer", SIDES[kind], kind
                         )
                 committed = True
-            for identifier in retired_ids:
-                self.spectrogram.retire(identifier)
-                self._spectro_starts.pop(identifier, None)
             if retired_system is not None and self._mute_observer:
                 self._mute_observer.retire(retired_system, at)
             for kind in removed:
                 self.levels[0 if kind == "microphone" else 1] = 0
-            for branch in retired:
-                branch.set_state(Gst.State.NULL)
+            for kind, branch in retiring.items():
+                drained = self._drain_branch(kind, branch)
+                with self._lock:
+                    identifier = self._track_ids.get(kind)
+                    admission = getattr(branch, "_writer_queue", None)
+                    if admission is not None and identifier in self._timelines:
+                        self._timelines[identifier].flush_loss(
+                            self.session, identifier, admission, at, inferred=not drained
+                        )
+                    if identifier is not None:
+                        self.session.end_track(identifier)
+                        self._track_ids.pop(kind)
+                        self.spectrogram.retire(identifier)
+                        self._spectro_starts.pop(identifier, None)
+                    self._branches.pop(kind, None)
+                    for pending_kind, attempt in disarmed:
+                        if pending_kind == kind:
+                            self._retire_attempt(kind, attempt)
                 pipeline.remove(branch)
             for _kind, attempt in disarmed:
                 self._detach(pipeline, attempt)
@@ -874,6 +925,25 @@ class NativeRecorder(GObject.Object):
         if self._stop_requested and not self.stopping and not self._finishing:
             self.stop()
         return False
+
+    def _drain_branch(self, kind, branch):
+        """Finish a deselected source before retiring its queue and track."""
+        admission = getattr(branch, "_writer_queue", None)
+        if admission is None:
+            # Branches without bounded admission have no writer-loss tail.
+            branch.set_state(Gst.State.NULL)
+            return True
+        ended = threading.Event()
+        sink = branch.get_by_name(kind)
+        handler = sink.connect("eos", lambda *_: ended.set())
+        try:
+            if admission.last_end_ms is None:
+                return True  # An armed source heard nothing; EOS may wait forever.
+            request_eos(branch, lambda *_: False)
+            return ended.wait(10)
+        finally:
+            branch.set_state(Gst.State.NULL)
+            sink.disconnect(handler)
 
     def _input_pts(self, sink, identifier, pts, frames):
         """(stamp in pipeline running time, shift removed) on one per-branch timeline.
@@ -938,6 +1008,8 @@ class NativeRecorder(GObject.Object):
         buffer = sample.get_buffer()
         raw, shift, path = buffer.pts, 0, None
         branch = sink.get_parent() if isinstance(sink, Gst.Element) else None
+        admission = getattr(branch, "_writer_queue", None)
+        queued, lost = admission.take(raw) if admission is not None else (0, 0)
         try:
             if raw == Gst.CLOCK_TIME_NONE:
                 raise ValueError("Audio source has no clock timestamp")
@@ -962,21 +1034,29 @@ class NativeRecorder(GObject.Object):
                     data, offset = selected_pcm(data, pts / Gst.MSECOND, rate, channels, self._boundaries[identifier])
                     skipped = original_frames - len(data) // (channels * 2)
                     cut = self._stop_at_ms
+                    selection_cut = getattr(branch, "_selection_cut_ms", None)
+                    if selection_cut is not None:
+                        cut = selection_cut if cut is None else min(cut, selection_cut)
                     if cut is not None:
                         # Queued across Stop's moment: only what was captured before it.
                         data = pcm_before(data, offset, rate, channels, cut)
+                    if not data and cut is not None and lost and stored in self._timelines:
+                        gap, lost = self._timelines[stored].tail(cut, resume_ms=offset, writer_frames=lost)
+                        self.session.pad_native(stored, gap_frames=gap, writer_frames=lost)
                     if data:
                         frames = len(data) // (channels * 2)
                         host_ns = pts + skipped * NS // rate
                         timeline = self._timelines.setdefault(stored, NativeTimeline(rate))
-                        offset, gap = timeline.map(host_ns, frames, offset)
+                        offset, gap = timeline.map(host_ns, frames, offset, writer_frames=lost)
                         # A shifted source has no clock observations (see _pts_shift).
                         absolute = None
                         if path is not None:
                             self.session.clock_slaving_lost(stored, path, shift)
                         elif self.pipeline is not None:
                             absolute = self.pipeline.get_base_time() + host_ns
-                        self.session.append_native(stored, data, offset, gap_frames=gap, host_ns=absolute)
+                        self.session.append_native(
+                            stored, data, offset, gap_frames=gap, writer_frames=timeline.writer_frames, host_ns=absolute
+                        )
                         start = self._spectro_starts.get(stored)
                         if start is None:
                             record = next(t for t in self.session.manifest["tracks"] if t["id"] == stored)
@@ -1017,6 +1097,9 @@ class NativeRecorder(GObject.Object):
                 else:
                     GLib.idle_add(self._begin_finish, str(error))
             return Gst.FlowReturn.ERROR
+        finally:
+            if admission is not None:
+                admission.done(queued)
         return Gst.FlowReturn.OK
 
     def _owns(self, kind, attempt, branch):
@@ -1148,8 +1231,11 @@ class NativeRecorder(GObject.Object):
         return False
 
     def _timed_out(self):
+        self._drain_timed_out = True
         self._timeout = 0
-        self._begin_finish("Timed out while saving the recording.")
+        # Account for the queue's loss before deciding whether this is an
+        # unexplained failure or solely D69 writer loss (quiet under D69.2).
+        self._begin_finish(self._problem)
         return False
 
     def _begin_finish(self, problem=None):
@@ -1198,7 +1284,23 @@ class NativeRecorder(GObject.Object):
                         return
                 try:
                     with self._lock:
-                        session.finish(problem, reason=reason, at_ms=at_ms, retain_lease=True)
+                        for kind, branch in self._branches.items():
+                            admission = getattr(branch, "_writer_queue", None)
+                            identifier = self._track_ids.get(kind)
+                            if admission is not None and identifier in self._timelines:
+                                self._timelines[identifier].flush_loss(
+                                    session, identifier, admission, at_ms, inferred=self._drain_timed_out
+                                )
+                        final_problem = problem
+                        if self._drain_timed_out and not final_problem and not session._writer_losses:
+                            final_problem = "Timed out while saving the recording."
+                        self._problem = final_problem
+                        session.finish(
+                            final_problem,
+                            reason="error" if final_problem else reason,
+                            at_ms=at_ms,
+                            retain_lease=True,
+                        )
                 finally:
                     self.spectrogram.finish()
                 # Encoding never holds the PCM lock or GTK main context.

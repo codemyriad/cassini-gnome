@@ -825,6 +825,1204 @@
      }
     ]
    }
+  },
+  {
+   "name": "native-writer-loss-is-io-and-ends-in-error",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 3000,
+     "frames": 48000,
+     "writerFrames": 96000
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 192000,
+      "gapFrames": 0,
+      "droppedFrames": 96000,
+      "gaps": [
+       {
+        "atMs": 1000,
+        "durationMs": 2000,
+        "frames": 96000,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "2000 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "native-writer-loss-leaves-only-uncovered-host-time-as-input",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 4000,
+     "frames": 48000,
+     "writerFrames": 48000
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 240000,
+      "gapFrames": 96000,
+      "droppedFrames": 48000,
+      "gaps": [
+       {
+        "atMs": 1000,
+        "durationMs": 2000,
+        "frames": 96000,
+        "kind": "input"
+       },
+       {
+        "atMs": 3000,
+        "durationMs": 1000,
+        "frames": 48000,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "1000 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "short-native-writer-loss-is-still-io",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 1250,
+     "frames": 48000,
+     "writerFrames": 12000
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 108000,
+      "gapFrames": 0,
+      "droppedFrames": 12000,
+      "gaps": [
+       {
+        "atMs": 1000,
+        "durationMs": 250,
+        "frames": 12000,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "250 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "native-writer-tail-is-padded-up-to-the-stop-moment",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "writerTail",
+     "id": "a",
+     "untilMs": 1500
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 72000,
+      "gapFrames": 0,
+      "droppedFrames": 24000,
+      "gaps": [
+       {
+        "atMs": 1000,
+        "durationMs": 500,
+        "frames": 24000,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "500 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "native-inferred-writer-loss-is-bounded-by-host-time",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 1500,
+     "frames": 48000,
+     "inferredFrames": 48000
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 120000,
+      "gapFrames": 0,
+      "droppedFrames": 24000,
+      "gaps": [
+       {
+        "atMs": 1000,
+        "durationMs": 500,
+        "frames": 24000,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "500 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "native-writer-tail-after-stop-keeps-input-time-ahead-of-it",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "writerTail",
+     "id": "a",
+     "untilMs": 3500,
+     "resumeMs": 3800,
+     "inferredFrames": 48000
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 168000,
+      "gapFrames": 86400,
+      "droppedFrames": 33600,
+      "gaps": [
+       {
+        "atMs": 1000,
+        "durationMs": 1800,
+        "frames": 86400,
+        "kind": "input"
+       },
+       {
+        "atMs": 2800,
+        "durationMs": 700,
+        "frames": 33600,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "700 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "native-writer-tail-after-stop-pads-only-its-share-before-stop",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "writerTail",
+     "id": "a",
+     "untilMs": 1500,
+     "resumeMs": 1800,
+     "inferredFrames": 33600
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 67200,
+      "gapFrames": 0,
+      "droppedFrames": 19200,
+      "gaps": [
+       {
+        "atMs": 1000,
+        "durationMs": 400,
+        "frames": 19200,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "400 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "native-writer-tail-keeps-absorbed-positive-clock-divergence",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 1500,
+     "frames": 48000
+    },
+    {
+     "op": "writerTail",
+     "id": "a",
+     "untilMs": 3000
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 120000,
+      "gapFrames": 0,
+      "droppedFrames": 24000,
+      "gaps": [
+       {
+        "atMs": 2000,
+        "durationMs": 500,
+        "frames": 24000,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "500 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "native-writer-tail-keeps-absorbed-negative-clock-divergence",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 500,
+     "frames": 48000
+    },
+    {
+     "op": "writerTail",
+     "id": "a",
+     "untilMs": 2000
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 120000,
+      "gapFrames": 0,
+      "droppedFrames": 24000,
+      "gaps": [
+       {
+        "atMs": 2000,
+        "durationMs": 500,
+        "frames": 24000,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "500 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "native-writer-tail-before-resume-keeps-absorbed-clock-divergence",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 1500,
+     "frames": 48000
+    },
+    {
+     "op": "writerTail",
+     "id": "a",
+     "untilMs": 3000,
+     "resumeMs": 3500,
+     "inferredFrames": 72000
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 120000,
+      "gapFrames": 0,
+      "droppedFrames": 24000,
+      "gaps": [
+       {
+        "atMs": 2000,
+        "durationMs": 500,
+        "frames": 24000,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "500 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "native-writer-loss-starts-after-stop-but-input-gap-remains",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "writerTail",
+     "id": "a",
+     "untilMs": 3500,
+     "resumeMs": 5000,
+     "inferredFrames": 48000
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "gap",
+    "endReason": "user",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 168000,
+      "gapFrames": 120000,
+      "droppedFrames": 0,
+      "gaps": [
+       {
+        "atMs": 1000,
+        "durationMs": 2500,
+        "frames": 120000,
+        "kind": "input"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "native-writer-loss-starts-at-stop-but-input-gap-remains",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "writerTail",
+     "id": "a",
+     "untilMs": 3500,
+     "resumeMs": 4500,
+     "inferredFrames": 48000
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "gap",
+    "endReason": "user",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 168000,
+      "gapFrames": 120000,
+      "droppedFrames": 0,
+      "gaps": [
+       {
+        "atMs": 1000,
+        "durationMs": 2500,
+        "frames": 120000,
+        "kind": "input"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "native-writer-loss-after-stop-keeps-only-new-host-input-time",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 1500,
+     "frames": 48000
+    },
+    {
+     "op": "writerTail",
+     "id": "a",
+     "untilMs": 4500,
+     "resumeMs": 6000,
+     "inferredFrames": 48000
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "gap",
+    "endReason": "user",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 192000,
+      "gapFrames": 96000,
+      "droppedFrames": 0,
+      "gaps": [
+       {
+        "atMs": 2000,
+        "durationMs": 2000,
+        "frames": 96000,
+        "kind": "input"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "native-writer-loss-after-stop-leaves-short-input-divergence-absorbed",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "writerTail",
+     "id": "a",
+     "untilMs": 1500,
+     "resumeMs": 3000,
+     "inferredFrames": 48000
+    }
+   ],
+   "expected": {
+    "state": "completed",
+    "problemKind": null,
+    "endReason": "user",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 48000,
+      "gapFrames": 0,
+      "droppedFrames": 0,
+      "gaps": []
+     }
+    ]
+   }
+  },
+  {
+   "name": "repeated-native-writer-loss-reports-once-and-keeps-earlier-problem",
+   "features": [],
+   "problem": "Earlier capture warning.",
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 1250,
+     "frames": 48000,
+     "writerFrames": 12000
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 2500,
+     "frames": 48000,
+     "writerFrames": 12000
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 168000,
+      "gapFrames": 0,
+      "droppedFrames": 24000,
+      "gaps": [
+       {
+        "atMs": 1000,
+        "durationMs": 250,
+        "frames": 12000,
+        "kind": "writer"
+       },
+       {
+        "atMs": 2250,
+        "durationMs": 250,
+        "frames": 12000,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "Earlier capture warning. 500 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "native-writer-problem-is-once-per-source-different-kinds",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone"
+    },
+    {
+     "op": "nativeTrack",
+     "id": "b",
+     "kind": "system"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "input",
+     "id": "b",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 1250,
+     "frames": 48000,
+     "writerFrames": 12000
+    },
+    {
+     "op": "input",
+     "id": "b",
+     "hostMs": 1500,
+     "frames": 48000,
+     "writerFrames": 24000
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 108000,
+      "gapFrames": 0,
+      "droppedFrames": 12000,
+      "gaps": [
+       {
+        "atMs": 1000,
+        "durationMs": 250,
+        "frames": 12000,
+        "kind": "writer"
+       }
+      ]
+     },
+     {
+      "wire": "b",
+      "startOffsetMs": 0,
+      "frames": 120000,
+      "gapFrames": 0,
+      "droppedFrames": 24000,
+      "gaps": [
+       {
+        "atMs": 1000,
+        "durationMs": 500,
+        "frames": 24000,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "250 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence. 500 ms of system audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "native-writer-problem-is-once-per-source-same-kind",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "application"
+    },
+    {
+     "op": "nativeTrack",
+     "id": "b",
+     "kind": "application"
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "input",
+     "id": "b",
+     "hostMs": 0,
+     "frames": 48000
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 1250,
+     "frames": 48000,
+     "writerFrames": 12000
+    },
+    {
+     "op": "input",
+     "id": "b",
+     "hostMs": 1500,
+     "frames": 48000,
+     "writerFrames": 24000
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 108000,
+      "gapFrames": 0,
+      "droppedFrames": 12000,
+      "gaps": [
+       {
+        "atMs": 1000,
+        "durationMs": 250,
+        "frames": 12000,
+        "kind": "writer"
+       }
+      ]
+     },
+     {
+      "wire": "b",
+      "startOffsetMs": 0,
+      "frames": 120000,
+      "gapFrames": 0,
+      "droppedFrames": 24000,
+      "gaps": [
+       {
+        "atMs": 1000,
+        "durationMs": 500,
+        "frames": 24000,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "250 ms of application audio was lost because the computer could not keep up; the gaps contain silence. 500 ms of application audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "native-writer-problem-rounds-the-source-total-half-up-once",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "a",
+     "kind": "microphone",
+     "rate": 8000
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 0,
+     "frames": 8000
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 1000.25,
+     "frames": 8000,
+     "writerFrames": 2
+    },
+    {
+     "op": "input",
+     "id": "a",
+     "hostMs": 2000.5,
+     "frames": 8000,
+     "writerFrames": 2
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "a",
+      "startOffsetMs": 0,
+      "frames": 24004,
+      "gapFrames": 0,
+      "droppedFrames": 4,
+      "gaps": [
+       {
+        "atMs": 1000,
+        "durationMs": 0.25,
+        "frames": 2,
+        "kind": "writer"
+       },
+       {
+        "atMs": 2000.25,
+        "durationMs": 0.25,
+        "frames": 2,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "1 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "mac-known-dropped-callback-keeps-all-frames-under-host-divergence",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "mic",
+     "kind": "microphone",
+     "rate": 8000
+    },
+    {
+     "op": "input",
+     "id": "mic",
+     "hostMs": 0,
+     "frames": 80
+    },
+    {
+     "op": "input",
+     "id": "mic",
+     "hostMs": 19,
+     "frames": 80,
+     "writerFrames": 80
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "mic",
+      "startOffsetMs": 0,
+      "frames": 240,
+      "gapFrames": 0,
+      "droppedFrames": 80,
+      "gaps": [
+       {
+        "atMs": 10,
+        "durationMs": 10,
+        "frames": 80,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "10 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "mac-known-dropped-tail-keeps-all-frames-past-stop",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "mic",
+     "kind": "microphone",
+     "rate": 8000
+    },
+    {
+     "op": "input",
+     "id": "mic",
+     "hostMs": 0,
+     "frames": 80
+    },
+    {
+     "op": "writerTail",
+     "id": "mic",
+     "untilMs": 19,
+     "resumeMs": 19,
+     "writerFrames": 80
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "mic",
+      "startOffsetMs": 0,
+      "frames": 160,
+      "gapFrames": 0,
+      "droppedFrames": 80,
+      "gaps": [
+       {
+        "atMs": 10,
+        "durationMs": 10,
+        "frames": 80,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "10 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "known-dropped-tail-without-following-buffer-is-exact",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "mic",
+     "kind": "microphone",
+     "rate": 8000
+    },
+    {
+     "op": "input",
+     "id": "mic",
+     "hostMs": 0,
+     "frames": 80
+    },
+    {
+     "op": "writerTail",
+     "id": "mic",
+     "untilMs": 19,
+     "writerFrames": 80
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "mic",
+      "startOffsetMs": 0,
+      "frames": 160,
+      "gapFrames": 0,
+      "droppedFrames": 80,
+      "gaps": [
+       {
+        "atMs": 10,
+        "durationMs": 10,
+        "frames": 80,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "10 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "inferred-loss-under-the-same-host-divergence-is-clipped",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "mic",
+     "kind": "microphone",
+     "rate": 8000
+    },
+    {
+     "op": "input",
+     "id": "mic",
+     "hostMs": 0,
+     "frames": 80
+    },
+    {
+     "op": "input",
+     "id": "mic",
+     "hostMs": 19,
+     "frames": 80,
+     "inferredFrames": 80
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "mic",
+      "startOffsetMs": 0,
+      "frames": 232,
+      "gapFrames": 0,
+      "droppedFrames": 72,
+      "gaps": [
+       {
+        "atMs": 10,
+        "durationMs": 9,
+        "frames": 72,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "9 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
+  },
+  {
+   "name": "inferred-tail-under-the-same-host-divergence-is-clipped",
+   "features": [],
+   "steps": [
+    {
+     "op": "nativeTrack",
+     "id": "mic",
+     "kind": "microphone",
+     "rate": 8000
+    },
+    {
+     "op": "input",
+     "id": "mic",
+     "hostMs": 0,
+     "frames": 80
+    },
+    {
+     "op": "writerTail",
+     "id": "mic",
+     "untilMs": 19,
+     "resumeMs": 19,
+     "inferredFrames": 80
+    }
+   ],
+   "expected": {
+    "state": "interrupted",
+    "problemKind": "io",
+    "endReason": "error",
+    "tracks": [
+     {
+      "wire": "mic",
+      "startOffsetMs": 0,
+      "frames": 152,
+      "gapFrames": 0,
+      "droppedFrames": 72,
+      "gaps": [
+       {
+        "atMs": 10,
+        "durationMs": 9,
+        "frames": 72,
+        "kind": "writer"
+       }
+      ]
+     }
+    ],
+    "problem": "9 ms of microphone audio was lost because the computer could not keep up; the gaps contain silence."
+   }
   }
  ]
 }

@@ -443,17 +443,19 @@ class BrowserCapture:
         with self.lock:
             self._tap_states[identifier] = state
 
-        def append(data, offset, *, host_ns=None):
+        def append(data, offset, *, host_ns=None, writer_frames=0):
             picture = None
             opened = False
             with self.lock:
                 state["heard"] = True
-                if not state["active"] or not self._current(kind, identifier):
-                    # Readiness PCM is not a committed recording span, and a
-                    # retired tap's buffer (one in flight while a deselect
-                    # stops it) opens no track after its side was turned off.
+                if not state.get("retiring") and (not state["active"] or not self._current(kind, identifier)):
+                    # Readiness and fully retired taps own no recording span.
+                    # A tap still draining a committed deselection keeps only
+                    # the pre-boundary PCM under its own cutoff below.
                     return
                 cut = self._native_cut()
+                if state.get("until") is not None:
+                    cut = state["until"] if cut is None else min(cut, state["until"])
                 if not state["track"]:
                     # D58.1: an armed tap opens on its first buffer, however late,
                     # if that buffer was captured before Stop (R93-2).
@@ -465,6 +467,11 @@ class BrowserCapture:
                     state["track"] = opened = True
                     self._sync_spectrogram()
                 track = next(t for t in self.host.session.manifest["tracks"] if t["id"] == identifier)
+                if cut is not None and offset >= cut and writer_frames and not track.get("ended"):
+                    # The following callback is excluded by Stop, but the known
+                    # drops it carries were already admitted before that Stop.
+                    gap, lost = state["timeline"].tail(cut, resume_ms=offset, writer_frames=writer_frames)
+                    self.host.session.pad_native(identifier, gap_frames=gap, writer_frames=lost)
                 if (cut is None or offset < cut) and not track.get("ended"):
                     original_offset = offset
                     selected, offset = selected_pcm(data, offset, 48000, 1, state["at"])
@@ -475,12 +482,15 @@ class BrowserCapture:
                         selected = pcm_before(selected, offset, 48000, 1, cut)
                     if selected:
                         stamp = round(original_offset * 1_000_000) if host_ns is None else host_ns
-                        offset, gap = state["timeline"].map(stamp + skipped * NS // 48000, len(selected) // 2, offset)
+                        offset, gap = state["timeline"].map(
+                            stamp + skipped * NS // 48000, len(selected) // 2, offset, writer_frames=writer_frames
+                        )
                         self.host.session.append_native(
                             identifier,
                             selected,
                             offset,
                             gap_frames=gap,
+                            writer_frames=state["timeline"].writer_frames,
                             host_ns=host_ns + skipped * NS // 48000 if host_ns is not None else None,
                         )
                         start = self._spectro_starts.get(identifier)
@@ -562,6 +572,9 @@ class BrowserCapture:
                 self.changed(self, "error")
 
         tap = factory(kind, self.session_clock, append, failed, level=level)
+        # Read the leaf Stop marker before queue admission, even while Stop's
+        # worker is waiting for a stalled writer lock before it can drain taps.
+        tap.stop_boundary = lambda: self._native_cut()
         state["tap"] = tap
         return tap, state
 
@@ -1078,8 +1091,6 @@ class BrowserCapture:
                         self.host.session.change(self._events(me, others, lost, fallback, at)),
                     ):
                         self.streams.select(me, others, at, browser=not lost)
-                        for identifier, _tap in ending.values():
-                            self.host.session.end_track(identifier)
                         for kind, (identifier, _tap, state) in prepared.items():
                             if state["heard"]:
                                 self._add_native(kind, at, identifier=identifier)
@@ -1090,14 +1101,18 @@ class BrowserCapture:
                     self.me, self.others, self.browser_lost = me, others, lost
                     if not lost:
                         self.browser_lost_since = None
-                    for kind, (identifier, _tap) in removed.items():
+                    retiring = {}
+                    for kind, (identifier, tap) in removed.items():
                         self.native_taps.pop(kind)
-                        # Retired before the lock is released: a first buffer
-                        # that arrives while tap.stop() runs below records
-                        # nothing (an armed tap would open a new track).
+                        # Detach error/level ownership only after the change's
+                        # durable commit. PCM alone keeps a bounded drain;
+                        # teardown errors cannot stop the replacement.
                         retired = self._tap_states.pop(identifier, None)
                         if retired is not None:
-                            retired["active"] = False
+                            retired.update(active=False, retiring=True, until=at)
+                            retiring[identifier] = retired
+                        if hasattr(tap, "seal"):
+                            tap.seal(at)
                         self.levels[0 if kind == "microphone" else 1] = 0
                     for kind, (identifier, tap, state) in prepared.items():
                         # A turn-on's armed tap is refused at its time; a
@@ -1111,11 +1126,28 @@ class BrowserCapture:
                     committed = True
                 if "system" in ending and self._mute_observer:
                     self._mute_observer.retire(ending["system"][0], at)
-                for _identifier, tap in removed.values():
+                for identifier, tap in removed.values():
                     try:
                         tap.stop()
                     except Exception:
                         logging.getLogger(__name__).exception("Could not finish a deselected source")
+                    finally:
+                        with self.lock:
+                            state = retiring[identifier]
+                            admission = getattr(tap, "writer_queue", None)
+                            if admission is not None and state["track"]:
+                                state["timeline"].flush_loss(
+                                    self.host.session,
+                                    identifier,
+                                    admission,
+                                    at,
+                                    inferred=getattr(tap, "timed_out", False),
+                                )
+                            if state["track"]:
+                                self.host.session.end_track(identifier)
+                            state["retiring"] = False
+                with self.lock:
+                    self._sync_spectrogram()
                 if self._mute_observer:
                     self._mute_observer.refresh()
                 self.changed(self, "sources")
@@ -1262,11 +1294,25 @@ class BrowserCapture:
                     self._mute_observer.close(self._end_ms())
                     self._mute_observer = None
                 for _identifier, tap in tuple(self.native_taps.values()):
+                    if hasattr(tap, "seal"):
+                        tap.seal(self._end_ms())
                     try:
                         tap.stop()
                     except Exception as error:
                         problem = problem or str(error)
                         self.end_reason = "error"
+                    finally:
+                        admission = getattr(tap, "writer_queue", None)
+                        state = self._tap_states.get(_identifier)
+                        if admission is not None and state is not None and state["track"]:
+                            with self.lock:
+                                state["timeline"].flush_loss(
+                                    self.host.session,
+                                    _identifier,
+                                    admission,
+                                    self._end_ms(),
+                                    inferred=getattr(tap, "timed_out", False),
+                                )
                 with self.lock:
                     if discard is None and self._armed_once and not self.host.session.manifest["tracks"]:
                         # D58.1: an armed side never heard a buffer and no side

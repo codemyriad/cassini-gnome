@@ -57,19 +57,22 @@ def tap_descriptions(monkeypatch):
     return seen
 
 
-def test_each_native_tap_queues_ten_seconds_in_c_ahead_of_its_writer(monkeypatch):
+def test_each_native_tap_queues_converted_pcm_behind_explicit_frame_admission(monkeypatch):
     descriptions = tap_descriptions(monkeypatch)
     assert len(descriptions) == 4
     for description in descriptions:
-        # The queue sits right after the device, ahead of convert/resample/appsink.
+        # Admission sees fixed-rate PCM frames; conversion cannot hide a drop.
         source, rest = description.split(" ! ", 1)
         assert source.startswith("pulsesrc ")
-        assert rest.startswith(TAP_QUEUE + " ! ")
+        assert rest.startswith(native_recorder.CAPTURE_CONVERT + " ! ")
+        assert "audio/x-raw,format=S16LE,rate=48000,channels=1 ! " + TAP_QUEUE in rest
         pipeline = Gst.parse_launch("audiotestsrc ! " + rest.replace("appsink", "appsink async=false", 1))
         try:
             queue = pipeline.get_by_name("tap-queue")
             assert queue is not None
-            assert queue.get_property("max-size-time") == 10 * Gst.SECOND
+            # NativeQueue bounds frames before this queue. It must never block
+            # its input and force an unobserved pulsesrc overrun instead.
+            assert queue.get_property("max-size-time") == 0
             # Both size caps off: 200 buffers or 10 MB would cut the 10 s short.
             assert queue.get_property("max-size-buffers") == 0
             assert queue.get_property("max-size-bytes") == 0
@@ -1003,7 +1006,7 @@ def test_the_native_recorder_keeps_the_stop_moment_through_a_held_pcm_lock(tmp_p
             return Gst.PadProbeReturn.OK
 
         for kind, branch in recorder._branches.items():
-            pad = branch.get_by_name("tap-queue").get_static_pad("sink")
+            pad = branch.get_by_name("tap-queue").get_static_pad("sink").get_peer()
             pad.add_probe(Gst.PadProbeType.BUFFER, entering, kind)
         held = threading.Event()
 

@@ -22,15 +22,13 @@ Each case blocks both taps' writers the way R93's runs were blocked, then saves:
             callbacks queued behind the stall, which can take the lock before
             it, save nothing after it. In all three, the end event is at the
             Stop moment, however long the save took (D4)
-  overrun   the documented limit: capture.lock is held until both 10 s queues
-            are full, then 2 s more. pulsesrc drops that, and a loss of 1 s or
-            more is saved as an input gap (truthful; relabelling it as writer
-            loss is a follow-up). A writer slower than real time while it
-            catches up can lose more than the 2 s.
+  overrun   capture.lock is held until both 10 s admission queues are full,
+            then 2 s more. Exact dropped callback frames become writer silence,
+            interrupted/io and an error end, including losses shorter than 1 s.
 
 A stall's length is audio time heard by an independent observer pulsesrc on the
 same Pulse server, never wall time; each tap queue's level is observed on every
-buffer entering it, and its overrun signal marks it full. Every wait is on such
+buffer entering it; a rejected callback marks the admission budget full. Every wait is on such
 an event, with a bound only as an upper limit (E1). Before R93-2 each queue held
 1 s: any of these stalls overran pulsesrc, its "Dropped N samples" warning
 followed, and a drop of 1 s or more saved the meeting interrupted.
@@ -111,11 +109,32 @@ class QueueLevels:
         self.condition = threading.Condition()
         self.levels, self.peaks, self.overruns, self.limits = {}, {}, set(), {}
         for kind in KINDS:
-            queue = tap_queue(capture.native_taps[kind][1])
-            self.limits[kind] = queue.get_property("max-size-time") / Gst.SECOND
+            tap = capture.native_taps[kind][1]
+            admission = getattr(tap, "writer_queue", None)
             self.levels[kind] = self.peaks[kind] = 0.0
-            queue.get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER, self._probe, kind, queue)
-            queue.connect("overrun", self._overrun, kind)
+            if admission is not None:
+                self.limits[kind] = admission.capacity / admission.rate
+                admission.enter = self._observe(admission.enter, admission, kind)
+            else:  # Historical comparison against the old C-queue-only writer.
+                queue = tap_queue(tap)
+                self.limits[kind] = queue.get_property("max-size-time") / Gst.SECOND
+                queue.get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER, self._probe, kind, queue)
+                queue.connect("overrun", self._overrun, kind)
+
+    def _observe(self, enter, admission, kind):
+        def observed(*args):
+            accepted = enter(*args)
+            state = admission.snapshot()
+            with self.condition:
+                level = state["buffered_frames"] / admission.rate
+                self.levels[kind] = level
+                self.peaks[kind] = max(self.peaks[kind], level)
+                if state["dropped_frames"]:
+                    self.overruns.add(kind)
+                self.condition.notify_all()
+            return accepted
+
+        return observed
 
     def _probe(self, _pad, _info, kind, queue):
         level = queue.get_property("current-level-time") / Gst.SECOND
@@ -255,6 +274,7 @@ def run_case(name, stall):
         drops=list(drops),
         state=manifest["state"],
         problemKind=manifest.get("problemKind"),
+        problem=manifest.get("problem"),
         end=manifest["events"][-1],
         tracks=[
             dict(
@@ -263,6 +283,7 @@ def run_case(name, stall):
                 endOffsetMs=t.get("endOffsetMs"),
                 frames=t["frames"],
                 gapFrames=t.get("gapFrames"),
+                droppedFrames=t.get("droppedFrames", 0),
                 gaps=[g for g in t.get("gaps", []) if g["kind"] != "prefix"],
                 anchors=t.get("clockAnchors"),
             )
@@ -435,13 +456,18 @@ def main(names):
                 latest = max(record["stopAtMs"], *(t["endOffsetMs"] for t in record["tracks"]))
                 assert abs(record["end"]["atMs"] - latest) <= 1, (record["end"], latest)
             else:
-                # Past the 10 s queue, pulsesrc overruns: an input gap of at least
-                # 1 s on both sides, saved interrupted (until writer loss is relabelled).
                 assert all(limit == 10 for limit in record["queueLimitS"].values()), record["queueLimitS"]
-                assert {d["kind"] for d in record["drops"]} == set(KINDS), record["drops"]
-                assert record["state"] == "interrupted" and record["problemKind"] == "gap", record
+                assert not record["drops"], "Admission must prevent unobserved pulsesrc overruns"
+                assert record["state"] == "interrupted" and record["problemKind"] == "io", record
+                assert record["end"]["reason"] == "error", record["end"]
                 for track in record["tracks"]:
-                    assert any(g["kind"] == "input" and g["frames"] >= 48000 for g in track["gaps"]), track
+                    writer = [g for g in track["gaps"] if g["kind"] == "writer"]
+                    assert sum(g["frames"] for g in writer) == track["droppedFrames"] >= 48000, track
+                    assert not track["gapFrames"], track
+                    assert (
+                        f"ms of {track['kind']} audio was lost because the computer could not keep up; the gaps contain silence."
+                        in record["problem"]
+                    )
             record["passed"] = True
             print(f"PASS {name}", flush=True)
         except Exception:

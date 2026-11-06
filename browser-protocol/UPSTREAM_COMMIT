@@ -1,26 +1,26 @@
-tree 4397ae40e575b87900b04199a17309cbbea45cd2
-parent e3724c61da59d8ce3e8322b30ffe05ef94ea1f5e
-parent 07a90b35f93b16876d405ee7fc3b513dac26b87c
-author Silvio Tomatis <silviot@gmail.com> 1793950642 +0100
-committer GitHub <noreply@github.com> 1793950642 +0100
+tree 9e99cbcd54b91fa5a599cda061c6882be48bf5c1
+parent 8a3f856c8534a68a12d66b3eca37f3472df2f55b
+parent 383a4185dc877fff622d824e82e36b2802d548c2
+author Silvio Tomatis <silviot@gmail.com> 1793958271 +0100
+committer GitHub <noreply@github.com> 1793958271 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq7YOyCRC1aQ7uu5UhlAAApe0QAItnY1JtPHITUL/8/7C62qK6
- tKGoKH5Cfs4cRqWD9LZc0uuPscKMhqPbwbfr9lvQLcCLKqVuGPFQIc82Bw02taTJ
- gEtRVTCyV22aGcJ0f+OlurYwf9n/i6su/yySttC7Jl7tPjw5EL0G2iRO2n+xVuVw
- OW1caA+hNr+4wYjnz//eZGsetdsezuEsqk+Jcr+NcdSlayWaihebvVJd459VelOY
- 8bAFOqXDBt0aMRmAfDVBUAJULNj+nrClgucbC+iu6OSMgU+GwoZVDiPrEjY6zc51
- khihhP4HsENJ6O1VXQNUbdOulvDUi4+b2RvrqYmI5HUHDMoKSC0SnnJPtU3hD2oR
- a7D3uekdkjKWIBEhKLhF2kdMmiHqng6u4XQXSqkHhpZt1Edo2Kbioxk6z6KgdsBt
- 8+a4rm8WJYVH0JxGrrjAdVL0jEczoVLkDSHwXNYnyXvfpPM7enw+8wlMEC5lAAbN
- 4AzB+W+REmLmw6wo5G/NNalnqvgmgaj6xa1okHNRuTPvsFcwh5KjzUsq8UEJA8FI
- HJJ2/Fk1ReSrX3El2yionEta0snvNcWFT87lylR4xWuhCbIIepaYCC573o27KFSj
- /EKw5FYjh7pN+YejKX+2uqymg0RReM+KJtV4rXHqMWBv1pz0XvNuDTpPhnaWvs7Z
- RfFk3LNTr0sHgo45+5o7
- =lBcN
+ wsFcBAABCAAQBQJq7aF/CRC1aQ7uu5UhlAAA/FwQABV3BT6KA/0pa50n2TXYPDNK
+ v0UoFDP2Hqj1O3s72GurlSZ3E0rdwW5V2Urio7qkkWdpq2fpWdJwrDD9d1hioPV/
+ OVjM0P2PMWbaNDfZdW/ZXm9eFnxNPSNVGRoF0BLWlnzd4qfTmSt6tfEN4XhTRngI
+ tAim8OwxClxPhhDJhgtp+T7YFfHpT4rrtRuI0j7fOnwZMWhUDIr69YFmgvFbaPV8
+ TLOhGBhv3z9+sXIEseTWTIPQOiJJp4pJl6oiij9B5jdi5w0WiGsuxR40NfEqLg2p
+ AIKID825QTQioEAr4AdEEWjUtiRJHRcf5aNszXbyJ206cVGsLwKfHGZ93/hZZM+K
+ ov0leHoeQ5Ea+LE+ptqLgg6x30aD/SnRAOA51fHxj3yMwD+EIQZ/ewZgSQF/NCHW
+ TlsYwrkFAMS7TeTgCNHfgE/LXo7sxMqZIGQ2SbipUie6fNkPUgR5VYFJ7G9VSQg0
+ J2ZzX1cGaSNkqW1kufvtvuw1Na+O3F9WVS4reQYKh7oSfwG3jheMjCDVenEMB6zb
+ 1pvpVlLoWixnXt8v46NBLkoEpK/lPGpoGFxakAU32kVouf0I4yAMUI3tKnsYEprz
+ FCCYgPfBc+0TWrCyaqkamepOKzhvKkPEHNHkG8wQf1wPe+/BeILZjzwziXqo6vJS
+ 1h0S3RZLsoZrsGIEKUB6
+ =YCMr
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #61 from codemyriad/fix/steady-drift-not-loss
+Merge pull request #62 from codemyriad/spec/d69-writer-loss
 
-Steady drift follows the capture clock; only a stall re-anchors (D61.1 follow-up, companion 0.2.15)
+D69: record native writer loss through Stop as I/O loss
