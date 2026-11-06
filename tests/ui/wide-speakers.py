@@ -61,7 +61,14 @@ def until(window, predicate, description):
         window.remove_tick_callback(callback)
     else:
         GLib.source_remove(timer)
-    assert not expired, f"{description}: width={window.get_width()}, minimum={minimum(window)}"
+    page = window.meeting_page
+    details = (
+        f", transcript mapped={page.get_mapped()}, bound={len(page.bound)}, "
+        f"scroller={page.scroller.get_width()}x{page.scroller.get_height()}, words={len(page.meeting.words)}"
+        if page
+        else ""
+    )
+    assert not expired, f"{description}: width={window.get_width()}, minimum={minimum(window)}{details}"
 
 
 def minimum(widget):
@@ -155,8 +162,12 @@ with tempfile.TemporaryDirectory() as temporary:
     profile = cProfile.Profile()
     started = time.perf_counter()
     profile.enable()
-    window.open_meeting(many)
+    # This generated model is external to the scanned fixture Library. Its
+    # shared backing audio must not let an activity tick replace its transcript.
+    window.open_meeting(many, external=True)
     page = window.meeting_page
+    window._updated(window.snapshot)  # A normal activity tick or monitor completion.
+    assert page.meeting is many, "A Library update replaced the synthetic transcript fixture"
     until(window, lambda: bool(page.bound) and page.scroller.get_width() > 0, "Transcript rows laid out")
     page_minimum = minimum(page)
     profile.disable()
