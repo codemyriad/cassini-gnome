@@ -85,6 +85,8 @@ jobs:
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/output-muted.py
       - name: Source changes release devices and retain exact recording spans
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/sources.py
+      - name: Host stalls up to 10 s delay native input without dropping it (R93-2)
+        run: tests/recording/run.sh /usr/bin/python3 tests/recording/stall.py
       - name: Test recording judges real Pulse streams, then deletes them
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/test-recording.py --build "$CASSINI_RECORDING_BUILD"
       - uses: actions/upload-artifact@v7

@@ -13,6 +13,10 @@ frozen ended WAVs, new spans with the same source identity, continuous microphon
 actual system fallback tones, independent concurrent capture, the hidden info
 line and no duplicate folders or automatic switch back. `sources.py` separately
 proves native stream release/restart and asynchronous Stop during a source change.
+`stall.py` holds the capture lock or slows checkpoint fsyncs under real pulsesrc
+taps (R93-2): stalls up to 8 s must lose no input and save completed, Stop during
+a stall keeps the audio captured before it, and a stall past the 10 s tap queue
+is still saved as an input gap.
 
 | Layer | Checks |
 |---|---|

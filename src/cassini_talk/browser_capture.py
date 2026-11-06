@@ -3,13 +3,14 @@
 
 import contextlib
 import logging
+import math
 import threading
 import time
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from .capture_sources import BrowserStreams, canonical_order, change_time, selected_pcm
+from .capture_sources import BrowserStreams, canonical_order, change_time, pcm_before, selected_pcm
 from .recording_session import BrowserHost, ProtocolError, stop_reason
 from .refusals import SIDES, NothingOpened, StartCancelled, entry
 from .refusals import append as append_refusal
@@ -41,6 +42,30 @@ def generation_value(value):
     return value if isinstance(value, str) and 0 < utf8_length(value) <= 200 else None
 
 
+class Readiness:
+    """The browser PCM's freshness, read once under the capture lock: the
+    broker's policy decides on it without waiting for that lock (#230)."""
+
+    def __init__(self, now, tracks, *, lost, others):
+        self.now, self.tracks, self.lost, self.others = now, tracks, lost, others
+
+    def since(self, since=None, *, recorded=False):
+        """BrowserCapture.browser_ready_since() at the moment this was read."""
+        if recorded and (self.lost or not self.others):
+            return False
+        return any(
+            (not recorded or is_recorded)
+            and (received := recorded_at if recorded else received_at) is not None
+            and (since is None or received >= since)
+            and self.now - received <= 2
+            for received_at, recorded_at, is_recorded in self.tracks
+        )
+
+    @property
+    def ready(self):
+        return self.others and self.since()
+
+
 class BrowserCapture:
     def __init__(self, changed, *, parent=None, tap_factory=None):
         self.host = BrowserHost(parent)
@@ -69,6 +94,10 @@ class BrowserCapture:
         # R82 1b: unanswered resume asks, {requestId: atMs}, oldest first; one per
         # open control connection that asked, so a small bound is enough.
         self.resume_asks = {}
+        # A leaf lock for resume_asks, which no checkpoint holds: the broker
+        # notes an ask under its own lock and must never wait for capture.lock
+        # there (#230). Taken alone, or under capture.lock.
+        self._asks = threading.Lock()
         self.me, self.others = True, True
         self.browser_lost = False
         self.browser_lost_since = None
@@ -103,6 +132,12 @@ class BrowserCapture:
         self.ready = threading.Event()
         self.stopped = threading.Event()
         self.stop_requested = threading.Event()
+        # R93-2: the Stop moment on the session timeline, fixed when Stop is first
+        # requested. Native audio captured before it, still queued in a tap
+        # when Stop comes, is recorded; audio after it is not. None: no clock
+        # yet, so no native audio can be pending.
+        self.stop_at_ms = None
+        self._stop_mark = threading.Lock()  # A leaf lock: request_stop runs under other locks.
         self.origin_ms = None
         # D61 one clock base: timelineOriginMs mapped onto CLOCK_MONOTONIC once
         # per capture (start); resumes, fallbacks and new spans keep it.
@@ -121,6 +156,36 @@ class BrowserCapture:
     @property
     def directory(self):
         return self.host.session.directory if self.host.session and not self.discarded else None
+
+    def request_stop(self, at_ms=None):
+        """Mark the user's Stop moment once: the stop boundary, then stop_requested.
+
+        A tap's queue can still hold audio captured before Stop (up to 10 s
+        during a host stall, R93-2); its drain records that audio up to the
+        boundary instead of discarding it (D47). It never takes the capture
+        lock, which a stalled checkpoint can hold: Stop is marked when it is
+        pressed, not when storage recovers. `at_ms` is a Stop moment read
+        earlier (a browser Stop, read before its admission took the lock)."""
+        with self._stop_mark:
+            if not self.stop_requested.is_set():
+                if self.session_clock is not None:
+                    self.stop_at_ms = self.elapsed_ms() if at_ms is None else at_ms
+                self.stop_requested.set()
+
+    def _end_ms(self):
+        """D4: the end event's time is the Stop moment, never the drain's end;
+        finish() raises it to the last event and every track end."""
+        return self.elapsed_ms() if self.stop_at_ms is None else self.stop_at_ms
+
+    def _native_cut(self):
+        """The session offset from which native PCM is no longer recorded (lock
+        held): None while recording, the Stop boundary once Stop was requested,
+        -inf once the session finished or Stop has no boundary."""
+        if self.finished or self.host.session is None or self.host.session.finished:
+            return -math.inf
+        if not self.stop_requested.is_set():
+            return None
+        return -math.inf if self.stop_at_ms is None else self.stop_at_ms
 
     def snapshot(self):
         with self.lock:
@@ -368,9 +433,11 @@ class BrowserCapture:
                     # retired tap's buffer (one in flight while a deselect
                     # stops it) opens no track after its side was turned off.
                     return
+                cut = self._native_cut()
                 if not state["track"]:
-                    # D58.1: an armed tap opens on its first buffer, however late.
-                    if self.finished or self.stop_requested.is_set():
+                    # D58.1: an armed tap opens on its first buffer, however late,
+                    # if that buffer was captured before Stop (R93-2).
+                    if cut is not None and max(state["at"], offset) >= cut:
                         return
                     with self.host.session.change([]):
                         self._add_native(kind, max(state["at"], offset), identifier=identifier)
@@ -378,11 +445,15 @@ class BrowserCapture:
                     state["track"] = opened = True
                     self._sync_spectrogram()
                 track = next(t for t in self.host.session.manifest["tracks"] if t["id"] == identifier)
-                if not self.finished and not self.stop_requested.is_set() and not track.get("ended"):
+                if (cut is None or offset < cut) and not track.get("ended"):
                     original_offset = offset
                     selected, offset = selected_pcm(data, offset, 48000, 1, state["at"])
+                    skipped = (len(data) - len(selected)) // 2
+                    if cut is not None:
+                        # R93-2: a buffer queued across the Stop moment keeps
+                        # only the frames captured before it.
+                        selected = pcm_before(selected, offset, 48000, 1, cut)
                     if selected:
-                        skipped = (len(data) - len(selected)) // 2
                         stamp = round(original_offset * 1_000_000) if host_ns is None else host_ns
                         offset, gap = state["timeline"].map(stamp + skipped * NS // 48000, len(selected) // 2, offset)
                         self.host.session.append_native(
@@ -564,21 +635,29 @@ class BrowserCapture:
         return self.others and self.browser_ready_since()
 
     def browser_ready_since(self, since=None, *, recorded=False):
-        with self.lock:
-            if recorded and (self.browser_lost or not self.others):
-                return False
-            now = time.monotonic()
-            return self.audio_connected and any(
-                track.kind not in ("microphone", "local")
-                and track.available
-                and (not recorded or track.recorded is not None)
-                and (received := track.recorded_at if recorded else track.received_at) is not None
-                and (since is None or received >= since)
-                and now - received <= 2
-                for track in self.streams.tracks.values()
-            )
+        return self.readiness().since(since, recorded=recorded)
 
-    def remote_open(self):
+    def readiness(self, *, wait=True):
+        """The browser PCM's freshness now (a Readiness). wait=False: None
+        while capture.lock is busy, never waiting for it. A checkpoint stalled
+        on storage can hold it for seconds, and the broker's policy reads this
+        under the broker's lock, on its accept loop: a Stop pressed meanwhile
+        must still reach the broker and be marked when pressed (#230)."""
+        if not self.lock.acquire(wait):
+            return None
+        try:
+            tracks = ()
+            if self.audio_connected:
+                tracks = tuple(
+                    (track.received_at, track.recorded_at, track.recorded is not None)
+                    for track in self.streams.tracks.values()
+                    if track.kind not in ("microphone", "local") and track.available
+                )
+            return Readiness(time.monotonic(), tracks, lost=self.browser_lost, others=self.others)
+        finally:
+            self.lock.release()
+
+    def remote_open(self, *, wait=True):
         """Whether a browser track that has delivered PCM is still open.
 
         Its recorder posts frames, silent ones included, until it ends
@@ -588,8 +667,11 @@ class BrowserCapture:
         navigated or reloaded frame's spans never get trackEnd; document
         retirement marks them dormant for good, and a closed transport's spans
         are ended, so neither arms it.
+        wait=False: None while capture.lock is busy (the broker's tick, #230).
         """
-        with self.lock:
+        if not self.lock.acquire(wait):
+            return None
+        try:
             return any(
                 track.kind not in ("microphone", "local")
                 and not track.ended
@@ -597,6 +679,8 @@ class BrowserCapture:
                 and track.received_at is not None
                 for track in self.streams.tracks.values()
             )
+        finally:
+            self.lock.release()
 
     def dormant(self, track):
         """Whether a span no longer arms the watchdog, evaluated at every check.
@@ -719,8 +803,11 @@ class BrowserCapture:
     def resume(self, message):
         """R3/R4: attach a new audio transport to this recording, or refuse.
 
-        Validation shares Stop's critical section: Stop sets stop_requested
-        under the capture lock, and a source change in progress holds the
+        Validation shares Stop's critical section: Stop marks stop_requested
+        before it takes the capture lock (R93-2: a stalled checkpoint must not
+        move its moment), then takes that lock to drop pending resume asks, so
+        a resume validated under the lock either sees the mark or finished
+        attaching before Stop goes on. A source change in progress holds the
         transition lock, so a committing fallback is waited out, not misread.
         A refusal changes nothing. On success nothing but the attachment
         changes: no folder, clock, microphone, selection or title. The source
@@ -757,7 +844,8 @@ class BrowserCapture:
                 # Another transport is still attached: never two on one capture.
                 raise ResumeRefused()
             self.audio_connected = True
-            self.resume_asks.clear()  # Attached: every ask is answered.
+            with self._asks:
+                self.resume_asks.clear()  # Attached: every ask is answered.
             return dict(
                 type="started",
                 path=str(self.directory),
@@ -769,8 +857,9 @@ class BrowserCapture:
             )
 
     def mark_resume_ask(self, request_id):
-        """R82 1b: this recording asked the browser to resume it (one entry per ask)."""
-        with self.lock:
+        """R82 1b: this recording asked the browser to resume it (one entry per ask).
+        Under the broker's lock: it takes only the asks' leaf lock (#230)."""
+        with self._asks:
             self.resume_asks.pop(request_id, None)
             self.resume_asks[request_id] = self.elapsed_ms()
             while len(self.resume_asks) > RESUME_ASKS:
@@ -778,7 +867,7 @@ class BrowserCapture:
 
     def clear_resume_ask(self, request_id=None):
         """Forget one ask, or every ask without a requestId."""
-        with self.lock:
+        with self._asks:
             if request_id is None:
                 self.resume_asks.clear()
             else:
@@ -801,7 +890,8 @@ class BrowserCapture:
             session = self.host.session
             if not isinstance(request_id, str):
                 return
-            at = self.resume_asks.get(request_id)
+            with self._asks:
+                at = self.resume_asks.get(request_id)
             if at is None:
                 return
             if (
@@ -821,24 +911,31 @@ class BrowserCapture:
             current = source_state(session.manifest.get("events"))
             if (current.source, current.reason) not in RESUME_TARGETS:
                 return
-            del self.resume_asks[request_id]
+            with self._asks:
+                if self.resume_asks.pop(request_id, None) is None:
+                    return  # Forgotten meanwhile (it is noted and cleared under the asks' lock alone).
             item = entry(at, "browser", "startRejected", detail="resumeRefused", message=message)
             try:
                 session.refuse(item)
             except Exception:
                 LOG.exception("Could not record a refused resume")
 
-    def cancel_fallback(self):
+    def cancel_fallback(self, *, wait=True):
         """A return before the fallback commits: drop it, writing nothing.
 
         No system track and no restored event: the written othersSource never
         changed, and the missing Others are already absent between their spans
         (D47, D52.2). Never waits for the device the fallback is opening.
+        wait=False: None while capture.lock is busy, nothing done (#230).
         """
-        with self.lock:
+        if not self.lock.acquire(wait):
+            return None
+        try:
             if not self.fallback_pending:
                 return False
             self._fallback_cancelled = True
+        finally:
+            self.lock.release()
         return True
 
     def restore(self):
@@ -1047,20 +1144,40 @@ class BrowserCapture:
 
     def handle(self, message):
         if message.get("type") == "stop":
+            # R93-2: the Stop moment is when it arrives, read before the lock
+            # (a stalled checkpoint can hold it), so audio after it stays out.
+            arrived = self.elapsed_ms() if self.session_clock is not None else None
+
+            def mark():
+                # Decided before it is marked: an invalid reason refuses it, and
+                # a first Stop for a lost browser is the fallback (Q4), not a Stop.
+                stop_reason(message)
+                if not self.stop_requested.is_set() and message.get("failureReason") == "lost":
+                    return False
+                self.request_stop(arrived)
+                return True
+
+            # The Stop is admitted and its boundary published before it waits
+            # for the lock: callbacks queued on that lock behind a stalled
+            # checkpoint can take it first, and must find the boundary (#230).
+            # A refused Stop marks nothing.
+            refused, marked, admitted = self.host.admit_stop(message, mark)
+            if refused is not None:
+                return refused
             # Source-summary admission reads the current selection and merges
             # accounting. Serialize it with PCM/source changes; device shutdown
             # below still happens outside the writer lock.
             with self.lock:
-                refused = self.host.prepare_stop(message)
+                refused = self.host.prepare_stop(message, admitted=admitted)
             if refused is not None:
                 return refused
             reason = stop_reason(message)
-            if not self.stop_requested.is_set() and message.get("failureReason") == "lost":
+            if not marked and not self.stop_requested.is_set():
                 self.fallback()
                 return dict(type="stopped", path=str(self.directory))
             if reason == "user":
                 self.user_stopped = True
-            return self.stop(message.get("problem"), reason=reason)
+            return self.stop(message.get("problem"), reason=reason, at_ms=arrived)
         with self.lock:
             if self.finished or self.stopping or self.stop_requested.is_set():
                 if self.host.source_outcomes and message.get("type") == "sources":
@@ -1083,9 +1200,10 @@ class BrowserCapture:
             self.spectrogram.release_if_idle()
         return result
 
-    def stop(self, problem=None, *, reason=None, discard=None):
+    def stop(self, problem=None, *, reason=None, discard=None, at_ms=None):
         """Finish this capture. `discard` (the start refusals) removes a folder
-        nothing opened into, unless the user already typed into it (D58)."""
+        nothing opened into, unless the user already typed into it (D58).
+        `at_ms`: the Stop moment, when it was read before this call."""
         from .session_events import END_REASONS
 
         if reason is not None and (not isinstance(reason, str) or reason not in END_REASONS):
@@ -1094,9 +1212,11 @@ class BrowserCapture:
             self._publication_cancel.set()
             if self._publication_future is not None:
                 self._publication_future.cancel()
-        with self.lock:
-            self.end_reason = self.end_reason or reason or ("error" if problem else "user")
-            self.stop_requested.set()
+        self.end_reason = self.end_reason or reason or ("error" if problem else "user")
+        # R93-2: Stop's moment is fixed before the capture lock, which a stalled
+        # checkpoint can hold for seconds; audio captured after it stays out.
+        self.request_stop(at_ms)
+        with self.lock, self._asks:
             self.resume_asks.clear()  # A result after Stop writes nothing.
         if self.starting and not self.ready.wait(12):
             raise TimeoutError("Native capture did not finish starting")
@@ -1118,7 +1238,7 @@ class BrowserCapture:
         try:
             with self.transition:
                 if self._mute_observer:
-                    self._mute_observer.close(self.elapsed_ms())
+                    self._mute_observer.close(self._end_ms())
                     self._mute_observer = None
                 for _identifier, tap in tuple(self.native_taps.values()):
                     try:
@@ -1139,8 +1259,9 @@ class BrowserCapture:
                         if not self.discarded:
                             self.host.session.refuse(*discard)  # A folder kept for typed content.
                     if not self.discarded:
+                        # D4: stamped at the Stop moment; the drain's length moves nothing.
                         self.host.session.finish(
-                            problem, reason=self.end_reason, at_ms=self.elapsed_ms(), retain_lease=True
+                            problem, reason=self.end_reason, at_ms=self._end_ms(), retain_lease=True
                         )
                     self.host.stopped = True
                 self.spectrogram.finish()

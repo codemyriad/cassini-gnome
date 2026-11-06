@@ -51,7 +51,29 @@ The leading silence between a declared selection boundary and its first input
 buffer preserves alignment, without counting as a gap. Counted silence is
 included in both WAV and manifest frames. A recording with only input gaps ends
 as interrupted with `problemKind: gap`; a writer failure takes precedence as
-`io`. Native writes are synchronous, so no queued-writer loss counter is needed.
+`io`.
+
+Native writes are synchronous on the tap's streaming thread, under the capture
+lock, and a checkpoint can run there. Each tap therefore holds up to 10 s of
+audio in a GStreamer queue ahead of that writer (`TAP_QUEUE`, the same capacity
+as Mac's per-source writer queue), so a lock hold, a slow fsync or a stalled
+tap thread delays the audio without losing it (R93-2). The queue keeps each
+buffer's timestamp, so gap detection and clock anchors are unchanged. A stall
+longer than 10 s still overruns pulsesrc's ring buffer. Under the gap rule
+above, a loss of at least one second is saved as an `input` gap, which is
+truthful but mislabels host-side loss until it is recorded as `writer` loss; a
+shorter loss is diagnostic only, as host time the frames do not cover. A
+checkpoint fsyncs only the WAVs written since the last one, so ended tracks
+cost nothing. Stop drains each tap (bounded at 10 s) and records the queued
+audio captured before the Stop moment, cutting the buffer that straddles it;
+audio captured after it is dropped. The Stop moment is read when Stop is
+pressed, before any capture or PCM lock a stalled checkpoint may hold, on every
+Stop path. The end event is stamped at it, raised only to the last event and
+every track end (D4), however long the drain takes. A tap that never received a
+buffer has nothing to drain and is released at once; an armed others' tap
+whose first buffer reached its queue drains like any other, in the broker and
+in the native-only recorder alike. Its track opens at its first buffer captured
+before the Stop moment; one that received only later audio records nothing.
 
 `tests/test_native_timing.py` drives the real native input callback with the
 pinned GNOME fixture and compares the entire manifest and WAV bytes. It also

@@ -214,6 +214,10 @@ class WAVWriter:
     def __init__(self, path, rate, channels, max_bytes=0xFFFFFFFF - 36):
         self.rate, self.channels, self.size = rate, channels, 0
         self.max_bytes = max_bytes
+        # Written since the last successful fsync. Every write ends in _header(),
+        # so a writer nothing reached since its last sync (an ended track) costs
+        # no fsync at the next checkpoint under the capture lock (R93-2).
+        self.dirty = False
         self.file = open(path, "x+b")  # noqa: SIM115 — owned until session finalization
         try:
             os.chmod(path, 0o600)
@@ -230,6 +234,7 @@ class WAVWriter:
         return self.size // (self.channels * 2)
 
     def _header(self):
+        self.dirty = True  # Before any byte moves, so a failed write still syncs.
         self.file.seek(0)
         self.file.write(
             struct.pack(
@@ -267,9 +272,11 @@ class WAVWriter:
             remaining -= count
 
     def sync(self):
-        if not self.file.closed:
-            self.file.flush()
-            os.fsync(self.file.fileno())
+        if self.file.closed or not self.dirty:
+            return
+        self.file.flush()
+        os.fsync(self.file.fileno())
+        self.dirty = False  # Only once durable: a failed fsync is retried and reported again.
 
     def close(self):
         try:
@@ -699,6 +706,8 @@ class RecordingSession:
         problem = optional_string(problem, None, "state") or None
         if self.finished:
             return
+        if self.capture_record is not None:
+            self.capture_record.close()  # #230: every admitted Stop's summary first.
         self.finished = True
         failure = None
         for identifier, writer in self.writers.items():
@@ -890,20 +899,60 @@ class BrowserHost:
         sink = self.audio_sink
         return sink is None or sink.browser and (sink.me if kind in ("microphone", "local") else sink.others)
 
-    def prepare_stop(self, message):
+    def prepare_stop(self, message, *, admitted=False):
+        """A Stop's refusal, or None once its source summary is merged (writer
+        lock held). `admitted`: admit_stop() admitted this Stop, and it sealed
+        the identities: its summary, kept at admission, is merged now unless
+        the capture already finished and merged it (#230).
+
+        Its reply then: a session finished by another path (a later Stop, a
+        stop-all, a close) saved its summary, so it gets that saved result,
+        {"type": "stopped", "path"}, as the Stop that finished it did. Any
+        other Stop after the save still adds nothing: one with sources is
+        refused ("Capture already saved"), an empty one gets the result."""
         if not self.source_outcomes:
             return None
         if message.get("captureId") != self.capture_id:
             return dict(type="error", code="state", message="Capture identity does not match", scope="command")
+        record = self.session.capture_record
         if self.session.finished:
-            if message.get("discoveredSources"):
+            if message.get("discoveredSources") and not (admitted and record.admitted_merged):
                 return dict(type="error", code="state", message="Capture already saved", scope="command")
             return dict(type="stopped", path=str(self.session.directory))
         try:
-            self.session.capture_record.discover(message.get("discoveredSources", []), expected=self._source_selected)
+            if admitted:
+                record.merge_admitted()
+            else:
+                record.discover(message.get("discoveredSources", []), expected=self._source_selected)
         except ProtocolError as error:
             return dict(type="error", code=error.code, message=str(error), scope="command")
         return None
+
+    def admit_stop(self, message, mark):
+        """R93-2: decide a Stop's refusal without the writer lock, which a stalled
+        checkpoint can hold, and mark it (mark()) only when it is not refused.
+
+        Returns (refusal, marked, admitted). Every refusal prepare_stop() makes
+        for the Stop that seals the identities (`admitted`, passed on to it) is
+        decided here first: the capture identity and the feature are fixed at
+        start, a finished session stays finished, and the summary is validated
+        against the identities seen so far, which the first marked Stop seals.
+        A later Stop is marked (a no-op: the first moment stays) but its new
+        sources are refused at its merge. A finished session is left to
+        prepare_stop() unmarked: its answer needs no Stop."""
+        if not self.source_outcomes:
+            return None, mark(), False
+        if message.get("captureId") != self.capture_id:
+            refusal = dict(type="error", code="state", message="Capture identity does not match", scope="command")
+            return refusal, False, False
+        if self.session.finished:
+            return None, False, False
+        error, marked, sealing = self.session.capture_record.admit_stop(
+            message.get("discoveredSources", []), mark, expected=self._source_selected
+        )
+        if error is not None:
+            return dict(type="error", code=error.code, message=str(error), scope="command"), False, False
+        return None, marked, sealing
 
     def _handle(self, message, *, started_at=None):
         kind = message.get("type")

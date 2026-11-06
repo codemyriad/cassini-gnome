@@ -45,6 +45,13 @@ def selected_pcm(data, offset, rate, channels, start):
     return data[skip * channels * 2 :], offset + skip * 1000 / rate
 
 
+def pcm_before(data, offset, rate, channels, end):
+    """Keep only the frames captured before `end` (selected_pcm's tail): a Stop
+    boundary inside a queued buffer cuts it there (R93-2)."""
+    keep = max(0, math.ceil((end - offset) * rate / 1000))
+    return data[: keep * channels * 2]
+
+
 @dataclass
 class WireTrack:
     label: str

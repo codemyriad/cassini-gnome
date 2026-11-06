@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """One independent native source, on a monotonic clock, without a GTK main loop."""
 
+import logging
 import threading
 import time
 
@@ -9,7 +10,7 @@ import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
 
-from .recorder import CAPTURE_CONVERT  # noqa: E402
+from .recorder import CAPTURE_CONVERT, TAP_QUEUE  # noqa: E402
 from .recording_details import ACMeter  # noqa: E402
 from .refusals import gst_code  # noqa: E402
 
@@ -17,6 +18,10 @@ from .refusals import gst_code  # noqa: E402
 # D58.1: for the others' side (computer sound) it is only the window in which an
 # explicit error refuses the tap at its open; silence never does.
 OPEN_TIMEOUT_S = 3
+# Stop drains the tap: EOS follows every buffer still queued (up to 10 s of
+# audio after a host stall, TAP_QUEUE) through the writer.
+DRAIN_TIMEOUT_S = 10
+LOG = logging.getLogger(__name__)
 NO_SAMPLE = "Native audio capture did not produce a sample"
 
 
@@ -42,6 +47,14 @@ class NativeTap:
         self.ready = threading.Event()
         # D58.1: a first buffer was delivered (ready is also set by an error).
         self.heard = threading.Event()
+        # R93-2: a buffer reached the tap's queue. It is set before heard: a
+        # first buffer can wait behind the capture lock, or in the queue, when
+        # Stop comes. Stop drains such a tap; only a tap whose device never
+        # delivered a buffer has nothing to drain. Sealed by that Stop, a later
+        # buffer (captured after it) is dropped at the queue.
+        self.received = False
+        self._sealed = False
+        self._input = threading.Lock()
         self.closed = threading.Event()
         self.error = None
         self.refusal_code = "deviceUnavailable"
@@ -56,7 +69,7 @@ class NativeTap:
             else f'pulsesrc name=capture-source device={device} provide-clock=false client-name="Cassini Recording"'
         )
         self.pipeline = Gst.parse_launch(
-            source + " ! queue ! " + CAPTURE_CONVERT + " ! audioresample ! "
+            source + " ! " + TAP_QUEUE + " ! " + CAPTURE_CONVERT + " ! audioresample ! "
             "audio/x-raw,format=S16LE,rate=48000,channels=1 ! "
             "appsink name=pcm emit-signals=true sync=false max-buffers=8 drop=false"
         )
@@ -68,6 +81,9 @@ class NativeTap:
         self.anchor_clock = self.clock.get_time()
         self.anchor_session = self.session_clock.at((before + time.monotonic_ns()) // 2)
         self.pipeline.get_by_name("pcm").connect("new-sample", self._sample)
+        self.pipeline.get_by_name("tap-queue").get_static_pad("sink").add_probe(
+            Gst.PadProbeType.BUFFER | Gst.PadProbeType.BUFFER_LIST, self._entered
+        )
         self.thread = threading.Thread(target=self._messages, name="cassini-" + self.kind, daemon=True)
         self.thread.start()
         try:
@@ -91,6 +107,13 @@ class NativeTap:
             self.refusal_code = gst_code(gerror)
             self.ready.set()
             self.failed(self.error)
+
+    def _entered(self, _pad, _info):
+        with self._input:
+            if self._sealed:
+                return Gst.PadProbeReturn.DROP
+            self.received = True
+        return Gst.PadProbeReturn.OK
 
     def _sample(self, sink):
         sample = sink.emit("pull-sample")
@@ -140,9 +163,14 @@ class NativeTap:
         # EOS can block while Pulse finishes a read. Neither GTK nor a session
         # writer lock waits inside send_event; NULL also releases that sender.
         sender = None
-        # A tap that never delivered a buffer (D58.1: a silent computer) has
-        # nothing to drain: Pulse may never finish the read EOS would wait on.
-        if not self.heard.is_set():
+        # A tap whose device never delivered a buffer (D58.1: a silent computer)
+        # has nothing to drain: Pulse may never finish the read EOS would wait
+        # on. An armed tap with input queued, or its first buffer still on its
+        # way to the writer (heard is set only once it is written), drains it
+        # like any other tap (R93-2).
+        with self._input:
+            self._sealed = not self.received
+        if self._sealed:
             self.ended.set()
         if not self.ended.is_set():
 
@@ -153,7 +181,15 @@ class NativeTap:
 
             sender = threading.Thread(target=eos, name="cassini-source-eos", daemon=True)
             sender.start()
-        complete = self.ended.wait(10)
+        complete = self.ended.wait(DRAIN_TIMEOUT_S)
+        if not complete:
+            queue = pipeline.get_by_name("tap-queue")
+            LOG.warning(
+                "Native %s tap did not drain within %d s; %s ms of queued audio was not saved",
+                self.kind,
+                DRAIN_TIMEOUT_S,
+                "unknown" if queue is None else queue.get_property("current-level-time") // Gst.MSECOND,
+            )
         self.closed.set()
         pipeline.set_state(Gst.State.NULL)
         if self.thread is not None:
