@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from .capture_sources import BrowserStreams, canonical_order, change_time, pcm_before, selected_pcm
-from .recording_session import BrowserHost, ProtocolError, stop_reason
+from .recording_session import BrowserHost, ProtocolError, optional_string, stop_reason
 from .refusals import SIDES, NothingOpened, StartCancelled, entry
 from .refusals import append as append_refusal
 from .session_clock import SessionClock
@@ -124,6 +124,8 @@ class BrowserCapture:
         self.multistream_capable = False
         self.tab_closed = False
         self.end_reason = None
+        self._stop_problem = None
+        self.user_stopped = False
         self.streams = None
         self.stopping = self.starting = False
         self.finished = False
@@ -157,19 +159,32 @@ class BrowserCapture:
     def directory(self):
         return self.host.session.directory if self.host.session and not self.discarded else None
 
-    def request_stop(self, at_ms=None):
-        """Mark the user's Stop moment once: the stop boundary, then stop_requested.
+    def request_stop(self, at_ms=None, *, reason=None, problem=None, user_stopped=None):
+        """Claim the first Stop's moment, reason, problem and user intent atomically.
 
         A tap's queue can still hold audio captured before Stop (up to 10 s
         during a host stall, R93-2); its drain records that audio up to the
         boundary instead of discarding it (D47). It never takes the capture
         lock, which a stalled checkpoint can hold: Stop is marked when it is
         pressed, not when storage recovers. `at_ms` is a Stop moment read
-        earlier (a browser Stop, read before its admission took the lock)."""
+        earlier (a browser Stop, read before its admission took the lock).
+        `user_stopped` lets broker policy commands distinguish intent from their
+        end reason; subsequent callers join without replacing the first claim."""
+        from .session_events import END_REASONS
+
+        if reason is not None and (not isinstance(reason, str) or reason not in END_REASONS):
+            raise ProtocolError("state", "Invalid recording end reason")
+        problem = optional_string(problem, None, "state") or None
         with self._stop_mark:
             if not self.stop_requested.is_set():
+                requested_reason = reason or ("error" if problem else "user")
+                self.end_reason = self.end_reason or requested_reason
+                self._stop_problem = problem
+                self.user_stopped = requested_reason == "user" if user_stopped is None else user_stopped
                 if self.session_clock is not None:
                     self.stop_at_ms = self.elapsed_ms() if at_ms is None else at_ms
+                # Publish the entire first Stop, not just its PCM boundary, before
+                # another Stop can take the writer lock and finish this capture.
                 self.stop_requested.set()
 
     def _end_ms(self):
@@ -1151,10 +1166,11 @@ class BrowserCapture:
             def mark():
                 # Decided before it is marked: an invalid reason refuses it, and
                 # a first Stop for a lost browser is the fallback (Q4), not a Stop.
-                stop_reason(message)
+                reason = stop_reason(message)
+                problem = optional_string(message.get("problem"), None, "state") or None
                 if not self.stop_requested.is_set() and message.get("failureReason") == "lost":
                     return False
-                self.request_stop(arrived)
+                self.request_stop(arrived, reason=reason, problem=problem)
                 return True
 
             # The Stop is admitted and its boundary published before it waits
@@ -1171,13 +1187,12 @@ class BrowserCapture:
                 refused = self.host.prepare_stop(message, admitted=admitted)
             if refused is not None:
                 return refused
-            reason = stop_reason(message)
-            if not marked and not self.stop_requested.is_set():
-                self.fallback()
-                return dict(type="stopped", path=str(self.directory))
-            if reason == "user":
-                self.user_stopped = True
-            return self.stop(message.get("problem"), reason=reason, at_ms=arrived)
+            if not marked:
+                if not self.stop_requested.is_set():
+                    self.fallback()
+                    return dict(type="stopped", path=str(self.directory))
+                return self.stop()  # A lost packet joins the Stop that superseded it.
+            return self.stop(at_ms=arrived)
         with self.lock:
             if self.finished or self.stopping or self.stop_requested.is_set():
                 if self.host.source_outcomes and message.get("type") == "sources":
@@ -1208,14 +1223,15 @@ class BrowserCapture:
 
         if reason is not None and (not isinstance(reason, str) or reason not in END_REASONS):
             raise ProtocolError("state", "Invalid recording end reason")
+        problem = optional_string(problem, None, "state") or None
         if reason == "appQuit":
             self._publication_cancel.set()
             if self._publication_future is not None:
                 self._publication_future.cancel()
-        self.end_reason = self.end_reason or reason or ("error" if problem else "user")
         # R93-2: Stop's moment is fixed before the capture lock, which a stalled
         # checkpoint can hold for seconds; audio captured after it stays out.
-        self.request_stop(at_ms)
+        self.request_stop(at_ms, reason=reason, problem=problem)
+        problem = self._stop_problem
         with self.lock, self._asks:
             self.resume_asks.clear()  # A result after Stop writes nothing.
         if self.starting and not self.ready.wait(12):

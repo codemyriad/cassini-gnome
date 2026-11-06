@@ -4,7 +4,6 @@
 import json
 import queue
 import threading
-from types import SimpleNamespace
 
 import pytest
 
@@ -22,7 +21,7 @@ from test_tap_stall import (  # noqa: E402
 )
 
 from cassini_talk import native_recorder  # noqa: E402
-from cassini_talk.browser_service import BrowserService  # noqa: E402
+from cassini_talk.browser_service import BrowserConnection, BrowserService  # noqa: E402
 from cassini_talk.recording_session import ProtocolError, RecordingSession  # noqa: E402
 
 
@@ -231,7 +230,8 @@ def test_resume_refusal_never_holds_broker_lock_while_waiting_on_a_writer(tmp_pa
     capture.mark_resume_ask("ask")
     service, identity, _ = broker(tmp_path, capture)
     service.policy = lambda: None
-    browser = SimpleNamespace(resumes={"ask": "stall"})
+    browser = BrowserConnection(None)
+    browser.resumes["ask"] = "stall"
     entered, release = threading.Event(), threading.Event()
     holder = None
     if stall == "capture-lock":
@@ -307,7 +307,7 @@ def test_native_eos_keeps_its_full_drain_budget_after_a_checkpoint_stall(tmp_pat
     recorder.session = RecordingSession(tmp_path)
     recorder.session.add_track("microphone", "Me", "microphone", 48000, 1)
     recorder.session.append_native("microphone", bytes(960), 0)
-    pipeline = recorder.pipeline = object()
+    recorder.pipeline = object()
     recorder._branches = {"microphone": object()}
     recorder._track_ids = {"microphone": "microphone"}
     now, timers, eos = [0], [], []

@@ -545,7 +545,8 @@ class NativeRecorder(GObject.Object):
         if attempt["error"] or attempt["retired"]:
             return False
         if self.stopping:
-            heard = attempt.get("armed") and self._stop_at_ms is not None and pts_ms < self._stop_at_ms
+            at = max([pts_ms, *(e["atMs"] for e in self.session.manifest.get("events", []))])
+            heard = attempt.get("armed") and self._stop_at_ms is not None and at < self._stop_at_ms
             if not heard or self._finishing or self.pipeline is not attempt["pipeline"]:
                 return False
         elif self._start_cancelled(attempt["pipeline"]):
@@ -1091,7 +1092,6 @@ class NativeRecorder(GObject.Object):
             return
         self.stopping = True
         self.emit("changed")
-        self._timeout = GLib.timeout_add_seconds(10, self._timed_out)
         pipeline = self.pipeline
 
         # Pulse can wait forever for the first frame during EOS/preroll. Do
@@ -1134,6 +1134,9 @@ class NativeRecorder(GObject.Object):
             elif empty:
                 self._begin_finish()
             else:
+                # The ten seconds bound EOS draining, not time spent waiting for
+                # a checkpoint lock before EOS can even be requested.
+                self._timeout = GLib.timeout_add_seconds(10, self._timed_out)
                 request_eos(pipeline, self._eos_rejected)
         except Exception as error:
             self._begin_finish(str(error))

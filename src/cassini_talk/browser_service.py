@@ -428,6 +428,7 @@ class BrowserService:
         # The document changes a control packet reports, per reader thread:
         # applied to their captures once the broker's lock is released (#230).
         self._documents = threading.local()
+        self._capture_callbacks = threading.local()  # Resume refusal checkpoints also wait off this lock.
         self.capture_parent, self.tap_factory = capture_parent, tap_factory
         self.applications = {}
         self.application_pids = {}
@@ -523,8 +524,7 @@ class BrowserService:
             return
         if identity is not None:
             owner.call_identity = identity
-        owner.end_reason = owner.end_reason or reason
-        owner.request_stop()
+        owner.request_stop(reason=reason)
         if capture_id not in self._cancel_capture_pending:
             self._cancel_capture_pending.add(capture_id)
             self.workers.submit(self._finish_cancelled_capture, capture_id, owner, reason)
@@ -596,7 +596,12 @@ class BrowserService:
                 if capture is not None:
                     # D58 #10 (R82 1b): the host's result code is the message.
                     code = packet.get("code")
-                    capture.refuse_resume(None, code if word(code) else None, request_id=request_id)
+                    refusal = (capture, code if word(code) else None, request_id)
+                    pending = getattr(self._capture_callbacks, "pending", None)
+                    if pending is not None:
+                        pending.append(refusal)
+                    else:
+                        capture.refuse_resume(None, refusal[1], request_id=request_id)
             return
         pending = browser.pending.get(request_id)
         metadata = pending or browser.commands.get(request_id)
@@ -1487,14 +1492,20 @@ class BrowserService:
 
     def update(self, browser, packet):
         self._documents.pending = documents = []
+        self._capture_callbacks.pending = callbacks = []
         try:
             self._update(browser, packet)
         finally:
             # In report order, on this peer's reader thread, outside the
             # broker's lock: they may wait for a stalled capture lock (#230).
             self._documents.pending = None
-            for owner, page, document in documents:
-                self._observe_document(owner, page, document)
+            self._capture_callbacks.pending = None
+            try:
+                for owner, page, document in documents:
+                    self._observe_document(owner, page, document)
+            finally:
+                for capture, code, request_id in callbacks:
+                    capture.refuse_resume(None, code, request_id=request_id)
         self.policy()
 
     def _update(self, browser, packet):
@@ -1770,8 +1781,7 @@ class BrowserService:
             if action == "stop" and user and expected is None:
                 self._remember_stop(browser, tab, True)
                 if capture is not None and not preserve_capture:
-                    capture.end_reason = capture.end_reason or reason
-                    capture.request_stop()
+                    capture.request_stop(reason=reason, user_stopped=user)
             if action == "start" and any(
                 p.get("action") == "start" for p in self._pending_calls.get(logical, {}).values()
             ):
@@ -1840,8 +1850,7 @@ class BrowserService:
                 if capture is not None:
                     pending["captures"].add(capture.capture_id)
                 if capture is not None and action == "stop" and not preserve_capture:
-                    capture.end_reason = capture.end_reason or reason
-                    capture.request_stop()
+                    capture.request_stop(reason=reason, user_stopped=user)
         if joining is not None:
             if capture is not None and not preserve_capture:
                 # Local save is authoritative. The existing browser Stop may
@@ -2315,8 +2324,7 @@ class BrowserService:
                 for _key, capture in captures:
                     if quitting_pid is None:
                         self._remember_capture_stop(capture)
-                    capture.end_reason = capture.end_reason or reason
-                    capture.request_stop()
+                    capture.request_stop(reason=reason, user_stopped=quitting_pid is None and reason == "user")
             snapshot = self.snapshot()
             paths = [
                 s["path"]

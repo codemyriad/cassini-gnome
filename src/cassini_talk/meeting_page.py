@@ -296,7 +296,11 @@ class MeetingPage(Adw.NavigationPage):
     def _unbind(self, _factory, item):
         turn = item.get_item().turn if item.get_item() else None
         if turn is not None:
-            self.bound.pop(turn.index, None)
+            current = self.bound.get(turn.index)
+            # A splice can bind the replacement before unbinding the old row
+            # at the same index. Only remove the row this item still owns.
+            if current is not None and current[2] is item.get_child():
+                self.bound.pop(turn.index)
         item.set_child(None)
 
     def _word_clicked(self, turn, uri):
