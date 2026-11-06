@@ -4,6 +4,7 @@
 
 import json
 import os
+import select
 import subprocess
 import sys
 import tempfile
@@ -100,6 +101,7 @@ def child():
             temporary = OUTPUT.with_suffix(".tmp")
             temporary.write_text(json.dumps(dict(events=events)))
             temporary.replace(OUTPUT)
+            os.write(int(os.environ["CASSINI_TEST_EVENTS_FD"]), b"event\n")
 
         live = replace(
             next(m for m in window.snapshot.meetings if m.title.startswith("Weekly sync")), lifecycle="recording"
@@ -134,7 +136,46 @@ def child():
             record_event("speaker")
             window.back_to_library()
             window.activate_action("win.search", None)
-            window.search_page.entry.set_text("budget")
+            page = window.search_page
+
+            def search_updated(page):
+                if page.entry.get_text() == "budget" and page.hits:
+                    record_event("search-ready")
+
+            page.connect("results-updated", search_updated)
+            page.entry.set_text("budget")
+
+        def command(_source, _condition):
+            operation = sys.stdin.readline().strip()
+            assert operation in ("refresh", "arm")
+            page = window.search_page
+            if operation == "arm":
+                from concurrent.futures import Future
+
+                def during_activation(*_):
+                    future = Future()
+                    future.set_result((page.hits, page.names, page._meetings, page._turns))
+                    page._complete(future, page._generation)
+                    record_event("activation-refreshed")
+
+                page.play.connect_after("activate", during_activation)
+                record_event("refresh-armed")
+                return GLib.SOURCE_CONTINUE
+            old_play = page.play
+            # Wall time changes between real queries without changing the
+            # displayed date. It must not invalidate the context's identity.
+            window._fixed_now += 1
+
+            def refreshed(page):
+                page.disconnect(handler)
+                assert page.play is old_play, "An unchanged search replaced its accessible controls"
+                record_event("search-refreshed")
+
+            handler = page.connect("results-updated", refreshed)
+            page.request()
+            return GLib.SOURCE_CONTINUE
+
+        GLib.io_add_watch(sys.stdin, GLib.IO_IN, command)
 
         # The accessibility client drives the real widgets/actions. Capture
         # and name-writing callbacks are observed without opening any devices.
@@ -142,7 +183,7 @@ def child():
         window.stop_meeting = stop
         app.recording_settings.set_boolean("skip-record-first", False)
         record_event("ready")
-        until(lambda: events[-1] == "speaker" and window.player.playing and window.player.position >= 4000)
+        until(lambda: "speaker" in events and window.player.playing and window.player.position >= 4000)
         record_event("search-play")
         window.player.pause()
         app.on_quit()
@@ -185,7 +226,20 @@ def parent():
             if "accessible-buttons" in app.get_name().lower():
                 yield from walk(app)
 
-    def activate(name, expected_event):
+    def wait_event(expected_event):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            drain()
+            if OUTPUT.exists() and expected_event in json.loads(OUTPUT.read_text())["events"]:
+                return
+            assert process.poll() is None, f"GTK child exited before {expected_event}"
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not select.select([event_fd], [], [], remaining)[0]:
+                break
+            assert os.read(event_fd, 4096), f"GTK event pipe closed before {expected_event}"
+        raise AssertionError(f"App did not report {expected_event}")
+
+    def find_button(name):
         deadline = time.monotonic() + 10
         names = []
         while time.monotonic() < deadline:
@@ -198,49 +252,68 @@ def parent():
                 if target and target.get_state_set().contains(Atspi.StateType.SENSITIVE):
                     action = target.get_action_iface()
                     assert action and action.get_n_actions() > 0, f"No AT-SPI action for {name}"
-                    print(f"AT-SPI activating {name}", flush=True)
-                    assert action.do_action(0), f"AT-SPI could not activate {name}"
-                    print(f"AT-SPI dispatched {name}", flush=True)
                     break
             except GLib.Error:
                 pass  # A replaced page can invalidate its old accessible objects.
             time.sleep(0.025)
         else:
             raise AssertionError(f"No named AT-SPI button {name!r}; visible buttons: {names!r}")
+        return target, action
+
+    def activate(name, expected_event, *, refresh_after_lookup=False):
+        target, action = find_button(name)
+        if refresh_after_lookup:
+            process.stdin.write("refresh\n")
+            process.stdin.flush()
+            wait_event("search-refreshed")
+            # Query the tree again only after the application has applied results.
+            target, action = find_button(name)
+            process.stdin.write("arm\n")
+            process.stdin.flush()
+            wait_event("refresh-armed")
+        print(f"AT-SPI activating {name}", flush=True)
+        assert action.do_action(0), f"AT-SPI could not activate {name}"
+        print(f"AT-SPI dispatched {name}", flush=True)
         if expected_event:
-            deadline = time.monotonic() + 10
-            while time.monotonic() < deadline:
-                drain()
-                if OUTPUT.exists() and expected_event in json.loads(OUTPUT.read_text())["events"]:
-                    return
-                assert process.poll() is None, f"GTK child exited before {expected_event}"
-                time.sleep(0.025)
-            raise AssertionError(f"AT-SPI {name!r} did not invoke its callback")
+            try:
+                wait_event(expected_event)
+            except AssertionError as error:
+                raise AssertionError(f"AT-SPI {name!r} did not invoke its callback") from error
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.unlink(missing_ok=True)
     log_path = OUTPUT.with_suffix(".gtk.log")
     with log_path.open("w") as log:
-        process = subprocess.Popen([sys.executable, __file__, "--child"], stdout=log, stderr=log)
+        event_fd, child_event_fd = os.pipe()
+        process = subprocess.Popen(
+            [sys.executable, __file__, "--child"],
+            stdin=subprocess.PIPE,
+            text=True,
+            stdout=log,
+            stderr=log,
+            pass_fds=(child_event_fd,),
+            env=dict(os.environ, CASSINI_TEST_EVENTS_FD=str(child_event_fd)),
+        )
+        os.close(child_event_fd)
         try:
-            deadline = time.monotonic() + 10
-            while not OUTPUT.exists() and time.monotonic() < deadline:
-                assert process.poll() is None, f"GTK child exited before ready; see {log_path}"
-                time.sleep(0.025)
-            assert OUTPUT.exists(), "GTK child did not finish loading its private fixture"
+            wait_event("ready")
             activate("Record", None)
             activate("Start recording", "start")
             activate("Stop", "stop")
             activate("Playback speed, 1×", "speed-menu")
             activate("1.5×", "speed-changed")
             activate("Marta", "speaker")
-            activate("Play from 00:00:04", "search-play")
+            wait_event("search-ready")
+            activate("Play from 00:00:04", "search-play", refresh_after_lookup=True)
+            wait_event("activation-refreshed")
             assert process.wait(10) == 0
             assert not any(value in log_path.read_text() for value in ("Gtk-WARNING", "Gtk-CRITICAL"))
         finally:
             if process.poll() is None:
                 process.terminate()
                 process.wait(5)
+            process.stdin.close()
+            os.close(event_fd)
     print("PASS real AT-SPI names/actions: Record, Start recording, Stop, speaker row, Search playback")
 
 
