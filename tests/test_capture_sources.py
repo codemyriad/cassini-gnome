@@ -169,3 +169,23 @@ def test_invalid_browser_identity_allocates_no_track(tmp_path, identity, use_sel
     assert not host.sequences and not list(host.session.directory.glob("*.wav"))
     assert (host.session.directory / "session.json").read_bytes() == before
     host.handle(dict(type="stop"))
+
+
+@pytest.mark.parametrize(
+    "end,expected",
+    [
+        (1028.784049, 240),  # Main CI run 42254121515: float subtraction added one frame.
+        (1028.784048, 240),  # One ns before the exact sample boundary.
+        (1028.784050, 241),  # One ns after it: a genuinely partial frame is kept.
+        (1023.784049, 0),
+        (1023.784048, 0),
+        (1023.784050, 1),
+        (1043.784049, 480),
+    ],
+)
+@pytest.mark.parametrize("channels", [1, 2])
+def test_native_stop_cut_uses_nanosecond_stamps_without_an_extra_frame(end, expected, channels):
+    from cassini_talk.capture_sources import pcm_before
+
+    pcm = b"\x01\x00" * (480 * channels)
+    assert pcm_before(pcm, 1023.784049, 48000, channels, end) == pcm[: expected * channels * 2]
