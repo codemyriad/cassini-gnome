@@ -17840,40 +17840,6 @@
    }
   },
   {
-   "id": "details.sources.computerBusy",
-   "en": "{source}: about {duration} is missing because the computer was too busy. That part is silent.",
-   "platforms": [
-    "gnome",
-    "mac"
-   ],
-   "role": "line",
-   "boards": [],
-   "milestone": "D69.2",
-   "placeholders": {
-    "source": "source display name (Microphone, This computer, a person)",
-    "duration": "the source's summed writer loss, rounded, in the D58.4 short-duration format (seconds under a minute)"
-   },
-   "note": "Coordinator (D69.2). A quiet, neutral line in Recording details, shown only when one source's summed D69 writer loss is at least 1 s. No amber or red, no badge, no banner. It replaces any display of the stored D69 problem sentence, which stays in the file for diagnostics and is never shown.",
-   "status": "harmony",
-   "l10n": {
-    "it": {
-     "text": "{source}: mancano circa {duration} perché il computer era troppo occupato. Quel tratto è silenzioso."
-    },
-    "fr": {
-     "text": "{source} : environ {duration} manquent, car l’ordinateur était trop occupé. Ce passage est silencieux."
-    },
-    "es": {
-     "text": "{source}: faltan unos {duration} porque el ordenador estaba demasiado ocupado. Esa parte está en silencio."
-    },
-    "pt-BR": {
-     "text": "{source}: faltam cerca de {duration} porque o computador estava ocupado demais. Esse trecho está em silêncio."
-    },
-    "pt-PT": {
-     "text": "{source}: faltam cerca de {duration} porque o computador estava demasiado ocupado. Esse excerto está em silêncio."
-    }
-   }
-  },
-  {
    "id": "details.sources.empty",
    "en": "No audio sources were reported.",
    "platforms": [
@@ -19563,6 +19529,982 @@
     },
     "pt-PT": {
      "text": "Não foi possível exportar esta reunião. Foi guardada por uma versão mais recente do Cassini. Atualize o Cassini e tente novamente."
+    }
+   }
+  },
+  {
+   "id": "speakers.listen",
+   "en": "Play this speaker’s turns",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "tooltip",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Tooltip of the round Play button on each Speakers row. Plays only this speaker's turns, back to back, each with a 1.5 s lead-in. While listening it shows common.stop.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Riproduci gli interventi di questa voce"
+    },
+    "fr": {
+     "text": "Lire les interventions de cet intervenant"
+    },
+    "es": {
+     "text": "Reproducir las intervenciones de este hablante"
+    },
+    "pt-BR": {
+     "text": "Reproduzir as intervenções deste locutor"
+    },
+    "pt-PT": {
+     "text": "Reproduzir as intervenções deste orador"
+    }
+   }
+  },
+  {
+   "id": "speakers.listen.a11y",
+   "en": "Play this speaker’s turns: {name}, {when}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "placeholders": {
+    "name": "speaker display name",
+    "when": "speakers.when.once or speakers.when.times"
+   },
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Accessible label of the row Play button, so eight identical names stay distinguishable.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Riproduci gli interventi di questa voce: {name}, {when}"
+    },
+    "fr": {
+     "text": "Lire les interventions de cet intervenant : {name}, {when}"
+    },
+    "es": {
+     "text": "Reproducir las intervenciones de este hablante: {name}, {when}"
+    },
+    "pt-BR": {
+     "text": "Reproduzir as intervenções deste locutor: {name}, {when}"
+    },
+    "pt-PT": {
+     "text": "Reproduzir as intervenções deste orador: {name}, {when}"
+    }
+   }
+  },
+  {
+   "id": "speakers.when.once",
+   "en": "once, at {position}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "placeholders": {
+    "position": "HH:MM:SS of the turn start"
+   },
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Row caption part for a speaker with exactly one turn.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "una volta, a {position}"
+    },
+    "fr": {
+     "text": "une fois, à {position}"
+    },
+    "es": {
+     "text": "una vez, en {position}"
+    },
+    "pt-BR": {
+     "text": "uma vez, em {position}"
+    },
+    "pt-PT": {
+     "text": "uma vez, em {position}"
+    }
+   }
+  },
+  {
+   "id": "speakers.when.times",
+   "en": "{count} times, first at {position}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "placeholders": {
+    "count": "number of turns",
+    "position": "HH:MM:SS of the first turn"
+   },
+   "plural": {
+    "one": "{count} time, at {position}",
+    "other": "{count} times, first at {position}"
+   },
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Row caption part for a speaker with two or more turns (count 1 uses speakers.when.once).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{count} volte, la prima a {position}",
+     "plural": {
+      "one": "{count} volta, a {position}",
+      "many": "{count} volte, la prima a {position}",
+      "other": "{count} volte, la prima a {position}"
+     }
+    },
+    "fr": {
+     "text": "{count} fois, la première à {position}",
+     "plural": {
+      "one": "{count} fois, à {position}",
+      "many": "{count} fois, la première à {position}",
+      "other": "{count} fois, la première à {position}"
+     }
+    },
+    "es": {
+     "text": "{count} veces, la primera en {position}",
+     "plural": {
+      "one": "{count} vez, en {position}",
+      "many": "{count} veces, la primera en {position}",
+      "other": "{count} veces, la primera en {position}"
+     }
+    },
+    "pt-BR": {
+     "text": "{count} vezes, a primeira em {position}",
+     "plural": {
+      "one": "{count} vez, em {position}",
+      "many": "{count} vezes, a primeira em {position}",
+      "other": "{count} vezes, a primeira em {position}"
+     }
+    },
+    "pt-PT": {
+     "text": "{count} vezes, a primeira em {position}",
+     "plural": {
+      "one": "{count} vez, em {position}",
+      "many": "{count} vezes, a primeira em {position}",
+      "other": "{count} vezes, a primeira em {position}"
+     }
+    }
+   }
+  },
+  {
+   "id": "speakers.row.caption",
+   "en": "{provenance} · {when}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "placeholders": {
+    "provenance": "existing provenance text (e.g. Not named yet)",
+    "when": "speakers.when.*"
+   },
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). One line under the speaker name; the provenance ellipsizes first, never the time. Tabular digits.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{provenance} · {when}"
+    },
+    "fr": {
+     "text": "{provenance} · {when}"
+    },
+    "es": {
+     "text": "{provenance} · {when}"
+    },
+    "pt-BR": {
+     "text": "{provenance} · {when}"
+    },
+    "pt-PT": {
+     "text": "{provenance} · {when}"
+    }
+   }
+  },
+  {
+   "id": "speakers.row.a11y",
+   "en": "{name}, {provenance}, {when}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "placeholders": {
+    "name": "speaker display name",
+    "provenance": "provenance text",
+    "when": "speakers.when.*"
+   },
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Accessible label of a Speakers row.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{name}, {provenance}, {when}"
+    },
+    "fr": {
+     "text": "{name}, {provenance}, {when}"
+    },
+    "es": {
+     "text": "{name}, {provenance}, {when}"
+    },
+    "pt-BR": {
+     "text": "{name}, {provenance}, {when}"
+    },
+    "pt-PT": {
+     "text": "{name}, {provenance}, {when}"
+    }
+   }
+  },
+  {
+   "id": "meeting.speakerShare.underOne",
+   "en": "< 1%",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Share shown instead of 0% when a speaker's share rounds to zero.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "< 1%"
+    },
+    "fr": {
+     "text": "< 1 %"
+    },
+    "es": {
+     "text": "< 1 %"
+    },
+    "pt-BR": {
+     "text": "< 1%"
+    },
+    "pt-PT": {
+     "text": "< 1%"
+    }
+   }
+  },
+  {
+   "id": "listen.bar.a11y",
+   "en": "Listening to {name}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "placeholders": {
+    "name": "speaker display name"
+   },
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Accessible group label of the listening bar.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Stai ascoltando {name}"
+    },
+    "fr": {
+     "text": "Écoute de {name}"
+    },
+    "es": {
+     "text": "Escuchando a {name}"
+    },
+    "pt-BR": {
+     "text": "Ouvindo {name}"
+    },
+    "pt-PT": {
+     "text": "A ouvir {name}"
+    }
+   }
+  },
+  {
+   "id": "listen.turn",
+   "en": "Turn {index} of {count} · {position}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "placeholders": {
+    "index": "1-based turn number",
+    "count": "turns of this speaker",
+    "position": "HH:MM:SS of the turn start"
+   },
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Dim label in the listening bar. 'Turn' (it intervento) is the D70 noun for one stretch of one speaker talking.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Intervento {index} di {count} · {position}"
+    },
+    "fr": {
+     "text": "Intervention {index} sur {count} · {position}"
+    },
+    "es": {
+     "text": "Intervención {index} de {count} · {position}"
+    },
+    "pt-BR": {
+     "text": "Intervenção {index} de {count} · {position}"
+    },
+    "pt-PT": {
+     "text": "Intervenção {index} de {count} · {position}"
+    }
+   }
+  },
+  {
+   "id": "listen.turn.announce",
+   "en": "Turn {index} of {count}, {position}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "placeholders": {
+    "index": "1-based turn number",
+    "count": "turns of this speaker",
+    "position": "HH:MM:SS"
+   },
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Polite screen-reader announcement on each turn step.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Intervento {index} di {count}, {position}"
+    },
+    "fr": {
+     "text": "Intervention {index} sur {count}, {position}"
+    },
+    "es": {
+     "text": "Intervención {index} de {count}, {position}"
+    },
+    "pt-BR": {
+     "text": "Intervenção {index} de {count}, {position}"
+    },
+    "pt-PT": {
+     "text": "Intervenção {index} de {count}, {position}"
+    }
+   }
+  },
+  {
+   "id": "listen.previousTurn",
+   "en": "Previous turn",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Listening bar button and its tooltip. Alt+Up (Mac ⌥⌘↑).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Intervento precedente"
+    },
+    "fr": {
+     "text": "Intervention précédente"
+    },
+    "es": {
+     "text": "Intervención anterior"
+    },
+    "pt-BR": {
+     "text": "Intervenção anterior"
+    },
+    "pt-PT": {
+     "text": "Intervenção anterior"
+    }
+   }
+  },
+  {
+   "id": "listen.nextTurn",
+   "en": "Next turn",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Listening bar button. Alt+Down (Mac ⌥⌘↓).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Intervento successivo"
+    },
+    "fr": {
+     "text": "Intervention suivante"
+    },
+    "es": {
+     "text": "Intervención siguiente"
+    },
+    "pt-BR": {
+     "text": "Próxima intervenção"
+    },
+    "pt-PT": {
+     "text": "Intervenção seguinte"
+    }
+   }
+  },
+  {
+   "id": "listen.previousSpeaker",
+   "en": "Previous speaker",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Listening bar button; pane order. Alt+Shift+Up (Mac ⌥⇧⌘↑).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Voce precedente"
+    },
+    "fr": {
+     "text": "Intervenant précédent"
+    },
+    "es": {
+     "text": "Hablante anterior"
+    },
+    "pt-BR": {
+     "text": "Locutor anterior"
+    },
+    "pt-PT": {
+     "text": "Orador anterior"
+    }
+   }
+  },
+  {
+   "id": "listen.nextSpeaker",
+   "en": "Next speaker",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Listening bar button; pane order. Alt+Shift+Down (Mac ⌥⇧⌘↓).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Voce successiva"
+    },
+    "fr": {
+     "text": "Intervenant suivant"
+    },
+    "es": {
+     "text": "Hablante siguiente"
+    },
+    "pt-BR": {
+     "text": "Próximo locutor"
+    },
+    "pt-PT": {
+     "text": "Orador seguinte"
+    }
+   }
+  },
+  {
+   "id": "listen.again",
+   "en": "Play again",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Shown in the listening bar after the last turn ends.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Riproduci di nuovo"
+    },
+    "fr": {
+     "text": "Réécouter"
+    },
+    "es": {
+     "text": "Volver a reproducir"
+    },
+    "pt-BR": {
+     "text": "Reproduzir de novo"
+    },
+    "pt-PT": {
+     "text": "Reproduzir novamente"
+    }
+   }
+  },
+  {
+   "id": "listen.name",
+   "en": "Name…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Opens the Speakers dialog for the listened speaker, focus on its sample button. Hidden when the meeting is not editable.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Dai un nome…"
+    },
+    "fr": {
+     "text": "Nommer…"
+    },
+    "es": {
+     "text": "Poner nombre…"
+    },
+    "pt-BR": {
+     "text": "Nomear…"
+    },
+    "pt-PT": {
+     "text": "Dar nome…"
+    }
+   }
+  },
+  {
+   "id": "listen.stop",
+   "en": "Stop listening",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Close button of the listening bar; also Esc when nothing else claims it.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Smetti di ascoltare"
+    },
+    "fr": {
+     "text": "Arrêter l’écoute"
+    },
+    "es": {
+     "text": "Dejar de escuchar"
+    },
+    "pt-BR": {
+     "text": "Parar de ouvir"
+    },
+    "pt-PT": {
+     "text": "Parar de ouvir"
+    }
+   }
+  },
+  {
+   "id": "speakers.mergeInto.speaksBefore",
+   "en": "speaks just before",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Dim suffix on the first Merge into… entry: the speaker heard right before this turn.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "parla subito prima"
+    },
+    "fr": {
+     "text": "parle juste avant"
+    },
+    "es": {
+     "text": "habla justo antes"
+    },
+    "pt-BR": {
+     "text": "fala logo antes"
+    },
+    "pt-PT": {
+     "text": "fala imediatamente antes"
+    }
+   }
+  },
+  {
+   "id": "speakers.mergeInto.speaksAfter",
+   "en": "speaks just after",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Dim suffix: the speaker heard right after this turn.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "parla subito dopo"
+    },
+    "fr": {
+     "text": "parle juste après"
+    },
+    "es": {
+     "text": "habla justo después"
+    },
+    "pt-BR": {
+     "text": "fala logo depois"
+    },
+    "pt-PT": {
+     "text": "fala imediatamente depois"
+    }
+   }
+  },
+  {
+   "id": "shortcuts.listen.turns",
+   "en": "Next or previous turn of this speaker",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "shortcut",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Keyboard shortcuts dialog / Mac Playback menu.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Intervento successivo o precedente di questa voce"
+    },
+    "fr": {
+     "text": "Intervention suivante ou précédente de cet intervenant"
+    },
+    "es": {
+     "text": "Intervención siguiente o anterior de este hablante"
+    },
+    "pt-BR": {
+     "text": "Próxima intervenção ou anterior deste locutor"
+    },
+    "pt-PT": {
+     "text": "Intervenção seguinte ou anterior deste orador"
+    }
+   }
+  },
+  {
+   "id": "shortcuts.listen.speakers",
+   "en": "Next or previous speaker",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "shortcut",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Keyboard shortcuts dialog / Mac Playback menu.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Voce successiva o precedente"
+    },
+    "fr": {
+     "text": "Intervenant suivant ou précédent"
+    },
+    "es": {
+     "text": "Hablante siguiente o anterior"
+    },
+    "pt-BR": {
+     "text": "Próximo locutor ou anterior"
+    },
+    "pt-PT": {
+     "text": "Orador seguinte ou anterior"
+    }
+   }
+  },
+  {
+   "id": "shortcuts.playTurn",
+   "en": "Play this turn",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "shortcut",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Shift+Enter (⇧↩) on a focused transcript turn.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Riproduci questo intervento"
+    },
+    "fr": {
+     "text": "Lire cette intervention"
+    },
+    "es": {
+     "text": "Reproducir esta intervención"
+    },
+    "pt-BR": {
+     "text": "Reproduzir esta intervenção"
+    },
+    "pt-PT": {
+     "text": "Reproduzir esta intervenção"
+    }
+   }
+  },
+  {
+   "id": "listen.speakerName.tooltip",
+   "en": "Listen to {name}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "tooltip",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "placeholders": {
+    "name": "speaker display name"
+   },
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Tooltip of the speaker name button in a transcript turn; starts listening at that turn.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Ascolta {name}"
+    },
+    "fr": {
+     "text": "Écouter {name}"
+    },
+    "es": {
+     "text": "Escuchar a {name}"
+    },
+    "pt-BR": {
+     "text": "Ouvir {name}"
+    },
+    "pt-PT": {
+     "text": "Ouvir {name}"
+    }
+   }
+  },
+  {
+   "id": "speakers.mergedToast",
+   "en": "Merged into {name}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "toast",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "placeholders": {
+    "name": "target speaker"
+   },
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Toast after a merge from the listening bar, with common.undo.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Unita a {name}"
+    },
+    "fr": {
+     "text": "Fusionné avec {name}"
+    },
+    "es": {
+     "text": "Fusionado con {name}"
+    },
+    "pt-BR": {
+     "text": "Mesclado com {name}"
+    },
+    "pt-PT": {
+     "text": "Juntado a {name}"
+    }
+   }
+  },
+  {
+   "id": "speakers.sampleFrom",
+   "en": "Sample from {position}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "placeholders": {
+    "position": "HH:MM:SS of the sample start"
+   },
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Second dim subtitle in the Speakers dialog under the sample button.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Campione da {position}"
+    },
+    "fr": {
+     "text": "Extrait à partir de {position}"
+    },
+    "es": {
+     "text": "Muestra desde {position}"
+    },
+    "pt-BR": {
+     "text": "Amostra a partir de {position}"
+    },
+    "pt-PT": {
+     "text": "Amostra a partir de {position}"
+    }
+   }
+  },
+  {
+   "id": "player.timeline.tooltip",
+   "en": "{position} · {name}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "tooltip",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "placeholders": {
+    "position": "HH:MM:SS under the pointer",
+    "name": "speaker talking at that time"
+   },
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Scrubber hover/drag readout; just {position} in a silence.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{position} · {name}"
+    },
+    "fr": {
+     "text": "{position} · {name}"
+    },
+    "es": {
+     "text": "{position} · {name}"
+    },
+    "pt-BR": {
+     "text": "{position} · {name}"
+    },
+    "pt-PT": {
+     "text": "{position} · {name}"
+    }
+   }
+  },
+  {
+   "id": "player.position.value",
+   "en": "Position, {position}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "ListenBySpeaker"
+   ],
+   "milestone": "D70",
+   "placeholders": {
+    "position": "HH:MM:SS"
+   },
+   "note": "Coordinator (D70, listen by speaker; design https://claude.ai/artifact/TSqgYh95bSSAMbXC3Goij1, spec design/listen-by-speaker-spec.json). Accessible value text of the scrubber (GNOME; Mac keeps its D37.6 value).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Posizione, {position}"
+    },
+    "fr": {
+     "text": "Position, {position}"
+    },
+    "es": {
+     "text": "Posición, {position}"
+    },
+    "pt-BR": {
+     "text": "Posição, {position}"
+    },
+    "pt-PT": {
+     "text": "Posição, {position}"
+    }
+   }
+  },
+  {
+   "id": "details.sources.computerBusy",
+   "en": "{source}: about {duration} is missing because the computer was too busy. That part is silent.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D69.2",
+   "placeholders": {
+    "source": "source display name (Microphone, This computer, a person)",
+    "duration": "the source's summed writer loss, rounded, in the D58.4 short-duration format (seconds under a minute)"
+   },
+   "note": "Coordinator (D69.2). A quiet, neutral line in Recording details, shown only when one source's summed D69 writer loss is at least 1 s. No amber or red, no badge, no banner. It replaces any display of the stored D69 problem sentence, which stays in the file for diagnostics and is never shown.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{source}: mancano circa {duration} perché il computer era troppo occupato. Quel tratto è silenzioso."
+    },
+    "fr": {
+     "text": "{source} : environ {duration} manquent, car l’ordinateur était trop occupé. Ce passage est silencieux."
+    },
+    "es": {
+     "text": "{source}: faltan unos {duration} porque el ordenador estaba demasiado ocupado. Esa parte está en silencio."
+    },
+    "pt-BR": {
+     "text": "{source}: faltam cerca de {duration} porque o computador estava ocupado demais. Esse trecho está em silêncio."
+    },
+    "pt-PT": {
+     "text": "{source}: faltam cerca de {duration} porque o computador estava demasiado ocupado. Esse excerto está em silêncio."
     }
    }
   }
