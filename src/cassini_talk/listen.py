@@ -51,6 +51,9 @@ class ListenController(GObject.Object):
         self._starts = []
         # Last turn index of the span the player is stopping at, or None while playing freely.
         self._span_last = None
+        # The turn _play started (its lead-in belongs to it), or None after a
+        # seek: a playhead in the gap before a turn has not reached that turn.
+        self._started = None
 
     # Turn data
 
@@ -119,7 +122,7 @@ class ListenController(GObject.Object):
         self._release()
         if player is not None and player.span_follow == self._follow:
             player.clear_span()
-        self._targets, self._starts, self._span_last = (), [], None
+        self._targets, self._starts, self._span_last, self._started = (), [], None, None
         self.freeze_notify()
         self.speaker, self.index, self.count, self.finished = None, -1, 0, False
         self.thaw_notify()
@@ -210,6 +213,7 @@ class ListenController(GObject.Object):
     def _play(self, index):
         last = self.chain_last(index)
         self._span_last = last
+        self._started = index
         self._player.span_follow = self._follow
         self._update(index, finished=False, force=True)
         # A refusal (nothing loaded, or an error) returns False; the error path stops listening.
@@ -231,13 +235,16 @@ class ListenController(GObject.Object):
         """Player.span_follow: where a seek to *ms* plays to while listening."""
         if not self.active:
             return None
+        self._started = None
         index = self._containing(ms)
         if index is None:
             index = bisect_right(self._starts, ms)
         if index >= len(self._targets):
-            # Past the last turn: play freely; the bar keeps the last turn.
+            # Past the last turn: play freely; the bar keeps the last turn, and
+            # Play again stays offered after it (a re-seek there, by a merge's
+            # recompute or the dialog sample's restore, changes nothing).
             self._span_last = None
-            self._update(len(self._targets) - 1, finished=False)
+            self._update(len(self._targets) - 1, finished=self.finished)
             return None
         last = self.chain_last(index)
         self._span_last = last
@@ -247,16 +254,17 @@ class ListenController(GObject.Object):
     def _containing(self, ms):
         """The target turn whose [start, end + tail) holds *ms*, if any."""
         index = bisect_right(self._starts, ms) - 1
-        if index >= 0 and ms < self._targets[index].end_ms + TAIL_MS:
+        if index >= 0 and ms < self.span_end(index):
             return index
         return None
 
     def _current(self, position):
-        """The turn the playhead belongs to: the one being played (its lead-in and
+        """The turn the playhead belongs to: the one _play started (its lead-in and
         tail included) or else the one holding the playhead."""
-        index = self.index
-        if 0 <= index < len(self._targets) and (
-            self.lead_start(index) <= position <= self._targets[index].end_ms + TAIL_MS
+        index = self._started
+        if index is not None and (
+            0 <= index < len(self._targets)
+            and self.lead_start(index) <= position <= self._targets[index].end_ms + TAIL_MS
         ):
             return index
         return self._containing(position)

@@ -12,6 +12,7 @@ from . import runtime
 from .i18n import gettext as _
 
 TICK_MS = 40
+_CONSUMED = object()  # An EOS tag already taken: no later EOS message can match it.
 
 
 class Player(GObject.Object):
@@ -34,14 +35,18 @@ class Player(GObject.Object):
 
     def __init__(self):
         super().__init__()
-        self._pipeline = Gst.ElementFactory.make("playbin3", None) or Gst.ElementFactory.make("playbin", None)
+        # playbin, not playbin3: under load about 1 in 100 playbin3 prerolls hung
+        # in parsebin's state change, blocking load (D70 #242 review); playbin
+        # did not hang in 480. runtime.py already requires only playbin.
+        self._pipeline = Gst.ElementFactory.make("playbin", None)
         if self._pipeline is None:
             raise RuntimeError("GStreamer playbin is not available")
         self._pipeline.set_property("video-sink", Gst.ElementFactory.make("fakesink", None))
-        scaletempo = Gst.ElementFactory.make("scaletempo", None)
-        if scaletempo is not None:
-            # Keeps the pitch natural when playing faster or slower.
-            self._pipeline.set_property("audio-filter", scaletempo)
+        # scaletempo keeps the pitch natural when playing faster or slower; an
+        # identity stands in without it, so the stream always passes an element
+        # of ours (_watch_stream).
+        audio_filter = Gst.ElementFactory.make("scaletempo", None) or Gst.ElementFactory.make("identity", None)
+        self._pipeline.set_property("audio-filter", audio_filter)
         bus = self._pipeline.get_bus()
         bus.add_signal_watch()
         self._bus_handler = bus.connect("message", self._on_message)
@@ -50,12 +55,12 @@ class Player(GObject.Object):
         self._pending_seek: int | None = None
         self._at_end = False
         self._range_end = None
-        # A flushing seek re-prerolls and posts ASYNC_DONE, and the bus keeps
-        # its order: an EOS dispatched before that ASYNC_DONE belongs to the
-        # segment the seek replaced (still queued when it was issued), not to
-        # the new one. (playbin also keeps the seek seqnum on its EOS, but the
-        # FolderPlayer's audiomixer posts EOS with a fresh one.)
-        self._seeking = False
+        # Match both the EOS event's own identity and its segment. The mixer
+        # can give EOS a new seqnum, but the downstream event and bus message
+        # share that identity. Matching only the latest segment can misread a
+        # queued old message after the new EOS has already reached the filter.
+        self._seek_seqnum = self._flush_seqnum = self._eos_seqnum = None
+        self._watch_stream(audio_filter)
         # D70 listening: (end_ms, on_done) of the span in progress.
         self._span = None
         # The pipeline's segment no longer matches what play() should do (drained at a
@@ -76,7 +81,7 @@ class Player(GObject.Object):
         self._prerolled = False
         self._pending_seek = None
         self._at_end = False
-        self._seeking = False
+        self._seek_seqnum = self._flush_seqnum = self._eos_seqnum = None
         self.position = 0
         missing = runtime.missing_gst_elements(Gst.ElementFactory.find, runtime.playback_elements(uri))
         if missing:
@@ -221,8 +226,17 @@ class Player(GObject.Object):
 
     def set_rate(self, rate: float):
         self.rate = rate
-        if self._prerolled:
-            self._do_seek(self._query_position() or self.position)
+        if not self._prerolled:
+            return
+        position = self._query_position() or self.position
+        stop = self._stop_ms()
+        if stop is not None and position >= stop:
+            # The span has rendered to its stop and its EOS is on its way: a seek
+            # now would drop that EOS and play on past the turn. play() applies
+            # the rate when it continues.
+            self._stale_segment = True
+            return
+        self._do_seek(position)
 
     def _stop_ms(self):
         if self._range_end is not None:
@@ -246,8 +260,21 @@ class Player(GObject.Object):
         )
         sent = self._pipeline.send_event(event)
         if sent:
-            self._seeking = True
+            self._seek_seqnum = event.get_seqnum()
         return sent
+
+    def _watch_stream(self, element):
+        """Tag each EOS event with the seek whose FLUSH_STOP preceded it (streaming thread)."""
+
+        def watch(_pad, info):
+            event = info.get_event()
+            if event.type == Gst.EventType.FLUSH_STOP:
+                self._flush_seqnum = event.get_seqnum()
+            elif event.type == Gst.EventType.EOS:
+                self._eos_seqnum = event.get_seqnum(), self._flush_seqnum
+            return Gst.PadProbeReturn.OK
+
+        element.get_static_pad("src").add_probe(Gst.PadProbeType.EVENT_DOWNSTREAM | Gst.PadProbeType.EVENT_FLUSH, watch)
 
     def shutdown(self):
         self.stop()
@@ -279,7 +306,6 @@ class Player(GObject.Object):
 
     def _on_message(self, _bus, message):
         if message.type == Gst.MessageType.ASYNC_DONE:
-            self._seeking = False
             if not self._prerolled:
                 self._prerolled = True
                 if not self.duration:
@@ -294,8 +320,9 @@ class Player(GObject.Object):
             if ok and dur > 0 and not self.duration:
                 self.duration = dur // Gst.MSECOND
         elif message.type == Gst.MessageType.EOS:
-            if self._seeking:
-                return
+            if self._eos_seqnum != (message.get_seqnum(), self._seek_seqnum):
+                return  # The end of a segment a later seek replaced.
+            self._eos_seqnum = _CONSUMED
             self._pipeline.set_state(Gst.State.PAUSED)
             self.playing = False
             self._stop_tick()
